@@ -10,19 +10,30 @@ that fails fast if a tool stops routing through the proxy.
 """
 
 from collections.abc import Callable
+import json
 from typing import Any
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from app.models.common_models import GatherContextInput
-from app.models.google_docs_models import DeleteDocInput, ShareDocInput, ShareRecipient
+from app.models.google_docs_models import (
+    CreateTOCInput,
+    DeleteDocInput,
+    ShareDocInput,
+    ShareRecipient,
+)
 from app.models.google_sheets_models import (
     ShareRecipient as SheetsRecipient,
     ShareSpreadsheetInput,
 )
 from app.models.linkedin_models import AddCommentInput, ReactToPostInput
-from app.models.notion_models import FetchDataInput, MovePageInput
+from app.models.notion_models import (
+    FetchDataInput,
+    FetchPageAsMarkdownInput,
+    InsertMarkdownInput,
+    MovePageInput,
+)
 from app.models.twitter_models import (
     BatchFollowInput,
     BatchUnfollowInput,
@@ -189,6 +200,741 @@ def test_google_docs_delete_doc_routes_through_proxy() -> None:
     assert kwargs["endpoint"].endswith("/files/doc-1")
 
 
+# --- Google Docs: detailed behavior -------------------------------------------
+
+
+GOOGLE_DOCS_MODULE = "app.agents.tools.integrations.google_docs_tool"
+GOOGLE_DOCS_AUTH: dict[str, Any] = {"user_id": "user_test_123", "version": "v1"}
+
+
+def _google_docs_tools() -> tuple[dict[str, Any], MagicMock]:
+    """Register google docs tools; return (captured tools, composio mock)."""
+    from app.agents.tools.integrations.google_docs_tool import (
+        register_google_docs_custom_tools,
+    )
+
+    tools: dict[str, Any] = {}
+    composio = MagicMock()
+
+    def custom_tool(**_kwargs: Any) -> Callable[[Any], Any]:
+        def decorator(fn: Any) -> Any:
+            tools[fn.__name__] = fn
+            return fn
+
+        return decorator
+
+    composio.tools.custom_tool = custom_tool
+    register_google_docs_custom_tools(composio)
+    return tools, composio
+
+
+def test_google_docs_register_returns_expected_tool_names() -> None:
+    from app.agents.tools.integrations.google_docs_tool import (
+        register_google_docs_custom_tools,
+    )
+
+    assert register_google_docs_custom_tools(MagicMock()) == [
+        "GOOGLEDOCS_CUSTOM_SHARE_DOC",
+        "GOOGLEDOCS_CUSTOM_CREATE_TOC",
+        "GOOGLEDOCS_CUSTOM_DELETE_DOC",
+        "GOOGLEDOCS_CUSTOM_GATHER_CONTEXT",
+    ]
+
+
+# --- _user_id -----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "creds",
+    [{}, {"user_id": ""}, {"user_id": None}, {"user_id": 123}],
+    ids=["missing", "empty", "none", "not-a-string"],
+)
+def test_google_docs_user_id_rejects_invalid_credentials(creds: dict[str, Any]) -> None:
+    from app.agents.tools.integrations.google_docs_tool import _user_id
+
+    with pytest.raises(ValueError) as excinfo:
+        _user_id(creds)
+    assert str(excinfo.value) == "Missing user_id in auth_credentials"
+
+
+def test_google_docs_user_id_returns_credentials_user_id() -> None:
+    from app.agents.tools.integrations.google_docs_tool import _user_id
+
+    assert _user_id({"user_id": "user-1"}) == "user-1"
+
+
+# --- CUSTOM_SHARE_DOC ---------------------------------------------------------
+
+
+def test_google_docs_share_doc_exact_proxy_calls_and_result() -> None:
+    tools, _composio = _google_docs_tools()
+
+    with (
+        patch(
+            f"{GOOGLE_DOCS_MODULE}.proxy_request_sync", return_value={"id": "perm-1"}
+        ) as proxy,
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set") as log_set,
+    ):
+        result = tools["CUSTOM_SHARE_DOC"](
+            ShareDocInput(
+                document_id="doc-share",
+                recipients=[
+                    ShareRecipient(email="a@x.com", role="writer"),
+                    ShareRecipient(email="b@x.com", role="reader", send_notification=False),
+                ],
+            ),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    assert result == {
+        "document_id": "doc-share",
+        "url": "https://docs.google.com/document/d/doc-share/edit",
+        "shared": [
+            {
+                "email": "a@x.com",
+                "role": "writer",
+                "permission_id": "perm-1",
+                "notification_sent": True,
+            },
+            {
+                "email": "b@x.com",
+                "role": "reader",
+                "permission_id": "perm-1",
+                "notification_sent": False,
+            },
+        ],
+    }
+    log_set.assert_called_once_with(tool={"integration": "google_docs", "action": "share_doc"})
+    assert proxy.call_args_list == [
+        call(
+            user_id="user_test_123",
+            toolkit="GOOGLEDOCS",
+            endpoint="https://www.googleapis.com/drive/v3/files/doc-share/permissions",
+            method="POST",
+            body={"type": "user", "role": "writer", "emailAddress": "a@x.com"},
+            query={"sendNotificationEmail": "true"},
+        ),
+        call(
+            user_id="user_test_123",
+            toolkit="GOOGLEDOCS",
+            endpoint="https://www.googleapis.com/drive/v3/files/doc-share/permissions",
+            method="POST",
+            body={"type": "user", "role": "reader", "emailAddress": "b@x.com"},
+            query={"sendNotificationEmail": "false"},
+        ),
+    ]
+
+
+def test_google_docs_share_doc_missing_permission_id_becomes_none() -> None:
+    with patch(f"{GOOGLE_DOCS_MODULE}.proxy_request_sync", return_value=None) as proxy:
+        tools, _composio = _google_docs_tools()
+        result = tools["CUSTOM_SHARE_DOC"](
+            ShareDocInput(
+                document_id="doc-1",
+                recipients=[ShareRecipient(email="a@x.com")],
+            ),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    assert result["shared"] == [
+        {
+            "email": "a@x.com",
+            "role": "writer",
+            "permission_id": None,
+            "notification_sent": True,
+        }
+    ]
+    proxy.assert_called_once()
+
+
+def test_google_docs_share_doc_recipient_failure_logged_and_skipped() -> None:
+    from app.constants.log_tags import LogTag
+    from app.utils.errors import AppError
+
+    with (
+        patch(
+            f"{GOOGLE_DOCS_MODULE}.proxy_request_sync",
+            side_effect=[{"id": "perm-1"}, AppError(message="denied", status_code=403)],
+        ) as proxy,
+        patch(f"{GOOGLE_DOCS_MODULE}.log.error") as err_log,
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+    ):
+        tools, _composio = _google_docs_tools()
+        result = tools["CUSTOM_SHARE_DOC"](
+            ShareDocInput(
+                document_id="doc-1",
+                recipients=[
+                    ShareRecipient(email="ok@x.com", role="writer"),
+                    ShareRecipient(email="bad@x.com", role="reader"),
+                ],
+            ),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    # The failing recipient is dropped from the result, not reported as shared.
+    assert result["shared"] == [
+        {
+            "email": "ok@x.com",
+            "role": "writer",
+            "permission_id": "perm-1",
+            "notification_sent": True,
+        }
+    ]
+    err_log.assert_called_once_with(
+        f"{LogTag.TOOL} Error sharing doc with recipient", error_type="AppError"
+    )
+    assert proxy.call_count == 2
+
+
+def test_google_docs_share_doc_all_recipients_fail_raises_runtime_error() -> None:
+    from app.constants.log_tags import LogTag
+    from app.utils.errors import AppError
+
+    with (
+        patch(
+            f"{GOOGLE_DOCS_MODULE}.proxy_request_sync",
+            side_effect=AppError(message="denied", status_code=403),
+        ) as proxy,
+        patch(f"{GOOGLE_DOCS_MODULE}.log.error") as err_log,
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+    ):
+        tools, _composio = _google_docs_tools()
+        with pytest.raises(RuntimeError) as excinfo:
+            tools["CUSTOM_SHARE_DOC"](
+                ShareDocInput(
+                    document_id="doc-1",
+                    recipients=[ShareRecipient(email="bad@x.com", role="reader")],
+                ),
+                EXECUTE_REQUEST,
+                GOOGLE_DOCS_AUTH,
+            )
+
+    assert str(excinfo.value) == (
+        "Failed to share document with all recipients: "
+        "[{'email': 'bad@x.com', 'role': 'reader', "
+        "'error': 'Failed to share: 403 - denied'}]"
+    )
+    err_log.assert_called_once_with(
+        f"{LogTag.TOOL} Error sharing doc with recipient", error_type="AppError"
+    )
+    assert proxy.call_count == 1
+
+
+def test_google_docs_share_doc_missing_user_id_rejected_before_proxy() -> None:
+    with patch(f"{GOOGLE_DOCS_MODULE}.proxy_request_sync") as proxy:
+        tools, _composio = _google_docs_tools()
+        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+            tools["CUSTOM_SHARE_DOC"](
+                ShareDocInput(
+                    document_id="doc-1",
+                    recipients=[ShareRecipient(email="a@x.com")],
+                ),
+                EXECUTE_REQUEST,
+                {},
+            )
+
+    proxy.assert_not_called()
+
+
+# --- CUSTOM_CREATE_TOC --------------------------------------------------------
+
+
+DOCS_DOCUMENT: dict[str, Any] = {
+    "body": {
+        "content": [
+            {
+                "startIndex": 1,
+                "paragraph": {
+                    "elements": [{"textRun": {"content": "Intro"}}],
+                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                },
+            },
+            {
+                "startIndex": 2,
+                "paragraph": {
+                    "elements": [{"textRun": {"content": "Chapter One"}}],
+                    "paragraphStyle": {"namedStyleType": "HEADING_1"},
+                },
+            },
+            {
+                "startIndex": 3,
+                "paragraph": {
+                    "elements": [{"textRun": {"content": "Section"}}],
+                    "paragraphStyle": {"namedStyleType": "HEADING_2"},
+                },
+            },
+            {
+                "startIndex": 4,
+                "paragraph": {
+                    "elements": [{"textRun": {"content": "# Markdown Heading"}}],
+                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+                },
+            },
+        ]
+    }
+}
+EXPECTED_HEADINGS: list[dict[str, Any]] = [
+    {"level": 1, "text": "Chapter One", "start_index": 2},
+    {"level": 2, "text": "Section", "start_index": 3},
+    {"level": 1, "text": "Markdown Heading", "start_index": 4},
+]
+
+
+def test_google_docs_create_toc_full_pipeline_and_exact_execute_calls() -> None:
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": DOCS_DOCUMENT},
+        {"successful": True, "data": {"ok": True}},
+    ]
+
+    with patch(f"{GOOGLE_DOCS_MODULE}.log.set") as log_set:
+        result = tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    toc_text = (
+        "Table of Contents\n"
+        "=================\n"
+        "\n"
+        "• Chapter One\n"
+        "  ○ Section\n"
+        "• Markdown Heading\n"
+        "\n"
+    )
+    assert result == {
+        "document_id": "doc-toc",
+        "url": "https://docs.google.com/document/d/doc-toc/edit",
+        "headings_found": 3,
+        "toc_content": toc_text,
+        "headings": EXPECTED_HEADINGS,
+        "insert_response": {"ok": True},
+    }
+    log_set.assert_called_once_with(tool={"integration": "google_docs", "action": "create_toc"})
+    assert composio.tools.execute.call_args_list == [
+        call(
+            slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+            arguments={"id": "doc-toc"},
+            version="v1",
+            dangerously_skip_version_check=True,
+            user_id="user_test_123",
+        ),
+        call(
+            slug="GOOGLEDOCS_INSERT_TEXT_ACTION",
+            arguments={
+                "document_id": "doc-toc",
+                "text": toc_text,
+                "insertion_index": 1,
+            },
+            version="v1",
+            dangerously_skip_version_check=True,
+            user_id="user_test_123",
+        ),
+    ]
+
+
+def test_google_docs_create_toc_parses_stringified_document_data() -> None:
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": json.dumps(DOCS_DOCUMENT)},
+        {"successful": True, "data": {"ok": True}},
+    ]
+
+    with patch(f"{GOOGLE_DOCS_MODULE}.log.set"):
+        result = tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    assert result["headings"] == EXPECTED_HEADINGS
+    assert result["headings_found"] == 3
+    assert "• Chapter One" in result["toc_content"]
+
+
+def test_google_docs_create_toc_invalid_json_logs_debug_and_raises() -> None:
+    from app.constants.log_tags import LogTag
+
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = [{"successful": True, "data": "not-json"}]
+
+    with (
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+        patch(f"{GOOGLE_DOCS_MODULE}.log.debug") as debug_log,
+        pytest.raises(ValueError) as excinfo,
+    ):
+        tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    assert str(excinfo.value) == "Failed to get document or document has no body content"
+    debug_log.assert_called_once_with(
+        f"{LogTag.TOOL} JSON parsing skipped for doc_data", error_type="JSONDecodeError"
+    )
+
+
+def test_google_docs_create_toc_document_without_body_raises() -> None:
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = [{"successful": True, "data": {"title": "x"}}]
+
+    with (
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+        pytest.raises(ValueError, match="Failed to get document or document has no body content"),
+    ):
+        tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+
+def test_google_docs_create_toc_non_dict_data_raises_format_error() -> None:
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = [{"successful": True, "data": ["body"]}]
+
+    with (
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+        pytest.raises(ValueError) as excinfo,
+    ):
+        tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    assert str(excinfo.value) == "Document data is not in expected format"
+
+
+def test_google_docs_create_toc_get_document_failure_raises() -> None:
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = [{"successful": False, "error": "no access"}]
+
+    with (
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+        pytest.raises(ValueError, match="Failed to get document: no access"),
+    ):
+        tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+
+def test_google_docs_create_toc_execute_type_error_logged_and_reraised() -> None:
+    from app.constants.log_tags import LogTag
+
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = TypeError("bad version")
+
+    with (
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+        patch(f"{GOOGLE_DOCS_MODULE}.log.debug") as debug_log,
+        pytest.raises(TypeError, match="bad version"),
+    ):
+        tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    debug_log.assert_called_once_with(
+        f"{LogTag.TOOL} TypeError in execute", error_type="TypeError"
+    )
+
+
+def test_google_docs_create_toc_insert_failure_raises() -> None:
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": DOCS_DOCUMENT},
+        {"successful": False, "error": "insert boom"},
+    ]
+
+    with (
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+        pytest.raises(ValueError, match="Failed to insert text: insert boom"),
+    ):
+        tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+
+def test_google_docs_create_toc_insert_response_passed_through_verbatim() -> None:
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": DOCS_DOCUMENT},
+        {"successful": True, "data": "plain string response"},
+    ]
+
+    with patch(f"{GOOGLE_DOCS_MODULE}.log.set"):
+        result = tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    assert result["insert_response"] == "plain string response"
+
+
+def test_google_docs_create_toc_include_heading_levels_filters_headings() -> None:
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": DOCS_DOCUMENT},
+        {"successful": True, "data": {"ok": True}},
+    ]
+
+    with patch(f"{GOOGLE_DOCS_MODULE}.log.set"):
+        result = tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc", include_heading_levels=[1]),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    assert result["headings"] == [
+        {"level": 1, "text": "Chapter One", "start_index": 2},
+        {"level": 1, "text": "Markdown Heading", "start_index": 4},
+    ]
+    assert result["headings_found"] == 2
+    assert "  ○ Section" not in result["toc_content"]
+
+
+def test_google_docs_create_toc_no_headings_still_inserts_placeholder() -> None:
+    tools, composio = _google_docs_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": {"body": {"content": []}}},
+        {"successful": True, "data": {"ok": True}},
+    ]
+
+    with patch(f"{GOOGLE_DOCS_MODULE}.log.set"):
+        result = tools["CUSTOM_CREATE_TOC"](
+            CreateTOCInput(document_id="doc-toc", title="My TOC"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    assert result["headings"] == []
+    assert result["headings_found"] == 0
+    assert result["toc_content"] == "My TOC\n\n(No headings found in document)\n\n"
+    insert_args = composio.tools.execute.call_args_list[1].kwargs["arguments"]
+    assert insert_args["text"] == "My TOC\n\n(No headings found in document)\n\n"
+
+
+# --- CUSTOM_DELETE_DOC --------------------------------------------------------
+
+
+def test_google_docs_delete_doc_exact_proxy_call_and_result() -> None:
+    with (
+        patch(f"{GOOGLE_DOCS_MODULE}.proxy_request_sync") as proxy,
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set") as log_set,
+    ):
+        tools, _composio = _google_docs_tools()
+        result = tools["CUSTOM_DELETE_DOC"](
+            DeleteDocInput(document_id="doc-del"),
+            EXECUTE_REQUEST,
+            GOOGLE_DOCS_AUTH,
+        )
+
+    assert result == {"successful": True, "document_id": "doc-del"}
+    log_set.assert_called_once_with(tool={"integration": "google_docs", "action": "delete_doc"})
+    proxy.assert_called_once_with(
+        user_id="user_test_123",
+        toolkit="GOOGLEDOCS",
+        endpoint="https://www.googleapis.com/drive/v3/files/doc-del",
+        method="DELETE",
+    )
+
+
+def test_google_docs_delete_doc_app_error_logged_and_wrapped() -> None:
+    from app.constants.log_tags import LogTag
+    from app.utils.errors import AppError
+
+    with (
+        patch(
+            f"{GOOGLE_DOCS_MODULE}.proxy_request_sync",
+            side_effect=AppError(message="gone", status_code=404),
+        ),
+        patch(f"{GOOGLE_DOCS_MODULE}.log.error") as err_log,
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+    ):
+        tools, _composio = _google_docs_tools()
+        with pytest.raises(RuntimeError) as excinfo:
+            tools["CUSTOM_DELETE_DOC"](
+                DeleteDocInput(document_id="doc-del"),
+                EXECUTE_REQUEST,
+                GOOGLE_DOCS_AUTH,
+            )
+
+    assert str(excinfo.value) == "Failed to delete document: 404 - gone"
+    err_log.assert_called_once_with(
+        f"{LogTag.TOOL} Error deleting doc",
+        document_id="doc-del",
+        error_type="AppError",
+    )
+
+
+def test_google_docs_delete_doc_missing_user_id_rejected_before_proxy() -> None:
+    with patch(f"{GOOGLE_DOCS_MODULE}.proxy_request_sync") as proxy:
+        tools, _composio = _google_docs_tools()
+        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+            tools["CUSTOM_DELETE_DOC"](
+                DeleteDocInput(document_id="doc-del"),
+                EXECUTE_REQUEST,
+                {},
+            )
+
+    proxy.assert_not_called()
+
+
+# --- CUSTOM_GATHER_CONTEXT ----------------------------------------------------
+
+
+def test_google_docs_gather_context_exact_proxy_call_and_field_mapping() -> None:
+    with (
+        patch(
+            f"{GOOGLE_DOCS_MODULE}.proxy_request_sync",
+            return_value={
+                "files": [
+                    {
+                        "id": "f1",
+                        "name": "Doc One",
+                        "modifiedTime": "2026-01-01T00:00:00Z",
+                        "webViewLink": "https://docs.google.com/document/d/f1/edit",
+                    },
+                    {"id": "f2", "name": "Doc Two"},
+                ]
+            },
+        ) as proxy,
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set") as log_set,
+    ):
+        tools, _composio = _google_docs_tools()
+        result = tools["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, GOOGLE_DOCS_AUTH
+        )
+
+    assert result == {
+        "recent_docs": [
+            {
+                "id": "f1",
+                "name": "Doc One",
+                "modified": "2026-01-01T00:00:00Z",
+                "url": "https://docs.google.com/document/d/f1/edit",
+            },
+            {"id": "f2", "name": "Doc Two", "modified": None, "url": None},
+        ],
+        "doc_count": 2,
+    }
+    log_set.assert_called_once_with(
+        tool={"integration": "google_docs", "action": "gather_context"}
+    )
+    proxy.assert_called_once_with(
+        user_id="user_test_123",
+        toolkit="GOOGLEDOCS",
+        endpoint="https://www.googleapis.com/drive/v3/files",
+        method="GET",
+        query={
+            "q": "mimeType='application/vnd.google-apps.document'",
+            "orderBy": "viewedByMeTime desc",
+            "pageSize": 20,
+            "fields": "files(id,name,modifiedTime,webViewLink)",
+        },
+    )
+
+
+def test_google_docs_gather_context_none_response_becomes_empty() -> None:
+    with (
+        patch(f"{GOOGLE_DOCS_MODULE}.proxy_request_sync", return_value=None) as proxy,
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+    ):
+        tools, _composio = _google_docs_tools()
+        result = tools["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, GOOGLE_DOCS_AUTH
+        )
+
+    assert result == {"recent_docs": [], "doc_count": 0}
+    proxy.assert_called_once()
+
+
+def test_google_docs_gather_context_missing_files_key_is_not_an_error() -> None:
+    """A response without a ``files`` key yields an empty list — and must NOT
+    take the failure path (no debug log), which is what a ``.get("files", None)``
+    regression would do: iterating ``None`` raises, gets swallowed, and the
+    debug log fires."""
+    with (
+        patch(f"{GOOGLE_DOCS_MODULE}.proxy_request_sync", return_value={}) as proxy,
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+        patch(f"{GOOGLE_DOCS_MODULE}.log.debug") as debug_log,
+    ):
+        tools, _composio = _google_docs_tools()
+        result = tools["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, GOOGLE_DOCS_AUTH
+        )
+
+    assert result == {"recent_docs": [], "doc_count": 0}
+    proxy.assert_called_once()
+    debug_log.assert_not_called()
+
+
+def test_google_docs_gather_context_app_error_logged_and_returns_empty() -> None:
+    from app.constants.log_tags import LogTag
+    from app.utils.errors import AppError
+
+    with (
+        patch(
+            f"{GOOGLE_DOCS_MODULE}.proxy_request_sync",
+            side_effect=AppError(message="docs down", status_code=503),
+        ),
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+        patch(f"{GOOGLE_DOCS_MODULE}.log.debug") as debug_log,
+    ):
+        tools, _composio = _google_docs_tools()
+        result = tools["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, GOOGLE_DOCS_AUTH
+        )
+
+    assert result == {"recent_docs": [], "doc_count": 0}
+    debug_log.assert_called_once_with(
+        f"{LogTag.TOOL} Google Docs fetch failed", error_type="AppError"
+    )
+
+
+def test_google_docs_gather_context_generic_exception_logged_and_returns_empty() -> None:
+    from app.constants.log_tags import LogTag
+
+    with (
+        patch(
+            f"{GOOGLE_DOCS_MODULE}.proxy_request_sync",
+            side_effect=RuntimeError("boom"),
+        ),
+        patch(f"{GOOGLE_DOCS_MODULE}.log.set"),
+        patch(f"{GOOGLE_DOCS_MODULE}.log.debug") as debug_log,
+    ):
+        tools, _composio = _google_docs_tools()
+        result = tools["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, GOOGLE_DOCS_AUTH
+        )
+
+    assert result == {"recent_docs": [], "doc_count": 0}
+    debug_log.assert_called_once_with(
+        f"{LogTag.TOOL} Google Docs fetch failed", error_type="RuntimeError"
+    )
+
+
+def test_google_docs_gather_context_missing_user_id_rejected_before_proxy() -> None:
+    with patch(f"{GOOGLE_DOCS_MODULE}.proxy_request_sync") as proxy:
+        tools, _composio = _google_docs_tools()
+        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+            tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, {})
+
+    proxy.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Google Sheets
 # ---------------------------------------------------------------------------
@@ -255,6 +1001,1148 @@ def test_notion_fetch_data_routes_through_proxy() -> None:
     kwargs = proxy.call_args.kwargs
     assert kwargs["toolkit"] == "NOTION"
     assert kwargs["endpoint"].endswith("/search")
+
+
+# --- registration -----------------------------------------------------------
+
+
+def test_notion_register_returns_expected_tool_names() -> None:
+    from app.agents.tools.integrations.notion_tool import (
+        register_notion_custom_tools,
+    )
+
+    assert register_notion_custom_tools(MagicMock()) == [
+        "NOTION_MOVE_PAGE",
+        "NOTION_FETCH_PAGE_AS_MARKDOWN",
+        "NOTION_INSERT_MARKDOWN",
+        "NOTION_FETCH_DATA",
+        "NOTION_CUSTOM_GATHER_CONTEXT",
+    ]
+
+
+# --- _user_id ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "creds",
+    [{}, {"user_id": ""}, {"user_id": None}, {"user_id": 123}],
+    ids=["missing", "empty", "none", "not-a-string"],
+)
+def test_notion_user_id_rejects_invalid_credentials(creds: dict[str, Any]) -> None:
+    from app.agents.tools.integrations.notion_tool import _user_id
+
+    with pytest.raises(ValueError) as excinfo:
+        _user_id(creds)
+    assert str(excinfo.value) == "Missing user_id in auth_credentials"
+
+
+def test_notion_user_id_returns_credentials_user_id() -> None:
+    from app.agents.tools.integrations.notion_tool import _user_id
+
+    assert _user_id({"user_id": "user-1"}) == "user-1"
+
+
+# --- MOVE_PAGE ---------------------------------------------------------------
+
+
+NOTION_MODULE = "app.agents.tools.integrations.notion_tool"
+NOTION_AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123", "version": "v1"}
+
+
+def _notion_tools() -> tuple[dict[str, Any], MagicMock]:
+    """Register notion tools; return (captured tools, composio mock)."""
+    from app.agents.tools.integrations.notion_tool import (
+        register_notion_custom_tools,
+    )
+
+    tools: dict[str, Any] = {}
+    composio = MagicMock()
+
+    def custom_tool(**_kwargs: Any) -> Callable[[Any], Any]:
+        def decorator(fn: Any) -> Any:
+            tools[fn.__name__] = fn
+            return fn
+
+        return decorator
+
+    composio.tools.custom_tool = custom_tool
+    register_notion_custom_tools(composio)
+    return tools, composio
+
+
+def test_notion_move_page_page_id_parent_exact_proxy_call() -> None:
+    tools, _composio = _notion_tools()
+    execute_request = MagicMock()
+    execute_request.return_value.data = {"id": "page-1", "url": "https://notion.so/p1"}
+
+    with patch(f"{NOTION_MODULE}.log.set") as log_set:
+        result = tools["MOVE_PAGE"](
+            MovePageInput(page_id="page-1", parent_id="parent-1", parent_type="page_id"),
+            execute_request,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result == {
+        "page_id": "page-1",
+        "new_parent": {"type": "page_id", "page_id": "parent-1"},
+        "url": "https://notion.so/p1",
+    }
+    execute_request.assert_called_once_with(
+        endpoint="/pages/page-1",
+        method="PATCH",
+        body={"parent": {"type": "page_id", "page_id": "parent-1"}},
+    )
+    log_set.assert_called_once_with(tool={"integration": "notion", "action": "move_page"})
+
+
+def test_notion_move_page_database_id_parent() -> None:
+    tools, _composio = _notion_tools()
+    execute_request = MagicMock()
+    execute_request.return_value.data = {"id": "page-1", "url": "https://notion.so/p1"}
+
+    result = tools["MOVE_PAGE"](
+        MovePageInput(page_id="page-1", parent_id="db-1", parent_type="database_id"),
+        execute_request,
+        NOTION_AUTH_CREDS,
+    )
+
+    assert result["new_parent"] == {"type": "database_id", "database_id": "db-1"}
+    execute_request.assert_called_once_with(
+        endpoint="/pages/page-1",
+        method="PATCH",
+        body={"parent": {"type": "database_id", "database_id": "db-1"}},
+    )
+
+
+def test_notion_move_page_uses_plain_response_without_data_attribute() -> None:
+    tools, _composio = _notion_tools()
+    execute_request = MagicMock()
+    execute_request.return_value = {"id": "page-1", "url": "https://notion.so/p1"}
+
+    result = tools["MOVE_PAGE"](
+        MovePageInput(page_id="page-1", parent_id="parent-1", parent_type="page_id"),
+        execute_request,
+        NOTION_AUTH_CREDS,
+    )
+
+    assert result["page_id"] == "page-1"
+    assert result["url"] == "https://notion.so/p1"
+
+
+def test_notion_move_page_missing_response_fields_default_to_none() -> None:
+    tools, _composio = _notion_tools()
+    execute_request = MagicMock()
+    execute_request.return_value.data = {}
+
+    result = tools["MOVE_PAGE"](
+        MovePageInput(page_id="page-1", parent_id="parent-1", parent_type="page_id"),
+        execute_request,
+        NOTION_AUTH_CREDS,
+    )
+
+    assert result == {
+        "page_id": None,
+        "new_parent": {"type": "page_id", "page_id": "parent-1"},
+        "url": None,
+    }
+
+
+def test_notion_move_page_real_response_object_with_data_attribute() -> None:
+    """A real response object (not a MagicMock) must have its ``data``
+    attribute read — MagicMock makes ``hasattr`` true for every name, so the
+    data-vs-raw-response branch needs a concrete object to discriminate."""
+    from types import SimpleNamespace
+
+    tools, _composio = _notion_tools()
+    execute_request = MagicMock()
+    execute_request.return_value = SimpleNamespace(
+        data={"id": "page-1", "url": "https://notion.so/p1"}
+    )
+
+    result = tools["MOVE_PAGE"](
+        MovePageInput(page_id="page-1", parent_id="parent-1", parent_type="page_id"),
+        execute_request,
+        NOTION_AUTH_CREDS,
+    )
+
+    assert result == {
+        "page_id": "page-1",
+        "new_parent": {"type": "page_id", "page_id": "parent-1"},
+        "url": "https://notion.so/p1",
+    }
+    execute_request.assert_called_once()
+
+
+# --- FETCH_PAGE_AS_MARKDOWN --------------------------------------------------
+
+
+def test_notion_fetch_page_as_markdown_converts_blocks_and_prepends_title() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {
+            "successful": True,
+            "data": {"results": [{"type": "title", "title": {"plain_text": "My Page"}}]},
+        },
+        {
+            "successful": True,
+            "data": {"results": [{"type": "paragraph"}, {"type": "paragraph"}]},
+        },
+    ]
+
+    with (
+        patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value="converted") as to_md,
+        patch(f"{NOTION_MODULE}.log.set") as log_set,
+    ):
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(
+                page_id="page-1", recursive=False, include_block_ids=False
+            ),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result == {
+        "page_id": "page-1",
+        "title": "My Page",
+        "markdown": "# My Page\n\nconverted",
+        "block_count": 2,
+    }
+    to_md.assert_called_once_with(
+        [{"type": "paragraph"}, {"type": "paragraph"}], include_block_ids=False
+    )
+    log_set.assert_called_once_with(
+        tool={"integration": "notion", "action": "fetch_page_as_markdown"}
+    )
+    assert composio.tools.execute.call_args_list == [
+        call(
+            slug="NOTION_GET_PAGE_PROPERTY_ACTION",
+            arguments={"page_id": "page-1", "property_id": "title"},
+            version="v1",
+            dangerously_skip_version_check=True,
+            user_id="user_test_123",
+        ),
+        call(
+            slug="NOTION_FETCH_ALL_BLOCK_CONTENTS",
+            arguments={"block_id": "page-1", "recursive": False, "page_size": 100},
+            version="v1",
+            dangerously_skip_version_check=True,
+            user_id="user_test_123",
+        ),
+    ]
+
+
+def test_notion_fetch_page_as_markdown_takes_first_title_and_breaks() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {
+            "successful": True,
+            "data": {
+                "results": [
+                    {"type": "title", "title": {"plain_text": "First"}},
+                    {"type": "title", "title": {"plain_text": "Second"}},
+                ]
+            },
+        },
+        {"successful": True, "data": {"results": []}},
+    ]
+
+    with patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value=""):
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["title"] == "First"
+    assert result["markdown"] == "# First\n\n"
+    assert result["block_count"] == 0
+
+
+def test_notion_fetch_page_as_markdown_skips_items_without_title_text() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {
+            "successful": True,
+            "data": {
+                "results": [
+                    {"type": "paragraph", "title": {"plain_text": "not a title"}},
+                    {"type": "title", "title": {}},
+                    {"type": "title", "title": {"plain_text": "Real"}},
+                ]
+            },
+        },
+        {"successful": True, "data": {"results": []}},
+    ]
+
+    with patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value=""):
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["title"] == "Real"
+
+
+def test_notion_fetch_page_as_markdown_empty_plain_text_title() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {
+            "successful": True,
+            "data": {"results": [{"type": "title", "title": {"plain_text": ""}}]},
+        },
+        {"successful": True, "data": {"results": []}},
+    ]
+
+    with patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value="md"):
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["title"] == ""
+    assert result["markdown"] == "md"
+
+
+def test_notion_fetch_page_as_markdown_title_without_plain_text_key() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {
+            "successful": True,
+            "data": {"results": [{"type": "title", "title": {"type": "text"}}]},
+        },
+        {"successful": True, "data": {"results": []}},
+    ]
+
+    with patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value="md"):
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result == {
+        "page_id": "page-1",
+        "title": "",
+        "markdown": "md",
+        "block_count": 0,
+    }
+
+
+def test_notion_fetch_page_as_markdown_title_data_not_a_dict() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": "unexpected"},
+        {"successful": True, "data": {"results": []}},
+    ]
+
+    with (
+        patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value=""),
+        patch(f"{NOTION_MODULE}.log.warning") as warn,
+    ):
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["title"] == ""
+    warn.assert_not_called()
+
+
+def test_notion_fetch_page_as_markdown_title_response_without_results() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": {}},
+        {"successful": True, "data": {"results": []}},
+    ]
+
+    with (
+        patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value=""),
+        patch(f"{NOTION_MODULE}.log.warning") as warn,
+    ):
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["title"] == ""
+    warn.assert_not_called()
+
+
+def test_notion_fetch_page_as_markdown_title_failure_logs_and_continues() -> None:
+    from app.constants.log_tags import LogTag
+
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": False, "error": "boom"},
+        {"successful": True, "data": {"results": []}},
+    ]
+
+    with (
+        patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value=""),
+        patch(f"{NOTION_MODULE}.log.warning") as warn,
+    ):
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["title"] == ""
+    assert result["markdown"] == ""
+    warn.assert_called_once_with(f"{LogTag.TOOL} Failed to fetch title", error="boom")
+
+
+def test_notion_fetch_page_as_markdown_title_exception_logged_blocks_still_fetched() -> None:
+    from app.constants.log_tags import LogTag
+
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        RuntimeError("title api down"),
+        {"successful": True, "data": {"results": []}},
+    ]
+
+    with (
+        patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value=""),
+        patch(f"{NOTION_MODULE}.log.warning") as warn,
+    ):
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["title"] == ""
+    assert composio.tools.execute.call_count == 2
+    warn.assert_called_once_with(
+        f"{LogTag.TOOL} Could not fetch title", error_type="RuntimeError"
+    )
+
+
+def test_notion_fetch_page_as_markdown_blocks_failure_raises() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": {"results": []}},
+        {"successful": False, "error": "blocks boom"},
+    ]
+
+    with patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value=""):
+        with pytest.raises(ValueError, match="Failed to fetch blocks: blocks boom"):
+            tools["FETCH_PAGE_AS_MARKDOWN"](
+                FetchPageAsMarkdownInput(page_id="page-1"),
+                EXECUTE_REQUEST,
+                NOTION_AUTH_CREDS,
+            )
+
+
+def test_notion_fetch_page_as_markdown_blocks_fallback_key() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": {"results": []}},
+        {"successful": True, "data": {"blocks": [{"type": "paragraph"}]}},
+    ]
+
+    with patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value="md") as to_md:
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["block_count"] == 1
+    to_md.assert_called_once_with([{"type": "paragraph"}], include_block_ids=True)
+
+
+def test_notion_fetch_page_as_markdown_blocks_data_not_a_dict() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": {"results": []}},
+        {"successful": True, "data": "unexpected"},
+    ]
+
+    with patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value="md") as to_md:
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["markdown"] == "md"
+    assert result["block_count"] == 0
+    to_md.assert_called_once_with([], include_block_ids=True)
+
+
+def test_notion_fetch_page_as_markdown_blocks_results_not_a_list() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": {"results": []}},
+        {"successful": True, "data": {"results": "nope"}},
+    ]
+
+    with patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value="md") as to_md:
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["markdown"] == ""
+    assert result["block_count"] == 0
+    to_md.assert_not_called()
+
+
+def test_notion_fetch_page_as_markdown_blocks_data_without_keys() -> None:
+    tools, composio = _notion_tools()
+    composio.tools.execute.side_effect = [
+        {"successful": True, "data": {"results": []}},
+        {"successful": True, "data": {}},
+    ]
+
+    with patch(f"{NOTION_MODULE}.blocks_to_markdown", return_value="md") as to_md:
+        result = tools["FETCH_PAGE_AS_MARKDOWN"](
+            FetchPageAsMarkdownInput(page_id="page-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result == {
+        "page_id": "page-1",
+        "title": "",
+        "markdown": "md",
+        "block_count": 0,
+    }
+    to_md.assert_called_once_with([], include_block_ids=True)
+
+
+# --- INSERT_MARKDOWN ---------------------------------------------------------
+
+
+def test_notion_insert_markdown_empty_conversion_raises() -> None:
+    tools, _composio = _notion_tools()
+
+    with patch(f"{NOTION_MODULE}.markdown_to_notion_blocks", return_value=[]):
+        with pytest.raises(ValueError) as excinfo:
+            tools["INSERT_MARKDOWN"](
+                InsertMarkdownInput(parent_block_id="parent-1", markdown="# hi"),
+                EXECUTE_REQUEST,
+                NOTION_AUTH_CREDS,
+            )
+    assert str(excinfo.value) == "No content to insert - markdown conversion produced no blocks"
+
+
+def test_notion_insert_markdown_passes_exact_markdown_to_conversion() -> None:
+    tools, composio = _notion_tools()
+    blocks = [{"type": "paragraph", "content": "a"}]
+    composio.tools.execute.side_effect = [{"successful": True}]
+
+    def _convert(markdown: str) -> list[dict[str, Any]]:
+        assert markdown == "exact markdown", f"conversion got {markdown!r}"
+        return blocks
+
+    with patch(f"{NOTION_MODULE}.markdown_to_notion_blocks", side_effect=_convert):
+        tools["INSERT_MARKDOWN"](
+            InsertMarkdownInput(parent_block_id="parent-1", markdown="exact markdown"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+
+def test_notion_insert_markdown_mixed_table_and_blocks_with_after() -> None:
+    tools, composio = _notion_tools()
+    blocks = [
+        {"type": "table", "table_width": 2, "has_column_header": False, "rows": [["a", "b"]]},
+        {"type": "paragraph", "rich_text": [{"type": "text", "text": {"content": "hi"}}]},
+    ]
+    composio.tools.execute.side_effect = [{"successful": True}, {"successful": True}]
+
+    with (
+        patch(f"{NOTION_MODULE}.markdown_to_notion_blocks", return_value=blocks),
+        patch(f"{NOTION_MODULE}.log.set") as log_set,
+    ):
+        result = tools["INSERT_MARKDOWN"](
+            InsertMarkdownInput(parent_block_id="parent-1", markdown="md", after="after-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result == {
+        "parent_block_id": "parent-1",
+        "blocks_added": 2,
+        "tables_added": 1,
+        "after": "after-1",
+    }
+    log_set.assert_called_once_with(tool={"integration": "notion", "action": "insert_markdown"})
+    assert composio.tools.execute.call_args_list == [
+        call(
+            slug="NOTION_APPEND_TABLE_BLOCKS",
+            arguments={
+                "block_id": "parent-1",
+                "table_width": 2,
+                "has_column_header": False,
+                "rows": [["a", "b"]],
+            },
+            version="v1",
+            dangerously_skip_version_check=True,
+            user_id="user_test_123",
+        ),
+        call(
+            slug="NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+            arguments={
+                "parent_block_id": "parent-1",
+                "content_blocks": [blocks[1]],
+                "after": "after-1",
+            },
+            version="v1",
+            dangerously_skip_version_check=True,
+            user_id="user_test_123",
+        ),
+    ]
+
+
+def test_notion_insert_markdown_after_applies_to_first_content_block_only() -> None:
+    tools, composio = _notion_tools()
+    blocks = [
+        {"type": "paragraph", "content": "a"},
+        {"type": "paragraph", "content": "b"},
+    ]
+    composio.tools.execute.side_effect = [{"successful": True}, {"successful": True}]
+
+    with patch(f"{NOTION_MODULE}.markdown_to_notion_blocks", return_value=blocks):
+        result = tools["INSERT_MARKDOWN"](
+            InsertMarkdownInput(parent_block_id="parent-1", markdown="md", after="after-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["blocks_added"] == 2
+    first, second = composio.tools.execute.call_args_list
+    assert first.kwargs["arguments"]["after"] == "after-1"
+    assert "after" not in second.kwargs["arguments"]
+
+
+def test_notion_insert_markdown_after_not_consumed_by_tables() -> None:
+    tools, composio = _notion_tools()
+    blocks = [
+        {"type": "table", "table_width": 1, "rows": [["x"]]},
+        {"type": "paragraph", "content": "a"},
+        {"type": "paragraph", "content": "b"},
+    ]
+    composio.tools.execute.side_effect = [{"successful": True}] * 3
+
+    with patch(f"{NOTION_MODULE}.markdown_to_notion_blocks", return_value=blocks):
+        tools["INSERT_MARKDOWN"](
+            InsertMarkdownInput(parent_block_id="parent-1", markdown="md", after="after-1"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    table_call, para_a, para_b = composio.tools.execute.call_args_list
+    assert "after" not in table_call.kwargs["arguments"]
+    assert para_a.kwargs["arguments"]["after"] == "after-1"
+    assert "after" not in para_b.kwargs["arguments"]
+
+
+def test_notion_insert_markdown_without_after_omits_key() -> None:
+    tools, composio = _notion_tools()
+    blocks = [{"type": "paragraph", "content": "a"}]
+    composio.tools.execute.side_effect = [{"successful": True}]
+
+    with patch(f"{NOTION_MODULE}.markdown_to_notion_blocks", return_value=blocks):
+        tools["INSERT_MARKDOWN"](
+            InsertMarkdownInput(parent_block_id="parent-1", markdown="md"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    call_args = composio.tools.execute.call_args_list[0]
+    assert "after" not in call_args.kwargs["arguments"]
+
+
+def test_notion_insert_markdown_table_defaults_has_column_header_true() -> None:
+    tools, composio = _notion_tools()
+    blocks = [{"type": "table", "table_width": 1, "rows": [["x"]]}]
+    composio.tools.execute.side_effect = [{"successful": True}]
+
+    with patch(f"{NOTION_MODULE}.markdown_to_notion_blocks", return_value=blocks):
+        tools["INSERT_MARKDOWN"](
+            InsertMarkdownInput(parent_block_id="parent-1", markdown="md"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    args = composio.tools.execute.call_args_list[0].kwargs["arguments"]
+    assert args["has_column_header"] is True
+
+
+def test_notion_insert_markdown_tables_added_counts_all_tables() -> None:
+    tools, composio = _notion_tools()
+    blocks = [
+        {"type": "table", "table_width": 1, "rows": [["a"]]},
+        {"type": "table", "table_width": 2, "rows": [["b", "c"]]},
+    ]
+    composio.tools.execute.side_effect = [{"successful": True}, {"successful": True}]
+
+    with patch(f"{NOTION_MODULE}.markdown_to_notion_blocks", return_value=blocks):
+        result = tools["INSERT_MARKDOWN"](
+            InsertMarkdownInput(parent_block_id="parent-1", markdown="md"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["blocks_added"] == 2
+    assert result["tables_added"] == 2
+    assert [c.kwargs["slug"] for c in composio.tools.execute.call_args_list] == [
+        "NOTION_APPEND_TABLE_BLOCKS",
+        "NOTION_APPEND_TABLE_BLOCKS",
+    ]
+
+
+def test_notion_insert_markdown_table_failure_raises() -> None:
+    tools, composio = _notion_tools()
+    blocks = [{"type": "table", "table_width": 1, "rows": [["x"]]}]
+    composio.tools.execute.side_effect = [{"successful": False, "error": "table boom"}]
+
+    with (
+        patch(f"{NOTION_MODULE}.markdown_to_notion_blocks", return_value=blocks),
+        pytest.raises(ValueError, match="Failed to insert table: table boom"),
+    ):
+        tools["INSERT_MARKDOWN"](
+            InsertMarkdownInput(parent_block_id="parent-1", markdown="md"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+
+def test_notion_insert_markdown_content_failure_raises() -> None:
+    tools, composio = _notion_tools()
+    blocks = [{"type": "paragraph", "content": "a"}]
+    composio.tools.execute.side_effect = [{"successful": False, "error": "content boom"}]
+
+    with (
+        patch(f"{NOTION_MODULE}.markdown_to_notion_blocks", return_value=blocks),
+        pytest.raises(ValueError, match="Failed to insert markdown: content boom"),
+    ):
+        tools["INSERT_MARKDOWN"](
+            InsertMarkdownInput(parent_block_id="parent-1", markdown="md"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+
+# --- FETCH_DATA --------------------------------------------------------------
+
+
+def test_notion_fetch_data_exact_proxy_call_and_empty_result() -> None:
+    with (
+        patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy,
+        patch(f"{NOTION_MODULE}.log.set") as log_set,
+    ):
+        proxy.return_value = {"results": [], "has_more": False}
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages", page_size=100),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result == {"values": [], "count": 0, "has_more": False}
+    log_set.assert_called_once_with(tool={"integration": "notion", "action": "fetch_data"})
+    proxy.assert_called_once_with(
+        user_id="user_test_123",
+        toolkit="NOTION",
+        endpoint="https://api.notion.com/v1/search",
+        method="POST",
+        body={
+            "filter": {"property": "object", "value": "page"},
+            "page_size": 100,
+        },
+        headers={"Notion-Version": "2022-06-28"},
+    )
+
+
+@pytest.mark.parametrize(
+    "fetch_type, filter_value",
+    [("pages", "page"), ("databases", "database")],
+    ids=["pages", "databases"],
+)
+def test_notion_fetch_data_filter_value_derived_from_fetch_type(
+    fetch_type: str, filter_value: str
+) -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {"results": [], "has_more": False}
+        tools, _composio = _notion_tools()
+        tools["FETCH_DATA"](
+            FetchDataInput(fetch_type=fetch_type),  # type: ignore[arg-type]
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert proxy.call_args.kwargs["body"]["filter"] == {
+        "property": "object",
+        "value": filter_value,
+    }
+
+
+@pytest.mark.parametrize(
+    "page_size, expected",
+    [(50, 50), (100, 100), (500, 100), (0, 0)],
+    ids=["under-cap", "at-cap", "over-cap", "zero"],
+)
+def test_notion_fetch_data_page_size_capped_at_100(
+    page_size: int, expected: int
+) -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {"results": [], "has_more": False}
+        tools, _composio = _notion_tools()
+        tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages", page_size=page_size),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert proxy.call_args.kwargs["body"]["page_size"] == expected
+
+
+def test_notion_fetch_data_with_query() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {"results": [], "has_more": False}
+        tools, _composio = _notion_tools()
+        tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages", query="roadmap"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert proxy.call_args.kwargs["body"] == {
+        "filter": {"property": "object", "value": "page"},
+        "page_size": 100,
+        "query": "roadmap",
+    }
+
+
+def test_notion_fetch_data_without_query() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {"results": [{"id": "page-1", "object": "page", "properties": {}}]}
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert proxy.call_args.kwargs["body"] == {
+        "filter": {"property": "object", "value": "page"},
+        "page_size": 100,
+    }
+    assert result == {
+        "values": [{"id": "page-1", "title": "Untitled", "type": "page"}],
+        "count": 1,
+        "has_more": False,
+    }
+
+
+def test_notion_fetch_data_extracts_database_title_and_has_more() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {
+            "results": [
+                {"id": "db-1", "object": "database", "title": [{"plain_text": "Roadmap"}]},
+                {"id": "db-2", "object": "database", "title": []},
+            ],
+            "has_more": True,
+        }
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="databases"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result == {
+        "values": [
+            {"id": "db-1", "title": "Roadmap", "type": "database"},
+            {"id": "db-2", "title": "Untitled", "type": "database"},
+        ],
+        "count": 2,
+        "has_more": True,
+    }
+
+
+def test_notion_fetch_data_database_title_missing_plain_text_defaults() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {
+            "results": [{"id": "db-1", "object": "database", "title": [{}]}],
+            "has_more": False,
+        }
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="databases"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["values"] == [{"id": "db-1", "title": "Untitled", "type": "database"}]
+
+
+def test_notion_fetch_data_extracts_page_title_from_properties() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {
+            "results": [
+                {
+                    "id": "page-1",
+                    "object": "page",
+                    "properties": {
+                        "Status": {"type": "select", "select": {"name": "Done"}},
+                        "Name": {"type": "title", "title": [{"plain_text": "Deep dive"}]},
+                    },
+                }
+            ],
+            "has_more": False,
+        }
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["values"] == [
+        {"id": "page-1", "title": "Deep dive", "type": "page"}
+    ]
+    assert result["count"] == 1
+
+
+def test_notion_fetch_data_uses_first_title_property_only() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {
+            "results": [
+                {
+                    "id": "page-1",
+                    "object": "page",
+                    "properties": {
+                        "Name": {"type": "title", "title": [{"plain_text": "First"}]},
+                        "Other": {"type": "title", "title": [{"plain_text": "Second"}]},
+                    },
+                }
+            ],
+            "has_more": False,
+        }
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["values"][0]["title"] == "First"
+
+
+def test_notion_fetch_data_untitled_page_without_title_property() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {
+            "results": [
+                {
+                    "id": "page-1",
+                    "object": "page",
+                    "properties": {
+                        "Status": {"type": "select", "select": {"name": "Done"}},
+                        "Tags": {"type": "multi_select", "multi_select": []},
+                    },
+                }
+            ],
+            "has_more": False,
+        }
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["values"][0]["title"] == "Untitled"
+
+
+def test_notion_fetch_data_page_without_properties_key() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {
+            "results": [{"id": "page-1", "object": "page"}],
+            "has_more": False,
+        }
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["values"] == [{"id": "page-1", "title": "Untitled", "type": "page"}]
+
+
+def test_notion_fetch_data_page_title_missing_plain_text_defaults() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {
+            "results": [
+                {
+                    "id": "page-1",
+                    "object": "page",
+                    "properties": {"Name": {"type": "title", "title": [{}]}},
+                }
+            ],
+            "has_more": False,
+        }
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result["values"] == [{"id": "page-1", "title": "Untitled", "type": "page"}]
+
+
+def test_notion_fetch_data_skips_items_without_id() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        proxy.return_value = {
+            "results": [
+                {"object": "page", "properties": {}},
+                {"id": "page-1", "object": "page", "properties": {}},
+            ],
+            "has_more": False,
+        }
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result == {
+        "values": [{"id": "page-1", "title": "Untitled", "type": "page"}],
+        "count": 1,
+        "has_more": False,
+    }
+
+
+def test_notion_fetch_data_none_response_becomes_empty() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync", return_value=None) as proxy:
+        tools, _composio = _notion_tools()
+        result = tools["FETCH_DATA"](
+            FetchDataInput(fetch_type="pages"),
+            EXECUTE_REQUEST,
+            NOTION_AUTH_CREDS,
+        )
+
+    assert result == {"values": [], "count": 0, "has_more": False}
+    proxy.assert_called_once()
+
+
+def test_notion_fetch_data_app_error_wrapped_in_runtime_error() -> None:
+    from app.constants.log_tags import LogTag
+    from app.utils.errors import AppError
+
+    with (
+        patch(
+            f"{NOTION_MODULE}.proxy_request_sync",
+            side_effect=AppError(message="notion 429"),
+        ),
+        patch(f"{NOTION_MODULE}.log.error") as err_log,
+    ):
+        tools, _composio = _notion_tools()
+        with pytest.raises(RuntimeError, match="Failed to fetch pages: notion 429"):
+            tools["FETCH_DATA"](
+                FetchDataInput(fetch_type="pages"),
+                EXECUTE_REQUEST,
+                NOTION_AUTH_CREDS,
+            )
+
+    err_log.assert_called_once_with(
+        f"{LogTag.TOOL} Notion API error", error_type="AppError"
+    )
+
+
+def test_notion_fetch_data_generic_error_wrapped_in_runtime_error() -> None:
+    from app.constants.log_tags import LogTag
+
+    with (
+        patch(
+            f"{NOTION_MODULE}.proxy_request_sync",
+            side_effect=RuntimeError("api down"),
+        ),
+        patch(f"{NOTION_MODULE}.log.error") as err_log,
+    ):
+        tools, _composio = _notion_tools()
+        with pytest.raises(RuntimeError, match="Failed to fetch pages: api down"):
+            tools["FETCH_DATA"](
+                FetchDataInput(fetch_type="pages"),
+                EXECUTE_REQUEST,
+                NOTION_AUTH_CREDS,
+            )
+
+    err_log.assert_called_once_with(
+        f"{LogTag.TOOL} Error fetching from Notion",
+        fetch_type="pages",
+        error_type="RuntimeError",
+    )
+
+
+def test_notion_fetch_data_missing_user_id_rejected_before_proxy() -> None:
+    with patch(f"{NOTION_MODULE}.proxy_request_sync") as proxy:
+        tools, _composio = _notion_tools()
+        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+            tools["FETCH_DATA"](
+                FetchDataInput(fetch_type="pages"),
+                EXECUTE_REQUEST,
+                {},
+            )
+
+    proxy.assert_not_called()
+
+
+# --- CUSTOM_GATHER_CONTEXT ---------------------------------------------------
+
+
+def test_notion_gather_context_returns_results_key() -> None:
+    with (
+        patch(
+            f"{NOTION_MODULE}.execute_tool",
+            return_value={"results": [{"id": "page-1"}]},
+        ) as execute,
+        patch(f"{NOTION_MODULE}.log.set") as log_set,
+    ):
+        tools, _composio = _notion_tools()
+        result = tools["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, NOTION_AUTH_CREDS
+        )
+
+    assert result == {"relevant_pages": [{"id": "page-1"}]}
+    log_set.assert_called_once_with(tool={"integration": "notion", "action": "gather_context"})
+    execute.assert_called_once_with(
+        "NOTION_SEARCH_NOTION_PAGE", {"query": "", "page_size": 10}, "user_test_123"
+    )
+
+
+def test_notion_gather_context_falls_back_to_pages_key() -> None:
+    with patch(
+        f"{NOTION_MODULE}.execute_tool",
+        return_value={"pages": [{"id": "page-1"}]},
+    ):
+        tools, _composio = _notion_tools()
+        result = tools["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, NOTION_AUTH_CREDS
+        )
+
+    assert result == {"relevant_pages": [{"id": "page-1"}]}
+
+
+def test_notion_gather_context_missing_user_id_rejected() -> None:
+    with patch(f"{NOTION_MODULE}.execute_tool") as execute:
+        tools, _composio = _notion_tools()
+        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+            tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, {})
+
+    execute.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
