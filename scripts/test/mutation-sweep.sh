@@ -79,14 +79,22 @@ def _direct_hits(rel_py: str) -> list[str]:
     return hits
 
 
-def _tests_for(rel_py: str) -> list[str]:
+def _tests_for(rel_py: str, seen: set[str] | None = None) -> list[str]:
+    # Mirror mutation-matrix.py's _test_files_for: direct hits, then follow
+    # consumers RECURSIVELY (each consumer's own derivation). The one-level
+    # version missed modules like app.memory.chroma_store (reachable only
+    # through app.memory.engine's own consumer chain).
     hits = _direct_hits(rel_py)
     if hits:
         return hits
+    seen = seen or set()
+    seen.add(rel_py)
     module = f"app.{rel_py.replace('/', '.')}"
     for consumer in mm._importers_of(module):
         consumer_rel = consumer.removeprefix("app.")
-        hits = _direct_hits(consumer_rel)
+        if consumer_rel in seen:
+            continue
+        hits = _tests_for(consumer_rel, seen)
         if hits:
             return hits
     return []
