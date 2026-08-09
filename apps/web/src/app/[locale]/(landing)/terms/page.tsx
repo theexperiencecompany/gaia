@@ -449,10 +449,13 @@ const TermsOfService = () => {
             governed by our Privacy Policy, which is incorporated herein by
             reference. Company hereby represents that it does not and will not
             sell, rent, or lease any personal data to third parties, and does
-            not use your User Content to train its own artificial intelligence
-            models. Company processes personal data solely for the purposes of
-            providing the Service and as otherwise described in the Privacy
-            Policy.
+            not use content from your connected third-party integrations —
+            including emails, calendar events, contacts, and other data
+            retrieved from accounts you connect — to improve its services.
+            Company may use content you submit directly to the Service to
+            improve its services, as described in the Privacy Policy. Company
+            processes personal data solely for the purposes of providing the
+            Service and as otherwise described in the Privacy Policy.
           </p>
 
           <h2 className="mt-6 mb-2 text-xl font-semibold">

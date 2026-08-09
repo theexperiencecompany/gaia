@@ -234,11 +234,14 @@ const PrivacyPolicy = () => {
             </ul>
             <p className="mb-4">
               <strong>
-                We do not use your content to train our AI models.
+                We may use content you submit to the Service to improve our
+                services and products.
               </strong>{" "}
-              We do not use the content of your messages, files, emails,
-              calendar events, or other data from connected accounts to train,
-              fine-tune, or otherwise develop machine learning models.
+              We do not use content from your connected third-party integrations
+              — including emails, calendar events, contacts, and other data
+              retrieved from accounts you connect — to improve our services.
+              Content from connected accounts is used solely to operate the
+              Service at your direction.
             </p>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
@@ -281,8 +284,9 @@ const PrivacyPolicy = () => {
               To generate responses, we share content you submit with
               third-party AI model providers who process it on our behalf. This
               may include the contents of messages, files, and data retrieved
-              from accounts you have connected. We do not use this content to
-              train our own models.
+              from accounts you have connected. We do not use content from your
+              connected third-party integrations to improve our services, as
+              described in Section 2.3.
             </p>
 
             <h3 className="mt-4 mb-2 text-lg font-semibold">
@@ -369,8 +373,8 @@ const PrivacyPolicy = () => {
                 features that are prominent in the Service;
               </li>
               <li>
-                We do not use Google user data to develop, improve, or train
-                generalized artificial intelligence or machine learning models;
+                We do not use Google user data to develop or improve generalized
+                artificial intelligence or machine learning models;
               </li>
               <li>
                 We do not transfer or sell Google user data for advertising,
