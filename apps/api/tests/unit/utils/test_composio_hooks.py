@@ -16,6 +16,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from composio.types import ToolExecuteParams
+import pytest
 
 from app.utils.composio_hooks.reddit_hooks import (
     process_reddit_comment,
@@ -587,6 +588,211 @@ class TestGmailSchemaModifiers:
         result = gmail_fetch_message_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
         assert result is schema
 
+    def test_send_email_schema_appends_exact_draft_guidance(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_send_email_schema_modifier,
+        )
+
+        schema = _make_tool_schema(description="Original description")
+        result = gmail_send_email_schema_modifier("GMAIL_SEND_EMAIL", "GMAIL", schema)
+        assert result is schema
+        assert result.description == (
+            "Original description\n\nIMPORTANT WORKFLOW: Unless the user explicitly requests "
+            "immediate sending, prefer creating a draft first using "
+            "GMAIL_CREATE_EMAIL_DRAFT for user review. "
+            "If a draft was already created in the current conversation, "
+            "use GMAIL_SEND_DRAFT with the draft_id instead of this tool."
+        )
+
+    def test_fetch_message_schema_sets_format_default_exactly(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_fetch_message_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={"properties": {"format": {"type": "string"}}}
+        )
+        result = gmail_fetch_message_schema_modifier(
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", schema
+        )
+        assert result.input_parameters == {
+            "properties": {"format": {"type": "string", "default": "full"}}
+        }
+
+    def test_fetch_message_schema_leaves_missing_format_untouched(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_fetch_message_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={"properties": {"message_id": {"type": "string"}}}
+        )
+        result = gmail_fetch_message_schema_modifier(
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", schema
+        )
+        assert result.input_parameters == {
+            "properties": {"message_id": {"type": "string"}}
+        }
+
+    def test_fetch_message_schema_leaves_non_dict_format_untouched(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_fetch_message_schema_modifier,
+        )
+
+        schema = _make_tool_schema(input_parameters={"properties": {"format": "oops"}})
+        result = gmail_fetch_message_schema_modifier(
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", schema
+        )
+        assert result.input_parameters == {"properties": {"format": "oops"}}
+
+
+# ============================================================================
+# 5b. Gmail hooks — contact flattening helpers
+# ============================================================================
+
+
+class TestGmailContactHelpers:
+    """Tests for the People API flattening helpers (_primary, _display_name, ...)."""
+
+    def test_primary_returns_none_for_empty_entries(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import _primary
+
+        assert _primary([]) is None
+
+    def test_primary_picks_the_primary_flagged_entry(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePersonName
+        from app.utils.composio_hooks.gmail_hooks import _primary
+
+        names = [
+            GooglePersonName(display_name="First"),
+            GooglePersonName(display_name="Primary", metadata={"primary": True}),
+        ]
+        assert _primary(names) is names[1]
+
+    def test_primary_falls_back_to_first_entry_without_flags(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePersonName
+        from app.utils.composio_hooks.gmail_hooks import _primary
+
+        names = [
+            GooglePersonName(display_name="First"),
+            GooglePersonName(display_name="Second"),
+        ]
+        assert _primary(names) is names[0]
+
+    def test_primary_ignores_entries_without_primary_metadata(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePersonName
+        from app.utils.composio_hooks.gmail_hooks import _primary
+
+        names = [
+            GooglePersonName(display_name="No metadata"),
+            GooglePersonName(display_name="Explicit false", metadata={"primary": False}),
+            GooglePersonName(display_name="Flagged", metadata={"primary": True}),
+        ]
+        assert _primary(names) is names[2]
+
+    def test_display_name_returns_unknown_when_missing(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePersonName
+        from app.utils.composio_hooks.gmail_hooks import _display_name
+
+        assert _display_name(None) == "Unknown"
+        assert _display_name(GooglePersonName()) == "Unknown"
+
+    def test_display_name_returns_explicit_null_as_none(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePersonName
+        from app.utils.composio_hooks.gmail_hooks import _display_name
+
+        name = GooglePersonName.model_validate({"displayName": None})
+        assert _display_name(name) is None
+
+    def test_display_name_returns_value(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePersonName
+        from app.utils.composio_hooks.gmail_hooks import _display_name
+
+        assert _display_name(GooglePersonName(display_name="John Doe")) == "John Doe"
+
+    def test_entry_value_returns_empty_when_missing(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePersonValue
+        from app.utils.composio_hooks.gmail_hooks import _entry_value
+
+        assert _entry_value(None) == ""
+        assert _entry_value(GooglePersonValue()) == ""
+
+    def test_entry_value_returns_explicit_null_as_none(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePersonValue
+        from app.utils.composio_hooks.gmail_hooks import _entry_value
+
+        entry = GooglePersonValue.model_validate({"value": None})
+        assert _entry_value(entry) is None
+
+    def test_entry_value_returns_value(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePersonValue
+        from app.utils.composio_hooks.gmail_hooks import _entry_value
+
+        assert _entry_value(GooglePersonValue(value="john@example.com")) == "john@example.com"
+
+    def test_contact_card_flattens_full_person(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePerson
+        from app.utils.composio_hooks.gmail_hooks import _contact_card
+
+        person = GooglePerson.model_validate(
+            {
+                "resourceName": "people/c1",
+                "names": [{"displayName": "John Doe", "metadata": {"primary": True}}],
+                "emailAddresses": [{"value": "john@example.com", "metadata": {"primary": True}}],
+                "phoneNumbers": [{"value": "+1234567890", "metadata": {"primary": True}}],
+            }
+        )
+        assert _contact_card(person) == {
+            "name": "John Doe",
+            "email": "john@example.com",
+            "phone": "+1234567890",
+            "resource_name": "people/c1",
+        }
+
+    def test_contact_card_defaults_when_fields_omitted(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePerson
+        from app.utils.composio_hooks.gmail_hooks import _contact_card
+
+        assert _contact_card(GooglePerson.model_validate({})) == {
+            "name": "Unknown",
+            "email": "",
+            "phone": "",
+            "resource_name": "",
+        }
+
+    def test_contact_card_preserves_explicit_nulls(self) -> None:
+        from app.models.composio_schemas.google_people import GooglePerson
+        from app.utils.composio_hooks.gmail_hooks import _contact_card
+
+        person = GooglePerson.model_validate(
+            {
+                "resourceName": None,
+                "names": [{"displayName": None}],
+                "emailAddresses": [{"value": None}],
+                "phoneNumbers": [{"value": None}],
+            }
+        )
+        assert _contact_card(person) == {
+            "name": None,
+            "email": None,
+            "phone": None,
+            "resource_name": None,
+        }
+
+    def test_contact_summary_omits_blank_fields(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import _contact_summary
+
+        assert _contact_summary({"name": "John Doe", "email": "", "phone": None}) == {
+            "name": "John Doe"
+        }
+        assert _contact_summary(
+            {"name": "John Doe", "email": "john@example.com", "phone": ""}
+        ) == {"name": "John Doe", "email": "john@example.com"}
+        assert _contact_summary({"name": "John Doe", "email": "", "phone": "+123"}) == {
+            "name": "John Doe",
+            "phone": "+123",
+        }
+
 
 # ============================================================================
 # 6. Gmail hooks — before execute
@@ -948,6 +1154,568 @@ class TestGmailBeforeHooks:
         payload = writer.call_args[0][0]
         assert "John" in payload["progress"]
 
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.normalize_email_body_to_html")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_compose_before_hook_normalizes_body_and_streams_exact_payload(
+        self, mock_log: MagicMock, mock_normalize: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        mock_normalize.return_value = "<p>Normalized body</p>"
+        params = _make_params(
+            {
+                "recipient_email": "user@example.com",
+                "extra_recipients": ["team@example.com"],
+                "subject": "Hello",
+                "body": "# Hi",
+                "thread_id": "thread_1",
+                "bcc": ["bcc@example.com"],
+                "cc": ["cc@example.com"],
+            }
+        )
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        mock_normalize.assert_called_once_with("# Hi")
+        assert result == {
+            "arguments": {
+                "recipient_email": "user@example.com",
+                "extra_recipients": ["team@example.com"],
+                "subject": "Hello",
+                "body": "<p>Normalized body</p>",
+                "thread_id": "thread_1",
+                "bcc": ["bcc@example.com"],
+                "cc": ["cc@example.com"],
+                "is_html": True,
+            }
+        }
+        writer.assert_called_once_with(
+            {
+                "email_sent_data": [
+                    {
+                        "to": ["user@example.com", "team@example.com"],
+                        "subject": "Hello",
+                        "body": "<p>Normalized body</p>",
+                        "thread_id": "thread_1",
+                        "bcc": ["bcc@example.com"],
+                        "cc": ["cc@example.com"],
+                        "is_html": True,
+                    }
+                ]
+            }
+        )
+        mock_log.set.assert_called_once_with(gmail_tool="GMAIL_SEND_EMAIL", toolkit="GMAIL")
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.normalize_email_body_to_html")
+    def test_compose_before_hook_normalizes_alternate_body_key(
+        self, mock_normalize: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        mock_normalize.side_effect = lambda value: f"<p>{value}</p>"
+        params = _make_params(
+            {
+                "recipient_email": "user@example.com",
+                "subject": "Draft",
+                "message": "**markdown** body",
+            }
+        )
+        result = gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", params)
+        mock_normalize.assert_called_once_with("**markdown** body")
+        assert result["arguments"] == {
+            "recipient_email": "user@example.com",
+            "subject": "Draft",
+            "message": "<p>**markdown** body</p>",
+            "is_html": True,
+        }
+        payload = writer.call_args[0][0]
+        assert payload["email_compose_data"][0]["body"] == ""
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.normalize_email_body_to_html")
+    def test_compose_before_hook_leaves_non_string_bodies_untouched(
+        self, mock_normalize: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params(
+            {
+                "recipient_email": "user@example.com",
+                "subject": "Draft",
+                "body": 123,
+                "message_body": "",
+            }
+        )
+        result = gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", params)
+        mock_normalize.assert_not_called()
+        assert result["arguments"]["body"] == 123
+        assert result["arguments"]["message_body"] == ""
+        assert result["arguments"]["is_html"] is True
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.normalize_email_body_to_html")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_compose_before_hook_draft_maps_to_and_streams_exact_payload(
+        self, mock_log: MagicMock, mock_normalize: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        mock_normalize.return_value = "<p>Content</p>"
+        params = _make_params({"to": "user@example.com", "subject": "Draft", "body": "Content"})
+        result = gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", params)
+        assert result["arguments"]["recipient_email"] == "user@example.com"
+        mock_log.info.assert_called_once()
+        assert "Mapped 'to' argument to 'recipient_email'" in mock_log.info.call_args.args[0]
+        assert mock_log.info.call_args.kwargs["tool"] == "GMAIL_CREATE_EMAIL_DRAFT"
+        writer.assert_called_once_with(
+            {
+                "email_compose_data": [
+                    {
+                        "to": ["user@example.com"],
+                        "subject": "Draft",
+                        "body": "<p>Content</p>",
+                        "thread_id": "",
+                        "bcc": [],
+                        "cc": [],
+                        "is_html": True,
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.normalize_email_body_to_html")
+    def test_compose_before_hook_reply_does_not_map_to(
+        self, mock_normalize: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        mock_normalize.side_effect = lambda value: value
+        params = _make_params(
+            {"to": "user@example.com", "subject": "Re: Thread", "body": "Reply"}
+        )
+        result = gmail_compose_before_hook("GMAIL_REPLY_TO_THREAD", "GMAIL", params)
+        assert "recipient_email" not in result["arguments"]
+        writer.assert_called_once_with(
+            {
+                "email_sent_data": [
+                    {
+                        "to": [""],
+                        "subject": "Re: Thread",
+                        "body": "Reply",
+                        "thread_id": "",
+                        "bcc": [],
+                        "cc": [],
+                        "is_html": True,
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.normalize_email_body_to_html")
+    def test_compose_before_hook_reply_without_arguments_streams_defaults(
+        self, mock_normalize: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params: dict[str, Any] = {"other_key": "x"}
+        result = gmail_compose_before_hook("GMAIL_REPLY_TO_THREAD", "GMAIL", params)
+        mock_normalize.assert_not_called()
+        assert result["arguments"] == {"is_html": True}
+        writer.assert_called_once_with(
+            {
+                "email_sent_data": [
+                    {
+                        "to": [""],
+                        "subject": "",
+                        "body": "",
+                        "thread_id": "",
+                        "bcc": [],
+                        "cc": [],
+                        "is_html": True,
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.normalize_email_body_to_html")
+    def test_compose_before_hook_forward_without_recipients_streams_empty(
+        self, mock_normalize: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        mock_normalize.return_value = "<p>Forwarded</p>"
+        params = _make_params({"subject": "Fwd: Something", "body": "Forwarded"})
+        gmail_compose_before_hook("GMAIL_FORWARD_MESSAGE", "GMAIL", params)
+        writer.assert_called_once_with(
+            {
+                "email_sent_data": [
+                    {
+                        "to": [],
+                        "subject": "Fwd: Something",
+                        "body": "<p>Forwarded</p>",
+                        "thread_id": "",
+                        "bcc": [],
+                        "cc": [],
+                        "is_html": True,
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_compose_before_hook_validation_skip_logs_exact_warnings(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        mock_writer.return_value = _noop_writer()
+
+        no_recipient = _make_params({"subject": "Hi", "body": "Hello"})
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", no_recipient)
+        assert result is no_recipient
+
+        no_content = _make_params({"recipient_email": "user@example.com"})
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", no_content)
+        assert result is no_content
+
+        assert [call.kwargs for call in mock_log.warning.call_args_list] == [
+            {"tool_name": "GMAIL_SEND_EMAIL", "has_recipient": False, "has_content": True},
+            {"tool_name": "GMAIL_SEND_EMAIL", "has_recipient": True, "has_content": False},
+        ]
+        mock_writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.normalize_email_body_to_html")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_compose_before_hook_error_logs_and_returns_params(
+        self, mock_log: MagicMock, mock_normalize: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        mock_writer.return_value = _noop_writer()
+        mock_normalize.side_effect = ValueError("bad body")
+        params = _make_params(
+            {"recipient_email": "user@example.com", "subject": "Hi", "body": "Hello"}
+        )
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_compose_before_hook", "bad body", "ValueError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_send_draft_before_hook_streams_exact_payload(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"draft_id": "d123"})
+        result = gmail_send_draft_before_hook("GMAIL_SEND_DRAFT", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Sending draft..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_send_draft_before_hook_no_writer_no_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_before_hook
+
+        mock_writer.return_value = None
+        params = _make_params()
+        result = gmail_send_draft_before_hook("GMAIL_SEND_DRAFT", "GMAIL", params)
+        assert result is params
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_trash_before_hook_streams_exact_payloads(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_trash_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params()
+        result = gmail_trash_before_hook("GMAIL_TRASH_MESSAGE", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Moving to trash..."})
+
+        writer.reset_mock()
+        result = gmail_trash_before_hook("GMAIL_UNTRASH_MESSAGE", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Restoring from trash..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_trash_before_hook_no_writer_no_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_trash_before_hook
+
+        mock_writer.return_value = None
+        params = _make_params()
+        result = gmail_trash_before_hook("GMAIL_TRASH_MESSAGE", "GMAIL", params)
+        assert result is params
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_label_before_hook_streams_exact_payloads(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_label_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"name": "Important"})
+        result = gmail_label_before_hook("GMAIL_CREATE_LABEL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Creating label: Important..."})
+
+        writer.reset_mock()
+        params = _make_params({})
+        result = gmail_label_before_hook("GMAIL_CREATE_LABEL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Creating label: ..."})
+
+        writer.reset_mock()
+        result = gmail_label_before_hook("GMAIL_UPDATE_LABEL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Updating label..."})
+
+        writer.reset_mock()
+        result = gmail_label_before_hook("GMAIL_DELETE_LABEL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Deleting label..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_label_before_hook_unknown_tool_does_not_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_label_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"name": "X"})
+        result = gmail_label_before_hook("GMAIL_OTHER", "GMAIL", params)
+        assert result is params
+        writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_label_before_hook_no_writer_no_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_label_before_hook
+
+        mock_writer.return_value = None
+        params = _make_params({"name": "X"})
+        result = gmail_label_before_hook("GMAIL_CREATE_LABEL", "GMAIL", params)
+        assert result is params
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_modify_labels_before_hook_streams_exact_payloads(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"message_ids": ["m1", "m2"], "label_ids": ["STARRED"]})
+        result = gmail_modify_labels_before_hook("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with(
+            {"progress": "Adding labels to 2 message(s) with 1 label(s)..."}
+        )
+
+        writer.reset_mock()
+        params = _make_params({"message_ids": ["m1"], "label_ids": ["A", "B"]})
+        result = gmail_modify_labels_before_hook("GMAIL_REMOVE_LABEL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with(
+            {"progress": "Removing labels from 1 message(s) with 2 label(s)..."}
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_modify_labels_before_hook_non_list_args_count_as_one(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"message_ids": "m1", "label_ids": "STARRED"})
+        gmail_modify_labels_before_hook("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL", params)
+        writer.assert_called_once_with(
+            {"progress": "Adding labels to 1 message(s) with 1 label(s)..."}
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_modify_labels_before_hook_no_writer_no_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
+
+        mock_writer.return_value = None
+        params = _make_params({"message_ids": ["m1"]})
+        result = gmail_modify_labels_before_hook("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL", params)
+        assert result is params
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_draft_management_before_hook_streams_exact_payloads(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_draft_management_before_hook,
+        )
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params()
+        result = gmail_draft_management_before_hook("GMAIL_UPDATE_DRAFT", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Updating draft..."})
+
+        writer.reset_mock()
+        result = gmail_draft_management_before_hook("GMAIL_DELETE_DRAFT", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Deleting draft..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_draft_management_before_hook_no_writer_no_stream(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_draft_management_before_hook,
+        )
+
+        mock_writer.return_value = None
+        params = _make_params()
+        result = gmail_draft_management_before_hook("GMAIL_UPDATE_DRAFT", "GMAIL", params)
+        assert result is params
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_list_drafts_before_hook_streams_exact_payloads(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_list_drafts_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"max_results": 15})
+        result = gmail_list_drafts_before_hook("GMAIL_LIST_DRAFTS", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Fetching drafts (max 15 results)..."})
+
+        writer.reset_mock()
+        params = _make_params({})
+        result = gmail_list_drafts_before_hook("GMAIL_LIST_DRAFTS", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Fetching drafts (max 20 results)..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_list_drafts_before_hook_no_writer_no_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_list_drafts_before_hook
+
+        mock_writer.return_value = None
+        params = _make_params({})
+        result = gmail_list_drafts_before_hook("GMAIL_LIST_DRAFTS", "GMAIL", params)
+        assert result is params
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_draft_before_hook_streams_exact_payload(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_draft_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"draft_id": "d1"})
+        result = gmail_get_draft_before_hook("GMAIL_GET_DRAFT", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Fetching draft details..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_draft_before_hook_no_writer_no_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_draft_before_hook
+
+        mock_writer.return_value = None
+        params = _make_params()
+        result = gmail_get_draft_before_hook("GMAIL_GET_DRAFT", "GMAIL", params)
+        assert result is params
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_before_hook_streams_exact_payload(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"page_size": 100})
+        result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "GMAIL", params)
+        assert result["arguments"] == {"page_size": 100}
+        writer.assert_called_once_with({"progress": "Fetching contacts..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_before_hook_falsy_page_size_uses_default(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
+
+        mock_writer.return_value = _noop_writer()
+        params = _make_params({"page_size": 0})
+        result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "GMAIL", params)
+        assert result["arguments"] == {"page_size": 50}
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_before_hook_no_writer_still_sets_page_size(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
+
+        mock_writer.return_value = None
+        params = _make_params({})
+        result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "GMAIL", params)
+        assert result["arguments"] == {"page_size": 50}
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_before_hook_without_arguments_creates_them(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params: dict[str, Any] = {"custom": "x"}
+        result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "GMAIL", params)
+        assert result["arguments"] == {"page_size": 50}
+        writer.assert_called_once_with({"progress": "Fetching contacts..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_search_people_before_hook_streams_exact_payload(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"query": "John Doe"})
+        result = gmail_search_people_before_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with(
+            {"progress": "Searching for people matching 'John Doe'..."}
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_search_people_before_hook_default_query(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({})
+        gmail_search_people_before_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", params)
+        writer.assert_called_once_with({"progress": "Searching for people matching ''..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_search_people_before_hook_no_writer_no_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_before_hook
+
+        mock_writer.return_value = None
+        params = _make_params({"query": "John"})
+        result = gmail_search_people_before_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", params)
+        assert result is params
+
 
 # ============================================================================
 # 7. Gmail hooks — after execute
@@ -1210,6 +1978,679 @@ class TestGmailAfterHooks:
         assert result["result_count"] == 1
         writer.assert_called_once()
 
+    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
+    def test_message_detail_after_hook_returns_template_exactly(
+        self, mock_template: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
+
+        processed = {"id": "m1", "from": "a@b.com", "body": "text"}
+        mock_template.return_value = processed
+        response = _make_response({"id": "m1", "raw": True})
+        result = gmail_message_detail_after_hook(
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", response
+        )
+        assert result == processed
+        mock_template.assert_called_once_with(response["data"])
+
+    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
+    def test_message_detail_after_hook_error_skips_template(
+        self, mock_template: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
+
+        response = _make_response({"error": "Not found"})
+        result = gmail_message_detail_after_hook(
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", response
+        )
+        assert result == {"error": "Not found"}
+        mock_template.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
+    def test_message_detail_after_hook_template_error_logs_and_returns_raw(
+        self, mock_template: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
+
+        mock_template.side_effect = KeyError("bad key")
+        response = _make_response({"raw": "data"})
+        result = gmail_message_detail_after_hook(
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", response
+        )
+        assert result == {"raw": "data"}
+        _assert_logged_error(
+            mock_log, "Error in gmail_message_detail_after_hook", "'bad key'", "KeyError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
+    def test_thread_after_hook_streams_exact_payload(
+        self, mock_process: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_thread_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        processed = {
+            "id": "thread1",
+            "messages": [
+                {
+                    "id": "m1",
+                    "from": "a@b.com",
+                    "subject": "Thread",
+                    "time": "12:00",
+                    "snippet": "snip",
+                    "body": "body",
+                    "content": "content",
+                },
+                {"extra_only": True},
+            ],
+            "messageCount": 2,
+        }
+        mock_process.return_value = processed
+        response = _make_response({"id": "raw_thread"})
+        result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
+        assert result == processed
+        mock_process.assert_called_once_with(response["data"])
+        writer.assert_called_once_with(
+            {
+                "email_thread_data": {
+                    "thread_id": "thread1",
+                    "messages": [
+                        {
+                            "id": "m1",
+                            "from": "a@b.com",
+                            "subject": "Thread",
+                            "time": "12:00",
+                            "snippet": "snip",
+                            "body": "body",
+                            "content": "content",
+                        },
+                        {
+                            "id": "",
+                            "from": "",
+                            "subject": "",
+                            "time": "",
+                            "snippet": "",
+                            "body": "",
+                            "content": "",
+                        },
+                    ],
+                    "messages_count": 2,
+                }
+            }
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
+    def test_thread_after_hook_missing_message_count_defaults_to_zero(
+        self, mock_process: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_thread_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        mock_process.return_value = {"id": "t1", "messages": [{"id": "m1"}]}
+        response = _make_response({"id": "raw"})
+        result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
+        assert result == {"id": "t1", "messages": [{"id": "m1"}]}
+        payload = writer.call_args[0][0]
+        assert payload["email_thread_data"] == {
+            "thread_id": "t1",
+            "messages": [
+                {
+                    "id": "m1",
+                    "from": "",
+                    "subject": "",
+                    "time": "",
+                    "snippet": "",
+                    "body": "",
+                    "content": "",
+                }
+            ],
+            "messages_count": 0,
+        }
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
+    def test_thread_after_hook_no_messages_no_stream(
+        self, mock_process: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_thread_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        processed = {"id": "t1", "messages": [], "messageCount": 0}
+        mock_process.return_value = processed
+        response = _make_response({"id": "raw"})
+        result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
+        assert result == processed
+        writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
+    def test_thread_after_hook_no_writer_still_returns_processed(
+        self, mock_process: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_thread_after_hook
+
+        mock_writer.return_value = None
+        processed = {"id": "t1", "messages": [{"id": "m1"}], "messageCount": 1}
+        mock_process.return_value = processed
+        response = _make_response({"id": "raw"})
+        result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
+        assert result == processed
+
+    @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
+    def test_thread_after_hook_error_skips_processor(self, mock_process: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_thread_after_hook
+
+        response = _make_response({"error": "Not found"})
+        result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
+        assert result == {"error": "Not found"}
+        mock_process.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
+    def test_thread_after_hook_processor_error_logs_and_returns_raw(
+        self, mock_process: MagicMock, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_thread_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        mock_process.side_effect = ValueError("bad thread")
+        response = _make_response({"raw": "thread"})
+        result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
+        assert result == {"raw": "thread"}
+        _assert_logged_error(
+            mock_log, "Error in gmail_thread_after_hook", "bad thread", "ValueError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.process_list_drafts_response")
+    def test_drafts_after_hook_returns_processor_output_exactly(
+        self, mock_process: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_drafts_after_hook
+
+        processed = {"drafts": [{"id": "d1"}], "resultSize": 1}
+        mock_process.return_value = processed
+        response = _make_response({"drafts": [{"id": "d1"}]})
+        result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "GMAIL", response)
+        assert result == processed
+        mock_process.assert_called_once_with(response["data"])
+
+    @patch("app.utils.composio_hooks.gmail_hooks.process_list_drafts_response")
+    def test_drafts_after_hook_error_skips_processor(self, mock_process: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_drafts_after_hook
+
+        response = _make_response({"error": "Not found"})
+        result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "GMAIL", response)
+        assert result == {"error": "Not found"}
+        mock_process.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.process_list_drafts_response")
+    def test_drafts_after_hook_processor_error_logs_and_returns_raw(
+        self, mock_process: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_drafts_after_hook
+
+        mock_process.side_effect = ValueError("bad drafts")
+        response = _make_response({"raw": "drafts"})
+        result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "GMAIL", response)
+        assert result == {"raw": "drafts"}
+        _assert_logged_error(
+            mock_log, "Error in gmail_drafts_after_hook", "bad drafts", "ValueError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.draft_template")
+    def test_draft_detail_after_hook_returns_template_exactly(
+        self, mock_template: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_draft_detail_after_hook
+
+        processed = {"id": "d1", "message": {"to": "a@b.com"}}
+        mock_template.return_value = processed
+        response = _make_response({"id": "raw"})
+        result = gmail_draft_detail_after_hook("GMAIL_GET_DRAFT", "GMAIL", response)
+        assert result == processed
+        mock_template.assert_called_once_with(response["data"])
+
+    @patch("app.utils.composio_hooks.gmail_hooks.draft_template")
+    def test_draft_detail_after_hook_error_skips_template(
+        self, mock_template: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_draft_detail_after_hook
+
+        response = _make_response({"error": "Not found"})
+        result = gmail_draft_detail_after_hook("GMAIL_GET_DRAFT", "GMAIL", response)
+        assert result == {"error": "Not found"}
+        mock_template.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.draft_template")
+    def test_draft_detail_after_hook_template_error_logs_and_returns_raw(
+        self, mock_template: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_draft_detail_after_hook
+
+        mock_template.side_effect = RuntimeError("parse fail")
+        response = _make_response({"raw": "draft"})
+        result = gmail_draft_detail_after_hook("GMAIL_GET_DRAFT", "GMAIL", response)
+        assert result == {"raw": "draft"}
+        _assert_logged_error(
+            mock_log, "Error in gmail_draft_detail_after_hook", "parse fail", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
+    def test_fetch_by_id_after_hook_returns_template_exactly(
+        self, mock_template: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_fetch_by_id_after_hook
+
+        processed = {"id": "m1", "subject": "Test"}
+        mock_template.return_value = processed
+        response = _make_response({"id": "raw"})
+        result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
+        assert result == processed
+        mock_template.assert_called_once_with(response["data"])
+
+    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
+    def test_fetch_by_id_after_hook_error_skips_template(
+        self, mock_template: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_fetch_by_id_after_hook
+
+        response = _make_response({"error": "Not found"})
+        result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
+        assert result == {"error": "Not found"}
+        mock_template.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
+    def test_fetch_by_id_after_hook_template_error_logs_and_returns_raw(
+        self, mock_template: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_fetch_by_id_after_hook
+
+        mock_template.side_effect = KeyError("bad key")
+        response = _make_response({"raw": "email"})
+        result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
+        assert result == {"raw": "email"}
+        _assert_logged_error(
+            mock_log, "Error in gmail_fetch_by_id_after_hook", "'bad key'", "KeyError"
+        )
+
+    def test_attachment_after_hook_returns_exact_metadata(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
+
+        response = _make_response(
+            {
+                "attachmentId": "att1",
+                "filename": "report.pdf",
+                "mimeType": "application/pdf",
+                "size": 1024,
+                "data": "base64_encoded_content_should_be_stripped",
+            },
+            successful=True,
+        )
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
+        assert result == {
+            "attachmentId": "att1",
+            "filename": "report.pdf",
+            "mimeType": "application/pdf",
+            "size": 1024,
+            "message": "Attachment content available but not displayed to preserve context",
+        }
+
+    def test_attachment_after_hook_defaults_missing_keys(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
+
+        response = _make_response({}, successful=True)
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
+        assert result == {
+            "attachmentId": "",
+            "filename": "",
+            "mimeType": "",
+            "size": 0,
+            "message": "Attachment content available but not displayed to preserve context",
+        }
+
+    def test_attachment_after_hook_unsuccessful_returns_data_unchanged(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
+
+        data = {"error": "Not found"}
+        response = _make_response(data, successful=False)
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
+        assert result is data
+
+    def test_attachment_after_hook_non_dict_data_passthrough(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
+
+        response = _make_response("plain string", successful=True)
+        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
+        assert result == "plain string"
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_attachment_after_hook_missing_data_key_propagates_key_error(
+        self, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
+
+        response: dict[str, Any] = {"successful": True}
+        with pytest.raises(KeyError):
+            gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
+        mock_log.error.assert_called_once()
+        assert mock_log.error.call_args.kwargs["error_type"] == "KeyError"
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_send_draft_after_hook_streams_exact_payload_and_minimal_return(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response(
+            {
+                "successful": True,
+                "id": "sent_1",
+                "timestamp": "2024-01-01T00:00:00Z",
+                "message": {"to": ["a@b.com", "c@d.com"], "subject": "Sent draft"},
+            }
+        )
+        result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
+        assert result == {
+            "id": "sent_1",
+            "successful": True,
+            "message": "Draft sent successfully",
+        }
+        writer.assert_called_once_with(
+            {
+                "email_sent_data": [
+                    {
+                        "message_id": "sent_1",
+                        "message": "Draft sent successfully!",
+                        "timestamp": "2024-01-01T00:00:00Z",
+                        "recipients": ["a@b.com", "c@d.com"],
+                        "subject": "Sent draft",
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_send_draft_after_hook_defaults_missing_fields(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"successful": True})
+        result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
+        assert result == {"id": "", "successful": True, "message": "Draft sent successfully"}
+        writer.assert_called_once_with(
+            {
+                "email_sent_data": [
+                    {
+                        "message_id": "",
+                        "message": "Draft sent successfully!",
+                        "timestamp": "",
+                        "recipients": [],
+                        "subject": "",
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_send_draft_after_hook_without_successful_key_streams_but_returns_raw(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        data = {"id": "x", "message": {"to": ["a@b.com"]}}
+        response = _make_response(data)
+        result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
+        assert result == data
+        writer.assert_called_once()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_send_draft_after_hook_no_writer_returns_minimal(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
+
+        mock_writer.return_value = None
+        response = _make_response({"successful": True, "id": "sent_1"})
+        result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
+        assert result == {
+            "id": "sent_1",
+            "successful": True,
+            "message": "Draft sent successfully",
+        }
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_send_draft_after_hook_writer_error_logs_and_returns_raw(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
+
+        writer = _noop_writer()
+        writer.side_effect = RuntimeError("no stream")
+        mock_writer.return_value = writer
+        data = {"successful": True, "id": "x"}
+        response = _make_response(data)
+        result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
+        assert result == data
+        _assert_logged_error(
+            mock_log, "Error in gmail_send_draft_after_hook", "no stream", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_after_hook_streams_exact_payload_and_return(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response(
+            {
+                "response_data": {
+                    "connections": [
+                        {
+                            "resourceName": "people/c1",
+                            "names": [
+                                {"displayName": "John Doe", "metadata": {"primary": True}}
+                            ],
+                            "emailAddresses": [
+                                {"value": "john@example.com", "metadata": {"primary": True}}
+                            ],
+                            "phoneNumbers": [
+                                {"value": "+1234567890", "metadata": {"primary": True}}
+                            ],
+                        },
+                        {
+                            "resourceName": "people/c2",
+                            "names": [],
+                            "emailAddresses": [],
+                            "phoneNumbers": [],
+                        },
+                    ]
+                },
+                "totalPeople": 3,
+                "nextPageToken": "tok_1",
+            }
+        )
+        result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
+        assert result == {
+            "contacts": [
+                {"name": "John Doe", "email": "john@example.com", "phone": "+1234567890"},
+                {"name": "Unknown"},
+            ],
+            "total_count": 3,
+            "has_more": True,
+        }
+        writer.assert_called_once_with(
+            {
+                "contacts_data": [
+                    {
+                        "name": "John Doe",
+                        "email": "john@example.com",
+                        "phone": "+1234567890",
+                        "resource_name": "people/c1",
+                    },
+                    {"name": "Unknown", "email": "", "phone": "", "resource_name": "people/c2"},
+                ],
+                "total_count": 3,
+                "next_page_token": "tok_1",
+            }
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_after_hook_missing_totals_use_defaults(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response(
+            {
+                "response_data": {
+                    "connections": [
+                        {
+                            "names": [
+                                {"displayName": "Ada", "metadata": {"primary": True}}
+                            ]
+                        }
+                    ]
+                }
+            }
+        )
+        result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
+        assert result == {"contacts": [{"name": "Ada"}], "total_count": 1, "has_more": False}
+        payload = writer.call_args[0][0]
+        assert payload["total_count"] == 1
+        assert payload["next_page_token"] is None
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_after_hook_no_connections_no_stream(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"response_data": {"connections": []}})
+        result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
+        assert result == {"contacts": [], "total_count": 0, "has_more": False}
+        writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_after_hook_error_returns_raw(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response = _make_response({"error": "Not found"})
+        result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
+        assert result == {"error": "Not found"}
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_after_hook_invalid_response_data_logs_and_returns_raw(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response = _make_response({"response_data": "not a dict"})
+        result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
+        assert result == response["data"]
+        mock_log.error.assert_called_once()
+        assert mock_log.error.call_args.kwargs["error_type"] == "ValidationError"
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_search_people_after_hook_streams_exact_payload_and_return(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response(
+            {
+                "response_data": {
+                    "results": [
+                        {
+                            "person": {
+                                "resourceName": "people/c1",
+                                "names": [
+                                    {"displayName": "Jane Doe", "metadata": {"primary": True}}
+                                ],
+                                "emailAddresses": [
+                                    {"value": "jane@example.com", "metadata": {"primary": True}}
+                                ],
+                                "phoneNumbers": [],
+                            }
+                        }
+                    ]
+                }
+            }
+        )
+        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
+        assert result == {
+            "people": [{"name": "Jane Doe", "email": "jane@example.com"}],
+            "result_count": 1,
+        }
+        writer.assert_called_once_with(
+            {
+                "people_search_data": [
+                    {
+                        "name": "Jane Doe",
+                        "email": "jane@example.com",
+                        "phone": "",
+                        "resource_name": "people/c1",
+                    }
+                ],
+                "result_count": 1,
+            }
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_search_people_after_hook_no_results_no_stream(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"response_data": {"results": []}})
+        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
+        assert result == {"people": [], "result_count": 0}
+        writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_search_people_after_hook_invalid_response_data_logs_and_returns_raw(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response = _make_response({"response_data": "not a dict"})
+        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
+        assert result == response["data"]
+        mock_log.error.assert_called_once()
+        assert mock_log.error.call_args.kwargs["error_type"] == "ValidationError"
+
 
 # ============================================================================
 # 8. Slack hooks
@@ -1257,6 +2698,104 @@ class TestSlackHooks:
 # 9. Twitter hooks — schema modifiers
 # ============================================================================
 
+# ---------------------------------------------------------------------------
+# Twitter test data — exact expected values for hook outputs
+# ---------------------------------------------------------------------------
+
+_TWITTER_SEARCH_TIPS = (
+    "\n\n📝 X SEARCH SYNTAX (use in 'query' parameter):\n"
+    "• from:username - tweets from specific user\n"
+    "• to:username - tweets replying to user\n"
+    "• @username - tweets mentioning user\n"
+    "• #hashtag - tweets with specific hashtag\n"
+    '• "exact phrase" - exact phrase match\n'
+    "• -keyword - exclude keyword\n"
+    "• is:retweet / -is:retweet - include/exclude retweets\n"
+    "• is:reply / -is:reply - include/exclude replies\n"
+    "• has:media / has:images / has:videos - filter by media\n"
+    "• has:links - tweets with links\n"
+    "• lang:en - filter by language\n"
+    "• min_retweets:10 / min_faves:50 - engagement filters\n"
+    "• since:2024-01-01 until:2024-12-31 - date range\n\n"
+    "Example: 'from:elonmusk -is:retweet -is:reply' for original tweets only"
+)
+
+_TWITTER_FOLLOW_GUIDANCE = (
+    "\n\n💡 USER DISCOVERY TIP: If the user doesn't provide a username:\n"
+    "1. Use TWITTER_RECENT_SEARCH with the person's name to find their tweets\n"
+    "2. Extract the author's user_id from search results\n"
+    "3. Present matching users to the user for selection\n"
+    "4. Then use this tool with the selected target_user_id"
+)
+
+_TWITTER_POSTING_TIPS = (
+    "\n\n📱 POSTING TIPS:\n"
+    "• For media: Upload first with TWITTER_UPLOAD_MEDIA, then use media_media_ids\n"
+    "• For threads: Create first tweet, then reply with reply_in_reply_to_tweet_id\n"
+    "• For quotes: Use quote_tweet_id to quote another tweet\n"
+    "• Use polls: Provide poll_options (2-4 options) and poll_duration_minutes"
+)
+
+
+def _twitter_user(**overrides: Any) -> dict[str, Any]:
+    """Full Twitter ``includes.users`` entry (every field present, truthy flags)."""
+    return {
+        "id": "u1",
+        "username": "testuser",
+        "name": "Test User",
+        "description": "Bio",
+        "profile_image_url": "https://img.com/pic.jpg",
+        "verified": True,
+        "public_metrics": {"followers_count": 100, "following_count": 10},
+        **overrides,
+    }
+
+
+def _twitter_tweet(**overrides: Any) -> dict[str, Any]:
+    """Full Twitter search ``data`` entry (every field present)."""
+    return {
+        "id": "tw1",
+        "text": "Hello world",
+        "created_at": "2024-01-01T00:00:00Z",
+        "author_id": "u1",
+        "public_metrics": {"like_count": 10, "retweet_count": 5},
+        "conversation_id": "conv1",
+        **overrides,
+    }
+
+
+def _twitter_search_response(**overrides: Any) -> dict[str, Any]:
+    """TWITTER_RECENT_SEARCH response with one tweet by a known author."""
+    return _make_response(
+        {
+            "data": [_twitter_tweet()],
+            "includes": {"users": [_twitter_user()]},
+            "meta": {"result_count": 1, "next_token": "tok123"},
+            **overrides,
+        }
+    )
+
+
+def _twitter_processed_tweet(**overrides: Any) -> dict[str, Any]:
+    """Expected frontend tweet dict for the search after-hook stream payload."""
+    return {
+        "id": "tw1",
+        "text": "Hello world",
+        "created_at": "2024-01-01T00:00:00Z",
+        "author": {
+            "id": "u1",
+            "username": "testuser",
+            "name": "Test User",
+            "profile_image_url": "https://img.com/pic.jpg",
+            "verified": True,
+            "description": "Bio",
+            "public_metrics": {"followers_count": 100, "following_count": 10},
+        },
+        "public_metrics": {"like_count": 10, "retweet_count": 5},
+        "conversation_id": "conv1",
+        **overrides,
+    }
+
 
 class TestTwitterSchemaModifiers:
     """Tests for Twitter schema modifier hooks."""
@@ -1268,8 +2807,8 @@ class TestTwitterSchemaModifiers:
 
         schema = _make_tool_schema()
         result = twitter_search_schema_modifier("TWITTER_RECENT_SEARCH", "TWITTER", schema)
-        assert "from:username" in result.description
-        assert "is:retweet" in result.description
+        assert result is schema
+        assert result.description == "Original description" + _TWITTER_SEARCH_TIPS
 
     def test_twitter_follow_schema_adds_guidance(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
@@ -1278,7 +2817,8 @@ class TestTwitterSchemaModifiers:
 
         schema = _make_tool_schema()
         result = twitter_follow_schema_modifier("TWITTER_FOLLOW_USER", "TWITTER", schema)
-        assert "TWITTER_RECENT_SEARCH" in result.description
+        assert result is schema
+        assert result.description == "Original description" + _TWITTER_FOLLOW_GUIDANCE
 
     def test_twitter_create_post_schema_adds_tips(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
@@ -1289,8 +2829,8 @@ class TestTwitterSchemaModifiers:
         result = twitter_create_post_schema_modifier(
             "TWITTER_CREATION_OF_A_POST", "TWITTER", schema
         )
-        assert "TWITTER_UPLOAD_MEDIA" in result.description
-        assert "poll_options" in result.description
+        assert result is schema
+        assert result.description == "Original description" + _TWITTER_POSTING_TIPS
 
     def test_twitter_timeline_schema_sets_max_results(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
@@ -1305,7 +2845,33 @@ class TestTwitterSchemaModifiers:
         result = twitter_timeline_schema_modifier(
             "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", schema
         )
+        assert result is schema
         assert result.input_parameters["properties"]["max_results"]["default"] == 20
+
+    def test_twitter_timeline_schema_max_results_not_dict_unchanged(self) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_timeline_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={"properties": {"max_results": "not_a_dict"}}
+        )
+        result = twitter_timeline_schema_modifier(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", schema
+        )
+        assert result is schema
+        assert result.input_parameters["properties"]["max_results"] == "not_a_dict"
+
+    def test_twitter_timeline_schema_no_properties_unchanged(self) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_timeline_schema_modifier,
+        )
+
+        schema = _make_tool_schema(input_parameters={"required": []})
+        result = twitter_timeline_schema_modifier(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", schema
+        )
+        assert result is schema
 
     def test_twitter_timeline_schema_non_dict_input_params(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
@@ -1346,13 +2912,23 @@ class TestTwitterBeforeHooks:
         )
         result = twitter_create_post_before_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", params)
         assert result is params
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert payload["twitter_post_preview"]["text"] == "Hello Twitter!"
-        assert payload["twitter_post_preview"]["quote_tweet_id"] == "qt123"
+        writer.assert_called_once_with(
+            {
+                "twitter_post_preview": {
+                    "text": "Hello Twitter!",
+                    "quote_tweet_id": "qt123",
+                    "reply_to_tweet_id": "rt456",
+                    "media_ids": ["media1"],
+                    "poll_options": ["Yes", "No"],
+                }
+            }
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_create_post_before_hook_no_writer(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_create_post_before_hook_no_writer(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_create_post_before_hook,
         )
@@ -1361,6 +2937,58 @@ class TestTwitterBeforeHooks:
         params = _make_params({"text": "Hello"})
         result = twitter_create_post_before_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", params)
         assert result is params
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_create_post_before_hook_defaults_for_missing_arguments(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_create_post_before_hook,
+        )
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"text": "Just text"})
+        twitter_create_post_before_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", params)
+        writer.assert_called_once_with(
+            {
+                "twitter_post_preview": {
+                    "text": "Just text",
+                    "quote_tweet_id": None,
+                    "reply_to_tweet_id": None,
+                    "media_ids": [],
+                    "poll_options": [],
+                }
+            }
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_create_post_before_hook_without_arguments_key_streams_defaults(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_create_post_before_hook,
+        )
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params: dict[str, Any] = {"tool_used": "x"}
+        result = twitter_create_post_before_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", params)
+        assert result is params
+        writer.assert_called_once_with(
+            {
+                "twitter_post_preview": {
+                    "text": "",
+                    "quote_tweet_id": None,
+                    "reply_to_tweet_id": None,
+                    "media_ids": [],
+                    "poll_options": [],
+                }
+            }
+        )
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_search_before_hook_streams_progress(self, mock_writer: MagicMock) -> None:
@@ -1370,8 +2998,45 @@ class TestTwitterBeforeHooks:
         mock_writer.return_value = writer
         params = _make_params({"query": "AI news"})
         twitter_search_before_hook("TWITTER_RECENT_SEARCH", "TWITTER", params)
-        payload = writer.call_args[0][0]
-        assert "AI news" in payload["progress"]
+        writer.assert_called_once_with({"progress": "Searching tweets for: AI news..."})
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_before_hook_missing_query(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({})
+        twitter_search_before_hook("TWITTER_FULL_ARCHIVE_SEARCH", "TWITTER", params)
+        writer.assert_called_once_with({"progress": "Searching tweets for: ..."})
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_search_before_hook_without_arguments_key_streams_defaults(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params: dict[str, Any] = {"tool_used": "x"}
+        result = twitter_search_before_hook("TWITTER_RECENT_SEARCH", "TWITTER", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Searching tweets for: ..."})
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_search_before_hook_no_writer_does_not_log(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_before_hook
+
+        mock_writer.return_value = None
+        params = _make_params({"query": "x"})
+        result = twitter_search_before_hook("TWITTER_RECENT_SEARCH", "TWITTER", params)
+        assert result is params
+        mock_log.error.assert_not_called()
 
 
 # ============================================================================
@@ -1383,79 +3048,271 @@ class TestTwitterAfterHooks:
     """Tests for Twitter after-execute hooks."""
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_search_after_hook_processes_tweets(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_search_after_hook_processes_tweets(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 
         writer = _noop_writer()
         mock_writer.return_value = writer
-        response = _make_response(
+        response = _twitter_search_response()
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result == {
+            "tweets": [
+                {
+                    "id": "tw1",
+                    "text": "Hello world",
+                    "author_username": "testuser",
+                    "author_name": "Test User",
+                    "likes": 10,
+                    "retweets": 5,
+                }
+            ],
+            "result_count": 1,
+            "has_more": True,
+        }
+        writer.assert_called_once_with(
             {
-                "data": [
-                    {
-                        "id": "tw1",
-                        "text": "Hello world",
-                        "created_at": "2024-01-01T00:00:00Z",
-                        "author_id": "u1",
-                        "public_metrics": {"like_count": 10, "retweet_count": 5},
-                        "conversation_id": "conv1",
-                    }
-                ],
-                "includes": {
-                    "users": [
-                        {
-                            "id": "u1",
-                            "username": "testuser",
-                            "name": "Test User",
-                            "profile_image_url": "https://img.com/pic.jpg",
-                            "verified": True,
-                            "description": "Bio",
-                            "public_metrics": {"followers_count": 100},
-                        }
-                    ]
-                },
-                "meta": {"result_count": 1, "next_token": "tok123"},
+                "twitter_search_data": {
+                    "tweets": [_twitter_processed_tweet()],
+                    "result_count": 1,
+                    "next_token": "tok123",
+                }
             }
         )
-        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
-        assert result["result_count"] == 1
-        assert result["has_more"] is True
-        assert result["tweets"][0]["author_username"] == "testuser"
-        assert result["tweets"][0]["likes"] == 10
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert "twitter_search_data" in payload
+        mock_log.set.assert_called_once_with(
+            twitter_tool="TWITTER_RECENT_SEARCH", toolkit="TWITTER"
+        )
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_search_after_hook_error_response(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_search_after_hook_error_response(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 
-        mock_writer.return_value = _noop_writer()
+        writer = _noop_writer()
+        mock_writer.return_value = writer
         response = _make_response({"error": "Rate limited"})
         result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
         assert result == {"error": "Rate limited"}
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_search_after_hook_empty_response_logs_key_error(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response: dict[str, Any] = {}
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result == {}
+        _assert_logged_error(
+            mock_log, "Error in twitter_search_after_hook", "'data'", "KeyError"
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_no_writer_returns_processed(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        mock_writer.return_value = None
+        result = twitter_search_after_hook(
+            "TWITTER_RECENT_SEARCH", "TWITTER", _twitter_search_response()
+        )
+        assert result == {
+            "tweets": [
+                {
+                    "id": "tw1",
+                    "text": "Hello world",
+                    "author_username": "testuser",
+                    "author_name": "Test User",
+                    "likes": 10,
+                    "retweets": 5,
+                }
+            ],
+            "result_count": 1,
+            "has_more": True,
+        }
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_empty_tweets_does_not_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _twitter_search_response(data=[], includes={"users": []})
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result == {"tweets": [], "result_count": 1, "has_more": True}
+        writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_missing_meta_falls_back_to_count(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response = _make_response(
+            {
+                "data": [_twitter_tweet(id="tw1"), _twitter_tweet(id="tw2", text="Two")],
+                "includes": {"users": []},
+            }
+        )
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result["result_count"] == 2
+        assert result["has_more"] is False
+        assert len(result["tweets"]) == 2
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_unknown_author_fallback(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _twitter_search_response(data=[_twitter_tweet(author_id="ghost")])
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result["tweets"][0]["author_username"] == "unknown"
+        assert result["tweets"][0]["author_name"] == "Unknown"
+        payload = writer.call_args[0][0]
+        assert payload["twitter_search_data"]["tweets"][0]["author"] == {
+            "username": "unknown",
+            "name": "Unknown",
+        }
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_sparse_user_defaults(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _twitter_search_response(
+            includes={"users": [{"id": "u1", "username": "min", "name": "Min"}]}
+        )
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result["tweets"][0]["author_username"] == "min"
+        payload = writer.call_args[0][0]
+        assert payload["twitter_search_data"]["tweets"][0]["author"] == {
+            "id": "u1",
+            "username": "min",
+            "name": "Min",
+            "profile_image_url": None,
+            "verified": False,
+            "description": "",
+            "public_metrics": {},
+        }
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_search_after_hook_truncates_long_tweets(self, mock_writer: MagicMock) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 
         mock_writer.return_value = _noop_writer()
-        long_text = "x" * 300
-        response = _make_response(
-            {
-                "data": [
-                    {
-                        "id": "tw1",
-                        "text": long_text,
-                        "author_id": "u1",
-                        "public_metrics": {},
-                    }
-                ],
-                "includes": {"users": []},
-                "meta": {"result_count": 1},
-            }
+        response = _twitter_search_response(data=[_twitter_tweet(text="x" * 201)])
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result["tweets"][0]["text"] == "x" * 200 + "..."
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_keeps_200_char_tweets(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response = _twitter_search_response(data=[_twitter_tweet(text="x" * 200)])
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result["tweets"][0]["text"] == "x" * 200
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_llm_tweets_capped_at_10(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        tweets = [_twitter_tweet(id=f"tw{i}", text=f"tweet {i}") for i in range(11)]
+        response = _twitter_search_response(data=tweets, meta={"result_count": 11})
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert len(result["tweets"]) == 10
+        assert result["tweets"][0]["id"] == "tw0"
+        assert result["tweets"][9]["id"] == "tw9"
+        assert result["result_count"] == 11
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_search_after_hook_missing_data_key_returns_empty(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response: dict[str, Any] = {"successful": True}
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result == {"tweets": [], "result_count": 0, "has_more": False}
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_uses_meta_result_count(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _twitter_search_response(
+            data=[_twitter_tweet(id="tw1"), _twitter_tweet(id="tw2", text="Two")],
+            meta={"result_count": 5},
         )
         result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
-        assert len(result["tweets"][0]["text"]) == 203  # 200 + "..."
+        assert result["result_count"] == 5
+        assert len(result["tweets"]) == 2
+        payload = writer.call_args[0][0]
+        assert payload["twitter_search_data"]["result_count"] == 5
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_meta_without_result_count_falls_back(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _twitter_search_response(
+            data=[_twitter_tweet(id="tw1"), _twitter_tweet(id="tw2", text="Two")],
+            meta={"next_token": "tok"},
+        )
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result["result_count"] == 2
+        assert result["has_more"] is True
+        payload = writer.call_args[0][0]
+        assert payload["twitter_search_data"]["result_count"] == 2
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_search_after_hook_sparse_tweet_defaults(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _twitter_search_response(
+            data=[{"id": "tw1", "text": "Sparse", "author_id": "ghost"}],
+            includes={"users": []},
+        )
+        result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
+        assert result == {
+            "tweets": [
+                {
+                    "id": "tw1",
+                    "text": "Sparse",
+                    "author_username": "unknown",
+                    "author_name": "Unknown",
+                    "likes": 0,
+                    "retweets": 0,
+                }
+            ],
+            "result_count": 1,
+            "has_more": True,
+        }
+        payload = writer.call_args[0][0]
+        assert payload["twitter_search_data"]["tweets"][0]["public_metrics"] == {}
+        assert payload["twitter_search_data"]["tweets"][0]["created_at"] is None
+        assert payload["twitter_search_data"]["tweets"][0]["conversation_id"] is None
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_user_lookup_after_hook_single_user(self, mock_writer: MagicMock) -> None:
@@ -1484,9 +3341,81 @@ class TestTwitterAfterHooks:
         result = twitter_user_lookup_after_hook(
             "TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER", response
         )
-        assert result["users"][0]["username"] == "johndoe"
-        assert result["users"][0]["followers"] == 1000
-        writer.assert_called_once()
+        assert result == {
+            "users": [
+                {
+                    "id": "u1",
+                    "username": "johndoe",
+                    "name": "John Doe",
+                    "followers": 1000,
+                    "following": 200,
+                    "verified": True,
+                }
+            ]
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_user_data": [
+                    {
+                        "id": "u1",
+                        "username": "johndoe",
+                        "name": "John Doe",
+                        "description": "Dev",
+                        "profile_image_url": "https://img.com/pic.jpg",
+                        "verified": True,
+                        "public_metrics": {"followers_count": 1000, "following_count": 200},
+                        "created_at": "2020-01-01",
+                        "location": "NYC",
+                        "url": "https://example.com",
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_user_lookup_after_hook_defaults_for_sparse_user(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_user_lookup_after_hook,
+        )
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"data": {"id": "u9", "username": "min"}})
+        result = twitter_user_lookup_after_hook(
+            "TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER", response
+        )
+        assert result == {
+            "users": [
+                {
+                    "id": "u9",
+                    "username": "min",
+                    "name": None,
+                    "followers": 0,
+                    "following": 0,
+                    "verified": False,
+                }
+            ]
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_user_data": [
+                    {
+                        "id": "u9",
+                        "username": "min",
+                        "name": None,
+                        "description": "",
+                        "profile_image_url": None,
+                        "verified": False,
+                        "public_metrics": {},
+                        "created_at": None,
+                        "location": None,
+                        "url": None,
+                    }
+                ]
+            }
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_user_lookup_after_hook_multiple_users(self, mock_writer: MagicMock) -> None:
@@ -1518,7 +3447,165 @@ class TestTwitterAfterHooks:
         result = twitter_user_lookup_after_hook(
             "TWITTER_USER_LOOKUP_BY_USERNAMES", "TWITTER", response
         )
-        assert len(result["users"]) == 2
+        assert result == {
+            "users": [
+                {
+                    "id": "u1",
+                    "username": "a",
+                    "name": "A",
+                    "followers": 0,
+                    "following": 0,
+                    "verified": False,
+                },
+                {
+                    "id": "u2",
+                    "username": "b",
+                    "name": "B",
+                    "followers": 0,
+                    "following": 0,
+                    "verified": True,
+                },
+            ]
+        }
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_user_lookup_after_hook_empty_data_does_not_stream(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_user_lookup_after_hook,
+        )
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"data": None})
+        result = twitter_user_lookup_after_hook(
+            "TWITTER_USER_LOOKUP_BY_USERNAMES", "TWITTER", response
+        )
+        assert result == {"users": []}
+        writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_user_lookup_after_hook_no_writer(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_user_lookup_after_hook,
+        )
+
+        mock_writer.return_value = None
+        response = _make_response({"data": {"id": "u1", "username": "a"}})
+        result = twitter_user_lookup_after_hook(
+            "TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER", response
+        )
+        assert result == {
+            "users": [
+                {
+                    "id": "u1",
+                    "username": "a",
+                    "name": None,
+                    "followers": 0,
+                    "following": 0,
+                    "verified": False,
+                }
+            ]
+        }
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_user_lookup_after_hook_empty_response_logs_key_error(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_user_lookup_after_hook,
+        )
+
+        mock_writer.return_value = _noop_writer()
+        response: dict[str, Any] = {}
+        result = twitter_user_lookup_after_hook(
+            "TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER", response
+        )
+        assert result == {}
+        _assert_logged_error(
+            mock_log, "Error in twitter_user_lookup_after_hook", "'data'", "KeyError"
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_user_lookup_after_hook_error_response_does_not_log(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_user_lookup_after_hook,
+        )
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"error": "Not found"})
+        result = twitter_user_lookup_after_hook(
+            "TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER", response
+        )
+        assert result == {"error": "Not found"}
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_user_lookup_after_hook_missing_data_key_returns_empty(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_user_lookup_after_hook,
+        )
+
+        mock_writer.return_value = _noop_writer()
+        response: dict[str, Any] = {"successful": True}
+        result = twitter_user_lookup_after_hook(
+            "TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER", response
+        )
+        assert result == {"users": []}
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_user_lookup_after_hook_flat_data_dict(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_user_lookup_after_hook,
+        )
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"id": "u1", "username": "flat", "name": "Flat"})
+        result = twitter_user_lookup_after_hook(
+            "TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER", response
+        )
+        assert result == {
+            "users": [
+                {
+                    "id": "u1",
+                    "username": "flat",
+                    "name": "Flat",
+                    "followers": 0,
+                    "following": 0,
+                    "verified": False,
+                }
+            ]
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_user_data": [
+                    {
+                        "id": "u1",
+                        "username": "flat",
+                        "name": "Flat",
+                        "description": "",
+                        "profile_image_url": None,
+                        "verified": False,
+                        "public_metrics": {},
+                        "created_at": None,
+                        "location": None,
+                        "url": None,
+                    }
+                ]
+            }
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_timeline_after_hook(self, mock_writer: MagicMock) -> None:
@@ -1544,7 +3631,7 @@ class TestTwitterAfterHooks:
                             "username": "testuser",
                             "name": "Test",
                             "profile_image_url": "https://img.com",
-                            "verified": False,
+                            "verified": True,
                         }
                     ]
                 },
@@ -1553,9 +3640,222 @@ class TestTwitterAfterHooks:
         result = twitter_timeline_after_hook(
             "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
         )
-        assert result["tweets"][0]["author"] == "testuser"
-        assert result["count"] == 1
-        writer.assert_called_once()
+        assert result == {
+            "tweets": [
+                {"id": "tw1", "text": "Timeline tweet", "author": "testuser", "likes": 5}
+            ],
+            "count": 1,
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_timeline_data": {
+                    "tweets": [
+                        {
+                            "id": "tw1",
+                            "text": "Timeline tweet",
+                            "created_at": "2024-01-01",
+                            "author": {
+                                "id": "u1",
+                                "username": "testuser",
+                                "name": "Test",
+                                "profile_image_url": "https://img.com",
+                                "verified": True,
+                            },
+                            "public_metrics": {"like_count": 5},
+                        }
+                    ]
+                }
+            }
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_timeline_after_hook_sparse_user_defaults(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response(
+            {
+                "data": [_twitter_tweet(author_id="u1")],
+                "includes": {"users": [{"id": "u1", "username": "min", "name": "Min"}]},
+            }
+        )
+        result = twitter_timeline_after_hook(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
+        )
+        assert result["tweets"][0]["author"] == "min"
+        payload = writer.call_args[0][0]
+        assert payload["twitter_timeline_data"]["tweets"][0]["author"] == {
+            "id": "u1",
+            "username": "min",
+            "name": "Min",
+            "profile_image_url": None,
+            "verified": False,
+        }
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_timeline_after_hook_missing_data_key_returns_empty(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response: dict[str, Any] = {"successful": True}
+        result = twitter_timeline_after_hook(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
+        )
+        assert result == {"tweets": [], "count": 0}
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_timeline_after_hook_defaults_for_sparse_tweet(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response(
+            {
+                "data": [
+                    {
+                        "id": "tw1",
+                        "text": "Sparse",
+                        "author_id": "ghost",
+                    }
+                ],
+                "includes": {"users": []},
+            }
+        )
+        result = twitter_timeline_after_hook(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
+        )
+        assert result == {
+            "tweets": [
+                {"id": "tw1", "text": "Sparse", "author": "unknown", "likes": 0}
+            ],
+            "count": 1,
+        }
+        payload = writer.call_args[0][0]
+        assert payload["twitter_timeline_data"]["tweets"][0]["author"] == {
+            "username": "unknown",
+            "name": "Unknown",
+        }
+        assert payload["twitter_timeline_data"]["tweets"][0]["public_metrics"] == {}
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_timeline_after_hook_empty_tweets_does_not_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"data": [], "includes": {"users": []}})
+        result = twitter_timeline_after_hook(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
+        )
+        assert result == {"tweets": [], "count": 0}
+        writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_timeline_after_hook_truncates_long_tweets(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response = _make_response(
+            {
+                "data": [_twitter_tweet(text="x" * 201)],
+                "includes": {"users": []},
+            }
+        )
+        result = twitter_timeline_after_hook(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
+        )
+        assert result["tweets"][0]["text"] == "x" * 200 + "..."
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_timeline_after_hook_keeps_200_char_tweets(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response = _make_response(
+            {
+                "data": [_twitter_tweet(text="x" * 200)],
+                "includes": {"users": []},
+            }
+        )
+        result = twitter_timeline_after_hook(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
+        )
+        assert result["tweets"][0]["text"] == "x" * 200
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_timeline_after_hook_llm_tweets_capped_at_10(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        tweets = [_twitter_tweet(id=f"tw{i}", text=f"tweet {i}") for i in range(11)]
+        response = _make_response({"data": tweets, "includes": {"users": []}})
+        result = twitter_timeline_after_hook(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
+        )
+        assert len(result["tweets"]) == 10
+        assert result["tweets"][0]["id"] == "tw0"
+        assert result["tweets"][9]["id"] == "tw9"
+        assert result["count"] == 11
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_timeline_after_hook_no_writer(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
+
+        mock_writer.return_value = None
+        response = _make_response(
+            {
+                "data": [_twitter_tweet()],
+                "includes": {"users": []},
+            }
+        )
+        result = twitter_timeline_after_hook(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
+        )
+        assert result == {
+            "tweets": [
+                {"id": "tw1", "text": "Hello world", "author": "unknown", "likes": 10}
+            ],
+            "count": 1,
+        }
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_timeline_after_hook_empty_response_logs_key_error(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response: dict[str, Any] = {}
+        result = twitter_timeline_after_hook(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
+        )
+        assert result == {}
+        _assert_logged_error(
+            mock_log, "Error in twitter_timeline_after_hook", "'data'", "KeyError"
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_timeline_after_hook_error_response_does_not_log(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"error": "Not found"})
+        result = twitter_timeline_after_hook(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
+        )
+        assert result == {"error": "Not found"}
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_followers_after_hook(self, mock_writer: MagicMock) -> None:
@@ -1571,7 +3871,7 @@ class TestTwitterAfterHooks:
                         "username": "follower1",
                         "name": "Follower 1",
                         "profile_image_url": "https://img.com",
-                        "verified": False,
+                        "verified": True,
                         "description": "Bio",
                         "public_metrics": {"followers_count": 50},
                     }
@@ -1580,11 +3880,89 @@ class TestTwitterAfterHooks:
             }
         )
         result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
-        assert result["users"][0]["username"] == "follower1"
-        assert result["has_more"] is True
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert "twitter_followers_data" in payload
+        assert result == {
+            "users": [
+                {"id": "u1", "username": "follower1", "name": "Follower 1", "followers": 50}
+            ],
+            "count": 1,
+            "has_more": True,
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_followers_data": [
+                    {
+                        "id": "u1",
+                        "username": "follower1",
+                        "name": "Follower 1",
+                        "profile_image_url": "https://img.com",
+                        "verified": True,
+                        "description": "Bio",
+                        "public_metrics": {"followers_count": 50},
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_followers_after_hook_defaults_for_sparse_user(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response(
+            {
+                "data": [{"id": "u9", "username": "min"}],
+                "meta": {},
+            }
+        )
+        result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
+        assert result == {
+            "users": [
+                {"id": "u9", "username": "min", "name": None, "followers": 0}
+            ],
+            "count": 1,
+            "has_more": False,
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_followers_data": [
+                    {
+                        "id": "u9",
+                        "username": "min",
+                        "name": None,
+                        "profile_image_url": None,
+                        "verified": False,
+                        "description": "",
+                        "public_metrics": {},
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_followers_after_hook_missing_data_key_returns_empty(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response: dict[str, Any] = {"successful": True}
+        result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
+        assert result == {"users": [], "count": 0, "has_more": False}
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_followers_after_hook_missing_meta_has_more_false(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response = _make_response({"data": [_twitter_user()]})
+        result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
+        assert result["count"] == 1
+        assert result["has_more"] is False
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_following_after_hook_uses_following_key(self, mock_writer: MagicMock) -> None:
@@ -1606,10 +3984,106 @@ class TestTwitterAfterHooks:
             }
         )
         result = twitter_followers_after_hook("TWITTER_FOLLOWING_BY_USER_ID", "TWITTER", response)
-        assert result["has_more"] is False
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert "twitter_following_data" in payload
+        assert result == {
+            "users": [
+                {"id": "u1", "username": "following1", "name": "Following 1", "followers": 100}
+            ],
+            "count": 1,
+            "has_more": False,
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_following_data": [
+                    {
+                        "id": "u1",
+                        "username": "following1",
+                        "name": "Following 1",
+                        "profile_image_url": None,
+                        "verified": False,
+                        "description": "",
+                        "public_metrics": {"followers_count": 100},
+                    }
+                ]
+            }
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_followers_after_hook_empty_does_not_stream(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"data": [], "meta": {}})
+        result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
+        assert result == {"users": [], "count": 0, "has_more": False}
+        writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_followers_after_hook_llm_users_capped_at_20(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        users = [
+            _twitter_user(id=f"u{i}", username=f"user{i}", name=f"User {i}")
+            for i in range(21)
+        ]
+        response = _make_response({"data": users, "meta": {"next_token": "more"}})
+        result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
+        assert len(result["users"]) == 20
+        assert result["users"][0]["id"] == "u0"
+        assert result["users"][19]["id"] == "u19"
+        assert result["count"] == 21
+        assert result["has_more"] is True
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_followers_after_hook_no_writer(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
+
+        mock_writer.return_value = None
+        response = _make_response({"data": [_twitter_user()], "meta": {}})
+        result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
+        assert result == {
+            "users": [
+                {
+                    "id": "u1",
+                    "username": "testuser",
+                    "name": "Test User",
+                    "followers": 100,
+                }
+            ],
+            "count": 1,
+            "has_more": False,
+        }
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_followers_after_hook_empty_response_logs_key_error(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response: dict[str, Any] = {}
+        result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
+        assert result == {}
+        _assert_logged_error(
+            mock_log, "Error in twitter_followers_after_hook", "'data'", "KeyError"
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_followers_after_hook_error_response_does_not_log(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"error": "Not found"})
+        result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
+        assert result == {"error": "Not found"}
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
     def test_post_created_after_hook(self, mock_writer: MagicMock) -> None:
@@ -1628,23 +4102,113 @@ class TestTwitterAfterHooks:
             }
         )
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
-        assert result["success"] is True
-        assert result["id"] == "post123"
-        assert "twitter.com" in result["url"]
-        writer.assert_called_once()
-        payload = writer.call_args[0][0]
-        assert payload["twitter_post_created"]["id"] == "post123"
+        assert result == {
+            "success": True,
+            "id": "post123",
+            "text": "My new tweet",
+            "url": "https://twitter.com/i/status/post123",
+        }
+        writer.assert_called_once_with(
+            {
+                "twitter_post_created": {
+                    "id": "post123",
+                    "text": "My new tweet",
+                    "url": "https://twitter.com/i/status/post123",
+                }
+            }
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_post_created_after_hook_error(self, mock_writer: MagicMock) -> None:
+    def test_post_created_after_hook_empty_post_data_does_not_stream(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_post_created_after_hook,
+        )
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"data": {}})
+        result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
+        assert result == {
+            "success": True,
+            "id": None,
+            "text": None,
+            "url": "https://twitter.com/i/status/None",
+        }
+        writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    def test_post_created_after_hook_no_writer(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_post_created_after_hook,
+        )
+
+        mock_writer.return_value = None
+        response = _make_response({"data": {"id": "post123", "text": "My new tweet"}})
+        result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
+        assert result == {
+            "success": True,
+            "id": "post123",
+            "text": "My new tweet",
+            "url": "https://twitter.com/i/status/post123",
+        }
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_post_created_after_hook_empty_response_logs_key_error(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
         mock_writer.return_value = _noop_writer()
+        response: dict[str, Any] = {}
+        result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
+        assert result == {}
+        _assert_logged_error(
+            mock_log, "Error in twitter_post_created_after_hook", "'data'", "KeyError"
+        )
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_post_created_after_hook_missing_data_key_returns_defaults(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_post_created_after_hook,
+        )
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response: dict[str, Any] = {"successful": True}
+        result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
+        assert result == {
+            "success": True,
+            "id": None,
+            "text": None,
+            "url": "https://twitter.com/i/status/None",
+        }
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_post_created_after_hook_error_response_does_not_log(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_post_created_after_hook,
+        )
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
         response = _make_response({"error": "Duplicate"})
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
         assert result == {"error": "Duplicate"}
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
 
 
 # ============================================================================
@@ -2695,13 +5259,19 @@ class TestEdgeCases:
         assert result is params
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_twitter_search_after_hook_exception_returns_data(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_twitter_search_after_hook_exception_returns_data(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 
         mock_writer.side_effect = RuntimeError("No writer")
         response = _make_response({"data": [], "includes": {}, "meta": {}})
         result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "TWITTER", response)
         assert result == {"data": [], "includes": {}, "meta": {}}
+        _assert_logged_error(
+            mock_log, "Error in twitter_search_after_hook", "No writer", "RuntimeError"
+        )
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
     @patch("app.utils.composio_hooks.reddit_hooks.log")
@@ -3217,7 +5787,10 @@ class TestRedditTwitterAfterHookExceptions:
         )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_twitter_create_post_before_exception(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_twitter_create_post_before_exception(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_create_post_before_hook,
         )
@@ -3226,31 +5799,49 @@ class TestRedditTwitterAfterHookExceptions:
         params = _make_params({"text": "Test"})
         result = twitter_create_post_before_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", params)
         assert result is params
+        _assert_logged_error(
+            mock_log, "Error in twitter_create_post_before_hook", "broken", "RuntimeError"
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_twitter_search_before_exception(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_twitter_search_before_exception(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_search_before_hook
 
         mock_writer.side_effect = RuntimeError("broken")
         params = _make_params({"query": "test"})
         result = twitter_search_before_hook("TWITTER_RECENT_SEARCH", "TWITTER", params)
         assert result is params
+        _assert_logged_error(
+            mock_log, "Error in twitter_search_before_hook", "broken", "RuntimeError"
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_twitter_user_lookup_exception(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_twitter_user_lookup_exception(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_user_lookup_after_hook,
         )
 
         mock_writer.side_effect = RuntimeError("broken")
-        response = _make_response({"data": {"id": "u1"}})
+        response = _make_response({"id": "u1"})
         result = twitter_user_lookup_after_hook(
             "TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER", response
         )
-        assert isinstance(result, dict)
+        assert result == {"id": "u1"}
+        _assert_logged_error(
+            mock_log, "Error in twitter_user_lookup_after_hook", "broken", "RuntimeError"
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_twitter_timeline_exception(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_twitter_timeline_exception(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_timeline_after_hook
 
         mock_writer.side_effect = RuntimeError("broken")
@@ -3258,24 +5849,39 @@ class TestRedditTwitterAfterHookExceptions:
         result = twitter_timeline_after_hook(
             "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", response
         )
-        assert isinstance(result, dict)
+        assert result == {"data": [], "includes": {}}
+        _assert_logged_error(
+            mock_log, "Error in twitter_timeline_after_hook", "broken", "RuntimeError"
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_twitter_followers_exception(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_twitter_followers_exception(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import twitter_followers_after_hook
 
         mock_writer.side_effect = RuntimeError("broken")
         response = _make_response({"data": []})
         result = twitter_followers_after_hook("TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER", response)
-        assert isinstance(result, dict)
+        assert result == {"data": []}
+        _assert_logged_error(
+            mock_log, "Error in twitter_followers_after_hook", "broken", "RuntimeError"
+        )
 
     @patch("app.utils.composio_hooks.twitter_hooks.get_stream_writer")
-    def test_twitter_post_created_exception(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.twitter_hooks.log")
+    def test_twitter_post_created_exception(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
             twitter_post_created_after_hook,
         )
 
         mock_writer.side_effect = RuntimeError("broken")
-        response = _make_response({"data": {"id": "p1"}})
+        response = _make_response({"id": "p1"})
         result = twitter_post_created_after_hook("TWITTER_CREATION_OF_A_POST", "TWITTER", response)
-        assert isinstance(result, dict)
+        assert result == {"id": "p1"}
+        _assert_logged_error(
+            mock_log, "Error in twitter_post_created_after_hook", "broken", "RuntimeError"
+        )
