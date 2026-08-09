@@ -792,7 +792,16 @@ jobs:
   suppression-ratchet:
     name: "Suppression ratchet (no new # noqa / # type: ignore / biome-ignore)"
     needs: [changes]
-    if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
+    # The develop -> master promotion PR is exempt. Its diff is every commit
+    # since the last release, and each of those was already ratcheted against
+    # develop on the way in — re-measuring the whole range against master
+    # reports ~27 files of grandfathered suppressions as new, failing the
+    # release for work that was reviewed weeks ago. head_ref/base_ref are set
+    # only on pull_request, so pushes to develop/master stay ratcheted, as do
+    # all feature PRs into develop.
+    if: >-
+      (needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true')
+      && !(github.base_ref == 'master' && github.head_ref == 'develop')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
