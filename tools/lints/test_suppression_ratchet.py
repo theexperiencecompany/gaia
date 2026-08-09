@@ -15,6 +15,17 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "ci" / "check-suppression-ratchet.sh"
 
+# The fixtures embed real suppression syntax, so the ratchet counts this file's own
+# test data as live suppressions — precisely the unavoidable case the marker exists
+# for, and the first thing to dogfood it. Fixtures whose text already carries a
+# valid `-- reason` are exempt on their own; only these two need the marker.
+BARE = "x = 1  # noqa: E402\n"  # ratchet-allow -- fixture text, not a live suppression
+NO_REASON = "x = 1  # noqa: E402  # ratchet-allow\n"  # ratchet-allow -- fixture text
+EMPTY_REASON = "x = 1  # noqa: E402  # ratchet-allow --\n"
+ALLOWED = "x = 1  # noqa: E402  # ratchet-allow -- bootstrap precedes imports\n"
+ALLOWED_PLUS_BARE = "x = 1  # noqa: E402  # ratchet-allow -- ok\ny = 2  # noqa: F401\n"
+TS_ALLOWED = "// biome-ignore lint: x  // ratchet-allow -- generated shim\nconst x = 1\n"
+
 
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
@@ -48,37 +59,37 @@ def run(repo: Path, py: str, ts: str = "const x = 1\n") -> subprocess.CompletedP
 
 
 def test_bare_suppression_fails(repo: Path) -> None:
-    assert run(repo, "x = 1  # noqa: E402\n").returncode == 1
+    assert run(repo, BARE).returncode == 1
 
 
 def test_allow_with_reason_passes(repo: Path) -> None:
-    r = run(repo, "x = 1  # noqa: E402  # ratchet-allow -- bootstrap precedes imports\n")
+    r = run(repo, ALLOWED)
     assert r.returncode == 0
     assert "1 ratchet-allow(s) across 1 changed file(s)" in r.stdout
 
 
 def test_allow_without_reason_still_fails_and_warns(repo: Path) -> None:
-    r = run(repo, "x = 1  # noqa: E402  # ratchet-allow\n")
+    r = run(repo, NO_REASON)
     assert r.returncode == 1
     assert "ratchet-allow with no reason" in r.stderr
 
 
 def test_allow_with_empty_reason_fails(repo: Path) -> None:
-    assert run(repo, "x = 1  # noqa: E402  # ratchet-allow --\n").returncode == 1
+    assert run(repo, EMPTY_REASON).returncode == 1
 
 
 def test_typescript_allow_with_reason_passes(repo: Path) -> None:
     r = run(
         repo,
         "x = 1\n",
-        "// biome-ignore lint: x  // ratchet-allow -- generated shim\nconst x = 1\n",
+        TS_ALLOWED,
     )
     assert r.returncode == 0
 
 
 def test_allowed_line_does_not_mask_a_bare_one(repo: Path) -> None:
     """The allowance is line-scoped: it must not exempt the rest of the file."""
-    r = run(repo, "x = 1  # noqa: E402  # ratchet-allow -- ok\ny = 2  # noqa: F401\n")
+    r = run(repo, ALLOWED_PLUS_BARE)
     assert r.returncode == 1
 
 
