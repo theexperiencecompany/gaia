@@ -31,7 +31,7 @@ class ProviderConfig:
     discount_pct: float = 0.0
 
     def configured(self) -> bool:
-        return bool(self.api_key or self.lane == "gemini")
+        return bool(self.api_key)
 
 
 @dataclass
@@ -70,7 +70,11 @@ def load_config(path: Path = CONFIG_PATH) -> EvalConfig:
 
     providers: dict[str, ProviderConfig] = {}
     for name, p in raw["providers"].items():
-        base = _env_or_empty(p.get("base_url_env", ""), "DEV_LLM_BASE_URL")
+        # No DEV_LLM_BASE_URL fallback: a lane that declares no base URL is a
+        # native one (openrouter, gemini), and handing it the custom development
+        # endpoint pointed its health probe — and any rotation retry — at the
+        # very backend it exists to be an alternative to.
+        base = _env_or_empty(p.get("base_url_env", ""))
         key = _env_or_empty(p.get("api_key_env", ""))
         model = _env_or_empty(p.get("model_env", ""))
         if not model:
@@ -109,11 +113,20 @@ def judge_model(cfg: EvalConfig) -> str:
 
 
 def health_check(p: ProviderConfig) -> ProviderHealth:
-    """Cheap 1-token probe; skips (with reason) when credentials are missing."""
+    """Cheap 1-token probe; skips (with reason) when credentials are missing.
+
+    The key check comes first for every lane. A lane exempt from the probe used
+    to be exempt from the key check too, so ``gemini`` reported healthy with no
+    ``GOOGLE_API_KEY`` at all: the run added it to the rotation and then failed
+    at transport time on every single case, one authentication error at a time.
+    """
     if not p.configured():
         return ProviderHealth(False, f"no API key for provider '{p.name}' (env missing)")
-    if p.lane == "gemini":
-        return ProviderHealth(True, "gemini lane verified by key presence only")
+    if p.lane != _DEFAULT_LANE:
+        # Only the custom lane exposes an OpenAI-compatible base URL we can
+        # probe. A native lane is served through the app's own client, so the
+        # key is the only thing checkable from here.
+        return ProviderHealth(True, f"{p.lane} lane verified by key presence only")
     if not p.base_url:
         return ProviderHealth(False, f"provider '{p.name}' has no base URL")
     url = p.base_url.rstrip("/") + "/chat/completions"
@@ -155,8 +168,15 @@ def pin_settings(provider: ProviderConfig) -> None:
     Mutates the shared settings singleton and resets the lazy provider so the
     next graph build re-initializes against the new base URL/key/model.
     """
-    if provider.lane != "custom":
+    if provider.lane != _DEFAULT_LANE:
         return
+    # Deliberately deferred, against the repo's no-inline-imports rule: importing
+    # app settings constructs and validates the whole singleton, which raises on
+    # a missing env var. At module scope that would fire during `load_config` —
+    # so `evals verify`, `cost`, `flaky` and `--help`, none of which touch the
+    # app, would die on the environment instead of doing their (offline) job.
+    # `_load_failure` exists precisely to explain that failure when a suite run
+    # legitimately provokes it.
     from app.config.settings import settings
     from app.core.lazy_loader import providers
 
