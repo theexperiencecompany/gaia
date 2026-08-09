@@ -181,8 +181,16 @@ def _spy_tramp_mangle(name):
         traceback.print_stack()
     return _orig_tramp_mangle(name)
 _tramp_mod.mangled_name_from_mutant_name = _spy_tramp_mangle
+max_children = os.environ.get("MUTMUT_MAX_CHILDREN", "")
+run_args = ['run'] + (['--max-children', max_children] if max_children else [])
+child_code = (
+    'import mutmut_decorated_patch; '
+    'import sys as _sys; '
+    f'_sys.argv += {run_args!r}; '
+    'from mutmut.__main__ import cli; cli()'
+)
 proc = subprocess.Popen(
-    [sys.executable, '-c', 'import mutmut_decorated_patch; from mutmut.__main__ import cli; cli()', 'run'],
+    [sys.executable, '-c', child_code],
     env=env,
     start_new_session=True,
 )
