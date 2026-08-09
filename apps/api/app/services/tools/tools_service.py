@@ -227,6 +227,6 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
     stored = await get_mcp_tools_store().get_tools(integration_id)
     return [
         IntegrationTool(name=tool["name"], description=tool.get("description"))
-        for tool in stored
+        for tool in (stored or [])
         if tool.get("name")
     ]
