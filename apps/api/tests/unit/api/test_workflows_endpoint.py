@@ -30,16 +30,26 @@ from pymongo.errors import DuplicateKeyError
 
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
+    CreateWorkflowRequest,
+    PromptTriggerHint,
     PublicWorkflowRow,
     PublicWorkflowsResponse,
+    UpdateWorkflowRequest,
     Workflow,
     WorkflowCreatorInfo,
     WorkflowDocument,
+    WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
 )
+from app.utils.exceptions import TriggerRegistrationError
 
 BASE_URL = "/api/v1/workflows"
+
+# Fake user resolved by the client fixture's auth override.
+USER_ID = "507f1f77bcf86cd799439011"
+# FAKE_USER stores timezone "UTC"; get_user_timezone_from_preferences resolves it to "UTC".
+USER_TIMEZONE = "UTC"
 
 # Patch targets
 _WF_SERVICE = "app.api.v1.endpoints.workflows.WorkflowService"
@@ -48,13 +58,14 @@ _WF_REPO = "app.api.v1.endpoints.workflows.workflow_repository"
 _GET_EXECUTIONS = "app.api.v1.endpoints.workflows.get_executions"
 _GEN_SLUG = "app.api.v1.endpoints.workflows.generate_unique_workflow_slug"
 _RESET_DEFAULT = "app.api.v1.endpoints.workflows.reset_system_workflow_to_default"
+_INTEGRATIONS_STATUS = "app.api.v1.endpoints.workflows.get_all_integrations_status"
 
 
 def _make_workflow(**overrides) -> Workflow:
     """Build a real Workflow Pydantic model instance for service mock returns."""
     base: dict = {
         "id": "wf_abc123",
-        "user_id": "507f1f77bcf86cd799439011",
+        "user_id": USER_ID,
         "title": "My Workflow",
         "description": "A test workflow",
         "prompt": "Do the thing",
@@ -97,6 +108,31 @@ def _create_workflow_payload(**overrides) -> dict:
     return base
 
 
+def _assert_workflow_body(data: dict, *, id: str = "wf_abc123", title: str = "My Workflow") -> None:
+    """Pin the serialized workflow shape the wire contract promises."""
+    workflow = data["workflow"]
+    assert workflow["id"] == id
+    assert workflow["user_id"] == USER_ID
+    assert workflow["title"] == title
+    assert workflow["description"] == "A test workflow"
+    assert workflow["prompt"] == "Do the thing"
+    assert workflow["steps"] == [
+        {
+            "id": "step_1",
+            "title": "Step 1",
+            "category": "general",
+            "description": "First step",
+        }
+    ]
+    assert workflow["trigger_config"]["type"] == "manual"
+    assert workflow["trigger_config"]["enabled"] is True
+    assert workflow["activated"] is True
+    assert workflow["is_public"] is False
+    assert workflow["slug"] is None
+    assert workflow["integration_ids"] == []
+    assert workflow["created_at"] == "2025-01-01T00:00:00+00:00"
+
+
 # ---------------------------------------------------------------------------
 # POST /workflows
 # ---------------------------------------------------------------------------
@@ -109,7 +145,7 @@ class TestCreateWorkflow:
         mock_wf = _make_workflow()
         with (
             patch(
-                "app.api.v1.endpoints.workflows.get_all_integrations_status",
+                _INTEGRATIONS_STATUS,
                 new_callable=AsyncMock,
                 return_value={},
             ),
@@ -117,13 +153,110 @@ class TestCreateWorkflow:
                 f"{_WF_SERVICE}.create_workflow",
                 new_callable=AsyncMock,
                 return_value=mock_wf,
-            ),
+            ) as mock_create,
         ):
             response = await client.post(BASE_URL, json=_create_workflow_payload())
 
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "Workflow created successfully"
+        _assert_workflow_body(data)
+
+        assert mock_create.await_count == 1
+        assert mock_create.await_args.args[1] == USER_ID
+        assert mock_create.await_args.kwargs == {"user_timezone": USER_TIMEZONE}
+        sent_request: CreateWorkflowRequest = mock_create.await_args.args[0]
+        assert sent_request.title == "My Workflow"
+        assert sent_request.prompt == "Do the thing for me"
+        assert sent_request.trigger_config.type.value == "manual"
+        assert sent_request.trigger_config.enabled is True
+
+    async def test_create_workflow_strips_system_fields(self, client: AsyncClient):
+        """System fields sent by a client are stripped before reaching the service."""
+        with (
+            patch(_INTEGRATIONS_STATUS, new_callable=AsyncMock, return_value={}),
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
+            ) as mock_create,
+        ):
+            response = await client.post(
+                BASE_URL,
+                json=_create_workflow_payload(
+                    is_system_workflow=True,
+                    source_integration="gmail",
+                    system_workflow_key="gmail:email_intelligence",
+                ),
+            )
+
+        assert response.status_code == 200
+        sent_request: CreateWorkflowRequest = mock_create.await_args.args[0]
+        assert sent_request.is_system_workflow is False
+        assert sent_request.source_integration is None
+        assert sent_request.system_workflow_key is None
+
+    async def test_create_workflow_defaults_integration_ids_from_connected(
+        self, client: AsyncClient
+    ):
+        """No integration_ids in the payload → default to the user's connected ones."""
+        with (
+            patch(
+                _INTEGRATIONS_STATUS,
+                new_callable=AsyncMock,
+                return_value={"gmail": True, "slack": False, "notion": True},
+            ) as status_map,
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
+            ) as mock_create,
+        ):
+            response = await client.post(BASE_URL, json=_create_workflow_payload())
+
+        assert response.status_code == 200
+        sent_request: CreateWorkflowRequest = mock_create.await_args.args[0]
+        assert sent_request.integration_ids == ["gmail", "notion"]
+        status_map.assert_awaited_once_with(USER_ID)
+
+    async def test_create_workflow_no_connected_integrations_leaves_ids_none(
+        self, client: AsyncClient
+    ):
+        """Nothing connected → integration_ids stays None (the `or None` sentinel)."""
+        with (
+            patch(_INTEGRATIONS_STATUS, new_callable=AsyncMock, return_value={}),
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
+            ) as mock_create,
+        ):
+            response = await client.post(BASE_URL, json=_create_workflow_payload())
+
+        assert response.status_code == 200
+        sent_request: CreateWorkflowRequest = mock_create.await_args.args[0]
+        assert sent_request.integration_ids is None
+
+    async def test_create_workflow_keeps_explicit_integration_ids(self, client: AsyncClient):
+        """Payload integration_ids win — the status map is not consulted."""
+        status_map = AsyncMock()
+        with (
+            patch(_INTEGRATIONS_STATUS, status_map),
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
+            ) as mock_create,
+        ):
+            response = await client.post(
+                BASE_URL,
+                json=_create_workflow_payload(integration_ids=["gmail"]),
+            )
+
+        assert response.status_code == 200
+        sent_request: CreateWorkflowRequest = mock_create.await_args.args[0]
+        assert sent_request.integration_ids == ["gmail"]
+        status_map.assert_not_awaited()
 
     async def test_create_workflow_missing_title_returns_422(self, client: AsyncClient):
         response = await client.post(
@@ -154,11 +287,7 @@ class TestCreateWorkflow:
 
     async def test_create_workflow_value_error_returns_400(self, client: AsyncClient):
         with (
-            patch(
-                "app.api.v1.endpoints.workflows.get_all_integrations_status",
-                new_callable=AsyncMock,
-                return_value={},
-            ),
+            patch(_INTEGRATIONS_STATUS, new_callable=AsyncMock, return_value={}),
             patch(
                 f"{_WF_SERVICE}.create_workflow",
                 new_callable=AsyncMock,
@@ -168,6 +297,23 @@ class TestCreateWorkflow:
             response = await client.post(BASE_URL, json=_create_workflow_payload())
 
         assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid trigger config"
+
+    async def test_create_workflow_trigger_registration_error_returns_400(
+        self, client: AsyncClient
+    ):
+        with (
+            patch(_INTEGRATIONS_STATUS, new_callable=AsyncMock, return_value={}),
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                side_effect=TriggerRegistrationError("Trigger failed", "gmail_new_message"),
+            ),
+        ):
+            response = await client.post(BASE_URL, json=_create_workflow_payload())
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Trigger failed"
 
     async def test_create_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -178,6 +324,7 @@ class TestCreateWorkflow:
             response = await client.post(BASE_URL, json=_create_workflow_payload())
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to create workflow"
 
 
 # ---------------------------------------------------------------------------
@@ -193,10 +340,14 @@ class TestListWorkflows:
             f"{_WF_SERVICE}.list_workflows",
             new_callable=AsyncMock,
             return_value=([_make_workflow()], 1),
-        ):
+        ) as mock_list:
             response = await client.get(BASE_URL)
 
         assert response.status_code == 200
+        data = response.json()
+        assert len(data["workflows"]) == 1
+        _assert_workflow_body({"workflow": data["workflows"][0], "message": ""})
+        mock_list.assert_awaited_once_with(USER_ID)
 
     async def test_list_workflows_empty(self, client: AsyncClient):
         with patch(
@@ -207,6 +358,7 @@ class TestListWorkflows:
             response = await client.get(BASE_URL)
 
         assert response.status_code == 200
+        assert response.json() == {"workflows": []}
 
     async def test_list_workflows_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -217,6 +369,7 @@ class TestListWorkflows:
             response = await client.get(BASE_URL)
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to list workflows"
 
 
 # ---------------------------------------------------------------------------
@@ -236,10 +389,17 @@ class TestExecuteWorkflow:
             f"{_WF_SERVICE}.execute_workflow",
             new_callable=AsyncMock,
             return_value=mock_result,
-        ):
+        ) as mock_execute:
             response = await client.post(f"{BASE_URL}/wf_abc123/execute", json={})
 
         assert response.status_code == 200
+        assert response.json() == {
+            "execution_id": "exec_123",
+            "message": "Workflow execution started",
+        }
+        mock_execute.assert_awaited_once_with(
+            "wf_abc123", WorkflowExecutionRequest(context=None), USER_ID
+        )
 
     async def test_execute_workflow_with_context(self, client: AsyncClient):
         mock_result = WorkflowExecutionResponse(
@@ -250,13 +410,17 @@ class TestExecuteWorkflow:
             f"{_WF_SERVICE}.execute_workflow",
             new_callable=AsyncMock,
             return_value=mock_result,
-        ):
+        ) as mock_execute:
             response = await client.post(
                 f"{BASE_URL}/wf_abc123/execute",
                 json={"context": {"key": "value"}},
             )
 
         assert response.status_code == 200
+        assert response.json()["execution_id"] == "exec_123"
+        mock_execute.assert_awaited_once_with(
+            "wf_abc123", WorkflowExecutionRequest(context={"key": "value"}), USER_ID
+        )
 
     async def test_execute_workflow_value_error_returns_400(self, client: AsyncClient):
         with patch(
@@ -267,6 +431,7 @@ class TestExecuteWorkflow:
             response = await client.post(f"{BASE_URL}/wf_abc123/execute", json={})
 
         assert response.status_code == 400
+        assert response.json()["detail"] == "Workflow is deactivated"
 
     async def test_execute_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -277,6 +442,7 @@ class TestExecuteWorkflow:
             response = await client.post(f"{BASE_URL}/wf_abc123/execute", json={})
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to execute workflow"
 
 
 # ---------------------------------------------------------------------------
@@ -297,10 +463,17 @@ class TestGetWorkflowExecutions:
             _GET_EXECUTIONS,
             new_callable=AsyncMock,
             return_value=mock_result,
-        ):
+        ) as mock_get:
             response = await client.get(f"{BASE_URL}/wf_abc123/executions")
 
         assert response.status_code == 200
+        assert response.json() == {"executions": [], "total": 0, "has_more": False}
+        mock_get.assert_awaited_once_with(
+            workflow_id="wf_abc123",
+            user_id=USER_ID,
+            limit=10,
+            offset=0,
+        )
 
     async def test_get_executions_with_pagination(self, client: AsyncClient):
         mock_result = WorkflowExecutionsResponse(executions=[], total=0, has_more=False)
@@ -316,9 +489,43 @@ class TestGetWorkflowExecutions:
 
         mock_get.assert_awaited_once_with(
             workflow_id="wf_abc123",
-            user_id="507f1f77bcf86cd799439011",
+            user_id=USER_ID,
             limit=5,
             offset=10,
+        )
+
+    async def test_get_executions_clamps_limit_above_max(self, client: AsyncClient):
+        mock_result = WorkflowExecutionsResponse(executions=[], total=0, has_more=False)
+        with patch(
+            _GET_EXECUTIONS,
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_get:
+            response = await client.get(
+                f"{BASE_URL}/wf_abc123/executions",
+                params={"limit": 1000},
+            )
+
+        assert response.status_code == 200
+        mock_get.assert_awaited_once_with(
+            workflow_id="wf_abc123", user_id=USER_ID, limit=100, offset=0
+        )
+
+    async def test_get_executions_clamps_limit_and_offset_below_min(self, client: AsyncClient):
+        mock_result = WorkflowExecutionsResponse(executions=[], total=0, has_more=False)
+        with patch(
+            _GET_EXECUTIONS,
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_get:
+            response = await client.get(
+                f"{BASE_URL}/wf_abc123/executions",
+                params={"limit": 0, "offset": -5},
+            )
+
+        assert response.status_code == 200
+        mock_get.assert_awaited_once_with(
+            workflow_id="wf_abc123", user_id=USER_ID, limit=1, offset=0
         )
 
     async def test_get_executions_service_error_returns_500(self, client: AsyncClient):
@@ -330,6 +537,7 @@ class TestGetWorkflowExecutions:
             response = await client.get(f"{BASE_URL}/wf_abc123/executions")
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to get workflow executions"
 
 
 # ---------------------------------------------------------------------------
@@ -355,10 +563,21 @@ class TestGetWorkflowStatus:
             f"{_WF_SERVICE}.get_workflow_status",
             new_callable=AsyncMock,
             return_value=mock_status,
-        ):
+        ) as mock_status_call:
             response = await client.get(f"{BASE_URL}/wf_abc123/status")
 
         assert response.status_code == 200
+        assert response.json() == {
+            "workflow_id": "wf_abc123",
+            "activated": True,
+            "current_step_index": 0,
+            "total_steps": 3,
+            "progress_percentage": 0.0,
+            "last_updated": "2025-01-01T00:00:00Z",
+            "error_message": None,
+            "logs": [],
+        }
+        mock_status_call.assert_awaited_once_with("wf_abc123", USER_ID)
 
     async def test_get_status_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -369,6 +588,7 @@ class TestGetWorkflowStatus:
             response = await client.get(f"{BASE_URL}/wf_nonexist/status")
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Workflow not found"
 
     async def test_get_status_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -379,6 +599,7 @@ class TestGetWorkflowStatus:
             response = await client.get(f"{BASE_URL}/wf_abc123/status")
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to get workflow status"
 
 
 # ---------------------------------------------------------------------------
@@ -395,11 +616,16 @@ class TestActivateWorkflow:
             f"{_WF_SERVICE}.activate_workflow",
             new_callable=AsyncMock,
             return_value=mock_wf,
-        ):
+        ) as mock_activate:
             response = await client.post(f"{BASE_URL}/wf_abc123/activate")
 
         assert response.status_code == 200
-        assert response.json()["message"] == "Workflow activated successfully"
+        data = response.json()
+        assert data["message"] == "Workflow activated successfully"
+        _assert_workflow_body(data)
+        mock_activate.assert_awaited_once_with(
+            "wf_abc123", USER_ID, user_timezone=USER_TIMEZONE
+        )
 
     async def test_activate_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -410,6 +636,29 @@ class TestActivateWorkflow:
             response = await client.post(f"{BASE_URL}/wf_nonexist/activate")
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Workflow wf_nonexist not found"
+
+    async def test_activate_value_error_returns_400(self, client: AsyncClient):
+        with patch(
+            f"{_WF_SERVICE}.activate_workflow",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Missing step integrations"),
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/activate")
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Missing step integrations"
+
+    async def test_activate_trigger_registration_error_returns_400(self, client: AsyncClient):
+        with patch(
+            f"{_WF_SERVICE}.activate_workflow",
+            new_callable=AsyncMock,
+            side_effect=TriggerRegistrationError("Trigger failed", "gmail_new_message"),
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/activate")
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Trigger failed"
 
     async def test_activate_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -420,6 +669,7 @@ class TestActivateWorkflow:
             response = await client.post(f"{BASE_URL}/wf_abc123/activate")
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to activate workflow"
 
 
 # ---------------------------------------------------------------------------
@@ -436,11 +686,16 @@ class TestDeactivateWorkflow:
             f"{_WF_SERVICE}.deactivate_workflow",
             new_callable=AsyncMock,
             return_value=mock_wf,
-        ):
+        ) as mock_deactivate:
             response = await client.post(f"{BASE_URL}/wf_abc123/deactivate")
 
         assert response.status_code == 200
-        assert response.json()["message"] == "Workflow deactivated successfully"
+        data = response.json()
+        assert data["message"] == "Workflow deactivated successfully"
+        assert data["workflow"]["activated"] is False
+        mock_deactivate.assert_awaited_once_with(
+            "wf_abc123", USER_ID, user_timezone=USER_TIMEZONE
+        )
 
     async def test_deactivate_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -451,6 +706,7 @@ class TestDeactivateWorkflow:
             response = await client.post(f"{BASE_URL}/wf_nonexist/deactivate")
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Workflow wf_nonexist not found"
 
     async def test_deactivate_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -461,6 +717,7 @@ class TestDeactivateWorkflow:
             response = await client.post(f"{BASE_URL}/wf_abc123/deactivate")
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to deactivate workflow"
 
 
 # ---------------------------------------------------------------------------
@@ -477,13 +734,49 @@ class TestRegenerateSteps:
             f"{_WF_SERVICE}.regenerate_workflow_steps",
             new_callable=AsyncMock,
             return_value=mock_wf,
-        ):
+        ) as mock_regenerate:
+            response = await client.post(
+                f"{BASE_URL}/wf_abc123/regenerate-steps",
+                json={
+                    "instruction": "Make it better",
+                    "reason": "User asked",
+                    "force_different_tools": True,
+                    "integration_ids": ["gmail"],
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["message"] == "Workflow regeneration started"
+        _assert_workflow_body(data)
+        mock_regenerate.assert_awaited_once_with(
+            "wf_abc123",
+            USER_ID,
+            regeneration_reason="User asked",
+            force_different_tools=True,
+            integration_ids=["gmail"],
+        )
+
+    async def test_regenerate_steps_passes_defaults(self, client: AsyncClient):
+        mock_wf = _make_workflow()
+        with patch(
+            f"{_WF_SERVICE}.regenerate_workflow_steps",
+            new_callable=AsyncMock,
+            return_value=mock_wf,
+        ) as mock_regenerate:
             response = await client.post(
                 f"{BASE_URL}/wf_abc123/regenerate-steps",
                 json={"instruction": "Make it better"},
             )
 
         assert response.status_code == 200
+        mock_regenerate.assert_awaited_once_with(
+            "wf_abc123",
+            USER_ID,
+            regeneration_reason=None,
+            force_different_tools=False,
+            integration_ids=None,
+        )
 
     async def test_regenerate_steps_not_found_returns_500(self, client: AsyncClient):
         """When the service returns None the endpoint raises HTTPException(404)
@@ -501,6 +794,21 @@ class TestRegenerateSteps:
             )
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to regenerate workflow steps"
+
+    async def test_regenerate_steps_value_error_returns_400(self, client: AsyncClient):
+        with patch(
+            f"{_WF_SERVICE}.regenerate_workflow_steps",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Cannot regenerate"),
+        ):
+            response = await client.post(
+                f"{BASE_URL}/wf_abc123/regenerate-steps",
+                json={"instruction": "Change tools"},
+            )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Cannot regenerate"
 
     async def test_regenerate_steps_missing_instruction_returns_422(self, client: AsyncClient):
         response = await client.post(
@@ -521,6 +829,7 @@ class TestRegenerateSteps:
             )
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to regenerate workflow steps"
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +846,7 @@ class TestCreateWorkflowFromTodo:
             f"{_WF_SERVICE}.create_workflow",
             new_callable=AsyncMock,
             return_value=mock_wf,
-        ):
+        ) as mock_create:
             response = await client.post(
                 f"{BASE_URL}/from-todo",
                 json={
@@ -548,7 +857,43 @@ class TestCreateWorkflowFromTodo:
             )
 
         assert response.status_code == 200
-        assert "Workflow created from todo" in response.json()["message"]
+        data = response.json()
+        assert data["message"] == "Workflow created from todo successfully"
+        assert data["workflow"]["title"] == "Todo: Buy groceries"
+
+        mock_create.assert_awaited_once()
+        expected = CreateWorkflowRequest(
+            title="Todo: Buy groceries",
+            description="Workflow for todo: Buy groceries",
+            prompt="Get milk, eggs, and bread",
+            trigger_config={"type": "manual", "enabled": True},
+            generate_immediately=True,
+        )
+        assert mock_create.await_args.args[0] == expected
+        assert mock_create.await_args.args[1] == USER_ID
+        assert mock_create.await_args.kwargs == {"user_timezone": USER_TIMEZONE}
+
+    async def test_from_todo_prompt_falls_back_to_title(self, client: AsyncClient):
+        """No todo_description → prompt becomes 'Complete todo: {title}'."""
+        with patch(
+            f"{_WF_SERVICE}.create_workflow",
+            new_callable=AsyncMock,
+            return_value=_make_workflow(),
+        ) as mock_create:
+            response = await client.post(
+                f"{BASE_URL}/from-todo",
+                json={"todo_id": "todo_123", "todo_title": "Buy groceries"},
+            )
+
+        assert response.status_code == 200
+        expected = CreateWorkflowRequest(
+            title="Todo: Buy groceries",
+            description="Workflow for todo: Buy groceries",
+            prompt="Complete todo: Buy groceries",
+            trigger_config={"type": "manual", "enabled": True},
+            generate_immediately=True,
+        )
+        assert mock_create.await_args.args[0] == expected
 
     async def test_from_todo_missing_todo_id_returns_400(self, client: AsyncClient):
         response = await client.post(
@@ -556,6 +901,7 @@ class TestCreateWorkflowFromTodo:
             json={"todo_title": "Buy groceries"},
         )
         assert response.status_code == 400
+        assert response.json()["detail"] == "todo_id and todo_title are required"
 
     async def test_from_todo_missing_todo_title_returns_400(self, client: AsyncClient):
         response = await client.post(
@@ -563,6 +909,7 @@ class TestCreateWorkflowFromTodo:
             json={"todo_id": "todo_123"},
         )
         assert response.status_code == 400
+        assert response.json()["detail"] == "todo_id and todo_title are required"
 
     async def test_from_todo_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -576,6 +923,7 @@ class TestCreateWorkflowFromTodo:
             )
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to create workflow from todo"
 
 
 # ---------------------------------------------------------------------------
@@ -589,20 +937,25 @@ class TestPublishWorkflow:
     async def test_publish_returns_200(self, client: AsyncClient):
         doc = _make_workflow_doc(title="My Public Workflow", slug=None)
         with (
-            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
-            patch(f"{_WF_REPO}.publish", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc)
+            as get_for_user,
+            patch(f"{_WF_REPO}.publish", new_callable=AsyncMock, return_value=doc) as publish,
             patch(
                 _GEN_SLUG,
                 new_callable=AsyncMock,
                 return_value="my-public-workflow-abc123",
-            ),
+            ) as gen,
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/publish")
 
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "Workflow published successfully"
+        assert data["workflow_id"] == "wf_abc123"
         assert data["slug"] == "my-public-workflow-abc123"
+        get_for_user.assert_awaited_once_with("wf_abc123", USER_ID)
+        publish.assert_awaited_once_with("wf_abc123", created_by=USER_ID, slug="my-public-workflow-abc123")
+        gen.assert_awaited_once_with(doc.title, exclude_id="wf_abc123")
 
     async def test_publish_keeps_existing_slug(self, client: AsyncClient):
         """A workflow that already has a slug re-publishes with it — no regen."""
@@ -618,7 +971,9 @@ class TestPublishWorkflow:
         assert response.status_code == 200
         assert response.json()["slug"] == "already-set-abcdef"
         gen.assert_not_awaited()
-        assert publish.await_args.kwargs["slug"] == "already-set-abcdef"
+        publish.assert_awaited_once_with(
+            "wf_abc123", created_by=USER_ID, slug="already-set-abcdef"
+        )
 
     async def test_publish_retries_on_duplicate_slug(self, client: AsyncClient):
         """A generated-slug collision retries with a fresh slug (the unique-index race)."""
@@ -634,12 +989,62 @@ class TestPublishWorkflow:
         assert response.status_code == 200
         assert publish.await_count == 2
         assert response.json()["slug"] == "slug-2"
+        assert response.json()["workflow_id"] == "wf_abc123"
+
+    async def test_publish_empty_generated_slug_becomes_empty_string(self, client: AsyncClient):
+        """A falsy generated slug is normalized to '' before publish (slug=slug or '')."""
+        doc = _make_workflow_doc(slug=None)
+        with (
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.publish", new_callable=AsyncMock, return_value=doc) as publish,
+            patch(_GEN_SLUG, new_callable=AsyncMock, return_value=None),
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/publish")
+
+        assert response.status_code == 200
+        assert response.json()["slug"] is None
+        publish.assert_awaited_once_with("wf_abc123", created_by=USER_ID, slug="")
+
+    async def test_publish_exhausts_retries_returns_500(self, client: AsyncClient):
+        """Five consecutive collisions on fresh slugs → the retry loop gives up."""
+        doc = _make_workflow_doc(slug=None)
+        publish = AsyncMock(side_effect=DuplicateKeyError("dup"))
+        with (
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.publish", publish),
+            patch(_GEN_SLUG, new_callable=AsyncMock, side_effect=["s1", "s2", "s3", "s4", "s5"]),
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/publish")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Could not allocate a unique slug, please retry"
+        assert publish.await_count == 5
+
+    async def test_publish_existing_slug_collision_returns_500(self, client: AsyncClient):
+        """A collision on an existing slug re-raises — never regenerated."""
+        doc = _make_workflow_doc(slug="already-set-abcdef")
+        gen = AsyncMock()
+        with (
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(
+                f"{_WF_REPO}.publish",
+                new_callable=AsyncMock,
+                side_effect=DuplicateKeyError("dup"),
+            ),
+            patch(_GEN_SLUG, gen),
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/publish")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to publish workflow"
+        gen.assert_not_awaited()
 
     async def test_publish_not_found_returns_404(self, client: AsyncClient):
         with patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=None):
             response = await client.post(f"{BASE_URL}/wf_nonexist/publish")
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Workflow not found or access denied"
 
     async def test_publish_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -650,6 +1055,7 @@ class TestPublishWorkflow:
             response = await client.post(f"{BASE_URL}/wf_abc123/publish")
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to publish workflow"
 
 
 # ---------------------------------------------------------------------------
@@ -663,19 +1069,39 @@ class TestUnpublishWorkflow:
     async def test_unpublish_returns_200(self, client: AsyncClient):
         doc = _make_workflow_doc(is_public=True)
         with (
-            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
-            patch(f"{_WF_REPO}.unpublish", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc)
+            as get_for_user,
+            patch(f"{_WF_REPO}.unpublish", new_callable=AsyncMock, return_value=doc)
+            as unpublish,
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/unpublish")
 
         assert response.status_code == 200
-        assert response.json()["message"] == "Workflow unpublished successfully"
+        assert response.json() == {"message": "Workflow unpublished successfully"}
+        get_for_user.assert_awaited_once_with("wf_abc123", USER_ID)
+        unpublish.assert_awaited_once_with("wf_abc123")
 
     async def test_unpublish_not_found_returns_404(self, client: AsyncClient):
         with patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=None):
             response = await client.post(f"{BASE_URL}/wf_nonexist/unpublish")
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Workflow not found or access denied"
+
+    async def test_unpublish_service_error_returns_500(self, client: AsyncClient):
+        doc = _make_workflow_doc(is_public=True)
+        with (
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(
+                f"{_WF_REPO}.unpublish",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("DB error"),
+            ),
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/unpublish")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to unpublish workflow"
 
 
 # ---------------------------------------------------------------------------
@@ -692,10 +1118,24 @@ class TestExploreWorkflows:
             f"{_WF_SERVICE}.get_explore_workflows",
             new_callable=AsyncMock,
             return_value=mock_result,
-        ):
+        ) as mock_explore:
             response = await client.get(f"{BASE_URL}/explore")
 
         assert response.status_code == 200
+        assert response.json() == {"workflows": [], "total": 0}
+        mock_explore.assert_awaited_once_with(limit=25, offset=0)
+
+    async def test_explore_passes_pagination(self, client: AsyncClient):
+        mock_result = PublicWorkflowsResponse(workflows=[], total=0)
+        with patch(
+            f"{_WF_SERVICE}.get_explore_workflows",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_explore:
+            response = await client.get(f"{BASE_URL}/explore", params={"limit": 5, "offset": 10})
+
+        assert response.status_code == 200
+        mock_explore.assert_awaited_once_with(limit=5, offset=10)
 
     async def test_explore_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -706,6 +1146,7 @@ class TestExploreWorkflows:
             response = await client.get(f"{BASE_URL}/explore")
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to fetch explore workflows"
 
 
 # ---------------------------------------------------------------------------
@@ -722,10 +1163,26 @@ class TestCommunityWorkflows:
             f"{_WF_SERVICE}.get_community_workflows",
             new_callable=AsyncMock,
             return_value=mock_result,
-        ):
+        ) as mock_community:
             response = await client.get(f"{BASE_URL}/community")
 
         assert response.status_code == 200
+        assert response.json() == {"workflows": [], "total": 0}
+        mock_community.assert_awaited_once_with(limit=20, offset=0, user_id=None)
+
+    async def test_community_passes_pagination(self, client: AsyncClient):
+        mock_result = PublicWorkflowsResponse(workflows=[], total=0)
+        with patch(
+            f"{_WF_SERVICE}.get_community_workflows",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_community:
+            response = await client.get(
+                f"{BASE_URL}/community", params={"limit": 5, "offset": 10}
+            )
+
+        assert response.status_code == 200
+        mock_community.assert_awaited_once_with(limit=5, offset=10, user_id=None)
 
     async def test_community_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -736,6 +1193,7 @@ class TestCommunityWorkflows:
             response = await client.get(f"{BASE_URL}/community")
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to fetch public workflows"
 
 
 # ---------------------------------------------------------------------------
@@ -758,15 +1216,36 @@ class TestGetPublicWorkflow:
             f"{_WF_REPO}.get_public_with_creator",
             new_callable=AsyncMock,
             return_value=row,
-        ):
+        ) as mock_lookup:
             response = await client.get(f"{BASE_URL}/public/wf_abc123")
 
         assert response.status_code == 200
+        assert response.json()["message"] == "Workflow retrieved successfully"
         data = response.json()["workflow"]
         assert data["id"] == "wf_abc123"
         assert data["creator"]["name"] == "Test User"
         # the join scaffolding must not leak into the response
         assert "creator_info" not in data
+        mock_lookup.assert_awaited_once_with("wf_abc123", by_slug=False)
+
+    async def test_get_public_workflow_by_slug_returns_200(self, client: AsyncClient):
+        row = PublicWorkflowRow(
+            **_make_workflow(
+                title="Public Workflow", is_public=True, slug="public-workflow"
+            ).model_dump(),
+            creator_info=[WorkflowCreatorInfo(name="Test User")],
+        )
+        with patch(
+            f"{_WF_REPO}.get_public_with_creator",
+            new_callable=AsyncMock,
+            return_value=row,
+        ) as mock_lookup:
+            response = await client.get(f"{BASE_URL}/public/public-workflow")
+
+        assert response.status_code == 200
+        assert response.json()["message"] == "Workflow retrieved successfully"
+        assert response.json()["workflow"]["slug"] == "public-workflow"
+        mock_lookup.assert_awaited_once_with("public-workflow", by_slug=True)
 
     async def test_get_public_workflow_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -777,6 +1256,18 @@ class TestGetPublicWorkflow:
             response = await client.get(f"{BASE_URL}/public/nonexistent-slug")
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Public workflow not found"
+
+    async def test_get_public_workflow_service_error_returns_500(self, client: AsyncClient):
+        with patch(
+            f"{_WF_REPO}.get_public_with_creator",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("DB error"),
+        ):
+            response = await client.get(f"{BASE_URL}/public/wf_abc123")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to get workflow"
 
 
 # ---------------------------------------------------------------------------
@@ -796,15 +1287,22 @@ class TestGeneratePrompt:
             f"{_WF_GEN_SERVICE}.generate_workflow_prompt",
             new_callable=AsyncMock,
             return_value=mock_result,
-        ):
+        ) as mock_generate:
             response = await client.post(
                 f"{BASE_URL}/generate-prompt",
                 json={"title": "My Workflow"},
             )
 
         assert response.status_code == 200
-        data = response.json()
-        assert "prompt" in data
+        assert response.json() == mock_result
+        mock_generate.assert_awaited_once_with(
+            title="My Workflow",
+            description=None,
+            trigger_config=None,
+            existing_prompt=None,
+            integration_ids=None,
+            user_id=USER_ID,
+        )
 
     async def test_generate_prompt_with_existing_prompt(self, client: AsyncClient):
         mock_result = {
@@ -815,18 +1313,36 @@ class TestGeneratePrompt:
             f"{_WF_GEN_SERVICE}.generate_workflow_prompt",
             new_callable=AsyncMock,
             return_value=mock_result,
-        ):
+        ) as mock_generate:
             response = await client.post(
                 f"{BASE_URL}/generate-prompt",
                 json={
                     "title": "Daily Report",
+                    "description": "Send me a report.",
                     "existing_prompt": "Send me a report.",
+                    "trigger_config": {"type": "schedule", "cron_expression": "0 9 * * *"},
+                    "integration_ids": ["gmail"],
                 },
             )
 
         assert response.status_code == 200
         data = response.json()
-        assert data["suggested_trigger"]["type"] == "schedule"
+        assert data["prompt"] == "Improved instructions"
+        assert data["suggested_trigger"] == {
+            "type": "schedule",
+            "cron_expression": "0 9 * * *",
+            "trigger_name": None,
+        }
+        mock_generate.assert_awaited_once_with(
+            title="Daily Report",
+            description="Send me a report.",
+            trigger_config=PromptTriggerHint(
+                type="schedule", cron_expression="0 9 * * *"
+            ),
+            existing_prompt="Send me a report.",
+            integration_ids=["gmail"],
+            user_id=USER_ID,
+        )
 
     async def test_generate_prompt_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -840,6 +1356,7 @@ class TestGeneratePrompt:
             )
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to generate workflow prompt"
 
 
 # ---------------------------------------------------------------------------
@@ -856,11 +1373,14 @@ class TestGetWorkflow:
             f"{_WF_SERVICE}.get_workflow",
             new_callable=AsyncMock,
             return_value=mock_wf,
-        ):
+        ) as mock_get:
             response = await client.get(f"{BASE_URL}/wf_abc123")
 
         assert response.status_code == 200
-        assert response.json()["message"] == "Workflow retrieved successfully"
+        data = response.json()
+        assert data["message"] == "Workflow retrieved successfully"
+        _assert_workflow_body(data)
+        mock_get.assert_awaited_once_with("wf_abc123", USER_ID)
 
     async def test_get_workflow_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -871,6 +1391,7 @@ class TestGetWorkflow:
             response = await client.get(f"{BASE_URL}/wf_nonexist")
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Workflow wf_nonexist not found"
 
     async def test_get_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -881,6 +1402,7 @@ class TestGetWorkflow:
             response = await client.get(f"{BASE_URL}/wf_abc123")
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to get workflow"
 
 
 # ---------------------------------------------------------------------------
@@ -897,14 +1419,21 @@ class TestUpdateWorkflow:
             f"{_WF_SERVICE}.update_workflow",
             new_callable=AsyncMock,
             return_value=mock_wf,
-        ):
+        ) as mock_update:
             response = await client.put(
                 f"{BASE_URL}/wf_abc123",
                 json={"title": "Updated Title"},
             )
 
         assert response.status_code == 200
-        assert response.json()["message"] == "Workflow updated successfully"
+        data = response.json()
+        assert data["message"] == "Workflow updated successfully"
+        assert data["workflow"]["title"] == "Updated Title"
+        mock_update.assert_awaited_once()
+        assert mock_update.await_args.args[0] == "wf_abc123"
+        assert mock_update.await_args.args[1] == UpdateWorkflowRequest(title="Updated Title")
+        assert mock_update.await_args.args[2] == USER_ID
+        assert mock_update.await_args.kwargs == {"user_timezone": USER_TIMEZONE}
 
     async def test_update_workflow_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -918,6 +1447,39 @@ class TestUpdateWorkflow:
             )
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Workflow wf_nonexist not found"
+
+    async def test_update_workflow_value_error_returns_500(self, client: AsyncClient):
+        """A ValueError from the service lands in the bare ``except Exception`` —
+        the endpoint has no ValueError → 400 branch, so the caller sees a 500."""
+        with patch(
+            f"{_WF_SERVICE}.update_workflow",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Invalid trigger config"),
+        ):
+            response = await client.put(
+                f"{BASE_URL}/wf_abc123",
+                json={"title": "New Title"},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to update workflow"
+
+    async def test_update_workflow_trigger_registration_error_returns_400(
+        self, client: AsyncClient
+    ):
+        with patch(
+            f"{_WF_SERVICE}.update_workflow",
+            new_callable=AsyncMock,
+            side_effect=TriggerRegistrationError("Trigger failed", "gmail_new_message"),
+        ):
+            response = await client.put(
+                f"{BASE_URL}/wf_abc123",
+                json={"title": "New Title"},
+            )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Trigger failed"
 
     async def test_update_workflow_empty_title_returns_422(self, client: AsyncClient):
         response = await client.put(
@@ -938,6 +1500,7 @@ class TestUpdateWorkflow:
             )
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to update workflow"
 
 
 # ---------------------------------------------------------------------------
@@ -953,11 +1516,15 @@ class TestResetWorkflowToDefault:
             _RESET_DEFAULT,
             new_callable=AsyncMock,
             return_value=True,
-        ):
+        ) as mock_reset:
             response = await client.post(f"{BASE_URL}/wf_abc123/reset-to-default")
 
         assert response.status_code == 200
-        assert response.json()["success"] is True
+        assert response.json() == {
+            "success": True,
+            "message": "Workflow reset to default.",
+        }
+        mock_reset.assert_awaited_once_with(workflow_id="wf_abc123", user_id=USER_ID)
 
     async def test_reset_not_system_workflow_returns_400(self, client: AsyncClient):
         with patch(
@@ -968,6 +1535,10 @@ class TestResetWorkflowToDefault:
             response = await client.post(f"{BASE_URL}/wf_abc123/reset-to-default")
 
         assert response.status_code == 400
+        assert (
+            response.json()["detail"]
+            == "Workflow not found or is not a resettable system workflow."
+        )
 
     async def test_reset_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -978,6 +1549,7 @@ class TestResetWorkflowToDefault:
             response = await client.post(f"{BASE_URL}/wf_abc123/reset-to-default")
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to reset workflow"
 
 
 # ---------------------------------------------------------------------------
@@ -993,11 +1565,12 @@ class TestDeleteWorkflow:
             f"{_WF_SERVICE}.delete_workflow",
             new_callable=AsyncMock,
             return_value=True,
-        ):
+        ) as mock_delete:
             response = await client.delete(f"{BASE_URL}/wf_abc123")
 
         assert response.status_code == 200
-        assert response.json()["message"] == "Workflow deleted successfully"
+        assert response.json() == {"message": "Workflow deleted successfully"}
+        mock_delete.assert_awaited_once_with("wf_abc123", USER_ID)
 
     async def test_delete_workflow_not_found_returns_404(self, client: AsyncClient):
         with patch(
@@ -1008,6 +1581,7 @@ class TestDeleteWorkflow:
             response = await client.delete(f"{BASE_URL}/wf_nonexist")
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Workflow wf_nonexist not found"
 
     async def test_delete_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -1018,3 +1592,4 @@ class TestDeleteWorkflow:
             response = await client.delete(f"{BASE_URL}/wf_abc123")
 
         assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to delete workflow"
