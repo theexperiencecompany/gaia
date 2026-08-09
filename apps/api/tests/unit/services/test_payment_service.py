@@ -716,9 +716,7 @@ class TestCancelSubscription:
         mock_subscription_repository.get_active_for_user = AsyncMock(
             return_value=SAMPLE_SUBSCRIPTION
         )
-        mock_subscription_repository.get_user_id_by_dodo_id = AsyncMock(
-            return_value=FAKE_USER_ID
-        )
+        mock_subscription_repository.get_user_id_by_dodo_id = AsyncMock(return_value=FAKE_USER_ID)
 
         updated = MagicMock()
         updated.status = "active"
@@ -752,9 +750,7 @@ class TestCancelSubscription:
         mock_subscription_repository.get_active_for_user = AsyncMock(
             return_value=SAMPLE_SUBSCRIPTION
         )
-        mock_subscription_repository.get_user_id_by_dodo_id = AsyncMock(
-            return_value=FAKE_USER_ID
-        )
+        mock_subscription_repository.get_user_id_by_dodo_id = AsyncMock(return_value=FAKE_USER_ID)
 
         updated = MagicMock()
         updated.status = "active"
@@ -791,9 +787,7 @@ class TestCancelSubscription:
             return_value=SAMPLE_SUBSCRIPTION
         )
         mock_dodo_client.subscriptions = MagicMock()
-        mock_dodo_client.subscriptions.update = MagicMock(
-            side_effect=Exception("Dodo API down")
-        )
+        mock_dodo_client.subscriptions.update = MagicMock(side_effect=Exception("Dodo API down"))
 
         with pytest.raises(HTTPException) as exc_info:
             await payment_service.cancel_subscription(FAKE_USER_ID)

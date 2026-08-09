@@ -94,12 +94,23 @@ async def cancel_subscription_endpoint(
         payment={"operation": "cancel_subscription"},
     )
     try:
-        return await payment_service.cancel_subscription(user_id)
+        result = await payment_service.cancel_subscription(user_id)
+        log.audit(
+            "subscription cancellation requested",
+            actor=user_id,
+            provider="dodo",
+        )
+        return result
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error cancelling subscription: {e!s}")
-        raise HTTPException(status_code=500, detail="Failed to cancel subscription")
+        log.error(
+            f"{LogTag.PAYMENT} Error cancelling subscription",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to cancel subscription") from e
 
 
 @router.post("/verify-payment", response_model=PaymentVerificationResponse)

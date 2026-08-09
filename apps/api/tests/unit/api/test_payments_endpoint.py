@@ -193,15 +193,17 @@ class TestCancelSubscription:
     """Tests for the cancel subscription endpoint."""
 
     async def test_cancel_subscription_returns_updated_status(self, client: AsyncClient):
-        mock_status = MagicMock(**{
-            **_make_subscription_status(),
-            "is_subscribed": True,
-            "subscription": {
-                "dodo_subscription_id": "sub_xyz789",
-                "status": "active",
-                "cancel_at_next_billing_date": True,
-            },
-        })
+        mock_status = MagicMock(
+            **{
+                **_make_subscription_status(),
+                "is_subscribed": True,
+                "subscription": {
+                    "dodo_subscription_id": "sub_xyz789",
+                    "status": "active",
+                    "cancel_at_next_billing_date": True,
+                },
+            }
+        )
         with patch(
             "app.services.payments.payment_service.payment_service.cancel_subscription",
             new_callable=AsyncMock,
@@ -240,6 +242,7 @@ class TestCancelSubscription:
 # ---------------------------------------------------------------------------
 # POST /verify-payment
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestVerifyPayment:
