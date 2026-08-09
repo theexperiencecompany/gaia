@@ -102,9 +102,9 @@ class TestDeclaredToolResolution:
 
         assert kept == []
         assert mock_log.warning.called, "a fully-dropped declaration was silent"
-        message = mock_log.warning.call_args.args[0]
-        assert "gmail" in message
-        assert "GMAIL_FETCH_MESSAGES" in message
+        kwargs = mock_log.warning.call_args.kwargs
+        assert kwargs.get("provider") == "gmail"
+        assert kwargs.get("missing_tools") == sorted(GMAIL_AUTO_BIND)
 
     def test_a_partially_missing_declaration_reports_only_what_is_missing(self):
         scoped = {"GMAIL_FETCH_MESSAGES": object()}

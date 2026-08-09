@@ -73,6 +73,7 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
 @app.post("/embed")
 async def embed(request: EmbedRequest) -> dict[str, list[list[float]]]:
     """Embed a batch of passage texts."""
@@ -82,6 +83,7 @@ async def embed(request: EmbedRequest) -> dict[str, list[list[float]]]:
         return {"vectors": await asyncio.to_thread(_embed_sync, request.texts)}
 
 
+# evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
 @app.post("/embed_query")
 async def embed_query(request: EmbedQueryRequest) -> dict[str, list[float]]:
     """Embed a single query with the model's query instruction."""
@@ -89,6 +91,7 @@ async def embed_query(request: EmbedQueryRequest) -> dict[str, list[float]]:
         return {"vector": await asyncio.to_thread(_embed_query_sync, request.text)}
 
 
+# evlog-map-disable-next-line wide-event -- standalone uvicorn app without LoggingMiddleware; log.set() would never be emitted
 @app.post("/rerank")
 async def rerank(request: RerankRequest) -> dict[str, list[float]]:
     """Score documents against the query, aligned with input order."""

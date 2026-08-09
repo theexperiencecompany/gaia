@@ -619,3 +619,11 @@ run = "cd apps/api && uv run --group backend python -m scripts.evals cost --proj
 [tasks."eval:report"]
 description = "Regenerate HTML report for a run (mise eval:report -- <run-id>)"
 run = "cd apps/api && uv run --group backend python -m scripts.evals report $@"
+
+[tasks."observability:map"]
+description = "Observability score for the API + voice-agent (evlog map port)"
+run = "python3 tools/evlog_map"
+
+[tasks."observability:map:all"]
+description = "Observability score with the per-entry check matrix"
+run = "python3 tools/evlog_map --all"

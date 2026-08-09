@@ -44,7 +44,7 @@ dependencies = [
 [tool.taskipy.tasks]
 dev = "uv run --group backend --group voice_agent uvicorn app.main:app --port 8000 --reload --log-level warning"
 start = "uv run --group backend --group voice_agent fastapi run"
-arq = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings"
+arq = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG"
 worker = "task arq"
 lint = "uvx ruff check ."
 "lint.fix" = "uvx ruff check . --fix"

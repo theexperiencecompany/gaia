@@ -49,9 +49,14 @@ def destroy_in_cloudinary(public_id: str) -> None:
     try:
         result = cloudinary.uploader.destroy(public_id)
         if result.get("result") != "ok":
-            log.warning(f"[files] cloudinary delete did not confirm: {result}")
+            log.warning("[files] cloudinary delete did not confirm", result=result)
     except Exception as e:
-        log.error(f"[files] cloudinary delete failed: {e!s}", exc_info=True)
+        log.error(
+            "[files] cloudinary delete failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
 
 
 async def insert_metadata(document: FileDocument) -> None:
@@ -115,9 +120,21 @@ async def index_file(
             file_id, user_id, filename, content_type, summary, conversation_id
         )
         await collection.aadd_documents(ids=ids, documents=documents)
-        log.info(f"[files] indexed {file_id} in vector store ({len(documents)} vector(s))")
+        log.info(
+            "[files] indexed in vector store ( vector(s))",
+            file_id=file_id,
+            documents_count=len(documents),
+        )
     except Exception as e:
-        log.error(f"[files] failed to index {file_id} in vector store: {e!s}", exc_info=True)
+        log.error(
+            "[files] failed to index in vector store",
+            file_id=file_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            exc_info=True,
+        )
 
 
 async def reindex_file(
@@ -140,6 +157,11 @@ async def delete_from_index(file_id: str) -> None:
             collection_name=CHROMA_DOCUMENTS_COLLECTION
         )
         await collection.adelete(ids=[file_id])
-        log.info(f"[files] removed {file_id} from vector store")
+        log.info("[files] removed from vector store", file_id=file_id)
     except Exception as e:
-        log.warning(f"[files] failed to remove {file_id} from vector store: {e!s}")
+        log.warning(
+            "[files] failed to remove from vector store",
+            file_id=file_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )

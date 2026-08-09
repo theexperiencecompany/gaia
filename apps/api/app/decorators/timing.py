@@ -25,7 +25,9 @@ def async_timer(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         try:
             result = await func(*args, **kwargs)
             execution_time = time.time() - start_time
-            log.info(f"{LogTag.API} ⏱️  {func.__name__} completed in {execution_time:.3f}s")
+            log.info(
+                f"{LogTag.API} ⏱️ completed", func_name=func.__name__, execution_time=execution_time
+            )
             if execution_time > 1.0:
                 log.warning(
                     "slow function",
@@ -35,7 +37,13 @@ def async_timer(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
             return result
         except Exception as e:
             execution_time = time.time() - start_time
-            log.error(f"{LogTag.API} ⏱️  {func.__name__} failed after {execution_time:.3f}s: {e}")
+            log.error(
+                f"{LogTag.API} ⏱️ failed",
+                func_name=func.__name__,
+                execution_time=execution_time,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             raise
 
     return wrapper
@@ -50,7 +58,9 @@ def sync_timer(func: Callable[P, R]) -> Callable[P, R]:
         try:
             result = func(*args, **kwargs)
             execution_time = time.time() - start_time
-            log.info(f"{LogTag.API} ⏱️  {func.__name__} completed in {execution_time:.3f}s")
+            log.info(
+                f"{LogTag.API} ⏱️ completed", func_name=func.__name__, execution_time=execution_time
+            )
             if execution_time > 1.0:
                 log.warning(
                     "slow function",
@@ -60,7 +70,13 @@ def sync_timer(func: Callable[P, R]) -> Callable[P, R]:
             return result
         except Exception as e:
             execution_time = time.time() - start_time
-            log.error(f"{LogTag.API} ⏱️  {func.__name__} failed after {execution_time:.3f}s: {e}")
+            log.error(
+                f"{LogTag.API} ⏱️ failed",
+                func_name=func.__name__,
+                execution_time=execution_time,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             raise
 
     return wrapper

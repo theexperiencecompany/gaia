@@ -9,9 +9,8 @@ import pytest
 from shared.py.wide_events import (
     _LEVEL_ORDER,
     WideEventLogger,
-    _max_level,
+    _event_state,
     _trace_id,
-    _wide_event,
     get_trace_id,
     log,
     wide_task,
@@ -24,13 +23,12 @@ from shared.py.wide_events import (
 
 @pytest.fixture(autouse=True)
 def _reset_context_vars():
-    """Reset all ContextVars between tests to prevent cross-test leakage."""
-    _wide_event.set(None)
-    _max_level.set("INFO")
+    """Fresh boundary per test; writes outside a boundary are discarded by design."""
+    _event_state.set(None)
     _trace_id.set("")
+    log.reset()
     yield
-    _wide_event.set(None)
-    _max_level.set("INFO")
+    _event_state.set(None)
     _trace_id.set("")
 
 
@@ -43,17 +41,24 @@ class TestWideEventLoggerSetGetReset:
     """Tests for the core set(), get(), reset() API."""
 
     def test_get_returns_empty_dict_when_no_event(self):
+        _event_state.set(None)
         assert log.get() == {}
 
-    def test_set_creates_event_from_none(self):
+    def test_set_without_boundary_is_discarded(self):
+        # No boundary -> throwaway state: leak-free and isolation-safe.
+        _event_state.set(None)
         log.set(user_id="abc")
-        assert log.get() == {"user_id": "abc"}
+        assert log.get() == {}
+        log.reset()
+        log.set(user_id="abc")
+        assert log.get()["user_id"] == "abc"
 
     def test_set_merges_keys(self):
         log.set(a=1)
         log.set(b=2)
         event = log.get()
-        assert event == {"a": 1, "b": 2}
+        assert event["a"] == 1
+        assert event["b"] == 2
 
     def test_set_overwrites_existing_key(self):
         log.set(status="pending")
@@ -69,7 +74,7 @@ class TestWideEventLoggerSetGetReset:
         assert len(event["trace_id"]) == 16
 
     def test_reset_resets_max_level_to_info(self):
-        _max_level.set("ERROR")
+        log.error("bump to error")
         log.reset()
         assert log.get_max_level() == "INFO"
 
@@ -81,6 +86,7 @@ class TestWideEventLoggerSetGetReset:
         assert tid1 != tid2
 
     def test_get_trace_id_returns_empty_before_reset(self):
+        _trace_id.set("")
         assert log.get_trace_id() == ""
 
 
@@ -95,15 +101,15 @@ class TestWideEventLoggerLevels:
     @patch("shared.py.wide_events._loguru")
     def test_info_emits_loguru_but_not_wide_event(self, mock_loguru: MagicMock):
         log.info("hello")
-        mock_loguru.opt.return_value.info.assert_called_once_with("hello")
-        # info should NOT append to wide event
-        assert log.get() == {}
+        mock_loguru.opt.return_value.bind.return_value.info.assert_called_once_with("hello")
+        # info should NOT append to wide event (only the boundary's trace_id)
+        assert set(log.get()) == {"trace_id"}
 
     @patch("shared.py.wide_events._loguru")
     def test_debug_emits_loguru_but_not_wide_event(self, mock_loguru: MagicMock):
         log.debug("debugging")
-        mock_loguru.opt.return_value.debug.assert_called_once_with("debugging")
-        assert log.get() == {}
+        mock_loguru.opt.return_value.bind.return_value.debug.assert_called_once_with("debugging")
+        assert set(log.get()) == {"trace_id"}
 
     @patch("shared.py.wide_events._loguru")
     def test_warning_appends_to_warnings(self, mock_loguru: MagicMock):
@@ -210,7 +216,7 @@ class TestWideEventLoggerBind:
     def test_bind_then_info(self, mock_loguru: MagicMock):
         log.bind(user_id="u1").info("hello")
         assert log.get()["user_id"] == "u1"
-        mock_loguru.opt.return_value.info.assert_called_once_with("hello")
+        mock_loguru.opt.return_value.bind.return_value.info.assert_called_once_with("hello")
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +244,7 @@ class TestBumpMaxLevel:
         logger = WideEventLogger()
         logger._bump("UNKNOWN")
         # Should not bump above INFO default
-        assert _max_level.get() == "INFO"
+        assert log.get_max_level() == "INFO"
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +291,17 @@ class TestTraceId:
 # ---------------------------------------------------------------------------
 
 
+def _emitted_event(mock_loguru: MagicMock) -> dict:
+    """The event the boundary actually emitted.
+
+    Read this instead of ``log.get()`` after a boundary exits. A boundary
+    restores the enclosing accumulator on exit, so once it has closed there is
+    deliberately nothing left to read — asserting on ``log.get()`` afterwards
+    only passed while boundaries leaked their state outward, which was the bug.
+    """
+    return dict(mock_loguru.bind.call_args.kwargs)
+
+
 class TestWideTask:
     """Tests for the wide_task async context manager."""
 
@@ -307,8 +324,7 @@ class TestWideTask:
     async def test_success_sets_outcome(self, mock_loguru: MagicMock):
         async with wide_task("ok_task"):
             pass
-        # After exiting, the final event should have outcome=success
-        event = log.get()
+        event = _emitted_event(mock_loguru)
         assert event["outcome"] == "success"
 
     @pytest.mark.asyncio
@@ -317,7 +333,7 @@ class TestWideTask:
         with pytest.raises(RuntimeError, match="boom"):
             async with wide_task("fail_task"):
                 raise RuntimeError("boom")
-        event = log.get()
+        event = _emitted_event(mock_loguru)
         assert event["outcome"] == "failed"
 
     @pytest.mark.asyncio
@@ -325,7 +341,7 @@ class TestWideTask:
     async def test_duration_ms_recorded(self, mock_loguru: MagicMock):
         async with wide_task("timed_task"):
             pass
-        event = log.get()
+        event = _emitted_event(mock_loguru)
         assert "duration_ms" in event
         assert isinstance(event["duration_ms"], float)
 
@@ -334,7 +350,7 @@ class TestWideTask:
     async def test_final_level_set(self, mock_loguru: MagicMock):
         async with wide_task("level_task"):
             log.warning("w")
-        event = log.get()
+        event = _emitted_event(mock_loguru)
         assert event["final_level"] == "WARNING"
 
     @pytest.mark.asyncio
@@ -374,7 +390,7 @@ class TestWideTask:
         with pytest.raises(ValueError):
             async with wide_task("err_task"):
                 raise ValueError("bad value")
-        event = log.get()
+        event = _emitted_event(mock_loguru)
         assert len(event["errors"]) == 1
         assert event["errors"][0]["error"] == "bad value"
         assert event["errors"][0]["error_type"] == "ValueError"

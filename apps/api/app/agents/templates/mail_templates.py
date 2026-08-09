@@ -83,7 +83,7 @@ class GmailMessageParser:
             return self.email_message is not None
 
         except Exception as e:
-            log.error(f"Error parsing email message: {e}")
+            log.error("Error parsing email message", error_type=type(e).__name__)
             self._parsed = False
             return False
 

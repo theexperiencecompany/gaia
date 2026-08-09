@@ -105,8 +105,11 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
         raise
     except Exception as e:
         log.error(
-            f"{LogTag.COMPOSIO} composio.connected_accounts.list FAILED for user={user_id} "
-            f"toolkit={toolkit}: {type(e).__name__}: {e}"
+            f"{LogTag.COMPOSIO} composio.connected_accounts.list failed",
+            user_id=user_id,
+            toolkit=toolkit,
+            error=str(e),
+            error_type=type(e).__name__,
         )
         raise AppError(
             message=f"Composio connected_accounts.list failed: {e}",
@@ -137,8 +140,11 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             for acc in accounts.items[:5]
         ]
         log.warning(
-            f"{LogTag.COMPOSIO} composio: no ACTIVE account for user={user_id} toolkit={toolkit} "
-            f"(total_accounts={total_accounts}, sample={account_summary})"
+            f"{LogTag.COMPOSIO} composio: no ACTIVE account for this user and toolkit",
+            user_id=user_id,
+            toolkit=toolkit,
+            total_accounts=total_accounts,
+            account_summary=account_summary,
         )
         # 403, not 401: the user's GAIA session is valid — they simply have no
         # active connection for this integration. Returning 401 makes the web
@@ -158,8 +164,11 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
         )
 
     log.info(
-        f"{LogTag.COMPOSIO} composio: resolved connected_account_id for user={user_id} toolkit={toolkit} "
-        f"-> {active.id} (cached for {_CONNECTED_ACCOUNT_CACHE_TTL_SECONDS}s)"
+        f"{LogTag.COMPOSIO} composio: resolved connected_account_id and cached it",
+        user_id=user_id,
+        toolkit=toolkit,
+        id=active.id,
+        _connected_account_cache_ttl_seconds=_CONNECTED_ACCOUNT_CACHE_TTL_SECONDS,
     )
     with _cache_lock:
         _connected_account_cache[cache_key] = (
@@ -230,8 +239,13 @@ def _proxy_call(
         raise
     except Exception as e:
         log.error(
-            f"{LogTag.COMPOSIO} composio.tools.proxy raised for user={user_id} toolkit={toolkit} "
-            f"{method} {endpoint}: {type(e).__name__}: {e}"
+            f"{LogTag.COMPOSIO} composio.tools.proxy raised",
+            user_id=user_id,
+            toolkit=toolkit,
+            method=method,
+            endpoint=endpoint,
+            error=str(e),
+            error_type=type(e).__name__,
         )
         raise AppError(
             message=f"Composio tools.proxy failed: {e}",

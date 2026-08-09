@@ -26,6 +26,7 @@ import {
   formatBotError,
   friendlyMediaError,
   handleStreamingChat,
+  hashLogIdentifier,
   type IncomingMedia,
   type MediaOutcome,
   type OutboundAttachment,
@@ -35,6 +36,8 @@ import {
   renderForPlatform,
   type SentMessage,
   STREAMING_DEFAULTS,
+  wideLog,
+  withWideEvent,
 } from "@gaia/shared";
 import {
   ActionRowBuilder,
@@ -227,16 +230,23 @@ export class DiscordAdapter extends BaseBotAdapter {
    */
   protected async registerEvents(): Promise<void> {
     this.client.once(Events.ClientReady, (c) => {
-      this.adapterLogger.info("client_ready", {
-        bot_tag: c.user.tag,
-        bot_id: c.user.id,
-      });
-      this.startStatusRotation(c.user);
-      // Pre-warm DM channels for linked users. discord.js cannot reconstruct a
-      // DM channel from a cold MESSAGE_CREATE payload (it lacks type/recipients),
-      // so an uncached DM channel makes inbound DMs silently dropped after a
-      // restart. Opening each linked user's DM caches it so their DMs resolve.
-      void this.prewarmDmChannels();
+      void withWideEvent(
+        "client_ready",
+        {
+          platform: this.platform,
+          component: "adapter",
+          bot_tag: c.user.tag,
+        },
+        async () => {
+          this.startStatusRotation(c.user);
+          // Pre-warm DM channels for linked users. discord.js cannot reconstruct
+          // a DM channel from a cold MESSAGE_CREATE payload (it lacks
+          // type/recipients), so an uncached DM channel makes inbound DMs
+          // silently dropped after a restart. Opening each linked user's DM
+          // caches it so their DMs resolve.
+          await this.prewarmDmChannels();
+        },
+      );
     });
 
     this.client.on(Events.InteractionCreate, async (interaction) => {
@@ -342,7 +352,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     try {
       linked = await this.gaia.listLinkedPlatformUserIds(this.platform);
     } catch (error) {
-      this.adapterLogger.error("dm_prewarm_list_failed", {}, error);
+      wideLog.error("dm_prewarm_list_failed", undefined, error);
       return;
     }
     let cached = 0;
@@ -352,14 +362,13 @@ export class DiscordAdapter extends BaseBotAdapter {
         await user.createDM();
         cached++;
       } catch (error) {
-        this.adapterLogger.warn("dm_prewarm_user_failed", { user_id: userId });
-        void error;
+        wideLog.warning("dm_prewarm_user_failed", {
+          user_hash: hashLogIdentifier(userId),
+          error_type: error instanceof Error ? error.name : "Unknown",
+        });
       }
     }
-    this.adapterLogger.info("dm_channels_prewarmed", {
-      linked: linked.length,
-      cached,
-    });
+    wideLog.set({ linked_count: linked.length, prewarmed_count: cached });
   }
 
   // ---------------------------------------------------------------------------
@@ -398,12 +407,6 @@ export class DiscordAdapter extends BaseBotAdapter {
     interaction: ChatInputCommandInteraction,
   ): Promise<void> {
     const name = interaction.commandName;
-    this.adapterLogger.info("slash_command_received", {
-      command: name,
-      user_id: interaction.user.id,
-      channel_id: interaction.channelId,
-    });
-
     if (name === "gaia") {
       await this.handleGaiaInteraction(interaction);
       return;
@@ -499,10 +502,12 @@ export class DiscordAdapter extends BaseBotAdapter {
     interaction: MessageContextMenuCommandInteraction,
   ): Promise<void> {
     const name = interaction.commandName;
+    // Which context-menu action ran is the one thing the downstream `chat`
+    // boundary cannot record (it has no command field), so this line stays.
     this.adapterLogger.info("context_menu_received", {
       command: name,
-      user_id: interaction.user.id,
-      channel_id: interaction.channelId,
+      user_hash: hashLogIdentifier(interaction.user.id),
+      channel_hash: hashLogIdentifier(interaction.channelId),
     });
     const content = interaction.targetMessage.content;
     const userId = interaction.user.id;
@@ -627,13 +632,6 @@ export class DiscordAdapter extends BaseBotAdapter {
       caption: caption || undefined,
     };
 
-    this.adapterLogger.info("media_message_received", {
-      user_id: userId,
-      channel_id: message.channelId,
-      media_kind: media.kind,
-      is_voice_note: media.isVoiceNote,
-    });
-
     try {
       return await this.resolveIncomingMedia(
         media,
@@ -644,7 +642,10 @@ export class DiscordAdapter extends BaseBotAdapter {
     } catch (err) {
       this.adapterLogger.error(
         "media_message_failed",
-        { channel_id: message.channelId, media_kind: media.kind },
+        {
+          channel_hash: hashLogIdentifier(message.channelId),
+          media_kind: media.kind,
+        },
         err,
       );
       return {
@@ -752,8 +753,8 @@ export class DiscordAdapter extends BaseBotAdapter {
       this.adapterLogger.error(
         "dm_message_processing_failed",
         {
-          user_id: userId,
-          channel_id: message.channelId,
+          user_hash: hashLogIdentifier(userId),
+          channel_hash: hashLogIdentifier(message.channelId),
         },
         error,
       );
@@ -827,7 +828,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     } catch (error) {
       this.adapterLogger.error(
         "welcome_send_failed",
-        { user_id: message.author.id },
+        { user_hash: hashLogIdentifier(message.author.id) },
         error,
       );
     }
@@ -989,8 +990,8 @@ export class DiscordAdapter extends BaseBotAdapter {
       this.adapterLogger.error(
         "mention_message_processing_failed",
         {
-          user_id: message.author.id,
-          channel_id: message.channelId,
+          user_hash: hashLogIdentifier(message.author.id),
+          channel_hash: hashLogIdentifier(message.channelId),
         },
         error,
       );

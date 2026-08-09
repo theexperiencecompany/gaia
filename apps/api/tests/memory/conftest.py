@@ -122,6 +122,7 @@ def no_real_llm(monkeypatch: pytest.MonkeyPatch) -> None:
         messages: list[BaseMessage],
         *,
         operation: str,
+        user_id: str,
     ) -> BaseModel | None:
         raise AssertionError(
             f"memory LLM call '{operation}' reached the real provider; use the fake_llm fixture"

@@ -200,7 +200,8 @@ class TestSlugifyMaxLength:
         assert result == "hello-world"
 
     def test_hyphen_at_max_length_boundary(self):
-        # "one-two-three" is 13 chars; max_length=7 -> "one-two"[:7] = "one-two", rsplit -> "one-two"
+        # "one-two-three" is 13 chars; the cut at 7 lands on a hyphen, so "one-two"
+        # is a complete pair of words and must be kept whole
         result = slugify("one two three", max_length=7)
         assert result == "one-two"
 

@@ -46,8 +46,8 @@ def normalize_schema_refs(schema: object) -> object:
 
         if numeric_keys:
             log.warning(
-                f"{LogTag.STARTUP} Found numeric definition keys: {numeric_keys}. "
-                f"This can cause $ref resolution issues. Normalizing..."
+                f"{LogTag.STARTUP} Found numeric definition keys: . This can cause $ref resolution issues. Normalizing...",
+                numeric_keys=numeric_keys,
             )
 
             # Create new definitions with prefixed keys
@@ -60,7 +60,7 @@ def normalize_schema_refs(schema: object) -> object:
                     new_defs[new_key] = value
                     key_mapping[old_key] = new_key
                     log.debug(
-                        f"{LogTag.STARTUP} Renamed definition key: '{old_key}' -> '{new_key}'"
+                        f"{LogTag.STARTUP} Renamed definition key", old_key=old_key, new_key=new_key
                     )
                 else:
                     new_defs[old_key] = value
@@ -91,7 +91,7 @@ def _update_refs_recursive(obj: object, key_mapping: dict[str, str], defs_key: s
                 if ref_key in key_mapping:
                     new_ref = f"#/{defs_key}/{key_mapping[ref_key]}"
                     obj["$ref"] = new_ref
-                    log.debug(f"{LogTag.STARTUP} Updated $ref: '{ref}' -> '{new_ref}'")
+                    log.debug(f"{LogTag.STARTUP} Updated $ref", ref=ref, new_ref=new_ref)
 
         # Recurse into dict values
         for value in obj.values():
@@ -120,14 +120,17 @@ def patch_tool_schema(tool: Tool) -> Tool:
     try:
         normalized = normalize_schema_refs(tool.inputSchema)
         if normalized != tool.inputSchema:
-            log.info(f"{LogTag.STARTUP} Normalized schema for tool: {tool.name}")
+            log.info(f"{LogTag.STARTUP} Normalized schema for tool", name=tool.name)
             # Create a modified copy
             tool_dict = tool.model_dump()
             tool_dict["inputSchema"] = normalized
             return type(tool)(**tool_dict)
     except Exception as e:
         log.warning(
-            f"{LogTag.STARTUP} Could not normalize schema for tool {tool.name}: {e}. Using original schema."
+            f"{LogTag.STARTUP} Could not normalize schema for tool : . Using original schema.",
+            name=tool.name,
+            error=str(e),
+            error_type=type(e).__name__,
         )
 
     return tool

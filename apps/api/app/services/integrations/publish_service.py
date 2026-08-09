@@ -71,6 +71,7 @@ async def publish_custom_integration(
     )
 
     content = await infer_integration_content(
+        user_id=user_id,
         name=integration.name,
         description=integration.description,
         tools=tools,
@@ -109,7 +110,7 @@ async def publish_custom_integration(
     await delete_cache_by_pattern("marketplace:community:*")
     # is_public / published_at feed the creator's MyIntegrationItem (tools:user:*:my).
     await invalidate_user_integration_caches(user_id)
-    log.info(f"{LogTag.INTEGRATION} Published integration {integration_id}")
+    log.info(f"{LogTag.INTEGRATION} Published integration", integration_id=integration_id)
 
     return {
         "integration_id": integration_id,
@@ -143,6 +144,6 @@ async def unpublish_custom_integration(
     await remove_public_integration(integration_id)
     await delete_cache_by_pattern("marketplace:community:*")
     await invalidate_user_integration_caches(user_id)
-    log.info(f"{LogTag.INTEGRATION} Unpublished integration {integration_id}")
+    log.info(f"{LogTag.INTEGRATION} Unpublished integration", integration_id=integration_id)
 
     return {"integration_id": integration_id}

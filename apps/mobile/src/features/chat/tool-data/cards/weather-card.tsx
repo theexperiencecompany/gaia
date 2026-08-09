@@ -55,6 +55,88 @@ type WeatherTheme = {
  * The web uses Tailwind `bg-linear-to-br from-X/80 to-Y/80`; we approximate by
  * baking the /80 (0.8 alpha) into the rgba color stops below.
  */
+// Atmosphere group (700–799): exact-id matches with a shared fallback.
+function getAtmosphereTheme(weatherId: number): WeatherTheme {
+  if (weatherId === 781) {
+    return {
+      name: "Tornado",
+      iconName: Tornado02Icon,
+      gradient: ["rgba(71,85,105,0.8)", "rgba(15,23,42,0.8)"], // slate-600 → slate-900
+      accentColor: "#CBD5E1",
+    };
+  }
+  if (weatherId === 771) {
+    return {
+      name: "Squall",
+      iconName: FastWindIcon,
+      gradient: ["rgba(59,130,246,0.8)", "rgba(29,78,216,0.8)"], // blue-500 → blue-700
+      accentColor: "#93C5FD",
+    };
+  }
+  if (weatherId === 762) {
+    return {
+      name: "Volcanic Ash",
+      iconName: CloudFastWindIcon,
+      gradient: ["rgba(82,82,91,0.8)", "rgba(39,39,42,0.8)"], // zinc-600 → zinc-800
+      accentColor: "#D4D4D8",
+    };
+  }
+  if (weatherId === 751) {
+    return {
+      name: "Sand",
+      iconName: CloudFastWindIcon,
+      gradient: ["rgba(253,186,116,0.8)", "rgba(249,115,22,0.8)"], // orange-300 → orange-500
+      accentColor: "#FDBA74",
+    };
+  }
+  if (weatherId === 741) {
+    return {
+      name: "Fog",
+      iconName: CloudIcon,
+      gradient: ["rgba(156,163,175,0.8)", "rgba(75,85,99,0.8)"], // gray-400 → gray-600
+      accentColor: "#D1D5DB",
+    };
+  }
+  if (weatherId === 731 || weatherId === 761) {
+    return {
+      name: "Dust",
+      iconName: CloudFastWindIcon,
+      gradient: ["rgba(250,204,21,0.8)", "rgba(202,138,4,0.8)"], // yellow-400 → yellow-600
+      accentColor: "#FEF08A",
+    };
+  }
+  if (weatherId === 721) {
+    return {
+      name: "Haze",
+      iconName: CloudIcon,
+      gradient: ["rgba(252,211,77,0.8)", "rgba(245,158,11,0.8)"], // amber-300 → amber-500
+      accentColor: "#FDE68A",
+    };
+  }
+  if (weatherId === 711) {
+    return {
+      name: "Smoke",
+      iconName: CloudFastWindIcon,
+      gradient: ["rgba(107,114,128,0.8)", "rgba(55,65,81,0.8)"], // gray-500 → gray-700
+      accentColor: "#9CA3AF",
+    };
+  }
+  if (weatherId === 701) {
+    return {
+      name: "Mist",
+      iconName: CloudFastWindIcon,
+      gradient: ["rgba(148,163,184,0.8)", "rgba(100,116,139,0.8)"], // slate-400 → slate-500
+      accentColor: "#D1D5DB",
+    };
+  }
+  return {
+    name: "Atmosphere",
+    iconName: CloudFastWindIcon,
+    gradient: ["rgba(148,163,184,0.8)", "rgba(71,85,105,0.8)"], // slate-400 → slate-600
+    accentColor: "#D1D5DB",
+  };
+}
+
 function getWeatherTheme(weatherId: number): WeatherTheme {
   // Thunderstorm
   if (weatherId >= 200 && weatherId < 300) {
@@ -94,84 +176,7 @@ function getWeatherTheme(weatherId: number): WeatherTheme {
   }
   // Atmosphere
   if (weatherId >= 700 && weatherId < 800) {
-    if (weatherId === 781) {
-      return {
-        name: "Tornado",
-        iconName: Tornado02Icon,
-        gradient: ["rgba(71,85,105,0.8)", "rgba(15,23,42,0.8)"], // slate-600 → slate-900
-        accentColor: "#CBD5E1",
-      };
-    }
-    if (weatherId === 771) {
-      return {
-        name: "Squall",
-        iconName: FastWindIcon,
-        gradient: ["rgba(59,130,246,0.8)", "rgba(29,78,216,0.8)"], // blue-500 → blue-700
-        accentColor: "#93C5FD",
-      };
-    }
-    if (weatherId === 762) {
-      return {
-        name: "Volcanic Ash",
-        iconName: CloudFastWindIcon,
-        gradient: ["rgba(82,82,91,0.8)", "rgba(39,39,42,0.8)"], // zinc-600 → zinc-800
-        accentColor: "#D4D4D8",
-      };
-    }
-    if (weatherId === 751) {
-      return {
-        name: "Sand",
-        iconName: CloudFastWindIcon,
-        gradient: ["rgba(253,186,116,0.8)", "rgba(249,115,22,0.8)"], // orange-300 → orange-500
-        accentColor: "#FDBA74",
-      };
-    }
-    if (weatherId === 741) {
-      return {
-        name: "Fog",
-        iconName: CloudIcon,
-        gradient: ["rgba(156,163,175,0.8)", "rgba(75,85,99,0.8)"], // gray-400 → gray-600
-        accentColor: "#D1D5DB",
-      };
-    }
-    if (weatherId === 731 || weatherId === 761) {
-      return {
-        name: "Dust",
-        iconName: CloudFastWindIcon,
-        gradient: ["rgba(250,204,21,0.8)", "rgba(202,138,4,0.8)"], // yellow-400 → yellow-600
-        accentColor: "#FEF08A",
-      };
-    }
-    if (weatherId === 721) {
-      return {
-        name: "Haze",
-        iconName: CloudIcon,
-        gradient: ["rgba(252,211,77,0.8)", "rgba(245,158,11,0.8)"], // amber-300 → amber-500
-        accentColor: "#FDE68A",
-      };
-    }
-    if (weatherId === 711) {
-      return {
-        name: "Smoke",
-        iconName: CloudFastWindIcon,
-        gradient: ["rgba(107,114,128,0.8)", "rgba(55,65,81,0.8)"], // gray-500 → gray-700
-        accentColor: "#9CA3AF",
-      };
-    }
-    if (weatherId === 701) {
-      return {
-        name: "Mist",
-        iconName: CloudFastWindIcon,
-        gradient: ["rgba(148,163,184,0.8)", "rgba(100,116,139,0.8)"], // slate-400 → slate-500
-        accentColor: "#D1D5DB",
-      };
-    }
-    return {
-      name: "Atmosphere",
-      iconName: CloudFastWindIcon,
-      gradient: ["rgba(148,163,184,0.8)", "rgba(71,85,105,0.8)"], // slate-400 → slate-600
-      accentColor: "#D1D5DB",
-    };
+    return getAtmosphereTheme(weatherId);
   }
   // Clear
   if (weatherId === 800) {
@@ -270,13 +275,225 @@ function DetailItem({ icon, label, value, highlight }: DetailItemProps) {
   );
 }
 
+function convertTemp(temp: number, useFahrenheit: boolean): number {
+  return Math.round(useFahrenheit ? celsiusToFahrenheit(temp) : temp);
+}
+
+function toDisplayTemp(
+  temp: number | undefined,
+  useFahrenheit: boolean,
+): number | undefined {
+  return temp === undefined ? undefined : convertTemp(temp, useFahrenheit);
+}
+
+type WeatherForecastDay = NonNullable<WeatherData["forecast"]>[number];
+
+interface WeatherDisplay {
+  hasRichData: boolean;
+  weatherId: number | undefined;
+  displayTemp: number | undefined;
+  displayFeelsLike: number | undefined;
+  humidity: number | undefined;
+  windSpeed: number | undefined;
+  description: string | undefined;
+  cityName: string;
+  regionName: string;
+  countryName: string;
+  sunriseStr: string | undefined;
+  sunsetStr: string | undefined;
+}
+
+function deriveWeatherDisplay(
+  data: WeatherData,
+  useFahrenheit: boolean,
+): WeatherDisplay {
+  const hasRichData = !!(data.main && data.weather && data.weather.length > 0);
+  const weatherId = hasRichData ? data.weather![0].id : undefined;
+  const rawTemp = hasRichData ? data.main!.temp : data.temperature;
+  const feelsLike = hasRichData ? data.main!.feels_like : undefined;
+  const sunTime =
+    data.sys && data.timezone !== undefined ? data.timezone : undefined;
+
+  return {
+    hasRichData,
+    weatherId,
+    displayTemp: toDisplayTemp(rawTemp, useFahrenheit),
+    displayFeelsLike: toDisplayTemp(feelsLike, useFahrenheit),
+    humidity: hasRichData ? data.main!.humidity : data.humidity,
+    windSpeed: hasRichData ? data.wind?.speed : data.wind_speed,
+    description: hasRichData ? data.weather![0].description : data.condition,
+    cityName: hasRichData
+      ? (data.location?.city ?? data.name ?? "Unknown")
+      : ((data.location as string | undefined) ?? "Unknown"),
+    regionName: hasRichData ? (data.location?.region ?? "") : "",
+    countryName: hasRichData
+      ? (data.location?.country ?? data.sys?.country ?? "")
+      : "",
+    sunriseStr:
+      sunTime !== undefined
+        ? formatTime(data.sys!.sunrise, sunTime)
+        : undefined,
+    sunsetStr:
+      sunTime !== undefined ? formatTime(data.sys!.sunset, sunTime) : undefined,
+  };
+}
+
+function WeatherForecast({
+  forecast,
+  useFahrenheit,
+  accentColor,
+}: {
+  forecast: WeatherForecastDay[];
+  useFahrenheit: boolean;
+  accentColor: string;
+}) {
+  return (
+    <View className="gap-2 pb-2">
+      {forecast.map((day) => {
+        const dayTemp = convertTemp(day.temp_max, useFahrenheit);
+        const nightTemp = convertTemp(day.temp_min, useFahrenheit);
+        const dayIcon = getWeatherIconForCondition(day.weather.main);
+
+        return (
+          <View
+            key={`${day.date}-${dayTemp}-${nightTemp}`}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "rgba(0,0,0,0.15)",
+              borderRadius: 12,
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+            }}
+          >
+            <View className="flex-row items-center flex-1 gap-2">
+              <AppIcon icon={dayIcon} size={28} color={accentColor} />
+              <Text className="font-semibold text-white" style={{ width: 96 }}>
+                {getDayOfWeek(day.date)}
+              </Text>
+            </View>
+
+            <View
+              className="flex-row items-center justify-end"
+              style={{ width: 140 }}
+            >
+              <View className="flex-row items-center mr-2">
+                <AppIcon icon={Sun03Icon} size={20} color="#FCD34D" />
+                <Text
+                  className="font-medium text-white ml-1"
+                  style={{ width: 32 }}
+                >
+                  {dayTemp}°
+                </Text>
+              </View>
+              <View className="flex-row items-center">
+                <AppIcon icon={Moon02Icon} size={20} color="#93C5FD" />
+                <Text
+                  className="ml-1"
+                  style={{ color: "rgba(255,255,255,0.8)", width: 32 }}
+                >
+                  {nightTemp}°
+                </Text>
+              </View>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function WeatherDetails({
+  data,
+  humidity,
+  windSpeed,
+  sunriseStr,
+  sunsetStr,
+  accentColor,
+}: {
+  data: WeatherData;
+  humidity: number | undefined;
+  windSpeed: number | undefined;
+  sunriseStr: string | undefined;
+  sunsetStr: string | undefined;
+  accentColor: string;
+}) {
+  return (
+    <View
+      style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}
+    >
+      {windSpeed !== undefined && (
+        <DetailItem
+          icon={FastWindIcon}
+          label="Wind"
+          value={`${windSpeed} m/s`}
+          highlight={accentColor}
+        />
+      )}
+      {humidity !== undefined && (
+        <DetailItem
+          icon={DropletIcon}
+          label="Humidity"
+          value={`${humidity}%`}
+          highlight={accentColor}
+        />
+      )}
+      {data.visibility !== undefined && (
+        <DetailItem
+          icon={VisionIcon}
+          label="Visibility"
+          value={`${(data.visibility / 1000).toFixed(1)} km`}
+          highlight={accentColor}
+        />
+      )}
+      {data.main?.pressure !== undefined && (
+        <DetailItem
+          icon={CloudIcon}
+          label="Pressure"
+          value={`${data.main.pressure} hPa`}
+          highlight={accentColor}
+        />
+      )}
+      {sunriseStr && (
+        <DetailItem
+          icon={SunriseIcon}
+          label="Sunrise"
+          value={sunriseStr}
+          highlight={accentColor}
+        />
+      )}
+      {sunsetStr && (
+        <DetailItem
+          icon={SunsetIcon}
+          label="Sunset"
+          value={sunsetStr}
+          highlight={accentColor}
+        />
+      )}
+    </View>
+  );
+}
+
 export function WeatherCard({ data }: { data: WeatherData }) {
   const [useFahrenheit, setUseFahrenheit] = useState(false);
   const [forecastOpen, setForecastOpen] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  const hasRichData = !!(data.main && data.weather && data.weather.length > 0);
-  const weatherId = hasRichData ? data.weather![0].id : undefined;
+  const {
+    hasRichData,
+    weatherId,
+    displayTemp,
+    displayFeelsLike,
+    humidity,
+    windSpeed,
+    description,
+    cityName,
+    regionName,
+    countryName,
+    sunriseStr,
+    sunsetStr,
+  } = deriveWeatherDisplay(data, useFahrenheit);
+
   const theme = useMemo(
     () =>
       weatherId !== undefined
@@ -284,46 +501,6 @@ export function WeatherCard({ data }: { data: WeatherData }) {
         : getWeatherTheme(800),
     [weatherId],
   );
-
-  const rawTemp = hasRichData ? data.main!.temp : data.temperature;
-  const feelsLike = hasRichData ? data.main!.feels_like : undefined;
-  const humidity = hasRichData ? data.main!.humidity : data.humidity;
-  const windSpeed = hasRichData ? data.wind?.speed : data.wind_speed;
-  const description = hasRichData
-    ? data.weather![0].description
-    : data.condition;
-
-  const displayTemp =
-    rawTemp !== undefined
-      ? useFahrenheit
-        ? Math.round(celsiusToFahrenheit(rawTemp))
-        : Math.round(rawTemp)
-      : undefined;
-
-  const displayFeelsLike =
-    feelsLike !== undefined
-      ? useFahrenheit
-        ? Math.round(celsiusToFahrenheit(feelsLike))
-        : Math.round(feelsLike)
-      : undefined;
-
-  const cityName = hasRichData
-    ? (data.location?.city ?? data.name ?? "Unknown")
-    : ((data.location as string | undefined) ?? "Unknown");
-
-  const regionName = hasRichData ? (data.location?.region ?? "") : "";
-  const countryName = hasRichData
-    ? (data.location?.country ?? data.sys?.country ?? "")
-    : "";
-
-  const sunriseStr =
-    data.sys && data.timezone !== undefined
-      ? formatTime(data.sys.sunrise, data.timezone)
-      : undefined;
-  const sunsetStr =
-    data.sys && data.timezone !== undefined
-      ? formatTime(data.sys.sunset, data.timezone)
-      : undefined;
 
   const hasForecast = !!(data.forecast && data.forecast.length > 0);
   const accentColor = theme.accentColor;
@@ -436,72 +613,11 @@ export function WeatherCard({ data }: { data: WeatherData }) {
               onToggle={() => setForecastOpen((p) => !p)}
             />
             {forecastOpen && (
-              <View className="gap-2 pb-2">
-                {data.forecast!.map((day) => {
-                  const dayTemp = useFahrenheit
-                    ? Math.round(celsiusToFahrenheit(day.temp_max))
-                    : Math.round(day.temp_max);
-                  const nightTemp = useFahrenheit
-                    ? Math.round(celsiusToFahrenheit(day.temp_min))
-                    : Math.round(day.temp_min);
-                  const dayIcon = getWeatherIconForCondition(day.weather.main);
-
-                  return (
-                    <View
-                      key={`${day.date}-${dayTemp}-${nightTemp}`}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        backgroundColor: "rgba(0,0,0,0.15)",
-                        borderRadius: 12,
-                        paddingHorizontal: 8,
-                        paddingVertical: 6,
-                      }}
-                    >
-                      <View className="flex-row items-center flex-1 gap-2">
-                        <AppIcon icon={dayIcon} size={28} color={accentColor} />
-                        <Text
-                          className="font-semibold text-white"
-                          style={{ width: 96 }}
-                        >
-                          {getDayOfWeek(day.date)}
-                        </Text>
-                      </View>
-
-                      <View
-                        className="flex-row items-center justify-end"
-                        style={{ width: 140 }}
-                      >
-                        <View className="flex-row items-center mr-2">
-                          <AppIcon icon={Sun03Icon} size={20} color="#FCD34D" />
-                          <Text
-                            className="font-medium text-white ml-1"
-                            style={{ width: 32 }}
-                          >
-                            {dayTemp}°
-                          </Text>
-                        </View>
-                        <View className="flex-row items-center">
-                          <AppIcon
-                            icon={Moon02Icon}
-                            size={20}
-                            color="#93C5FD"
-                          />
-                          <Text
-                            className="ml-1"
-                            style={{
-                              color: "rgba(255,255,255,0.8)",
-                              width: 32,
-                            }}
-                          >
-                            {nightTemp}°
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
+              <WeatherForecast
+                forecast={data.forecast!}
+                useFahrenheit={useFahrenheit}
+                accentColor={accentColor}
+              />
             )}
           </View>
         )}
@@ -513,63 +629,14 @@ export function WeatherCard({ data }: { data: WeatherData }) {
           onToggle={() => setDetailsOpen((p) => !p)}
         />
         {detailsOpen && (
-          <View
-            style={{
-              flexDirection: "row",
-              flexWrap: "wrap",
-              gap: 8,
-              marginTop: 8,
-            }}
-          >
-            {windSpeed !== undefined && (
-              <DetailItem
-                icon={FastWindIcon}
-                label="Wind"
-                value={`${windSpeed} m/s`}
-                highlight={accentColor}
-              />
-            )}
-            {humidity !== undefined && (
-              <DetailItem
-                icon={DropletIcon}
-                label="Humidity"
-                value={`${humidity}%`}
-                highlight={accentColor}
-              />
-            )}
-            {data.visibility !== undefined && (
-              <DetailItem
-                icon={VisionIcon}
-                label="Visibility"
-                value={`${(data.visibility / 1000).toFixed(1)} km`}
-                highlight={accentColor}
-              />
-            )}
-            {data.main?.pressure !== undefined && (
-              <DetailItem
-                icon={CloudIcon}
-                label="Pressure"
-                value={`${data.main.pressure} hPa`}
-                highlight={accentColor}
-              />
-            )}
-            {sunriseStr && (
-              <DetailItem
-                icon={SunriseIcon}
-                label="Sunrise"
-                value={sunriseStr}
-                highlight={accentColor}
-              />
-            )}
-            {sunsetStr && (
-              <DetailItem
-                icon={SunsetIcon}
-                label="Sunset"
-                value={sunsetStr}
-                highlight={accentColor}
-              />
-            )}
-          </View>
+          <WeatherDetails
+            data={data}
+            humidity={humidity}
+            windSpeed={windSpeed}
+            sunriseStr={sunriseStr}
+            sunsetStr={sunsetStr}
+            accentColor={accentColor}
+          />
         )}
       </LinearGradient>
     </View>

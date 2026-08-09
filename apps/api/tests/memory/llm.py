@@ -69,7 +69,11 @@ class FakeMemoryLLM:
         messages: list[BaseMessage],
         *,
         operation: str,
+        user_id: str,
     ) -> BaseModel | None:
+        # user_id rides the real _invoke_structured signature (it meters the
+        # call's spend); canned responses don't depend on it, so it's recorded
+        # implicitly via the call but not used to select a response.
         call = RecordedCall(output_model=output_model, messages=list(messages), operation=operation)
         self.calls.append(call)
         if output_model not in self._responses:

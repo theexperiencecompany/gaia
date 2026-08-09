@@ -151,7 +151,7 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
         {"step": step.key, "day_offset": step.day_offset},
     )
     log.set(user={"id": user.id}, nurture={"step": step.key})
-    log.info(f"{LogTag.MAIL} Nurture email '{step.key}' sent")
+    log.info(f"{LogTag.MAIL} Nurture email sent", step_key=step.key)
     return True
 
 
@@ -177,7 +177,12 @@ async def run_nurture_sequence() -> str:
                 sent += 1
         except Exception as e:
             # One user's failure must not starve the rest of the cohort.
-            log.error(f"{LogTag.MAIL} Nurture failed for user {user.id}: {e!s}")
+            log.error(
+                f"{LogTag.MAIL} Nurture failed for user",
+                user_id=user.id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     log.set(nurture={"checked": checked, "sent": sent})
     return f"nurture: sent {sent} of {checked} candidates"

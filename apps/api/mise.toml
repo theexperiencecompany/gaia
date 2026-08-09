@@ -27,7 +27,7 @@ run = "uv run --group backend fastapi run"
 
 [tasks.worker]
 description = "Start ARQ worker"
-run = "uv run --group backend arq app.worker.WorkerSettings"
+run = "uv run --group backend arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG"
 alias = "arq"
 
 [tasks.lint]

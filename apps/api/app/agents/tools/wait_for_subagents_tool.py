@@ -92,7 +92,9 @@ async def wait_for_subagents(
         return "No background subagent results to collect."
 
     log.info(
-        f"{LogTag.TOOL} wait_for_subagents: collected {len(results)} result(s) for stream {stream_id}"
+        f"{LogTag.TOOL} wait_for_subagents: collected results",
+        result_count=len(results),
+        stream_id=stream_id,
     )
     return "\n\n---\n\n".join(f"[{item['agent']} result]\n{item['message']}" for item in results)
 
@@ -109,12 +111,14 @@ async def _poll_live_tasks(stream_id: str, timeout: int) -> None:
     if pending == 0:
         return
     log.info(
-        f"{LogTag.TOOL} wait_for_subagents: waiting for {pending} subagent(s) on stream {stream_id}"
+        f"{LogTag.TOOL} wait_for_subagents: waiting for subagents",
+        pending_count=pending,
+        stream_id=stream_id,
     )
     deadline = asyncio.get_running_loop().time() + timeout
     while get_pending_subagents(stream_id) > 0:
         if asyncio.get_running_loop().time() >= deadline:
-            log.warning(f"{LogTag.TOOL} wait_for_subagents: timed out after {timeout}s")
+            log.warning(f"{LogTag.TOOL} wait_for_subagents: timed out", timeout_seconds=timeout)
             break
         await asyncio.sleep(0.1)
 
@@ -146,7 +150,8 @@ async def _resolve_parked_batch(
 
         pending = [record for record in parked if not record.status.settled]
         log.info(
-            f"{LogTag.HIL} wait_for_subagents pausing executor for {len(pending)} approval(s)",
+            f"{LogTag.HIL} wait_for_subagents pausing executor for approvals",
+            approval_count=len(pending),
             conversation_id=conversation_id,
         )
         # One interrupt per batch — the resume VALUE is irrelevant (decisions are

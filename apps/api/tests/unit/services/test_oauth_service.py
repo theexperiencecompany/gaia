@@ -79,7 +79,7 @@ def mock_websocket_manager():
 
 
 @pytest.fixture
-def mock_redis_pool_manager():
+def mock_redis_pool_manager(route_enqueue_via_pool):
     mock_pool = AsyncMock()
     mock_pool.enqueue_job = AsyncMock()
     with patch("app.services.oauth.oauth_service.RedisPoolManager") as mock_rpm:

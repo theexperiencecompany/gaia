@@ -4,7 +4,6 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import UserScopedDocument
-from app.models.payment_models import PlanType
 
 
 class UsagePeriod(str, Enum):
@@ -30,15 +29,6 @@ class FeatureUsage(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class CreditUsage(BaseModel):
-    """Tracks the monetary cost (credits) of usage."""
-
-    credits_used: float = 0.0  # Total credits used (in USD)
-    period: UsagePeriod = UsagePeriod.MONTH
-    reset_time: datetime
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-
 class UserUsageSnapshot(UserScopedDocument):
     """A user's usage snapshot as stored in the ``usage_snapshots`` collection.
 
@@ -49,7 +39,6 @@ class UserUsageSnapshot(UserScopedDocument):
 
     plan_type: str
     features: list[FeatureUsage] = Field(default_factory=list)
-    credits: list[CreditUsage] = Field(default_factory=list)
     snapshot_date: datetime = Field(default_factory=lambda: datetime.now(UTC))
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
@@ -61,33 +50,6 @@ class UsageSnapshotUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     plan_type: str | None = None
-
-
-class RealtimeUsagePeriod(BaseModel):
-    """Real-time usage counters for one feature/period window, read live from Redis."""
-
-    used: int
-    limit: int
-    percentage: float
-    reset_time: datetime
-    remaining: int
-
-
-class RealtimeFeatureUsage(BaseModel):
-    """Real-time usage for one feature across its rate-limited periods."""
-
-    title: str
-    description: str
-    periods: dict[str, RealtimeUsagePeriod] = Field(default_factory=dict)
-
-
-class UsageSummaryResponse(BaseModel):
-    """Response for ``GET /usage/summary``."""
-
-    user_id: str
-    plan_type: PlanType
-    features: dict[str, RealtimeFeatureUsage]
-    last_updated: datetime
 
 
 class HistoryUsagePeriod(BaseModel):

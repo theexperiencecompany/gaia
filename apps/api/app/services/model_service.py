@@ -25,7 +25,9 @@ async def get_model_by_id(model_id: str) -> ModelConfig | None:
     try:
         return await ai_model_repository.get_by_model_id(model_id)
     except Exception as e:
-        log.error(f"Error fetching model {model_id}: {e}")
+        log.error(
+            "Error fetching model", model_id=model_id, error=str(e), error_type=type(e).__name__
+        )
         raise HTTPException(status_code=500, detail="Failed to fetch model")
 
 
@@ -45,5 +47,5 @@ async def get_default_model() -> ModelConfig | None:
     try:
         return await ai_model_repository.get_default()
     except Exception as e:
-        log.error(f"Error fetching default model: {e}")
+        log.error("Error fetching default model", error=str(e), error_type=type(e).__name__)
         return None

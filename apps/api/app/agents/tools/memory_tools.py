@@ -31,7 +31,7 @@ Document ``content`` is capped at MEMORY_TOOL_DOCUMENT_MAX_CHARS. ``doc_type``
 is a ``MemoryDocType`` value (``user_md`` ... ``insights_md``).
 """
 
-from datetime import date as date_type
+from datetime import UTC, date as date_type, datetime
 from typing import Annotated, Any, Literal, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
@@ -40,6 +40,7 @@ from langgraph.config import get_stream_writer
 
 from app.constants.memory import (
     DEFAULT_RECALL_LIMIT,
+    FREE_MEMORY_FACT_LIMIT,
     MEMORY_DOC_FILENAMES,
     MEMORY_TOOL_CONTENT_MAX_CHARS,
     MEMORY_TOOL_DOCUMENT_MAX_CHARS,
@@ -49,8 +50,10 @@ from app.constants.memory import (
 )
 from app.decorators import with_doc
 from app.memory.engine import memory_engine
+from app.memory.ingestion import MemoryLimitReachedError
 from app.memory.retrieval import EpisodeHit
 from app.models.memory_models import MemoryDocument, MemoryEntry, MemoryEpisode
+from app.models.payment_models import PlanType
 from app.templates.docstrings.memory_tool_docs import (
     ADD_MEMORY,
     FORGET_MEMORY,
@@ -189,6 +192,43 @@ def _stream_memory_data(payload: MemoryDataPayload) -> None:
     writer({"memory_data": payload})
 
 
+def _stream_memory_limit_card() -> None:
+    """Emit the in-chat rate-limit card for the free memory cap.
+
+    Same ``rate_limit_data`` payload the @with_rate_limiting decorator emits
+    (see app/decorators/rate_limiting.py), so the frontend RateLimitCard with
+    its upgrade CTA renders with zero new frontend work. The explicit
+    ``message`` matters: memory is NOT plan-gated (free includes a capped
+    amount), so the card must say the cap is full rather than the generic
+    "not included in your plan" copy.
+    """
+    try:
+        writer = get_stream_writer()
+    except RuntimeError:
+        return
+    writer(
+        {
+            "tool_data": {
+                "tool_name": "rate_limit_data",
+                "tool_category": "system",
+                "data": {
+                    "feature": "memory",
+                    "plan_required": PlanType.PRO.value,
+                    "reset_time": None,
+                    "current_plan": PlanType.FREE.value,
+                    "message": (
+                        f"Your free plan stores up to {FREE_MEMORY_FACT_LIMIT} "
+                        "memories and they are all used. Everything already "
+                        "saved keeps working. Upgrade to Pro for unlimited "
+                        "memories."
+                    ),
+                },
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+        }
+    )
+
+
 def _cap(text: str, limit: int) -> str:
     """Truncate text to a payload-friendly length."""
     return text if len(text) <= limit else f"{text[: limit - 3]}..."
@@ -277,6 +317,24 @@ async def add_memory(
     try:
         retained = await memory_engine.retain_single(
             user_id, content, category_path=folder, source_type=MemorySourceType.TOOL
+        )
+    except MemoryLimitReachedError as e:
+        # Free-plan cap: fail LOUD with the upgrade card + an agent-facing
+        # instruction, so the user both sees the wall and hears why.
+        log.info(
+            "memory_cap_reached",
+            event_name="memory_cap_reached",
+            user_id=user_id,
+            source="add_memory_tool",
+            limit=e.limit,
+        )
+        log.set(memory=MemoryContext(operation="create", success=False))
+        _stream_memory_limit_card()
+        return (
+            f"Memory limit reached: the free plan stores up to {e.limit} memories, "
+            "and this user's memory is full. The new fact was NOT saved. Tell the "
+            "user their saved memories are full and that upgrading to Pro unlocks "
+            "unlimited memories (existing memories still work)."
         )
     except Exception as e:
         log.error(

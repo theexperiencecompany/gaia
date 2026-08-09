@@ -14,6 +14,7 @@ from app.services.workflow.notifications import (
     send_workflow_completion_notification,
     send_workflow_failure_notification,
 )
+from app.utils.errors import AppError
 from app.workers.tasks.workflow_tasks import (
     execute_workflow_as_chat,
     execute_workflow_by_id,
@@ -408,7 +409,7 @@ class TestProcessWorkflowGenerationTask:
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
 
-            with pytest.raises(ValueError, match="Workflow generation failed"):
+            with pytest.raises(AppError, match="Workflow generation failed"):
                 await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
 
     async def test_todo_not_updated_raises(self, ctx):
@@ -433,7 +434,7 @@ class TestProcessWorkflowGenerationTask:
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
 
-            with pytest.raises(ValueError, match="not found or not updated"):
+            with pytest.raises(AppError, match="not found or not updated"):
                 await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
 
     async def test_websocket_failure_event_sent_on_exception(self, ctx):
@@ -1091,7 +1092,7 @@ class TestExecuteWorkflowByIdNotifications:
         mock_notif.create_notification.assert_awaited_once()
         notif_req = mock_notif.create_notification.call_args[0][0]
         assert "Resets" in notif_req.content.body
-        assert "PRO" in notif_req.content.body
+        assert "Upgrade to Pro" in notif_req.content.body
         # Should include an upgrade action
         assert notif_req.content.actions is not None
         assert len(notif_req.content.actions) == 1
@@ -1124,7 +1125,7 @@ class TestExecuteWorkflowByIdNotifications:
         assert "Error executing workflow" in result
         notif_req = mock_notif.create_notification.call_args[0][0]
         assert "not available on your current plan" in notif_req.content.body
-        assert "PRO" in notif_req.content.body
+        assert "Upgrade to Pro" in notif_req.content.body
 
     async def test_rate_limit_with_invalid_reset_time_format_falls_back(self, ctx):
         """When reset_time string in the detail dict is unparseable,
@@ -1382,8 +1383,8 @@ class TestProcessWorkflowGenerationTaskAdditional:
     def ctx(self) -> dict:
         return {}
 
-    async def test_workflow_created_with_no_steps_raises_value_error(self, ctx):
-        """If workflow is created but has zero steps, a ValueError is raised."""
+    async def test_workflow_created_with_no_steps_raises_app_error(self, ctx):
+        """If workflow is created but has zero steps, an AppError is raised."""
         todo_id = str(ObjectId())
         user_id = "user_abc"
         workflow = _make_workflow(user_id=user_id)
@@ -1405,7 +1406,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
 
-            with pytest.raises(ValueError, match="has no steps"):
+            with pytest.raises(AppError, match="has no steps"):
                 await process_workflow_generation_task(ctx, todo_id, user_id, "Empty Workflow")
 
     async def test_workflow_created_no_steps_error_message_none(self, ctx):
@@ -1429,7 +1430,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
 
-            with pytest.raises(ValueError, match="unknown error"):
+            with pytest.raises(AppError, match="unknown error"):
                 await process_workflow_generation_task(ctx, todo_id, user_id, "No Steps")
 
     async def test_websocket_broadcast_failure_on_success_does_not_raise(self, ctx):
@@ -1549,7 +1550,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
         assert "**Details:** Milk, eggs, bread" in captured_requests[0].prompt
 
     async def test_workflow_with_no_id_raises(self, ctx):
-        """If workflow.id is falsy after creation, it raises ValueError."""
+        """If workflow.id is falsy after creation, it raises AppError."""
         todo_id = str(ObjectId())
         user_id = "user_abc"
         workflow = MagicMock()
@@ -1568,7 +1569,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
 
-            with pytest.raises(ValueError, match="Workflow generation failed"):
+            with pytest.raises(AppError, match="Workflow generation failed"):
                 await process_workflow_generation_task(ctx, todo_id, user_id, "Todo title")
 
 

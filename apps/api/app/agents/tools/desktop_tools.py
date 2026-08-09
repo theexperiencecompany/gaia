@@ -52,13 +52,17 @@ async def _run_desktop_action(
     configurable = agent_configurable(config)
     source = ConversationSource.coerce(configurable.get("conversation_source"))
     if source is not ConversationSource.DESKTOP:
-        log.warning(f"{LogTag.TOOL} Desktop tool '{tool_name}' refused for source '{source}'")
+        log.warning(
+            f"{LogTag.TOOL} Desktop tool refused for source", tool_name=tool_name, source=source
+        )
         return _NOT_DESKTOP_ERROR
 
     stream_id = configurable.get("stream_id")
     user_id = configurable.get("user_id")
     if not stream_id or not user_id:
-        log.warning(f"{LogTag.TOOL} Desktop tool '{tool_name}' missing stream_id/user_id in config")
+        log.warning(
+            f"{LogTag.TOOL} Desktop tool missing stream_id/user_id in config", tool_name=tool_name
+        )
         return _MISSING_CONTEXT_ERROR
 
     return await request_desktop_action(

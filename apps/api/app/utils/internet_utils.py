@@ -252,12 +252,12 @@ async def scrape_url_metadata(url: str) -> URLResponse:
         return _parse_url_metadata(url, response.content[:_MAX_RESPONSE_BYTES])
 
     except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-        log.debug(f"Error fetching URL metadata: {exc}")
+        log.debug("Error fetching URL metadata", error=str(exc), error_type=type(exc).__name__)
     except HTTPException:
         # Redirect chain tripped the SSRF guard — propagate
         raise
     except Exception as exc:
-        log.debug(f"Unexpected error: {exc}")
+        log.debug("Unexpected error", error=str(exc), error_type=type(exc).__name__)
 
     return _empty_metadata(url)
 

@@ -56,9 +56,9 @@ class TestMongoFailureFallback:
         assert "Test Skill" in result
         assert "does a thing" in result
         mock_log.warning.assert_called_once()
-        logged = mock_log.warning.call_args.args[0]
-        assert "mongo connection reset" in logged, (
-            f"the swallowed exception must be named in the log, got: {logged}"
+        kwargs = mock_log.warning.call_args.kwargs
+        assert "mongo connection reset" in kwargs.get("error", ""), (
+            f"the swallowed exception must be named in the log, got: {kwargs}"
         )
 
     async def test_mongo_failure_with_no_builtins_returns_empty_string(self):

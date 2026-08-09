@@ -2,12 +2,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
 from app.api.v1.dependencies.google_scope_dependencies import (
     require_integration,
     require_integration_user_id,
 )
+from app.constants.log_tags import LogTag
 from app.decorators import tiered_rate_limit
 from app.models.mail_models import (
     ApplyLabelRequest,
@@ -85,6 +86,7 @@ router = APIRouter()
 async def list_labels(
     user_id: str = Depends(require_integration_user_id("gmail")),
 ) -> GmailLabelsResponse:
+    log.set(operation="get_labels")
     try:
         result = await list_labels_service(user_id=user_id)
 
@@ -100,7 +102,7 @@ async def list_labels(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/messages")
@@ -126,7 +128,7 @@ async def list_messages(
         )
         return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/message/{message_id}", summary="Get Gmail Message by ID")
@@ -139,6 +141,7 @@ async def get_email_by_id(
 
     - **message_id**: The ID of the Gmail message to retrieve
     """
+    log.set(operation="get_email", email_id=message_id)
     try:
         # Use the get_email_by_id service function
         result = await get_email_by_id_service(user_id=user_id, message_id=message_id)
@@ -161,7 +164,7 @@ async def get_email_by_id(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/search", summary="Advanced search for Gmail messages")
@@ -246,7 +249,7 @@ async def search_emails(
         )
         return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/mail/ai/compose")
@@ -255,10 +258,12 @@ async def process_email(
     request: EmailRequest,
     current_user: dict[str, Any] = Depends(require_integration("gmail")),
 ) -> ComposedEmailOutput:
+    log.set(mail={"operation": "compose"})
     try:
         user_id = current_user.get("user_id")
         if user_id is None:
             raise HTTPException(status_code=401, detail="User ID is required")
+        log.set(user={"id": str(user_id)})
 
         notes = await search_notes_by_similarity(input_text=request.prompt, user_id=str(user_id))
 
@@ -281,9 +286,14 @@ async def process_email(
             learned_writing_style=learned_style_block,
         )
 
-        return await ainvoke_structured(ComposedEmailOutput, prompt, label="mail_compose")
+        return await ainvoke_structured(
+            ComposedEmailOutput,
+            prompt,
+            label="mail_compose",
+            config=metered_config(str(user_id)),
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/gmail/send", summary="Send an email using Gmail API")
@@ -349,7 +359,7 @@ async def send_email_route(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}") from e
 
 
 @router.post("/gmail/send-json", summary="Send an email using JSON payload")
@@ -432,7 +442,9 @@ async def mark_as_read(
             status="Messages marked as read",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to mark messages as read: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to mark messages as read: {e!s}"
+        ) from e
 
 
 @router.post("/gmail/mark-as-unread", summary="Mark emails as unread")
@@ -466,7 +478,9 @@ async def mark_as_unread(
             status="Messages marked as unread",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to mark messages as unread: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to mark messages as unread: {e!s}"
+        ) from e
 
 
 @router.post("/gmail/star", summary="Star emails")
@@ -498,7 +512,7 @@ async def star_emails(
             status="Messages starred",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to star messages: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to star messages: {e!s}") from e
 
 
 @router.post("/gmail/unstar", summary="Unstar emails")
@@ -530,7 +544,7 @@ async def unstar_emails(
             status="Messages unstarred",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to unstar messages: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to unstar messages: {e!s}") from e
 
 
 @router.post("/gmail/trash", summary="Move emails to trash")
@@ -562,7 +576,9 @@ async def trash_emails(
             status="Messages moved to trash",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to move messages to trash: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to move messages to trash: {e!s}"
+        ) from e
 
 
 @router.post("/gmail/untrash", summary="Restore emails from trash")
@@ -594,7 +610,9 @@ async def untrash_emails(
             status="Messages restored from trash",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to restore messages from trash: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to restore messages from trash: {e!s}"
+        ) from e
 
 
 @router.post("/gmail/archive", summary="Archive emails")
@@ -626,7 +644,7 @@ async def archive_emails(
             status="Messages archived",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to archive messages: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to archive messages: {e!s}") from e
 
 
 @router.post("/gmail/move-to-inbox", summary="Move emails to inbox")
@@ -659,7 +677,9 @@ async def move_emails_to_inbox(
             status="Messages moved to inbox",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to move messages to inbox: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to move messages to inbox: {e!s}"
+        ) from e
 
 
 @router.get("/gmail/thread/{thread_id}", summary="Get complete email thread")
@@ -690,7 +710,7 @@ async def get_thread(
             thread=thread.as_payload(),
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch email thread: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch email thread: {e!s}") from e
 
 
 @router.post("/gmail/labels", summary="Create a new Gmail label")
@@ -725,7 +745,7 @@ async def create_label_route(
         )
         return GmailLabelResource.model_validate(new_label.as_payload())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/gmail/labels/{label_id}", summary="Update an existing Gmail label")
@@ -763,7 +783,7 @@ async def update_label_route(
         )
         return GmailLabelResource.model_validate(updated_label.as_payload())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/gmail/labels/{label_id}", summary="Delete a Gmail label")
@@ -778,15 +798,19 @@ async def delete_label_route(
 
     Returns a success message.
     """
+    log.set(operation="delete_label", label=label_id)
     try:
         # Delete label using the new async function
         success = await delete_label(user_id=user_id, label_id=label_id)
         if success:
             log.set(operation="delete_label", label=label_id, outcome="success")
             return GmailDeletionResponse(status="success", message="Label deleted successfully")
+        # Reported as a 200 to the client, so log.error is the only trace this failure leaves.
+        log.error(f"{LogTag.MAIL} Label deletion reported failure", label=label_id)
+        log.set(outcome="failed")
         return GmailDeletionResponse(status="error", message="Failed to delete label")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/gmail/messages/apply-label", summary="Apply labels to messages")
@@ -823,7 +847,7 @@ async def apply_labels_route(
             status="Labels applied successfully",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/gmail/messages/remove-label", summary="Remove labels from messages")
@@ -860,7 +884,7 @@ async def remove_labels_route(
             status="Labels removed successfully",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/gmail/drafts", summary="Create a new draft email")
@@ -903,7 +927,7 @@ async def create_draft_route(
             status="Draft created successfully",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/drafts", summary="List all draft emails")
@@ -935,7 +959,7 @@ async def list_drafts_route(
         )
         return drafts
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/drafts/{draft_id}", summary="Get a specific draft email")
@@ -960,7 +984,7 @@ async def get_draft_route(
         )
         return GmailDraftResource.model_validate(draft.as_payload())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/gmail/drafts/{draft_id}", summary="Update a draft email")
@@ -1005,7 +1029,7 @@ async def update_draft_route(
             status="Draft updated successfully",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/gmail/drafts/{draft_id}", summary="Delete a draft email")
@@ -1020,6 +1044,7 @@ async def delete_draft_route(
 
     Returns a success message.
     """
+    log.set(operation="delete_draft", email_id=draft_id)
     try:
         # Delete draft using the new async function
         success = await delete_draft(user_id=user_id, draft_id=draft_id)
@@ -1027,9 +1052,12 @@ async def delete_draft_route(
         if success:
             log.set(operation="delete_draft", email_id=draft_id, outcome="success")
             return GmailDeletionResponse(status="success", message="Draft deleted successfully")
+        # Reported as a 200 to the client, so log.error is the only trace this failure leaves.
+        log.error(f"{LogTag.MAIL} Draft deletion reported failure", email_id=draft_id)
+        log.set(outcome="failed")
         return GmailDeletionResponse(status="error", message="Failed to delete draft")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/gmail/drafts/{draft_id}/send", summary="Send a draft email")
@@ -1044,6 +1072,7 @@ async def send_draft_route(
 
     Returns the sent message data.
     """
+    log.set(operation="send_draft", email_id=draft_id)
     try:
         # Send draft using the new async function
         sent_message = await send_draft(user_id=user_id, draft_id=draft_id)
@@ -1062,12 +1091,13 @@ async def send_draft_route(
                 status="Draft sent successfully",
                 successful=True,
             )
+        log.set(outcome="failed")
         raise HTTPException(
             status_code=500,
             detail=sent_message.error or "Failed to send draft",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/importance-summaries", summary="Get email importance summaries")
@@ -1098,7 +1128,9 @@ async def get_email_importance_summaries(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving email summaries: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving email summaries: {e!s}"
+        ) from e
 
 
 @router.get(
@@ -1135,7 +1167,7 @@ async def get_single_email_importance_summary(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving email summary: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving email summary: {e!s}") from e
 
 
 @router.post("/gmail/importance-summaries/bulk", summary="Get bulk email importance summaries")
@@ -1164,4 +1196,6 @@ async def get_bulk_email_importance_summaries(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving bulk email summaries: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving bulk email summaries: {e!s}"
+        ) from e

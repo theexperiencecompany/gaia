@@ -84,7 +84,7 @@ async def search_triggers(
         )
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error searching triggers: {e}")
+        log.error(f"{LogTag.TOOL} Error searching triggers", error_type=type(e).__name__)
         return error_response("search_failed", str(e))
 
 
@@ -145,7 +145,7 @@ async def list_workflows(
         return success_response(payload)
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error listing workflows: {e}")
+        log.error(f"{LogTag.TOOL} Error listing workflows", error_type=type(e).__name__)
         return error_response("fetch_failed", str(e))
 
 
@@ -200,7 +200,9 @@ async def get_my_integrations(
         )
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error listing the user's integrations: {e}")
+        log.error(
+            f"{LogTag.TOOL} Error listing the user's integrations", error_type=type(e).__name__
+        )
         return error_response("fetch_failed", str(e))
 
 
@@ -245,7 +247,7 @@ async def search_integrations(
         return success_response({"integrations": results, "query": query})
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error searching public integrations: {e}")
+        log.error(f"{LogTag.TOOL} Error searching public integrations", error_type=type(e).__name__)
         return error_response("search_failed", str(e))
 
 
@@ -323,7 +325,9 @@ async def search_integration_tools(
         for integration, tools_or_error in zip(connected, tool_lists, strict=True):
             if isinstance(tools_or_error, BaseException):
                 log.warning(
-                    f"{LogTag.TOOL} Could not list tools for {integration.id}: {tools_or_error}"
+                    f"{LogTag.TOOL} Could not list tools for integration",
+                    integration_id=integration.id,
+                    error_type=type(tools_or_error).__name__,
                 )
                 continue
             for integration_tool in tools_or_error:
@@ -347,7 +351,7 @@ async def search_integration_tools(
         )
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error searching integration tools: {e}")
+        log.error(f"{LogTag.TOOL} Error searching integration tools", error_type=type(e).__name__)
         return error_response("search_failed", str(e))
 
 

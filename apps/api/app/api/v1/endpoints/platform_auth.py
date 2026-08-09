@@ -152,7 +152,10 @@ async def _handle_platform_oauth_callback(
 
             if token_response.status_code != 200:
                 log.error(
-                    f"{LogTag.API} {config.platform} token exchange failed: {token_response.text}"
+                    f"{LogTag.API} Platform token exchange failed",
+                    platform=config.platform,
+                    status_code=token_response.status_code,
+                    error=token_response.text,
                 )
                 return RedirectResponse(
                     url=_redirect_url(
@@ -164,7 +167,7 @@ async def _handle_platform_oauth_callback(
 
             # Slack-specific error handling
             if config.platform == "slack" and not token_data.get("ok"):
-                log.error(f"{LogTag.API} Slack OAuth failed: {token_data.get('error')}")
+                log.error(f"{LogTag.API} Slack OAuth failed", error=token_data.get("error"))
                 return RedirectResponse(
                     url=_redirect_url(
                         settings.FRONTEND_URL, redirect_path, oauth_error="token_failed"
@@ -183,7 +186,10 @@ async def _handle_platform_oauth_callback(
 
                 if user_response.status_code != 200:
                     log.error(
-                        f"{LogTag.API} {config.platform} user fetch failed: {user_response.text}"
+                        f"{LogTag.API} Platform user fetch failed",
+                        platform=config.platform,
+                        status_code=user_response.status_code,
+                        error=user_response.text,
                     )
                     return RedirectResponse(
                         url=_redirect_url(
@@ -211,15 +217,28 @@ async def _handle_platform_oauth_callback(
             link_result = await PlatformLinkService.link_account(
                 user_id, config.platform, platform_user_id, profile=profile or None
             )
+            # Audited immediately after the link lands, before the notification —
+            # a failing notification must not erase the record of the state change.
+            log.audit(
+                "platform account linked",
+                actor=user_id,
+                resource=platform_user_id,
+                provider=config.platform,
+                is_new_link=bool(link_result.is_new_link),
+            )
             if link_result.is_new_link:
                 await notify_account_linked(config.platform, user_id)
-            log.info(
-                f"{LogTag.API} {config.platform} account {platform_user_id} linked to user {user_id} via OAuth"
-            )
         except ValueError as e:
             error_msg = str(e)
             if "already linked" in error_msg:
                 log.set(outcome="already_linked")
+                log.audit(
+                    "platform account link rejected",
+                    actor=user_id,
+                    resource=platform_user_id,
+                    provider=config.platform,
+                    reason="already_linked",
+                )
                 return RedirectResponse(
                     url=_redirect_url(
                         settings.FRONTEND_URL,
@@ -227,7 +246,20 @@ async def _handle_platform_oauth_callback(
                         oauth_error="already_linked",
                     )
                 )
-            log.error(f"{LogTag.API} Failed to link account: {error_msg}")
+            log.error(
+                f"{LogTag.API} Failed to link account",
+                platform=config.platform,
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=error_msg,
+            )
+            log.audit(
+                "platform account link failed",
+                actor=user_id,
+                resource=platform_user_id,
+                provider=config.platform,
+                error_type=type(e).__name__,
+            )
             return RedirectResponse(
                 url=_redirect_url(settings.FRONTEND_URL, redirect_path, oauth_error="failed")
             )
@@ -245,27 +277,37 @@ async def _handle_platform_oauth_callback(
 
     except Exception as e:
         log.set(outcome="failed")
-        log.error(f"{LogTag.API} {config.platform} OAuth callback error: {e!s}", exc_info=True)
+        log.error(
+            f"{LogTag.API} Platform OAuth callback error",
+            platform=config.platform,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
         return RedirectResponse(
             url=_redirect_url(settings.FRONTEND_URL, redirect_path, oauth_error="failed")
         )
 
 
 @router.get("/discord/callback")
+# evlog-map-disable-next-line audit -- audited at the state change in _handle_platform_oauth_callback
 async def discord_oauth_callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
 ) -> RedirectResponse:
     """Handle Discord OAuth callback."""
+    log.set(oauth={"operation": "callback", "provider": "discord", "error_type": error})
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["discord"])
 
 
 @router.get("/slack/callback")
+# evlog-map-disable-next-line audit -- audited at the state change in _handle_platform_oauth_callback
 async def slack_oauth_callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
 ) -> RedirectResponse:
     """Handle Slack OAuth callback."""
+    log.set(oauth={"operation": "callback", "provider": "slack", "error_type": error})
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["slack"])

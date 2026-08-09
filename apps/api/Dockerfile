@@ -82,6 +82,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && playwright install-deps chromium
 
+# Stamped onto every wide event as the `commit` field (see shared.py.wide_events
+# env_context) so Loki queries can correlate errors with deploys.
+ARG GIT_COMMIT_SHA=""
+
 ENV ENV=production \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
@@ -89,7 +93,8 @@ ENV ENV=production \
     UV_SYSTEM_PYTHON=1 \
     UV_PROJECT_ENVIRONMENT=/usr/local \
     PYTHONPATH=/app/apps/api \
-    PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
+    PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
+    GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 # Copy workspace pyproject files (needed for uv run --group)
 COPY pyproject.toml uv.lock ./

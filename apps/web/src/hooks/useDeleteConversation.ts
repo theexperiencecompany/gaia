@@ -13,6 +13,39 @@ const selectUpsertConversation = (state: ChatStoreState) =>
 const selectSetMessagesForConversation = (state: ChatStoreState) =>
   state.setMessagesForConversation;
 
+// Best-effort restore of the deleted conversation into IndexedDB during
+// rollback. If local persistence fails we proceed with the store update only.
+async function restoreConversationCache(
+  conversation: IConversation,
+  messages: IMessage[],
+): Promise<void> {
+  try {
+    await db.putConversation(conversation);
+    if (messages.length > 0) {
+      await db.putMessagesBulk(messages);
+    }
+  } catch {
+    // If local persistence fails during rollback we proceed with store update only
+  }
+}
+
+// Build the error to surface when either the server delete or the local delete
+// failed; returns null when both succeeded.
+function resolveDeletionFailure(
+  apiRejected: boolean,
+  dbRejected: boolean,
+  rollbackError: unknown,
+): Error | null {
+  if (!apiRejected && !dbRejected) return null;
+
+  if (rollbackError instanceof Error) return rollbackError;
+
+  const message = apiRejected
+    ? "Failed to delete conversation from server"
+    : "Failed to delete conversation from local cache";
+  return new Error(message);
+}
+
 export const useDeleteConversation = () => {
   const removeConversation = useChatStore(selectRemoveConversation);
   const upsertConversation = useChatStore(selectUpsertConversation);
@@ -47,33 +80,19 @@ export const useDeleteConversation = () => {
             : undefined;
 
       if (conversation) {
-        try {
-          await db.putConversation(conversation);
-          if (messages.length > 0) {
-            await db.putMessagesBulk(messages);
-          }
-        } catch {
-          // If local persistence fails during rollback we proceed with store update only
-        }
-
+        await restoreConversationCache(conversation, messages);
         upsertConversation(conversation);
         if (messages.length > 0) {
           setMessagesForConversation(conversationId, messages);
         }
       }
 
-      if (apiResult.status === "rejected" || dbResult.status === "rejected") {
-        if (rollbackError instanceof Error) {
-          throw rollbackError;
-        }
-
-        const message =
-          apiResult.status === "rejected"
-            ? "Failed to delete conversation from server"
-            : "Failed to delete conversation from local cache";
-
-        throw new Error(message);
-      }
+      const failure = resolveDeletionFailure(
+        apiResult.status === "rejected",
+        dbResult.status === "rejected",
+        rollbackError,
+      );
+      if (failure) throw failure;
     },
     [removeConversation, setMessagesForConversation, upsertConversation],
   );

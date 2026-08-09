@@ -158,12 +158,19 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
         store_elapsed = time.monotonic() - t0_store
 
         log.info(
-            f"[timing] Memory retain ({len(messages)} emails): {store_elapsed:.1f}s — "
-            f"{result.facts_extracted} facts extracted"
+            "[timing] Memory retain ( emails): s — facts extracted",
+            messages_count=len(messages),
+            store_elapsed=store_elapsed,
+            facts_extracted=result.facts_extracted,
         )
 
     except Exception as e:
-        log.error(f"Error storing email batch to memory: {e}")
+        log.error(
+            "Error storing email batch to memory",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         # Don't re-raise - we want to continue processing other batches
 
 
@@ -210,6 +217,12 @@ async def store_single_profile(
             ),
             user_name=user_name,
         )
-        log.info(f"Stored {platform} profile to memory: {profile_url}")
+        log.info("Stored profile to memory", platform=platform, profile_url=profile_url)
     except Exception as e:
-        log.error(f"Failed to store {platform} profile: {e}")
+        log.error(
+            "Failed to store profile",
+            platform=platform,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )

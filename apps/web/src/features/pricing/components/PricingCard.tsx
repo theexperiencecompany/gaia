@@ -60,7 +60,7 @@ function getPriceDisplay(
     yearlyTotalDollars,
     priceSubLine,
     showSavings: !!yearlyTotalDollars && savePercent > 0,
-    // 25% off a year = pay for 9 months, get 12 → 3 months free.
+    // ~16.7% off a year = pay for 10 months, get 12 → 2 months free.
     monthsFree: Math.round((savePercent / 100) * MONTHS_PER_YEAR),
   };
 }

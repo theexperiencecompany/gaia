@@ -256,6 +256,15 @@ async def rotate_refresh_token(refresh_token: str) -> tuple[str, str, str]:
                     f"{LogTag.API} Device refresh-token reuse detected — revoking device",
                     device_id=replayed_id,
                 )
+                # Audited here, not in the route: this is where the revocation
+                # lands. The caller only sees a generic PairingError, so a
+                # handler-level record could not tell reuse from an unknown token.
+                log.audit(
+                    "device revoked",
+                    actor=replayed_user_id,
+                    resource=replayed_id,
+                    reason="refresh_token_reuse",
+                )
             raise PairingError("Refresh token is invalid")
 
         if current.status != DeviceStatus.ACTIVE:

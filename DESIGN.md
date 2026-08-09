@@ -397,6 +397,48 @@ The layout grid is a 4px-base spacing scale (`xs 4px` → `xxl 32px`). Most card
 
 Core layout does not use `lg:`, `xl:`, or `2xl:` breakpoints.
 
+### Dense Data Pages
+
+Learnings from the settings → usage redesign. These apply to any screen that is
+mostly numbers (usage, analytics, billing) — where the difference between
+"Apple-quality" and "AI slop" is typography and restraint, not decoration.
+
+**Typography & hierarchy**
+
+- Hierarchy comes from **weight and tone, not size or case**. Card titles are
+  `text-base font-semibold text-white`; supporting copy drops to
+  `text-[13px] text-zinc-500`. Never uppercase-with-letter-spacing labels.
+- Sentence case everywhere — "Usage this month", not "USAGE THIS MONTH".
+- Numbers wear `tabular-nums`, and large counts use compact notation
+  (`5.2k`, `300K`) — a stat is a glanceable word, not a paragraph of digits.
+- One stat = value + one-line context (`62% · used today`). Never restate the
+  same fact twice ("38% left" already implies "62% used" — pick one).
+- Inline the metadata into the header row (`Activity 5.2k actions · 13-day
+  streak`) instead of stacking caption lines under the title.
+
+**Layout**
+
+- One card = one `rounded-2xl bg-zinc-900/60` surface, no borders, no nested
+  card-in-card framing. Segregate sections with the page's `gap-4`, not
+  dividers.
+- Pair a wide chart with a fixed-width square bento (`flex items-stretch` +
+  `min-w-0 flex-1` beside `w-44 shrink-0`) — the square card sets the row
+  height and the flexible card's content stretches to fill it naturally
+  (`flex-col` + `flex-1 min-h-0` on the filler). No hardcoded heights.
+- Long lists collapse behind a progressive blur (`BlurStack`) with a floating
+  chip — the fade must be the card's own background, never a black gradient.
+- Explanations live in an `InformationCircleIcon` hover tooltip beside the
+  title, never as visible caption text under a chart.
+
+**Taste**
+
+- One accent (`#00bbff`). Status hues (amber/red) appear only when something
+  is genuinely approaching/at a limit — a healthy state never borrows them.
+- If a label needs a legend to be understood, the label is wrong.
+- Real rendered artwork (e.g. the badge medals in `public/badges/`) beats
+  hand-built vector approximations; recolor variants with CSS filters instead
+  of shipping near-duplicate assets.
+
 ## Elevation & Depth
 
 Depth is conveyed through **tonal layering**, not shadows. Cards stack `neutral-800` over `neutral-900` to read as recessed without any border. Shadows are reserved for true overlays (dialogs, sheets); cards never carry them. Glass surfaces (`bg-zinc-800/40 backdrop-blur-xl`) handle floating panels and search overlays.

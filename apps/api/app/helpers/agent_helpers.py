@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 import json
 from typing import Any, TypedDict, cast
+from uuid import uuid4
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, ToolMessage
@@ -113,7 +114,7 @@ async def get_handoff_metadata(subagent_id: str) -> HandoffMetadata:
         return metadata
 
     except Exception as e:
-        log.warning(f"Failed to lookup handoff metadata: {e}")
+        log.warning("Failed to lookup handoff metadata", error=str(e), error_type=type(e).__name__)
         return {}
 
 
@@ -336,6 +337,14 @@ def build_agent_config(  # NOSONAR python:S107
     if not home_timezone:
         home_timezone = "UTC"
 
+    # One id for the WHOLE user turn: generated at the top-level call (no
+    # parent) and inherited by every child agent (executor, handoff subagents,
+    # spawn loops). The accounting middleware keys the request tree's aggregate
+    # token counter on it, so the per-request ceiling binds across the tree
+    # instead of resetting per graph. Included in the literal below so the typed
+    # AgentConfigurable enforces its presence — a run can never omit it.
+    root_request_id = inherited.get("root_request_id") or str(uuid4())
+
     configurable: AgentConfigurable = {
         "thread_id": thread_id or conversation_id,
         # The TRUE conversation id (parent-overrides inheritance; see
@@ -350,6 +359,7 @@ def build_agent_config(  # NOSONAR python:S107
         "email": user.get("email"),
         "user_name": user.get("name", ""),
         "user_timezone": home_timezone,
+        "root_request_id": root_request_id,
         "provider": resolved["provider"],
         "max_tokens": resolved["max_tokens"],
         "model_name": resolved["model_name"],
@@ -364,6 +374,11 @@ def build_agent_config(  # NOSONAR python:S107
         "conversation_source": resolved_source,
         "source_category": source_category,
     }
+
+    # plan_type is stamped by apply_plan_model on the top-level configurable and
+    # propagated to children the same way root_request_id is.
+    if inherited.get("plan_type"):
+        configurable["plan_type"] = inherited["plan_type"]
 
     # Stash in configurable so child agents (spawned via asyncio.create_task)
     # re-emit the same trace_id from their own build_agent_config call.
@@ -819,7 +834,11 @@ async def execute_graph_streaming(
                                 }
                             )
                     except Exception as _e:
-                        log.warning(f"Failed to emit mcp_app event: {_e}")
+                        log.warning(
+                            "Failed to emit mcp_app event",
+                            error=str(_e),
+                            error_type=type(_e).__name__,
+                        )
             continue
 
         if stream_mode == "custom":
@@ -896,7 +915,11 @@ async def execute_graph_streaming(
                                 }
                             )
                     except Exception as _e:
-                        log.warning(f"Failed to emit mcp_app from subagent: {_e}")
+                        log.warning(
+                            "Failed to emit mcp_app from subagent",
+                            error=str(_e),
+                            error_type=type(_e).__name__,
+                        )
 
     if cancelled:
         # Stop the run before touching the checkpoint: aclose() raises
@@ -907,7 +930,11 @@ async def execute_graph_streaming(
         try:
             await record_interruption(graph, config)
         except Exception as e:  # noqa: BLE001 — the cancel ack must still reach the client
-            log.error(f"{LogTag.AGENT} Failed to record interruption: {e}")
+            log.error(
+                f"{LogTag.AGENT} Failed to record interruption",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
         yield f"nostream: {json.dumps({'complete_message': complete_message, 'cancelled': True})}"
         yield "data: [DONE]\n\n"
         return

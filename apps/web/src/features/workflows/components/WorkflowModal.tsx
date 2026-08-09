@@ -71,6 +71,69 @@ interface WorkflowModalProps {
   createAndSend?: boolean;
 }
 
+// Build the initial form values for a create-mode modal seeded from an
+// AI-generated draft, normalizing its trigger into the form's shape.
+function buildDraftFormValues(
+  draftData: WorkflowDraftData,
+  triggerSchemas: Parameters<typeof findTriggerSchema>[0],
+): WorkflowFormData {
+  const activeTab =
+    draftData.trigger_type === "schedule"
+      ? "schedule"
+      : draftData.trigger_type === "integration"
+        ? "trigger"
+        : "manual";
+
+  let triggerConfig: WorkflowFormData["trigger_config"];
+  let selectedTriggerValue = "";
+
+  if (draftData.trigger_type === "schedule") {
+    triggerConfig = {
+      type: "schedule" as const,
+      enabled: true,
+      cron_expression: draftData.cron_expression || "0 9 * * *",
+      timezone: getUserHomeTimezone(),
+    };
+  } else if (
+    draftData.trigger_type === "integration" &&
+    draftData.trigger_slug
+  ) {
+    // Normalize trigger_slug: backend may return composio_slug, frontend needs slug
+    const schema = findTriggerSchema(triggerSchemas, draftData.trigger_slug);
+    const normalizedSlug = schema?.slug ?? draftData.trigger_slug;
+
+    const defaultConfig = createDefaultTriggerConfig(normalizedSlug);
+    if (defaultConfig) {
+      triggerConfig = {
+        ...defaultConfig,
+        trigger_slug: normalizedSlug,
+      };
+    } else {
+      triggerConfig = {
+        type: normalizedSlug,
+        enabled: true,
+        trigger_name: normalizedSlug,
+      };
+    }
+    selectedTriggerValue = normalizedSlug;
+  } else {
+    triggerConfig = {
+      type: "manual" as const,
+      enabled: true,
+    };
+  }
+
+  return {
+    title: draftData.suggested_title,
+    description: draftData.suggested_description || undefined,
+    prompt: draftData.prompt || draftData.suggested_description || "",
+    activeTab,
+    selectedTrigger: selectedTriggerValue,
+    trigger_config: triggerConfig,
+    notify_on_completion: true,
+  };
+}
+
 export default function WorkflowModal({
   isOpen,
   onOpenChange,
@@ -203,22 +266,17 @@ export default function WorkflowModal({
   const formData = watch();
 
   // The integration slugs that step generation hints on (and that get persisted)
-  // come from the @-mentions in the instructions. Without mentions, fall back to
-  // whichever source authored this workflow: the existing workflow's saved slugs
-  // when editing (also covers prompts predating mention support), or the
-  // assistant's grounded ids when confirming a draft. An assistant prompt has no
-  // @-mentions, so without that fallback the draft's integrations would be lost
-  // and the API would substitute every connected integration.
+  // come from the @-mentions in the instructions. Falls back to the existing
+  // workflow's saved slugs for older prompts that predate mention support.
   const selectedIntegrationSlugs = useMemo(() => {
     const mentioned = mentionedIntegrationIds(
       formData.prompt ?? "",
       integrations,
     );
-    if (mentioned.length > 0) return mentioned;
-    return (
-      existingWorkflow?.integration_ids ?? draftData?.integration_ids ?? []
-    );
-  }, [formData.prompt, integrations, existingWorkflow, draftData]);
+    return mentioned.length > 0
+      ? mentioned
+      : (existingWorkflow?.integration_ids ?? []);
+  }, [formData.prompt, integrations, existingWorkflow]);
 
   // The integration backing the selected event trigger, if it still needs
   // connecting. Resolved from the selected trigger slug (not trigger_config,
@@ -380,64 +438,7 @@ export default function WorkflowModal({
 
     // Handle draft data from AI-generated workflow
     if (mode === "create" && draftData) {
-      const activeTab =
-        draftData.trigger_type === "schedule"
-          ? "schedule"
-          : draftData.trigger_type === "integration"
-            ? "trigger"
-            : "manual";
-
-      let triggerConfig: WorkflowFormData["trigger_config"];
-      let selectedTriggerValue = "";
-
-      if (draftData.trigger_type === "schedule") {
-        triggerConfig = {
-          type: "schedule" as const,
-          enabled: true,
-          cron_expression: draftData.cron_expression || "0 9 * * *",
-          timezone: getUserHomeTimezone(),
-        };
-      } else if (
-        draftData.trigger_type === "integration" &&
-        draftData.trigger_slug
-      ) {
-        // Normalize trigger_slug: backend may return composio_slug, frontend needs slug
-        const schema = findTriggerSchema(
-          triggerSchemas,
-          draftData.trigger_slug,
-        );
-        const normalizedSlug = schema?.slug ?? draftData.trigger_slug;
-
-        const defaultConfig = createDefaultTriggerConfig(normalizedSlug);
-        if (defaultConfig) {
-          triggerConfig = {
-            ...defaultConfig,
-            trigger_slug: normalizedSlug,
-          };
-        } else {
-          triggerConfig = {
-            type: normalizedSlug,
-            enabled: true,
-            trigger_name: normalizedSlug,
-          };
-        }
-        selectedTriggerValue = normalizedSlug;
-      } else {
-        triggerConfig = {
-          type: "manual" as const,
-          enabled: true,
-        };
-      }
-
-      resetFormValues({
-        title: draftData.suggested_title,
-        description: draftData.suggested_description || undefined,
-        prompt: draftData.prompt || draftData.suggested_description || "",
-        activeTab,
-        selectedTrigger: selectedTriggerValue,
-        trigger_config: triggerConfig,
-        notify_on_completion: true,
-      });
+      resetFormValues(buildDraftFormValues(draftData, triggerSchemas));
       setIsActivated(true);
       setCreationPhase("form");
       return;
@@ -484,107 +485,154 @@ export default function WorkflowModal({
     );
   };
 
-  const handleSave = async (data: WorkflowFormData) => {
-    if (!data.title.trim() || !data.prompt?.trim()) return;
+  // Create a brand-new workflow (optionally with predefined community steps).
+  const handleCreate = async (data: WorkflowFormData) => {
+    console.debug("[workflow:create] phase -> creating");
+    setCreationPhase("creating");
 
-    console.debug("[workflow:save] start", {
-      mode,
-      title: data.title,
-      integrations: selectedIntegrationSlugs,
-    });
-
-    if (mode === "create") {
-      console.debug("[workflow:create] phase -> creating");
-      setCreationPhase("creating");
-
-      // Validate the trigger config before sending
-      try {
-        const validationResult = workflowFormSchema.safeParse(data);
-        if (!validationResult.success) {
-          setCreationPhase("error");
-          return;
-        }
-      } catch (validationError) {
-        console.error("Form validation error:", validationError);
+    // Validate the trigger config before sending
+    try {
+      const validationResult = workflowFormSchema.safeParse(data);
+      if (!validationResult.success) {
         setCreationPhase("error");
         return;
       }
-
-      // Create the request object that matches the backend API
-      const createRequest = {
-        title: data.title,
-        description: data.description || undefined,
-        prompt: data.prompt,
-        trigger_config: data.trigger_config,
-        // When predefined steps are supplied (from a community/featured
-        // workflow), forward them so the backend reuses them instead of
-        // regenerating a fresh plan.
-        steps: hasPredefinedSteps
-          ? predefinedSteps?.map((step) => ({
-              id: step.id ?? "",
-              title: step.title,
-              description: step.description,
-              category: step.category,
-            }))
-          : undefined,
-        generate_immediately: !hasPredefinedSteps,
-        notify_on_completion: data.notify_on_completion,
-        integration_ids:
-          selectedIntegrationSlugs.length > 0
-            ? selectedIntegrationSlugs
-            : undefined,
-      };
-
-      const result = await createWorkflow(createRequest);
-      console.debug("[workflow:create] api returned", {
-        success: result.success,
-        id: result.workflow?.id,
-        steps: result.workflow?.steps?.length ?? 0,
-      });
-
-      if (result.success && result.workflow) {
-        const createdWorkflow = result.workflow;
-        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
-          workflow_id: createdWorkflow.id,
-          workflow_title: createdWorkflow.title,
-          step_count: createdWorkflow.steps?.length || 0,
-          trigger_type: data.trigger_config.type,
-          has_schedule: data.trigger_config.type === "schedule",
-        });
-
-        // Update currentWorkflow with the newly created workflow
-        setCurrentWorkflow(createdWorkflow);
-        console.debug("[workflow:create] phase -> success");
-        setCreationPhase("success");
-
-        // Show success toast
-        toast.success("Workflow created successfully!", {
-          description: `${createdWorkflow.steps?.length || 0} steps generated`,
-          duration: 3000,
-        });
-
-        // Optimistic update: add to store immediately for instant UI feedback
-        addToStore(createdWorkflow);
-
-        // Notify parent callbacks if provided (for backwards compatibility)
-        if (onWorkflowSaved) onWorkflowSaved(createdWorkflow.id);
-        invalidateCache();
-        await fetchWorkflows();
-
-        // In createAndSend mode, selectWorkflow navigates to /c and unmounts
-        // this page (and modal). Closing here would push back to /workflows
-        // and clobber that navigation, so only close when staying on the page.
-        if (createAndSend) {
-          selectWorkflow(createdWorkflow, { autoSend: true });
-        } else {
-          handleClose();
-        }
-      } else {
-        setCreationPhase("error");
-      }
+    } catch (validationError) {
+      console.error("Form validation error:", validationError);
+      setCreationPhase("error");
       return;
     }
-    // Edit mode - update the existing workflow
+
+    // Create the request object that matches the backend API
+    const createRequest = {
+      title: data.title,
+      description: data.description || undefined,
+      prompt: data.prompt,
+      trigger_config: data.trigger_config,
+      // When predefined steps are supplied (from a community/featured
+      // workflow), forward them so the backend reuses them instead of
+      // regenerating a fresh plan.
+      steps: hasPredefinedSteps
+        ? predefinedSteps?.map((step) => ({
+            id: step.id ?? "",
+            title: step.title,
+            description: step.description,
+            category: step.category,
+          }))
+        : undefined,
+      generate_immediately: !hasPredefinedSteps,
+      notify_on_completion: data.notify_on_completion,
+      integration_ids:
+        selectedIntegrationSlugs.length > 0
+          ? selectedIntegrationSlugs
+          : undefined,
+    };
+
+    const result = await createWorkflow(createRequest);
+    console.debug("[workflow:create] api returned", {
+      success: result.success,
+      id: result.workflow?.id,
+      steps: result.workflow?.steps?.length ?? 0,
+    });
+
+    if (!result.success || !result.workflow) {
+      setCreationPhase("error");
+      return;
+    }
+
+    const createdWorkflow = result.workflow;
+    trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
+      workflow_id: createdWorkflow.id,
+      workflow_title: createdWorkflow.title,
+      step_count: createdWorkflow.steps?.length || 0,
+      trigger_type: data.trigger_config.type,
+      has_schedule: data.trigger_config.type === "schedule",
+    });
+
+    // Update currentWorkflow with the newly created workflow
+    setCurrentWorkflow(createdWorkflow);
+    console.debug("[workflow:create] phase -> success");
+    setCreationPhase("success");
+
+    // Show success toast
+    toast.success("Workflow created successfully!", {
+      description: `${createdWorkflow.steps?.length || 0} steps generated`,
+      duration: 3000,
+    });
+
+    // Optimistic update: add to store immediately for instant UI feedback
+    addToStore(createdWorkflow);
+
+    // Notify parent callbacks if provided (for backwards compatibility)
+    if (onWorkflowSaved) onWorkflowSaved(createdWorkflow.id);
+    invalidateCache();
+    await fetchWorkflows();
+
+    // In createAndSend mode, selectWorkflow navigates to /c and unmounts
+    // this page (and modal). Closing here would push back to /workflows
+    // and clobber that navigation, so only close when staying on the page.
+    if (createAndSend) {
+      selectWorkflow(createdWorkflow, { autoSend: true });
+    } else {
+      handleClose();
+    }
+  };
+
+  // Regenerate steps after an edit that changed step-relevant fields. Keeps the
+  // modal open with a visible indicator until the user dismisses it.
+  const regenerateStepsAfterEdit = async (workflow: Workflow) => {
+    console.debug(
+      "[workflow:regen] step-relevant change detected, regenerating",
+      {
+        id: workflow.id,
+      },
+    );
+    setIsRegeneratingSteps(true);
+    setRegenerationError(null);
+    try {
+      const regenResult = await workflowApi.regenerateWorkflowSteps(
+        workflow.id,
+        {
+          instruction: "Update steps to match the new workflow definition",
+          force_different_tools: false,
+          integration_ids:
+            selectedIntegrationSlugs.length > 0
+              ? selectedIntegrationSlugs
+              : undefined,
+        },
+      );
+
+      if (regenResult.workflow) {
+        console.debug("[workflow:regen] api returned new steps", {
+          id: workflow.id,
+          steps: regenResult.workflow.steps?.length ?? 0,
+        });
+        // Commit the new steps locally AND to the store so the upcoming
+        // fetchWorkflows() refetch can't briefly resurface the old steps.
+        setCurrentWorkflow(regenResult.workflow);
+        updateInStore(workflow.id, regenResult.workflow);
+        toast.success("Workflow updated", {
+          description: `${regenResult.workflow.steps?.length || 0} steps regenerated`,
+          duration: 3000,
+        });
+      }
+    } catch (regenError) {
+      console.error("Failed to regenerate steps after update:", regenError);
+      const message =
+        regenError instanceof Error
+          ? regenError.message
+          : "Failed to regenerate steps";
+      setRegenerationError(message);
+      toast.error("Saved, but failed to regenerate steps", {
+        description: message,
+      });
+    } finally {
+      setIsRegeneratingSteps(false);
+    }
+  };
+
+  // Persist edits to an existing workflow, regenerating steps if needed.
+  const handleUpdate = async (data: WorkflowFormData) => {
     if (!currentWorkflow) return;
 
     try {
@@ -628,56 +676,7 @@ export default function WorkflowModal({
       }
 
       if (stepRelevantChanged) {
-        // Modal stays open with a visible regen indicator until the user
-        // dismisses it.
-        console.debug(
-          "[workflow:regen] step-relevant change detected, regenerating",
-          {
-            id: currentWorkflow.id,
-          },
-        );
-        setIsRegeneratingSteps(true);
-        setRegenerationError(null);
-        try {
-          const regenResult = await workflowApi.regenerateWorkflowSteps(
-            currentWorkflow.id,
-            {
-              instruction: "Update steps to match the new workflow definition",
-              force_different_tools: false,
-              integration_ids:
-                selectedIntegrationSlugs.length > 0
-                  ? selectedIntegrationSlugs
-                  : undefined,
-            },
-          );
-
-          if (regenResult.workflow) {
-            console.debug("[workflow:regen] api returned new steps", {
-              id: currentWorkflow.id,
-              steps: regenResult.workflow.steps?.length ?? 0,
-            });
-            // Commit the new steps locally AND to the store so the upcoming
-            // fetchWorkflows() refetch can't briefly resurface the old steps.
-            setCurrentWorkflow(regenResult.workflow);
-            updateInStore(currentWorkflow.id, regenResult.workflow);
-            toast.success("Workflow updated", {
-              description: `${regenResult.workflow.steps?.length || 0} steps regenerated`,
-              duration: 3000,
-            });
-          }
-        } catch (regenError) {
-          console.error("Failed to regenerate steps after update:", regenError);
-          const message =
-            regenError instanceof Error
-              ? regenError.message
-              : "Failed to regenerate steps";
-          setRegenerationError(message);
-          toast.error("Saved, but failed to regenerate steps", {
-            description: message,
-          });
-        } finally {
-          setIsRegeneratingSteps(false);
-        }
+        await regenerateStepsAfterEdit(currentWorkflow);
       } else {
         toast.success("Workflow updated", { duration: 3000 });
       }
@@ -696,6 +695,24 @@ export default function WorkflowModal({
         duration: 4000,
       });
     }
+  };
+
+  const handleSave = async (data: WorkflowFormData) => {
+    if (!data.title.trim() || !data.prompt?.trim()) return;
+
+    console.debug("[workflow:save] start", {
+      mode,
+      title: data.title,
+      integrations: selectedIntegrationSlugs,
+    });
+
+    if (mode === "create") {
+      await handleCreate(data);
+      return;
+    }
+
+    // Edit mode - update the existing workflow
+    await handleUpdate(data);
   };
 
   const handleClose = () => {

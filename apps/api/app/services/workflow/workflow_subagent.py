@@ -34,7 +34,7 @@ from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
-from app.models.agent_models import AgentUserContext, agent_configurable
+from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
 from app.services.workflow.knowledge import build_connected_integrations_hint
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.utils.workflow_utils import unknown_integration_ids
@@ -141,8 +141,15 @@ class WorkflowSubagentRunner:
         user_name: str | None = None,
         user_timezone: str | None = None,
         stream_writer: StreamWriter | None = None,
+        base_configurable: AgentConfigurable | None = None,
     ) -> str:
-        """Execute the workflow subagent with streaming, returning the complete response text."""
+        """Execute the workflow subagent with streaming, returning the complete response text.
+
+        ``base_configurable`` is the parent (executor) configurable so the subagent
+        inherits its plan tier, plan-routed model, provider pin, and root_request_id
+        — keeping pro users on the paid model and the budget wall enforced across the
+        whole turn tree, exactly like other handoff subagents.
+        """
         subagent_graph = await get_workflow_subagent()
 
         # Build config
@@ -161,6 +168,7 @@ class WorkflowSubagentRunner:
             thread_id=subagent_thread_id,
             agent_name="workflow_agent",
             subagent_id="workflow_agent",
+            base_configurable=base_configurable,
         )
         configurable = agent_configurable(config)
 
@@ -200,7 +208,7 @@ class WorkflowSubagentRunner:
             "integration_usernames": {},
         }
 
-        log.info(f"{LogTag.WORKFLOW} Executing with task: {task[:100]}...")
+        log.info(f"{LogTag.WORKFLOW} Executing workflow subagent task", task_length=len(task))
 
         # Generate, validate, and correct: if the agent returns invalid json (bad
         # structure or integration_ids that name a non-existent integration), hand the
@@ -224,12 +232,13 @@ class WorkflowSubagentRunner:
                 break
             if attempt == MAX_DRAFT_CORRECTIONS:
                 log.warning(
-                    f"{LogTag.WORKFLOW} Draft still invalid after {attempt} correction(s); "
-                    f"handing off as-is: {correction[:150]}"
+                    f"{LogTag.WORKFLOW} Draft still invalid after corrections; handing off as-is",
+                    corrections=attempt,
+                    correction_length=len(correction),
                 )
                 break
             log.info(
-                f"{LogTag.WORKFLOW} Draft invalid (attempt {attempt + 1}); re-prompting to correct"
+                f"{LogTag.WORKFLOW} Draft invalid; re-prompting to correct", attempt=attempt + 1
             )
             state = {
                 "messages": [
@@ -240,7 +249,10 @@ class WorkflowSubagentRunner:
                 ]
             }
 
-        log.info(f"{LogTag.WORKFLOW} Completed. Response: {len(complete_message)} chars")
+        log.info(
+            f"{LogTag.WORKFLOW} Completed. Response: chars",
+            complete_message_count=len(complete_message),
+        )
         return complete_message if complete_message else "Task completed"
 
     @staticmethod

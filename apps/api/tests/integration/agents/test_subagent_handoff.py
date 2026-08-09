@@ -1883,11 +1883,11 @@ async def background_dispatch_seams():
             AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
         ),
         patch(f"{HANDOFF_MODULE}.run_subagent_background", run_bg),
-        patch(f"{HANDOFF_MODULE}.asyncio.create_task", side_effect=_tracking_create_task),
+        patch("app.utils.background_tasks.asyncio.create_task", side_effect=_tracking_create_task),
     ):
         yield run_bg
         # handoff(background=True) fire-and-forgets its subagent task via
-        # asyncio.create_task — drain exactly the task(s) THIS test spawned
+        # spawn_background_task — drain exactly the task(s) THIS test spawned
         # (captured via the wrapper above) so none outlive this test's event
         # loop and raise "Event loop is closed" as an orphaned-task warning.
         pending = [t for t in spawned if not t.done()]

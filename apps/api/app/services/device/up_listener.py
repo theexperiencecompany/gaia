@@ -22,7 +22,7 @@ from app.constants.device_bridge import DEVICE_LISTENER_RESUBSCRIBE_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.services.device.bridge import POD_ID, up_pod_channel
-from shared.py.wide_events import log
+from shared.py.wide_events import log, log_context
 
 Frame = dict[str, Any]
 
@@ -43,9 +43,40 @@ def unregister_up_session(session_id: str) -> None:
     _inboxes.pop(session_id, None)
 
 
-def _dispatch(session_id: str, frame: Frame) -> None:
-    queue = _inboxes.get(session_id)
-    if queue is not None:
+async def _dispatch(raw: str) -> None:
+    """Route one up-frame to its session inbox, as its own wide event.
+
+    Every drop here is an MCP call that will hang until it times out, so each
+    frame gets a boundary and each drop reason is recorded on it — a dropped
+    reply used to be indistinguishable from one that was never sent.
+    """
+    async with log_context("device_up_frame"):
+        try:
+            frame: Frame = json.loads(raw)
+        except json.JSONDecodeError as e:
+            log.warning(
+                f"{LogTag.API} Dropped malformed device up-frame",
+                reason="json_decode",
+                error=str(e),
+                error_type=type(e).__name__,
+                raw_length=len(raw),
+            )
+            return
+        session_id = frame.get("sid")
+        if not isinstance(session_id, str):
+            log.warning(
+                f"{LogTag.API} Dropped device up-frame without a session id", reason="no_sid"
+            )
+            return
+        log.set(device={"session_id": session_id})
+        queue = _inboxes.get(session_id)
+        if queue is None:
+            log.warning(
+                f"{LogTag.API} Dropped device up-frame for an unknown session",
+                reason="unknown_session",
+                session_id=session_id,
+            )
+            return
         queue.put_nowait(frame)
 
 
@@ -64,13 +95,7 @@ async def _consume() -> None:
             raw = message["data"]
             if isinstance(raw, bytes):
                 raw = raw.decode("utf-8")
-            try:
-                frame: Frame = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            session_id = frame.get("sid")
-            if isinstance(session_id, str):
-                _dispatch(session_id, frame)
+            await _dispatch(raw)
     finally:
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe(up_pod_channel(POD_ID))
@@ -78,16 +103,28 @@ async def _consume() -> None:
 
 
 async def _listener_loop() -> None:
+    """One wide event per subscription lifetime, so a wedged listener is visible.
+
+    The boundary is per attempt, not around the loop: it emits when the
+    subscription ends, carrying how long it survived and why it dropped. One
+    boundary around the whole loop would emit a single event at process exit.
+    """
     if not redis_cache.redis:
-        log.warning(f"{LogTag.API} Device up-listener disabled (no Redis connection)")
+        async with log_context("device_up_subscription"):
+            log.warning(f"{LogTag.API} Device up-listener disabled (no Redis connection)")
         return
     while True:
-        try:
-            await _consume()
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            log.warning(f"{LogTag.API} Device up-listener dropped, resubscribing: {e}")
+        async with log_context("device_up_subscription"):
+            try:
+                await _consume()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning(
+                    f"{LogTag.API} Device up-listener dropped, resubscribing",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
         await asyncio.sleep(DEVICE_LISTENER_RESUBSCRIBE_SECONDS)
 
 

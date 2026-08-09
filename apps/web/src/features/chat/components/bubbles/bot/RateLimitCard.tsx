@@ -7,7 +7,8 @@ import {
   Clock01Icon,
   UploadCircle01Icon,
 } from "@icons";
-import type { RateLimitData } from "@/config/registries/toolRegistry";
+import type { RateLimitData } from "@shared/chat";
+import { formatFeatureName, formatPlanName } from "@shared/utils";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 
 interface RateLimitCardProps {
@@ -39,26 +40,25 @@ function getResetInfo(
   };
 }
 
-function formatFeatureName(feature?: string): string {
-  if (!feature) return "This Feature";
-  return feature
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
 const PRO_BENEFITS = [
-  "10x higher daily limits on all features",
+  "Much higher limits on every feature",
+  "Unlimited chat messages",
   "Priority responses and faster processing",
 ];
 
 export default function RateLimitCard({ data }: RateLimitCardProps) {
-  const { feature, plan_required, reset_time } = data;
+  const { feature, plan_required, reset_time, message, current_plan } = data;
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const isUpgradeRequired = !!plan_required;
+  // A user already on the top tier has nothing to upgrade to — hide the pitch.
+  const isPro = current_plan === "pro";
   const resetInfo = getResetInfo(reset_time);
   const featureName = formatFeatureName(feature);
-  const planName = plan_required?.toUpperCase() ?? "PRO";
+  const planName = formatPlanName(plan_required);
+  // The footer is either an "Upgrade to X" CTA or a neutral "View Plans" link.
+  // A pro user hitting a daily cap has nothing to upgrade to, so the neutral
+  // link is noise — drop the whole footer for them.
+  const showFooter = isUpgradeRequired || !isPro;
 
   return (
     <div className="flex w-full max-w-md flex-col gap-0 rounded-3xl bg-zinc-800 backdrop-blur-lg overflow-hidden">
@@ -80,9 +80,11 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
               {featureName}
             </span>
             <span className="text-xs text-zinc-500">
-              {isUpgradeRequired
-                ? `Requires ${planName} plan`
-                : "Daily limit reached"}
+              {message
+                ? `${formatPlanName(current_plan ?? "free")} plan limit reached`
+                : isUpgradeRequired
+                  ? `Requires ${planName} plan`
+                  : "Daily limit reached"}
             </span>
           </div>
         </div>
@@ -106,15 +108,20 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
       <div className="flex flex-col gap-3 p-4">
         {isUpgradeRequired ? (
           <>
-            {/* Explanation */}
-            <p className="text-xs leading-relaxed text-zinc-400">
-              <span className="font-medium text-zinc-200">{featureName}</span>{" "}
-              is a{" "}
-              <span className="font-medium text-warning-400">{planName}</span>{" "}
-              feature and isn&apos;t included in your current plan. Upgrade to
-              unlock it and get significantly higher limits across every
-              feature.
-            </p>
+            {/* Explanation — backend copy wins when provided (capped feature),
+                otherwise the generic plan-gated copy applies. */}
+            {message ? (
+              <p className="text-xs leading-relaxed text-zinc-400">{message}</p>
+            ) : (
+              <p className="text-xs leading-relaxed text-zinc-400">
+                <span className="font-medium text-zinc-200">{featureName}</span>{" "}
+                is a{" "}
+                <span className="font-medium text-warning-400">{planName}</span>{" "}
+                feature and isn&apos;t included in your current plan. Upgrade to
+                unlock it and get significantly higher limits across every
+                feature.
+              </p>
+            )}
 
             {/* Benefits */}
             <div className="flex flex-col gap-1.5">
@@ -151,33 +158,39 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
               </div>
             )}
 
-            {/* Upgrade nudge */}
-            <div className="flex items-start gap-2 px-3">
-              <Alert01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
-              <p className="text-xs text-zinc-400">
-                Need more? Upgrade to{" "}
-                <span className="font-medium text-zinc-300">PRO</span> for 10×
-                higher daily limits on {featureName} and all other features.
-              </p>
-            </div>
+            {/* Upgrade nudge — hidden for users already on the top tier */}
+            {!isPro && (
+              <div className="flex items-start gap-2 px-3">
+                <Alert01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
+                <p className="text-xs text-zinc-400">
+                  Need more? Upgrade to{" "}
+                  <span className="font-medium text-zinc-300">Pro</span> for
+                  much higher limits on {featureName} and every other feature.
+                </p>
+              </div>
+            )}
           </>
         )}
       </div>
 
-      <Divider className="bg-zinc-700/50" />
+      {showFooter && (
+        <>
+          <Divider className="bg-zinc-700/50" />
 
-      {/* Footer CTA */}
-      <div className="p-3">
-        <Button
-          size="sm"
-          color="primary"
-          variant={isUpgradeRequired ? "solid" : "flat"}
-          onPress={openPricingModal}
-          className="w-full rounded-xl font-medium"
-        >
-          {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
-        </Button>
-      </div>
+          {/* Footer CTA */}
+          <div className="p-3">
+            <Button
+              size="sm"
+              color="primary"
+              variant={isUpgradeRequired ? "solid" : "flat"}
+              onPress={openPricingModal}
+              className="w-full rounded-xl font-medium"
+            >
+              {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

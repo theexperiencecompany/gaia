@@ -91,6 +91,12 @@ class AgentConfigurable(TypedDict, total=False):
     #: paraphrase of the request.
     user_messages: list[str] | None
     user_message_id: str
+    #: One id for the WHOLE user turn: minted at the top-level
+    #: ``build_agent_config`` call and inherited by every child agent (executor,
+    #: handoff subagents, spawn loops). The accounting middleware keys the
+    #: request tree's aggregate token ceiling on it, so the per-request ceiling
+    #: binds across the tree instead of resetting per graph.
+    root_request_id: str
 
     # --- model selection ----------------------------------------------------
     provider: str
@@ -120,6 +126,12 @@ class AgentConfigurable(TypedDict, total=False):
     #: category (``SourceCategory`` value).
     conversation_source: str | None
     source_category: str
+    #: The user's resolved plan tier (``PlanType`` value), stamped by
+    #: ``apply_plan_model`` on the top-level configurable and inherited by
+    #: children. The accounting middleware's budget wall reads it to avoid a
+    #: Redis plan lookup on the hot path; absent, the wall derives the tier
+    #: from the cached plan itself.
+    plan_type: str
 
     # --- workflow context (must survive queueing) ---------------------------
     workflow_id: str

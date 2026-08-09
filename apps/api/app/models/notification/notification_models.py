@@ -41,6 +41,7 @@ class NotificationSourceEnum(str, Enum):
     WORKFLOW_COMPLETED = "workflow_completed"
     WORKFLOW_FAILED = "workflow_failed"
     SYSTEM_WORKFLOWS_PROVISIONED = "system_workflows_provisioned"
+    USAGE_LIMIT = "usage_limit"
 
 
 class ActionType(str, Enum):

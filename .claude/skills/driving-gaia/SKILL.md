@@ -28,6 +28,37 @@ Every bypass command authenticates as `DEV_USER` (default `dev@gaia.local`); set
 
 Single API only: `mise dev:api`. Web only: `mise dev:web`. (See `mise tasks` for the full list.)
 
+### No Docker daemon? (cloud sandboxes, CI runners, dev containers)
+
+Every command above starts infra with `nx run docker:docker:up`, which needs a
+Docker daemon. Cloud sandboxes usually have none, and `mise dev` then fails on
+missing services rather than on anything you changed. Bring the same backing
+services up natively instead:
+
+```bash
+sudo ./scripts/dev/sandbox-services.sh up      # mongo, redis, rabbitmq, postgres, chroma
+./scripts/dev/sandbox-services.sh seed         # the rows the API refuses to boot without
+./scripts/dev/sandbox-services.sh status
+source scripts/dev/sandbox-env.sh              # there is no .env in a fresh sandbox
+cd apps/api && uv run uvicorn app.main:app --port 8000
+```
+
+Then mint the bypass user — **without it every request 401s** with
+`Dev bypass target has no Mongo user`:
+
+```bash
+curl -X POST localhost:8000/api/v1/dev/users \
+  -H 'content-type: application/json' -d '{"email":"dev@gaia.local","name":"Dev User"}'
+```
+
+Three things that will cost you an hour if you don't know them, all encoded in
+those scripts: the app reads the **`GAIA`** database, not the one named in
+`MONGO_DB`'s path, so seeding the URI's database leaves startup validation
+still failing; RabbitMQ must run as the `rabbitmq` user, not root; and
+`LOG_FORMAT=json` makes `configure_file_logging()` a no-op, so logs go to
+stdout and `apps/api/logs/` stays empty — that is correct behavior, not a
+broken sink (see `reading-gaia-logs`).
+
 **Ports.** `API_PORT` / `WEB_PORT` are honored everywhere (default 8000 / 3000). For several branches at once, `mise run wt:env` writes a per-worktree `.env.worktree` with collision-free ports (API 8000+offset, web 3000+offset, stub 9797+offset, bots 3200-3203+offset) that mise auto-loads. `mise dev` preflights those ports and refuses to start when one is taken (adding the stub port under `--sim`), naming the process that holds it — a stale server from another worktree used to silently absorb the whole session's traffic. Full workflow: **`parallel-worktrees` skill** — don't reinvent it here.
 
 **WorkOS keys.** `DevelopmentSettings` still requires `WORKOS_API_KEY` / `WORKOS_CLIENT_ID` / `WORKOS_COOKIE_PASSWORD` even under the bypass (WorkOS is never called). Dummy values are fine locally; missing ones fail startup.

@@ -20,6 +20,7 @@ from app.constants.memory import (
 )
 from app.decorators import tiered_rate_limit
 from app.memory.engine import memory_engine
+from app.memory.ingestion import MemoryLimitReachedError
 from app.models.memory_models import (
     CreateMemoryRequest,
     CreateMemoryResponse,
@@ -264,6 +265,11 @@ async def create_memory(
             category_path=request.category_path,
             source_type=MemorySourceType.MANUAL,
         )
+    except MemoryLimitReachedError as e:
+        # Free-plan cap: fail loud with the actionable upgrade copy (the modal
+        # renders response.message) instead of the generic failure below.
+        log.set(memory=MemoryContext(operation="create", success=False))
+        return CreateMemoryResponse(success=False, message=str(e))
     except Exception as e:
         log.error(
             "create_memory_failed",

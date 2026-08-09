@@ -18,7 +18,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     TieredRateLimiter,
     tiered_limiter,
 )
-from app.config.rate_limits import RateLimitPeriod
+from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
 from app.models.payment_models import PlanType
 
 
@@ -98,8 +98,15 @@ class TestRateLimiterRedisKeys:
 class TestRateLimiterEnforcement:
     """Limit enforcement tests with real Redis state."""
 
-    async def test_request_rejected_when_daily_limit_reached(self, real_redis, real_rate_limiter):
-        """check_and_increment must raise RateLimitExceededException when limit is met."""
+    async def test_request_rejected_when_monthly_backstop_reached(
+        self, real_redis, real_rate_limiter
+    ):
+        """check_and_increment must raise RateLimitExceededException when a limit is met.
+
+        Chat is cost-walled — it has no free daily count — so its enforced count
+        is the monthly abuse backstop. Seed that to the exact limit and expect a
+        429.
+        """
         user_id = "limit-enforce-user-1"
         feature = "chat_messages"
 
@@ -107,8 +114,9 @@ class TestRateLimiterEnforcement:
         month_key = tiered_limiter._get_redis_key(user_id, feature, RateLimitPeriod.MONTH)
         await real_redis.delete(day_key, month_key)
 
-        # Seed the daily counter at exactly the FREE daily limit (200)
-        await real_redis.set(day_key, "200", ex=3600)
+        # Seed the monthly counter at exactly the FREE monthly backstop.
+        monthly_backstop = get_limits_for_plan(feature, PlanType.FREE).month
+        await real_redis.set(month_key, str(monthly_backstop), ex=3600)
 
         with patch.object(
             tiered_limiter,
@@ -133,8 +141,8 @@ class TestRateLimiterEnforcement:
         month_key = tiered_limiter._get_redis_key(user_id, feature, RateLimitPeriod.MONTH)
         await real_redis.delete(day_key, month_key)
 
-        # Seed well below the FREE daily limit
-        await real_redis.set(day_key, "1", ex=3600)
+        # Seed well below the monthly backstop (chat has no enforced daily count).
+        await real_redis.set(month_key, "1", ex=3600)
 
         with patch.object(
             tiered_limiter,

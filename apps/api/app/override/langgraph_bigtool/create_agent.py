@@ -296,7 +296,7 @@ def create_agent(
                 preview.append({"role": role, "content": content})
             log.info("acall_model message preview", preview=preview)
         except Exception as e:
-            log.debug(f"Failed to log message preview: {e}")
+            log.debug("Failed to log message preview", error_type=type(e).__name__, error=str(e))
 
         if middleware_executor and middleware_executor.has_wrap_model_call():
             middleware_tools_for_request: list[BaseTool | dict[str, Any]] = [

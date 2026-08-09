@@ -25,7 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from app.config.loggers import request_logger
-from shared.py.wide_events import env_context, log as wide_log
+from shared.py.wide_events import log as wide_log
 
 _LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
 
@@ -108,27 +108,53 @@ def log_function_call(
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Middleware that emits one structured wide event per HTTP request.
 
-    Every field is available for LogQL filtering in Grafana without any
-    pre-processing — just add `| json` to any query.
+    Every scalar field is available for LogQL filtering in Grafana without any
+    pre-processing — just add `| json` to any query. The `errors`/`warnings`
+    arrays are the exception: bare `| json` drops arrays outright, and they are
+    absent (not empty) when nothing was recorded, so `| errors != "[]"` matches
+    every line. Reach into them with an explicit JSON expression instead.
 
     LogQL examples:
         # Requests that had any warning (even if 200 OK)
-        {service="gaia-backend"} | json | warnings != "[]"
+        {service="gaia-backend"} | json first_warning="warnings[0].msg" | first_warning != ""
 
         # Requests that had any error logged mid-flight
-        {service="gaia-backend"} | json | errors != "[]"
+        {service="gaia-backend"} | json first_error="errors[0].msg" | first_error != ""
+
+        # Every failed request — final_level folds in the HTTP status, so this
+        # also catches a 5xx that logged nothing
+        {service="gaia-backend"} | json | message="http_request" | final_level =~ "ERROR|CRITICAL"
 
         # All chat requests by duration
         {service="gaia-backend"} | json | path =~ "/api/v1/chat.*" | unwrap duration_ms
 
         # Errors on a specific commit
-        {service="gaia-backend"} | json | commit="abc1234" | errors != "[]"
+        {service="gaia-backend"} | json | commit="abc1234"
+            | json first_error="errors[0].msg" | first_error != ""
 
         # Requests by specific user
         {service="gaia-backend"} | json | user_id="<id>"
     """
 
     _SKIP_PATHS = frozenset(["/health", "/metrics", "/favicon.ico"])
+
+    @staticmethod
+    def _attach_user_context(request: Request) -> None:
+        """Merge the authenticated user's identity into the wide event.
+
+        Called after ``call_next``: the auth middlewares run inside this
+        boundary and populate ``request.state.user`` during it. Attaching from
+        state here guarantees user identity on every event regardless of what
+        the handler did; fields a handler set explicitly win over the
+        automatic ones.
+        """
+        user = getattr(request.state, "user", None)
+        if not user:
+            return
+        auto = {"id": user.get("user_id")} if user.get("user_id") else {}
+        if not auto:
+            return
+        wide_log.set(user={**auto, **wide_log.get().get("user", {})})
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in self._SKIP_PATHS:
@@ -163,12 +189,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             wide_log.error(
                 "unhandled_exception",
                 error_type=type(exc).__name__,
-                error_message=str(exc),
+                error=str(exc),
             )
             wide_log.set(outcome="failed")
             # Still emit the wide event before re-raising
             duration_ms = round((time.time() - start) * 1000, 2)
             wide_log.set(final_level="ERROR")
+            self._attach_user_context(request)
             wide_event_context = wide_log.get()
             client_ip = (
                 request.client.host
@@ -176,7 +203,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 else request.headers.get("x-forwarded-for", "unknown")
             )
             context = {
-                **env_context(),
                 **wide_event_context,
                 "method": request.method,
                 "path": request.url.path,
@@ -209,13 +235,16 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         wide_log.set(final_level=level)
 
         # Merge all context accumulated by route handlers and services
+        self._attach_user_context(request)
         wide_event_context = wide_log.get()
 
         context = {
-            # --- Environment characteristics (on every event) ---
-            **env_context(),
             # --- Business context accumulated by handlers/services ---
-            # Spread before HTTP fields so authoritative HTTP values always win.
+            # Spread first so the authoritative HTTP values below always win.
+            # env/service/commit are NOT spread here: the JSON sink stamps them
+            # on every line (shared.py.logging._build_json_entry) and re-emits a
+            # colliding app field as ctx_<key>, so the infra identity is
+            # authoritative for real-time lines too, not just this one.
             **wide_event_context,
             # --- HTTP request characteristics (always authoritative) ---
             "method": request.method,

@@ -13,7 +13,7 @@ async def insert_note(
     auto_created: bool = False,
 ) -> NoteResponse:
     log.set(user_id=user_id, auto_created=auto_created, operation="insert_note")
-    log.info(f"{LogTag.API} Creating new note for user: {user_id}")
+    log.info(f"{LogTag.API} Creating new note for user", user_id=user_id)
 
     created = await note_repository.create(
         NoteDocument(
@@ -24,7 +24,7 @@ async def insert_note(
         )
     )
     note_id = created.id
-    log.info(f"{LogTag.API} Note created with ID: {note_id}")
+    log.info(f"{LogTag.API} Note created with ID", note_id=note_id)
 
     # The note is already committed, so a vector-store failure must not fail the
     # request — telling the user their note was lost would be a lie. But an
@@ -57,7 +57,7 @@ async def index_note(note_id: str, user_id: str, plaintext: str) -> None:
         ],
         ids=[note_id],
     )
-    log.info(f"{LogTag.API} Note with id {note_id} indexed in ChromaDB")
+    log.info(f"{LogTag.API} Note with id indexed in ChromaDB", note_id=note_id)
 
 
 async def reindex_note(note_id: str, user_id: str, plaintext: str) -> None:

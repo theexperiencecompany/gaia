@@ -268,6 +268,8 @@ per-file-ignores	apps/api/app/utils/redis_utils.py	PLC0415
 per-file-ignores	apps/api/app/utils/todo_vector_utils.py	PLC0415
 per-file-ignores	apps/api/app/utils/weather_utils.py	PLC0415
 per-file-ignores	apps/api/app/utils/workflow_utils.py	PLC0415
+per-file-ignores	apps/api/app/workers/queue.py	ANN401
+per-file-ignores	apps/api/app/workers/task_envelope.py	ANN401
 per-file-ignores	apps/api/app/workers/tasks/cleanup_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/hil_sweep_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/maintenance_sweep_tasks.py	PLC0415
@@ -289,3 +291,4 @@ per-file-ignores	libs/shared/py/settings/base.py	ANN401
 per-file-ignores	libs/shared/py/wide_events.py	ANN401
 per-file-ignores	libs/wake-word/**/*.py	T20
 per-file-ignores	tools/**/*.py	T20
+per-file-ignores	tools/logcheck/logcheck.py	ANN401

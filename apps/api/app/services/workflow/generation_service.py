@@ -6,7 +6,7 @@ from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.trigger_prompts import generate_trigger_context
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
@@ -154,14 +154,15 @@ class WorkflowGenerationService:
         trigger_config: TriggerConfig | None = None,
         description: str | None = None,
         integration_ids: list[str] | None = None,
-        user_id: str | None = None,
+        *,
+        user_id: str,
     ) -> list[WorkflowStep]:
         """Generate workflow steps using the LLM's native structured output.
 
         Raises:
             RuntimeError: If generation fails after all retry attempts.
         """
-        log.info(f"{LogTag.WORKFLOW} ========== START: {title} ==========")
+        log.info(f"{LogTag.WORKFLOW} ========== START", title=title)
 
         log.info(f"{LogTag.WORKFLOW} Getting tool registry...")
         tool_registry = await get_tool_registry()
@@ -245,12 +246,17 @@ class WorkflowGenerationService:
                 # Custom integrations are an enrichment for generation; degrade to
                 # the built-in catalog rather than failing the whole generation.
                 log.warning(
-                    f"{LogTag.WORKFLOW} Could not load custom integrations for user {user_id}: {e}"
+                    f"{LogTag.WORKFLOW} Could not load custom integrations for user",
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
 
         log.info(
-            f"{LogTag.WORKFLOW} Categories: {len(category_names)} "
-            f"(prefer={sorted(prefer_set)}, explicit={sorted(explicit_set)})"
+            f"{LogTag.WORKFLOW} Categories resolved",
+            category_count=len(category_names),
+            prefer=sorted(prefer_set),
+            explicit=sorted(explicit_set),
         )
 
         trigger_context = generate_trigger_context(trigger_config)
@@ -294,32 +300,41 @@ class WorkflowGenerationService:
             tools="\n".join(tools_with_categories),
             categories=", ".join(category_names),
         )
-        log.info(f"{LogTag.WORKFLOW} Prompt: {len(formatted_prompt)} chars")
+        log.info(f"{LogTag.WORKFLOW} Prompt built", prompt_chars=len(formatted_prompt))
 
         # Transient provider errors are retried inside ainvoke_structured; this loop
         # only regenerates when the model returns an empty or schema-invalid result.
         last_error: Exception | None = None
         for attempt in range(_MAX_GENERATION_ATTEMPTS):
             if attempt > 0:
-                log.info(f"{LogTag.WORKFLOW} Regeneration attempt {attempt} for: {title}")
+                log.info(
+                    f"{LogTag.WORKFLOW} Regeneration attempt for", attempt=attempt, title=title
+                )
 
             try:
                 result = await ainvoke_structured(
-                    GeneratedWorkflow, formatted_prompt, label="workflow_generation"
+                    GeneratedWorkflow,
+                    formatted_prompt,
+                    label="workflow_generation",
+                    config=metered_config(user_id),
                 )
             except (ValidationError, OutputParserException) as e:
                 # Schema-invalid structured output is regenerable; provider errors
                 # keep propagating so ainvoke_structured owns retry/fallback.
                 last_error = e
                 log.warning(
-                    f"{LogTag.WORKFLOW} Structured output invalid "
-                    f"(attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS}); regenerating: {e}"
+                    f"{LogTag.WORKFLOW} Structured output invalid; regenerating",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_GENERATION_ATTEMPTS,
+                    error_type=type(e).__name__,
                 )
                 continue
 
             if result and result.steps:
                 steps_data = enrich_steps(result.steps)
-                log.info(f"{LogTag.WORKFLOW} ========== DONE: {len(steps_data)} steps ==========")
+                log.info(
+                    f"{LogTag.WORKFLOW} ========== DONE: steps", steps_data_count=len(steps_data)
+                )
                 return steps_data
 
             last_error = ValueError(
@@ -327,13 +342,16 @@ class WorkflowGenerationService:
                 "the model may not have understood the request"
             )
             log.warning(
-                f"{LogTag.WORKFLOW} No steps "
-                f"(attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS}); regenerating"
+                f"{LogTag.WORKFLOW} No steps; regenerating",
+                attempt=attempt + 1,
+                max_attempts=_MAX_GENERATION_ATTEMPTS,
             )
 
         log.error(
-            f"{LogTag.WORKFLOW} ========== FAILED after {_MAX_GENERATION_ATTEMPTS} "
-            f"attempts: {last_error} =========="
+            f"{LogTag.WORKFLOW} ========== FAILED after attempts",
+            _max_generation_attempts=_MAX_GENERATION_ATTEMPTS,
+            last_error=last_error,
+            user_id=user_id,
         )
         raise RuntimeError(
             f"Workflow step generation failed for '{title}' "
@@ -348,6 +366,8 @@ class WorkflowGenerationService:
         existing_prompt: str | None = None,
         connected_integration_ids: set[str] | None = None,
         integration_ids: list[str] | None = None,
+        *,
+        user_id: str,
     ) -> GeneratedPromptResult:
         """Generate or improve workflow instructions using LLM.
 
@@ -392,7 +412,12 @@ class WorkflowGenerationService:
             HumanMessage(content=formatted),
         ]
 
-        result = await ainvoke_structured(GeneratedPromptOutput, messages, label="workflow_prompt")
+        result = await ainvoke_structured(
+            GeneratedPromptOutput,
+            messages,
+            label="workflow_prompt",
+            config=metered_config(user_id),
+        )
 
         suggested: SuggestedTrigger | None = None
         if result.trigger_type in ("manual", "schedule", "integration"):

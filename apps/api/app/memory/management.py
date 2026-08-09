@@ -6,7 +6,7 @@ tools (F4). Reads map ORM rows straight to the public API schemas; writes
 keep Postgres, Chroma and the Redis caches consistent.
 """
 
-from datetime import date as date_type
+from datetime import UTC, date as date_type, datetime
 
 from app.constants.memory import (
     DOCUMENT_PREVIEW_CHARS,
@@ -15,7 +15,7 @@ from app.constants.memory import (
     MemoryRelationType,
     MemorySourceType,
 )
-from app.memory import chroma_store, pg_store
+from app.memory import cap_counter, chroma_store, pg_store
 from app.memory.context import invalidate_core_context, invalidate_user_memory_caches
 from app.memory.embeddings import embed_query
 from app.memory.mappers import document_to_model, episode_to_model, row_to_entry
@@ -202,9 +202,23 @@ async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEnt
 
 async def forget_memory(user_id: str, memory_id: str, reason: str) -> bool:
     """Soft-delete a memory: hidden from recall, kept for lineage history."""
+    # Snapshot liveness before forgetting so the free-cap counter is only
+    # decremented when a fact that actually counted toward the live set is
+    # removed. Mirrors pg_store's active-memory predicate (latest, not
+    # forgotten, not expired); a superseded or expired row never counted.
+    before = await pg_store.get_memory(memory_id, user_id)
+    was_live = (
+        before is not None
+        and before.is_latest
+        and not before.is_forgotten
+        and (before.forget_after is None or before.forget_after > datetime.now(UTC))
+    )
+
     forgotten = await pg_store.mark_forgotten(memory_id, user_id, reason)
     if not forgotten:
         return False
+    if was_live:
+        await cap_counter.adjust_live_count(user_id, -1)
     await chroma_store.set_memory_flags(memory_id, is_forgotten=True)
     await invalidate_user_memory_caches(user_id)
     schedule_memory_vfs_sync(user_id)
@@ -219,6 +233,7 @@ async def delete_all(user_id: str) -> int:
     await cancel_consolidation(user_id)
     deleted = await pg_store.delete_all_memories(user_id)
     await chroma_store.delete_user(user_id)
+    await cap_counter.set_cached_live_count(user_id, 0)
     await invalidate_user_memory_caches(user_id)
     schedule_memory_vfs_sync(user_id)
     return deleted

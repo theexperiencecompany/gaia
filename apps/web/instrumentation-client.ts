@@ -8,6 +8,12 @@
 
 // Type-only import — zero runtime cost.
 import type * as SentryNs from "@sentry/nextjs";
+import {
+  EXTENSION_URL_PATTERNS,
+  filterExceptionBeforeSend,
+  filterSentryEvent,
+  IGNORED_EXCEPTION_MESSAGES,
+} from "@/lib/observability/exception-filter";
 
 // Holds the real Sentry function once the module loads at idle time.
 let _captureRouterTransitionStart:
@@ -32,6 +38,15 @@ if (typeof window !== "undefined") {
           replaysSessionSampleRate: 0.1,
           replaysOnErrorSampleRate: 1.0,
           debug: false,
+
+          // Drop noise thrown by crawlers, browser extensions, and third-party
+          // scripts on our SEO pages. `ignoreErrors` / `denyUrls` handle the
+          // benign message classes and extension URLs; `beforeSend` enforces
+          // the bundle-frame allowlist those options cannot express, keeping
+          // both sinks in agreement with PostHog's `before_send`.
+          ignoreErrors: [...IGNORED_EXCEPTION_MESSAGES],
+          denyUrls: [...EXTENSION_URL_PATTERNS],
+          beforeSend: filterSentryEvent,
         });
 
         _captureRouterTransitionStart = Sentry.captureRouterTransitionStart;
@@ -47,7 +62,9 @@ if (typeof window !== "undefined") {
               const client = Sentry.getClient();
               if (client) client.addIntegration(replayIntegration());
             })
-            .catch(() => {});
+            .catch(() => {
+              // Replay is best-effort: a load failure must not break the page.
+            });
         };
         const interactionEvents = [
           "pointerdown",
@@ -79,6 +96,9 @@ if (typeof window !== "undefined") {
           defaults: "2025-05-24",
           capture_exceptions: true,
           debug: process.env.NODE_ENV === "development",
+          // Drop the same crawler / extension / third-party exception noise
+          // Sentry filters above so both sinks stay in agreement.
+          before_send: filterExceptionBeforeSend,
         });
       } catch {
         // Analytics should never break the app.

@@ -13,12 +13,17 @@ import { apiService } from "@/lib/api/service";
 import { desktopClientHeaders } from "@/lib/electron/api";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { getBrowserTimezone } from "@/lib/timezone";
+import { toast } from "@/lib/toast";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
+import {
+  getErrorMessage,
+  handleRateLimitError,
+} from "@/utils/interceptorUtils";
 
 /** Thrown when the backend rejects a send whose turn_id was already claimed —
  *  the original request is (or was) processing; the retry must not re-run. */
@@ -29,8 +34,19 @@ export class DuplicateTurnError extends Error {
   }
 }
 
+/** Thrown when a send is rejected by a usage wall (429). The rate-limit
+ *  upsell toast is shown at throw time, so downstream failure handling must
+ *  not add a generic error toast on top. */
+export class RateLimitError extends Error {
+  constructor(message?: string) {
+    super(message || "Usage limit reached");
+    this.name = "RateLimitError";
+  }
+}
+
 const HTTP_CONFLICT = 409;
 const HTTP_GONE = 410;
+const HTTP_TOO_MANY_REQUESTS = 429;
 
 export interface ChatStreamRequest {
   inputText: string;
@@ -352,6 +368,16 @@ export const chatApi = {
         async onopen(response) {
           if (response.status === HTTP_CONFLICT) {
             throw new DuplicateTurnError();
+          }
+          // Usage wall (message count or cost budget exhausted): render the
+          // rate-limit upsell UI here — the axios interceptor never sees this
+          // request — and throw typed so failure handling skips its generic toast.
+          if (response.status === HTTP_TOO_MANY_REQUESTS) {
+            const data: unknown = await response.json().catch(() => undefined);
+            if (!handleRateLimitError(data)) {
+              toast.error("Too many requests. Please try again later.");
+            }
+            throw new RateLimitError(getErrorMessage(data));
           }
           if (
             !response.ok ||
