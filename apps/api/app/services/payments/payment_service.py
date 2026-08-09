@@ -212,7 +212,11 @@ class DodoPaymentService:
                 cancel_at_next_billing_date=True,
             )
         except Exception as e:
-            log.error(f"{LogTag.PAYMENT} Error cancelling subscription in Dodo: {e}")
+            log.error(
+                f"{LogTag.PAYMENT} Error cancelling subscription in Dodo",
+                error_type=type(e).__name__,
+                error=str(e),
+            )
             raise HTTPException(502, f"Payment service error: {e!s}")
 
         # Mirror Dodo's authoritative state locally. cancelled_at is only set
