@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import libcst as cst
 from libcst.metadata import PositionProvider
-
 from mutmut.mutation.file_mutation import (
     NEVER_MUTATE_FUNCTION_CALLS,
     NEVER_MUTATE_FUNCTION_NAMES,
@@ -42,7 +41,7 @@ def _skip_node_and_children(self: MutationVisitor, node: cst.CSTNode) -> bool:
         if isinstance(node, cst.ClassDef):
             self.ignored_classes.add(node.name.value)
             return True
-        elif isinstance(node, cst.FunctionDef):
+        if isinstance(node, cst.FunctionDef):
             self.ignored_functions.add(node.name.value)
             return True
         # other types of nodes (if, elif, for, while, ...) get treated on a line-by-line basis
