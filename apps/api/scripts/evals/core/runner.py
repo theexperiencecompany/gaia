@@ -7,12 +7,14 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 import os
 from pathlib import Path
+import subprocess
 import time
 from typing import Any
 import uuid
 
-from . import faults
+from . import baseline, faults, opiksink
 from .cost import EvalCostTracker
+from .invariants import check_records
 from .journal import RunJournal, RunMeta
 from .providers import (
     EvalConfig,
@@ -22,7 +24,9 @@ from .providers import (
     price_book,
     rotation_chain,
 )
-from .types import Case, CaseRun, CaseTrace, PriceBook, ProviderError
+from .report import write_report
+from .scorers import judge_env
+from .types import GATE_PASS_THRESHOLD, Case, CaseRun, CaseTrace, PriceBook, ProviderError
 
 RUNS_DIR = Path(__file__).resolve().parent.parent / "runs"
 
@@ -156,6 +160,12 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         opts.resume
         or f"{opts.suite}-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
     )
+    # Checked before RunJournal, which creates the directory unconditionally: a
+    # mistyped run id used to produce an empty run dir with no run.json, and the
+    # first read of its metadata then died on `NoneType has no attribute` pages
+    # later, in a place that says nothing about the typo.
+    if opts.resume is not None and not (RUNS_DIR / opts.resume / "run.json").exists():
+        raise SystemExit(f"--resume: no run '{opts.resume}' under {RUNS_DIR}")
     journal = RunJournal(RUNS_DIR, run_id)
     if opts.resume is None:
         journal.create_meta(
@@ -176,7 +186,6 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         journal.update_meta(status="running")
 
     tracker = EvalCostTracker(cfg.providers, opts.max_usd or cfg.default_max_usd)
-    transport = suite.transport
 
     # Boot-time provider health: dead providers are skipped for the whole run.
     healthy: list[str] = []
@@ -196,11 +205,10 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
 
     print(f"[run] {run_id} · suite={suite.name} · providers={healthy} · cases={len(cases)}")
 
-    provider_index = 0
     prices = price_book(cfg)
     # Read once: a resumed run's version is the one the journal recorded, not
     # whatever the working tree describes as now.
-    app_version = (journal.load_meta() or RunMeta("", "", "")).app_version
+    app_version = _require_meta(journal).app_version
 
     def _sink_deferred() -> bool:
         return os.environ.get("EVALS_DEFER_OPIK_SINK", "") == "1"
@@ -223,130 +231,42 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     aborted: str | None = None
     run_status = "finished"
 
-    # Concurrency pins ONE provider for the whole run, deliberately. pin_settings
-    # mutates a shared settings singleton and resets the lazy provider, so two
-    # cases pinning different lanes would race — and re-pinning mid-flight is the
-    # same engine-reset that turned one Postgres blip into 76 fabricated zeros.
-    # Rotation is therefore a sequential-only feature; a pinned run that loses
-    # its provider aborts rather than silently continuing on another.
-    if opts.concurrency > 1:
-        pinned_name = healthy[0]
-        pin_settings(cfg.providers[pinned_name])
-        tracker.set_provider(pinned_name)
-        print(
-            f"[run] concurrency={opts.concurrency} · provider pinned to {pinned_name} "
-            f"(rotation disabled: the app's provider settings are process-global)"
-        )
-        aborted = await _run_cases_concurrently(
-            cases, suite, cfg, opts, tracker, cfg.providers[pinned_name], pinned_name, record_case
-        )
-        if aborted:
-            print(f"\n[abort] {aborted}")
-        run_status = "aborted" if aborted else "finished"
-        _flush_traces(suite.project)
-        journal.update_meta(
-            status=run_status, finished_at=datetime.now(UTC).isoformat(timespec="seconds")
-        )
-        return _publish_run(journal, suite, cfg, opts, cases, prices, tracker)
-
+    # Both modes run inside this one try, so an interrupt is recorded the same
+    # way whichever it was. A concurrent run used to return from its own branch
+    # before the handler existed: Ctrl-C on one left the traces unflushed and
+    # `run.json` saying "running" forever, which resume, sweep and ingest all
+    # read as a run still in flight.
     try:
-        for case in cases:
-            if tracker.total_exceeded:
-                print(f"[budget] total cap exceeded — stopping before {case.id}")
-                break
-            attempt = 0
-            last_error: str | None = None
-            # Rotation is per case. It used to persist across cases, so once an
-            # earlier case had rotated past the last provider, every remaining
-            # case skipped the loop entirely — no attempt, no error, no journal
-            # record. The cases did not fail; they silently ceased to exist.
-            # Providers whose budget is exhausted are still skipped below, so
-            # resetting costs nothing.
-            provider_index = 0
-            while provider_index < len(healthy):
-                provider_name = healthy[provider_index]
-                provider = cfg.providers[provider_name]
-                if tracker.exceeded_budget.intersection({provider_name}):
-                    print(f"[budget] {provider_name} budget exhausted — rotating")
-                    provider_index += 1
-                    continue
-                attempt += 1
-                start = time.monotonic()
-                try:
-                    tracker.set_provider(provider_name)
-                    pin_settings(provider)
-                    with tracker.case_scope(case.id):
-                        run = await transport(case, cfg, tracker, provider)
-                    run.provider = provider_name
-                    run.model = provider.model
-                    run.duration_s = time.monotonic() - start
-                    scores = _score_or_zero(case, run, suite)
-                    status = _status_from_scores(case, scores, run.error)
-                    record_case(case, run, scores, status, run.error)
-                    print(
-                        f"  {_MARKERS.get(status, '✗')} {case.id} [{provider_name}] "
-                        + " ".join(f"{k}={v:.2f}" for k, v in scores.items())
-                    )
-                    break
-                except ProviderError as e:
-                    last_error = str(e)
-                    print(f"  ✗ {case.id} [{provider_name}] provider error: {e.reason} — rotating")
-                    provider_index += 1
-                except Exception as e:
-                    # An outage reaches this loop as an ordinary exception unless
-                    # some suite happened to hand-wrap it. Classifying here — the
-                    # one place a fault becomes a status — is what stops the next
-                    # 400 cases from measuring the outage instead of the agent,
-                    # whichever suite and whichever backend went away.
-                    fault = faults.classify(e)
-                    if fault is not None and faults.confirmed_down(fault):
-                        aborted = str(fault.as_infra_error())
-                        break
-                    last_error = f"{type(e).__name__}: {e}"
-                    record_case(
-                        case,
-                        _failed_run(
-                            case,
-                            provider_name,
-                            provider.model,
-                            time.monotonic() - start,
-                            last_error,
-                        ),
-                        {},
-                        "errored",
-                        last_error,
-                    )
-                    print(f"  ! {case.id} [{provider_name}] errored: {last_error}")
-                    break
-            if aborted:
-                break
-            # Every case leaves a record. Without the `or` clause a case that
-            # never entered the loop at all — every provider over budget —
-            # produced no error and so no record, and vanished from the run
-            # without ever being counted as unrun.
-            if journal.record_for(case.id) is None:
-                reason = last_error or (
-                    f"no provider available: every lane in {healthy} was over budget "
-                    f"or exhausted before this case was attempted"
-                )
-                record_case(
-                    case,
-                    _failed_run(
-                        case,
-                        healthy[provider_index - 1] if provider_index else "?",
-                        "?",
-                        0,
-                        reason,
-                    ),
-                    {},
-                    "errored",
-                    reason,
-                )
-        if aborted:
+        # Concurrency pins ONE provider for the whole run, deliberately.
+        # pin_settings mutates a shared settings singleton and resets the lazy
+        # provider, so two cases pinning different lanes would race — and
+        # re-pinning mid-flight is the same engine-reset that turned one
+        # Postgres blip into 76 fabricated zeros. Rotation is therefore a
+        # sequential-only feature; a pinned run that loses its provider aborts
+        # rather than silently continuing on another.
+        if opts.concurrency > 1:
+            pinned_name = healthy[0]
+            pin_settings(cfg.providers[pinned_name])
+            tracker.set_provider(pinned_name)
             print(
-                f"\n[abort] {aborted}\n"
-                f"[abort] {len(cases) - len(journal.records())} case(s) did not run. "
-                "Fix the backend and resume — no scores were recorded for them."
+                f"[run] concurrency={opts.concurrency} · provider pinned to {pinned_name} "
+                f"(rotation disabled: the app's provider settings are process-global)"
+            )
+            aborted = await _run_cases_concurrently(
+                cases,
+                suite,
+                cfg,
+                opts,
+                tracker,
+                cfg.providers[pinned_name],
+                pinned_name,
+                record_case,
+            )
+            if aborted:
+                print(f"\n[abort] {aborted}")
+        else:
+            aborted = await _run_cases_sequentially(
+                cases, suite, cfg, tracker, journal, healthy, record_case
             )
     except KeyboardInterrupt:
         print("\n[run] interrupted — finishing current case, journal is resumable")
@@ -362,9 +282,123 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     return _publish_run(journal, suite, cfg, opts, cases, prices, tracker)
 
 
+async def _run_cases_sequentially(
+    cases: list[Case],
+    suite: Suite,
+    cfg: EvalConfig,
+    tracker: EvalCostTracker,
+    journal: RunJournal,
+    healthy: list[str],
+    record_case: Callable[[Case, CaseRun, dict[str, float], str, str | None], None],
+) -> str | None:
+    """Run cases one at a time, rotating providers within each case.
+
+    Returns an abort reason when a backend is confirmed down — the remaining
+    cases are left unrun rather than journaled as scores nobody measured.
+    """
+    transport = suite.transport
+    aborted: str | None = None
+    for case in cases:
+        if tracker.total_exceeded:
+            print(f"[budget] total cap exceeded — stopping before {case.id}")
+            break
+        last_error: str | None = None
+        # Rotation is per case. It used to persist across cases, so once an
+        # earlier case had rotated past the last provider, every remaining
+        # case skipped the loop entirely — no attempt, no error, no journal
+        # record. The cases did not fail; they silently ceased to exist.
+        # Providers whose budget is exhausted are still skipped below, so
+        # resetting costs nothing.
+        provider_index = 0
+        while provider_index < len(healthy):
+            provider_name = healthy[provider_index]
+            provider = cfg.providers[provider_name]
+            if tracker.exceeded_budget.intersection({provider_name}):
+                print(f"[budget] {provider_name} budget exhausted — rotating")
+                provider_index += 1
+                continue
+            start = time.monotonic()
+            try:
+                tracker.set_provider(provider_name)
+                pin_settings(provider)
+                with tracker.case_scope(case.id):
+                    run = await transport(case, cfg, tracker, provider)
+                run.provider = provider_name
+                run.model = provider.model
+                run.duration_s = time.monotonic() - start
+                scores = _score_or_zero(case, run, suite)
+                status = _status_from_scores(case, scores, run.error)
+                record_case(case, run, scores, status, run.error)
+                print(
+                    f"  {_MARKERS.get(status, '✗')} {case.id} [{provider_name}] "
+                    + " ".join(f"{k}={v:.2f}" for k, v in scores.items())
+                )
+                break
+            except ProviderError as e:
+                last_error = str(e)
+                print(f"  ✗ {case.id} [{provider_name}] provider error: {e.reason} — rotating")
+                provider_index += 1
+            except Exception as e:
+                # An outage reaches this loop as an ordinary exception unless
+                # some suite happened to hand-wrap it. Classifying here — the
+                # one place a fault becomes a status — is what stops the next
+                # 400 cases from measuring the outage instead of the agent,
+                # whichever suite and whichever backend went away.
+                fault = faults.classify(e)
+                if fault is not None and faults.confirmed_down(fault):
+                    aborted = str(fault.as_infra_error())
+                    break
+                last_error = f"{type(e).__name__}: {e}"
+                record_case(
+                    case,
+                    _failed_run(
+                        case,
+                        provider_name,
+                        provider.model,
+                        time.monotonic() - start,
+                        last_error,
+                    ),
+                    {},
+                    "errored",
+                    last_error,
+                )
+                print(f"  ! {case.id} [{provider_name}] errored: {last_error}")
+                break
+        if aborted:
+            break
+        # Every case leaves a record. Without the `or` clause a case that
+        # never entered the loop at all — every provider over budget —
+        # produced no error and so no record, and vanished from the run
+        # without ever being counted as unrun.
+        if journal.record_for(case.id) is None:
+            reason = last_error or (
+                f"no provider available: every lane in {healthy} was over budget "
+                f"or exhausted before this case was attempted"
+            )
+            record_case(
+                case,
+                _failed_run(
+                    case,
+                    healthy[provider_index - 1] if provider_index else "?",
+                    "?",
+                    0,
+                    reason,
+                ),
+                {},
+                "errored",
+                reason,
+            )
+    if aborted:
+        print(
+            f"\n[abort] {aborted}\n"
+            f"[abort] {len(cases) - len(journal.records())} case(s) did not run. "
+            "Fix the backend and resume — no scores were recorded for them."
+        )
+    return aborted
+
+
 def _app_version() -> str:
     """The app build under test: nearest tag plus short sha, or the sha alone."""
-    import subprocess
 
     root = Path(__file__).resolve().parents[4]
     try:
@@ -381,6 +415,20 @@ def _app_version() -> str:
         return "unknown"
 
 
+def _require_meta(journal: RunJournal) -> RunMeta:
+    """The run's metadata, which every path into the loop guarantees exists.
+
+    ``run.json`` is written before the first case and only ever updated after,
+    so its absence means the run directory itself is broken. Saying that is the
+    whole job — the alternative, a default ``RunMeta``, publishes a run under an
+    empty suite name and an empty app version as though both were real.
+    """
+    meta = journal.load_meta()
+    if meta is None:
+        raise SystemExit(f"{journal.dir} holds no run.json — the run directory is incomplete")
+    return meta
+
+
 def _publish_run(
     journal: RunJournal,
     suite: Suite,
@@ -391,14 +439,12 @@ def _publish_run(
     tracker: EvalCostTracker,
 ) -> Path:
     """Finalize, check the run's numbers against themselves, then report."""
-    if journal.load_meta().status == "finished" and not opts.no_finalize:
+    meta = _require_meta(journal)
+    if meta.status == "finished" and not opts.no_finalize:
         try:
             _finalize_experiment(suite, cfg, journal, opts, cases)
         except Exception as e:
             print(f"[finalize] failed (run still complete in journal): {e}")
-
-    from .invariants import check_records
-    from .report import write_report
 
     # A loud stop beats a plausible figure: both defects this catches
     # (cumulative tokens, an outage scored as zeros) reached a PR because no
@@ -415,13 +461,11 @@ def _publish_run(
         print(invariants.render())
         raise SystemExit(2)
 
-    from . import baseline
-
     comparison = baseline.for_run(journal, rebaseline=opts.rebaseline)
     print(comparison.render())
 
     html_path = write_report(journal, suite.label, prices)
-    _print_summary(journal, prices)
+    _print_summary(journal, meta.suite, prices)
     print(f"[report] {html_path}")
     if not comparison.ok:
         # A regression is a result, not a crash: the report is written and the
@@ -531,7 +575,7 @@ def _status_from_scores(case: Case, scores: dict[str, float], error: str | None)
     if not gates:
         return "passed"
     gate_values = [scores.get(g, 0.0) for g in gates]
-    return "passed" if all(v >= 0.5 for v in gate_values) else "failed"
+    return "passed" if all(v >= GATE_PASS_THRESHOLD for v in gate_values) else "failed"
 
 
 def _log_trace(
@@ -549,10 +593,8 @@ def _log_trace(
     the journal still holds the case and ``seed`` picks it up later — so the
     failure is reported and the loop continues.
     """
-    from .opiksink import log_case_trace
-
     try:
-        log_case_trace(
+        opiksink.log_case_trace(
             project,
             CaseTrace.from_record(run_id, record, prices, suite=suite, app_version=app_version),
         )
@@ -568,27 +610,25 @@ def _flush_traces(project: str) -> None:
     sender runs on non-daemon threads, so a run that only flushes leaves the
     process alive after its last case instead of exiting.
     """
-    from .opiksink import close_clients, flush
-
     try:
-        flush(project)
+        opiksink.flush(project)
     except Exception as e:
         print(f"[opik] flush failed: {type(e).__name__}: {e} — run `evals seed` to backfill")
     finally:
-        close_clients()
+        opiksink.close_clients()
 
 
+#: Provider-reported usage for every LLM call the case made. The real number.
 TOKENS_METERED = "metered"
-"""Provider-reported usage for every LLM call the case made. The real number."""
 
+#: A transport's own guess, because its endpoint reports no usage. Not a
+#: measurement: it sees the prompt and the answer, never the system prompt, the
+#: tool schemas or the agent's intermediate turns, so it reads low by orders of
+#: magnitude and must never be summed into a cost figure unlabelled.
 TOKENS_ESTIMATED = "estimated"
-"""A transport's own guess, because its endpoint reports no usage. Not a
-measurement: it sees the prompt and the answer, never the system prompt, the
-tool schemas or the agent's intermediate turns, so it reads low by orders of
-magnitude and must never be summed into a cost figure unlabelled."""
 
+#: Nothing was measured and nothing was claimed.
 TOKENS_NONE = "none"
-"""Nothing was measured and nothing was claimed."""
 
 
 def _attribute_tokens(run: CaseRun, tracker: EvalCostTracker, case_id: str) -> str:
@@ -647,8 +687,6 @@ def _record(
 
 
 def _failed_run(case: Case, provider: str, model: str, duration: float, error: str) -> CaseRun:
-    from .types import CaseRun
-
     return CaseRun(
         case_id=case.id, provider=provider, model=model, duration_s=duration, error=error
     )
@@ -657,9 +695,6 @@ def _failed_run(case: Case, provider: str, model: str, duration: float, error: s
 def _finalize_experiment(
     suite: Suite, cfg: EvalConfig, journal: RunJournal, opts: RunOptions, cases: list[Case]
 ) -> None:
-    from . import opiksink
-    from .scorers import judge_env
-
     opiksink.load_opik_env()
     if not opiksink.ENV_OPIK.exists():
         print("[finalize] .env.opik missing — skipping Opik experiment")
@@ -698,7 +733,7 @@ def _make_replay(journal: RunJournal) -> Callable[[dict[str, object]], dict[str,
     return replay
 
 
-def _print_summary(journal: RunJournal, prices: PriceBook) -> None:
+def _print_summary(journal: RunJournal, suite: str, prices: PriceBook) -> None:
     records = list(journal.latest_per_case().values())
     passed = sum(1 for r in records if r.get("status") == "passed")
     errored = sum(1 for r in records if r.get("status") == "errored")
@@ -714,7 +749,7 @@ def _print_summary(journal: RunJournal, prices: PriceBook) -> None:
     # Errors are excluded from both, because an outage measured nothing.
     if graded:
         print(
-            f"SUITE {journal.load_meta().suite} · "
+            f"SUITE {suite} · "
             f"FULL SPLIT {passed}/{graded} = {passed / graded * 100:.1f}% "
             f"(skips count as zero — comparable to the benchmark)"
         )
