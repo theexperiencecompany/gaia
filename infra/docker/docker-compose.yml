@@ -74,12 +74,16 @@ services:
       # ("cannot watch path on network filesystem"). Use the JuiceFS-native
       # .accesslog tail instead — the Phase 0 verdict for this stack.
       ARTIFACT_DETECTION_MODE: accesslog
-      # JUICEFS_META_URL_TEMPLATE is intentionally NOT overridden: the API host
-      # and the E2B sandboxes must share one JuiceFS namespace (the artifact
-      # watcher reads host-side what the sandbox wrote). Let Infisical supply
-      # the same cloud meta the sandboxes use. A local postgres meta would be a
-      # separate namespace over the same R2 volume — JuiceFS refuses to
-      # double-format it ("Storage ... is not empty; pick another volume name").
+      # Dev overrides the Infisical/cloud JUICEFS_META_URL_TEMPLATE (redis DB
+      # numbers, {shard} = the DB index) with the local jfs-meta-redis service.
+      # Prod keeps the cloud meta so the API host and the E2B sandboxes share
+      # one namespace — a local meta is a separate namespace over the same R2
+      # volume, so juicefs refuses to double-format it. That constraint is
+      # acceptable in dev (no sandbox mounts against the dev API); if you hit
+      # "Storage ... is not empty", point the sandbox and API at the same meta
+      # URL or format against a fresh bucket. The cache/queue redis below is
+      # NOT a valid meta store — its eviction policy can corrupt the FS.
+      JUICEFS_META_URL_TEMPLATE: redis://jfs-meta-redis:6379/{shard}
     env_file:
       - ../../apps/api/.env
     volumes:
@@ -118,6 +122,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      jfs-meta-redis:
         condition: service_healthy
       mongo:
         condition: service_healthy
@@ -161,7 +167,8 @@ services:
       POSTGRES_DB: langgraph
     volumes:
       - pgdata:/var/lib/postgresql
-      # postgres-init/*.sql runs once on first init — creates gaia_juicefs_0
+      # postgres-init/*.sql runs once on first init (test DB for the real-infra
+      # suite). JuiceFS metadata now lives in jfs-meta-redis, not Postgres.
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
@@ -174,7 +181,9 @@ services:
     networks:
       - gaia_network
 
-  # Redis Service
+  # Redis Service (app cache/queue — SSE channels, rate limits, ARQ). NOT a
+  # JuiceFS metadata store: default Redis eviction can silently corrupt the
+  # filesystem. Metadata lives in jfs-meta-redis below.
   redis:
     image: redis:8-alpine
     container_name: redis
@@ -182,6 +191,47 @@ services:
       - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - gaia_network
+
+  # JuiceFS metadata Redis. Mirrors prod (docker-compose.prod.yml) minus TLS
+  # and auth — the dev API mounts over the compose network, never the public
+  # internet. Holds the whole directory tree + inode→chunk mapping; R2 stores
+  # only anonymous blocks, so losing this loses the filesystem. Hence
+  # noeviction (a cache miss is a bad read; an evicted metadata key is
+  # corruption) and appendfsync always. Every dev client uses its own DB
+  # number: redis://jfs-meta-redis:6379/{shard}.
+  jfs-meta-redis:
+    image: redis:8-alpine
+    container_name: jfs-meta-redis
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--appendfsync",
+        "always",
+        "--maxmemory-policy",
+        "noeviction",
+        "--stop-writes-on-bgsave-error",
+        "yes",
+        "--save",
+        "900 1",
+        "--save",
+        "300 10",
+        "--save",
+        "60 10000",
+      ]
+    ports:
+      - "${JFS_META_REDIS_HOST_PORT:-6380}:6379"
+    volumes:
+      - jfs_meta_data:/data
     restart: on-failure
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -262,7 +312,7 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - CHROMADB_HOST=chromadb
       - CHROMADB_PORT=8000
-      - JUICEFS_META_URL_TEMPLATE=postgres://postgres:postgres@postgres:5432/gaia_juicefs_{shard}?sslmode=disable
+      - JUICEFS_META_URL_TEMPLATE=redis://jfs-meta-redis:6379/{shard}
     expose:
       - "9100"
     command: ["python", "-m", "arq", "app.worker.WorkerSettings", "--custom-log-dict", "app.workers.config.log_config.ARQ_LOG_CONFIG"]
@@ -282,6 +332,8 @@ services:
       - apparmor:unconfined
     depends_on:
       redis:
+        condition: service_healthy
+      jfs-meta-redis:
         condition: service_healthy
       mongo:
         condition: service_healthy
@@ -636,6 +688,7 @@ volumes:
   chroma_data:
   pgdata:
   redis_data:
+  jfs_meta_data:
   mongo_data:
   rabbitmq_data:
   voice_agent_models:
