@@ -60,7 +60,7 @@ export function useNotifications(
           offset,
           channel_type,
         });
-        setNotifications(response.notifications);
+        setNotifications(response.notifications ?? []);
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to fetch notifications";
@@ -174,7 +174,7 @@ export function useNotifications(
 
   // Apply client-side status filtering; the store holds all statuses
   const notifications = useMemo(() => {
-    let result = allNotifications;
+    let result = allNotifications ?? [];
     if (options.status) {
       result = result.filter((n) => n.status === options.status);
     }
@@ -188,7 +188,7 @@ export function useNotifications(
   // the badge reflects every loaded unread notification (not just the first page).
   const unreadCount = useMemo(
     () =>
-      allNotifications.filter(
+      (allNotifications ?? []).filter(
         (notification) => notification.status === NotificationStatus.DELIVERED,
       ).length,
     [allNotifications],
