@@ -88,7 +88,7 @@ async def generate_follow_up_actions(
                 },
             ),
         )
-        return result.actions if result.actions else []
+        return result.actions or []
     except Exception as e:
         log.debug(f"{LogTag.AGENT} Follow-up action generation failed", error_type=type(e).__name__)
         return []
@@ -102,7 +102,7 @@ async def follow_up_actions_node(state: State, config: RunnableConfig, store: Ba
     # Send completion marker as soon as follow-up actions start
     writer = get_stream_writer()
     try:
-        writer(MainResponseCompleteFrame(main_response_complete=True).model_dump())
+        writer(MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True))
     except Exception as write_error:
         # Stream is closed (user disconnected), no need to continue
         log.debug(

@@ -1,0 +1,240 @@
+# Projects & labels family — the todo tools that organise rather than create:
+# create/list/update/delete_project, bulk_move_todos, get_todos_by_label,
+# get_all_labels, plus create_todo/update_todo carrying labels and project_id.
+#
+# The capability suite projects only todo ROWS into end_state (title /
+# title_contains / completed), never projects or label sets — so a project's
+# existence is gated at the tool-call + communicate level, and end_state is used
+# for the todo side-effects that organisation work produces.
+
+- id: projects-create-simple
+  ticket: "Create a named project; the agent must use the project tool, not fake it with a todo."
+  tags: [projects]
+  prompt: "Create a new project called Home Renovation for my todos"
+  expected:
+    category: projects
+    communicate: ["home renovation"]
+    tool_calls: [{tool: create_project}]
+    end_state:
+      projects: [{count: 1}, {name: "home renovation"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the project was created with the exact name the user gave"
+        - "no todo was created in place of the project"
+
+- id: projects-create-with-todo
+  ticket: "Project plus a todo filed inside it — both artifacts must exist."
+  tags: [projects]
+  prompt: "Make a project called Fitness, then add a todo 'sign up for gym' inside it"
+  expected:
+    category: projects
+    communicate: ["fitness"]
+    tool_calls: [{tool: create_project}, {tool: create_todo}]
+    end_state:
+      projects: [{name: "fitness"}]
+      todos: [{title_contains: "gym", completed: false, project: "fitness"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the todo was filed into the Fitness project, not left unassigned"
+        - "the reply confirms both the project and the todo"
+
+- id: projects-list
+  ticket: "Two projects seeded in turn 1 must both come back in turn 2's listing."
+  tags: [projects, multiturn]
+  setup:
+    turns:
+      - "Create two projects: Work and Personal"
+      - "What projects do I have?"
+  prompt: "Create two projects: Work and Personal"
+  expected:
+    category: projects
+    communicate: ["personal"]
+    tool_calls:
+      - {tool: create_project, min_calls: 2}
+      - {tool: list_projects}
+    end_state:
+      answer_contains: "personal"
+      projects: [{count: 2}, {name: "work"}, {name: "personal"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply lists BOTH Work and Personal"
+        - "the second reply lists no project that was never created"
+
+- id: projects-rename
+  ticket: "Rename must update the existing project, not create a second one."
+  tags: [projects, multiturn]
+  setup:
+    turns:
+      - "Create a project called Q3 Planning"
+      - "Rename that project to Q4 Planning"
+  prompt: "Create a project called Q3 Planning"
+  expected:
+    category: projects
+    communicate: ["q4 planning"]
+    tool_calls: [{tool: create_project}, {tool: update_project}]
+    end_state:
+      projects: [{count: 1}, {name: "q4 planning"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the rename used an update, so exactly one project exists afterwards"
+        - "the reply confirms the new name"
+
+- id: projects-delete
+  ticket: "Delete the named project; the agent must resolve its id before deleting."
+  tags: [projects, multiturn]
+  setup:
+    turns:
+      - "Create a project called Scratch"
+      - "Delete the Scratch project"
+  prompt: "Create a project called Scratch"
+  expected:
+    category: projects
+    communicate: ["scratch"]
+    tool_calls: [{tool: create_project}, {tool: delete_project}]
+    end_state:
+      projects: [{count: 0}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the Scratch project was deleted"
+        - "no other project was deleted"
+
+- id: projects-bulk-move
+  ticket: "Two existing todos moved into a project in one bulk operation, as asked."
+  tags: [projects, multiturn, precision]
+  setup:
+    turns:
+      - "Add two todos: strip the wallpaper, and order the new tiles"
+      - "Create a project called Renovation, then move both of those todos into it in one bulk operation"
+  prompt: "Add two todos: strip the wallpaper, and order the new tiles"
+  expected:
+    category: projects
+    communicate: ["renovation"]
+    tool_calls:
+      - {tool: create_todo, min_calls: 2}
+      - {tool: create_project}
+      - {tool: bulk_move_todos}
+    end_state:
+      projects: [{name: "renovation"}]
+      todos:
+        - {title_contains: "wallpaper", completed: false, project: "renovation"}
+        - {title_contains: "tiles", completed: false, project: "renovation"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "both todos ended up in the Renovation project"
+        - "the move was done as a bulk operation, as the user asked"
+
+- id: labels-create-todo-with-labels
+  ticket: "Labels named in the request must be attached to the todo, not dropped."
+  tags: [labels]
+  prompt: "Add a todo: file the quarterly taxes — tag it finance and urgent"
+  expected:
+    category: labels
+    communicate: ["finance"]
+    tool_calls:
+      - {tool: create_todo, args: {labels: "finance"}}
+      - {tool: create_todo, args: {labels: "urgent"}}
+    end_state:
+      labels: [{name: "finance"}, {name: "urgent"}]
+      todos:
+        - {title_contains: "taxes", completed: false, labels_contains: "finance"}
+        - {title_contains: "taxes", completed: false, labels_contains: "urgent"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "BOTH labels (finance and urgent) were attached to the SAME todo"
+        - "the labels were not merged into the title text instead"
+
+- id: labels-filter-by-label
+  ticket: "Filtering by label must return only the labelled todos — the unlabelled one must not leak in."
+  tags: [labels, multiturn, precision]
+  setup:
+    turns:
+      - "Add these todos: 'collect the parcel' labelled errands, 'return the shoes' labelled errands, and 'write the postmortem' labelled work"
+      - "Show me everything labelled errands"
+  prompt: "Add these todos: 'collect the parcel' labelled errands, 'return the shoes' labelled errands, and 'write the postmortem' labelled work"
+  expected:
+    category: labels
+    communicate: ["parcel"]
+    tool_calls:
+      - {tool: create_todo, min_calls: 3}
+      - {tool: get_todos_by_label}
+    end_state:
+      answer_contains: "shoes"
+      labels: [{name: "errands"}, {name: "work"}]
+      todos:
+        - {title_contains: "parcel", labels_contains: "errands"}
+        - {title_contains: "postmortem", labels_contains: "work"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply lists exactly the two errands todos"
+        - "the work-labelled postmortem todo is NOT listed"
+
+- id: labels-list-all
+  ticket: "Asking which labels exist must read the real label set."
+  tags: [labels, multiturn]
+  setup:
+    turns:
+      - "Add a todo 'book the MOT' labelled car, and a todo 'refill inhaler' labelled health"
+      - "What labels am I using?"
+  prompt: "Add a todo 'book the MOT' labelled car, and a todo 'refill inhaler' labelled health"
+  expected:
+    category: labels
+    communicate: ["health"]
+    # `get_all_labels` is not demanded: the ticket is "read the REAL label set",
+    # and `list_todos` reads it just as truthfully. A run that listed the todos
+    # and named both labels correctly was failed purely on which reader it used.
+    # `end_state.labels` still reads the label set from the DB, so an invented
+    # label cannot pass.
+    tool_calls:
+      - {tool: create_todo, min_calls: 2}
+    end_state:
+      answer_contains: "car"
+      labels: [{count: 2}, {name: "car"}, {name: "health"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply names both labels that were actually used"
+        - "the second reply does not invent labels"
+
+- id: labels-relabel-existing
+  ticket: "Relabelling an existing todo must update it in place."
+  tags: [labels, multiturn]
+  setup:
+    turns:
+      - "Add a todo 'restring the guitar' labelled hobbies"
+      - "Change that todo's label from hobbies to personal"
+  prompt: "Add a todo 'restring the guitar' labelled hobbies"
+  expected:
+    category: labels
+    communicate: ["personal"]
+    tool_calls: [{tool: create_todo}, {tool: update_todo}]
+    end_state:
+      labels: [{count: 1}, {name: "personal"}]
+      todos: [{title_contains: "guitar", completed: false, labels_contains: "personal"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the existing todo was updated rather than a duplicate created"
+        - "the reply confirms the label is now personal"
+
+- id: projects-delete-nothing-to-delete
+  ticket: "'Delete my project' with no project in existence: look first, then say there is nothing to delete."
+  tags: [projects, negative, ambiguity]
+  prompt: "Delete my project."
+  expected:
+    category: projects
+    tool_calls: [{tool: list_projects}]
+    end_state:
+      projects: [{count: 0}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the agent checks what projects exist before deleting anything"
+        - "the agent reports that there are no projects, or asks which one — it must NOT delete something arbitrary"

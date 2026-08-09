@@ -1,0 +1,45 @@
+# Web / research family — simple verifiable facts. The agent may answer from
+# knowledge or web_search_tool; the gates are the answer itself (communicate +
+# end_state fact check), so a correct answer without a search call still passes.
+
+- id: web-eiffel-tower
+  ticket: "Factual question; the reply must contain the correct year."
+  tags: [web]
+  prompt: "What year was the Eiffel Tower completed?"
+  expected:
+    category: web
+    communicate: ["1889"]
+    tool_calls: [{tool: web_search_tool}]
+    end_state: {answer_contains: "1889"}
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "the reply answers the question with the correct year"
+
+- id: web-first-moon-landing
+  ticket: "Factual question; the reply must contain the correct year."
+  tags: [web]
+  prompt: "In what year did the first human walk on the Moon?"
+  expected:
+    category: web
+    communicate: ["1969"]
+    tool_calls: [{tool: web_search_tool}]
+    end_state: {answer_contains: "1969"}
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "the reply answers the question with the correct year"
+
+- id: web-largest-planet
+  ticket: "Factual question; the reply must contain the correct planet."
+  tags: [web]
+  prompt: "What is the largest planet in our solar system?"
+  expected:
+    category: web
+    communicate: ["jupiter"]
+    tool_calls: [{tool: web_search_tool}]
+    end_state: {answer_contains: "jupiter"}
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "the reply answers the question with the correct planet"

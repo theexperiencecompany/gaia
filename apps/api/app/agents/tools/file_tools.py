@@ -37,7 +37,12 @@ async def search_uploaded_files(
             log.error(f"{LogTag.TOOL} Configurable is not set in the config.")
             raise ValueError("Configurable is not set in the config.")
 
-        conversation_id = configurable["thread_id"]
+        # NOT thread_id: this tool is bound to the executor, which runs on the
+        # derived `executor_<conversation_id>` thread, so thread_id scopes the
+        # lookup to a conversation that owns no files. build_agent_config keeps
+        # the true conversation id here precisely because it is unrecoverable
+        # from thread_id.
+        conversation_id = configurable["conversation_id"]
 
         similar_documents = await _get_similar_documents(
             query=query,
@@ -105,7 +110,14 @@ async def _get_similar_documents(
 
     if file_id is not None:
         if file_id not in conversation_file_ids:
-            return []
+            # Fail loud. An unknown id used to return "" — indistinguishable from
+            # "the file says nothing about that" — and the agent is never shown a
+            # file's id anywhere, so a guessed filename lands here every time.
+            raise ValueError(
+                f"No uploaded file with id {file_id!r} in this conversation. "
+                f"Available ids: {conversation_file_ids}. "
+                "Omit file_id to search across all of them."
+            )
         target_file_ids = [file_id]
     else:
         target_file_ids = conversation_file_ids

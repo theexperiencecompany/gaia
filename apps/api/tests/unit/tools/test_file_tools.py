@@ -20,7 +20,20 @@ MODULE = "app.agents.tools.file_tools"
 
 
 def _config() -> dict[str, Any]:
-    return {"configurable": {"thread_id": "conv-1", "user_id": "user-1"}}
+    """The configurable as the executor actually sees it.
+
+    The tool is bound to the executor, which runs on the derived
+    ``executor_<conversation_id>`` thread — so ``thread_id`` names a conversation
+    that owns no files, and the two ids are deliberately different here. A
+    lookup that reads ``thread_id`` must not find "conv-1".
+    """
+    return {
+        "configurable": {
+            "thread_id": "executor_conv-1",
+            "conversation_id": "conv-1",
+            "user_id": "user-1",
+        }
+    }
 
 
 def _file(file_id: str, summary: Any = None, description: str | None = None) -> FileDocument:
@@ -110,7 +123,12 @@ class TestGetSimilarDocuments:
             assert await _get_similar_documents("query", "conv-1", "user-1") == []
         collection.asimilarity_search_with_score.assert_not_called()
 
-    async def test_file_id_outside_the_conversation_returns_empty(self) -> None:
+    async def test_file_id_outside_the_conversation_raises_with_the_valid_ids(self) -> None:
+        """An unknown id must fail loud, not read as "the file says nothing".
+
+        The agent is never shown a file's id, so a guessed filename lands here
+        every time; the error has to name the ids it could have used instead.
+        """
         collection, get_client = _patch_collection([])
         with (
             patch(f"{MODULE}.ChromaClient.get_langchain_client", get_client),
@@ -121,7 +139,8 @@ class TestGetSimilarDocuments:
         ):
             from app.agents.tools.file_tools import _get_similar_documents
 
-            assert await _get_similar_documents("query", "conv-1", "user-1", file_id="other") == []
+            with pytest.raises(ValueError, match=r"No uploaded file with id 'other'.*\['f1'\]"):
+                await _get_similar_documents("query", "conv-1", "user-1", file_id="other")
         collection.asimilarity_search_with_score.assert_not_called()
 
 

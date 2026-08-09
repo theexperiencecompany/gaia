@@ -27,6 +27,11 @@ class FileData(BaseModel):
     # Server-owned summary of the file's content. Populated from MongoDB on the
     # agent path and on the upload response; never trusted from inbound requests.
     description: str | None = None
+    # Where the file actually landed in the session workspace, or None when the
+    # JuiceFS mirror was unavailable at upload time. Server-owned like
+    # `description`, and the difference between telling an agent a path it can
+    # read and telling it one that does not exist.
+    sandbox_path: str | None = None
 
 
 class SelectedWorkflowData(BaseModel):

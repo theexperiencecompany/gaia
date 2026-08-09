@@ -23,6 +23,7 @@ from app.config.rate_limits import (
     get_reset_time,
     get_time_window_key,
 )
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
@@ -132,6 +133,11 @@ class TieredRateLimiter:
         weekly-deduped email) — one seam covering all decorated endpoints and
         agent tools.
         """
+        # Checked here rather than inside `_check_and_increment` so the bypass
+        # also skips the upsell side effects: a dev run must not fire analytics
+        # or send a user an upgrade email.
+        if settings.DEV_UNLIMITED_RATE_LIMITS:
+            return {}
         try:
             return await self._check_and_increment(user_id, feature_key, user_plan)
         except RateLimitExceededException:

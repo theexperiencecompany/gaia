@@ -245,6 +245,14 @@ async def _run_chat_stream(
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
 
         await _finalize_description(description_task, stream_id)
+        await stream_manager.publish_chunk(
+            stream_id,
+            format_sse_data(
+                MainResponseCompleteFrame(
+                    main_response_complete=True, usage=state.usage_metadata or None
+                ).model_dump(exclude_none=True)
+            ),
+        )
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
 
@@ -342,7 +350,9 @@ async def _resolve_pending_approval_turn(
     await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
     await stream_manager.publish_chunk(
         stream_id,
-        format_sse_data(MainResponseCompleteFrame(main_response_complete=True).model_dump()),
+        format_sse_data(
+            MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True)
+        ),
     )
     await _persist_turn(stream_id, body, user, conversation_id, state)
     await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
@@ -392,8 +402,8 @@ def _start_description_task(
             conversation_id,
             last_message,
             user,
-            body.selectedTool if body.selectedTool else None,
-            body.selectedWorkflow if body.selectedWorkflow else None,
+            body.selectedTool or None,
+            body.selectedWorkflow or None,
         )
     )
 

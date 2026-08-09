@@ -824,6 +824,7 @@ def format_files_list(
         return ""
 
     lines: list[str] = []
+    any_on_disk = False
     for file in files:
         try:
             on_disk = safe_upload_filename(file.filename)
@@ -833,13 +834,28 @@ def format_files_list(
             path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
         else:
             path = f"./user-uploaded/{on_disk}"
-        lines.append(f"- {file.filename}  →  `{path}`")
+        # Only advertise the path when the file really reached the workspace.
+        # The mirror is best-effort (it needs JuiceFS), so on a native API — or
+        # any deployment where it failed — this path does not exist, and naming
+        # it anyway sends the executor into read/bash attempts that can only
+        # fail. `search_uploaded_files` needs no mount and is the honest route.
+        on_disk_available = file.sandbox_path is not None
+        any_on_disk = any_on_disk or on_disk_available
+        # The id is shown because `search_uploaded_files(file_id=...)` needs one;
+        # without it an agent scoping to a single file can only guess the
+        # filename, which matches nothing.
+        if on_disk_available:
+            lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
+        else:
+            lines.append(
+                f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
+            )
         if file.description:
             summary = file.description.strip()
             if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
                 summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
             lines.append(f"    summary: {summary}")
-            if conversation_id and include_processing_guide:
+            if conversation_id and include_processing_guide and on_disk_available:
                 lines.append(f"    full summary: `{path}.summary.md`")
 
     if not lines:
@@ -854,6 +870,16 @@ def format_files_list(
             "contents or any work on the files, delegate to the executor.\n"
         )
 
+    if not any_on_disk:
+        # Nothing was mirrored into the workspace, so every read/bash instruction
+        # below would send the agent at a path that does not exist.
+        return (
+            f"\n[Uploaded files]\n{file_block}\n\n"
+            "These files are not present in the workspace, so read/bash cannot "
+            "open them. Use `search_uploaded_files` to retrieve their extracted "
+            "content, and answer from what it returns.\n"
+        )
+
     return f"""
 [Uploaded files]
 {file_block}
@@ -861,7 +887,8 @@ def format_files_list(
 How to work with these files:
 - What is it? — the `summary` above already says; read the `full summary` file
   for the complete write-up.
-- Need the raw content? — read the file at its path with read/bash.
+- Need the raw content? — read the file at its path with read/bash. Files shown
+  without a path are not on disk; use `search_uploaded_files` for those.
 - Searching across several uploaded files? — use `search_uploaded_files`.
 The files live in `./user-uploaded/` (read-only). To process them: copy into
 `./scratch/`, do your work, and write user-visible output into `./artifacts/`

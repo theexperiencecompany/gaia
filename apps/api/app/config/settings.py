@@ -90,6 +90,11 @@ class CommonSettings(BaseAppSettings):
     # Where the scripted stub lives when sim mode is on; consumed only by
     # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
     OPENROUTER_BASE_URL: str | None = None
+    # Dev-only: lift every per-user rate limit (chat messages, uploads, ...).
+    # Eval harnesses drive thousands of legitimate requests per day against a
+    # free-plan dev user; without this they 429 at the free tier's 200/day.
+    # get_settings() refuses production boot when set (same guard as sim mode).
+    DEV_UNLIMITED_RATE_LIMITS: bool = False
 
     # ----------------------------------------------
     # Database Connections
@@ -729,6 +734,17 @@ def get_settings() -> Any:
                 raise RuntimeError(
                     "DEV_AUTH_BYPASS_EMAIL is set but ENV=production — "
                     "the dev auth bypass must never be enabled in production."
+                )
+            if os.getenv("DEV_UNLIMITED_RATE_LIMITS", "").strip().lower() not in (
+                "",
+                "0",
+                "false",
+                "no",
+                "off",
+            ):
+                raise RuntimeError(
+                    "DEV_UNLIMITED_RATE_LIMITS is set but ENV=production — "
+                    "lifting rate limits in production is never allowed."
                 )
             # Same policy as the auth bypass: the OpenRouter base-URL override
             # redirects the model to a local scripted stub, so production must

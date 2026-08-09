@@ -16,3 +16,11 @@ MAX_OUTPUT_CHARS = 120000
 # they are under MAX_OUTPUT_CHARS. Below it, offloading costs more than it
 # saves, so tiny outputs always stay inline.
 MIN_COMPACTION_SIZE = 500
+
+# Fallback tier: when the workspace is unavailable there is nowhere to spill to,
+# so the output is truncated in place instead. Head and tail are both kept —
+# tool outputs put the schema/first records at the front and totals/errors at
+# the end, and dropping either loses the part the model actually reads.
+# ~4 chars/token, so this keeps roughly 1k tokens per compacted output.
+COMPACTION_FALLBACK_HEAD_CHARS = 3000
+COMPACTION_FALLBACK_TAIL_CHARS = 1000

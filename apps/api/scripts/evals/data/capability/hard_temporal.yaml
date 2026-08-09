@@ -1,0 +1,233 @@
+# HARD tier — temporal reasoning. Siblings of hard.yaml's two temporal cases;
+# this file brings the category to eight.
+#
+# Every case here hides its answer behind arithmetic the agent has to do: an
+# offset off an offset ("three hours before the flight, then 45 minutes before
+# that"), a shifted recurring slot, a duration that has to be added to a start
+# time, a fortnightly cadence pushed back, a 30-day window whose last day lands
+# on a weekend. Nothing in these prompts states the value being asserted.
+#
+# Gate choice, and why it is shaped this way:
+#
+# * The DERIVED value is always a clock time, never a calendar date. A date the
+#   agent computes depends on the run's "today" and cannot be pinned by a
+#   committed assertion without the case going red on a correct answer. A time
+#   is stable, so it can be pinned three ways at once — `communicate` (the agent
+#   must say it), `end_state.reminders[].datetime_contains` (the stored reminder
+#   must carry it) and `tool_calls[].args.scheduled_at` (the call must have
+#   requested it). Get the arithmetic wrong and all three go red.
+# * Every prompt asks for the time back "in 24-hour hh:mm". `says()` matches on
+#   word boundaries, so a correct answer written "2:55 am" would miss a gate
+#   asserting "02:55" — the format is requested in the prompt so the gate is
+#   fair rather than a trap.
+# * The date-derivation claim, which cannot be pinned mechanically, lives in
+#   MUST-shaped judge criteria beside the gates, never instead of them.
+# * `create_reminder_tool` takes its title inside a nested `payload`, which the
+#   arg matcher cannot reach — titles are asserted in `end_state` only.
+
+- id: hard-temporal-offset-before-an-offset
+  ticket: "Two chained offsets off a stated departure time; the gate time is the decoy, the leave time is the answer."
+  tags: [hard, temporal, precision]
+  prompt: >-
+    my flight to porto is tomorrow at 06:40 and the airline wants everyone at
+    the gate three hours before departure. it takes me 45 minutes to get from my
+    door to the gate desk. set me one reminder for when i actually have to leave
+    the house, and tell me that leave time in 24-hour hh:mm.
+  setup:
+    counterfeit:
+      text: >-
+        All set — I've put a reminder in for 03:40, which is three hours before
+        your 06:40 departure. Safe travels!
+      messages:
+        - {role: user, content: "flight tomorrow at 06:40, gate three hours before, 45 minutes door to gate — when do i leave?"}
+        - {role: assistant, content: "All set — I've put a reminder in for 03:40, which is three hours before your 06:40 departure. Safe travels!"}
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Leave for the airport"}, scheduled_at: "2027-04-11 03:40:00"}}
+      end_state:
+        reminders: [{count: 1}, {title_contains: "leave", datetime_contains: null}]
+  expected:
+    category: temporal
+    communicate: ["02:55"]
+    tool_calls:
+      - {tool: create_reminder_tool, args: {scheduled_at: "02:55"}}
+    end_state:
+      reminders: [{count: 1}, {title_contains: "leave", datetime_contains: "02:55"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reply gives 02:55 as the time to leave the house."
+        - "MUST NOT: the reply presents 03:40 as the time to leave the house."
+
+- id: hard-temporal-shifted-recurring-slot
+  ticket: "A recurring slot moved earlier, then travel time subtracted from the NEW start — not the old one."
+  tags: [hard, temporal, precision]
+  prompt: >-
+    my physio slot is normally 15:00 on thursdays but she's asked me to come 25
+    minutes earlier next thursday. it takes me 40 minutes door to door. set one
+    reminder for when i need to leave, and give me the leave time in 24-hour
+    hh:mm.
+  setup:
+    counterfeit:
+      text: >-
+        Done — you'll want to be out the door by 14:20 to make your physio
+        appointment, so that's when your reminder will go off.
+      messages:
+        - {role: user, content: "physio normally 15:00 thursday, 25 minutes earlier next thursday, 40 minutes door to door — when do i leave?"}
+        - {role: assistant, content: "Done — you'll want to be out the door by 14:20 to make your physio appointment, so that's when your reminder will go off."}
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Leave for physio"}, scheduled_at: "2027-04-15 14:20:00"}}
+      end_state:
+        reminders: [{count: 1}, {title_contains: "physio", datetime_contains: null}]
+  expected:
+    category: temporal
+    communicate: ["13:55"]
+    tool_calls:
+      - {tool: create_reminder_tool, args: {scheduled_at: "13:55"}}
+    end_state:
+      reminders: [{count: 1}, {title_contains: "physio", datetime_contains: "13:55"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reply applies the 25-minute shift before subtracting the 40-minute journey."
+        - "MUST NOT: the reply treats 15:00 as next Thursday's appointment time."
+
+- id: hard-temporal-duration-overlap-unprompted
+  ticket: "A meeting duration must be added to spot a clash the user never asked about, and to place a third reminder."
+  tags: [hard, temporal, precision]
+  prompt: >-
+    wednesday's a mess. the site visit starts at 14:00 and runs 90 minutes, and
+    the investor call is at 15:15. set a reminder for each of those, plus a third
+    one 10 minutes before the site visit is due to finish so i can start wrapping
+    up. give me that wrap-up time in 24-hour hh:mm.
+  setup:
+    counterfeit:
+      text: >-
+        All three are in: site visit at 14:00, investor call at 15:15, and your
+        wrap-up nudge at 15:30 when the site visit finishes. Anything else?
+      messages:
+        - {role: user, content: "site visit 14:00 for 90 minutes, investor call 15:15, plus a wrap-up reminder 10 minutes before the site visit ends"}
+        - {role: assistant, content: "All three are in: site visit at 14:00, investor call at 15:15, and your wrap-up nudge at 15:30 when the site visit finishes. Anything else?"}
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Site visit"}, scheduled_at: "2027-02-10 14:00:00"}}
+        - {name: create_reminder_tool, args: {payload: {title: "Investor call"}, scheduled_at: "2027-02-10 15:15:00"}}
+        - {name: create_reminder_tool, args: {payload: {title: "Start wrapping up"}, scheduled_at: "2027-02-10 15:30:00"}}
+      end_state:
+        reminders:
+          - {count: 3}
+          - {title_contains: "site visit", datetime_contains: "14:00"}
+          - {title_contains: "investor", datetime_contains: "15:15"}
+          - {title_contains: "wrap", datetime_contains: null}
+  expected:
+    category: temporal
+    communicate: ["15:20"]
+    tool_calls:
+      - {tool: create_reminder_tool, min_calls: 3}
+      - {tool: create_reminder_tool, args: {scheduled_at: "15:20"}}
+    end_state:
+      reminders:
+        - {count: 3}
+        - {title_contains: "site visit", datetime_contains: "14:00"}
+        - {title_contains: "investor", datetime_contains: "15:15"}
+        - {title_contains: "wrap", datetime_contains: "15:20"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reply points out, without being asked, that the investor call starts before the site visit ends at 15:30."
+        - "MUST NOT: the reply places the wrap-up reminder at the moment the site visit ends."
+
+- id: hard-temporal-fortnightly-pushed-back
+  ticket: "A fortnightly cadence plus a delay: both the cadence and the shifted start have to be derived."
+  tags: [hard, temporal]
+  prompt: >-
+    book club runs every other tuesday and the last one was this week at 19:30.
+    they're pushing the next one back by 35 minutes. set me one reminder for the
+    next book club and tell me the new start time in 24-hour hh:mm.
+  setup:
+    counterfeit:
+      text: >-
+        Sorted — reminder in for next Tuesday at 19:30, same as always. Enjoy
+        the book club.
+      messages:
+        - {role: user, content: "book club every other tuesday, last one this week at 19:30, next one pushed back 35 minutes"}
+        - {role: assistant, content: "Sorted — reminder in for next Tuesday at 19:30, same as always. Enjoy the book club."}
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Book club"}, scheduled_at: "2027-03-09 19:30:00"}}
+      end_state:
+        reminders: [{count: 1}, {title_contains: "book club", datetime_contains: null}]
+  expected:
+    category: temporal
+    communicate: ["20:05"]
+    tool_calls:
+      - {tool: create_reminder_tool, args: {scheduled_at: "20:05"}}
+    end_state:
+      reminders: [{count: 1}, {title_contains: "book club", datetime_contains: "20:05"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reminder is placed a fortnight after this week's book club, not on the Tuesday immediately after it."
+        - "MUST NOT: the reply schedules a recurring weekly reminder."
+
+- id: hard-temporal-window-ends-on-a-weekend
+  ticket: "A 30-day window off a named weekday lands on a Sunday; the agent must derive both the weekday and the alert time."
+  tags: [hard, temporal, precision]
+  prompt: >-
+    i bought the espresso machine last friday and the shop gives me exactly 30
+    days from that friday to return it. they shut at 17:30. set me one reminder
+    2 hours and 15 minutes before closing on the very last day of the window, and
+    tell me which weekday that last day falls on.
+  setup:
+    counterfeit:
+      text: >-
+        Your return window closes on the Saturday, so I've set a reminder for
+        17:30 that day to make sure you catch them before they shut.
+      messages:
+        - {role: user, content: "30 days from last friday to return the espresso machine, shop shuts at 17:30, remind me 2h15 before closing on the last day"}
+        - {role: assistant, content: "Your return window closes on the Saturday, so I've set a reminder for 17:30 that day to make sure you catch them before they shut."}
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Return the espresso machine"}, scheduled_at: "2027-05-15 17:30:00"}}
+      end_state:
+        reminders: [{count: 1}, {title_contains: "return", datetime_contains: null}]
+  expected:
+    category: temporal
+    communicate: ["15:15", "Sunday"]
+    tool_calls:
+      - {tool: create_reminder_tool, args: {scheduled_at: "15:15"}}
+    end_state:
+      reminders: [{count: 1}, {title_contains: "return", datetime_contains: "15:15"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reply names Sunday as the weekday the 30-day window ends on."
+        - "MUST NOT: the reply names Saturday or Monday as the last day of the window."
+
+- id: hard-temporal-relative-to-relative-deadline
+  ticket: "A deadline defined against a relative arrival, then a nudge defined against that deadline."
+  tags: [hard, temporal, precision]
+  prompt: >-
+    mum's flight lands the day after tomorrow at 19:20. the spare room has to be
+    finished 24 hours before she lands, and i want a nudge 3 hours before that
+    deadline. set the one reminder and give me its time in 24-hour hh:mm.
+  setup:
+    counterfeit:
+      text: >-
+        Reminder set for 19:20 — that's your 24-hour deadline for the spare room
+        before Mum lands.
+      messages:
+        - {role: user, content: "mum lands the day after tomorrow at 19:20, spare room done 24 hours before, nudge 3 hours before that"}
+        - {role: assistant, content: "Reminder set for 19:20 — that's your 24-hour deadline for the spare room before Mum lands."}
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Spare room deadline"}, scheduled_at: "2027-07-02 19:20:00"}}
+      end_state:
+        reminders: [{count: 1}, {title_contains: "spare room", datetime_contains: null}]
+  expected:
+    category: temporal
+    communicate: ["16:20"]
+    tool_calls:
+      - {tool: create_reminder_tool, args: {scheduled_at: "16:20"}}
+    end_state:
+      reminders: [{count: 1}, {title_contains: "spare room", datetime_contains: "16:20"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reminder lands on tomorrow's date, one day before the flight."
+        - "MUST NOT: the reply sets the reminder at 19:20 or on the day the flight lands."

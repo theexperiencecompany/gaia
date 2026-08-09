@@ -58,6 +58,7 @@ ignore_decorators = [
   "@register_before_hook",
   "@register_after_hook",
   "@register_schema_modifier",
+  "@register_suite", # eval suite classes, resolved by name via SUITE_REGISTRY
   "@*.on",          # LiveKit event handlers (@session.on / @ctx.room.on)
   "@app.get",       # bare-FastAPI route handlers (embedding sidecar)
   "@app.post",      # bare-FastAPI route handlers (embedding sidecar)
@@ -72,6 +73,10 @@ ignore_names = [
   "build_from_config",  # chroma EmbeddingFunction contract: called dynamically via
                         # chroma's registered-embedding-function map when a
                         # collection config is reconstructed (see chroma_store.py)
+  "reindex_note",   # notes repair API consumed only by unit tests (vulture excludes tests)
+  "reclassify_all", # rescore CLI surface consumed only by unit tests (vulture excludes tests)
+  "render_by_suite",  # rescore report helper consumed only by unit tests (vulture excludes tests)
+  "contract_failures",  # prompt-contract API consumed only by test_prompt_contracts.py (vulture excludes tests)
 ]
 
 # ---------------------------------------------------------------------------

@@ -76,6 +76,14 @@ class DevAgentRunResponse(BaseModel):
     thread_id: str
     agent: str
     message: str
+    converged: bool = True
+    """False when the agent ran out of steps instead of reaching an answer.
+
+    Not reaching a conclusion is an agent outcome, not a server fault, so it is
+    reported in the response rather than raised as a 500. A caller that treats
+    every 500 as infrastructure would otherwise exclude these from its accuracy
+    and quietly flatter the agent.
+    """
 
 
 class DevSubagentInfo(BaseModel):

@@ -230,13 +230,18 @@ def init_chromadb_constructor() -> ClientAPI:
     host: str = settings.CHROMADB_HOST
     port: int = settings.CHROMADB_PORT
 
-    # Initialize ChromaDB client for langchain (telemetry off, see init_chromadb_client)
-    constructor_client = chromadb.Client(
-        settings=Settings(
-            chroma_server_host=host,
-            chroma_server_http_port=port,
-            chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
-        )
+    # HttpClient, NOT Client: only HttpClient sets chroma_api_impl to the FastAPI
+    # backend. chromadb.Client() keeps the default RustBindingsAPI with
+    # is_persistent=False and never reads chroma_server_host/port, so passing
+    # them in Settings built a process-local in-memory store that silently
+    # answered its own reads while nothing ever reached the server — every
+    # collection written through this client (documents, notes, gaia_canvas)
+    # sat at zero rows on the server while looking healthy in-process.
+    # Telemetry off for the same reason as init_chromadb_client.
+    constructor_client = chromadb.HttpClient(
+        host=host,
+        port=port,
+        settings=Settings(chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL),
     )
 
     return constructor_client

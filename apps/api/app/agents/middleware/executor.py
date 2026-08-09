@@ -12,7 +12,7 @@ It handles executing middleware hooks at appropriate points:
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 import inspect
 from typing import Any, cast
 
@@ -39,7 +39,7 @@ from app.agents.middleware.runtime_adapter import (
 )
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentMiddlewareStack
-from app.override.langgraph_bigtool.utils import State
+from app.override.langgraph_bigtool.utils import State, messages_delta_reducer
 from shared.py.wide_events import log
 
 # The handler chains built below. LangChain's hooks accept a wider return union
@@ -47,6 +47,32 @@ from shared.py.wide_events import log
 # ever feeds and consumes ModelResponse, so the model chain is narrowed to it.
 ModelCallHandler = Callable[[ModelRequest], Awaitable[ModelResponse]]
 ToolCallHandler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
+
+
+def _apply_state_update(current_state: dict[str, Any], update: Mapping[str, Any]) -> None:
+    """Merge a middleware hook's return into ``current_state``, in place.
+
+    A hook returns a LangGraph *state update* — channel writes the graph
+    resolves through each channel's reducer — not replacement state. This
+    executor runs the hooks inside a single bigtool node, so the reducers are
+    its job to apply; ``dict.update`` alone is a replacement and gets
+    ``messages`` wrong in both directions. A hook appending one message
+    (``LLMAccountingMiddleware``'s planned credit-gate reply) would erase the
+    conversation, and ``SummarizationMiddleware``'s history-clearing
+    ``RemoveMessage(REMOVE_ALL_MESSAGES)`` tombstone survived into the list
+    handed to the model, where the provider serializer rejected it and 500ed
+    the run.
+
+    Every other channel in ``State`` is last-write-wins, which is what plain
+    assignment already does.
+    """
+    for key, value in update.items():
+        if key == "messages":
+            current_state["messages"] = messages_delta_reducer(
+                current_state.get("messages", []), [value]
+            )
+        else:
+            current_state[key] = value
 
 
 def _has_override(mw: AgentMiddleware, method_name: str) -> bool:
@@ -168,7 +194,7 @@ class MiddlewareExecutor:
                     continue
 
                 if result is not None:
-                    current_state.update(result)
+                    _apply_state_update(current_state, result)
 
             except asyncio.CancelledError:
                 raise
@@ -219,7 +245,7 @@ class MiddlewareExecutor:
                     continue
 
                 if result is not None:
-                    current_state.update(result)
+                    _apply_state_update(current_state, result)
 
             except asyncio.CancelledError:
                 raise

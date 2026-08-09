@@ -250,6 +250,7 @@ class FileService:
                 filename=document.filename,
                 type=document.type,
                 description=document.description,
+                sandbox_path=document.sandbox_path,
             )
             for document in documents
         ]
