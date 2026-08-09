@@ -140,7 +140,8 @@ class DeviceConnector(BaseConnector):
         self, read_send: MemoryObjectSendStream[SessionMessage | Exception]
     ) -> None:
         """This session's inbox (fed by the shared up-listener) → the read stream."""
-        assert self._inbox is not None
+        # Narrowing only: the caller sets _inbox before starting this reader.
+        assert self._inbox is not None  # nosec B101
         inbox = self._inbox
         try:
             while True:
