@@ -42,7 +42,7 @@ at finalize time (1 call per case).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 import json
 import os
 from pathlib import Path
@@ -58,9 +58,17 @@ from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
 from scripts.evals.core.gates import ExtraGates, known_gates, score_gates, validate_gates
 from scripts.evals.core.prompt_contracts import ClauseResolutionError, contract_criteria
 from scripts.evals.core.prompt_gates import PROMPT_GATES
-from scripts.evals.core.providers import EvalConfig, ProviderConfig
+from scripts.evals.core.providers import EvalConfig, ProviderConfig, judge_model
 from scripts.evals.core.runner import Suite, register_suite
-from scripts.evals.core.scorers import NOTHING_TO_INSPECT, produced_nothing
+from scripts.evals.core.scorers import (
+    NOTHING_TO_INSPECT,
+    BubbleBoundary,
+    CommunicateGate,
+    OpenUICheck,
+    RubricJudge,
+    ToolCard,
+    produced_nothing,
+)
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 DEV_API_BASE = os.environ.get("EVALS_DEV_API_BASE", "http://localhost:9460")
@@ -627,15 +635,11 @@ def _reject_unfalsifiable_openui_gate(case: Case) -> None:
 
 
 def _tool_card_gate(case: Case, run: CaseRun) -> float:
-    from scripts.evals.core.scorers import ToolCard
-
     del case
     return ToolCard().score(tool_calls=run.tool_calls, messages=run.messages, output=run.text).value
 
 
 def _openui_gate(case: Case, run: CaseRun) -> float:
-    from scripts.evals.core.scorers import OpenUICheck
-
     return OpenUICheck().score(output=run.text, expected=case.expected).value
 
 
@@ -693,11 +697,13 @@ METRIC_WHEN_PRESENT: dict[str, str] = {
     "openui": "openui",
 }
 
-#: ``openui: false`` is a real claim ("no fence belongs here") and is recorded,
-#: so this one keys on the field EXISTING rather than being truthy. Note it can
-#: only ever score 1.0 in that branch — which is why it is a metric here and
-#: must never be a case's gate.
-_PRESENCE_ONLY = frozenset({"openui"})
+#: ``openui: false`` used to be recorded too, on the reasoning that "no fence
+#: belongs here" is a real claim. It is — but ``OpenUICheck`` does not check it:
+#: that branch returns 1.0 without reading the output. Recording it fed a
+#: constant 1.0 into ``overall``, lifting the mean of every case that declared
+#: it and making a suite look better the more of these it accumulated. Only the
+#: ``openui: true`` branch reads anything, so only that branch is measured.
+#: (``_reject_unfalsifiable_openui_gate`` separately stops it being a gate.)
 
 
 @register_suite("quality")
@@ -753,7 +759,7 @@ class QualitySuite(Suite):
         cfg: EvalConfig,
         tracker: EvalCostTracker,
         provider: ProviderConfig,
-    ):
+    ) -> Awaitable[CaseRun]:
         return self._transport.run(case, cfg, tracker, provider)
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
@@ -769,10 +775,7 @@ class QualitySuite(Suite):
         available = known_gates(self.EXTRA_GATES)
         scores = {name: available[name](case, run) for name in ALWAYS_SCORED}
         for gate, field in METRIC_WHEN_PRESENT.items():
-            present = (
-                field in case.expected if gate in _PRESENCE_ONLY else bool(case.expected.get(field))
-            )
-            if present:
+            if case.expected.get(field):
                 scores[gate] = available[gate](case, run)
         gate_scores = score_gates(case, run, self.EXTRA_GATES)
         gate_scores.pop("overall", None)
@@ -780,15 +783,7 @@ class QualitySuite(Suite):
         scores["overall"] = round(sum(scores.values()) / len(scores), 3) if scores else 0.0
         return scores
 
-    def finalize_scorers(self, cfg: EvalConfig) -> list:
-        from scripts.evals.core.providers import judge_model
-        from scripts.evals.core.scorers import (
-            BubbleBoundary,
-            CommunicateGate,
-            RubricJudge,
-            ToolCard,
-        )
-
+    def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
         return [
             CommunicateGate(),
             BubbleBoundary(),

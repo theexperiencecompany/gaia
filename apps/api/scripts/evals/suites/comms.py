@@ -31,6 +31,7 @@ the capability suite's job.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 import os
 from pathlib import Path
 
@@ -74,7 +75,7 @@ class CommsSuite(Suite):
         cfg: EvalConfig,
         tracker: EvalCostTracker,
         provider: ProviderConfig,
-    ):
+    ) -> Awaitable[CaseRun]:
         return self._transport.run(case, cfg, tracker, provider)
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:

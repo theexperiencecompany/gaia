@@ -8,11 +8,19 @@ HTML report. The transport simulates token usage so cost tables populate.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable
 
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.gates import score_gates, validate_gates
-from scripts.evals.core.providers import EvalConfig
+from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
+from scripts.evals.core.scorers import (
+    BubbleBoundary,
+    CommunicateGate,
+    EndStateEquality,
+    ProviderQuality,
+    ToolCallCorrectness,
+)
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 
@@ -20,7 +28,13 @@ class SmokeTransport:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
-    async def run(self, case: Case, cfg, tracker: EvalCostTracker, provider) -> CaseRun:
+    async def run(
+        self,
+        case: Case,
+        cfg: EvalConfig,
+        tracker: EvalCostTracker,
+        provider: ProviderConfig,
+    ) -> CaseRun:
         del cfg, tracker
         self.calls.append((case.id, provider.name))
         await asyncio.sleep(0.05)
@@ -105,22 +119,20 @@ class SmokeSuite(Suite):
             ),
         ]
 
-    def transport(self, case: Case, cfg: EvalConfig, tracker: EvalCostTracker, provider):
+    def transport(
+        self,
+        case: Case,
+        cfg: EvalConfig,
+        tracker: EvalCostTracker,
+        provider: ProviderConfig,
+    ) -> Awaitable[CaseRun]:
         return self._transport.run(case, cfg, tracker, provider)
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
         return score_gates(case, run)
 
-    def finalize_scorers(self, cfg: EvalConfig) -> list:
+    def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
         del cfg
-        from scripts.evals.core.scorers import (
-            BubbleBoundary,
-            CommunicateGate,
-            EndStateEquality,
-            ProviderQuality,
-            ToolCallCorrectness,
-        )
-
         return [
             BubbleBoundary(),
             CommunicateGate(),

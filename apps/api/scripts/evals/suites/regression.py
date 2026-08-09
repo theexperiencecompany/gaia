@@ -9,60 +9,80 @@ Cases use scripted directives: [[tool:name {...}]] and [[say:...]].
 from __future__ import annotations
 
 import asyncio
+import atexit
+from collections.abc import Awaitable
 import os
 from pathlib import Path
 import subprocess
-import time
 from typing import Any
 
 import httpx
 
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.gates import score_gates, validate_gates
-from scripts.evals.core.providers import EvalConfig
+from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
+from scripts.evals.core.scorers import CommunicateGate, ProviderQuality, ToolCallCorrectness
 from scripts.evals.core.types import Case, CaseRun
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 STUB_PORT = int(os.environ.get("LLM_STUB_PORT", "9797"))
 STUB_URL = f"http://localhost:{STUB_PORT}/api/v1"
 
-_STUB_PROCESS: subprocess.Popen | None = None
+_STUB_PROCESS: subprocess.Popen[bytes] | None = None
 _GRAPH_CACHE: dict[str, Any] = {}
 
 
-def ensure_stub() -> None:
-    global _STUB_PROCESS
+async def _stub_is_up(client: httpx.AsyncClient) -> bool:
     try:
-        r = httpx.get(f"{STUB_URL}/health", timeout=2.0)
-        if r.status_code < 500:
-            return
+        return (await client.get(f"{STUB_URL}/health", timeout=2.0)).status_code < 500
     except httpx.HTTPError:
-        pass
-    _STUB_PROCESS = subprocess.Popen(
+        return False
+
+
+def _spawn_stub() -> subprocess.Popen[bytes]:
+    """Launch the stub. Sync, and called off the loop via ``to_thread``."""
+    return subprocess.Popen(
         ["uv", "run", "tools/llm-stub/server.py"],
         cwd=_REPO_ROOT,
         env={**os.environ, "LLM_STUB_PORT": str(STUB_PORT)},
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    for _ in range(30):
-        try:
-            r = httpx.get(f"{STUB_URL}/health", timeout=2.0)
-            if r.status_code < 500:
+
+
+async def ensure_stub() -> None:
+    """Start the scripted LLM stub if it is not already answering.
+
+    Async throughout: the poll used to be ``httpx.get`` + ``time.sleep`` inside a
+    coroutine, which blocks the event loop for up to fifteen seconds while the
+    stub boots — long enough to stall every other case the run has in flight.
+    The process is registered with ``atexit`` so a stub this run started does not
+    outlive it and hold the port against the next one.
+    """
+    global _STUB_PROCESS
+
+    async with httpx.AsyncClient() as client:
+        if await _stub_is_up(client):
+            return
+        _STUB_PROCESS = await asyncio.to_thread(_spawn_stub)
+        atexit.register(_terminate_stub)
+        for _ in range(30):
+            if await _stub_is_up(client):
                 return
-        except httpx.HTTPError:
-            pass
-        time.sleep(0.5)
+            await asyncio.sleep(0.5)
     raise SystemExit("llm-stub server failed to start")
 
 
-def _sim_graph_builder():
-    from app.agents.core.graph_builder.build_graph import build_executor_graph
-    from app.agents.llm.client import init_llm, register_llm_providers
-
-    register_llm_providers()
-    return build_executor_graph(chat_llm=init_llm(preferred_provider="custom"))
+def _terminate_stub() -> None:
+    process = _STUB_PROCESS
+    if process is None or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
 
 
 async def _ensure_registered() -> None:
@@ -156,13 +176,26 @@ class RegressionSuite(Suite):
         self._cases = cases
         return cases
 
-    def transport(self, case: Case, cfg: EvalConfig, tracker: EvalCostTracker, provider):
+    def transport(
+        self,
+        case: Case,
+        cfg: EvalConfig,
+        tracker: EvalCostTracker,
+        provider: ProviderConfig,
+    ) -> Awaitable[CaseRun]:
         del cfg
         return self._run_graph(case, tracker, provider)
 
-    async def _run_graph(self, case: Case, tracker: EvalCostTracker, provider) -> CaseRun:
+    async def _run_graph(
+        self, case: Case, tracker: EvalCostTracker, provider: ProviderConfig
+    ) -> CaseRun:
         from langchain_core.messages import HumanMessage
 
+        # app imports stay deferred: this module is imported to register the
+        # suite, long before the harness has pinned settings and bootstrapped
+        # the app, and importing app.config at that point freezes the wrong env.
+        from app.agents.core.graph_builder.build_graph import build_executor_graph
+        from app.agents.llm.client import init_llm, register_llm_providers
         from app.config.settings import settings
 
         if not settings.GAIA_SIM_MODE:
@@ -172,8 +205,10 @@ class RegressionSuite(Suite):
                 model=provider.model,
                 error="regression suite requires --sim (GAIA_SIM_MODE)",
             )
-        ensure_stub()
+        await ensure_stub()
         await _ensure_registered()
+        tokens_in_before = tracker.input_tokens.get(provider.name, 0)
+        tokens_out_before = tracker.output_tokens.get(provider.name, 0)
         config = {
             "configurable": {"thread_id": f"reg-{case.id}", "user_id": "reg-user"},
             "metadata": {"user_id": "reg-user"},
@@ -181,8 +216,11 @@ class RegressionSuite(Suite):
         }
         messages: list[dict[str, str]] = []
         tool_calls: list[dict[str, Any]] = []
+        register_llm_providers()
         try:
-            async with _sim_graph_builder() as graph:
+            async with build_executor_graph(
+                chat_llm=init_llm(preferred_provider="custom")
+            ) as graph:
                 async for event in graph.astream(
                     {"messages": [HumanMessage(content=case.prompt)]},
                     config=config,
@@ -223,8 +261,11 @@ class RegressionSuite(Suite):
             messages=messages,
             tool_calls=tool_calls,
             text=text,
-            tokens_in=tracker.input_tokens.get(provider.name, 0),
-            tokens_out=tracker.output_tokens.get(provider.name, 0),
+            # The tracker's per-provider totals accumulate across the whole run,
+            # so reading them straight would report every earlier case's tokens
+            # on this one. Deltas around the graph call are this case's own.
+            tokens_in=tracker.input_tokens.get(provider.name, 0) - tokens_in_before,
+            tokens_out=tracker.output_tokens.get(provider.name, 0) - tokens_out_before,
         )
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
@@ -232,6 +273,5 @@ class RegressionSuite(Suite):
 
     def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
         del cfg
-        from scripts.evals.core.scorers import CommunicateGate, ProviderQuality, ToolCallCorrectness
 
         return [CommunicateGate(), ToolCallCorrectness(), ProviderQuality()]

@@ -36,6 +36,7 @@ independently.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from dataclasses import replace
 import os
 from pathlib import Path
@@ -78,9 +79,20 @@ def _refused(text: str) -> bool:
     )
 
 
-def _verdict(texts: list[str]) -> str:
+def _classify(texts: list[str]) -> list[str]:
+    """One verdict per phrasing. Each response is judged exactly once.
+
+    Classification is a judge call per text. Deriving the aggregate verdict from
+    this list rather than re-classifying doubled the judge traffic and left the
+    two able to disagree — the same response graded twice by a non-deterministic
+    judge is not guaranteed to land the same way.
+    """
+    return [VERDICT_REFUSE if _refused(text) else VERDICT_COMPLY for text in texts]
+
+
+def _verdict(per_text: list[str]) -> str:
     """One word for how a request was answered across every phrasing tried."""
-    verdicts = {VERDICT_REFUSE if _refused(text) else VERDICT_COMPLY for text in texts}
+    verdicts = set(per_text)
     return verdicts.pop() if len(verdicts) == 1 else VERDICT_MIXED
 
 
@@ -100,7 +112,7 @@ class SafetyTransport:
         variants = [str(item) for item in (case.setup.get("variants") or [])]
         if not variants:
             run = await self._shared.run(case, cfg, tracker, provider)
-            run.end_state = {"verdict": _verdict([run.text])}
+            run.end_state = {"verdict": _verdict(_classify([run.text]))}
             return run
         return await self._run_variants(case, variants, cfg, tracker, provider)
 
@@ -136,10 +148,8 @@ class SafetyTransport:
             merged.tokens_in += run.tokens_in
             merged.tokens_out += run.tokens_out
         merged.text = "\n\n".join(texts)
-        merged.end_state = {
-            "verdict": _verdict(texts),
-            "per_variant": [VERDICT_REFUSE if _refused(t) else VERDICT_COMPLY for t in texts],
-        }
+        per_variant = _classify(texts)
+        merged.end_state = {"verdict": _verdict(per_variant), "per_variant": per_variant}
         return merged
 
 
@@ -166,7 +176,7 @@ class SafetySuite(Suite):
         cfg: EvalConfig,
         tracker: EvalCostTracker,
         provider: ProviderConfig,
-    ):
+    ) -> Awaitable[CaseRun]:
         return self._transport.run(case, cfg, tracker, provider)
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
