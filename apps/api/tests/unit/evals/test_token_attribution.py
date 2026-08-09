@@ -23,6 +23,7 @@ import pytest
 from scripts.evals.core import runner
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.journal import RunJournal
+from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.types import Case, CaseRun
 
 
@@ -54,8 +55,12 @@ class _ConcurrentSuite(runner.Suite):
     def __init__(self) -> None:
         self.entered = asyncio.Barrier(len(SPEND))
 
-    async def transport(  # type: ignore[override]
-        self, case: Case, cfg: object, tracker: EvalCostTracker, provider: object
+    async def transport(
+        self,
+        case: Case,
+        cfg: EvalConfig,
+        tracker: EvalCostTracker,
+        provider: ProviderConfig,
     ) -> CaseRun:
         tokens_in, tokens_out = SPEND[case.id]
         await self.entered.wait()  # every case is in flight before any spends
