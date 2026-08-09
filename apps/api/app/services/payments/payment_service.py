@@ -3,6 +3,7 @@ Streamlined Dodo Payments integration service.
 Clean, simple, and maintainable.
 """
 
+import asyncio
 from typing import Any, Literal
 
 from dodopayments import DodoPayments
@@ -207,7 +208,10 @@ class DodoPaymentService:
             raise HTTPException(400, "Subscription has no Dodo id to cancel")
 
         try:
-            updated = self.client.subscriptions.update(
+            # The Dodo SDK's client is synchronous — run it off the event loop
+            # so a slow HTTP round-trip doesn't stall other requests.
+            updated = await asyncio.to_thread(
+                self.client.subscriptions.update,
                 subscription.dodo_subscription_id,
                 cancel_at_next_billing_date=True,
             )
@@ -227,9 +231,22 @@ class DodoPaymentService:
         if updated.next_billing_date:
             update.next_billing_date = updated.next_billing_date.isoformat()
 
-        await subscription_repository.apply_update_by_dodo_id(
+        updated_local = await subscription_repository.apply_update_by_dodo_id(
             subscription.dodo_subscription_id, update
         )
+        if not updated_local:
+            # Dodo accepted the cancellation but no local row matched — surfacing
+            # success here would leave the user's status stale and silently drop
+            # the change. Fail loud so it gets attention instead of looking done.
+            log.error(
+                f"{LogTag.PAYMENT} Cancellation not mirrored locally; no subscription row matched",
+                dodo_subscription_id=subscription.dodo_subscription_id,
+                user_id=user_id,
+            )
+            raise HTTPException(
+                502,
+                "Cancellation processed by Dodo but could not be recorded locally",
+            )
         await self.invalidate_plan_cache_by_dodo_id(subscription.dodo_subscription_id)
 
         return await self.get_user_subscription_status(user_id)

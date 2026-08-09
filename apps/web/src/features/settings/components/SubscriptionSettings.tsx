@@ -3,9 +3,6 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
-import { useState } from "react";
-import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { pricingApi } from "@/features/pricing/api/pricingApi";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import {
   convertToUSDCents,
@@ -14,8 +11,8 @@ import {
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { useConfirmation } from "@/hooks/useConfirmation";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
+import { CancelSubscriptionAction } from "./CancelSubscriptionAction";
 
 const formatDate = (dateString?: string): string => {
   if (!dateString) return "N/A";
@@ -81,30 +78,6 @@ export function SubscriptionSettings() {
     refetch: refetchStatus,
   } = useUserSubscriptionStatus();
   const handleUpgrade = usePricingModalStore((s) => s.openModal);
-  const { confirm, confirmationProps } = useConfirmation();
-  const [isCancelling, setIsCancelling] = useState(false);
-
-  const performCancellation = async () => {
-    setIsCancelling(true);
-    try {
-      await pricingApi.cancelSubscription();
-      await refetchStatus();
-    } finally {
-      setIsCancelling(false);
-    }
-  };
-
-  const handleCancelSubscription = async () => {
-    const confirmed = await confirm({
-      title: "Cancel subscription?",
-      message:
-        "You'll keep Pro access until the end of your current billing period, then your subscription won't renew. You can resubscribe anytime.",
-      confirmText: "Cancel subscription",
-      variant: "destructive",
-    });
-    if (!confirmed) return;
-    await performCancellation();
-  };
 
   if (isLoading) {
     return (
@@ -333,22 +306,14 @@ export function SubscriptionSettings() {
             View plans
           </Button>
 
-          {subscription?.status === "active" && !cancellationScheduled && (
-            <Button
-              color="danger"
-              variant="light"
-              size="sm"
-              className="w-full"
-              isLoading={isCancelling}
-              onPress={handleCancelSubscription}
-            >
-              Cancel subscription
-            </Button>
+          {subscription && (
+            <CancelSubscriptionAction
+              subscription={subscription}
+              refetchStatus={refetchStatus}
+            />
           )}
         </div>
       </SettingsSection>
-
-      <ConfirmationDialog {...confirmationProps} />
     </SettingsPage>
   );
 }

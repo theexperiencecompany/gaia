@@ -1,5 +1,5 @@
+import { Link } from "@heroui/link";
 import type { Metadata } from "next";
-
 import JsonLd from "@/components/seo/JsonLd";
 import {
   generateBreadcrumbSchema,
@@ -356,14 +356,14 @@ const PrivacyPolicy = () => {
             <p className="mb-4">
               GAIA's use and transfer of information received from Google APIs
               to any other app will adhere to the{" "}
-              <a
+              <Link
                 className="text-blue-500 underline"
                 href="https://developers.google.com/terms/api-services-user-data-policy"
-                rel="noopener noreferrer"
-                target="_blank"
+                isExternal
+                showAnchorIcon={false}
               >
                 Google API Services User Data Policy
-              </a>
+              </Link>
               , including the Limited Use requirements.
             </p>
             <p className="mb-2">In particular:</p>
@@ -390,14 +390,14 @@ const PrivacyPolicy = () => {
                 You may disconnect any Google integration at any time from your
                 account settings, and you may revoke our access directly through
                 your{" "}
-                <a
+                <Link
                   className="text-blue-500 underline"
                   href="https://myaccount.google.com/permissions"
-                  rel="noopener noreferrer"
-                  target="_blank"
+                  isExternal
+                  showAnchorIcon={false}
                 >
                   Google Account permissions page
-                </a>
+                </Link>
                 .
               </li>
             </ul>
@@ -547,13 +547,13 @@ const PrivacyPolicy = () => {
               If we become aware of a breach of security leading to the
               accidental or unlawful destruction, loss, alteration, unauthorized
               disclosure of, or access to your personal information, we will
-              notify you without undue delay and in any event within seventy-two
-              (72) hours of becoming aware of it, where that breach is likely to
-              result in a risk to your rights and freedoms. We will also notify
-              the relevant supervisory authorities where required by applicable
-              law. Our notice will describe the nature of the breach, the
-              categories of data affected, the likely consequences, and the
-              measures we have taken or propose to take in response.
+              notify the relevant supervisory authorities within seventy-two
+              (72) hours of becoming aware of it, where required by applicable
+              law. Where the breach is likely to result in a high risk to your
+              rights and freedoms, we will also notify you without undue delay.
+              Our notice will describe the nature of the breach, the categories
+              of data affected, the likely consequences, and the measures we
+              have taken or propose to take in response.
             </p>
           </div>
 
@@ -620,26 +620,38 @@ const PrivacyPolicy = () => {
               >
                 support@heygaia.so
               </a>{" "}
-              from the email address associated with your account, and tell us
-              which right you wish to exercise.
+              from the email address associated with your account, or submit a
+              request through our{" "}
+              <a className="text-blue-500 underline" href="/contact">
+                contact page
+              </a>
+              , and tell us which right you wish to exercise.
             </p>
             <ul className="mb-4 ml-6 list-disc">
               <li>
-                We will acknowledge your request and respond within forty-five
-                (45) days. If we need more time, we will tell you why and how
-                much longer we need;
+                For requests from the EEA, UK, or Switzerland, we will
+                acknowledge your request and respond within one month, with a
+                possible extension of up to two additional months for complex or
+                numerous requests (as permitted by the GDPR);
+              </li>
+              <li>
+                For all other requests, we will acknowledge your request and
+                respond within forty-five (45) days. If we need more time, we
+                will tell you why and how much longer we need;
               </li>
               <li>
                 We may ask you for additional information to verify your
-                identity before acting on a request;
+                identity before acting on a request, but we will not require
+                access to the email address on your account as a precondition;
               </li>
               <li>
                 Exercising these rights is free of charge, and we will not
                 discriminate against you for doing so;
               </li>
               <li>
-                You can delete your account, and the personal information
-                associated with it, at any time from your account settings.
+                You may request deletion of your account and the personal
+                information associated with it at any time, and we will process
+                deletion requests through the process described above.
               </li>
             </ul>
           </div>
@@ -672,8 +684,9 @@ const PrivacyPolicy = () => {
               <li>
                 <strong>Google User Data:</strong> Retained only as long as
                 necessary to provide our services or as required by law. You can
-                request deletion of your Google user data at any time through
-                your account settings or by contacting us directly.
+                request deletion of your Google user data at any time by
+                contacting us or submitting a request through the process in
+                Section 9.4.
               </li>
             </ul>
             <p className="mb-4">
@@ -852,6 +865,11 @@ const PrivacyPolicy = () => {
                 Legal basis for processing: We process your data based on
                 consent, contract performance, legitimate interests, or legal
                 obligations;
+              </li>
+              <li>
+                Response timeline: Requests from the EEA, UK, or Switzerland are
+                handled within one month, extendable by up to two months for
+                complex or numerous requests, as described in Section 9.4;
               </li>
               <li>
                 Right to lodge a complaint with your local data protection

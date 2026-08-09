@@ -95,6 +95,12 @@ async def cancel_subscription_endpoint(
     )
     try:
         result = await payment_service.cancel_subscription(user_id)
+        log.set(
+            payment={
+                "subscription_id": (result.subscription or {}).get("dodo_subscription_id"),
+                "status": result.subscription.get("status") if result.subscription else None,
+            }
+        )
         log.audit(
             "subscription cancellation requested",
             actor=user_id,

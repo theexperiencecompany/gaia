@@ -54,11 +54,7 @@ class BaseAppSettings(BaseSettings):
         try:
             return cls(**kwargs)
         except Exception as e:
-            log.warning(
-                f"{LogTag.STARTUP} Error creating settings",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+            log.warning(f"{LogTag.STARTUP} Error creating settings: {e!s}")
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
@@ -287,7 +283,6 @@ class ProductionSettings(CommonSettings):
     # Email & Communication
     RESEND_API_KEY: str
     RESEND_AUDIENCE_ID: str
-    EMAIL_UNSUBSCRIBE_SECRET: str
 
     # Media Storage
     CLOUDINARY_CLOUD_NAME: str
@@ -446,6 +441,20 @@ class ProductionSettings(CommonSettings):
     BOT_SESSION_TOKEN_SECRET: str  # Required: min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
 
+    @field_validator("DODO_PAYMENTS_BASE_URL", mode="after")
+    @classmethod
+    def _dodo_base_url_must_be_https(cls, v: str | None) -> str | None:
+        """Production must not send the Dodo API key over plain HTTP.
+
+        The override exists for pointing the Dodo client at a local stub or
+        sandbox mirror — a dev/test concern. Production traffic must use TLS,
+        so reject an explicit http:// override rather than silently leaking
+        the bearer token in cleartext. Unset (None) stays allowed.
+        """
+        if v is not None and v and not v.startswith("https://"):
+            raise ValueError("DODO_PAYMENTS_BASE_URL must use https:// in production")
+        return v
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="allow",
@@ -490,7 +499,6 @@ class DevelopmentSettings(CommonSettings):
     # Email & Communication
     RESEND_API_KEY: str | None = None
     RESEND_AUDIENCE_ID: str | None = None
-    EMAIL_UNSUBSCRIBE_SECRET: str | None = None
 
     # Media Storage
     CLOUDINARY_CLOUD_NAME: str | None = None
@@ -671,8 +679,7 @@ def _ensure_infisical_loaded() -> None:
         infisical_start = time.time()
         inject_infisical_secrets()
         log.info(
-            f"{LogTag.STARTUP} Infisical secrets loaded",
-            duration_seconds=round(time.time() - infisical_start, 3),
+            f"{LogTag.STARTUP} Infisical secrets loaded in {(time.time() - infisical_start):.3f}s"
         )
         _infisical_secrets_loaded = True
 
@@ -695,6 +702,7 @@ def get_settings() -> Any:
     showed `from_env(**kwargs: object)` adds 4 more: `cls(**kwargs)` feeds
     per-field types (`ENV: Literal[...]`, `SHOW_MISSING_KEY_WARNINGS: bool`).
     """
+    log.set(service={"name": "gaia-api"})
     log.info(f"{LogTag.STARTUP} Starting settings initialization...")
 
     _ensure_infisical_loaded()
@@ -754,11 +762,7 @@ def get_settings() -> Any:
         return settings_obj
 
     except Exception as e:
-        log.error(
-            f"{LogTag.STARTUP} Error initializing settings",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+        log.error(f"{LogTag.STARTUP} Error initializing settings: {e!s}")
         # In case of error, we still need to return a settings object
         # Use development settings with defaults as fallback
         if env == "development":
