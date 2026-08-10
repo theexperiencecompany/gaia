@@ -167,7 +167,7 @@ class LangchainProvider(
                             user_id=user_id,
                             err_preview=err_preview,
                         )
-            except Exception as obs_err:  # noqa: BLE001 - observability must not break tool
+            except Exception as obs_err:  # observability must not break tool
                 log.debug(
                     f"{LogTag.COMPOSIO} composio invocation log skipped for",
                     tool=tool,

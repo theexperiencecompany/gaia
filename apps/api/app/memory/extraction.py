@@ -56,7 +56,7 @@ def _silent_config(user_id: str) -> RunnableConfig:
     return {
         **silent_metered_config(user_id),
         "tags": ["memory_internal"],
-    }  # type: ignore[typeddict-unknown-key]
+    }
 
 
 # Provider failures and malformed structured output both degrade to None so the

@@ -280,6 +280,61 @@ class TestQueueLockBugs:
         spawn.assert_awaited_once()
 
 
+class TestRecordPause:
+    """``_record_pause`` must fail the run, never the process, when the write fails.
+
+    A batch pause with no resumable context is worse than an error: it holds the
+    busy lock for its full TTL waiting on a resume that can never come. The
+    caller (``run_executor_background``) treats a False return as "fail this
+    run" — so a write failure here must surface as False, not an exception.
+    """
+
+    async def test_a_failed_write_fails_the_run_instead_of_raising(self) -> None:
+        run = _run(RunKind.LIVE)
+
+        with patch.object(
+            er, "set_resume_item", new_callable=AsyncMock, side_effect=RuntimeError("redis down")
+        ):
+            recorded = await er._record_pause(
+                run, TASK, {"user_id": "u1"}, ("appr-1", "appr-2")
+            )  # must not raise
+
+        assert recorded is False
+
+    async def test_a_successful_write_reports_true(self) -> None:
+        run = _run(RunKind.LIVE)
+
+        with patch.object(er, "set_resume_item", new_callable=AsyncMock) as set_item:
+            recorded = await er._record_pause(run, TASK, {"user_id": "u1"}, ("appr-1", "appr-2"))
+
+        assert recorded is True
+        assert set_item.await_count == 2  # every approval id in the batch gets stamped
+
+
+class TestFinalizeDeliveryFailureDoesNotStrandQueue:
+    """A delivery/close failure inside finalize must not skip the queue handoff
+    below it — otherwise queued work strands and the busy lock leaks until its
+    TTL (see the comment on the guarding except in _finalize_executor_run)."""
+
+    async def test_delivery_blowing_up_still_hands_off_the_queue(self, boundaries) -> None:
+        run = _run(RunKind.QUEUED)
+        create_session("s1", RunKind.QUEUED)
+        boundaries.deliver.side_effect = RuntimeError("delivery blew up")
+        next_run = _run(RunKind.QUEUED, stream_id="queued_next")
+        boundaries.pop.return_value = PreparedQueuedTask(
+            run=next_run,
+            task="the queued ask",
+            configurable={"stream_id": "queued_next"},
+        )
+
+        with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
+            await er._finalize_executor_run(run, TASK, "result", "final")  # must not raise
+            await asyncio.sleep(0)
+
+        boundaries.pop.assert_awaited_once_with("conv-1")
+        spawn.assert_awaited_once()  # the queued task still gets spawned
+
+
 class TestQueueLockHandoff:
     async def test_no_next_task_releases_the_busy_lock_then_rechecks(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)

@@ -20,7 +20,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.agents.tools.integrations.calendar_tool import (
-    CALENDAR_API_BASE,
     _extract_datetime,
     _format_calendar_for_stream,
     _format_calendar_option_for_stream,
@@ -49,6 +48,7 @@ from app.models.calendar_models import (
     SingleEventInput,
 )
 from app.models.common_models import GatherContextInput
+from app.utils.calendar_utils import CALENDAR_API_BASE
 from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.integrations.calendar_tool"
@@ -862,6 +862,29 @@ class TestGetEvent:
         proxy.assert_not_called()
         assert out["events"] == []
 
+    def test_percent_encodes_calendar_id_with_reserved_chars(self, tools) -> None:
+        # Google calendar IDs like "user@group.calendar.google.com" or
+        # "#contacts@group.v.calendar.google.com" contain '@'/'#'. Unencoded,
+        # those characters break the URL path (same bug as calendar_service.py,
+        # fixed at the root by routing every endpoint through
+        # calendar_events_endpoint()).
+        with patch(f"{MODULE}.proxy_request_sync", return_value={"id": "e1"}) as proxy:
+            tools["CUSTOM_GET_EVENT"](
+                GetEventInput(
+                    events=[
+                        EventReference(
+                            event_id="e1",
+                            calendar_id="user@group.calendar.google.com",
+                        )
+                    ]
+                ),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
+        endpoint = proxy.call_args.kwargs["endpoint"]
+        assert "user@group.calendar.google.com" not in endpoint
+        assert endpoint.endswith("/calendars/user%40group.calendar.google.com/events/e1")
+
 
 # ---------------------------------------------------------------------------
 # CUSTOM_DELETE_EVENT
@@ -930,6 +953,24 @@ class TestDeleteEvent:
                 tools["CUSTOM_DELETE_EVENT"](
                     DeleteEventInput(events=[EventReference(event_id="e1")]), EXECUTE_REQUEST, AUTH
                 )
+
+    def test_percent_encodes_calendar_id_with_reserved_chars(self, tools) -> None:
+        with patch(f"{MODULE}.proxy_request_sync", return_value=None) as proxy:
+            tools["CUSTOM_DELETE_EVENT"](
+                DeleteEventInput(
+                    events=[
+                        EventReference(
+                            event_id="e1",
+                            calendar_id="#contacts@group.v.calendar.google.com",
+                        )
+                    ]
+                ),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
+        endpoint = proxy.call_args.kwargs["endpoint"]
+        assert "#contacts@group.v.calendar.google.com" not in endpoint
+        assert endpoint.endswith("/calendars/%23contacts%40group.v.calendar.google.com/events/e1")
 
 
 # ---------------------------------------------------------------------------
@@ -1003,6 +1044,21 @@ class TestPatchEvent:
                     PatchEventInput(event_id="e1", summary="x"), EXECUTE_REQUEST, AUTH
                 )
 
+    def test_percent_encodes_calendar_id_with_reserved_chars(self, tools) -> None:
+        with patch(f"{MODULE}.proxy_request_sync", return_value={"id": "e1"}) as proxy:
+            tools["CUSTOM_PATCH_EVENT"](
+                PatchEventInput(
+                    event_id="e1",
+                    calendar_id="user@group.calendar.google.com",
+                    summary="New title",
+                ),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
+        endpoint = proxy.call_args.kwargs["endpoint"]
+        assert "user@group.calendar.google.com" not in endpoint
+        assert endpoint.endswith("/calendars/user%40group.calendar.google.com/events/e1")
+
 
 # ---------------------------------------------------------------------------
 # CUSTOM_ADD_RECURRENCE
@@ -1069,6 +1125,20 @@ class TestAddRecurrence:
                     AddRecurrenceInput(event_id="e1", frequency="DAILY"), EXECUTE_REQUEST, AUTH
                 )
         assert proxy.call_count == 1
+
+    def test_percent_encodes_calendar_id_with_reserved_chars(self, tools) -> None:
+        out, proxy = self._run(
+            tools,
+            AddRecurrenceInput(
+                event_id="e1",
+                calendar_id="#contacts@group.v.calendar.google.com",
+                frequency="DAILY",
+            ),
+        )
+        endpoint = proxy.call_args_list[0].kwargs["endpoint"]
+        assert "#contacts@group.v.calendar.google.com" not in endpoint
+        assert endpoint.endswith("/calendars/%23contacts%40group.v.calendar.google.com/events/e1")
+        assert out["event"] == {"id": "e1", "updated": True}
 
 
 # ---------------------------------------------------------------------------
@@ -1299,6 +1369,26 @@ class TestCreateEvent:
                 }
             ]
         }
+
+    def test_percent_encodes_calendar_id_with_reserved_chars(self, tools, writer) -> None:
+        with patch(f"{MODULE}.get_config", return_value={"configurable": {}}):
+            _, proxy = self._run(
+                tools,
+                CreateEventInput(
+                    events=[
+                        SingleEventInput(
+                            summary="Sync",
+                            start_datetime="2026-01-15T10:00:00",
+                            calendar_id="user@group.calendar.google.com",
+                        )
+                    ],
+                    confirm_immediately=True,
+                ),
+                metadata=({"user@group.calendar.google.com": "#ff0000"}, {}),
+            )
+        endpoint = proxy.call_args.kwargs["endpoint"]
+        assert "user@group.calendar.google.com" not in endpoint
+        assert endpoint.endswith("/calendars/user%40group.calendar.google.com/events")
 
     # -- draft path --------------------------------------------------------
 

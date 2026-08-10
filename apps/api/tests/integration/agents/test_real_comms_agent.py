@@ -388,15 +388,13 @@ class TestRealCommsAgent:
             "The graph should have produced a new AIMessage with no pending tool calls."
         )
 
-    async def test_pre_model_hook_does_not_persist_to_checkpoint(self, comms_graph_simple):
+    async def test_pre_model_hook_pruning_persists_to_checkpoint(self, comms_graph_simple):
         """
-        manage_system_prompts_node runs as a pre_model_hook — it modifies the
-        messages passed to the model ephemerally (filtering duplicates for the
-        LLM call), but those modifications are NOT written back to the checkpoint.
-        The persisted graph state still retains all original messages
-        (LangGraph's append reducer). This test verifies the graph completes
-        without error and produces an AI response when fed duplicate non-memory
-        system prompts, and that both system prompts remain in the checkpoint.
+        manage_system_prompts_node keeps one system prompt per slot, and since
+        the prompt-accumulation fix that pruning is DURABLE: the model node
+        tombstones the stale copies out of the checkpoint (RemoveMessage), so a
+        long-lived thread holds exactly one prompt per slot instead of one per
+        run. Conversation messages are untouched.
         """
         config = _thread_config()
 
@@ -416,16 +414,21 @@ class TestRealCommsAgent:
         ai_messages = [m for m in result["messages"] if m.type == "ai"]
         assert len(ai_messages) >= 1, "Graph should have produced at least one AIMessage"
 
-        # Both system messages remain in the persisted state because
-        # pre_model_hooks only filter for the LLM call, not the checkpoint.
+        # Only the latest static prompt survives in the persisted state; the
+        # stale copy is tombstoned out so checkpointed threads stay bounded.
         system_messages = [m for m in result["messages"] if m.type == "system"]
         non_memory = [
             m for m in system_messages if not m.additional_kwargs.get("memory_message", False)
         ]
-        assert len(non_memory) == 2, (
-            f"Both non-memory system prompts should remain in persisted state; "
-            f"found {len(non_memory)}"
+        assert len(non_memory) == 1, (
+            f"Exactly the latest non-memory system prompt should persist; found {len(non_memory)}"
         )
+        assert "New system prompt." in str(non_memory[0].content)
+
+        # The conversation itself is never pruned.
+        human_contents = [str(m.content) for m in result["messages"] if m.type == "human"]
+        assert "First message." in human_contents
+        assert "Second message." in human_contents
 
     # ------------------------------------------------------------------
     # 3. Tool routing

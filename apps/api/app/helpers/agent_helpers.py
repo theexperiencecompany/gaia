@@ -929,7 +929,7 @@ async def execute_graph_streaming(
         await stream.aclose()
         try:
             await record_interruption(graph, config)
-        except Exception as e:  # noqa: BLE001 — the cancel ack must still reach the client
+        except Exception as e:  # the cancel ack must still reach the client
             log.error(
                 f"{LogTag.AGENT} Failed to record interruption",
                 error=str(e),

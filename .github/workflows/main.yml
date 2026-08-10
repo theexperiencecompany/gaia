@@ -206,6 +206,7 @@ jobs:
         with:
           version: "0.8.17"
           enable-cache: true
+          prune-cache: true
       - name: Sync Python dependencies
         shell: bash
         run: uv sync --frozen --package gaia --group backend --group dev

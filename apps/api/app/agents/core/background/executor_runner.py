@@ -159,7 +159,7 @@ async def _record_pause(
         for approval_id in approval_ids:
             await set_resume_item(approval_id, item)
         return True
-    except Exception as e:  # noqa: BLE001 — a lost pause must fail the run, not the process
+    except Exception as e:  # a lost pause must fail the run, not the process
         log.error(
             f"{LogTag.HIL} Could not record resume context; failing the paused run",
             approval_ids=list(approval_ids),
@@ -277,7 +277,7 @@ async def _finalize_executor_run(
             run, task, result_text, result_type, was_cancelled, returned_note
         )
         await _close_queued_stream(run, was_cancelled)
-    except Exception as e:  # noqa: BLE001 — never let delivery failure strand the queue
+    except Exception as e:  # never let delivery failure strand the queue
         log.error(
             f"{LogTag.AGENT} Executor finalize delivery/close failed",
             stream_id=run.stream_id,
@@ -316,7 +316,7 @@ async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
                     "user_timezone": run.user.get("timezone"),
                 },
             )
-    except Exception as e:  # noqa: BLE001 — a failed wake must not strand the queue handoff
+    except Exception as e:  # a failed wake must not strand the queue handoff
         log.error(
             f"{LogTag.AGENT} Post-run collection check failed",
             conversation_id=run.conversation_id,

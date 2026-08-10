@@ -203,7 +203,7 @@ def _match_condition(record: JSONRecord, cond: dict[str, Any]) -> bool:
         return isinstance(actual, list) and value in actual
     if op in ("gt", "lt"):
         try:
-            result = actual > value if op == "gt" else actual < value  # type: ignore[operator]
+            result = actual > value if op == "gt" else actual < value
             return bool(result)
         except TypeError:
             return False

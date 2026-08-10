@@ -162,7 +162,7 @@ class ArtifactForwarder:
             await self._consume(pubsub)
         except asyncio.CancelledError:
             raise
-        except Exception as e:  # noqa: BLE001 — log and exit; orchestrator cleans up
+        except Exception as e:  # log and exit; orchestrator cleans up
             log.warning(
                 "forwarder error",
                 artifact_log_prefix=ARTIFACT_LOG_PREFIX,
@@ -197,7 +197,7 @@ class ArtifactForwarder:
                 await self._handle_event(payload)
             except asyncio.CancelledError:
                 raise
-            except Exception as e:  # noqa: BLE001 — one bad event must not kill the turn
+            except Exception as e:  # one bad event must not kill the turn
                 log.warning(
                     "event failed",
                     artifact_log_prefix=ARTIFACT_LOG_PREFIX,
@@ -289,7 +289,7 @@ class ArtifactForwarder:
                 conversation_id=self.conversation_id,
                 bot_message_id=self.bot_message_id,
             )
-        except Exception as e:  # noqa: BLE001 — best-effort; live stream already delivered it
+        except Exception as e:  # best-effort; live stream already delivered it
             log.warning(
                 "failed to persist artifact entry",
                 artifact_log_prefix=ARTIFACT_LOG_PREFIX,
@@ -340,7 +340,7 @@ class ArtifactForwarder:
                     self.user_id, self.conversation_id, "artifacts", path
                 )
                 await asyncio.to_thread(_warm_artifact_blocks, host_path)
-        except Exception as e:  # noqa: BLE001 — best-effort cache warm
+        except Exception as e:  # best-effort cache warm
             log.debug(
                 "cache warm skipped",
                 artifact_log_prefix=ARTIFACT_LOG_PREFIX,

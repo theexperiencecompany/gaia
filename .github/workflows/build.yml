@@ -43,6 +43,12 @@ jobs:
     outputs:
       api_affected: ${{ steps.affected.outputs.api }}
       bots_affected: ${{ steps.affected.outputs.bots }}
+      # True only when a push step for an affected scope actually succeeded —
+      # tracked separately from this job's overall .result because a later
+      # step (e.g. Discord command sync) can fail AFTER images already landed
+      # in GHCR, which would otherwise misreport a real publish as "nothing
+      # published" and hide drift instead of surfacing it.
+      images_published: ${{ steps.publish-status.outputs.published }}
 
     steps:
       # Prepare repository + tooling so Nx can calculate affected projects.
@@ -146,17 +152,20 @@ jobs:
 
       # Publish API image tags when API-related scope changed.
       - name: Release apps Docker images
+        id: release-apps
         if: steps.affected.outputs.api == 'true'
         run: pnpm exec nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Publish bot image tags when bot scope changed.
       - name: Release bots Docker images
+        id: release-bots
         if: steps.affected.outputs.bots == 'true'
         run: pnpm exec nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Fallback: nx release may skip publishing on first run (no prior version
       # history). Ensure locally-built bot images are pushed to GHCR regardless.
       - name: Ensure bot images are pushed to GHCR
+        id: ensure-bot-images
         if: steps.affected.outputs.bots == 'true'
         run: |
           for bot in discord slack telegram whatsapp; do
@@ -168,6 +177,28 @@ jobs:
               echo "⚠️  $img not found locally, skipping"
             fi
           done
+
+      # Captured right after the push steps, before Discord command sync —
+      # that step can fail on an unrelated Discord API error and must never
+      # cause a real publish to be reported as "nothing published".
+      - name: Record image publish outcome
+        id: publish-status
+        if: always()
+        env:
+          API_AFFECTED: ${{ steps.affected.outputs.api }}
+          BOTS_AFFECTED: ${{ steps.affected.outputs.bots }}
+          API_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
+          BOTS_RELEASE_OUTCOME: ${{ steps.release-bots.outcome }}
+          BOTS_PUSH_OUTCOME: ${{ steps.ensure-bot-images.outcome }}
+        run: |
+          published=false
+          if [ "$API_AFFECTED" = "true" ] && [ "$API_RELEASE_OUTCOME" = "success" ]; then
+            published=true
+          fi
+          if [ "$BOTS_AFFECTED" = "true" ] && [ "$BOTS_RELEASE_OUTCOME" = "success" ] && [ "$BOTS_PUSH_OUTCOME" = "success" ]; then
+            published=true
+          fi
+          echo "published=$published" >> "$GITHUB_OUTPUT"
 
       # Discord command sync is only meaningful for production bot deploys.
       - name: Register Discord slash commands
@@ -188,6 +219,10 @@ jobs:
       contents: read
       packages: write
       actions: read
+    outputs:
+      # Feeds deployment-plan's coupling rule: a push that touches both
+      # backend and web must deploy them together, not independently.
+      web_affected: ${{ steps.web-affected.outputs.web }}
 
     steps:
       # Prepare repository + tooling for affected check and optional image build.
@@ -312,14 +347,31 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/gaia-grafana:${{ github.sha }}
 
   deployment-plan:
-    # Keep deploy planning behind all build lanes so trigger jobs never race ahead.
+    # Keep deploy planning behind all build lanes so trigger jobs never race
+    # ahead, but never let one failed/cancelled lane skip planning outright —
+    # a failed docker-web must not block a backend deploy that is otherwise
+    # ready, and vice versa. Each lane's result is evaluated explicitly by
+    # compute-deploy-plan.sh instead of relying on implicit all-success
+    # gating (the pre-`always()` behavior: any lane result other than
+    # 'success' skipped this whole job, and with it trigger-deploy AND
+    # trigger-web, even when the other lane was ready to ship).
     needs: [docker-release, docker-web, docker-grafana]
+    if: always()
     runs-on: ubuntu-latest
     outputs:
       backend_deploy: ${{ steps.plan.outputs.backend_deploy }}
       frontend_deploy: ${{ steps.plan.outputs.frontend_deploy }}
+      backend_orphaned: ${{ steps.plan.outputs.backend_orphaned }}
+      frontend_orphaned: ${{ steps.plan.outputs.frontend_orphaned }}
+      coupled_hold: ${{ steps.plan.outputs.coupled_hold }}
+      docker_release_result: ${{ steps.plan.outputs.docker_release_result }}
+      docker_web_result: ${{ steps.plan.outputs.docker_web_result }}
     steps:
-      # Single decision point that translates backend affected + manual mode into deploy booleans.
+      - uses: actions/checkout@v4
+      # Single decision point that translates lane results + affected +
+      # manual mode into deploy booleans, applies the backend/web coupling
+      # rule for pushes that touch both, and flags any image lane that
+      # published without its deploy running.
       - name: Compute deploy plan
         id: plan
         env:
@@ -329,58 +381,39 @@ jobs:
           MANUAL_MODE_EVENT: ${{ github.event.inputs.deployment_mode || '' }}
           API_AFFECTED: ${{ needs.docker-release.outputs.api_affected || 'false' }}
           BOTS_AFFECTED: ${{ needs.docker-release.outputs.bots_affected || 'false' }}
-        run: |
-          set -euo pipefail
+          WEB_AFFECTED: ${{ needs.docker-web.outputs.web_affected || 'false' }}
+          DOCKER_RELEASE_RESULT: ${{ needs.docker-release.result }}
+          DOCKER_WEB_RESULT: ${{ needs.docker-web.result }}
+          BACKEND_IMAGES_PUBLISHED: ${{ needs.docker-release.outputs.images_published || 'false' }}
+        run: bash scripts/ci/compute-deploy-plan.sh
 
-          backend_deploy=false
-          frontend_deploy=false
-          manual_mode="${MANUAL_MODE_INPUT:-}"
-
-          if [ -z "$manual_mode" ]; then
-            manual_mode="${MANUAL_MODE_EVENT:-}"
-          fi
-          if [ -z "$manual_mode" ]; then
-            manual_mode="auto"
-          fi
-
-          if [ "$REF" != "refs/heads/master" ]; then
-            echo "Not on master; deploy jobs disabled."
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            case "$manual_mode" in
-              auto)
-                if [ "$API_AFFECTED" = "true" ] || [ "$BOTS_AFFECTED" = "true" ]; then
-                  backend_deploy=true
-                fi
-                # Frontend sync to Vercel source repo is always allowed on master.
-                frontend_deploy=true
-                ;;
-              backend-only)
-                backend_deploy=true
-                ;;
-              frontend-only)
-                frontend_deploy=true
-                ;;
-              both)
-                backend_deploy=true
-                frontend_deploy=true
-                ;;
-              none)
-                ;;
-              *)
-                echo "::error::Invalid deployment_mode '$manual_mode'. Use auto, backend-only, frontend-only, both, or none."
-                exit 1
-                ;;
-            esac
-          else
-            if [ "$API_AFFECTED" = "true" ] || [ "$BOTS_AFFECTED" = "true" ]; then
-              backend_deploy=true
-            fi
-            frontend_deploy=true
-          fi
-
-          echo "backend_deploy=$backend_deploy" >> "$GITHUB_OUTPUT"
-          echo "frontend_deploy=$frontend_deploy" >> "$GITHUB_OUTPUT"
-          echo "Deploy plan => backend: $backend_deploy, frontend: $frontend_deploy"
+  # Loud, self-explaining alert for the exact incident this workflow used to
+  # hide: an image lane published to GHCR as :latest but its deploy did not
+  # run, for any reason (lane failure, cancellation, or the plan choosing not
+  # to deploy). Without this, production silently drifts from what's
+  # published, and any container restart on the Swarm host picks up the
+  # undeployed build with no warning.
+  notify-publish-without-deploy:
+    needs: [deployment-plan]
+    if: always() && (needs.deployment-plan.outputs.backend_orphaned == 'true' || needs.deployment-plan.outputs.frontend_orphaned == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Discord — publish without deploy
+        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+          username: "Gaia Deploy Bot"
+          color: "#ff6b6b"
+          message: |
+            🚨 **Publish Without Deploy Detected**
+            **Commit:** `${{ github.sha }}`
+            **Branch:** ${{ github.ref_name }}
+            **Actor:** ${{ github.actor }}
+            ${{ needs.deployment-plan.outputs.coupled_hold == 'true' && format('**This commit changes both backend and web, so their deploys are coupled — one lane failed (docker-release: `{0}`, docker-web: `{1}`), so BOTH deploys were held back together rather than shipping one half against a stale other half.**', needs.deployment-plan.outputs.docker_release_result, needs.deployment-plan.outputs.docker_web_result) || '' }}
+            ${{ needs.deployment-plan.outputs.coupled_hold != 'true' && needs.deployment-plan.outputs.backend_orphaned == 'true' && format('**Backend images (api/voice-agent/bots) were published to GHCR as `:latest` but the backend deploy did NOT run.** docker-release result: `{0}`.', needs.deployment-plan.outputs.docker_release_result) || '' }}
+            ${{ needs.deployment-plan.outputs.coupled_hold != 'true' && needs.deployment-plan.outputs.frontend_orphaned == 'true' && format('**Web image (gaia-web) was published to GHCR as `:latest` but the frontend deploy did NOT run.** docker-web result: `{0}`.', needs.deployment-plan.outputs.docker_web_result) || '' }}
+            Production may now be running a stale image while a newer one sits in GHCR tagged `:latest`. Any container restart on the Swarm host will silently pick up the undeployed build.
+            **To deploy now:** fix the red lane, then run `gh workflow run build.yml --ref master -f deployment_mode=both` (or `backend-only` / `frontend-only` for a non-coupled case) — this redeploys whatever is currently tagged `:latest` in GHCR regardless of this run's affected-detection or lane results.
 
   # Trigger backend production deploy only when deploy plan allows it.
   trigger-deploy:

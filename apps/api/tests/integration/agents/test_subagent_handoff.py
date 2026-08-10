@@ -259,7 +259,7 @@ class TestSubagentExecutionContext:
 
     def test_context_is_importable(self):
         """SubagentExecutionContext must be importable from subagent_runner."""
-        from app.agents.core.subagents.subagent_runner import (  # noqa: F401
+        from app.agents.core.subagents.subagent_runner import (
             SubagentExecutionContext,
         )
 

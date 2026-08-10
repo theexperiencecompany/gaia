@@ -36,28 +36,28 @@ import uuid
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
-from app.models.workflow_models import (  # noqa: E402
+from app.db.mongodb.collections import get_async_collection
+from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
     WorkflowStep,
 )
-from shared.py.utils.slugify import slugify  # noqa: E402
+from shared.py.utils.slugify import slugify
 
 workflows_collection = get_async_collection("workflows")
 
 
 def generate_run_count() -> tuple[int, int]:
     """Generate realistic run counts with some variance."""
-    base_runs = random.choice(  # noqa: S311  # nosec B311
+    base_runs = random.choice(  # nosec B311
         [
-            random.randint(800, 1200),  # noqa: S311  # nosec B311
-            random.randint(1300, 1800),  # noqa: S311  # nosec B311
-            random.randint(2100, 2800),  # noqa: S311  # nosec B311
-            random.randint(3200, 4200),  # noqa: S311  # nosec B311
+            random.randint(800, 1200),  # nosec B311
+            random.randint(1300, 1800),  # nosec B311
+            random.randint(2100, 2800),  # nosec B311
+            random.randint(3200, 4200),  # nosec B311
         ]
     )
-    success_rate = random.uniform(0.88, 0.97)  # noqa: S311  # nosec B311
+    success_rate = random.uniform(0.88, 0.97)  # nosec B311
     successful_runs = int(base_runs * success_rate)
     return base_runs, successful_runs
 
