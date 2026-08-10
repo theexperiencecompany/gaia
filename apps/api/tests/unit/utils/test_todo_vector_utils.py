@@ -262,8 +262,11 @@ class TestStoreTodoEmbedding:
             "title": "Buy groceries",
             "priority": "none",
             "completed": "false",
-            "created_at": NOW.isoformat(),
-            "updated_at": NOW.isoformat(),
+            # Missing timestamps default to "" — the vector metadata is
+            # derived from the todo row, whose Mongo serialization leaves
+            # absent datetimes as empty strings.
+            "created_at": "",
+            "updated_at": "",
             "has_due_date": "false",
             "labels_count": "0",
             "subtasks_count": "0",
