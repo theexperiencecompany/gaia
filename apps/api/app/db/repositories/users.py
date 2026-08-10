@@ -35,13 +35,13 @@ from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
     PersistedTriageSummary,
     SocialProfile,
     WritingStyleExampleBlocks,
 )
 from app.models.user_models import (
     BioStatus,
+    ClarifyAnswerRecord,
     OnboardingPhase,
     OnboardingPreferences,
     PlatformLinkRecord,

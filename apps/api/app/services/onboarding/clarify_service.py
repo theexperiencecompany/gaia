@@ -21,10 +21,10 @@ from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import CLARIFY_QUESTIONS_PROMPT
 from app.constants.log_tags import LogTag
 from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
     ClarifyQuestion,
     ClarifyQuestionKind,
 )
+from app.models.user_models import ClarifyAnswerRecord
 from shared.py.wide_events import log
 
 _KINDS: tuple[ClarifyQuestionKind, ...] = ("scope", "blocker", "constraint")

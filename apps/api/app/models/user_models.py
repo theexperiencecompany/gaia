@@ -1,14 +1,16 @@
 from datetime import datetime
 from enum import Enum
 import re
-from typing import TYPE_CHECKING, Annotated, TypedDict
+from typing import Annotated, TypedDict
 
-if TYPE_CHECKING:
-    # Defined in onboarding_models, which imports from this module — the
-    # forward reference keeps the dependency one-way.
-    from app.models.onboarding_models import ClarifyAnswerRecord
-
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SkipValidation,
+    StringConstraints,
+    field_validator,
+)
 
 from app.db.repositories.base import MongoDocument
 from app.utils.timezone import is_valid_timezone
@@ -277,6 +279,22 @@ class SocialProfileDoc(TypedDict, total=False):
     url: str
 
 
+class ClarifyAnswerRecord(TypedDict, total=False):
+    """``users.onboarding.clarify_answers`` as persisted by ``complete_onboarding``
+    from :class:`~app.models.user_models.ClarifyAnswer`.
+
+    A ``TypedDict``, not a model (Type Safety item 6): it is read straight off an
+    already-persisted subdocument and only ever consumed in-process, so validating
+    it would add a new failure mode on historical rows without adding safety, while
+    a ``TypedDict`` stays a plain dict at runtime and mypy checks every key.
+    """
+
+    id: str
+    kind: str
+    question: str
+    value: str | None
+
+
 class OnboardingDocument(TypedDict, total=False):
     """The user document's ``onboarding`` subdocument (Mongo-owned JSON).
 
@@ -309,7 +327,7 @@ class OnboardingDocument(TypedDict, total=False):
     early_intelligence_done_at: datetime | None
     # Onboarding-intelligence job inputs (workers).
     focus: str | None
-    clarify_answers: "list[ClarifyAnswerRecord] | None"
+    clarify_answers: list[ClarifyAnswerRecord] | None
     selected_integrations: list[str] | None
     user_bio: str | None
 
@@ -426,7 +444,10 @@ class UserDocument(MongoDocument):
     provider_metadata: dict[str, object] | None = None
     hil_preferences: dict[str, object] | None = None
     notification_channel_prefs: dict[str, object] | None = None
-    platform_links: dict[str, PlatformLinkRecord] | None = None
+    # SkipValidation: legacy rows stored a bare id (or string) here and the
+    # read path tolerates them (PlatformLinkRecord docstring); validating
+    # would add a failure mode without adding safety.
+    platform_links: Annotated[dict[str, PlatformLinkRecord] | None, SkipValidation()] = None
     platform_links_connected_at: dict[str, str] | None = None
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
@@ -511,7 +532,10 @@ class AuthenticatedUserResponse(BaseModel):
     provider_metadata: dict[str, object] | None = None
     hil_preferences: dict[str, object] | None = None
     notification_channel_prefs: dict[str, object] | None = None
-    platform_links: dict[str, PlatformLinkRecord] | None = None
+    # SkipValidation: legacy rows stored a bare id (or string) here and the
+    # read path tolerates them (PlatformLinkRecord docstring); validating
+    # would add a failure mode without adding safety.
+    platform_links: Annotated[dict[str, PlatformLinkRecord] | None, SkipValidation()] = None
     platform_links_connected_at: dict[str, str] | None = None
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None

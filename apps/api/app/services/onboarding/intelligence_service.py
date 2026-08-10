@@ -49,7 +49,6 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
     CompletePayload,
     EmailSummary,
     InboxTriage,
@@ -72,7 +71,12 @@ from app.models.onboarding_models import (
 )
 from app.models.todo_models import Priority, TodoModel
 from app.models.trigger_config import WorkflowTriggerSchema
-from app.models.user_models import OnboardingPhase, OnboardingPreferences, UserDocument
+from app.models.user_models import (
+    ClarifyAnswerRecord,
+    OnboardingPhase,
+    OnboardingPreferences,
+    UserDocument,
+)
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     SuggestedTrigger,

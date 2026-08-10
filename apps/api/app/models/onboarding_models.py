@@ -1,4 +1,4 @@
-from typing import ClassVar, Literal, TypedDict
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
@@ -186,25 +186,6 @@ class ClarifyQuestion(BaseModel):
 
 class ClarifyQuestionsResponse(BaseModel):
     questions: list[ClarifyQuestion]
-
-
-class ClarifyAnswerRecord(TypedDict, total=False):
-    """``users.onboarding.clarify_answers`` as persisted by ``complete_onboarding``
-    from :class:`~app.models.user_models.ClarifyAnswer`.
-
-    A ``TypedDict``, not a model (Type Safety item 6): it is read straight off an
-    already-persisted subdocument and only ever consumed in-process, so validating
-    it would add a new failure mode on historical rows without adding safety, while
-    a ``TypedDict`` stays a plain dict at runtime and mypy checks every key.
-    """
-
-    id: str
-    kind: str
-    question: str
-    value: str | None
-
-
-# ------------------------------------------------------- pipeline output shapes
 
 
 class OnboardingTodoSource(BaseModel):

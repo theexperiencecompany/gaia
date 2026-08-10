@@ -9,12 +9,10 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
-from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
-    OnboardingResetCounts,
-)
+from app.models.onboarding_models import OnboardingResetCounts
 from app.models.user_models import (
     BioStatus,
+    ClarifyAnswerRecord,
     IntegrationSlug,
     OnboardingIntegrationsStatus,
     OnboardingPhase,

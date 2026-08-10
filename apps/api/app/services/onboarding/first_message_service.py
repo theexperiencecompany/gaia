@@ -12,12 +12,12 @@ from app.agents.prompts.onboarding_prompts import (
 )
 from app.constants.log_tags import LogTag
 from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
     InboxTriage,
     OnboardingTodoSummary,
     OnboardingWorkflowSummary,
     WritingStyleProfile,
 )
+from app.models.user_models import ClarifyAnswerRecord
 from app.services.onboarding.clarify_service import format_clarify_context
 from shared.py.wide_events import log
 
