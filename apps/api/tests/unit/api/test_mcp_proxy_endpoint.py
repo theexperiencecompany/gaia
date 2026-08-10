@@ -10,6 +10,7 @@ args, and the log fields each path emits.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI, HTTPException
@@ -54,6 +55,41 @@ def _patched_mcp() -> Iterator[tuple[AsyncMock, AsyncMock, MagicMock]]:
         patch("app.api.v1.endpoints.mcp_proxy.log") as mock_log,
     ):
         yield mock_get, mock_client, mock_log
+
+
+class _RecordingModelDump:
+    """Mixin recording the exact ``model_dump`` call the endpoint makes.
+
+    Every list endpoint serializes its payload objects with
+    ``model_dump(mode="json", by_alias=True)`` before wrapping them in the
+    response schema. The dump mode is not observable from the response body —
+    every field of these SDK models is str/int/float/None, the uri AnyUrl is
+    a str subclass FastAPI serializes identically either way, and pydantic
+    silently treats any unknown mode string as python mode — so the tests pin
+    the exact serialization call at the seam instead.
+    """
+
+    dump_calls: ClassVar[list[tuple[tuple[Any, ...], dict[str, Any]]]] = []
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        type(self).dump_calls.append((args, kwargs))
+        return super().model_dump(*args, **kwargs)
+
+
+class RecordingResource(_RecordingModelDump, Resource):
+    """Resource that records how the resources/list endpoint serializes it."""
+
+
+class RecordingResourceTemplate(_RecordingModelDump, ResourceTemplate):
+    """ResourceTemplate that records how the templates/list endpoint serializes it."""
+
+
+class RecordingPrompt(_RecordingModelDump, Prompt):
+    """Prompt that records how the prompts/list endpoint serializes it."""
+
+
+class RecordingTextResourceContents(_RecordingModelDump, TextResourceContents):
+    """TextResourceContents that records how the resources/read endpoint serializes it."""
 
 
 @pytest.fixture
@@ -184,8 +220,11 @@ class TestProxyResourcesList:
     """POST /api/v1/mcp/proxy/resources/list"""
 
     async def test_resources_list_success(self, client: AsyncClient) -> None:
+        RecordingResource.dump_calls.clear()
         result = ListResourcesResult(
-            resources=[Resource(uri=AnyUrl("file:///a.txt"), name="a.txt", mimeType="text/plain")],
+            resources=[
+                RecordingResource(uri=AnyUrl("file:///a.txt"), name="a.txt", mimeType="text/plain")
+            ],
             nextCursor="cur1",
         )
         with _patched_mcp() as (mock_get, mock_client, mock_log):
@@ -205,6 +244,7 @@ class TestProxyResourcesList:
         mock_client.list_resources_on_server.assert_awaited_once_with(
             server_url=SERVER_URL, cursor=None
         )
+        assert RecordingResource.dump_calls == [((), {"mode": "json", "by_alias": True})]
         mock_log.set.assert_any_call(user={"id": USER_ID}, operation="mcp_proxy_resources_list")
         mock_log.set.assert_any_call(outcome="success")
         mock_log.set.assert_any_call(mcp=McpContext(success=True, result_count=1))
@@ -278,9 +318,12 @@ class TestProxyResourceTemplatesList:
     """POST /api/v1/mcp/proxy/resources/templates/list"""
 
     async def test_templates_list_success(self, client: AsyncClient) -> None:
+        RecordingResourceTemplate.dump_calls.clear()
         result = ListResourceTemplatesResult(
             resourceTemplates=[
-                ResourceTemplate(uriTemplate="file:///{path}", name="file", mimeType="text/plain")
+                RecordingResourceTemplate(
+                    uriTemplate="file:///{path}", name="file", mimeType="text/plain"
+                )
             ],
             nextCursor="cur1",
         )
@@ -304,6 +347,7 @@ class TestProxyResourceTemplatesList:
         mock_client.list_resource_templates_on_server.assert_awaited_once_with(
             server_url=SERVER_URL, cursor=None
         )
+        assert RecordingResourceTemplate.dump_calls == [((), {"mode": "json", "by_alias": True})]
         mock_log.set.assert_any_call(
             user={"id": USER_ID}, operation="mcp_proxy_resource_templates_list"
         )
@@ -383,8 +427,11 @@ class TestProxyResourceRead:
     """POST /api/v1/mcp/proxy/resources/read"""
 
     async def test_resource_read_success(self, client: AsyncClient) -> None:
+        RecordingTextResourceContents.dump_calls.clear()
         result = ReadResourceResult(
-            contents=[TextResourceContents(uri=AnyUrl("file:///a.txt"), text="hello world")]
+            contents=[
+                RecordingTextResourceContents(uri=AnyUrl("file:///a.txt"), text="hello world")
+            ]
         )
         with _patched_mcp() as (mock_get, mock_client, mock_log):
             mock_client.read_resource_on_server.return_value = result
@@ -403,6 +450,9 @@ class TestProxyResourceRead:
         mock_client.read_resource_on_server.assert_awaited_once_with(
             server_url=SERVER_URL, uri="file:///a.txt"
         )
+        assert RecordingTextResourceContents.dump_calls == [
+            ((), {"mode": "json", "by_alias": True})
+        ]
         mock_log.set.assert_any_call(
             user={"id": USER_ID},
             operation="mcp_proxy_resource_read",
@@ -477,7 +527,8 @@ class TestProxyPromptsList:
     """POST /api/v1/mcp/proxy/prompts/list"""
 
     async def test_prompts_list_success(self, client: AsyncClient) -> None:
-        result = ListPromptsResult(prompts=[Prompt(name="greet", description="Say hi")])
+        RecordingPrompt.dump_calls.clear()
+        result = ListPromptsResult(prompts=[RecordingPrompt(name="greet", description="Say hi")])
         with _patched_mcp() as (mock_get, mock_client, mock_log):
             mock_client.list_prompts_on_server.return_value = result
             resp = await client.post(f"{API}/proxy/prompts/list", json={"server_url": SERVER_URL})
@@ -492,6 +543,7 @@ class TestProxyPromptsList:
         mock_client.list_prompts_on_server.assert_awaited_once_with(
             server_url=SERVER_URL, cursor=None
         )
+        assert RecordingPrompt.dump_calls == [((), {"mode": "json", "by_alias": True})]
         mock_log.set.assert_any_call(user={"id": USER_ID}, operation="mcp_proxy_prompts_list")
         mock_log.set.assert_any_call(outcome="success")
         mock_log.set.assert_any_call(mcp=McpContext(success=True, result_count=1))
