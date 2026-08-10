@@ -7,8 +7,10 @@ routing, status codes, response bodies, and auth checks.
 import asyncio
 from datetime import UTC, datetime
 import json
+import contextlib
 from types import CoroutineType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
+import uuid
 
 from fastapi import HTTPException
 from httpx import AsyncClient
@@ -24,9 +26,14 @@ from app.api.v1.endpoints.bot import (
     transcribe_bot_audio,
 )
 from app.config.settings import settings
+from app.constants.auth import AUDIT_ACTOR_BOT_API, AUDIT_ACTOR_UNAUTHENTICATED
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX, PLATFORM_LINK_TOKEN_TTL
+from app.constants.log_tags import LogTag
 from app.models.bot_models import BotChatRequest, CreateLinkTokenRequest, ResetSessionRequest
-from app.services.audio_transcription_service import MAX_AUDIO_BYTES
+from app.services.audio_transcription_service import (
+    MAX_AUDIO_BYTES,
+    AudioTooLargeError,
+)
 
 BOT_BASE = "/api/v1/bot"
 
@@ -46,6 +53,12 @@ def _sse_frames(*frames: str):
             yield frame
 
     return _gen()
+
+
+@contextlib.asynccontextmanager
+async def _fake_log_context(*args: object, **kwargs: object):
+    """Async context manager stand-in for log_context (records via the mock)."""
+    yield
 
 
 # ---------------------------------------------------------------------------
@@ -151,12 +164,16 @@ class TestBotCardTranslators:
 class TestCreateLinkToken:
     """POST /api/v1/bot/create-link-token"""
 
+    @patch("app.api.v1.endpoints.bot.secrets.token_urlsafe", return_value="x" * 43)
+    @patch("app.api.v1.endpoints.bot.log")
     @patch("app.api.v1.endpoints.bot.redis_cache")
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_create_link_token_success(
         self,
         mock_auth: AsyncMock,
         mock_redis: MagicMock,
+        mock_log: MagicMock,
+        mock_token_urlsafe: MagicMock,
         client: AsyncClient,
     ):
         mock_redis.client = AsyncMock()
@@ -171,11 +188,11 @@ class TestCreateLinkToken:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["token"]
-        assert len(data["token"]) == 43
+        assert data["token"] == "x" * 43
         assert data["auth_url"] == (
             f"{settings.FRONTEND_URL}/auth/link-platform?platform=discord&token={data['token']}"
         )
+        mock_token_urlsafe.assert_called_once_with(32)
         token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{data['token']}"
         mock_redis.client.hset.assert_awaited_once_with(
             token_key,
@@ -187,6 +204,16 @@ class TestCreateLinkToken:
             },
         )
         mock_redis.client.expire.assert_awaited_once_with(token_key, PLATFORM_LINK_TOKEN_TTL)
+        assert mock_log.set.call_args_list == [
+            call(operation="create_link_token", platform="discord"),
+            call(outcome="success"),
+        ]
+        mock_log.audit.assert_called_once_with(
+            "platform link token issued",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource="user123",
+            provider="discord",
+        )
 
     @patch("app.api.v1.endpoints.bot.redis_cache")
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
@@ -208,9 +235,10 @@ class TestCreateLinkToken:
             mapping={"platform": "discord", "platform_user_id": "user123"},
         )
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch("app.api.v1.endpoints.bot.redis_cache")
     async def test_create_link_token_platform_header_mismatch(
-        self, mock_redis: MagicMock, client: AsyncClient
+        self, mock_redis: MagicMock, mock_log: MagicMock, client: AsyncClient
     ):
         mock_redis.client = AsyncMock()
         request = _make_request(
@@ -224,10 +252,18 @@ class TestCreateLinkToken:
         assert exc_info.value.status_code == 403
         assert exc_info.value.detail == "Platform in body does not match X-Bot-Platform header"
         mock_redis.client.hset.assert_not_awaited()
+        mock_log.audit.assert_called_once_with(
+            "platform link token rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource="u1",
+            provider="discord",
+            reason="platform_header_mismatch",
+        )
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch("app.api.v1.endpoints.bot.redis_cache")
     async def test_create_link_token_platform_user_id_header_mismatch(
-        self, mock_redis: MagicMock, client: AsyncClient
+        self, mock_redis: MagicMock, mock_log: MagicMock, client: AsyncClient
     ):
         mock_redis.client = AsyncMock()
         request = _make_request(
@@ -244,6 +280,13 @@ class TestCreateLinkToken:
             == "platform_user_id in body does not match X-Bot-Platform-User-Id header"
         )
         mock_redis.client.hset.assert_not_awaited()
+        mock_log.audit.assert_called_once_with(
+            "platform link token rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource="u1",
+            provider="discord",
+            reason="platform_user_id_header_mismatch",
+        )
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_create_link_token_validation_error(
@@ -275,10 +318,12 @@ class TestCreateLinkToken:
 class TestGetLinkTokenInfo:
     """GET /api/v1/bot/link-token-info/{token}"""
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch("app.api.v1.endpoints.bot.redis_cache")
     async def test_link_token_info_success(
         self,
         mock_redis: MagicMock,
+        mock_log: MagicMock,
         client: AsyncClient,
     ):
         mock_redis.client.hgetall = AsyncMock(
@@ -298,6 +343,16 @@ class TestGetLinkTokenInfo:
             "username": "alice",
             "display_name": "Alice",
         }
+        assert mock_log.set.call_args_list == [
+            call(operation="get_link_token_info"),
+            call(platform="discord"),
+            call(outcome="success"),
+        ]
+        mock_log.audit.assert_called_once_with(
+            "platform link token presented",
+            actor=AUDIT_ACTOR_UNAUTHENTICATED,
+            provider="discord",
+        )
 
     @patch("app.api.v1.endpoints.bot.redis_cache")
     async def test_link_token_info_nullable_fields(
@@ -312,16 +367,23 @@ class TestGetLinkTokenInfo:
             "display_name": None,
         }
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch("app.api.v1.endpoints.bot.redis_cache")
     async def test_link_token_info_not_found(
         self,
         mock_redis: MagicMock,
+        mock_log: MagicMock,
         client: AsyncClient,
     ):
         mock_redis.client.hgetall = AsyncMock(return_value={})
         response = await client.get(f"{BOT_BASE}/link-token-info/badtoken")
         assert response.status_code == 404
         assert response.json()["detail"] == "Token not found or expired"
+        mock_log.audit.assert_called_once_with(
+            "platform link token lookup rejected",
+            actor=AUDIT_ACTOR_UNAUTHENTICATED,
+            reason="unknown_or_expired_token",
+        )
 
     @patch("app.api.v1.endpoints.bot.redis_cache")
     async def test_link_token_info_does_not_consume_token(
@@ -343,6 +405,7 @@ class TestGetLinkTokenInfo:
 class TestResetSession:
     """POST /api/v1/bot/reset-session"""
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch("app.api.v1.endpoints.bot.BotService.reset_session", new_callable=AsyncMock)
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
@@ -354,6 +417,7 @@ class TestResetSession:
         mock_auth: AsyncMock,
         mock_get_user: AsyncMock,
         mock_reset_session: AsyncMock,
+        mock_log: MagicMock,
         client: AsyncClient,
     ):
         mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
@@ -372,6 +436,11 @@ class TestResetSession:
         mock_reset_session.assert_awaited_once_with(
             "discord", "u1", "ch1", {"user_id": "uid1", "_id": "uid1"}
         )
+        assert mock_log.set.call_args_list == [
+            call(operation="reset_session", platform="discord"),
+            call(user={"id": "uid1"}, platform="discord"),
+            call(outcome="success"),
+        ]
 
     @patch("app.api.v1.endpoints.bot.BotService.reset_session", new_callable=AsyncMock)
     @patch(
@@ -418,6 +487,7 @@ class TestResetSession:
             },
         )
         assert response.status_code == 401
+        assert response.json()["detail"] == "User not authenticated"
 
     @patch("app.api.v1.endpoints.bot.BotService.reset_session", new_callable=AsyncMock)
     @patch(
@@ -446,6 +516,106 @@ class TestResetSession:
             "discord", "u1", "ch1", {"user_id": "state-uid", "_id": "state-uid"}
         )
 
+    @patch("app.api.v1.endpoints.bot.BotService.reset_session", new_callable=AsyncMock)
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    async def test_reset_session_state_authenticated_without_user_still_looks_up(
+        self,
+        mock_get_user: AsyncMock,
+        mock_reset_session: AsyncMock,
+    ):
+        """authenticated=True in state but no user → must fall back to platform lookup."""
+        mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
+        mock_reset_session.return_value = "new-convo-id"
+        request = _make_request(bot_api_key_valid=True, authenticated=True)
+        result = await reset_session(
+            request,
+            ResetSessionRequest(platform="discord", platform_user_id="u1", channel_id="ch1"),
+        )
+        assert result.success is True
+        mock_get_user.assert_awaited_once_with("discord", "u1")
+        mock_reset_session.assert_awaited_once_with(
+            "discord", "u1", "ch1", {"user_id": "uid1", "_id": "uid1"}
+        )
+
+    @patch("app.api.v1.endpoints.bot.BotService.reset_session", new_callable=AsyncMock)
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_reset_session_state_user_without_authenticated_still_looks_up(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_reset_session: AsyncMock,
+    ):
+        """state.user present but no `authenticated` attr → must fall back to lookup."""
+        mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
+        mock_reset_session.return_value = "new-convo-id"
+        request = _make_request(bot_api_key_valid=True, user={"user_id": "s-uid", "_id": "s-uid"})
+        result = await reset_session(
+            request,
+            ResetSessionRequest(platform="discord", platform_user_id="u1", channel_id="ch1"),
+        )
+        assert result.success is True
+        mock_get_user.assert_awaited_once_with("discord", "u1")
+        mock_reset_session.assert_awaited_once_with(
+            "discord", "u1", "ch1", {"user_id": "uid1", "_id": "uid1"}
+        )
+
+    @patch("app.api.v1.endpoints.bot.BotService.reset_session", new_callable=AsyncMock)
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_reset_session_user_id_only_dict_keeps_user_id(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_reset_session: AsyncMock,
+        client: AsyncClient,
+    ):
+        """A user dict with only user_id must not fall back to the _id branch."""
+        mock_get_user.return_value = {"user_id": "only-uid"}
+        mock_reset_session.return_value = "new-convo-id"
+        response = await client.post(
+            f"{BOT_BASE}/reset-session",
+            json={"platform": "discord", "platform_user_id": "u1"},
+        )
+        assert response.status_code == 200
+        mock_reset_session.assert_awaited_once_with(
+            "discord", "u1", None, {"user_id": "only-uid"}
+        )
+
+    @patch("app.api.v1.endpoints.bot.BotService.reset_session", new_callable=AsyncMock)
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_reset_session_user_dict_without_ids_normalizes_to_empty(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_reset_session: AsyncMock,
+        client: AsyncClient,
+    ):
+        """A truthy user dict with neither id key normalizes user_id to the empty string."""
+        mock_get_user.return_value = {"name": "No IDs"}
+        mock_reset_session.return_value = "new-convo-id"
+        response = await client.post(
+            f"{BOT_BASE}/reset-session",
+            json={"platform": "discord", "platform_user_id": "u1"},
+        )
+        assert response.status_code == 200
+        mock_reset_session.assert_awaited_once_with(
+            "discord", "u1", None, {"name": "No IDs", "user_id": ""}
+        )
+
     async def test_reset_session_no_api_key(self, client: AsyncClient):
         response = await client.post(
             f"{BOT_BASE}/reset-session",
@@ -471,6 +641,7 @@ class TestResetSession:
 class TestCheckAuthStatus:
     """GET /api/v1/bot/auth-status/{platform}/{platform_user_id}"""
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
         new_callable=AsyncMock,
@@ -480,6 +651,7 @@ class TestCheckAuthStatus:
         self,
         mock_auth: AsyncMock,
         mock_get_user: AsyncMock,
+        mock_log: MagicMock,
         client: AsyncClient,
     ):
         mock_get_user.return_value = {"user_id": "uid1"}
@@ -491,6 +663,10 @@ class TestCheckAuthStatus:
             "platform": "discord",
             "platform_user_id": "u1",
         }
+        assert mock_log.set.call_args_list == [
+            call(operation="check_auth_status", platform="discord"),
+            call(outcome="success"),
+        ]
 
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
@@ -537,6 +713,7 @@ class TestCheckAuthStatus:
 class TestListLinkedUsers:
     """GET /api/v1/bot/linked-users/{platform}"""
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.list_platform_user_ids",
         new_callable=AsyncMock,
@@ -546,6 +723,7 @@ class TestListLinkedUsers:
         self,
         mock_auth: AsyncMock,
         mock_list_ids: AsyncMock,
+        mock_log: MagicMock,
         client: AsyncClient,
     ):
         mock_list_ids.return_value = ["u1", "u2"]
@@ -553,6 +731,10 @@ class TestListLinkedUsers:
         assert response.status_code == 200
         mock_list_ids.assert_awaited_once_with("discord")
         assert response.json() == {"platform_user_ids": ["u1", "u2"]}
+        assert mock_log.set.call_args_list == [
+            call(operation="list_linked_users", platform="discord"),
+            call(outcome="success", linked_count=2),
+        ]
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_list_linked_users_invalid_platform(
@@ -575,6 +757,7 @@ class TestListLinkedUsers:
 class TestGetSettings:
     """GET /api/v1/bot/settings/{platform}/{platform_user_id}"""
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch(
         "app.api.v1.endpoints.bot.get_user_integration_records",
         new_callable=AsyncMock,
@@ -589,6 +772,7 @@ class TestGetSettings:
         mock_auth: AsyncMock,
         mock_get_user: AsyncMock,
         mock_integrations: AsyncMock,
+        mock_log: MagicMock,
         client: AsyncClient,
     ):
         mock_get_user.return_value = {
@@ -610,6 +794,10 @@ class TestGetSettings:
         }
         mock_get_user.assert_awaited_once_with("discord", "u1")
         mock_integrations.assert_awaited_once_with("uid1")
+        assert mock_log.set.call_args_list == [
+            call(operation="get_bot_settings", platform="discord"),
+            call(outcome="success"),
+        ]
 
     @patch(
         "app.api.v1.endpoints.bot.get_user_integration_records",
@@ -689,11 +877,15 @@ class TestGetSettings:
             {"integration_id": "slack", "status": "connected"},
             {"integration_id": "missing", "status": "created"},
             {"status": "connected", "no_id": True},
+            {"integration_id": "slack2"},
         ]
         details = MagicMock()
         details.name = "Slack"
         details.icon_url = "https://img.example.com/slack.png"
-        mock_details.side_effect = [details, None]
+        details2 = MagicMock()
+        details2.name = "Slack2"
+        details2.icon_url = "https://img.example.com/slack2.png"
+        mock_details.side_effect = [details, None, details2]
         response = await client.get(f"{BOT_BASE}/settings/discord/u1")
         assert response.status_code == 200
         assert response.json()["connected_integrations"] == [
@@ -701,10 +893,16 @@ class TestGetSettings:
                 "name": "Slack",
                 "logo_url": "https://img.example.com/slack.png",
                 "status": "connected",
-            }
+            },
+            {
+                "name": "Slack2",
+                "logo_url": "https://img.example.com/slack2.png",
+                "status": "created",
+            },
         ]
-        assert mock_details.await_args_list == [call("slack"), call("missing")]
+        assert mock_details.await_args_list == [call("slack"), call("missing"), call("slack2")]
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch(
         "app.api.v1.endpoints.bot.get_user_integration_records",
         new_callable=AsyncMock,
@@ -720,6 +918,7 @@ class TestGetSettings:
         mock_auth: AsyncMock,
         mock_get_user: AsyncMock,
         mock_integrations: AsyncMock,
+        mock_log: MagicMock,
         client: AsyncClient,
     ):
         mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1", "name": "Alice"}
@@ -727,6 +926,12 @@ class TestGetSettings:
         assert response.status_code == 200
         assert response.json()["connected_integrations"] == []
         assert response.json()["authenticated"] is True
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.API} Error fetching integrations for settings",
+            user_id="uid1",
+            error_type="RuntimeError",
+            error="integration lookup failed",
+        )
 
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
@@ -754,6 +959,56 @@ class TestGetSettings:
     async def test_settings_invalid_platform(self, mock_auth: AsyncMock, client: AsyncClient):
         response = await client.get(f"{BOT_BASE}/settings/badplatform/u1")
         assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid platform"
+
+    @patch(
+        "app.api.v1.endpoints.bot.get_user_integration_records",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_settings_user_id_only_dict_keeps_user_id(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_integrations: AsyncMock,
+        client: AsyncClient,
+    ):
+        """A user dict with only user_id must not fall back to the _id branch."""
+        mock_get_user.return_value = {"user_id": "only-uid"}
+        mock_integrations.return_value = []
+        response = await client.get(f"{BOT_BASE}/settings/discord/u1")
+        assert response.status_code == 200
+        mock_integrations.assert_awaited_once_with("only-uid")
+        # Exact dict: the handler must write the id back under exactly "user_id"
+        # (no extra/renamed keys), and must not clobber it.
+        assert mock_get_user.return_value == {"user_id": "only-uid"}
+
+    @patch(
+        "app.api.v1.endpoints.bot.get_user_integration_records",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_settings_user_dict_without_ids_normalizes_to_empty(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_integrations: AsyncMock,
+        client: AsyncClient,
+    ):
+        """A truthy user dict with neither id key normalizes user_id to the empty string."""
+        mock_get_user.return_value = {"name": "No IDs"}
+        mock_integrations.return_value = []
+        response = await client.get(f"{BOT_BASE}/settings/discord/u1")
+        assert response.status_code == 200
+        mock_integrations.assert_awaited_once_with("")
 
     async def test_settings_no_api_key(self, client: AsyncClient):
         response = await client.get(f"{BOT_BASE}/settings/discord/u1")
@@ -768,6 +1023,7 @@ class TestGetSettings:
 class TestUnlinkAccount:
     """POST /api/v1/bot/unlink"""
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch("app.api.v1.endpoints.bot.redis_cache")
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.unlink_account",
@@ -784,6 +1040,7 @@ class TestUnlinkAccount:
         mock_get_user: AsyncMock,
         mock_unlink: AsyncMock,
         mock_redis: MagicMock,
+        mock_log: MagicMock,
         client: AsyncClient,
     ):
         mock_get_user.return_value = {"_id": "uid1", "user_id": "uid1"}
@@ -800,6 +1057,16 @@ class TestUnlinkAccount:
         mock_get_user.assert_awaited_once_with("discord", "u1")
         mock_unlink.assert_awaited_once_with("uid1", "discord")
         mock_redis.client.delete.assert_awaited_once_with("bot_user:discord:u1")
+        assert mock_log.set.call_args_list == [
+            call(operation="unlink_account"),
+            call(platform="discord", outcome="success"),
+        ]
+        mock_log.audit.assert_called_once_with(
+            "platform account unlinked",
+            actor="uid1",
+            resource="u1",
+            provider="discord",
+        )
 
     @patch("app.api.v1.endpoints.bot.redis_cache")
     @patch(
@@ -870,6 +1137,7 @@ class TestUnlinkAccount:
         assert response.status_code == 400
         assert response.json()["detail"] == "Invalid platform"
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.unlink_account",
         new_callable=AsyncMock,
@@ -884,6 +1152,7 @@ class TestUnlinkAccount:
         mock_auth: AsyncMock,
         mock_get_user: AsyncMock,
         mock_unlink: AsyncMock,
+        mock_log: MagicMock,
         client: AsyncClient,
     ):
         mock_get_user.return_value = None
@@ -897,6 +1166,13 @@ class TestUnlinkAccount:
         assert response.status_code == 404
         assert response.json()["detail"] == "Account not linked"
         mock_unlink.assert_not_awaited()
+        mock_log.audit.assert_called_once_with(
+            "platform account unlink rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource="u1",
+            provider="discord",
+            reason="account_not_linked",
+        )
 
     async def test_unlink_no_api_key(self, client: AsyncClient):
         response = await client.post(
@@ -967,6 +1243,15 @@ class TestBotChatStream:
                 "app.api.v1.endpoints.bot.stream_manager.subscribe_stream",
                 new_callable=MagicMock,
             ) as subscribe,
+            patch("app.api.v1.endpoints.bot.log") as log_mock,
+            patch(
+                "app.api.v1.endpoints.bot.log_context",
+                side_effect=_fake_log_context,
+            ) as log_context_mock,
+            patch(
+                "app.api.v1.endpoints.bot.get_trace_id",
+                return_value="trace-123",
+            ) as trace_mock,
         ):
             get_user.return_value = BOT_USER
             spawn.side_effect = lambda coro, **kwargs: coro.close() or None
@@ -982,6 +1267,9 @@ class TestBotChatStream:
                 spawn=spawn,
                 background=background,
                 subscribe=subscribe,
+                log=log_mock,
+                log_context=log_context_mock,
+                trace=trace_mock,
             )
 
     async def test_chat_stream_no_api_key(self, client: AsyncClient):
@@ -1031,6 +1319,7 @@ class TestBotChatStream:
             },
         )
         assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
         expected = (
             'data: {"session_token": "sess-token-1"}\n\n'
             ": keepalive\n\n"
@@ -1041,11 +1330,30 @@ class TestBotChatStream:
 
         chat_mocks.get_or_create_session.assert_awaited_once_with("discord", "u1", "ch1", BOT_USER)
         chat_mocks.load_history.assert_awaited_once_with("conv-1", "uid1")
+        chat_mocks.enforce_rate_limit.assert_awaited_once_with("discord", "u1")
+        chat_mocks.session_token.assert_called_once_with(
+            user_id="uid1",
+            platform="discord",
+            platform_user_id="u1",
+            expires_minutes=15,
+        )
         chat_mocks.start_stream.assert_awaited_once()
         stream_id, conversation_id, user_id = chat_mocks.start_stream.await_args.args
         assert isinstance(stream_id, str) and stream_id
+        uuid.UUID(stream_id)
         assert conversation_id == "conv-1"
         assert user_id == "uid1"
+        chat_mocks.subscribe.assert_called_once_with(stream_id)
+        assert chat_mocks.log.set.call_args_list == [
+            call(operation="bot_chat_stream", platform="discord"),
+            call(user={"id": "uid1"}, platform="discord", outcome="success"),
+        ]
+        chat_mocks.log_context.assert_called_once_with(
+            "sse_delivery",
+            trace_id="trace-123",
+            stream_id=stream_id,
+            platform="discord",
+        )
 
         background_kwargs = chat_mocks.background.call_args.kwargs
         assert background_kwargs["stream_id"] == stream_id
@@ -1170,6 +1478,7 @@ class TestBotChatStream:
         assert (
             'data: {"approval": {"approval_id": "a1", "request": "Approve?"}}\n\n' in response.text
         )
+        assert 'data: {"done": true, "conversation_id": "conv-1"}\n\n' in response.text
 
     async def test_chat_stream_forward_keepalive_and_comment_frames(
         self, client: AsyncClient, chat_mocks
@@ -1185,6 +1494,7 @@ class TestBotChatStream:
         )
         assert 'data: {"keepalive": true}\n\n' in response.text
         assert ": comment\n\n" in response.text
+        assert 'data: {"done": true, "conversation_id": "conv-1"}\n\n' in response.text
 
     async def test_chat_stream_strips_id_prefix(self, client: AsyncClient, chat_mocks):
         chat_mocks.subscribe.return_value = _sse_frames(
@@ -1214,6 +1524,10 @@ class TestBotChatStream:
             ": keepalive\n\n"
             'data: {"done": true, "conversation_id": "conv-1"}\n\n'
         )
+        chat_mocks.log.warning.assert_called_once_with(
+            f"{LogTag.API} Bot stream: dropped a malformed SSE chunk",
+            error_type="JSONDecodeError",
+        )
 
     async def test_chat_stream_subscription_error_yields_error_frame(
         self, client: AsyncClient, chat_mocks
@@ -1229,6 +1543,14 @@ class TestBotChatStream:
         )
         assert 'data: {"text": "partial"}\n\n' in response.text
         assert 'data: {"error": "Stream error occurred"}\n\n' in response.text
+        stream_id = chat_mocks.start_stream.await_args.args[0]
+        chat_mocks.log.error.assert_called_once_with(
+            f"{LogTag.API} Bot stream subscription error",
+            stream_id=stream_id,
+            conversation_id="conv-1",
+            error_type="RuntimeError",
+            error="redis down",
+        )
 
     async def test_chat_stream_normalizes_legacy_user_dict(self, client: AsyncClient, chat_mocks):
         chat_mocks.get_user.return_value = {"_id": "legacy-id"}
@@ -1264,6 +1586,14 @@ class TestBotChatStream:
         failed_task.exception.return_value = RuntimeError("boom")
         on_done(failed_task)
         failed_task.exception.assert_called_once_with()
+        stream_id = chat_mocks.start_stream.await_args.args[0]
+        chat_mocks.log.error.assert_called_once_with(
+            f"{LogTag.API} Background stream task failed",
+            stream_id=stream_id,
+            conversation_id="conv-1",
+            error_type="RuntimeError",
+            error="boom",
+        )
 
         clean_task = MagicMock()
         clean_task.cancelled.return_value = False
@@ -1290,6 +1620,95 @@ class TestBotChatStream:
             "discord", "u1", None, {"user_id": "state-uid", "_id": "state-uid"}
         )
 
+    async def test_chat_stream_state_authenticated_without_user_still_looks_up(
+        self, chat_mocks
+    ):
+        """authenticated=True in state but no user → must fall back to platform lookup."""
+        request = _make_request(bot_api_key_valid=True, authenticated=True)
+        request.is_disconnected = AsyncMock(return_value=False)
+        chat_mocks.subscribe.return_value = _sse_frames("data: [DONE]\n\n")
+        response = await bot_chat_stream(
+            request,
+            BotChatRequest(message="hi", platform="discord", platform_user_id="u1"),
+        )
+        chunks = [chunk async for chunk in response.body_iterator]
+        assert 'data: {"done": true, "conversation_id": "conv-1"}\n\n' in chunks[-1]
+        chat_mocks.get_user.assert_awaited_once_with("discord", "u1")
+
+    async def test_chat_stream_state_user_without_authenticated_still_looks_up(
+        self, chat_mocks
+    ):
+        """state.user present but no `authenticated` attr → must fall back to lookup."""
+        request = _make_request(bot_api_key_valid=True, user={"user_id": "s-uid", "_id": "s-uid"})
+        request.is_disconnected = AsyncMock(return_value=False)
+        chat_mocks.subscribe.return_value = _sse_frames("data: [DONE]\n\n")
+        response = await bot_chat_stream(
+            request,
+            BotChatRequest(message="hi", platform="discord", platform_user_id="u1"),
+        )
+        chunks = [chunk async for chunk in response.body_iterator]
+        assert 'data: {"done": true, "conversation_id": "conv-1"}\n\n' in chunks[-1]
+        chat_mocks.get_user.assert_awaited_once_with("discord", "u1")
+
+    async def test_chat_stream_user_id_only_dict_keeps_user_id(
+        self, client: AsyncClient, chat_mocks
+    ):
+        """A user dict with only user_id must not fall back to the _id branch."""
+        chat_mocks.get_user.return_value = {"user_id": "only-uid"}
+        chat_mocks.subscribe.return_value = _sse_frames("data: [DONE]\n\n")
+        response = await client.post(
+            f"{BOT_BASE}/chat-stream",
+            json={"message": "hi", "platform": "discord", "platform_user_id": "u1"},
+        )
+        assert response.status_code == 200
+        chat_mocks.get_or_create_session.assert_awaited_once_with(
+            "discord", "u1", None, {"user_id": "only-uid"}
+        )
+        chat_mocks.load_history.assert_awaited_once_with("conv-1", "only-uid")
+
+    async def test_chat_stream_user_dict_without_ids_normalizes_to_empty(
+        self, client: AsyncClient, chat_mocks
+    ):
+        """A truthy user dict with neither id key normalizes user_id to the empty string."""
+        chat_mocks.get_user.return_value = {"name": "No IDs"}
+        chat_mocks.subscribe.return_value = _sse_frames("data: [DONE]\n\n")
+        response = await client.post(
+            f"{BOT_BASE}/chat-stream",
+            json={"message": "hi", "platform": "discord", "platform_user_id": "u1"},
+        )
+        assert response.status_code == 200
+        chat_mocks.get_or_create_session.assert_awaited_once_with(
+            "discord", "u1", None, {"name": "No IDs", "user_id": ""}
+        )
+
+    async def test_chat_stream_drops_each_web_only_field_alone(
+        self, client: AsyncClient, chat_mocks
+    ):
+        """Each web-only key must be dropped even when it is the only extra key."""
+        web_only_keys = [
+            "conversation_description",
+            "user_message_id",
+            "bot_message_id",
+            "stream_id",
+            "tool_data",
+            "tool_output",
+            "follow_up_actions",
+        ]
+        frames = [
+            f'data: {{"response": "r{i}", "{key}": "x"}}\n\n' for i, key in enumerate(web_only_keys)
+        ]
+        frames.append("data: [DONE]\n\n")
+        chat_mocks.subscribe.return_value = _sse_frames(*frames)
+        response = await client.post(
+            f"{BOT_BASE}/chat-stream",
+            json={"message": "hi", "platform": "discord", "platform_user_id": "u1"},
+        )
+        assert response.text == (
+            'data: {"session_token": "sess-token-1"}\n\n'
+            ": keepalive\n\n"
+            'data: {"done": true, "conversation_id": "conv-1"}\n\n'
+        )
+
     async def test_chat_stream_cancelled_error_propagates(self, chat_mocks):
         async def _cancelled(*args: object, **kwargs: object):
             yield 'data: {"response": "x"}\n\n'
@@ -1309,6 +1728,10 @@ class TestBotChatStream:
         with pytest.raises(asyncio.CancelledError):
             async for _ in response.body_iterator:
                 pass
+        chat_mocks.log.set.assert_any_call(client_disconnected=True)
+        chat_mocks.log.info.assert_called_once_with(
+            f"{LogTag.API} Bot stream cancelled (client disconnected)"
+        )
 
     async def test_chat_stream_client_disconnect_breaks_early(self, chat_mocks):
         chat_mocks.subscribe.return_value = _sse_frames('data: {"response": "x"}\n\n')
@@ -1327,6 +1750,12 @@ class TestBotChatStream:
             'data: {"session_token": "sess-token-1"}\n\n',
             ": keepalive\n\n",
         ]
+        stream_id = chat_mocks.start_stream.await_args.args[0]
+        chat_mocks.log.set.assert_any_call(client_disconnected=True)
+        chat_mocks.log.info.assert_called_once_with(
+            f"{LogTag.API} Bot client disconnected, stream continues in background",
+            stream_id=stream_id,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1375,12 +1804,15 @@ class TestBotTranscribe:
             content_type="audio/ogg",
         )
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch(
         "app.api.v1.endpoints.bot.transcribe_audio",
         new_callable=AsyncMock,
         return_value="default name",
     )
-    async def test_transcribe_default_filename(self, mock_transcribe: AsyncMock):
+    async def test_transcribe_default_filename(
+        self, mock_transcribe: AsyncMock, mock_log: MagicMock
+    ):
         # A multipart part without a filename is parsed as a form field, not an
         # UploadFile, so the `filename or "voice-note"` fallback is only
         # reachable by driving the (decorated) endpoint function directly.
@@ -1398,6 +1830,67 @@ class TestBotTranscribe:
         assert result.text == "default name"
         mock_transcribe.assert_awaited_once_with(
             audio_bytes=b"fake-audio-bytes", filename="voice-note", content_type="audio/ogg"
+        )
+        mock_log.set.assert_called_once_with(
+            operation="bot_transcribe_audio", user={"id": "uid1"}
+        )
+
+    @patch("app.api.v1.endpoints.bot.transcribe_audio", new_callable=AsyncMock)
+    @patch(
+        "app.api.v1.endpoints.bot.validate_audio_payload",
+        side_effect=AudioTooLargeError("Audio is 999 bytes; max supported is 100."),
+    )
+    async def test_transcribe_maps_audio_too_large_error_to_413(
+        self, mock_validate: MagicMock, mock_transcribe: AsyncMock
+    ):
+        """AudioTooLargeError from validate_audio_payload maps to 413 with its message."""
+        file = SimpleNamespace(
+            content_type="audio/ogg",
+            filename="voice.ogg",
+            read=AsyncMock(return_value=b"small-audio"),
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            await transcribe_bot_audio(
+                _make_request(bot_api_key_valid=True),
+                file=file,
+                content_length=None,
+                user=BOT_USER,
+            )
+        assert exc_info.value.status_code == 413
+        assert exc_info.value.detail == "Audio is 999 bytes; max supported is 100."
+        mock_validate.assert_called_once_with(content_type="audio/ogg", size=11)
+        mock_transcribe.assert_not_awaited()
+
+    @patch(
+        "app.api.v1.endpoints.bot.transcribe_audio",
+        new_callable=AsyncMock,
+        return_value="boundary transcript",
+    )
+    @patch("app.api.v1.endpoints.bot.validate_audio_payload", return_value="audio/ogg")
+    @patch("app.api.v1.endpoints.bot.MAX_AUDIO_BYTES", 1024)
+    async def test_transcribe_accepts_payload_at_exact_limit(
+        self, mock_validate: MagicMock, mock_transcribe: AsyncMock
+    ):
+        """A payload of exactly MAX_AUDIO_BYTES passes; the read cap is MAX + 1."""
+        payload = b"x" * 1024
+        file = SimpleNamespace(
+            content_type="audio/ogg; charset=utf-8",
+            filename="voice.ogg",
+            read=AsyncMock(return_value=payload),
+        )
+        result = await transcribe_bot_audio(
+            _make_request(bot_api_key_valid=True),
+            file=file,
+            content_length=1024,
+            user=BOT_USER,
+        )
+        assert result.text == "boundary transcript"
+        file.read.assert_awaited_once_with(1025)
+        mock_validate.assert_called_once_with(content_type="audio/ogg; charset=utf-8", size=1024)
+        mock_transcribe.assert_awaited_once_with(
+            audio_bytes=payload,
+            filename="voice.ogg",
+            content_type="audio/ogg",
         )
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
@@ -1433,6 +1926,7 @@ class TestBotTranscribe:
         assert response.status_code == 413
         assert response.json()["detail"] == "Audio exceeds the 25 MB limit."
 
+    @patch("app.api.v1.endpoints.bot.log")
     @patch(
         "app.api.v1.endpoints.bot.transcribe_audio",
         new_callable=AsyncMock,
@@ -1440,7 +1934,7 @@ class TestBotTranscribe:
     )
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_transcribe_provider_failure_returns_502(
-        self, mock_auth: AsyncMock, mock_transcribe: AsyncMock, client: AsyncClient
+        self, mock_auth: AsyncMock, mock_transcribe: AsyncMock, mock_log: MagicMock, client: AsyncClient
     ):
         response = await client.post(
             f"{BOT_BASE}/transcribe",
@@ -1448,6 +1942,13 @@ class TestBotTranscribe:
         )
         assert response.status_code == 502
         assert response.json()["detail"] == "Transcription failed"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.API} Transcription failed",
+            filename="voice.ogg",
+            error_type="RuntimeError",
+            error="whisper is down",
+            exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------
