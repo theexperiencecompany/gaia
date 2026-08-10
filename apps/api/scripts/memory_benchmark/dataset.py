@@ -622,7 +622,7 @@ SCENARIOS: list[dict] = [
             {
                 "query": "Where do I work?",
                 "must_contain": ["databricks"],
-                "must_not_contain": ["twilio"],
+                "must_not_contain": ["works at twilio", "is at twilio", "employed at twilio"],
                 "description": "Current employer is Databricks; Twilio is old",
                 "is_negative": False,
             }

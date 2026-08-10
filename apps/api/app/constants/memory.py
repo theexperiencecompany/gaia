@@ -86,7 +86,14 @@ TRANSCRIPT_RECALL_LIMIT = 3
 # ~0.96, contradictions/value-changes 0.75-0.89, same-person-different-topic
 # ~0.61, unrelated ~0.38.
 DUPLICATE_SIMILARITY_THRESHOLD = 0.92
-RECONCILE_SIMILARITY_THRESHOLD = 0.70
+# Cosine gate for reconcile candidate selection: a new fact with NO existing
+# memory at or above this similarity skips the LLM reconcile call and is filed
+# NEW. Calibrated against the mxbai-embed-large memory embedder: a
+# relationship-status contradiction ("single" vs "started dating Leila")
+# measures ~0.65, which must reach the judge or the old fact never gets
+# superseded. Below ~0.55 the band starts catching genuinely unrelated facts,
+# wasting LLM calls the judge then has to dismiss.
+RECONCILE_SIMILARITY_THRESHOLD = 0.55
 
 # Hybrid recall pipeline: candidate counts per retriever and the RRF
 # fusion constant (k=60 is the canonical value from the RRF paper).
@@ -242,7 +249,12 @@ MEMORY_EPISODES_MAX_RANGE_DAYS = 90
 # recall returns a sharp relevance cliff (strong matches ~1.0+, noise <0.1), so
 # a relative floor cleanly separates the two without a brittle absolute one.
 # This keeps both prompt-injected context and the search UI free of noise.
-RELEVANCE_DROPOFF_RATIO = 0.4
+# Calibrated against the mxbai-embed-large memory embedder: under the previous
+# gemini embeddings a 0.4 floor cut the tail fine, but mxbai clusters related
+# facts closer, so a distractor (the office address for a "home address" query)
+# blended to ~0.64x the top hit and survived. 0.65 drops that band while
+# keeping genuine multi-fact recalls (near-identical facts score well above it).
+RELEVANCE_DROPOFF_RATIO = 0.65
 
 # Request-body length caps. A memory is one atomic fact, so it stays short;
 # a core document is a living markdown page, so it gets far more room.
