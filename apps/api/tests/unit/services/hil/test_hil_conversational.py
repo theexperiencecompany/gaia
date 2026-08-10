@@ -578,6 +578,41 @@ class TestBatch:
         assert action == "approve"
         assert resolved_kinds(resolver["resolve"]) == ["deny", "approve"]
 
+    async def test_a_second_approval_after_a_decline_still_reports_approve(
+        self, resolver: dict
+    ) -> None:
+        # The approve/deny tally is read only as "anything approved?" — a lone
+        # denial does not cancel the work already set in motion by an earlier
+        # approval, and a later approval must not be outvoted by an earlier "no".
+        resolver["llm"].return_value = BatchDecisionResult(
+            unrelated=False,
+            decisions=[
+                BatchItemDecision(index=1, action="approve"),
+                BatchItemDecision(index=2, action="deny"),
+                BatchItemDecision(index=3, action="approve"),
+            ],
+        )
+        with pending("Send email", "Post to Slack", "Create calendar event"):
+            action = await resolve_pending_from_message(
+                CONVERSATION_ID, USER_ID, "email and the event, not the slack one"
+            )
+
+        assert action == "approve"
+        assert resolved_kinds(resolver["resolve"]) == ["approve", "deny", "approve"]
+
+    async def test_an_empty_decision_list_resolves_nothing(self, resolver: dict) -> None:
+        # The classifier's fail-safe verdict on an LLM hiccup is exactly this
+        # shape: unrelated=False with zero decisions. That must mean "nothing
+        # was decided", not "everything was declined" — the approvals stay
+        # pending for the buttons or the timeout sweep.
+        resolver["llm"].return_value = BatchDecisionResult(unrelated=False, decisions=[])
+        with pending("Send email", "Post to Slack"):
+            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+        assert action is None
+        resolver["resolve"].assert_not_awaited()
+        resolver["abandon"].assert_not_awaited()
+
     async def test_moving_on_abandons_the_whole_batch(self, resolver: dict) -> None:
         resolver["llm"].return_value = BatchDecisionResult(unrelated=True)
         with pending("Send email", "Post to Slack"):
@@ -675,6 +710,42 @@ class TestInventedIndexes:
 
         assert action == "approve"
         assert resolved_ids(resolver["resolve"]) == ["appr-2"]
+
+    async def test_every_index_out_of_range_resolves_nothing(self, resolver: dict) -> None:
+        # The per-item guard is checked for EVERY decision, not just the first:
+        # a verdict list that is entirely bogus must leave the whole batch pending.
+        resolver["llm"].return_value = BatchDecisionResult(
+            unrelated=False,
+            decisions=[
+                BatchItemDecision(index=0, action="approve"),
+                BatchItemDecision(index=99, action="deny"),
+            ],
+        )
+        with pending("Send email", "Post to Slack"):
+            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+        assert action is None
+        resolver["resolve"].assert_not_awaited()
+
+    async def test_a_repeated_index_resolves_the_same_approval_twice(self, resolver: dict) -> None:
+        # There is no dedup: a model that names the same action twice resolves
+        # it twice, and the resolution layer tolerates the second hit as
+        # already-resolved. Pinned so a future dedup cannot silently change the
+        # call contract the store relies on.
+        resolver["llm"].return_value = BatchDecisionResult(
+            unrelated=False,
+            decisions=[
+                BatchItemDecision(index=1, action="approve"),
+                BatchItemDecision(index=1, action="approve"),
+            ],
+        )
+        with pending("Send email", "Post to Slack"):
+            action = await resolve_pending_from_message(
+                CONVERSATION_ID, USER_ID, "the email, and yes the email again"
+            )
+
+        assert action == "approve"
+        assert resolved_ids(resolver["resolve"]) == ["appr-1", "appr-1"]
 
 
 class TestClassifierFailure:
