@@ -45,6 +45,26 @@ _USD_PER_1M_INPUT = 0.15
 _USD_PER_1M_OUTPUT = 0.60
 
 
+def attach_extraction_meter(meter: BaseCallbackHandler) -> None:
+    """Attach a token meter to every memory-extraction LLM call.
+
+    The extraction module builds its silent run config fresh per call
+    (``_silent_config(user_id)``), so a module-level config dict can no longer
+    carry the meter. Wrap the function instead: every invocation returns the
+    original config plus the meter as a callback — no app code touched.
+    """
+    from langchain_core.runnables import RunnableConfig
+
+    import app.memory.extraction as extraction_mod
+
+    original = extraction_mod._silent_config
+
+    def metered_silent_config(user_id: str) -> RunnableConfig:
+        return {**original(user_id), "callbacks": [meter]}
+
+    extraction_mod._silent_config = metered_silent_config
+
+
 class CostMeter(BaseCallbackHandler):
     """Accumulates token spend across every memory LLM call and trips a budget.
 
@@ -128,7 +148,7 @@ def _parse_date(raw: str) -> datetime:
     return datetime.strptime(cleaned, _DATE_FORMAT).replace(tzinfo=UTC)
 
 
-async def _answer(question: str, question_date: str, memories: list[str]) -> str:
+async def _answer(question: str, question_date: str, memories: list[str], user_id: str) -> str:
     context = "\n".join(f"- {m}" for m in memories) or "(no memories found)"
     result = await _invoke_structured(
         _Answer,
@@ -171,11 +191,19 @@ async def _answer(question: str, question_date: str, memories: list[str]) -> str
             ),
         ],
         operation="lme_answer",
+        user_id=user_id,
     )
-    return result.answer if result else "I don't know"
+    if result is None:
+        # _invoke_structured returns None ONLY on provider failure — a real
+        # abstention arrives as the model's literal "I don't know" string. An
+        # outage must not be graded as a wrong answer; raise a retryable error
+        # (deliberately not InfraError: a transient provider blip must not
+        # abort a 470-case run — resume re-runs the errored cases).
+        raise RuntimeError("LLM provider unavailable: answer call returned no result")
+    return result.answer
 
 
-async def _judge(question: str, gold: str, model_answer: str) -> bool:
+async def _judge(question: str, gold: str, model_answer: str, user_id: str) -> bool:
     result = await _invoke_structured(
         _Verdict,
         [
@@ -212,8 +240,11 @@ async def _judge(question: str, gold: str, model_answer: str) -> bool:
             ),
         ],
         operation="lme_judge",
+        user_id=user_id,
     )
-    return bool(result and result.correct)
+    if result is None:
+        raise RuntimeError("LLM provider unavailable: judge call returned no result")
+    return bool(result.correct)
 
 
 async def _run_question(
@@ -248,8 +279,8 @@ async def _run_question(
             + [f"(journal {hit.date.isoformat()}) {hit.text}" for hit in episode_hits[:12]]
             + [f"(conversation on {date})\n{text}" for date, text, _ in transcript_hits]
         )
-        model_answer = await _answer(item["question"], item["question_date"], notes)
-        correct = await _judge(item["question"], str(item["answer"]), model_answer)
+        model_answer = await _answer(item["question"], item["question_date"], notes, user_id)
+        correct = await _judge(item["question"], str(item["answer"]), model_answer, user_id)
         print(
             f"[{index + 1}/{total}] {'OK ' if correct else 'MISS'} {qtype:26} "
             f"q={item['question'][:48]!r} -> {model_answer[:60]!r} (gold {str(item['answer'])[:40]!r})",
@@ -329,13 +360,8 @@ async def main() -> None:
     # Hard budget guard: attach a cost meter to the memory module's silent
     # config so every extraction/reconcile/answer/judge call counts. The run
     # loop stops the moment projected spend reaches --max-usd.
-    import app.memory.extraction as extraction_mod
-
     meter = CostMeter(args.max_usd)
-    extraction_mod._SILENT_CONFIG = {
-        **extraction_mod._SILENT_CONFIG,
-        "callbacks": [meter],
-    }
+    attach_extraction_meter(meter)
 
     data = json.loads(Path(args.dataset).read_text())
     by_type: dict[str, list[dict]] = defaultdict(list)

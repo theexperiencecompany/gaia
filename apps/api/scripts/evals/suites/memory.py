@@ -297,9 +297,9 @@ async def _ensure_ready(tracker: EvalCostTracker) -> None:
         _patch_default_llm_to_pinned_provider()
         _patch_structured_output_for_pinned_lane()
         _LLM_PATCHED = True
-    import app.memory.extraction as extraction_mod
+    from scripts.memory_benchmark.longmemeval import attach_extraction_meter
 
-    extraction_mod._SILENT_CONFIG = {**extraction_mod._SILENT_CONFIG, "callbacks": [tracker]}
+    attach_extraction_meter(tracker)
 
 
 @register_suite("memory")

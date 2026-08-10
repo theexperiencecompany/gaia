@@ -217,12 +217,7 @@ class LongMemEvalSuite(Suite):
             lme.init_chroma()
             lme.register_llm_providers()
 
-            import app.memory.extraction as extraction_mod
-
-            extraction_mod._SILENT_CONFIG = {
-                **extraction_mod._SILENT_CONFIG,
-                "callbacks": [tracker],
-            }
+            lme.attach_extraction_meter(tracker)
             self._backend_ready = True
 
         try:
