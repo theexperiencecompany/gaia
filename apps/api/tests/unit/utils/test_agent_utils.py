@@ -19,9 +19,12 @@ from app.utils.agent_utils import (
     _resolve_mcp_ui_metadata,
     format_sse_data,
     format_sse_response,
+    format_subagent_end_event,
+    format_subagent_start_event,
     format_tool_call_entry,
     parse_subagent_id,
     process_custom_event_for_tools,
+    strip_internal_agent_markers,
 )
 
 
@@ -39,7 +42,9 @@ def _integration(integration_id: str, name: str, icon_url: str | None = None) ->
     )
 
 
-def _tool_call(name: str, args: dict[str, Any] | None = None, tool_id: str = "tc") -> dict[str, Any]:
+def _tool_call(
+    name: str, args: dict[str, Any] | None = None, tool_id: str = "tc"
+) -> dict[str, Any]:
     call: dict[str, Any] = {"name": name, "id": tool_id}
     if args is not None:
         call["args"] = args
@@ -80,13 +85,116 @@ def _assert_utc_iso_timestamp(value: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
+# strip_internal_agent_markers
+# ---------------------------------------------------------------------------
+
+
+class TestStripInternalAgentMarkers:
+    def test_strips_executor_result_marker(self) -> None:
+        assert (
+            strip_internal_agent_markers("[EXECUTOR_RESULT]Here is the answer")
+            == "Here is the answer"
+        )
+
+    def test_strips_every_marker(self) -> None:
+        text = (
+            "[EXECUTOR_RESULT][EXECUTOR_ERROR][EXECUTOR_CANCELLED]"
+            "[RETURNED_TO_FRONTEND][PLATFORM_DELIVERY]Done"
+        )
+        assert strip_internal_agent_markers(text) == "Done"
+
+    def test_case_insensitive(self) -> None:
+        assert strip_internal_agent_markers("[executor_result] answer") == "answer"
+
+    def test_marker_in_the_middle_leaves_inner_spaces(self) -> None:
+        assert strip_internal_agent_markers("answer [RETURNED_TO_FRONTEND] here") == "answer  here"
+
+    def test_no_markers_passthrough(self) -> None:
+        assert strip_internal_agent_markers("plain text") == "plain text"
+
+    def test_marker_only_input_strips_to_empty(self) -> None:
+        assert strip_internal_agent_markers("[EXECUTOR_RESULT]") == ""
+
+    def test_surrounding_whitespace_stripped(self) -> None:
+        assert strip_internal_agent_markers("  [EXECUTOR_RESULT] answer  ") == "answer"
+
+
+# ---------------------------------------------------------------------------
+# format_subagent_start_event / format_subagent_end_event
+# ---------------------------------------------------------------------------
+
+
+class TestFormatSubagentEvents:
+    def test_start_event_with_all_fields(self) -> None:
+        result = format_subagent_start_event(
+            subagent_name="Researcher",
+            agent_type="research",
+            subagent_id="sub-1",
+            icon_url="https://icon.png",
+            tool_category="research",
+            parent_subagent_id="parent-0",
+        )
+
+        assert result["subagent_id"] == "sub-1"
+        assert result["subagent_name"] == "Researcher"
+        assert result["agent_type"] == "research"
+        assert result["icon_url"] == "https://icon.png"
+        assert result["tool_category"] == "research"
+        assert result["parent_subagent_id"] == "parent-0"
+        _assert_utc_iso_timestamp(result["started_at"])
+        assert set(result) == {
+            "subagent_id",
+            "subagent_name",
+            "agent_type",
+            "started_at",
+            "icon_url",
+            "tool_category",
+            "parent_subagent_id",
+        }
+
+    def test_start_event_excludes_none_fields(self) -> None:
+        result = format_subagent_start_event(
+            subagent_name="Researcher",
+            agent_type="research",
+            subagent_id="sub-1",
+        )
+
+        assert set(result) == {"subagent_id", "subagent_name", "agent_type", "started_at"}
+
+    def test_start_event_partial_optionals(self) -> None:
+        result = format_subagent_start_event(
+            subagent_name="Researcher",
+            agent_type="research",
+            subagent_id="sub-1",
+            icon_url="https://icon.png",
+        )
+
+        assert result["icon_url"] == "https://icon.png"
+        assert "tool_category" not in result
+        assert "parent_subagent_id" not in result
+
+    def test_end_event_with_token_count(self) -> None:
+        result = format_subagent_end_event(subagent_id="sub-1", duration_ms=1234, token_count=567)
+
+        assert result == {"subagent_id": "sub-1", "duration_ms": 1234, "token_count": 567}
+
+    def test_end_event_without_token_count_includes_null(self) -> None:
+        result = format_subagent_end_event(subagent_id="sub-1", duration_ms=1234)
+
+        assert result == {"subagent_id": "sub-1", "duration_ms": 1234, "token_count": None}
+
+
+# ---------------------------------------------------------------------------
 # parse_subagent_id
 # ---------------------------------------------------------------------------
 
 
 class TestParseSubagentId:
     def test_with_subagent_prefix_and_brackets(self) -> None:
-        assert parse_subagent_id("subagent:Researcher [abc-123-uuid]") == ("abc-123-uuid", "Researcher")
+        assert parse_subagent_id("subagent:Researcher [abc-123-uuid]") == (
+            "abc-123-uuid",
+            "Researcher",
+        )
 
     def test_with_subagent_prefix_and_parens(self) -> None:
         assert parse_subagent_id("subagent:my_tool (Tool Name)") == ("my_tool", "Tool Name")
@@ -108,6 +216,12 @@ class TestParseSubagentId:
 
     def test_name_with_trailing_x_in_parens(self) -> None:
         assert parse_subagent_id("subagent:my_tool (Tool NamX)") == ("my_tool", "Tool NamX")
+
+    def test_leading_and_trailing_whitespace_stripped(self) -> None:
+        assert parse_subagent_id("  subagent:my_tool (Tool Name)  ") == ("my_tool", "Tool Name")
+
+    def test_bare_id_with_whitespace_stripped(self) -> None:
+        assert parse_subagent_id("  my_tool  ") == ("my_tool", None)
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +257,9 @@ class TestLookupCustomIntegrationName:
 class TestResolveHandoffDisplayName:
     @pytest.mark.asyncio
     async def test_parsed_name_returned(self) -> None:
-        assert await _resolve_handoff_display_name("subagent:Researcher [some-uuid]") == "Researcher"
+        assert (
+            await _resolve_handoff_display_name("subagent:Researcher [some-uuid]") == "Researcher"
+        )
 
     @pytest.mark.asyncio
     async def test_parsed_parens_name_returned(self) -> None:
@@ -388,7 +504,9 @@ class TestFormatToolCallEntry:
     @pytest.mark.asyncio
     async def test_integration_id_wins_over_mcp_registry_category(self) -> None:
         registry = _registry(category="mcp_some_server")
-        result = await _format_entry(_tool_call("mcp_tool"), registry, integration_id="custom_mcp_id")
+        result = await _format_entry(
+            _tool_call("mcp_tool"), registry, integration_id="custom_mcp_id"
+        )
 
         assert result is not None
         assert result["data"]["tool_category"] == "custom_mcp_id"
@@ -552,7 +670,9 @@ class TestFormatToolCallEntry:
         mock_client._tools = {}
 
         with (
-            patch("app.db.redis.get_cache", new_callable=AsyncMock, return_value=None) as mock_get_cache,
+            patch(
+                "app.db.redis.get_cache", new_callable=AsyncMock, return_value=None
+            ) as mock_get_cache,
             patch("app.db.redis.set_cache", new_callable=AsyncMock),
             patch("app.utils.agent_utils.integration_repository") as mock_repo,
             patch(
@@ -561,7 +681,9 @@ class TestFormatToolCallEntry:
                 return_value=mock_client,
             ),
         ):
-            mock_repo.get = AsyncMock(return_value=_integration("mcp_x", "Custom X", icon_url="https://icon.png"))
+            mock_repo.get = AsyncMock(
+                return_value=_integration("mcp_x", "Custom X", icon_url="https://icon.png")
+            )
             result = await _format_entry(
                 _tool_call("retrieve_tools"),
                 registry,
@@ -713,6 +835,27 @@ class TestFormatToolCallEntry:
         assert result["data"]["integration_name"] == "My Service"
         assert result["data"]["message"] == "X"
 
+    @pytest.mark.asyncio
+    async def test_missing_tool_call_id_yields_none(self) -> None:
+        tool_call: dict[str, Any] = {"name": "some_tool", "args": {}}
+        result = await _format_entry(tool_call, _registry())
+
+        assert result is not None
+        assert result["data"]["tool_call_id"] is None
+
+    @pytest.mark.asyncio
+    async def test_mcp_ui_metadata_without_server_url(self) -> None:
+        registry_tool = MagicMock()
+        registry_tool.name = "ui_tool"
+        registry_tool.tool.metadata = {"mcp_ui": {"type": "form"}}
+        registry = _registry(category="custom", tools=[registry_tool])
+
+        result = await _format_entry(_tool_call("ui_tool"), registry)
+
+        assert result is not None
+        assert result["mcp_ui"] == {"type": "form"}
+        assert result["mcp_server_url"] is None
+
 
 # ---------------------------------------------------------------------------
 # _resolve_mcp_integration_id
@@ -761,7 +904,8 @@ class TestResolveMcpIntegrationId:
 
         mock_log.warning.assert_called_once()
         assert (
-            mock_log.warning.call_args.args[0] == f"{LogTag.AGENT} MCP integration lookup failed for"
+            mock_log.warning.call_args.args[0]
+            == f"{LogTag.AGENT} MCP integration lookup failed for"
         )
         assert mock_log.warning.call_args.kwargs["tool_name"] == "tool"
         assert mock_log.warning.call_args.kwargs["user_id"] == "user-1"
@@ -850,6 +994,33 @@ class TestResolveMcpUiMetadata:
             assert await _resolve_mcp_ui_metadata("ui_tool", "user-1") == (None, None)
 
     @pytest.mark.asyncio
+    async def test_metadata_with_only_mcp_ui(self) -> None:
+        mock_client = _mcp_client_with_tool("ui_tool", {"mcp_ui": {"type": "form"}})
+
+        with patch(
+            "app.services.mcp.mcp_client.get_mcp_client",
+            new_callable=AsyncMock,
+            return_value=mock_client,
+        ):
+            assert await _resolve_mcp_ui_metadata("ui_tool", "user-1") == ({"type": "form"}, None)
+
+    @pytest.mark.asyncio
+    async def test_metadata_with_only_server_url(self) -> None:
+        mock_client = _mcp_client_with_tool(
+            "ui_tool", {"mcp_server_url": "https://mcp.example.com"}
+        )
+
+        with patch(
+            "app.services.mcp.mcp_client.get_mcp_client",
+            new_callable=AsyncMock,
+            return_value=mock_client,
+        ):
+            assert await _resolve_mcp_ui_metadata("ui_tool", "user-1") == (
+                None,
+                "https://mcp.example.com",
+            )
+
+    @pytest.mark.asyncio
     async def test_client_error_logs_and_returns_none(self) -> None:
         with (
             patch(
@@ -863,7 +1034,8 @@ class TestResolveMcpUiMetadata:
 
         mock_log.warning.assert_called_once()
         assert (
-            mock_log.warning.call_args.args[0] == f"{LogTag.AGENT} MCP UI metadata lookup failed for"
+            mock_log.warning.call_args.args[0]
+            == f"{LogTag.AGENT} MCP UI metadata lookup failed for"
         )
         assert mock_log.warning.call_args.kwargs["tool_name"] == "ui_tool"
         assert mock_log.warning.call_args.kwargs["user_id"] == "user-1"
@@ -896,20 +1068,65 @@ class TestResolveMcpIconName:
         mock_repo.get.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_cache_hit_with_partial_entry(self) -> None:
+        with (
+            patch(
+                "app.db.redis.get_cache",
+                new_callable=AsyncMock,
+                return_value={"icon_url": "https://icon.png"},
+            ) as mock_get_cache,
+            patch("app.db.redis.set_cache", new_callable=AsyncMock) as mock_set_cache,
+            patch("app.utils.agent_utils.integration_repository") as mock_repo,
+        ):
+            result = await _resolve_mcp_icon_name("mcp_int")
+
+        assert result == ("https://icon.png", None)
+        mock_get_cache.assert_awaited_once_with(f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:mcp_int")
+        mock_set_cache.assert_not_awaited()
+        mock_repo.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_db_integration_without_icon_url(self) -> None:
+        with (
+            patch("app.db.redis.get_cache", new_callable=AsyncMock, return_value=None),
+            patch("app.db.redis.set_cache", new_callable=AsyncMock) as mock_set_cache,
+            patch("app.utils.agent_utils.integration_repository") as mock_repo,
+        ):
+            mock_repo.get = AsyncMock(return_value=_integration("mcp_int", "My MCP"))
+            result = await _resolve_mcp_icon_name("mcp_int")
+
+        assert result == (None, "My MCP")
+        mock_set_cache.assert_awaited_once_with(
+            f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:mcp_int",
+            {
+                "icon_url": None,
+                "integration_id": "mcp_int",
+                "integration_name": "My MCP",
+            },
+            ttl=CUSTOM_INT_METADATA_TTL,
+        )
+
+    @pytest.mark.asyncio
     async def test_db_hit_populates_cache(self) -> None:
         with (
             patch("app.db.redis.get_cache", new_callable=AsyncMock, return_value=None),
             patch("app.db.redis.set_cache", new_callable=AsyncMock) as mock_set_cache,
             patch("app.utils.agent_utils.integration_repository") as mock_repo,
         ):
-            mock_repo.get = AsyncMock(return_value=_integration("mcp_int", "My MCP", icon_url="https://icon.png"))
+            mock_repo.get = AsyncMock(
+                return_value=_integration("mcp_int", "My MCP", icon_url="https://icon.png")
+            )
             result = await _resolve_mcp_icon_name("mcp_int")
 
         assert result == ("https://icon.png", "My MCP")
         mock_repo.get.assert_awaited_once_with("mcp_int")
         mock_set_cache.assert_awaited_once_with(
             f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:mcp_int",
-            {"icon_url": "https://icon.png", "integration_id": "mcp_int", "integration_name": "My MCP"},
+            {
+                "icon_url": "https://icon.png",
+                "integration_id": "mcp_int",
+                "integration_name": "My MCP",
+            },
             ttl=CUSTOM_INT_METADATA_TTL,
         )
 
@@ -940,7 +1157,9 @@ class TestResolveMcpIconName:
 
         assert result == (None, None)
         mock_log.warning.assert_called_once()
-        assert mock_log.warning.call_args.args[0] == f"{LogTag.AGENT} MCP icon/name lookup failed for"
+        assert (
+            mock_log.warning.call_args.args[0] == f"{LogTag.AGENT} MCP icon/name lookup failed for"
+        )
         assert mock_log.warning.call_args.kwargs["integration_id"] == "mcp_int"
         assert mock_log.warning.call_args.kwargs["error"] == "db boom"
         assert mock_log.warning.call_args.kwargs["error_type"] == "RuntimeError"
@@ -968,7 +1187,9 @@ class TestSSEFormatters:
 
 class TestProcessCustomEventForTools:
     def test_with_payload(self) -> None:
-        with patch("app.utils.agent_utils.extract_tool_data", return_value={"tool": "data"}) as mock_extract:
+        with patch(
+            "app.utils.agent_utils.extract_tool_data", return_value={"tool": "data"}
+        ) as mock_extract:
             result = process_custom_event_for_tools({"some": "payload"})
         assert result == {"tool": "data"}
         mock_extract.assert_called_once_with(json.dumps({"some": "payload"}))

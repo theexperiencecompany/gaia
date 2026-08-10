@@ -6,17 +6,20 @@ is mocked; the fusion, filtering, scoring and assembly logic under test is real.
 
 from datetime import UTC, date as date_type, datetime, timedelta
 from fnmatch import fnmatch
+import hashlib
 import math
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 import uuid
 
 import pytest
 
 from app.constants.memory import (
+    ANN_CANDIDATES,
     CONFIDENT_COSINE,
     CONFIDENT_RERANK_LOGIT,
     DEFAULT_RECALL_LIMIT,
     EPISODE_SEARCH_MIN_TOKEN_LENGTH,
+    FTS_CANDIDATES,
     GRAPH_EXPANSION_MAX_SIBLINGS,
     IMPORTANCE_BOOST_BASE,
     IMPORTANCE_BOOST_WEIGHT,
@@ -25,6 +28,7 @@ from app.constants.memory import (
     RECENCY_BOOST_DECAY_DAYS,
     RECENCY_BOOST_WEIGHT,
     RELEVANCE_DROPOFF_RATIO,
+    RERANK_BLEND_WEIGHT,
     RERANK_CANDIDATES,
     RRF_K,
     MemoryKind,
@@ -33,12 +37,14 @@ from app.constants.memory import (
 from app.memory import retrieval
 from app.memory.retrieval import (
     EpisodeHit,
+    _ann_search,
     _build_entries,
     _cap_weak_results,
     _drop_below_relevance,
     _elapsed_ms,
     _episode_id_to_date,
     _episode_summary_search,
+    _fts_search,
     _graph_siblings,
     _hydrate_candidates,
     _importance_boost,
@@ -1144,3 +1150,657 @@ class TestRecallTranscripts:
         ):
             await recall_transcripts(USER, "q", limit=11)
         assert query_chunks.await_args.args[2] == 11
+
+    async def test_embed_query_receives_the_raw_query(self) -> None:
+        embed = AsyncMock(return_value=[0.5])
+        with (
+            patch.object(retrieval, "embed_query", new=embed),
+            patch.object(
+                retrieval.chroma_store, "query_conversation_chunks", new=AsyncMock(return_value=[])
+            ),
+        ):
+            await recall_transcripts(USER, "the exact phrase")
+        embed.assert_awaited_once_with("the exact phrase")
+
+
+# ---------------------------------------------------------------------------
+# _ann_search / _fts_search — exact store contracts and timing keys
+# ---------------------------------------------------------------------------
+
+
+class TestAnnSearch:
+    async def test_exact_store_contract_and_timing_keys(self) -> None:
+        embedding = [0.1, 0.2]
+        hits = [("mem-1", 0.95)]
+        timings: dict[str, int] = {}
+        embed = AsyncMock(return_value=embedding)
+        query_similar = AsyncMock(return_value=hits)
+        with (
+            patch.object(retrieval, "embed_query", new=embed),
+            patch.object(retrieval.chroma_store, "query_similar", new=query_similar),
+        ):
+            got = await _ann_search(USER, "the query", timings)
+
+        assert got == hits
+        embed.assert_awaited_once_with("the query")
+        query_similar.assert_awaited_once_with(USER, embedding, ANN_CANDIDATES, only_latest=True)
+        assert set(timings) == {"embed_ms", "ann_ms"}
+
+    async def test_embedding_failure_propagates(self) -> None:
+        embed = AsyncMock(side_effect=RuntimeError("embed boom"))
+        with patch.object(retrieval, "embed_query", new=embed):
+            with pytest.raises(RuntimeError, match="embed boom"):
+                await _ann_search(USER, "q", {})
+
+
+class TestFtsSearch:
+    async def test_exact_store_contract_and_timing_key(self) -> None:
+        rows = [(make_row("fts hit"), 0.8)]
+        timings: dict[str, int] = {}
+        fts = AsyncMock(return_value=rows)
+        with patch.object(retrieval.pg_store, "fts_search", new=fts):
+            got = await _fts_search(USER, "the query", timings)
+
+        assert got == rows
+        fts.assert_awaited_once_with(USER, "the query", FTS_CANDIDATES)
+        assert set(timings) == {"fts_ms"}
+
+    async def test_store_failure_propagates(self) -> None:
+        fts = AsyncMock(side_effect=RuntimeError("fts boom"))
+        with patch.object(retrieval.pg_store, "fts_search", new=fts):
+            with pytest.raises(RuntimeError, match="fts boom"):
+                await _fts_search(USER, "q", {})
+
+
+# ---------------------------------------------------------------------------
+# _elapsed_ms — exact arithmetic
+# ---------------------------------------------------------------------------
+
+
+class TestElapsedMsExact:
+    def test_exact_ms_arithmetic(self) -> None:
+        with patch.object(retrieval.time, "perf_counter", return_value=2.5):
+            assert _elapsed_ms(1.0) == 1500
+
+    def test_zero_elapsed_is_zero(self) -> None:
+        with patch.object(retrieval.time, "perf_counter", return_value=1.0):
+            assert _elapsed_ms(1.0) == 0
+
+
+# ---------------------------------------------------------------------------
+# _episode_id_to_date — multi-colon ids
+# ---------------------------------------------------------------------------
+
+
+class TestEpisodeIdToDateMultiColon:
+    def test_date_after_multiple_colons_uses_the_last_segment(self) -> None:
+        # rsplit(":", 1) takes the segment AFTER the LAST colon; a split-based
+        # parser would choke on the "extra" colon in the middle.
+        assert _episode_id_to_date("user:extra:2026-03-12") == date_type(2026, 3, 12)
+
+    def test_nested_colons_in_the_user_part(self) -> None:
+        assert _episode_id_to_date("a:b:2026-03-12") == date_type(2026, 3, 12)
+
+
+# ---------------------------------------------------------------------------
+# _recall_cache_key — exact digest contract
+# ---------------------------------------------------------------------------
+
+
+class TestRecallCacheKeyExact:
+    def _key(self, *args, **kwargs) -> str:
+        return _recall_cache_key("recall", *args, **kwargs)
+
+    def test_exact_key_with_kinds(self) -> None:
+        key = self._key(USER, "q", kinds=[MemoryKind.FACT, MemoryKind.EXPERIENCE])
+        kinds_part = "experience,fact"  # sorted by value
+        payload = f"q|{DEFAULT_RECALL_LIMIT}|None|{kinds_part}|True"
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+        assert key == f"user:{USER}:memories:{digest}"
+
+    def test_exact_key_without_kinds(self) -> None:
+        key = self._key(USER, "q")
+        payload = f"q|{DEFAULT_RECALL_LIMIT}|None||True"
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+        assert key == f"user:{USER}:memories:{digest}"
+
+    def test_include_graph_expansion_defaults_to_true(self) -> None:
+        assert self._key(USER, "q") == self._key(USER, "q", include_graph_expansion=True)
+
+    def test_query_as_keyword_with_user_positional(self) -> None:
+        # len(args) == 1: the query must be read from kwargs, not args[1].
+        assert self._key(USER, query="q") == self._key(USER, "q")
+
+
+# ---------------------------------------------------------------------------
+# _rrf_fuse — cross-list rank arithmetic that K-shifts break
+# ---------------------------------------------------------------------------
+
+
+class TestRrfFuseRankSensitivity:
+    def test_rank_offset_sensitivity_across_lists(self) -> None:
+        # Four lists where the fused winner flips if the rank constant is off
+        # by one: 'a' leads two lists, 'c' leads one and sits mid-list in two.
+        ranked_lists = [
+            ["a", "c", "d", "b"],
+            ["c", "a", "d", "b"],
+            ["c", "b", "a", "d"],
+            ["a", "d", "c", "b"],
+        ]
+        assert _rrf_fuse(*ranked_lists)[0] == "a"
+
+    def test_second_rank_sensitivity(self) -> None:
+        ranked_lists = [
+            ["c", "a", "b", "d"],
+            ["c", "d", "a", "b"],
+            ["d", "a", "b", "c"],
+            ["d", "c", "b", "a"],
+        ]
+        assert _rrf_fuse(*ranked_lists)[0] == "d"
+
+
+# ---------------------------------------------------------------------------
+# _hydrate_candidates — boundary + ordering that continue/break breaks
+# ---------------------------------------------------------------------------
+
+
+class TestHydrateCandidatesBoundaries:
+    async def _hydrate(
+        self,
+        fused_ids: list[str],
+        fts_hits: list[tuple[MemoryRecord, float]],
+        extra_rows: list[MemoryRecord],
+        **kwargs,
+    ) -> list[MemoryRecord]:
+        kwargs.setdefault("category_prefix", None)
+        kwargs.setdefault("kinds", None)
+        with patch.object(
+            retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=extra_rows)
+        ):
+            return await _hydrate_candidates(USER, fused_ids, fts_hits, **kwargs)
+
+    async def test_forget_after_exactly_now_is_expired(self) -> None:
+        frozen = datetime(2026, 3, 12, tzinfo=UTC)
+        expired = make_row("expired exactly now", forget_after=frozen)
+        with patch.object(retrieval, "datetime") as fake_dt:
+            fake_dt.now.return_value = frozen
+            got = await self._hydrate([str(expired.id)], [], [expired])
+        assert got == []
+
+    async def test_stale_row_before_live_row_still_keeps_the_live_one(self) -> None:
+        stale = make_row("old version", is_latest=False)
+        live = make_row("current version")
+        got = await self._hydrate([str(stale.id), str(live.id)], [], [stale, live])
+        assert [row.content for row in got] == ["current version"]
+
+    async def test_expired_row_before_live_row_still_keeps_the_live_one(self) -> None:
+        expired = make_row("expired", forget_after=datetime.now(UTC) - timedelta(seconds=1))
+        live = make_row("still live")
+        got = await self._hydrate([str(expired.id), str(live.id)], [], [expired, live])
+        assert [row.content for row in got] == ["still live"]
+
+    async def test_wrong_kind_before_matching_kind_still_keeps_the_match(self) -> None:
+        other = make_row("an experience", kind=MemoryKind.EXPERIENCE.value)
+        fact = make_row("a fact", kind=MemoryKind.FACT.value)
+        got = await self._hydrate(
+            [str(other.id), str(fact.id)],
+            [],
+            [other, fact],
+            kinds=[MemoryKind.FACT],
+        )
+        assert [row.content for row in got] == ["a fact"]
+
+    async def test_category_mismatch_before_match_still_keeps_the_match(self) -> None:
+        outside = make_row("workshop note", category_path="workshop")
+        inside = make_row("work note", category_path="work/gaia")
+        got = await self._hydrate(
+            [str(outside.id), str(inside.id)],
+            [],
+            [outside, inside],
+            category_prefix="work",
+        )
+        assert [row.content for row in got] == ["work note"]
+
+
+# ---------------------------------------------------------------------------
+# _rerank_and_boost — exact blended scores
+# ---------------------------------------------------------------------------
+
+
+class TestRerankAndBoostExactScores:
+    """Deterministic score arithmetic: mocked rerank, fixed rows, fixed clock.
+
+    The blended score is ``(0.6 * rerank_norm + 0.4 * retrieval_norm)`` times
+    the recency and importance boosts. With ``mentioned_at == now`` the recency
+    boost is ``1 + RECENCY_BOOST_WEIGHT`` and with ``importance=0.5`` the
+    importance boost is ``IMPORTANCE_BOOST_BASE + 0.5 * IMPORTANCE_BOOST_WEIGHT``.
+    """
+
+    BOOST = (1.0 + RECENCY_BOOST_WEIGHT) * (IMPORTANCE_BOOST_BASE + 0.5 * IMPORTANCE_BOOST_WEIGHT)
+
+    async def _score(
+        self,
+        cosines: dict[str, float],
+        logits: list[float],
+        n_rows: int = 2,
+    ) -> list[tuple[str, float]]:
+        now = datetime.now(UTC)
+        rows = [
+            make_row(f"row {i}", importance=0.5, mentioned_at=now) for i in range(n_rows)
+        ]
+        with patch.object(retrieval, "rerank", new=AsyncMock(return_value=logits)):
+            scored = await _rerank_and_boost(
+                "q", rows, ann_similarity=cosines, fts_ids=set()
+            )
+        return [(item.row.content, item.score) for item in scored]
+
+    async def test_fallback_shift_changes_fts_only_scores(self) -> None:
+        # One ANN hit (cosine 0.5 -> norm 0.0) and one FTS-only hit whose norm
+        # is its rank fallback (1.0 - 1/2 = 0.5). The blended score must be
+        # exactly (0.6*1.0 + 0.4*0.5) * BOOST; a fallback starting at 2.0
+        # instead of 1.0 would give (0.6*1.0 + 0.4*1.5) * BOOST.
+        now = datetime.now(UTC)
+        ann_row = make_row("ann row", importance=0.5, mentioned_at=now)
+        fts_row = make_row("fts row", importance=0.5, mentioned_at=now)
+        with patch.object(retrieval, "rerank", new=AsyncMock(return_value=[0.0, 0.0])):
+            scored = await _rerank_and_boost(
+                "q",
+                [ann_row, fts_row],
+                ann_similarity={str(ann_row.id): 0.5},
+                fts_ids=set(),
+            )
+        by_content = {item.row.content: item.score for item in scored}
+        assert by_content["fts row"] == pytest.approx(
+            (RERANK_BLEND_WEIGHT * 1.0 + (1.0 - RERANK_BLEND_WEIGHT) * 0.5) * self.BOOST
+        )
+        assert by_content["ann row"] == pytest.approx(RERANK_BLEND_WEIGHT * self.BOOST)
+
+    async def test_known_none_falls_back_to_zero_bounds(self) -> None:
+        # known = None would make low/high (0.0, 0.0), turning the cosine
+        # into the raw norm instead of the min-max normalized one.
+        now = datetime.now(UTC)
+        row = make_row("row", importance=0.5, mentioned_at=now)
+        with patch.object(retrieval, "rerank", new=AsyncMock(return_value=[0.0])):
+            scored = await _rerank_and_boost(
+                "q", [row], ann_similarity={str(row.id): 0.9}, fts_ids=set()
+            )
+        # low=high=0.9 -> span 1.0 -> norm (0.9-0.9)/1.0 = 0.0
+        assert scored[0].score == pytest.approx(RERANK_BLEND_WEIGHT * self.BOOST)
+
+    async def test_span_uses_difference_and_norm_is_quotient(self) -> None:
+        # Exact norm arithmetic: span = high - low = 0.8, and each norm is
+        # (cosine - low) / span. A span of high + low (1.0) or a product
+        # (cosine - low) * span would both change the blended scores below.
+        now = datetime.now(UTC)
+        a = make_row("a", importance=0.5, mentioned_at=now)
+        b = make_row("b", importance=0.5, mentioned_at=now)
+        with patch.object(retrieval, "rerank", new=AsyncMock(return_value=[0.0, 0.0])):
+            scored = await _rerank_and_boost(
+                "q",
+                [a, b],
+                ann_similarity={str(a.id): 0.9, str(b.id): 0.1},
+                fts_ids=set(),
+            )
+        by_content = {item.row.content: item.score for item in scored}
+        # (0.9-0.1)/0.8 = 1.0 and (0.1-0.1)/0.8 = 0.0
+        assert by_content["a"] == pytest.approx(self.BOOST)
+        assert by_content["b"] == pytest.approx(RERANK_BLEND_WEIGHT * self.BOOST)
+
+
+# ---------------------------------------------------------------------------
+# _build_entries — exact store arguments
+# ---------------------------------------------------------------------------
+
+
+class TestBuildEntriesExactArgs:
+    async def test_entities_fetch_receives_every_row_id(self) -> None:
+        rows = [make_row("one"), make_row("two")]
+        entities = AsyncMock(return_value={})
+        with patch.object(retrieval.pg_store, "get_entities_for_memories", new=entities):
+            await _build_entries([(rows[0], 0.5), (rows[1], 0.4)])
+        entities.assert_awaited_once_with([rows[0].id, rows[1].id])
+
+    async def test_parent_fetch_receives_user_and_exact_parent_ids(self) -> None:
+        parent = make_row("previous version")
+        child = make_row(
+            "updated version",
+            parent_id=parent.id,
+            relation_type=MemoryRelationType.UPDATES.value,
+        )
+        fetch = AsyncMock(return_value=[parent])
+        with (
+            patch.object(
+                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
+            ),
+            patch.object(retrieval.pg_store, "get_memories_by_ids", new=fetch),
+        ):
+            await _build_entries([(child, 0.9)])
+        fetch.assert_awaited_once_with(USER, [str(parent.id)])
+
+
+# ---------------------------------------------------------------------------
+# _cap_weak_results / _drop_below_relevance — boundary ordering
+# ---------------------------------------------------------------------------
+
+
+class TestCapWeakResultsOrdering:
+    def test_weak_cap_does_not_drop_later_confident_results(self) -> None:
+        scored = [
+            _ScoredCandidate(row=make_row(f"w{i}"), score=1.0, confident=False)
+            for i in range(MAX_WEAK_RESULTS + 2)
+        ]
+        scored.append(_ScoredCandidate(row=make_row("saved"), score=0.9, confident=True))
+        kept = _cap_weak_results(scored)
+        assert len(kept) == MAX_WEAK_RESULTS + 1
+        assert kept[-1][0].content == "saved"
+
+
+class TestDropBelowRelevanceBoundary:
+    def test_exactly_zero_top_score_keeps_everything_including_negatives(self) -> None:
+        # top <= 0 disables the filter entirely; a strict < would compute a
+        # floor of 0.0 and drop the negative-scored entry.
+        entries = [_entry(0.0, "zero"), _entry(-0.5, "negative")]
+        kept = _drop_below_relevance(entries)
+        assert [entry.content for entry in kept] == ["zero", "negative"]
+
+
+# ---------------------------------------------------------------------------
+# recall — pipeline wiring: exact args, default expansion, log payload
+# ---------------------------------------------------------------------------
+
+
+class TestRecallPipelineWiring:
+    async def test_search_stages_receive_exact_args(self) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"the answer": 5.0}
+        ann_calls: list[tuple] = []
+        fts_calls: list[tuple] = []
+
+        real_ann = retrieval._ann_search
+        real_fts = retrieval._fts_search
+
+        async def spy_ann(user_id: str, query: str, timings: dict) -> list[tuple[str, float]]:
+            ann_calls.append((user_id, query))
+            return await real_ann(user_id, query, timings)
+
+        async def spy_fts(
+            user_id: str, query: str, timings: dict
+        ) -> list[tuple[MemoryRecord, float]]:
+            fts_calls.append((user_id, query))
+            return await real_fts(user_id, query, timings)
+
+        with (
+            patch.object(retrieval, "_ann_search", new=spy_ann),
+            patch.object(retrieval, "_fts_search", new=spy_fts),
+        ):
+            await _run_recall(
+                harness,
+                harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row]),
+                include_graph_expansion=False,
+            )
+
+        assert ann_calls == [(USER, "the query")]
+        assert fts_calls == [(USER, "the query")]
+
+    async def test_graph_expansion_defaults_to_enabled(self) -> None:
+        base = make_row("base")
+        sibling = make_row("the sibling that answers")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"base": 1.0, "the sibling that answers": 5.0}
+        result = await _run_recall(
+            harness,
+            harness.patches(
+                ann=[(str(base.id), 0.9)],
+                fts=[],
+                rows=[base],
+                entities={base.id: [_entity()]},
+                siblings=[sibling],
+            ),
+        )
+        assert sibling.content in harness.rerank_inputs[0]
+        assert [memory.content for memory in result.memories] == ["the sibling that answers"]
+
+    async def test_hydrate_receives_exact_args(self) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"the answer": 5.0}
+        calls: list[tuple] = []
+        real_hydrate = retrieval._hydrate_candidates
+
+        async def spy_hydrate(
+            user_id: str,
+            fused_ids: list[str],
+            fts_hits: list[tuple[MemoryRecord, float]],
+            *,
+            category_prefix: str | None,
+            kinds: list[MemoryKind] | None,
+        ) -> list[MemoryRecord]:
+            calls.append((user_id, fused_ids, fts_hits, category_prefix, kinds))
+            return await real_hydrate(
+                user_id,
+                fused_ids,
+                fts_hits,
+                category_prefix=category_prefix,
+                kinds=kinds,
+            )
+
+        with patch.object(retrieval, "_hydrate_candidates", new=spy_hydrate):
+            await _run_recall(
+                harness,
+                harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row]),
+                category_prefix="work",
+                kinds=[MemoryKind.FACT],
+                include_graph_expansion=False,
+            )
+
+        assert len(calls) == 1
+        user_id, fused_ids, fts_hits, category_prefix, kinds = calls[0]
+        assert user_id == USER
+        assert fused_ids == [str(row.id)]
+        assert fts_hits == []
+        assert category_prefix == "work"
+        assert kinds == [MemoryKind.FACT]
+
+    async def test_graph_siblings_receives_exact_args(self) -> None:
+        base = make_row("base")
+        sibling = make_row("sibling")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"base": 1.0, "sibling": 5.0}
+        calls: list[tuple] = []
+        real_siblings = retrieval._graph_siblings
+
+        async def spy_siblings(
+            user_id: str,
+            candidates: list[MemoryRecord],
+            *,
+            kinds: list[MemoryKind] | None,
+        ) -> list[MemoryRecord]:
+            calls.append((user_id, candidates, kinds))
+            return await real_siblings(user_id, candidates, kinds=kinds)
+
+        with patch.object(retrieval, "_graph_siblings", new=spy_siblings):
+            await _run_recall(
+                harness,
+                harness.patches(
+                    ann=[(str(base.id), 0.9)],
+                    fts=[],
+                    rows=[base],
+                    entities={base.id: [_entity()]},
+                    siblings=[sibling],
+                ),
+                kinds=[MemoryKind.FACT],
+            )
+
+        assert len(calls) == 1
+        user_id, candidates, kinds = calls[0]
+        assert user_id == USER
+        assert [row.content for row in candidates] == ["base"]
+        assert kinds == [MemoryKind.FACT]
+
+    async def test_rerank_receives_query_and_exact_fts_ids(self) -> None:
+        ann_row = make_row("ann hit")
+        fts_row = make_row("fts hit")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"ann hit": 5.0, "fts hit": 4.0}
+        calls: list[tuple] = []
+        real_rerank = retrieval._rerank_and_boost
+
+        async def spy_rerank(
+            query: str,
+            candidates: list[MemoryRecord],
+            *,
+            ann_similarity: dict[str, float],
+            fts_ids: set[str],
+        ) -> list[_ScoredCandidate]:
+            calls.append((query, fts_ids))
+            return await real_rerank(
+                query,
+                candidates,
+                ann_similarity=ann_similarity,
+                fts_ids=fts_ids,
+            )
+
+        with patch.object(retrieval, "_rerank_and_boost", new=spy_rerank):
+            await _run_recall(
+                harness,
+                harness.patches(
+                    ann=[(str(ann_row.id), 0.9)],
+                    fts=[(fts_row, 0.7)],
+                    rows=[fts_row],
+                ),
+                include_graph_expansion=False,
+            )
+
+        assert len(calls) == 1
+        query, fts_ids = calls[0]
+        assert query == "the query"
+        assert fts_ids == {str(fts_row.id)}
+
+    async def test_exact_log_payload(self) -> None:
+        best, worst = make_row("the answer"), make_row("unrelated")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"the answer": 5.0, "unrelated": -9.0}
+        log_mock = MagicMock()
+        with (
+            patch.object(retrieval, "log", new=log_mock),
+        ):
+            result = await _run_recall(
+                harness,
+                harness.patches(
+                    ann=[(str(best.id), 0.9), (str(worst.id), 0.1)],
+                    fts=[],
+                    rows=[best, worst],
+                ),
+                include_graph_expansion=False,
+            )
+
+        assert [memory.content for memory in result.memories] == ["the answer"]
+        log_mock.set.assert_called_once()
+        kwargs = log_mock.set.call_args.kwargs
+        assert kwargs["user"] == {"id": USER}
+        memory = kwargs["memory"]
+        assert memory["operation"] == "recall"
+        assert memory["query"] == "the query"
+        assert memory["result_count"] == 1
+        assert memory["ann_hits"] == 2
+        assert memory["fts_hits"] == 0
+        assert memory["candidate_count"] == 2
+        assert memory["success"] is True
+        assert set(memory["timings"]) == {
+            "embed_ms",
+            "ann_ms",
+            "fts_ms",
+            "fusion_ms",
+            "hydrate_ms",
+            "rerank_ms",
+            "total_ms",
+        }
+        assert all(isinstance(v, float) for v in memory["timings"].values())
+
+    async def test_empty_recall_logs_zero_counts_and_true_success(self) -> None:
+        harness = _RecallHarness()
+        log_mock = MagicMock()
+        with patch.object(retrieval, "log", new=log_mock):
+            await _run_recall(
+                harness,
+                harness.patches(ann=[], fts=[], rows=[]),
+                include_graph_expansion=False,
+            )
+        memory = log_mock.set.call_args.kwargs["memory"]
+        assert memory["result_count"] == 0
+        assert memory["candidate_count"] == 0
+        assert memory["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# recall_episodes / _episode_summary_search — exact wiring
+# ---------------------------------------------------------------------------
+
+
+class TestRecallEpisodesWiring:
+    async def test_clock_is_utc(self) -> None:
+        frozen = datetime(2026, 3, 20, tzinfo=UTC)
+        with (
+            patch.object(retrieval, "datetime") as fake_dt,
+            patch.object(
+                retrieval.pg_store, "search_episode_entries", new=AsyncMock(return_value=[])
+            ),
+            patch.object(retrieval, "_episode_summary_search", new=AsyncMock(return_value=[])),
+        ):
+            fake_dt.now.return_value = frozen
+            fake_dt.timedelta = timedelta
+            await recall_episodes(USER, "shipped")
+        assert fake_dt.now.call_args == call(UTC)
+
+    async def test_summary_search_receives_exact_args(self) -> None:
+
+        summary = AsyncMock(return_value=[])
+        with (
+            patch.object(
+                retrieval.pg_store, "search_episode_entries", new=AsyncMock(return_value=[])
+            ),
+            patch.object(retrieval, "_episode_summary_search", new=summary),
+        ):
+            await recall_episodes(USER, "shipped the api", limit=3)
+        summary.assert_awaited_once_with(USER, "shipped the api", 3)
+
+
+class TestEpisodeSummarySearchWiring:
+    async def test_exact_embed_and_chroma_contract(self) -> None:
+        episode = MagicMock()
+        episode.summary = "a productive day"
+        embed = AsyncMock(return_value=[0.1])
+        query_episodes = AsyncMock(return_value=[(f"{USER}:2026-03-12", 0.812345)])
+        get_episode = AsyncMock(return_value=episode)
+        with (
+            patch.object(retrieval, "embed_query", new=embed),
+            patch.object(retrieval.chroma_store, "query_episodes", new=query_episodes),
+            patch.object(retrieval.pg_store, "get_episode", new=get_episode),
+        ):
+            hits = await _episode_summary_search(USER, "productive", 5)
+
+        assert hits == [
+            EpisodeHit(date=date_type(2026, 3, 12), text="a productive day", score=0.8123)
+        ]
+        embed.assert_awaited_once_with("productive")
+        query_episodes.assert_awaited_once_with(USER, [0.1], 5)
+        get_episode.assert_awaited_once_with(USER, date_type(2026, 3, 12))
+
+    async def test_unparseable_hit_first_does_not_skip_later_valid_hits(self) -> None:
+        episode = MagicMock()
+        episode.summary = "the valid day"
+        with (
+            patch.object(retrieval, "embed_query", new=AsyncMock(return_value=[0.1])),
+            patch.object(
+                retrieval.chroma_store,
+                "query_episodes",
+                new=AsyncMock(
+                    return_value=[("not-a-date", 0.9), (f"{USER}:2026-03-12", 0.8)]
+                ),
+            ),
+            patch.object(retrieval.pg_store, "get_episode", new=AsyncMock(return_value=episode)),
+        ):
+            hits = await _episode_summary_search(USER, "q", 5)
+
+        assert hits == [EpisodeHit(date=date_type(2026, 3, 12), text="the valid day", score=0.8)]

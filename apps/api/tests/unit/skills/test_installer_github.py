@@ -4,10 +4,12 @@ Covers the full installer surface: GitHub reference parsing, the Contents API
 fetch (respx-mocked, no real network) with master-branch fallback and
 rate-limit handling, raw file download, recursive sub-directory download,
 SKILL.md validation, the allowed_targets guard, and the exact registry/VFS
-contract of install_from_github. VFS writes (ensure_user_skills_dir/
-write_skill_file) and the Mongo-backed install_skill registry call are
-mocked — those have their own dedicated tests (storage layer,
-test_skills_registry.py).
+contract of install_from_github. The inline/update/uninstall paths
+(install_from_inline, update_skill_inline, uninstall_skill_full) are covered
+with mocked registry/VFS seams and the real SKILL.md generator/parser. VFS
+writes (ensure_user_skills_dir/write_skill_file) and the Mongo-backed
+registry calls are mocked — those have their own dedicated tests (storage
+layer, test_skills_registry.py).
 """
 
 import re
@@ -23,9 +25,14 @@ from app.agents.skills.installer import (
     _fetch_github_contents,
     _parse_github_url,
     install_from_github,
+    install_from_inline,
+    uninstall_skill_full,
+    update_skill_inline,
 )
-from app.agents.skills.models import SkillSource
+from app.agents.skills.models import Skill, SkillSource
 from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
+from app.constants.log_tags import LogTag
+from app.services.storage import JuiceFSUnavailable
 
 _SKILL_MD_CONTENT = """\
 ---
@@ -650,3 +657,396 @@ class TestInstallFromGithubValidation:
             ),
         ):
             await install_from_github(user_id="u1", repo_url="org/repo")
+
+
+def _skill_model(
+    skill_id: str = "skill-1",
+    name: str = "my-skill",
+    description: str = "A test skill",
+    target: str = "executor",
+    body_content: str | None = "Do the thing when asked.",
+) -> Skill:
+    return Skill(
+        id=skill_id,
+        user_id="u1",
+        name=name,
+        description=description,
+        target=target,
+        vfs_path=f"/skills/u1/{name}",
+        source=SkillSource.INLINE,
+        body_content=body_content,
+        files=["SKILL.md"],
+    )
+
+
+@pytest.fixture
+def update_seams():
+    """Mocks for update_skill_inline: the registry lookups, the registry
+    update, the VFS write boundary, and the wide-event logger."""
+    with (
+        patch(
+            "app.agents.skills.installer.get_skill",
+            new_callable=AsyncMock,
+        ) as get_mock,
+        patch(
+            "app.agents.skills.installer.get_skill_by_name",
+            new_callable=AsyncMock,
+        ) as get_by_name_mock,
+        patch(
+            "app.agents.skills.installer.update_skill",
+            new_callable=AsyncMock,
+        ) as update_mock,
+        patch(
+            "app.agents.skills.installer.ensure_user_skills_dir",
+            new_callable=AsyncMock,
+        ) as ensure_mock,
+        patch(
+            "app.agents.skills.installer.write_skill_file",
+            new_callable=AsyncMock,
+        ) as write_mock,
+        patch("app.agents.skills.installer.log") as log_mock,
+    ):
+        update_mock.return_value = sentinel.updated_skill
+        yield get_mock, get_by_name_mock, update_mock, ensure_mock, write_mock, log_mock
+
+
+@pytest.fixture
+def uninstall_seams():
+    """Mocks for uninstall_skill_full: the registry lookups, the VFS delete
+    boundary, the registry delete, and the wide-event logger."""
+    with (
+        patch(
+            "app.agents.skills.installer.get_skill",
+            new_callable=AsyncMock,
+        ) as get_mock,
+        patch(
+            "app.agents.skills.installer.delete_user_skill",
+            new_callable=AsyncMock,
+        ) as delete_mock,
+        patch(
+            "app.agents.skills.installer.uninstall_skill",
+            new_callable=AsyncMock,
+        ) as uninstall_mock,
+        patch("app.agents.skills.installer.log") as log_mock,
+    ):
+        yield get_mock, delete_mock, uninstall_mock, log_mock
+
+
+class TestInstallFromInline:
+    async def test_passes_exact_registry_and_vfs_contract(self, full_seams):
+        """Every install_skill kwarg, the VFS write, the storage path, and the
+        wide-event log calls must be exact — the inline path shares the flat
+        registry schema with the GitHub path."""
+        write_mock, install_mock, ensure_mock, log_mock = full_seams
+
+        result = await install_from_inline(
+            user_id="u1",
+            name="my-skill",
+            description="Inline description",
+            instructions="Do the inline thing.",
+            target="gmail_agent",
+            extra_metadata={"author": "Acme"},
+        )
+
+        assert result is sentinel.installed_skill
+        ensure_mock.assert_awaited_once_with("u1")
+        write_mock.assert_awaited_once_with("u1", "my-skill", "SKILL.md", "Do the inline thing.")
+        install_mock.assert_awaited_once()
+        assert install_mock.await_args.kwargs == {
+            "user_id": "u1",
+            "name": "my-skill",
+            "description": "Inline description",
+            "target": "gmail_agent",
+            "vfs_path": "/skills/u1/my-skill",
+            "source": SkillSource.INLINE,
+            "body_content": "Do the inline thing.",
+            "files": ["SKILL.md"],
+            "license": None,
+            "compatibility": None,
+            "metadata": {"author": "Acme"},
+            "allowed_tools": [],
+        }
+        log_mock.set.assert_called_once_with(
+            user_id="u1", skill={"operation": "install", "skill_name": "my-skill"}
+        )
+        log_mock.info.assert_called_once_with(
+            f"{LogTag.SKILLS} Created inline skill", skill_name="my-skill", target="gmail_agent"
+        )
+
+    async def test_default_target_and_no_metadata(self, storage_seams):
+        write_mock, install_mock = storage_seams
+
+        await install_from_inline(
+            user_id="u1",
+            name="my-skill",
+            description="A test skill",
+            instructions="Do the thing when asked.",
+        )
+
+        install_mock.assert_awaited_once()
+        assert install_mock.await_args.kwargs["target"] == "executor"
+        assert install_mock.await_args.kwargs["source"] is SkillSource.INLINE
+        assert install_mock.await_args.kwargs["metadata"] == {}
+        assert install_mock.await_args.kwargs["allowed_tools"] == []
+        write_mock.assert_awaited_once_with("u1", "my-skill", "SKILL.md", "Do the thing when asked.")
+
+    async def test_validation_errors_raise_and_abort(self, storage_seams):
+        write_mock, install_mock = storage_seams
+
+        with patch(
+            "app.agents.skills.installer.validate_skill_content",
+            return_value=["error one", "error two"],
+        ):
+            with pytest.raises(ValueError, match=re.escape("Invalid skill: error one; error two")):
+                await install_from_inline(
+                    user_id="u1",
+                    name="my-skill",
+                    description="A test skill",
+                    instructions="Do the thing when asked.",
+                )
+
+        write_mock.assert_not_awaited()
+        install_mock.assert_not_awaited()
+
+
+class TestUpdateSkillInline:
+    async def test_not_found_returns_none(self, update_seams):
+        get_mock, get_by_name_mock, update_mock, ensure_mock, write_mock, log_mock = update_seams
+        get_mock.return_value = None
+
+        result = await update_skill_inline("u1", "missing-id", description="New desc")
+
+        assert result is None
+        get_mock.assert_awaited_once_with("u1", "missing-id")
+        get_by_name_mock.assert_not_awaited()
+        update_mock.assert_not_awaited()
+        ensure_mock.assert_not_awaited()
+        write_mock.assert_not_awaited()
+        log_mock.set.assert_not_called()
+
+    async def test_description_only_update_keeps_body_and_skips_vfs(self, update_seams):
+        get_mock, get_by_name_mock, update_mock, ensure_mock, write_mock, log_mock = update_seams
+        get_mock.return_value = _skill_model()
+
+        result = await update_skill_inline("u1", "skill-1", description="Renamed description")
+
+        assert result is sentinel.updated_skill
+        get_by_name_mock.assert_not_awaited()
+        ensure_mock.assert_not_awaited()
+        write_mock.assert_not_awaited()
+        update_mock.assert_awaited_once_with(
+            "u1",
+            "skill-1",
+            {
+                "description": "Renamed description",
+                "target": "executor",
+                "body_content": "Do the thing when asked.",
+            },
+        )
+        log_mock.info.assert_called_once_with(
+            f"{LogTag.SKILLS} Updated inline skill", skill_name="my-skill", target="executor"
+        )
+
+    async def test_none_body_skill_description_update_keeps_empty_body(self, update_seams):
+        get_mock, get_by_name_mock, update_mock, ensure_mock, write_mock, _ = update_seams
+        get_mock.return_value = _skill_model(body_content=None)
+
+        await update_skill_inline("u1", "skill-1", description="Renamed description")
+
+        get_by_name_mock.assert_not_awaited()
+        ensure_mock.assert_not_awaited()
+        write_mock.assert_not_awaited()
+        update_mock.assert_awaited_once_with(
+            "u1",
+            "skill-1",
+            {
+                "description": "Renamed description",
+                "target": "executor",
+                "body_content": "",
+            },
+        )
+
+    async def test_skill_metadata_preserved_in_generated_frontmatter(self, update_seams):
+        get_mock, get_by_name_mock, update_mock, _, write_mock, _ = update_seams
+        skill = _skill_model()
+        skill.metadata = {"author": "Acme"}
+        get_mock.return_value = skill
+
+        with patch(
+            "app.agents.skills.installer.generate_skill_md",
+            return_value=_SKILL_MD_CONTENT,
+        ) as generate_mock:
+            await update_skill_inline("u1", "skill-1", description="Renamed description")
+
+        generate_mock.assert_called_once_with(
+            name="my-skill",
+            description="Renamed description",
+            instructions="Do the thing when asked.",
+            target="executor",
+            metadata={"author": "Acme"},
+        )
+        get_by_name_mock.assert_not_awaited()
+        write_mock.assert_not_awaited()
+        update_mock.assert_awaited_once_with(
+            "u1",
+            "skill-1",
+            {
+                "description": "A test skill installed from GitHub",
+                "target": "executor",
+                "body_content": "Do the thing when asked.",
+            },
+        )
+
+    async def test_instructions_change_rewrites_vfs_body(self, update_seams):
+        get_mock, _, update_mock, ensure_mock, write_mock, _ = update_seams
+        get_mock.return_value = _skill_model()
+
+        await update_skill_inline("u1", "skill-1", instructions="New instructions here.")
+
+        ensure_mock.assert_awaited_once_with("u1")
+        write_mock.assert_awaited_once_with("u1", "my-skill", "SKILL.md", "New instructions here.")
+        update_mock.assert_awaited_once_with(
+            "u1",
+            "skill-1",
+            {
+                "description": "A test skill",
+                "target": "executor",
+                "body_content": "New instructions here.",
+            },
+        )
+
+    async def test_retarget_checks_clash_with_target_skill(self, update_seams):
+        get_mock, get_by_name_mock, update_mock, ensure_mock, write_mock, _ = update_seams
+        get_mock.return_value = _skill_model()
+        get_by_name_mock.return_value = None
+
+        await update_skill_inline("u1", "skill-1", target="gmail_agent")
+
+        get_by_name_mock.assert_awaited_once_with("u1", "my-skill", "gmail_agent")
+        ensure_mock.assert_not_awaited()
+        write_mock.assert_not_awaited()
+        update_mock.assert_awaited_once_with(
+            "u1",
+            "skill-1",
+            {
+                "description": "A test skill",
+                "target": "gmail_agent",
+                "body_content": "Do the thing when asked.",
+            },
+        )
+
+    async def test_retarget_clash_with_other_skill_raises(self, update_seams):
+        get_mock, get_by_name_mock, update_mock, _, _, _ = update_seams
+        get_mock.return_value = _skill_model()
+        get_by_name_mock.return_value = _skill_model(skill_id="other-skill")
+
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "A skill named 'my-skill' already targets 'gmail_agent'. Rename or remove it first."
+            ),
+        ):
+            await update_skill_inline("u1", "skill-1", target="gmail_agent")
+
+        update_mock.assert_not_awaited()
+
+    async def test_retarget_same_skill_clash_is_allowed(self, update_seams):
+        get_mock, get_by_name_mock, update_mock, _, _, _ = update_seams
+        skill = _skill_model()
+        get_mock.return_value = skill
+        get_by_name_mock.return_value = skill
+
+        result = await update_skill_inline("u1", "skill-1", target="gmail_agent")
+
+        assert result is sentinel.updated_skill
+        get_by_name_mock.assert_awaited_once_with("u1", "my-skill", "gmail_agent")
+        update_mock.assert_awaited_once()
+
+    async def test_validation_errors_raise_and_abort(self, update_seams):
+        get_mock, get_by_name_mock, update_mock, _, _, _ = update_seams
+        get_mock.return_value = _skill_model()
+
+        with patch(
+            "app.agents.skills.installer.validate_skill_content",
+            return_value=["bad target", "no instructions"],
+        ):
+            with pytest.raises(
+                ValueError, match=re.escape("Invalid skill: bad target; no instructions")
+            ):
+                await update_skill_inline("u1", "skill-1", target="gmail_agent")
+
+        get_by_name_mock.assert_not_awaited()
+        update_mock.assert_not_awaited()
+
+
+class TestUninstallSkillFull:
+    async def test_not_found_returns_false(self, uninstall_seams):
+        get_mock, delete_mock, uninstall_mock, log_mock = uninstall_seams
+        get_mock.return_value = None
+
+        result = await uninstall_skill_full("u1", "missing-id")
+
+        assert result is False
+        get_mock.assert_awaited_once_with("u1", "missing-id")
+        delete_mock.assert_not_awaited()
+        uninstall_mock.assert_not_awaited()
+        log_mock.set.assert_not_called()
+
+    async def test_deletes_storage_and_registry_with_exact_args(self, uninstall_seams):
+        get_mock, delete_mock, uninstall_mock, log_mock = uninstall_seams
+        get_mock.return_value = _skill_model()
+        uninstall_mock.return_value = True
+
+        result = await uninstall_skill_full("u1", "skill-1")
+
+        assert result is True
+        delete_mock.assert_awaited_once_with("u1", "my-skill")
+        uninstall_mock.assert_awaited_once_with("u1", "skill-1")
+        log_mock.set.assert_called_once_with(
+            user_id="u1",
+            skill={"operation": "delete", "skill_id": "skill-1", "skill_name": "my-skill"},
+        )
+        log_mock.warning.assert_not_called()
+
+    async def test_storage_unavailable_still_uninstalls(self, uninstall_seams):
+        get_mock, delete_mock, uninstall_mock, log_mock = uninstall_seams
+        get_mock.return_value = _skill_model()
+        delete_mock.side_effect = JuiceFSUnavailable("mount down")
+        uninstall_mock.return_value = True
+
+        result = await uninstall_skill_full("u1", "skill-1")
+
+        assert result is True
+        uninstall_mock.assert_awaited_once_with("u1", "skill-1")
+        log_mock.warning.assert_called_once()
+        assert (
+            log_mock.warning.call_args.args[0]
+            == f"{LogTag.SKILLS} storage cleanup skipped (mount unavailable)"
+        )
+        assert log_mock.warning.call_args.kwargs["error_type"] == "JuiceFSUnavailable"
+
+    async def test_storage_other_error_logged_and_still_uninstalls(self, uninstall_seams):
+        get_mock, delete_mock, uninstall_mock, log_mock = uninstall_seams
+        get_mock.return_value = _skill_model()
+        delete_mock.side_effect = RuntimeError("boom")
+        uninstall_mock.return_value = True
+
+        result = await uninstall_skill_full("u1", "skill-1")
+
+        assert result is True
+        uninstall_mock.assert_awaited_once_with("u1", "skill-1")
+        log_mock.warning.assert_called_once()
+        assert log_mock.warning.call_args.args[0] == f"{LogTag.SKILLS} storage cleanup failed"
+        assert log_mock.warning.call_args.kwargs["skill_id"] == "skill-1"
+        assert log_mock.warning.call_args.kwargs["error_type"] == "RuntimeError"
+
+    async def test_registry_miss_returns_false(self, uninstall_seams):
+        get_mock, delete_mock, uninstall_mock, _ = uninstall_seams
+        get_mock.return_value = _skill_model()
+        uninstall_mock.return_value = False
+
+        result = await uninstall_skill_full("u1", "skill-1")
+
+        assert result is False
+        delete_mock.assert_awaited_once_with("u1", "my-skill")
+        uninstall_mock.assert_awaited_once_with("u1", "skill-1")
