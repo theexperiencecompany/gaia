@@ -1770,19 +1770,28 @@ class TestRunBlockingHandoff:
             patch(
                 "app.agents.core.subagents.handoff_tools.subagent_row_id",
                 return_value="sa-123",
-            ),
+            ) as mock_row,
             patch(
                 "app.agents.core.subagents.handoff_tools._resolve_display_metadata",
                 return_value=("Gmail", "https://x/icon.png", "gmail"),
-            ),
+            ) as mock_display,
             patch(
                 "app.agents.core.subagents.handoff_tools.format_subagent_start_event",
                 return_value={"type": "start"},
             ) as mock_start,
             patch(
                 "app.agents.core.subagents.handoff_tools.format_subagent_end_event",
-                return_value={"type": "end", "duration_ms": 42},
+                return_value={"type": "end", "duration_ms": 1000},
             ) as mock_end,
+            patch(
+                # Pin the elapsed-time computation so the emitted duration is
+                # deterministic (1s of mocked monotonic time, nonzero start so
+                # an operator swap like `+ start_time` or a `* 1001` scale
+                # change is observable) instead of whatever wall time the
+                # mocked run happens to take.
+                "app.agents.core.subagents.handoff_tools.time.monotonic",
+                side_effect=[5.0, 6.0],
+            ),
             patch(
                 "app.agents.core.subagents.handoff_tools.recover_from_checkpoint",
                 new_callable=AsyncMock,
@@ -1804,6 +1813,10 @@ class TestRunBlockingHandoff:
         assert result == "done"
         # Fresh runs skip the checkpoint probe entirely.
         mock_recover.assert_not_awaited()
+        mock_row.assert_called_once_with("tc-1")
+        mock_display.assert_called_once_with(
+            {"integration_id": "gmail"}, "gmail_agent", "gmail"
+        )
         mock_execute.assert_awaited_once_with(
             ctx=ctx,
             stream_writer=mock_writer,
@@ -1817,10 +1830,10 @@ class TestRunBlockingHandoff:
             icon_url="https://x/icon.png",
             tool_category="gmail",
         )
-        mock_end.assert_called_once_with(subagent_id="sa-123", duration_ms=42)
+        mock_end.assert_called_once_with(subagent_id="sa-123", duration_ms=1000)
         assert mock_writer.call_args_list == [
             call({"subagent_start": {"type": "start"}}),
-            call({"subagent_end": {"type": "end", "duration_ms": 42}}),
+            call({"subagent_end": {"type": "end", "duration_ms": 1000}}),
         ]
         # Stable subagent row id is propagated into both config layers.
         assert ctx.configurable["subagent_id"] == "sa-123"
@@ -1956,7 +1969,9 @@ class TestRunBlockingHandoff:
                 side_effect=[paused, SubagentOutcome(text="final")],
             ) as mock_execute,
         ):
-            result = await _run_blocking_handoff(ctx, None, "gmail_agent", "gmail", "tc-1")
+            result = await _run_blocking_handoff(
+                ctx, {"integration_id": "gmail"}, "gmail_agent", "gmail", "tc-1"
+            )
 
         assert result == "final"
         mock_gate.assert_called_once_with({"approval_id": "a1"})
@@ -1967,6 +1982,13 @@ class TestRunBlockingHandoff:
         resume_cmd = calls[1].kwargs["resume"]
         assert isinstance(resume_cmd, Command)
         assert resume_cmd.resume == "DECISION"
+        # The resume pass must forward the full execution context — nulling or
+        # dropping any kwarg would detach the resumed run from its subagent.
+        resume_call = calls[1].kwargs
+        assert resume_call["ctx"] is ctx
+        assert resume_call["stream_writer"] is mock_writer
+        assert resume_call["integration_metadata"] == {"integration_id": "gmail"}
+        assert resume_call["subagent_id"] == "sa-123"
 
 
 # ---------------------------------------------------------------------------
@@ -2006,6 +2028,94 @@ class TestResumeParkedSubagent:
         ):
             outcome = await resume_parked_subagent(self._record(), {}, MagicMock())
         assert outcome == SubagentOutcome(text="Error resuming gmail: subagent not resolvable")
+
+    async def test_partial_resolve_failure_treated_as_error(self):
+        # Only one of (graph, agent_name, integration_id) missing is still a
+        # resolution failure — the gate must not proceed with a partial set.
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._resolve_subagent",
+                new_callable=AsyncMock,
+                return_value=(None, "some_agent", "some_id", False),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.recover_from_checkpoint",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            outcome = await resume_parked_subagent(self._record(), {}, MagicMock())
+        assert outcome == SubagentOutcome(text="Error resuming gmail: some_id")
+
+    async def test_partial_resolve_failure_with_graph_only(self):
+        # Same gate, other side: a resolved graph with no agent name or id is
+        # still a failure — the disjunction must not collapse to a conjunction.
+        mock_graph = MagicMock()
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._resolve_subagent",
+                new_callable=AsyncMock,
+                return_value=(mock_graph, None, "some_id", False),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.recover_from_checkpoint",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            outcome = await resume_parked_subagent(self._record(), {}, MagicMock())
+        assert outcome == SubagentOutcome(text="Error resuming gmail: some_id")
+
+    async def test_missing_agent_name_falls_back_to_empty_string(self):
+        record = self._record(subagent_agent_name=None)
+        with patch(
+            "app.agents.core.subagents.handoff_tools._resolve_subagent",
+            new_callable=AsyncMock,
+            return_value=(None, None, "Boom", False),
+        ):
+            outcome = await resume_parked_subagent(record, {}, MagicMock())
+        assert outcome == SubagentOutcome(text="Error resuming : Boom")
+
+    async def test_paused_approved_outcome_resumes_with_approved_status(self):
+        mock_graph = MagicMock()
+        record = self._record(
+            status=HILApprovalStatus.APPROVED, feedback="yes", scope="once"
+        )
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._resolve_subagent",
+                new_callable=AsyncMock,
+                return_value=(mock_graph, "gmail_agent", "gmail", False),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_agent_config",
+                return_value="SUBAGENT_CONFIG",
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.agent_configurable",
+                return_value={},
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.recover_from_checkpoint",
+                new_callable=AsyncMock,
+                return_value=SubagentOutcome(text="", interrupt={"approval_id": "a1"}),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                new_callable=AsyncMock,
+                return_value=SubagentOutcome(text="done"),
+            ) as mock_execute,
+        ):
+            outcome = await resume_parked_subagent(record, {"stream_id": "s1"}, MagicMock())
+
+        assert outcome == SubagentOutcome(text="done")
+        # APPROVED stays APPROVED — it must not be coerced to a denial.
+        resume_cmd = mock_execute.await_args.kwargs["resume"]
+        assert resume_cmd.resume == {
+            "status": HILApprovalStatus.APPROVED,
+            "feedback": "yes",
+            "scope": "once",
+        }
 
     async def test_missing_checkpoint_returns_error(self):
         mock_graph = MagicMock()
@@ -2071,6 +2181,11 @@ class TestResumeParkedSubagent:
 
         assert outcome is recovered
         mock_recover.assert_awaited_once()
+        # The checkpoint probe is made against the reconstructed context, not a
+        # dropped one — and a missing stream_id yields None, not a placeholder.
+        recovered_ctx = mock_recover.await_args.args[0]
+        assert isinstance(recovered_ctx, SubagentExecutionContext)
+        assert recovered_ctx.stream_id is None
         mock_execute.assert_not_awaited()
 
     async def test_paused_outcome_resumes_with_mapped_decision(self):
@@ -2084,7 +2199,7 @@ class TestResumeParkedSubagent:
                 "app.agents.core.subagents.handoff_tools._resolve_subagent",
                 new_callable=AsyncMock,
                 return_value=(mock_graph, "gmail_agent", "gmail", False),
-            ),
+            ) as mock_resolve,
             patch(
                 "app.agents.core.subagents.handoff_tools.build_agent_config",
                 return_value="SUBAGENT_CONFIG",
@@ -2105,16 +2220,21 @@ class TestResumeParkedSubagent:
             ) as mock_execute,
         ):
             outcome = await resume_parked_subagent(
-                record, {"stream_id": "s1", "email": "e@x.com"}, mock_writer
+                record,
+                {"stream_id": "s1", "email": "e@x.com", "user_name": "Bob"},
+                mock_writer,
             )
 
         assert outcome == SubagentOutcome(text="done")
+        # The resume is driven from the record's agent name and user id — not
+        # a nulled or dropped argument.
+        mock_resolve.assert_awaited_once_with("gmail", "user1")
         # Everything is reconstructed from the record + configurable.
         mock_build_config.assert_called_once_with(
             conversation_id="c1",
-            user={"user_id": "user1", "email": "e@x.com", "name": None},
+            user={"user_id": "user1", "email": "e@x.com", "name": "Bob"},
             thread_id="gmail_t1",
-            base_configurable={"stream_id": "s1", "email": "e@x.com"},
+            base_configurable={"stream_id": "s1", "email": "e@x.com", "user_name": "Bob"},
             agent_name="gmail_agent",
             subagent_id="gmail_agent",
         )
@@ -2134,6 +2254,11 @@ class TestResumeParkedSubagent:
         assert ctx.integration_id == "gmail"
         assert ctx.user_id == "user1"
         assert ctx.stream_id == "s1"
+        # The reconstructed context carries the resolved graph, config and
+        # initial state rather than nulled placeholders.
+        assert ctx.subagent_graph is mock_graph
+        assert ctx.config == "SUBAGENT_CONFIG"
+        assert ctx.initial_state == {}
 
 
 # ---------------------------------------------------------------------------
@@ -2185,7 +2310,7 @@ class TestHandoffTool:
             patch(
                 "app.agents.core.subagents.handoff_tools.agent_configurable",
                 return_value={},
-            ),
+            ) as mock_configurable,
             patch(
                 "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
                 new_callable=AsyncMock,
@@ -2197,7 +2322,33 @@ class TestHandoffTool:
                 task="t",
                 config={"configurable": {}, "metadata": {"user_id": "meta-user"}},
             )
+        mock_configurable.assert_called_once_with(
+            {"configurable": {}, "metadata": {"user_id": "meta-user"}}
+        )
         assert mock_prepare.await_args.kwargs["configurable"]["user_id"] == "meta-user"
+        # The delegation target, task and stream are forwarded as given.
+        assert mock_prepare.await_args.kwargs["subagent_id"] == "missing"
+        assert mock_prepare.await_args.kwargs["task"] == "t"
+        assert mock_prepare.await_args.kwargs["stream_id"] is None
+
+    async def test_missing_metadata_key_is_tolerated(self):
+        # A config without a metadata key must not crash the user_id fallback.
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.agent_configurable",
+                return_value={},
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
+                new_callable=AsyncMock,
+                return_value=(None, None, "Boom"),
+            ) as mock_prepare,
+        ):
+            result = await handoff.coroutine(
+                subagent_id="missing", task="t", config={"configurable": {}}
+            )
+        assert result == "Boom"
+        mock_prepare.assert_awaited_once()
 
     async def test_refuses_parked_subagent(self):
         ctx = _make_ctx()
@@ -2215,7 +2366,7 @@ class TestHandoffTool:
                 "app.agents.core.subagents.handoff_tools._has_parked_subagent",
                 new_callable=AsyncMock,
                 return_value=True,
-            ),
+            ) as mock_parked,
             patch(
                 "app.agents.core.subagents.handoff_tools._run_blocking_handoff",
                 new_callable=AsyncMock,
@@ -2229,6 +2380,7 @@ class TestHandoffTool:
             "Call wait_for_subagents() to collect its outcome before sending it "
             "new tasks."
         )
+        mock_parked.assert_awaited_once_with(ctx)
         mock_blocking.assert_not_awaited()
 
     async def test_refuses_blocking_handoff_while_background_runs(self):
@@ -2267,7 +2419,9 @@ class TestHandoffTool:
         mock_has_bg.assert_called_once_with("s1", "gmail")
         mock_blocking.assert_not_awaited()
 
-    async def test_background_without_stream_id_falls_back_to_blocking(self):
+    async def test_background_conflict_check_probes_empty_stream_id(self):
+        # Without a stream_id the conflict probe must use the empty string —
+        # a placeholder fallback would check the wrong session slot.
         ctx = _make_ctx()
         with (
             patch(
@@ -2278,6 +2432,40 @@ class TestHandoffTool:
                 "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
                 new_callable=AsyncMock,
                 return_value=(ctx, None, None),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools._has_parked_subagent",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.has_bg_integration",
+                return_value=False,
+            ) as mock_has_bg,
+            patch(
+                "app.agents.core.subagents.handoff_tools._run_blocking_handoff",
+                new_callable=AsyncMock,
+                return_value="RESULT",
+            ) as mock_blocking,
+        ):
+            result = await handoff.coroutine(
+                subagent_id="gmail", task="t", config=self._config(), tool_call_id="tc-1"
+            )
+        assert result == "RESULT"
+        mock_has_bg.assert_called_once_with("", "gmail")
+        mock_blocking.assert_awaited_once_with(ctx, None, "gmail_agent", "gmail", "tc-1", False)
+
+    async def test_background_without_stream_id_falls_back_to_blocking(self):
+        ctx = _make_ctx()
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.agent_configurable",
+                return_value={"user_id": "user1"},
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
+                new_callable=AsyncMock,
+                return_value=(ctx, {"integration_id": "gmail"}, None),
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools._has_parked_subagent",
@@ -2306,8 +2494,13 @@ class TestHandoffTool:
             "[WARNING: background handoff fell back to blocking — "
             "stream_id not propagated into executor configurable] BLOCKING"
         )
-        mock_log.warning.assert_called_once()
-        mock_blocking.assert_awaited_once_with(ctx, None, "gmail_agent", "gmail", "tc-1", False)
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.AGENT} handoff background=True but stream_id is missing — "
+            "falling back to blocking execution"
+        )
+        mock_blocking.assert_awaited_once_with(
+            ctx, {"integration_id": "gmail"}, "gmail_agent", "gmail", "tc-1", False
+        )
 
     async def test_background_claim_conflict_refuses(self):
         ctx = _make_ctx()
@@ -2408,6 +2601,136 @@ class TestHandoffTool:
         mock_spawn.assert_not_called()
         mock_increment.assert_not_called()
 
+    async def test_background_dispatch_without_tool_call_id_skips_dispatch_claim(self):
+        # An omitted tool_call_id (InjectedToolCallId default "") is falsy, so
+        # the idempotency claim is skipped and the task spawns. A non-empty
+        # default would probe the claim and take the replay-release branch.
+        ctx = _make_ctx(conversation_id="c1")
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.agent_configurable",
+                return_value={"user_id": "user1", "stream_id": "s1"},
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
+                new_callable=AsyncMock,
+                return_value=(ctx, None, None),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools._has_parked_subagent",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.has_bg_integration",
+                return_value=False,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.claim_bg_integration",
+                return_value=True,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.try_claim_bg_dispatch",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as mock_try_claim,
+            patch(
+                "app.agents.core.subagents.handoff_tools.uuid4",
+                return_value="bg-uuid",
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools._resolve_display_metadata",
+                return_value=("Gmail", None, "gmail"),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.increment_pending_subagents",
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.run_subagent_background",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.spawn_background_task",
+            ) as mock_spawn,
+            patch("app.agents.core.subagents.handoff_tools.log"),
+        ):
+            result = await handoff.coroutine(
+                subagent_id="gmail", task="t", config=self._config(), background=True
+            )
+        assert result == (
+            "Subagent gmail_agent started in background. "
+            "Call wait_for_subagents() when ready to collect results."
+        )
+        mock_try_claim.assert_not_awaited()
+        mock_spawn.assert_called_once()
+
+    async def test_background_replay_without_conversation_id_skips_dispatch_claim(self):
+        # No conversation id in the context: the idempotency claim is skipped
+        # and the task spawns. A non-empty fallback would flip this into the
+        # replay-release branch and drop the spawn.
+        ctx = _make_ctx()
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.agent_configurable",
+                return_value={"user_id": "user1", "stream_id": "s1"},
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
+                new_callable=AsyncMock,
+                return_value=(ctx, None, None),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools._has_parked_subagent",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.has_bg_integration",
+                return_value=False,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.claim_bg_integration",
+                return_value=True,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.try_claim_bg_dispatch",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as mock_try_claim,
+            patch(
+                "app.agents.core.subagents.handoff_tools.uuid4",
+                return_value="bg-uuid",
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools._resolve_display_metadata",
+                return_value=("Gmail", None, "gmail"),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.increment_pending_subagents",
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.run_subagent_background",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.spawn_background_task",
+            ) as mock_spawn,
+            patch("app.agents.core.subagents.handoff_tools.log"),
+        ):
+            result = await handoff.coroutine(
+                subagent_id="gmail",
+                task="t",
+                config=self._config(),
+                background=True,
+                tool_call_id="tc-1",
+            )
+        assert result == (
+            "Subagent gmail_agent started in background. "
+            "Call wait_for_subagents() when ready to collect results."
+        )
+        mock_try_claim.assert_not_awaited()
+        mock_spawn.assert_called_once()
+
     async def test_background_dispatch_spawns_task(self):
         ctx = _make_ctx(conversation_id="c1")
         with (
@@ -2445,7 +2768,7 @@ class TestHandoffTool:
             patch(
                 "app.agents.core.subagents.handoff_tools._resolve_display_metadata",
                 return_value=("Gmail", "https://x/icon.png", "gmail"),
-            ),
+            ) as mock_resolve_display,
             patch(
                 "app.agents.core.subagents.handoff_tools.increment_pending_subagents",
             ) as mock_increment,
@@ -2472,6 +2795,11 @@ class TestHandoffTool:
         mock_claim.assert_called_once_with("s1", "gmail")
         mock_try_claim.assert_awaited_once_with("c1", "tc-1")
         mock_increment.assert_called_once_with("s1")
+        # Display metadata is derived from the resolved integration metadata,
+        # agent name and integration id — not nulled or dropped arguments.
+        mock_resolve_display.assert_called_once_with(
+            {"integration_id": "gmail"}, "gmail_agent", "gmail"
+        )
         mock_runner.assert_called_once_with(
             ctx=ctx,
             stream_id="s1",
@@ -2501,8 +2829,8 @@ class TestHandoffTool:
             patch(
                 "app.agents.core.subagents.handoff_tools.prepare_subagent_execution",
                 new_callable=AsyncMock,
-                return_value=(ctx, None, None),
-            ),
+                return_value=(ctx, {"integration_id": "gmail"}, None),
+            ) as mock_prepare,
             patch(
                 "app.agents.core.subagents.handoff_tools._has_parked_subagent",
                 new_callable=AsyncMock,
@@ -2522,7 +2850,12 @@ class TestHandoffTool:
                 subagent_id="gmail", task="t", config=self._config(), tool_call_id="tc-1"
             )
         assert result == "RESULT"
-        mock_blocking.assert_awaited_once_with(ctx, None, "gmail_agent", "gmail", "tc-1", False)
+        # The stream id is forwarded into preparation, and the resolved
+        # integration metadata reaches the blocking run unchanged.
+        assert mock_prepare.await_args.kwargs["stream_id"] == "s1"
+        mock_blocking.assert_awaited_once_with(
+            ctx, {"integration_id": "gmail"}, "gmail_agent", "gmail", "tc-1", False
+        )
 
     async def test_resume_replay_enables_checkpoint_probe(self):
         ctx = _make_ctx()
@@ -2558,6 +2891,7 @@ class TestHandoffTool:
         mock_blocking.assert_awaited_once_with(ctx, None, "gmail_agent", "gmail", "tc-1", True)
 
     async def test_exception_returns_error_and_logs(self):
+        error_msg = "x" * 600
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools.agent_configurable",
@@ -2580,20 +2914,21 @@ class TestHandoffTool:
             patch(
                 "app.agents.core.subagents.handoff_tools._run_blocking_handoff",
                 new_callable=AsyncMock,
-                side_effect=RuntimeError("boom"),
+                side_effect=RuntimeError(error_msg),
             ),
             patch("app.agents.core.subagents.handoff_tools.log") as mock_log,
         ):
             result = await handoff.coroutine(
                 subagent_id="gmail", task="t", config=self._config(), tool_call_id="tc-1"
             )
-        assert result == "Error executing task: boom"
+        assert result == f"Error executing task: {error_msg}"
         mock_log.error.assert_called_once_with(
             f"{LogTag.AGENT} handoff_failed",
             subagent_id="gmail",
             user_id="user1",
             error_type="RuntimeError",
-            error="boom",
+            # The logged error is truncated to 500 chars.
+            error="x" * 500,
             exc_info=True,
         )
 
