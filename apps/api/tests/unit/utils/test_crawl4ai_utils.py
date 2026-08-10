@@ -2,10 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
-
-@pytest.mark.unit
 class TestBatchFetchWithCrawl4ai:
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
     async def test_matches_redirected_results_to_requested_urls(

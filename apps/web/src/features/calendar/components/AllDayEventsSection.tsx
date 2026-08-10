@@ -141,6 +141,69 @@ const getMultiDayEventPositions = (
   return multiDayEvents;
 };
 
+interface MultiDayEventBarProps {
+  eventPos: MultiDayEventPosition;
+  columnWidth: number;
+  getEventColor: (event: GoogleCalendarEvent) => string;
+  onEventClick?: (event: GoogleCalendarEvent) => void;
+}
+
+const MultiDayEventBar: React.FC<MultiDayEventBarProps> = ({
+  eventPos,
+  columnWidth,
+  getEventColor,
+  onEventClick,
+}) => {
+  const eventColor = getEventColor(eventPos.event);
+  const leftOffset = eventPos.startDayIndex * columnWidth;
+  const width = eventPos.span * columnWidth - 4;
+
+  return (
+    <div
+      className="absolute"
+      style={{
+        top: `${eventPos.row * 29 + 8}px`,
+        left: `${leftOffset}px`,
+        width: `${width}px`,
+        height: "28px",
+      }}
+    >
+      <div
+        className="sti flex h-7 cursor-pointer items-center overflow-hidden text-white transition-opacity hover:opacity-80"
+        style={{
+          backgroundColor: `${eventColor}40`,
+          borderTopLeftRadius: eventPos.continuesLeft ? "0px" : "6px",
+          borderBottomLeftRadius: eventPos.continuesLeft ? "0px" : "6px",
+          borderTopRightRadius: eventPos.continuesRight ? "0px" : "6px",
+          borderBottomRightRadius: eventPos.continuesRight ? "0px" : "6px",
+        }}
+        onClick={() => onEventClick?.(eventPos.event)}
+      >
+        <div
+          className="h-full flex-shrink-0"
+          style={{
+            backgroundColor: eventColor,
+            width: "4px",
+            borderTopLeftRadius: eventPos.continuesLeft ? "0px" : "6px",
+            borderBottomLeftRadius: eventPos.continuesLeft ? "0px" : "6px",
+          }}
+        />
+        <div className="flex flex-1 items-center overflow-hidden px-2">
+          {eventPos.continuesLeft && (
+            <span className="mr-1 text-xs opacity-70">←</span>
+          )}
+          <div className="flex-1 truncate text-xs font-medium">
+            {eventPos.event.summary}
+          </div>
+          {eventPos.continuesRight && (
+            <span className="ml-1 text-xs opacity-70">→</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
   events,
   dates,
@@ -238,69 +301,15 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
                 ))}
               </div>
 
-              {multiDayEvents.map((eventPos) => {
-                const eventColor = getEventColor(eventPos.event);
-                const leftOffset = eventPos.startDayIndex * columnWidth;
-                const width = eventPos.span * columnWidth - 4;
-
-                return (
-                  <div
-                    key={eventPos.event.id}
-                    className="absolute"
-                    style={{
-                      top: `${eventPos.row * 29 + 8}px`,
-                      left: `${leftOffset}px`,
-                      width: `${width}px`,
-                      height: "28px",
-                    }}
-                  >
-                    <div
-                      className="sti flex h-7 cursor-pointer items-center overflow-hidden text-white transition-opacity hover:opacity-80"
-                      style={{
-                        backgroundColor: `${eventColor}40`,
-                        borderTopLeftRadius: eventPos.continuesLeft
-                          ? "0px"
-                          : "6px",
-                        borderBottomLeftRadius: eventPos.continuesLeft
-                          ? "0px"
-                          : "6px",
-                        borderTopRightRadius: eventPos.continuesRight
-                          ? "0px"
-                          : "6px",
-                        borderBottomRightRadius: eventPos.continuesRight
-                          ? "0px"
-                          : "6px",
-                      }}
-                      onClick={() => onEventClick?.(eventPos.event)}
-                    >
-                      <div
-                        className="h-full flex-shrink-0"
-                        style={{
-                          backgroundColor: eventColor,
-                          width: "4px",
-                          borderTopLeftRadius: eventPos.continuesLeft
-                            ? "0px"
-                            : "6px",
-                          borderBottomLeftRadius: eventPos.continuesLeft
-                            ? "0px"
-                            : "6px",
-                        }}
-                      />
-                      <div className="flex flex-1 items-center overflow-hidden px-2">
-                        {eventPos.continuesLeft && (
-                          <span className="mr-1 text-xs opacity-70">←</span>
-                        )}
-                        <div className="flex-1 truncate text-xs font-medium">
-                          {eventPos.event.summary}
-                        </div>
-                        {eventPos.continuesRight && (
-                          <span className="ml-1 text-xs opacity-70">→</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {multiDayEvents.map((eventPos) => (
+                <MultiDayEventBar
+                  key={eventPos.event.id}
+                  eventPos={eventPos}
+                  columnWidth={columnWidth}
+                  getEventColor={getEventColor}
+                  onEventClick={onEventClick}
+                />
+              ))}
             </div>
           </div>
         ) : (

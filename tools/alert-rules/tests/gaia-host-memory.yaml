@@ -1,0 +1,37 @@
+# gaia-host-memory — fires when the host is >90% memory used for 10m.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-host-memory fires when memory usage is 93.75%
+    interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes'
+        values: '1073741824x30'
+      - series: 'node_memory_MemTotal_bytes'
+        values: '17179869184x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-host-memory
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: host
+            exp_annotations:
+              description: >-
+                Sustained memory pressure on the single production node is what precedes kernel OOM kills and the Swarm restarts that follow them. The largest limits on this box are the API at 4G, the embedding sidecar at 3G, and the ARQ worker and voice agent at 2G each — check "Memory Usage per Container" to see which one is growing.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-memory
+              __dashboardUid__: gaia-host
+              __panelId__: '2'
+
+  - name: gaia-host-memory stays quiet under 90% usage
+    interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes'
+        values: '4294967296x30'
+      - series: 'node_memory_MemTotal_bytes'
+        values: '17179869184x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-host-memory
+        exp_alerts: []

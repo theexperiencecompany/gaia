@@ -22,6 +22,8 @@ def derive_integration_namespace(
     """
     if is_custom and server_url:
         namespace = get_tool_namespace_from_url(server_url, fallback=integration_id)
-        log.debug(f"Derived namespace '{namespace}' from URL for {integration_id}")
+        log.debug(
+            "Derived namespace from URL for", namespace=namespace, integration_id=integration_id
+        )
         return namespace
     return integration_id

@@ -5,9 +5,8 @@ This extracts the section to snippets/get-started.mdx and replaces all occurrenc
 with <Snippet file="get-started.mdx" />
 """
 
-import os
-import re
 from pathlib import Path
+import re
 
 # Define the snippet content
 SNIPPET_CONTENT = """## Get Started with GAIA
@@ -46,7 +45,7 @@ def find_mdx_files(docs_dir: Path):
 
 def replace_in_file(file_path: Path):
     """Replace the "Get Started with GAIA" section with snippet reference in a file."""
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read()
 
     # Pattern to match the entire "Get Started with GAIA" section
@@ -71,15 +70,11 @@ def replace_in_file(file_path: Path):
         # Add import statement after frontmatter if not already present
         if SNIPPET_IMPORT not in new_content:
             # Find the end of frontmatter (---...---) and insert import after it
-            frontmatter_end = re.search(
-                r"^---\n.*?\n---\n", new_content, re.MULTILINE | re.DOTALL
-            )
+            frontmatter_end = re.search(r"^---\n.*?\n---\n", new_content, re.MULTILINE | re.DOTALL)
             if frontmatter_end:
                 insert_pos = frontmatter_end.end()
                 new_content = (
-                    new_content[:insert_pos]
-                    + f"\n{SNIPPET_IMPORT}\n"
-                    + new_content[insert_pos:]
+                    new_content[:insert_pos] + f"\n{SNIPPET_IMPORT}\n" + new_content[insert_pos:]
                 )
 
         # Write back to file
@@ -101,7 +96,7 @@ def main():
     print()
 
     # Step 1: Create the snippet file
-    snippet_path = create_snippet_file(docs_dir)
+    create_snippet_file(docs_dir)
     print()
 
     # Step 2: Find all .mdx files
@@ -126,8 +121,8 @@ def main():
 
     print()
     print("=" * 60)
-    print(f"✓ Refactoring complete!")
-    print(f"  - Created snippet: snippets/get-started.mdx")
+    print("✓ Refactoring complete!")
+    print("  - Created snippet: snippets/get-started.mdx")
     print(f"  - Updated {replaced_count} files")
     print("=" * 60)
 

@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "Email and calendar integrations require custom pack setup",
     "Overkill for users who want an AI assistant rather than a document builder",
   ],
-  metaTitle: "Best Coda Alternative in 2026 | GAIA",
+  metaTitle: "Best Coda Alternative in 2026",
   metaDescription:
     "Coda requires extensive setup with no proactive AI. GAIA manages tasks, email, and calendar automatically with zero configuration. Free tier + self-hosting.",
   keywords: [

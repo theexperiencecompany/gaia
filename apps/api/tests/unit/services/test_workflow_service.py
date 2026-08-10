@@ -6,13 +6,14 @@ Covers:
   - app/services/workflow/queue_service.py
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.models.workflow_execution_models import (
     WorkflowExecution,
+    WorkflowExecutionDocument,
     WorkflowExecutionsResponse,
 )
 from app.models.workflow_models import (
@@ -64,26 +65,25 @@ def _make_workflow(
     )
 
 
-def _make_execution_doc(
+def _make_execution(
     *,
     execution_id: str = EXECUTION_ID,
     started_at: datetime | None = None,
     status: str = "running",
-) -> dict:
-    """Build a raw MongoDB execution document."""
-    return {
+    duration_seconds: float | None = None,
+    **overrides: object,
+) -> WorkflowExecutionDocument:
+    """Build a typed execution document — what the repository returns."""
+    data: dict[str, object] = {
         "execution_id": execution_id,
         "workflow_id": WORKFLOW_ID,
         "user_id": USER_ID,
         "status": status,
         "started_at": started_at or datetime.now(UTC),
-        "completed_at": None,
-        "duration_seconds": None,
-        "conversation_id": None,
-        "summary": None,
-        "error_message": None,
-        "trigger_type": "manual",
+        "duration_seconds": duration_seconds,
     }
+    data.update(overrides)
+    return WorkflowExecutionDocument.model_validate(data)
 
 
 # ---------------------------------------------------------------------------
@@ -92,17 +92,27 @@ def _make_execution_doc(
 
 
 @pytest.fixture
-def mock_executions_collection():
-    """Patch the workflow_executions_collection used by execution_service."""
+def mock_executions_repo():
+    """Patch the repository singleton used by execution_service.
+
+    Services mock the repository, never the DB — the persistence behavior (id
+    round-trip, duration, sorting, pagination) is covered by the repository's
+    contract suite, so these tests assert only the service's own behavior.
+    """
     with patch(
-        "app.services.workflow.execution_service.workflow_executions_collection"
-    ) as mock_col:
-        yield mock_col
+        "app.services.workflow.execution_service.workflow_executions_repository"
+    ) as mock_repo:
+        yield mock_repo
 
 
 @pytest.fixture
-def mock_redis_pool():
-    """Patch RedisPoolManager.get_pool used by WorkflowQueueService."""
+def mock_redis_pool(route_enqueue_via_pool):
+    """Patch RedisPoolManager.get_pool used by WorkflowQueueService.
+
+    ``route_enqueue_via_pool`` (shared conftest) routes the wide-event enqueue
+    wrapper through pool.enqueue_job, so the tests' existing pool mocks and
+    assertions stay authoritative.
+    """
     with patch("app.services.workflow.queue_service.RedisPoolManager.get_pool") as mock_get_pool:
         mock_pool = AsyncMock()
         mock_get_pool.return_value = mock_pool
@@ -114,48 +124,38 @@ def mock_redis_pool():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateExecution:
-    async def test_inserts_execution_record_with_running_status(self, mock_executions_collection):
-        mock_executions_collection.insert_one = AsyncMock()
-
-        await create_execution(
-            workflow_id=WORKFLOW_ID,
-            user_id=USER_ID,
-        )
-
-        mock_executions_collection.insert_one.assert_awaited_once()
-        inserted_doc = mock_executions_collection.insert_one.call_args[0][0]
-        assert inserted_doc["status"] == "running"
-        assert inserted_doc["workflow_id"] == WORKFLOW_ID
-        assert inserted_doc["user_id"] == USER_ID
-        assert inserted_doc["trigger_type"] == "manual"
-
-    async def test_returns_workflow_execution_instance(self, mock_executions_collection):
-        mock_executions_collection.insert_one = AsyncMock()
+    async def test_builds_running_execution_and_returns_it(self, mock_executions_repo):
+        mock_executions_repo.create = AsyncMock(side_effect=lambda doc: doc)
 
         result = await create_execution(workflow_id=WORKFLOW_ID, user_id=USER_ID)
 
         assert isinstance(result, WorkflowExecution)
         assert result.status == "running"
+        assert result.workflow_id == WORKFLOW_ID
+        assert result.user_id == USER_ID
+        assert result.trigger_type == "manual"
+        # The service builds the document and hands it to the repository verbatim.
+        created_doc = mock_executions_repo.create.call_args[0][0]
+        assert created_doc.execution_id == result.execution_id
 
-    async def test_execution_id_has_exec_prefix(self, mock_executions_collection):
-        mock_executions_collection.insert_one = AsyncMock()
+    async def test_execution_id_has_exec_prefix(self, mock_executions_repo):
+        mock_executions_repo.create = AsyncMock(side_effect=lambda doc: doc)
 
         result = await create_execution(WORKFLOW_ID, USER_ID)
 
         assert result.execution_id.startswith("exec_")
 
-    async def test_execution_id_is_unique_each_call(self, mock_executions_collection):
-        mock_executions_collection.insert_one = AsyncMock()
+    async def test_execution_id_is_unique_each_call(self, mock_executions_repo):
+        mock_executions_repo.create = AsyncMock(side_effect=lambda doc: doc)
 
         result1 = await create_execution(WORKFLOW_ID, USER_ID)
         result2 = await create_execution(WORKFLOW_ID, USER_ID)
 
         assert result1.execution_id != result2.execution_id
 
-    async def test_respects_custom_trigger_type(self, mock_executions_collection):
-        mock_executions_collection.insert_one = AsyncMock()
+    async def test_respects_custom_trigger_type(self, mock_executions_repo):
+        mock_executions_repo.create = AsyncMock(side_effect=lambda doc: doc)
 
         result = await create_execution(
             workflow_id=WORKFLOW_ID,
@@ -164,11 +164,9 @@ class TestCreateExecution:
         )
 
         assert result.trigger_type == "gmail"
-        doc = mock_executions_collection.insert_one.call_args[0][0]
-        assert doc["trigger_type"] == "gmail"
 
-    async def test_stores_conversation_id_when_provided(self, mock_executions_collection):
-        mock_executions_collection.insert_one = AsyncMock()
+    async def test_stores_conversation_id_when_provided(self, mock_executions_repo):
+        mock_executions_repo.create = AsyncMock(side_effect=lambda doc: doc)
 
         result = await create_execution(
             workflow_id=WORKFLOW_ID,
@@ -177,11 +175,9 @@ class TestCreateExecution:
         )
 
         assert result.conversation_id == "conv_abc"
-        doc = mock_executions_collection.insert_one.call_args[0][0]
-        assert doc["conversation_id"] == "conv_abc"
 
-    async def test_started_at_is_recent_utc_datetime(self, mock_executions_collection):
-        mock_executions_collection.insert_one = AsyncMock()
+    async def test_started_at_is_recent_utc_datetime(self, mock_executions_repo):
+        mock_executions_repo.create = AsyncMock(side_effect=lambda doc: doc)
         before = datetime.now(UTC)
 
         result = await create_execution(WORKFLOW_ID, USER_ID)
@@ -196,119 +192,56 @@ class TestCreateExecution:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCompleteExecution:
-    async def test_updates_status_and_completed_at(self, mock_executions_collection):
-        started_at = datetime.now(UTC) - timedelta(seconds=30)
-        mock_executions_collection.find_one = AsyncMock(
-            return_value=_make_execution_doc(started_at=started_at)
+    async def test_returns_true_and_forwards_completion_fields(self, mock_executions_repo):
+        mock_executions_repo.complete = AsyncMock(
+            return_value=_make_execution(status="success", duration_seconds=30.0)
         )
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
 
-        result = await complete_execution(EXECUTION_ID, status="success")
+        result = await complete_execution(EXECUTION_ID, status="success", summary="Did 3 things")
 
         assert result is True
-        mock_executions_collection.update_one.assert_awaited_once()
-        update_filter, update_body = mock_executions_collection.update_one.call_args[0]
-        assert update_filter == {"execution_id": EXECUTION_ID}
-        update_set = update_body["$set"]
-        assert update_set["status"] == "success"
-        assert "completed_at" in update_set
-
-    async def test_calculates_duration_from_started_at(self, mock_executions_collection):
-        started_at = datetime.now(UTC) - timedelta(seconds=45)
-        mock_executions_collection.find_one = AsyncMock(
-            return_value=_make_execution_doc(started_at=started_at)
+        mock_executions_repo.complete.assert_awaited_once_with(
+            EXECUTION_ID,
+            status="success",
+            summary="Did 3 things",
+            error_message=None,
+            conversation_id=None,
         )
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
 
-        await complete_execution(EXECUTION_ID, status="success")
-
-        update_set = mock_executions_collection.update_one.call_args[0][1]["$set"]
-        # Duration should be roughly 45 seconds (allow ±5s tolerance)
-        assert update_set["duration_seconds"] is not None
-        assert 40 <= update_set["duration_seconds"] <= 50
-
-    async def test_stores_summary_when_provided(self, mock_executions_collection):
-        mock_executions_collection.find_one = AsyncMock(return_value=_make_execution_doc())
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
-
-        await complete_execution(EXECUTION_ID, status="success", summary="Did 3 things")
-
-        update_set = mock_executions_collection.update_one.call_args[0][1]["$set"]
-        assert update_set["summary"] == "Did 3 things"
-
-    async def test_stores_error_message_when_provided(self, mock_executions_collection):
-        mock_executions_collection.find_one = AsyncMock(return_value=_make_execution_doc())
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
+    async def test_forwards_error_message(self, mock_executions_repo):
+        mock_executions_repo.complete = AsyncMock(
+            return_value=_make_execution(status="failed", error_message="Tool call failed")
+        )
 
         await complete_execution(EXECUTION_ID, status="failed", error_message="Tool call failed")
 
-        update_set = mock_executions_collection.update_one.call_args[0][1]["$set"]
-        assert update_set["error_message"] == "Tool call failed"
+        assert mock_executions_repo.complete.call_args.kwargs["error_message"] == "Tool call failed"
 
-    async def test_sets_conversation_id_when_provided(self, mock_executions_collection):
-        mock_executions_collection.find_one = AsyncMock(return_value=_make_execution_doc())
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
+    async def test_forwards_conversation_id(self, mock_executions_repo):
+        mock_executions_repo.complete = AsyncMock(
+            return_value=_make_execution(conversation_id="conv_xyz")
+        )
 
         await complete_execution(EXECUTION_ID, status="success", conversation_id="conv_xyz")
 
-        update_set = mock_executions_collection.update_one.call_args[0][1]["$set"]
-        assert update_set["conversation_id"] == "conv_xyz"
+        assert mock_executions_repo.complete.call_args.kwargs["conversation_id"] == "conv_xyz"
 
-    async def test_returns_false_when_execution_not_found(self, mock_executions_collection):
-        mock_executions_collection.find_one = AsyncMock(return_value=None)
+    async def test_returns_false_when_execution_not_found(self, mock_executions_repo):
+        mock_executions_repo.complete = AsyncMock(return_value=None)
 
         result = await complete_execution("exec_nonexistent", status="success")
 
         assert result is False
-        mock_executions_collection.update_one.assert_not_called()
 
-    async def test_returns_false_when_update_modifies_nothing(self, mock_executions_collection):
-        mock_executions_collection.find_one = AsyncMock(return_value=_make_execution_doc())
-        mock_result = MagicMock()
-        mock_result.modified_count = 0
-        mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
+    async def test_returns_true_when_duration_is_none(self, mock_executions_repo):
+        mock_executions_repo.complete = AsyncMock(
+            return_value=_make_execution(status="success", duration_seconds=None)
+        )
 
         result = await complete_execution(EXECUTION_ID, status="success")
 
-        assert result is False
-
-    async def test_duration_is_none_when_started_at_missing(self, mock_executions_collection):
-        doc = _make_execution_doc()
-        doc["started_at"] = None  # simulate missing field
-        mock_executions_collection.find_one = AsyncMock(return_value=doc)
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
-
-        await complete_execution(EXECUTION_ID, status="success")
-
-        update_set = mock_executions_collection.update_one.call_args[0][1]["$set"]
-        assert update_set["duration_seconds"] is None
-
-    async def test_omits_optional_fields_not_provided(self, mock_executions_collection):
-        mock_executions_collection.find_one = AsyncMock(return_value=_make_execution_doc())
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_executions_collection.update_one = AsyncMock(return_value=mock_result)
-
-        await complete_execution(EXECUTION_ID, status="success")
-
-        update_set = mock_executions_collection.update_one.call_args[0][1]["$set"]
-        assert "summary" not in update_set
-        assert "error_message" not in update_set
-        assert "conversation_id" not in update_set
+        assert result is True
 
 
 # ---------------------------------------------------------------------------
@@ -316,26 +249,11 @@ class TestCompleteExecution:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWorkflowExecutions:
-    def _make_async_cursor(self, docs: list) -> MagicMock:
-        """Create a mock async cursor that yields the given docs."""
-        cursor = MagicMock()
-        cursor.sort.return_value = cursor
-        cursor.skip.return_value = cursor
-        cursor.limit.return_value = cursor
-
-        async def async_iter(_):
-            for doc in docs:
-                yield doc
-
-        cursor.__aiter__ = async_iter
-        return cursor
-
-    async def test_returns_workflow_executions_response(self, mock_executions_collection):
-        mock_executions_collection.count_documents = AsyncMock(return_value=1)
-        doc = _make_execution_doc()
-        mock_executions_collection.find.return_value = self._make_async_cursor([doc])
+    async def test_wraps_repository_page_in_response(self, mock_executions_repo):
+        mock_executions_repo.list_for_workflow = AsyncMock(
+            return_value=([_make_execution(status="success")], 1)
+        )
 
         result = await get_workflow_executions(WORKFLOW_ID, USER_ID)
 
@@ -344,49 +262,33 @@ class TestGetWorkflowExecutions:
         assert len(result.executions) == 1
         assert isinstance(result.executions[0], WorkflowExecution)
 
-    async def test_queries_by_workflow_and_user_id(self, mock_executions_collection):
-        mock_executions_collection.count_documents = AsyncMock(return_value=0)
-        mock_executions_collection.find.return_value = self._make_async_cursor([])
+    async def test_forwards_workflow_user_limit_and_offset(self, mock_executions_repo):
+        mock_executions_repo.list_for_workflow = AsyncMock(return_value=([], 0))
 
-        await get_workflow_executions(WORKFLOW_ID, USER_ID)
+        await get_workflow_executions(WORKFLOW_ID, USER_ID, limit=5, offset=3)
 
-        query = mock_executions_collection.count_documents.call_args[0][0]
-        assert query["workflow_id"] == WORKFLOW_ID
-        assert query["user_id"] == USER_ID
+        mock_executions_repo.list_for_workflow.assert_awaited_once_with(
+            WORKFLOW_ID, USER_ID, limit=5, offset=3
+        )
 
-    async def test_has_more_is_true_when_more_docs_exist(self, mock_executions_collection):
-        mock_executions_collection.count_documents = AsyncMock(return_value=5)
-        docs = [_make_execution_doc(execution_id=f"exec_{i}") for i in range(2)]
-        mock_executions_collection.find.return_value = self._make_async_cursor(docs)
+    async def test_has_more_is_true_when_more_docs_exist(self, mock_executions_repo):
+        docs = [_make_execution(execution_id=f"exec_{i}") for i in range(2)]
+        mock_executions_repo.list_for_workflow = AsyncMock(return_value=(docs, 5))
 
-        # offset=0, limit=2, total=5 → has_more=True
         result = await get_workflow_executions(WORKFLOW_ID, USER_ID, limit=2, offset=0)
 
         assert result.has_more is True
 
-    async def test_has_more_is_false_when_all_docs_fetched(self, mock_executions_collection):
-        mock_executions_collection.count_documents = AsyncMock(return_value=2)
-        docs = [_make_execution_doc(execution_id=f"exec_{i}") for i in range(2)]
-        mock_executions_collection.find.return_value = self._make_async_cursor(docs)
+    async def test_has_more_is_false_when_all_docs_fetched(self, mock_executions_repo):
+        docs = [_make_execution(execution_id=f"exec_{i}") for i in range(2)]
+        mock_executions_repo.list_for_workflow = AsyncMock(return_value=(docs, 2))
 
         result = await get_workflow_executions(WORKFLOW_ID, USER_ID, limit=10, offset=0)
 
         assert result.has_more is False
 
-    async def test_removes_mongodb_id_field_from_docs(self, mock_executions_collection):
-        mock_executions_collection.count_documents = AsyncMock(return_value=1)
-        doc = _make_execution_doc()
-        doc["_id"] = "some_object_id"  # simulate MongoDB _id
-        mock_executions_collection.find.return_value = self._make_async_cursor([doc])
-
-        result = await get_workflow_executions(WORKFLOW_ID, USER_ID)
-
-        # WorkflowExecution should not have _id – if it did, Pydantic would raise
-        assert len(result.executions) == 1
-
-    async def test_returns_empty_list_when_no_executions(self, mock_executions_collection):
-        mock_executions_collection.count_documents = AsyncMock(return_value=0)
-        mock_executions_collection.find.return_value = self._make_async_cursor([])
+    async def test_returns_empty_list_when_no_executions(self, mock_executions_repo):
+        mock_executions_repo.list_for_workflow = AsyncMock(return_value=([], 0))
 
         result = await get_workflow_executions(WORKFLOW_ID, USER_ID)
 
@@ -394,32 +296,12 @@ class TestGetWorkflowExecutions:
         assert result.executions == []
         assert result.has_more is False
 
-    async def test_applies_limit_and_offset_to_cursor(self, mock_executions_collection):
-        mock_executions_collection.count_documents = AsyncMock(return_value=10)
-        cursor = self._make_async_cursor([])
-        mock_executions_collection.find.return_value = cursor
-
-        await get_workflow_executions(WORKFLOW_ID, USER_ID, limit=5, offset=3)
-
-        cursor.skip.assert_called_once_with(3)
-        cursor.limit.assert_called_once_with(5)
-
-    async def test_sorts_by_started_at_descending(self, mock_executions_collection):
-        mock_executions_collection.count_documents = AsyncMock(return_value=0)
-        cursor = self._make_async_cursor([])
-        mock_executions_collection.find.return_value = cursor
-
-        await get_workflow_executions(WORKFLOW_ID, USER_ID)
-
-        cursor.sort.assert_called_once_with("started_at", -1)
-
 
 # ---------------------------------------------------------------------------
 # WorkflowValidator
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkflowValidator:
     def test_passes_for_valid_activated_workflow(self):
         wf = _make_workflow(activated=True)
@@ -456,12 +338,11 @@ class TestWorkflowValidator:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkflowQueueServiceGeneration:
     async def test_queue_generation_returns_true_on_success(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_abc"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
 
         result = await WorkflowQueueService.queue_workflow_generation(
             workflow_id=WORKFLOW_ID, user_id=USER_ID
@@ -473,26 +354,25 @@ class TestWorkflowQueueServiceGeneration:
         )
 
     async def test_queue_generation_returns_false_when_job_is_none(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
+        mock_redis_pool.enqueue_job.return_value = None
 
         result = await WorkflowQueueService.queue_workflow_generation(WORKFLOW_ID, USER_ID)
 
         assert result is False
 
     async def test_queue_generation_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=ConnectionError("redis down"))
+        mock_redis_pool.enqueue_job.side_effect = ConnectionError("redis down")
 
         result = await WorkflowQueueService.queue_workflow_generation(WORKFLOW_ID, USER_ID)
 
         assert result is False
 
 
-@pytest.mark.unit
 class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_returns_true_on_success(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_xyz"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
 
         result = await WorkflowQueueService.queue_workflow_execution(
             workflow_id=WORKFLOW_ID, user_id=USER_ID
@@ -507,10 +387,10 @@ class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_dedup_key_is_deterministic_and_context_scoped(
         self, mock_redis_pool
     ):
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=MagicMock(job_id="j"))
+        mock_redis_pool.enqueue_job.return_value = MagicMock(job_id="j")
 
         async def job_id_for(context):
-            mock_redis_pool.enqueue_job.reset_mock()
+            mock_redis_pool.reset_mock()
             await WorkflowQueueService.queue_workflow_execution(
                 WORKFLOW_ID, USER_ID, context=context
             )
@@ -528,7 +408,7 @@ class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_deduped_enqueue_is_not_an_error(self, mock_redis_pool):
         # ARQ returns None when a job with the same _job_id is already queued —
         # that's a successful dedupe, not a failure.
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
+        mock_redis_pool.enqueue_job.return_value = None
 
         result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
 
@@ -537,7 +417,7 @@ class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_passes_context(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_ctx"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
 
         ctx = {"trigger_data": {"email_id": "msg1"}}
         await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID, context=ctx)
@@ -548,7 +428,7 @@ class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_uses_empty_dict_when_no_context(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_no_ctx"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
 
         await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
 
@@ -556,19 +436,18 @@ class TestWorkflowQueueServiceExecution:
         assert args[2] == {}
 
     async def test_queue_execution_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("redis timeout"))
+        mock_redis_pool.enqueue_job.side_effect = Exception("redis timeout")
 
         result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
 
         assert result is False
 
 
-@pytest.mark.unit
 class TestWorkflowQueueServiceTodo:
     async def test_queue_todo_generation_sets_redis_flag(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_todo"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
         mock_redis_pool.set = AsyncMock()
 
         todo_id = "todo_abc123"
@@ -587,7 +466,7 @@ class TestWorkflowQueueServiceTodo:
     async def test_queue_todo_generation_uses_correct_task_name(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_todo2"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
         mock_redis_pool.set = AsyncMock()
 
         await WorkflowQueueService.queue_todo_workflow_generation("todo_x", USER_ID, "Title")
@@ -596,7 +475,7 @@ class TestWorkflowQueueServiceTodo:
         assert args[0] == "process_workflow_generation_task"
 
     async def test_queue_todo_generation_returns_false_when_job_none(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
+        mock_redis_pool.enqueue_job.return_value = None
 
         result = await WorkflowQueueService.queue_todo_workflow_generation(
             "todo_x", USER_ID, "Title"
@@ -605,7 +484,7 @@ class TestWorkflowQueueServiceTodo:
         assert result is False
 
     async def test_queue_todo_generation_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("connection refused"))
+        mock_redis_pool.enqueue_job.side_effect = Exception("connection refused")
 
         result = await WorkflowQueueService.queue_todo_workflow_generation(
             "todo_x", USER_ID, "Title"
@@ -614,7 +493,6 @@ class TestWorkflowQueueServiceTodo:
         assert result is False
 
 
-@pytest.mark.unit
 class TestWorkflowQueueServiceFlags:
     async def test_is_workflow_generating_returns_true_when_flag_set(self, mock_redis_pool):
         mock_redis_pool.get = AsyncMock(return_value="1")

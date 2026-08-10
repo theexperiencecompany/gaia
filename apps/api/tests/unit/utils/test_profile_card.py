@@ -2,12 +2,12 @@
 
 from datetime import UTC, datetime
 import random
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from bson import ObjectId
 import pytest
 
+from app.models.user_models import UserDocument
 from app.utils.profile_card import (
     HOUSES,
     assign_random_house,
@@ -28,33 +28,10 @@ def _today() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Helper factories
-# ---------------------------------------------------------------------------
-
-
-def _make_user(
-    name: str = "Test User",
-    profession: str = "developer",
-    created_at: Any = None,
-    email_memory_processed: bool = False,
-) -> dict[str, Any]:
-    """Build a fake MongoDB user document."""
-    user: dict[str, Any] = {
-        "name": name,
-        "onboarding": {"preferences": {"profession": profession}},
-        "email_memory_processed": email_memory_processed,
-    }
-    if created_at is not None:
-        user["created_at"] = created_at
-    return user
-
-
-# ---------------------------------------------------------------------------
 # assign_random_house
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAssignRandomHouse:
     def test_returns_valid_house(self) -> None:
         random.seed(42)
@@ -82,7 +59,6 @@ class TestAssignRandomHouse:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateRandomColor:
     def test_returns_tuple_of_str_and_int(self) -> None:
         random.seed(42)
@@ -158,29 +134,21 @@ class TestGenerateRandomColor:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateProfileCardDesign:
-    def test_returns_expected_keys(self) -> None:
-        random.seed(42)
-        design = generate_profile_card_design()
-        assert "house" in design
-        assert "overlay_color" in design
-        assert "overlay_opacity" in design
-
     def test_house_is_valid(self) -> None:
         random.seed(42)
         design = generate_profile_card_design()
-        assert design["house"] in HOUSES
+        assert design.house in HOUSES
 
     def test_overlay_opacity_in_range(self) -> None:
         random.seed(42)
         design = generate_profile_card_design()
-        assert 30 <= design["overlay_opacity"] <= 80
+        assert 30 <= design.overlay_opacity <= 80
 
     def test_overlay_color_is_string(self) -> None:
         random.seed(42)
         design = generate_profile_card_design()
-        assert isinstance(design["overlay_color"], str)
+        assert isinstance(design.overlay_color, str)
 
     def test_deterministic_with_seed(self) -> None:
         random.seed(7)
@@ -195,7 +163,6 @@ class TestGenerateProfileCardDesign:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUserMetadata:
     """account_number is now derived from the ObjectId creation timestamp
     (``int(oid.generation_time.timestamp()) % 1_000_000``) rather than a
@@ -206,82 +173,81 @@ class TestGetUserMetadata:
     @pytest.mark.asyncio
     async def test_user_found_with_valid_created_at(self) -> None:
         dt = datetime(2025, 6, 15, 12, 0, 0)
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value={"created_at": dt})
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=UserDocument(created_at=dt),
+        ):
             result = await get_user_metadata(_TEST_OID)
 
-        assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
-        assert result["member_since"] == "Jun 15, 2025"
+        assert result.account_number == _EXPECTED_ACCOUNT_NUMBER
+        assert result.member_since == "Jun 15, 2025"
 
     @pytest.mark.asyncio
     async def test_user_not_found_returns_defaults(self) -> None:
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=None)
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
             result = await get_user_metadata(_TEST_OID)
 
-        assert result["account_number"] == 1
-        assert result["member_since"] == _today()
+        assert result.account_number == 1
+        assert result.member_since == _today()
 
     @pytest.mark.asyncio
     async def test_created_at_is_none(self) -> None:
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value={"created_at": None})
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=UserDocument(created_at=None),
+        ):
             result = await get_user_metadata(_TEST_OID)
 
-        assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
-        assert result["member_since"] == _today()
+        assert result.account_number == _EXPECTED_ACCOUNT_NUMBER
+        assert result.member_since == _today()
 
     @pytest.mark.asyncio
     async def test_created_at_is_not_datetime(self) -> None:
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value={"created_at": "2025-01-01"})
+        # model_construct skips validation, which is the only way a non-datetime
+        # created_at still reaches the guard now the parameter is a UserDocument.
+        result = await get_user_metadata(
+            _TEST_OID, user=UserDocument.model_construct(created_at="2025-01-01")
+        )
 
-        with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(_TEST_OID)
-
-        assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
-        assert result["member_since"] == _today()
+        assert result.account_number == _EXPECTED_ACCOUNT_NUMBER
+        assert result.member_since == _today()
 
     @pytest.mark.asyncio
     async def test_exception_returns_defaults(self) -> None:
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(side_effect=Exception("DB connection lost"))
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            side_effect=Exception("DB connection lost"),
+        ):
             result = await get_user_metadata(_TEST_OID)
 
-        assert result["account_number"] == 1
-        assert result["member_since"] == _today()
+        assert result.account_number == 1
+        assert result.member_since == _today()
 
     @pytest.mark.asyncio
     async def test_account_number_derived_from_objectid(self) -> None:
-        """account_number is now the ObjectId timestamp modulo 1 000 000 —
-        count_documents is never called."""
+        """account_number is the ObjectId timestamp modulo 1 000 000."""
         dt = datetime(2025, 3, 10, 8, 30, 0)
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value={"created_at": dt})
+        result = await get_user_metadata(_TEST_OID, user=UserDocument(created_at=dt))
 
-        with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(_TEST_OID)
-
-        mock_collection.count_documents.assert_not_awaited()
-        assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
-        assert result["member_since"] == "Mar 10, 2025"
+        assert result.account_number == _EXPECTED_ACCOUNT_NUMBER
+        assert result.member_since == "Mar 10, 2025"
 
     @pytest.mark.asyncio
     async def test_user_has_no_created_at_key(self) -> None:
         """User document exists but has no created_at field at all."""
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value={"name": "Test"})
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=UserDocument(name="Test"),
+        ):
             result = await get_user_metadata(_TEST_OID)
 
-        assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
-        assert result["member_since"] == _today()
+        assert result.account_number == _EXPECTED_ACCOUNT_NUMBER
+        assert result.member_since == _today()

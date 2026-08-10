@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Cannot proactively monitor email and surface important messages automatically",
     "Smart inbox categorization requires training and occasional manual correction",
   ],
-  metaTitle: "Best Spark Email Alternative in 2026 | GAIA",
+  metaTitle: "Best Spark Email Alternative in 2026",
   metaDescription:
     "Spark Email helps you write faster but isn't proactive. GAIA manages your Gmail, creates tasks from email, and connects to 50+ tools. Free tier + self-hosting.",
   keywords: [

@@ -20,6 +20,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 
 from app.constants.log_tags import LogTag
+from app.models.agent_models import agent_configurable
 from shared.py.wide_events import log
 
 INTERRUPTION_MARKER = (
@@ -91,6 +92,6 @@ async def record_interruption(graph: CompiledStateGraph, config: RunnableConfig)
     await graph.aupdate_state(config, {"messages": updates}, as_node="tools")
     log.info(
         f"{LogTag.AGENT} Recorded user interruption in checkpoint",
-        thread_id=config.get("configurable", {}).get("thread_id"),
+        thread_id=agent_configurable(config).get("thread_id"),
         backfilled_tool_calls=len(updates) - 1,
     )

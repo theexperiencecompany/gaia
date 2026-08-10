@@ -42,7 +42,6 @@ def _patch_now():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCronError:
     def test_is_exception_subclass(self) -> None:
         assert issubclass(CronError, Exception)
@@ -63,7 +62,6 @@ class TestCronError:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestValidateCronExpression:
     @pytest.mark.parametrize(
         "cron_expr",
@@ -99,7 +97,6 @@ class TestValidateCronExpression:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNextRunTime:
     def test_valid_cron_with_base_time_default_utc(self) -> None:
         base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)
@@ -246,7 +243,6 @@ class TestGetNextRunTime:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCalculateNextOccurrences:
     def test_valid_cron_returns_list(self) -> None:
         base = datetime(2025, 1, 1, 7, 0, 0, tzinfo=UTC)

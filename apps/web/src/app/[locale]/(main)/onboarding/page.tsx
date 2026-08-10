@@ -21,6 +21,8 @@ import {
   ChatComposer,
   ClarifyComposer,
   FocusComposer,
+  IntegrationSelect,
+  IntegrationSelectComposer,
   Platforms,
   PlatformsComposer,
   QuestionsComposer,
@@ -74,7 +76,9 @@ function clearIntroSeen(userId: string): void {
   if (!key) return;
   try {
     window.localStorage.removeItem(key);
-  } catch {}
+  } catch {
+    // localStorage unavailable (private mode, etc.) — silently skip.
+  }
 }
 
 export default function Onboarding() {
@@ -112,6 +116,8 @@ export default function Onboarding() {
       case "clarify":
       case "processing":
         return null;
+      case "integrationSelect":
+        return <IntegrationSelect state={state} dispatch={dispatch} />;
       case "revealWriting":
         return <RevealWritingStyle state={state} />;
       case "revealTodos":
@@ -135,6 +141,8 @@ export default function Onboarding() {
         return <FocusComposer state={state} dispatch={dispatch} />;
       case "clarify":
         return <ClarifyComposer state={state} dispatch={dispatch} />;
+      case "integrationSelect":
+        return <IntegrationSelectComposer state={state} dispatch={dispatch} />;
       case "processing":
         return null;
       case "revealWriting":

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pydantic import ConfigDict
 import pytest
 
 from app.models.scheduler_models import (
@@ -123,7 +124,6 @@ def recurring_task_stop_after():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestInitializeClose:
     async def test_initialize_creates_pool(self):
         with (
@@ -163,7 +163,6 @@ class TestInitializeClose:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestScheduleTask:
     async def test_schedule_with_scheduled_at(self, service):
         future = datetime.now(UTC) + timedelta(hours=1)
@@ -204,7 +203,6 @@ class TestScheduleTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRescheduleTask:
     async def test_reschedule(self, service):
         future = datetime.now(UTC) + timedelta(hours=2)
@@ -221,7 +219,6 @@ class TestRescheduleTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessTaskExecution:
     async def test_task_not_found(self, service):
         service.mock_get_task.return_value = None
@@ -321,7 +318,6 @@ class TestProcessTaskExecution:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCancelTask:
     async def test_cancel_success(self, service):
         service.mock_update_task_status.return_value = True
@@ -347,7 +343,6 @@ class TestCancelTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestScanAndSchedulePendingTasks:
     async def test_schedules_pending_tasks(self, service):
         tasks = [
@@ -396,7 +391,6 @@ class TestScanAndSchedulePendingTasks:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHandleRecurringTask:
     async def test_no_repeat_returns_early(self, service, sample_task):
         sample_task.repeat = None
@@ -447,7 +441,7 @@ class TestHandleRecurringTask:
         """If task has trigger_config.timezone, use it for next_run calculation."""
 
         class TaskWithTriggerConfig(BaseScheduledTask):
-            model_config = {"arbitrary_types_allowed": True}
+            model_config = ConfigDict(arbitrary_types_allowed=True)
             trigger_config: MagicMock | None = None
 
         trigger_config = MagicMock()
@@ -480,17 +474,20 @@ class TestHandleRecurringTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestEnqueueTask:
     async def test_enqueue_success(self, service):
         future = datetime.now(UTC) + timedelta(hours=1)
         mock_job = MagicMock(job_id="job1")
-        service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
-        result = await service._enqueue_task("task1", future)
+        with patch(
+            "app.services.scheduler_service.enqueue_worker_job",
+            new=AsyncMock(return_value=mock_job),
+        ) as mock_enqueue:
+            result = await service._enqueue_task("task1", future)
 
         assert result is True
-        service.arq_pool.enqueue_job.assert_awaited_once_with(
+        mock_enqueue.assert_awaited_once_with(
+            service.arq_pool,
             "test_job",
             "task1",
             _job_id=f"test_job:task1:{int(future.timestamp())}",

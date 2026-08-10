@@ -1,28 +1,74 @@
 """Templates for mail-related tool responses."""
 
 import base64
+from collections.abc import Sequence
 import email
 import email.message
 import email.parser
 import email.policy
 from html import unescape
-from typing import Any
+from typing import Any, cast
 
 from bs4 import BeautifulSoup
 
+from app.constants.email import MessageFieldLiteral
+from app.models.composio_schemas.gmail import (
+    BodyProcessingLiteral,
+    GmailAttachmentMetadata,
+    GmailMessageContent,
+    GmailMessagePart,
+    GmailParsedAttachment,
+)
+from app.utils.email_body_normalizer import normalize_email_body
 from shared.py.wide_events import log
 
 # ============================================================================
 # GmailMessageParser - Class-based email parsing using email.parser
 # ============================================================================
 
+# Gmail omits ``mimeType`` on some parts; RFC 2045 makes text/plain the default.
+_DEFAULT_MIME_TYPE = "text/plain"
+_HTML_MIME_TYPE = "text/html"
+
+
+def _copy_headers(part: GmailMessagePart, target: email.message.EmailMessage) -> None:
+    """Copy a Gmail MIME part's headers onto an ``EmailMessage``."""
+    for header in part.headers:
+        if header.name and header.value:
+            target[header.name] = header.value
+
+
+def _set_decoded_content(
+    target: email.message.EmailMessage, part: GmailMessagePart, mime_type: str
+) -> None:
+    """Decode a leaf part's base64url body onto ``target``, if it carries one."""
+    body_data = part.body.data if part.body else None
+    if not body_data:
+        return
+    try:
+        decoded_content = base64.urlsafe_b64decode(body_data).decode("utf-8", errors="ignore")
+        if mime_type == _HTML_MIME_TYPE:
+            target.set_content(decoded_content, subtype="html")
+        else:
+            target.set_content(decoded_content)
+    except Exception:
+        target.set_content(body_data)
+
 
 class GmailMessageParser:
     """Parse Gmail messages via Python's email library, exposing clean
     content-extraction methods over raw Gmail API data."""
 
-    def __init__(self, gmail_message: dict):
-        """Initialize the parser with a Gmail API message object."""
+    def __init__(self, gmail_message: dict[str, Any]):
+        """Initialize the parser with a Gmail API message object.
+
+        ``gmail_message`` stays a raw mapping: this is the provider boundary and
+        the same parser is handed both a Gmail REST message (``id`` / ``raw`` /
+        ``payload``) and a Composio-shaped one (``messageId`` / ``message_text``),
+        so the key set genuinely differs by source. The one nested structure that
+        *is* a fixed schema — the MIME tree — is validated into
+        ``GmailMessagePart`` before it is walked.
+        """
         self.gmail_message = gmail_message
         self.email_message: email.message.EmailMessage | None = None
         self._parsed = False
@@ -37,7 +83,7 @@ class GmailMessageParser:
             return self.email_message is not None
 
         except Exception as e:
-            log.error(f"Error parsing email message: {e}")
+            log.error("Error parsing email message", error_type=type(e).__name__)
             self._parsed = False
             return False
 
@@ -48,29 +94,27 @@ class GmailMessageParser:
         if raw_data:
             raw_email_bytes = base64.urlsafe_b64decode(raw_data)
             parser = email.parser.BytesParser(policy=email.policy.default)
-            return parser.parsebytes(raw_email_bytes)  # type: ignore
+            # BytesParser is typed as producing a plain Message; under
+            # ``email.policy.default`` it always builds an EmailMessage.
+            return cast("email.message.EmailMessage", parser.parsebytes(raw_email_bytes))
 
         # Manual parsing from payload structure
-        payload = self.gmail_message.get("payload", {})
+        payload = self.gmail_message.get("payload")
         if payload:
-            return self._parse_payload_manually(payload)
+            return self._parse_payload_manually(GmailMessagePart.model_validate(payload))
 
         return None
 
-    def _parse_payload_manually(self, payload: dict) -> email.message.EmailMessage | None:
+    def _parse_payload_manually(
+        self, payload: GmailMessagePart
+    ) -> email.message.EmailMessage | None:
         """Parse Gmail payload structure manually into EmailMessage."""
         msg = email.message.EmailMessage()
 
-        # Set headers
-        headers = payload.get("headers", [])
-        for header in headers:
-            name = header.get("name", "")
-            value = header.get("value", "")
-            if name and value:
-                msg[name] = value
+        _copy_headers(payload, msg)
 
         # Handle body content based on mime type
-        mime_type = payload.get("mimeType", "text/plain")
+        mime_type = payload.mime_type or _DEFAULT_MIME_TYPE
 
         if mime_type.startswith("multipart/"):
             # Handle multipart messages
@@ -81,23 +125,17 @@ class GmailMessageParser:
 
         return msg
 
-    def _parse_multipart_payload(self, msg: email.message.EmailMessage, payload: dict):
+    def _parse_multipart_payload(
+        self, msg: email.message.EmailMessage, payload: GmailMessagePart
+    ) -> None:
         """Parse multipart payload and attach parts to message."""
-        parts = payload.get("parts", [])
-        for part_data in parts:
-            part_mime_type = part_data.get("mimeType", "text/plain")
+        for part_data in payload.parts:
+            part_mime_type = part_data.mime_type or _DEFAULT_MIME_TYPE
 
             # Create a part message
             part = email.message.EmailMessage()
-            # part.set_type(part_mime_type, requote=False)
 
-            # Set part headers
-            part_headers = part_data.get("headers", [])
-            for header in part_headers:
-                name = header.get("name", "")
-                value = header.get("value", "")
-                if name and value:
-                    part[name] = value
+            _copy_headers(part_data, part)
 
             # Set part content
             if part_mime_type.startswith("multipart/"):
@@ -105,21 +143,10 @@ class GmailMessageParser:
                 self._parse_multipart_payload(part, part_data)
             else:
                 # Single part content
-                body_data = part_data.get("body", {}).get("data", "")
-                if body_data:
-                    try:
-                        decoded_content = base64.urlsafe_b64decode(body_data).decode(
-                            "utf-8", errors="ignore"
-                        )
-                        if part_mime_type == "text/html":
-                            part.set_content(decoded_content, subtype="html")
-                        else:
-                            part.set_content(decoded_content)
-                    except Exception:
-                        part.set_content(body_data)
+                _set_decoded_content(part, part_data, part_mime_type)
 
                 # Handle attachments
-                filename = part_data.get("filename")
+                filename = part_data.filename
                 if filename:
                     # Remove existing Content-Disposition header if present
                     if "Content-Disposition" in part:
@@ -129,22 +156,11 @@ class GmailMessageParser:
             # Attach part to main message
             msg.attach(part)
 
-    def _parse_single_part_payload(self, msg: email.message.EmailMessage, payload: dict):
+    def _parse_single_part_payload(
+        self, msg: email.message.EmailMessage, payload: GmailMessagePart
+    ) -> None:
         """Parse single part payload content."""
-        body_data = payload.get("body", {}).get("data", "")
-        mime_type = payload.get("mimeType", "text/plain")
-
-        if body_data:
-            try:
-                decoded_content = base64.urlsafe_b64decode(body_data).decode(
-                    "utf-8", errors="ignore"
-                )
-                if mime_type == "text/html":
-                    msg.set_content(decoded_content, subtype="html")
-                else:
-                    msg.set_content(decoded_content)
-            except Exception:
-                msg.set_content(body_data)
+        _set_decoded_content(msg, payload, payload.mime_type or _DEFAULT_MIME_TYPE)
 
     # ========================================================================
     # Public getter methods
@@ -193,7 +209,7 @@ class GmailMessageParser:
 
         # Handle Composio messages
         if "message_text" in self.gmail_message:
-            content = self.gmail_message.get("message_text", "")
+            content: str = self.gmail_message.get("message_text", "")
             if "<" in content and ">" in content:
                 return _get_text_from_html(content)
             return content
@@ -202,7 +218,8 @@ class GmailMessageParser:
         for part in self.email_message.walk():
             if part.get_content_type() == "text/plain":
                 try:
-                    return part.get_content()
+                    # A text/* part's content manager always yields str.
+                    return cast(str, part.get_content())
                 except Exception:
                     payload = part.get_payload(decode=True)
                     if isinstance(payload, bytes):
@@ -225,7 +242,7 @@ class GmailMessageParser:
 
         # Handle Composio messages
         if "message_text" in self.gmail_message:
-            content = self.gmail_message.get("message_text", "")
+            content: str = self.gmail_message.get("message_text", "")
             if "<" in content and ">" in content:
                 return content
             return ""
@@ -234,7 +251,7 @@ class GmailMessageParser:
         for part in self.email_message.walk():
             if part.get_content_type() == "text/html":
                 try:
-                    return part.get_content()
+                    return cast(str, part.get_content())
                 except Exception:
                     payload = part.get_payload(decode=True)
                     if isinstance(payload, bytes):
@@ -245,26 +262,27 @@ class GmailMessageParser:
         return ""
 
     @property
-    def content(self) -> dict:
+    def content(self) -> GmailMessageContent:
         """Get both text and HTML content."""
         return {"text": self.text_content, "html": self.html_content}
 
     @property
-    def attachments(self) -> list[dict]:
+    def attachments(self) -> list[GmailParsedAttachment]:
         """Get email attachments."""
-        attachments = []
+        attachments: list[GmailParsedAttachment] = []
 
         if not self._parsed or not self.email_message:
             # Fallback to manual extraction for Gmail API
-            parts = self.gmail_message.get("payload", {}).get("parts", [])
-            for part in parts:
-                if part.get("filename") and part.get("body", {}).get("attachmentId"):
+            payload = GmailMessagePart.model_validate(self.gmail_message.get("payload") or {})
+            for mime_part in payload.parts:
+                body = mime_part.body
+                if mime_part.filename and body and body.attachment_id:
                     attachments.append(
                         {
-                            "filename": part.get("filename"),
-                            "attachmentId": part.get("body", {}).get("attachmentId"),
-                            "mimeType": part.get("mimeType"),
-                            "size": part.get("body", {}).get("size"),
+                            "filename": mime_part.filename,
+                            "attachmentId": body.attachment_id,
+                            "mimeType": mime_part.mime_type,
+                            "size": body.size,
                             "messageId": self.gmail_message.get("id", ""),
                         }
                     )
@@ -275,13 +293,17 @@ class GmailMessageParser:
             if part.get_content_disposition() == "attachment":
                 filename = part.get_filename()
                 if filename:
+                    # ``decode=True`` on a non-multipart part yields the decoded
+                    # bytes (or None); typeshed's union also covers the multipart
+                    # case, which an "attachment" disposition rules out.
+                    payload_bytes = cast("bytes | None", part.get_payload(decode=True))
                     attachments.append(
                         {
                             "filename": filename,
                             "mimeType": part.get_content_type(),
-                            "size": len(part.get_payload(decode=True) or b""),
+                            "size": len(payload_bytes or b""),
                             "messageId": self.gmail_message.get("id", ""),
-                            "content": part.get_payload(decode=True),
+                            "content": payload_bytes,
                         }
                     )
 
@@ -290,7 +312,8 @@ class GmailMessageParser:
     @property
     def labels(self) -> list[str]:
         """Get Gmail labels."""
-        return self.gmail_message.get("labelIds", [])
+        labels: list[str] = self.gmail_message.get("labelIds", [])
+        return labels
 
     @property
     def is_read(self) -> bool:
@@ -298,7 +321,7 @@ class GmailMessageParser:
         return "UNREAD" not in self.labels
 
 
-def _get_text_from_html(html_content):
+def _get_text_from_html(html_content: str | None) -> str:
     """Extract text from HTML content."""
     if not html_content:
         return ""
@@ -307,9 +330,40 @@ def _get_text_from_html(html_content):
     return soup.get_text()
 
 
+def _attachment_metadata(raw: dict[str, Any]) -> list[GmailAttachmentMetadata]:
+    """Extract attachment metadata (no bytes) from a full-format Gmail payload.
+
+    Walks the (possibly nested) MIME ``parts`` tree, returning one entry per
+    part that has a filename and an ``attachmentId`` — the id the caller later
+    passes to fetch the attachment content. Returns ``[]`` for a metadata-format
+    message (no ``parts``), so the fetch requests ``format=full`` when the
+    ``attachments`` field is selected.
+    """
+    out: list[GmailAttachmentMetadata] = []
+
+    def walk(part: GmailMessagePart) -> None:
+        body = part.body
+        if part.filename and body and body.attachment_id:
+            out.append(
+                {
+                    "filename": part.filename,
+                    "mimeType": part.mime_type,
+                    "size": body.size,
+                    "attachmentId": body.attachment_id,
+                }
+            )
+        for sub in part.parts:
+            walk(sub)
+
+    walk(GmailMessagePart.model_validate(raw.get("payload") or {}))
+    return out
+
+
 # Template for minimal message representation
 def minimal_message_template(
-    email_data: dict[str, Any], short_body=True, include_both_formats=False
+    email_data: dict[str, Any],
+    short_body: bool = True,
+    include_both_formats: bool = False,
 ) -> dict[str, Any]:
     """Convert a Gmail message to a minimal representation with only essential
     fields. short_body truncates the body to 100 chars; include_both_formats
@@ -325,7 +379,7 @@ def minimal_message_template(
     )
     labels = parser.labels
 
-    result = {
+    result: dict[str, Any] = {
         "id": email_data.get("messageId") or email_data.get("id", ""),
         "threadId": email_data.get("threadId", ""),
         "from": parser.sender or email_data.get("sender", ""),
@@ -350,17 +404,23 @@ def minimal_message_template(
 
 
 # Template for message details (when a single message needs more detail)
-def detailed_message_template(email_data: dict[str, Any]) -> dict[str, Any]:
+def detailed_message_template(
+    email_data: dict[str, Any], *, include_body: bool = True
+) -> dict[str, Any]:
     """Convert a Gmail message to a detailed representation: essential fields
-    plus body content in both text and HTML."""
+    plus body content in both text and HTML.
+
+    ``include_body=False`` skips the MIME body extraction entirely (the view
+    carries headers, labels, and snippet only) — use it when the body would be
+    dropped anyway.
+    """
     # Use GmailMessageParser directly for efficiency
     parser = GmailMessageParser(email_data)
     parser.parse()
 
-    content = parser.content
     labels = parser.labels
 
-    return {
+    view: dict[str, Any] = {
         "id": email_data.get("messageId") or email_data.get("id", ""),
         "threadId": email_data.get("threadId", ""),
         "from": parser.sender,
@@ -370,11 +430,15 @@ def detailed_message_template(email_data: dict[str, Any]) -> dict[str, Any]:
         "time": parser.date,
         "isRead": "UNREAD" not in labels,
         "hasAttachment": "HAS_ATTACHMENT" in labels,
-        "body": content["text"],  # Plain text for backward compatibility
+        "attachments": _attachment_metadata(email_data),
         "labels": labels,
-        "content": {"text": content["text"], "html": content["html"]},
         "cc": parser.cc,
     }
+    if include_body:
+        content = parser.content
+        view["body"] = content["text"]  # Plain text for backward compatibility
+        view["content"] = {"text": content["text"], "html": content["html"]}
+    return view
 
 
 # Template for thread information
@@ -415,23 +479,73 @@ def draft_template(draft_data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def message_view_needs_body(
+    fields: Sequence[MessageFieldLiteral] | None, body_processing: BodyProcessingLiteral
+) -> bool:
+    """Whether a projected message view will carry a body.
+
+    ``body`` is the only projectable field that requires the full MIME
+    payload — everything else in ``build_message_view`` comes from headers,
+    labels, and top-level metadata (so ``format=metadata`` suffices).
+    """
+    if body_processing == "none":
+        return False
+    # `None` or an empty list both mean "all documented fields", body included.
+    return not fields or "body" in fields
+
+
+def project_message_view(
+    view: dict[str, Any], fields: Sequence[MessageFieldLiteral] | None
+) -> dict[str, Any]:
+    """Project a full message view to the requested fields.
+
+    ``None`` or an empty ``fields`` list means "all fields" (view returned
+    as-is).
+    """
+    if not fields:
+        return view
+    return {key: view[key] for key in fields if key in view}
+
+
 # Process tool responses
-def process_list_messages_response(response: dict[str, Any]) -> dict[str, Any]:
-    """Process the response from list_gmail_messages tool to minimize data."""
-    processed_response = {
-        "nextPageToken": response.get("nextPageToken"),
-        "resultSize": len(response.get("messages", [])),
-    }
+def build_message_view(
+    raw: dict[str, Any],
+    fields: Sequence[MessageFieldLiteral] | None = None,
+    body_processing: BodyProcessingLiteral = "none",
+) -> dict[str, Any]:
+    """Project a raw Gmail API message to only the requested fields.
 
-    if "messages" in response:
-        processed_response["messages"] = [
-            minimal_message_template(msg, short_body=False) for msg in response.get("messages", [])
-        ]
+    Single source of truth for per-message field selection. Used by
+    ``GMAIL_FETCH_MESSAGES`` (caller-supplied fields + body processing
+    mode). Body extraction/normalization is skipped entirely when the
+    projected view won't carry a body (``message_view_needs_body``).
 
-    if "error" in response:
-        processed_response["error"] = response["error"]
+    Args:
+        raw: Raw Gmail API message object (the same shape consumed by
+            ``minimal_message_template`` and ``detailed_message_template``).
+        fields: List of fields to include (from ``MessageFieldLiteral``).
+            ``None`` or an empty list means "all documented fields". Pass a
+            non-empty list to constrain the output.
+        body_processing: One of ``"normalize"``, ``"raw"``, ``"none"``.
+            ``"normalize"`` runs ``normalize_email_body`` over the body,
+            which strips signatures / disclaimers / unsubscribe footers /
+            utm tracking chains (quoted replies are kept). ``"raw"`` keeps
+            the untouched body. ``"none"`` drops the body entirely,
+            regardless of whether ``"body"`` is listed in ``fields``.
+    """
+    view = detailed_message_template(
+        raw, include_body=message_view_needs_body(fields, body_processing)
+    )
 
-    return processed_response
+    # `content` is the detailed template's internal dual text/html blob; it is
+    # not part of the field contract and would otherwise leak the full body
+    # through the "all fields" path. Drop it.
+    view.pop("content", None)
+
+    if body_processing == "normalize" and view.get("body"):
+        view["body"] = normalize_email_body(view["body"])
+
+    return project_message_view(view, fields)
 
 
 def process_list_drafts_response(response: dict[str, Any]) -> dict[str, Any]:

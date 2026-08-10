@@ -13,7 +13,9 @@ from datetime import UTC, datetime
 from enum import Enum
 import re
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+
+from app.db.repositories.base import MongoDocument
 
 
 class SkillSource(str, Enum):
@@ -104,15 +106,14 @@ class SkillMetadata(BaseModel):
         return _validate_skill_description(v)
 
 
-class Skill(BaseModel):
+class Skill(MongoDocument):
     """A skill tracked in MongoDB with a flat schema.
 
     All metadata fields (name, description, target, etc.) live at the
     top level alongside ownership and installation tracking fields.
     System skills use user_id="system"; user skills use the actual user ID.
+    ``id`` (the stringified ``_id``, a UUID) is inherited from ``MongoDocument``.
     """
-
-    id: str | None = Field(default=None, description="MongoDB document ID")
 
     # Ownership
     user_id: str = Field(
@@ -190,6 +191,24 @@ class Skill(BaseModel):
         return value.isoformat() if value else None
 
 
+class SkillUpdate(BaseModel):
+    """Editable fields of a stored skill (metadata patch). ``updated_at`` is
+    stamped by the repository, not passed here."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str | None = None
+    target: str | None = None
+    body_content: str | None = None
+    source_url: str | None = None
+    license: str | None = None
+    compatibility: str | None = None
+    metadata: dict[str, str] | None = None
+    allowed_tools: list[str] | None = None
+    files: list[str] | None = None
+    enabled: bool | None = None
+
+
 # Backward-compat alias — existing code that imports InstalledSkill still works
 # during the transition. Once all callers are updated, this can be removed.
 InstalledSkill = Skill
@@ -233,6 +252,14 @@ class SkillListResponse(BaseModel):
     total: int = Field(default=0)
 
 
+class SkillToggleResponse(BaseModel):
+    """Response for enabling or disabling a skill."""
+
+    success: bool
+    skill_id: str
+    enabled: bool
+
+
 class SkillTarget(BaseModel):
     """A place a skill can run: the executor, or a connected integration subagent.
 
@@ -251,6 +278,27 @@ class SkillTargetsResponse(BaseModel):
     """Available skill targets for the current user."""
 
     targets: list[SkillTarget] = Field(default_factory=list)
+
+
+class DiscoveredSkillInfo(BaseModel):
+    """A skill found in a remote GitHub repository but not yet installed."""
+
+    name: str = Field(..., description="Skill identifier from SKILL.md frontmatter")
+    description: str = Field(..., description="What the skill does")
+    path: str = Field(..., description="Folder containing SKILL.md within the repository")
+    repo_url: str = Field(..., description="Canonical GitHub URL of the source repository")
+    subagent_id: str = Field(..., description="Target agent declared in the skill's frontmatter")
+
+
+class DiscoverSkillsResponse(BaseModel):
+    """Response for previewing the skills available in a GitHub repository."""
+
+    repo: str = Field(..., description="Repository as requested (owner/repo or full URL)")
+    branch: str = Field(..., description="Branch that was searched")
+    skills: list[DiscoveredSkillInfo] = Field(default_factory=list)
+    # `count`, not the `total` the other list responses use: the web client's
+    # DiscoverSkillsResponse type already reads `count` off this endpoint.
+    count: int = Field(default=0)
 
 
 class BuiltinSkillInfo(BaseModel):

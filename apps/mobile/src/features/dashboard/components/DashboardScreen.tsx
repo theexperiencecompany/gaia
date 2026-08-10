@@ -58,6 +58,254 @@ const QUERY_KEYS = {
   activeWorkflows: ["dashboard", "active-workflows"] as const,
 };
 
+type TodayTodo = Awaited<ReturnType<typeof dashboardApi.getTodayTodos>>[number];
+type RecentConversation = Awaited<
+  ReturnType<typeof dashboardApi.getRecentConversations>
+>[number];
+type UpcomingReminder = Awaited<
+  ReturnType<typeof dashboardApi.getUpcomingReminders>
+>[number];
+
+function TodosCardBody({
+  todos,
+  isLoading,
+}: {
+  todos: TodayTodo[];
+  isLoading: boolean;
+}) {
+  const { spacing, fontSize } = useResponsive();
+  const router = useRouter();
+
+  if (isLoading) {
+    return (
+      <SkeletonGroup isLoading style={{ padding: spacing.md, gap: spacing.sm }}>
+        <SkeletonGroup.Item
+          className="h-8 w-full rounded-xl"
+          style={{ marginBottom: spacing.xs }}
+        />
+        <SkeletonGroup.Item
+          className="h-8 w-4/5 rounded-xl"
+          style={{ marginBottom: spacing.xs }}
+        />
+        <SkeletonGroup.Item className="h-8 w-3/4 rounded-xl" />
+      </SkeletonGroup>
+    );
+  }
+
+  if (todos.length === 0) return null;
+
+  return (
+    <>
+      {todos.map((todo) => (
+        <DashboardTodoItem key={todo.id} todo={todo} />
+      ))}
+      <Divider style={{ marginHorizontal: spacing.md }} />
+      <Button
+        variant="ghost"
+        size="sm"
+        onPress={() => {
+          router.push("/(app)/(tabs)/todos");
+        }}
+        style={{
+          alignSelf: "flex-start",
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm,
+        }}
+      >
+        <Button.Label
+          style={{ fontSize: fontSize.xs, color: ACCENT, fontWeight: "500" }}
+        >
+          View all tasks
+        </Button.Label>
+      </Button>
+    </>
+  );
+}
+
+function ReminderRow({ reminder }: { reminder: UpcomingReminder }) {
+  const { spacing, fontSize } = useResponsive();
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm + 2,
+        gap: spacing.sm,
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text
+          numberOfLines={1}
+          style={{
+            fontSize: fontSize.sm,
+            fontWeight: "500",
+            color: "#e4e4e7",
+          }}
+        >
+          {reminder.title}
+        </Text>
+        {reminder.description ? (
+          <Text
+            numberOfLines={1}
+            style={{ fontSize: fontSize.xs, color: "#71717a", marginTop: 2 }}
+          >
+            {reminder.description}
+          </Text>
+        ) : null}
+      </View>
+      <View
+        style={{
+          backgroundColor: "rgba(245,158,11,0.12)",
+          borderRadius: 8,
+          paddingHorizontal: 8,
+          paddingVertical: 3,
+        }}
+      >
+        <Text
+          style={{ fontSize: fontSize.xs, color: "#f59e0b", fontWeight: "500" }}
+        >
+          {formatReminderTime(reminder.nextRunAt)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function RemindersCardBody({
+  reminders,
+  isLoading,
+}: {
+  reminders: UpcomingReminder[];
+  isLoading: boolean;
+}) {
+  const { spacing } = useResponsive();
+
+  if (isLoading) {
+    return (
+      <SkeletonGroup isLoading style={{ padding: spacing.md, gap: spacing.sm }}>
+        <SkeletonGroup.Item
+          className="h-10 w-full rounded-xl"
+          style={{ marginBottom: spacing.xs }}
+        />
+        <SkeletonGroup.Item className="h-10 w-4/5 rounded-xl" />
+      </SkeletonGroup>
+    );
+  }
+
+  if (reminders.length === 0) return null;
+
+  return (
+    <>
+      {reminders.map((reminder, index) => (
+        <View key={reminder.id}>
+          <ReminderRow reminder={reminder} />
+          {index < reminders.length - 1 && (
+            <Divider style={{ marginHorizontal: spacing.md }} />
+          )}
+        </View>
+      ))}
+    </>
+  );
+}
+
+function ConversationsCardBody({
+  conversations,
+  isLoading,
+}: {
+  conversations: RecentConversation[];
+  isLoading: boolean;
+}) {
+  const { spacing, fontSize } = useResponsive();
+
+  if (isLoading) {
+    return (
+      <SkeletonGroup isLoading style={{ padding: spacing.md, gap: spacing.sm }}>
+        <SkeletonGroup.Item
+          className="h-8 w-full rounded-xl"
+          style={{ marginBottom: spacing.xs }}
+        />
+        <SkeletonGroup.Item
+          className="h-8 w-3/4 rounded-xl"
+          style={{ marginBottom: spacing.xs }}
+        />
+        <SkeletonGroup.Item className="h-8 w-4/5 rounded-xl" />
+      </SkeletonGroup>
+    );
+  }
+
+  if (conversations.length === 0) return null;
+
+  return (
+    <>
+      {conversations.map((conv, index) => (
+        <View key={conv.id}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm + 2,
+              gap: spacing.sm,
+            }}
+          >
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: conv.is_unread
+                  ? ACCENT
+                  : "rgba(255,255,255,0.15)",
+                flexShrink: 0,
+              }}
+            />
+            <Text
+              numberOfLines={1}
+              style={{
+                flex: 1,
+                fontSize: fontSize.sm,
+                fontWeight: conv.is_unread ? "600" : "400",
+                color: conv.is_unread ? "#f4f4f5" : "#a1a1aa",
+              }}
+            >
+              {conv.title}
+            </Text>
+          </View>
+          {index < conversations.length - 1 && (
+            <Divider style={{ marginHorizontal: spacing.md }} />
+          )}
+        </View>
+      ))}
+    </>
+  );
+}
+
+function StatSubtitle({
+  isLoading,
+  text,
+}: {
+  isLoading: boolean;
+  text: string;
+}) {
+  const { fontSize } = useResponsive();
+
+  if (isLoading) {
+    return (
+      <Skeleton
+        isLoading
+        className="h-3 w-16 rounded"
+        style={{ marginTop: 2 }}
+      />
+    );
+  }
+
+  return (
+    <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>{text}</Text>
+  );
+}
+
 export function DashboardScreen() {
   const { spacing, fontSize } = useResponsive();
   const insets = useSafeAreaInsets();
@@ -184,51 +432,7 @@ export function DashboardScreen() {
             router.push("/(app)/(tabs)/todos");
           }}
         >
-          {todosQuery.isLoading ? (
-            <SkeletonGroup
-              isLoading
-              style={{ padding: spacing.md, gap: spacing.sm }}
-            >
-              <SkeletonGroup.Item
-                className="h-8 w-full rounded-xl"
-                style={{ marginBottom: spacing.xs }}
-              />
-              <SkeletonGroup.Item
-                className="h-8 w-4/5 rounded-xl"
-                style={{ marginBottom: spacing.xs }}
-              />
-              <SkeletonGroup.Item className="h-8 w-3/4 rounded-xl" />
-            </SkeletonGroup>
-          ) : todayTodos.length > 0 ? (
-            <>
-              {todayTodos.map((todo) => (
-                <DashboardTodoItem key={todo.id} todo={todo} />
-              ))}
-              <Divider style={{ marginHorizontal: spacing.md }} />
-              <Button
-                variant="ghost"
-                size="sm"
-                onPress={() => {
-                  router.push("/(app)/(tabs)/todos");
-                }}
-                style={{
-                  alignSelf: "flex-start",
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.sm,
-                }}
-              >
-                <Button.Label
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: ACCENT,
-                    fontWeight: "500",
-                  }}
-                >
-                  View all tasks
-                </Button.Label>
-              </Button>
-            </>
-          ) : null}
+          <TodosCardBody todos={todayTodos} isLoading={todosQuery.isLoading} />
         </DashboardCard>
 
         {/* Upcoming Reminders */}
@@ -244,78 +448,10 @@ export function DashboardScreen() {
           }
           onPress={undefined}
         >
-          {remindersQuery.isLoading ? (
-            <SkeletonGroup
-              isLoading
-              style={{ padding: spacing.md, gap: spacing.sm }}
-            >
-              <SkeletonGroup.Item
-                className="h-10 w-full rounded-xl"
-                style={{ marginBottom: spacing.xs }}
-              />
-              <SkeletonGroup.Item className="h-10 w-4/5 rounded-xl" />
-            </SkeletonGroup>
-          ) : reminders.length > 0 ? (
-            reminders.map((reminder, index) => (
-              <View key={reminder.id}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: spacing.sm + 2,
-                    gap: spacing.sm,
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      numberOfLines={1}
-                      style={{
-                        fontSize: fontSize.sm,
-                        fontWeight: "500",
-                        color: "#e4e4e7",
-                      }}
-                    >
-                      {reminder.title}
-                    </Text>
-                    {reminder.description ? (
-                      <Text
-                        numberOfLines={1}
-                        style={{
-                          fontSize: fontSize.xs,
-                          color: "#71717a",
-                          marginTop: 2,
-                        }}
-                      >
-                        {reminder.description}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View
-                    style={{
-                      backgroundColor: "rgba(245,158,11,0.12)",
-                      borderRadius: 8,
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: fontSize.xs,
-                        color: "#f59e0b",
-                        fontWeight: "500",
-                      }}
-                    >
-                      {formatReminderTime(reminder.nextRunAt)}
-                    </Text>
-                  </View>
-                </View>
-                {index < reminders.length - 1 && (
-                  <Divider style={{ marginHorizontal: spacing.md }} />
-                )}
-              </View>
-            ))
-          ) : null}
+          <RemindersCardBody
+            reminders={reminders}
+            isLoading={remindersQuery.isLoading}
+          />
         </DashboardCard>
 
         {/* Recent Conversations */}
@@ -332,62 +468,10 @@ export function DashboardScreen() {
             router.push("/(app)/(tabs)");
           }}
         >
-          {conversationsQuery.isLoading ? (
-            <SkeletonGroup
-              isLoading
-              style={{ padding: spacing.md, gap: spacing.sm }}
-            >
-              <SkeletonGroup.Item
-                className="h-8 w-full rounded-xl"
-                style={{ marginBottom: spacing.xs }}
-              />
-              <SkeletonGroup.Item
-                className="h-8 w-3/4 rounded-xl"
-                style={{ marginBottom: spacing.xs }}
-              />
-              <SkeletonGroup.Item className="h-8 w-4/5 rounded-xl" />
-            </SkeletonGroup>
-          ) : conversations.length > 0 ? (
-            conversations.map((conv, index) => (
-              <View key={conv.id}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: spacing.sm + 2,
-                    gap: spacing.sm,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
-                      backgroundColor: conv.is_unread
-                        ? ACCENT
-                        : "rgba(255,255,255,0.15)",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      flex: 1,
-                      fontSize: fontSize.sm,
-                      fontWeight: conv.is_unread ? "600" : "400",
-                      color: conv.is_unread ? "#f4f4f5" : "#a1a1aa",
-                    }}
-                  >
-                    {conv.title}
-                  </Text>
-                </View>
-                {index < conversations.length - 1 && (
-                  <Divider style={{ marginHorizontal: spacing.md }} />
-                )}
-              </View>
-            ))
-          ) : null}
+          <ConversationsCardBody
+            conversations={conversations}
+            isLoading={conversationsQuery.isLoading}
+          />
         </DashboardCard>
 
         {/* Active Workflows + Unread Notifications — side by side */}
@@ -400,17 +484,10 @@ export function DashboardScreen() {
               iconColor="#a78bfa"
               badge={activeWorkflowCount > 0 ? activeWorkflowCount : undefined}
               subtitle={
-                workflowsQuery.isLoading ? (
-                  <Skeleton
-                    isLoading
-                    className="h-3 w-16 rounded"
-                    style={{ marginTop: 2 }}
-                  />
-                ) : (
-                  <Text
-                    style={{ fontSize: fontSize.xs, color: "#71717a" }}
-                  >{`${activeWorkflowCount} active`}</Text>
-                )
+                <StatSubtitle
+                  isLoading={workflowsQuery.isLoading}
+                  text={`${activeWorkflowCount} active`}
+                />
               }
               onPress={() => {
                 router.push("/(app)/(tabs)/workflows");
@@ -426,19 +503,12 @@ export function DashboardScreen() {
               iconColor="#f43f5e"
               badge={unreadCount > 0 ? unreadCount : undefined}
               subtitle={
-                unreadQuery.isLoading ? (
-                  <Skeleton
-                    isLoading
-                    className="h-3 w-16 rounded"
-                    style={{ marginTop: 2 }}
-                  />
-                ) : (
-                  <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-                    {unreadCount > 0
-                      ? `${unreadCount} unread`
-                      : "All caught up"}
-                  </Text>
-                )
+                <StatSubtitle
+                  isLoading={unreadQuery.isLoading}
+                  text={
+                    unreadCount > 0 ? `${unreadCount} unread` : "All caught up"
+                  }
+                />
               }
               onPress={() => {
                 router.push("/(app)/(tabs)/notifications");

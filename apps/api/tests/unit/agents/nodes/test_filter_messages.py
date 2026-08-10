@@ -1,12 +1,10 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-import pytest
 
 from app.agents.core.nodes.filter_messages import filter_messages_node
 
 
-@pytest.mark.unit
 class TestFilterMessages:
     def _make_state(self, messages):
         return {"messages": messages}
@@ -164,6 +162,30 @@ class TestFilterMessages:
 
         # AIMessage2: call "B" is NOT answered — must be removed.
         assert len(ai2_filtered.tool_calls) == 0
+
+    def test_malformed_tool_call_degrades_to_unchanged_state_and_logs(self):
+        """A tool_call that is not a dict — the shape a corrupted checkpoint
+        payload produces — must not take the graph down. The node runs on every
+        agent turn, so it swallows the failure, logs it with the cause, and
+        hands back the exact state it was given.
+        """
+        malformed = AIMessage.model_construct(content="", tool_calls=["not-a-dict"])
+        messages = [HumanMessage(content="hello"), malformed]
+        state = self._make_state(messages)
+
+        with patch("app.agents.core.nodes.filter_messages.log") as mock_log:
+            result = filter_messages_node(state, self._config(), self._store())
+
+        assert result is state
+        assert result["messages"] is messages
+
+        mock_log.error.assert_called_once()
+        logged = mock_log.error.call_args.args[0]
+        kwargs = mock_log.error.call_args.kwargs
+        assert "filter messages node" in logged
+        assert "has no attribute 'get'" in kwargs.get("error", ""), (
+            f"The swallowed exception must be named in the log, got: {kwargs}"
+        )
 
     def test_cross_message_tool_call_deduplication(self):
         """ToolMessages following ai2 must not affect filtering of ai1's tool_calls."""

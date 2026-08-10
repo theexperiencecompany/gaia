@@ -1,9 +1,14 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Spinner } from "@heroui/spinner";
 import { Home01Icon } from "@icons";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import {
+  isChunkLoadError,
+  recoverFromChunkError,
+} from "@/lib/chunkErrorRecovery";
 
 interface RouteErrorProps {
   error: Error & { digest?: string };
@@ -16,7 +21,17 @@ interface RouteErrorProps {
  * of bubbling to `global-error.tsx` and replacing the whole document.
  */
 export default function RouteError({ error, reset }: RouteErrorProps) {
+  const isChunk = isChunkLoadError(error);
+  const [recovering, setRecovering] = useState(isChunk);
+
   useEffect(() => {
+    // A stale-asset chunk failure reached the boundary. Reload once to fetch
+    // fresh chunks; if recovery is exhausted, fall through to the retryable UI.
+    // `recoverFromChunkError` emits its own analytics for both paths.
+    if (isChunk && recoverFromChunkError(error) === "reloading") return;
+    setRecovering(false);
+    if (isChunk) return;
+
     // Full diagnostics stay in the console (and Sentry). Only the stable,
     // non-sensitive digest is sent to analytics — error.message/stack can carry
     // backend responses, URLs, query params, or user content.
@@ -25,7 +40,17 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
       error_type: "app_router_error_boundary",
       error_digest: error.digest,
     });
-  }, [error]);
+  }, [error, isChunk]);
+
+  // While the guarded reload decision is pending, show a neutral loader rather
+  // than flashing the error UI for what is about to become a fresh page.
+  if (recovering) {
+    return (
+      <div className="flex min-h-[60vh] w-full items-center justify-center p-6">
+        <Spinner color="primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-2 p-6 text-center">

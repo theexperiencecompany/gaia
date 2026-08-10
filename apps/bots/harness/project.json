@@ -1,0 +1,61 @@
+{
+  "name": "bot-harness",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "root": "apps/bots/harness",
+  "sourceRoot": "apps/bots/harness/src",
+  "projectType": "application",
+  "tags": ["scope:typescript"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsup",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "sim": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsx src/cli.ts",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome check src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome check --write src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome format --write src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "format:check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome format src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsc --noEmit",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

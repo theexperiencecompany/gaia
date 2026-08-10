@@ -2,22 +2,37 @@
 Usage tracking API endpoints.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_user_id
+from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.rate_limits import (
     FEATURE_LIMITS,
+    PRIMARY_METERED_FEATURE,
     RateLimitPeriod,
     get_feature_info,
     get_limits_for_plan,
     get_reset_time,
 )
-from app.decorators.rate_limiting import tiered_limiter
 from app.models.payment_models import PlanType
+from app.models.usage_models import (
+    HistoryFeatureUsage,
+    HistoryUsagePeriod,
+    UsageHistoryEntry,
+)
+from app.schemas.usage import (
+    FeaturePeriodUsage,
+    FeatureUpgrade,
+    FeatureUsageSummary,
+    UsageSummary,
+)
+from app.services.cost_budget import get_budget_status
 from app.services.payments.payment_service import payment_service
+from app.services.usage_activity import get_activity
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
 
@@ -26,45 +41,53 @@ usage_service = UsageService()
 
 
 @router.get("/summary")
-async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str, Any]:
+# evlog-map-disable-next-line audit -- read-only usage lookup, no state change to audit
+async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummary:
     """Get real-time usage summary for the current user."""
     log.set(operation="get_usage_summary")
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
 
     try:
         # Get user subscription
         subscription = await payment_service.get_user_subscription_status(user_id)
         user_plan = subscription.plan_type or PlanType.FREE
 
-        # Get real-time usage data directly from Redis
-        features_formatted = await _get_realtime_usage(user_id, user_plan)
+        # Both read independent Redis keys — issue them concurrently.
+        features_formatted, budget = await asyncio.gather(
+            _get_realtime_usage(user_id, user_plan),
+            get_budget_status(user_id, user_plan),
+        )
 
         log.set(period="realtime", result_count=len(features_formatted))
         log.set(outcome="success")
-        return {
-            "user_id": user_id,
-            "plan_type": user_plan.value if hasattr(user_plan, "value") else str(user_plan),
-            "features": features_formatted,
-            "last_updated": datetime.now(UTC).isoformat(),
-        }
+        return UsageSummary(
+            user_id=user_id,
+            plan_type=user_plan.value if hasattr(user_plan, "value") else str(user_plan),
+            # The feature the usage UI leads with (its free wall is the cost
+            # budget) — sourced from config so client and server never drift.
+            primary_feature=PRIMARY_METERED_FEATURE,
+            features=features_formatted,
+            budget=budget,
+            last_updated=datetime.now(UTC).isoformat(),
+        )
     except Exception as e:
-        log.error(f"Error getting usage summary: {e!s}")
-        raise HTTPException(status_code=500, detail="Failed to get usage summary")
+        log.error(
+            "Error getting usage summary",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to get usage summary") from e
 
 
 @router.get("/history")
+# evlog-map-disable-next-line audit -- read-only usage/plan history lookup, no state change to audit
 async def get_usage_history(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to retrieve"),
     feature_key: str | None = Query(default=None, description="Specific feature to filter by"),
-    user: dict = Depends(get_current_user),
-) -> list[dict[str, Any]]:
+    user_id: str = Depends(get_user_id),
+) -> list[UsageHistoryEntry]:
     """Get usage history for the current user."""
     log.set(operation="get_usage_history", period=f"{days}d")
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
 
     # Validate feature_key if provided
     if feature_key and feature_key not in FEATURE_LIMITS:
@@ -73,53 +96,71 @@ async def get_usage_history(
     try:
         history = await usage_service.get_usage_history(user_id, feature_key, days)
 
-        formatted_history = []
+        formatted_history: list[UsageHistoryEntry] = []
         for snapshot in history:
-            features_formatted: dict[str, dict[str, Any]] = {}
+            features_formatted: dict[str, HistoryFeatureUsage] = {}
             for feature in snapshot.features:
                 key = feature.feature_key
                 if key not in features_formatted:
                     feature_info = get_feature_info(key)
-                    features_formatted[key] = {
-                        "title": feature_info["title"],
-                        "periods": {},
-                    }
+                    features_formatted[key] = HistoryFeatureUsage(title=feature_info.title)
 
-                features_formatted[key]["periods"][feature.period] = {
-                    "used": feature.used,
-                    "limit": feature.limit,
-                    "percentage": (
-                        (feature.used / feature.limit * 100) if feature.limit > 0 else 0
-                    ),
-                }
+                features_formatted[key].periods[feature.period] = HistoryUsagePeriod(
+                    used=feature.used,
+                    limit=feature.limit,
+                    percentage=(feature.used / feature.limit * 100) if feature.limit > 0 else 0,
+                )
 
             formatted_history.append(
-                {
-                    "date": snapshot.created_at.isoformat(),
-                    "plan_type": snapshot.plan_type,
-                    "features": features_formatted,
-                }
+                UsageHistoryEntry(
+                    date=snapshot.created_at.isoformat(),
+                    plan_type=snapshot.plan_type,
+                    features=features_formatted,
+                )
             )
 
         log.set(result_count=len(formatted_history))
         log.set(outcome="success")
         return formatted_history
     except Exception as e:
-        log.error(f"Error getting usage history: {e!s}")
-        raise HTTPException(status_code=500, detail="Failed to get usage history")
+        log.error(
+            "Error getting usage history",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to get usage history") from e
 
 
-async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Any]:
+@router.get("/activity")
+# evlog-map-disable-next-line audit -- read-only activity lookup, no state change to audit
+async def get_usage_activity(
+    days: int = Query(default=365, ge=1, le=366, description="Trailing window in days"),
+    user_id: str = Depends(get_user_id),
+) -> dict[str, Any]:
+    """Daily activity for the heatmap: per-day action counts, streak, and standing."""
+    log.set(operation="get_usage_activity", period=f"{days}d")
+    try:
+        result = await get_activity(user_id, days)
+        log.set(outcome="success")
+        return result
+    except Exception as e:
+        log.error(
+            "Error getting usage activity",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get usage activity")
+
+
+async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, FeatureUsageSummary]:
     """Get real-time usage data directly from Redis for all features."""
-    features_formatted: dict[str, dict[str, Any]] = {}
+    features_formatted: dict[str, FeatureUsageSummary] = {}
 
     for feature_key in FEATURE_LIMITS:
         feature_info = get_feature_info(feature_key)
-        features_formatted[feature_key] = {
-            "title": feature_info["title"],
-            "description": feature_info["description"],
-            "periods": {},
-        }
+        pro_limits = get_limits_for_plan(feature_key, PlanType.PRO)
+        periods: dict[str, FeaturePeriodUsage] = {}
 
         current_limits = get_limits_for_plan(feature_key, user_plan)
 
@@ -134,15 +175,20 @@ async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, An
                 current_usage = int(current_usage) if current_usage else 0
 
                 reset_time = get_reset_time(getattr(RateLimitPeriod, period.upper()))
-                percentage = (current_usage / limit * 100) if limit > 0 else 0
-                remaining = max(0, limit - current_usage)
+                periods[period] = FeaturePeriodUsage(
+                    used=current_usage,
+                    limit=limit,
+                    percentage=(current_usage / limit * 100),
+                    reset_time=reset_time.isoformat(),
+                    remaining=max(0, limit - current_usage),
+                )
 
-                features_formatted[feature_key]["periods"][period] = {
-                    "used": current_usage,
-                    "limit": limit,
-                    "percentage": percentage,
-                    "reset_time": reset_time.isoformat(),
-                    "remaining": remaining,
-                }
+        features_formatted[feature_key] = FeatureUsageSummary(
+            title=feature_info.title,
+            description=feature_info.description,
+            # Pro tier's limits, so a free user's UI can show the upgrade delta.
+            upgrade=FeatureUpgrade(day=pro_limits.day, month=pro_limits.month),
+            periods=periods,
+        )
 
     return features_formatted

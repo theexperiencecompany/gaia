@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Craft is a beautifully designed document and note-taking app with deep Apple platform integration, rich formatting, and an AI writing assistant built into the editor. GAIA is a proactive AI assistant that manages your email, calendar, and tasks across 50+ integrations — orchestrating your digital work beyond what any single note-taking app can reach.",
   metaTitle:
-    "GAIA vs Craft: AI Productivity Assistant vs Document and Notes App | GAIA",
+    "GAIA vs Craft: AI Productivity Assistant vs Document and Notes App",
   metaDescription:
     "Compare GAIA and Craft. Craft creates beautiful documents with AI writing assistance on Apple devices. GAIA reads your email, manages your calendar, and automates workflows across 50+ tools.",
   keywords: [

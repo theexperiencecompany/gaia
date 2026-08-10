@@ -1,0 +1,33 @@
+# gaia-arq-failures — fires when more than 5 background tasks errored in 15m.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-arq-failures fires when 15 tasks errored in the window
+    interval: 1m
+    input_series:
+      - series: 'arq_task_total{status="error",task_name="send_reminder"}'
+        values: '1+1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-arq-failures
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: arq_worker
+            exp_annotations:
+              description: >-
+                These are the jobs that make GAIA proactive — reminder delivery, workflow generation and execution, tracked-todo runs, Gmail-to-memory ingestion and the housekeeping crons. Failures here are invisible to users until something they scheduled never happens. The "Task Rate by Name" panel breaks failures down by task_name.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-arq-failures
+              __dashboardUid__: gaia-arq-worker
+              __panelId__: '2'
+
+  - name: gaia-arq-failures stays quiet when no tasks are erroring
+    interval: 1m
+    input_series:
+      - series: 'arq_task_total{status="error",task_name="send_reminder"}'
+        values: '10x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-arq-failures
+        exp_alerts: []

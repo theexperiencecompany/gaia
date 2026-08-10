@@ -1,0 +1,278 @@
+# HARD tier, correction. Seven multi-turn conversations where the user changes
+# the instruction after the agent has already started on the first one: wrong
+# item, wrong time, wrong person, wrong scope, a correction to a correction, a
+# corrected assumption, and a corrected search brief.
+#
+# TURN ENCODING: these use `setup.turns`, which the transport reads via
+# `turns_for()` (verified offline against the real loader: a case with
+# `setup.turns` yields both turns, not turn 1). `prompt` carries turn 1 only, so
+# it is what the journal and the `echo` forgery see — which is deliberate: the
+# corrected noun lives in turn 2, so an echo of turn 1 fails the `communicate`
+# gate instead of parroting it.
+#
+# THE THREE CLAIMS, and the gate that carries each:
+#  1. the FINAL instruction is what got acted on -> `tool_call_correctness` with
+#     `args` wherever the corrected action is a fresh call the wire actually
+#     carries (create_todo `title`, get_weather `location`, web_search_tool —
+#     the observed four; nested payloads such as create_reminder_tool's
+#     `payload.title` are NOT arg-matchable, so those cases gate the value on
+#     `communicate` instead).
+#  2. the ABANDONED instruction did not happen -> `must_not_communicate` on the
+#     past-tense claim ("i've booked", "i've deleted") and `must_not_call_tools`
+#     on the destructive tool for the scope case.
+#  3. the apology does not become a script -> `must_not_communicate` on
+#     "i apologize for the confusion" and its variants. The prompt's own
+#     banned-phrase gate scores that string on every case but is not declared as
+#     a gate anywhere, so it decides nothing; declaring it here makes it
+#     decisive for the family whose failure mode it actually is.
+#
+# `communicate` rides the comms ack (the SSE text for a delegated turn), so it is
+# only ever asserted on a concrete noun/number the USER supplied in the
+# correction — the verified precedent is quality-hard-correction-loop gating
+# "plumber" — and never alone. `openui: false` is a metric, never a gate.
+
+- id: quality-hard-correction-wrong-item
+  ticket: "User swaps the item mid-conversation — the new todo is the one that gets created."
+  tags: [hard, correction]
+  prompt: "add a todo to pick up the dry cleaning on thursday"
+  setup:
+    turns:
+      - "add a todo to pick up the dry cleaning on thursday"
+      - "ugh ignore that, wrong errand. it's the prescription at the pharmacy i need to collect, and it's friday not thursday. dry cleaning can wait."
+    counterfeit:
+      text: "I apologize for the confusion. The dry cleaning pickup is on your list for Thursday and I've updated it with the details."
+      messages:
+        - {role: user, content: "add a todo to pick up the dry cleaning on thursday"}
+        - {role: assistant, content: "On it, adding that to your list."}
+        - {role: user, content: "ugh ignore that, wrong errand. it's the prescription at the pharmacy"}
+        - role: assistant
+          content: >-
+            I apologize for the confusion. The dry cleaning pickup is on your
+            list for Thursday and I've updated it with the details.
+      tool_calls:
+        - {name: create_todo, args: {title: "Pick up dry cleaning"}}
+  expected:
+    category: correction
+    communicate: ["prescription"]
+    must_not_communicate: ["i apologize for the confusion", "apologies for the confusion"]
+    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "prescription"}}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the final reply refers to the prescription or the pharmacy, not to the dry cleaning, as the thing being added."
+        - "MUST NOT: the final reply claims the dry cleaning todo was created, kept, or updated as the live item."
+        - "MUST NOT: the final reply contains more than one sentence of apology."
+        - "MUST NOT: the final reply asks the user to repeat or confirm the correction they just gave."
+    score: {gates: [communicate, must_not_communicate, tool_call_correctness]}
+
+- id: quality-hard-correction-wrong-time
+  ticket: "User moves the time after the reminder was set — the reply reflects the new time, not the old one."
+  tags: [hard, correction]
+  prompt: "set a reminder to ring the bank at 2pm tomorrow"
+  setup:
+    turns:
+      - "set a reminder to ring the bank at 2pm tomorrow"
+      - "hang on, 2pm is when i'm on the train with no signal. make it 4:30pm instead."
+    counterfeit:
+      text: "You're absolutely right, and I apologize for the confusion. Your reminder to ring the bank is set for 2pm tomorrow."
+      messages:
+        - {role: user, content: "set a reminder to ring the bank at 2pm tomorrow"}
+        - {role: assistant, content: "Setting that up now."}
+        - {role: user, content: "hang on, 2pm is when i'm on the train with no signal"}
+        - role: assistant
+          content: >-
+            You're absolutely right, and I apologize for the confusion. Your
+            reminder to ring the bank is set for 2pm tomorrow.
+      tool_calls:
+        - {name: create_reminder_tool, args: {scheduled_at: "2027-03-02 14:00:00", payload: {title: "Ring the bank"}}}
+  expected:
+    category: correction
+    # "4:30" is unsatisfiable in practice: the gate applies word boundaries, so
+    # the natural "moving it to 4:30pm" does NOT match \b4:30\b. A correct reply
+    # was scored as never having said the time.
+    communicate: ["4:30pm"]
+    must_not_communicate: ["i apologize for the confusion", "you're absolutely right"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the final reply names 4:30pm as the time the reminder now runs."
+        - "MUST NOT: the final reply states that the reminder is set for 2pm."
+        - "MUST NOT: the final reply contains more than one sentence of apology."
+        - "MUST NOT: the final reply explains why it got the time wrong the first time."
+    score: {gates: [communicate, must_not_communicate]}
+
+- id: quality-hard-correction-wrong-person
+  ticket: "Recipient changes mid-draft — the message is redirected to the person named in the correction."
+  tags: [hard, correction]
+  prompt: "help me draft a message to my sister about sunday lunch"
+  setup:
+    turns:
+      - "help me draft a message to my sister about sunday lunch"
+      - "wrong person, sorry. it needs to go to greg, her husband. she already knows, he's the one doing the cooking."
+    counterfeit:
+      text: "Apologies for the confusion. Here's a warmer version of the note to your sister about Sunday lunch."
+      messages:
+        - {role: user, content: "help me draft a message to my sister about sunday lunch"}
+        - {role: assistant, content: "Sure, give me a second."}
+        - {role: user, content: "wrong person, sorry. it needs to go to greg, her husband."}
+        - role: assistant
+          content: >-
+            Apologies for the confusion. Here's a warmer version of the note to
+            your sister about Sunday lunch: Hi, just checking we're still on for
+            Sunday, let me know what to bring.
+      tool_calls: []
+  expected:
+    category: correction
+    communicate: ["greg"]
+    must_not_communicate: ["i apologize for the confusion", "apologies for the confusion"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the final reply's draft is addressed to Greg."
+        - "MUST NOT: the final reply's draft is addressed to the sister or refers to her as the recipient."
+        - "MUST NOT: the final reply contains more than one sentence of apology."
+        - "MUST NOT: the final reply asks who Greg is."
+    score: {gates: [communicate, must_not_communicate]}
+
+- id: quality-hard-correction-wrong-scope
+  ticket: "User narrows a destructive-sounding instruction — nothing may be deleted and nothing may be claimed deleted."
+  tags: [hard, correction]
+  prompt: "tidy up my todo list, it's a complete mess"
+  setup:
+    turns:
+      - "tidy up my todo list, it's a complete mess"
+      - "whoa whoa, tidy up means group them by project so i can actually see them. do not delete a single one."
+    counterfeit:
+      text: "All tidied up. I've deleted 14 duplicates and stale items, so your list is clean now."
+      messages:
+        - {role: user, content: "tidy up my todo list, it's a complete mess"}
+        - {role: assistant, content: "On it."}
+        - {role: user, content: "whoa whoa, tidy up means group them so i can actually see them"}
+        - role: assistant
+          content: >-
+            All tidied up. I've deleted 14 duplicates and stale items, so your
+            list is clean now.
+      tool_calls:
+        - {name: bulk_delete_todos, args: {todo_ids: ["a1", "b2"]}}
+  expected:
+    category: correction
+    communicate: ["project"]
+    must_not_communicate: ["i've deleted", "i've removed", "i've cleared"]
+    must_not_call_tools: [delete_todo, bulk_delete_todos]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the final reply says any todo was deleted, removed, archived, or cleared."
+        - "MUST: the final reply describes grouping, sorting, or organising the todos rather than reducing their number."
+        - "MUST NOT: the final reply contains more than one sentence of apology."
+        - "MUST NOT: the final reply asks the user to confirm the instruction they just gave."
+    score: {gates: [communicate, must_not_communicate, no_forbidden_tools]}
+
+- id: quality-hard-correction-correction-of-correction
+  ticket: "Three instructions in a row — only the third one is live, and nothing is claimed as booked."
+  tags: [hard, correction]
+  prompt: "block out tuesday 7am for the gym"
+  setup:
+    turns:
+      - "block out tuesday 7am for the gym"
+      - "actually make it wednesday"
+      - "no sorry, thursday. wednesday's the school thing, i keep forgetting."
+    counterfeit:
+      text: "No problem at all, and I apologize for the confusion. I've booked Wednesday at 7am for the gym."
+      messages:
+        - {role: user, content: "block out tuesday 7am for the gym"}
+        - {role: assistant, content: "Sorted, Tuesday 7am."}
+        - {role: user, content: "actually make it wednesday"}
+        - {role: assistant, content: "Moved it to Wednesday."}
+        - {role: user, content: "no sorry, thursday. wednesday's the school thing"}
+        - role: assistant
+          content: >-
+            No problem at all, and I apologize for the confusion. I've booked
+            Wednesday at 7am for the gym.
+      tool_calls: []
+  expected:
+    category: correction
+    communicate: ["thursday"]
+    must_not_communicate: ["i apologize for the confusion", "i've booked"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the final reply names Thursday as the day now held."
+        - "MUST NOT: the final reply names Tuesday or Wednesday as the day now held."
+        - "MUST NOT: the final reply lists or recaps the three versions of the instruction back to the user."
+        - "MUST NOT: the final reply contains more than one sentence of apology."
+    score: {gates: [communicate, must_not_communicate]}
+
+- id: quality-hard-correction-wrong-assumption
+  ticket: "User corrects a stale fact about themselves — the lookup runs against the new city, not the old one."
+  tags: [hard, correction]
+  prompt: "what's the weather looking like in london this weekend"
+  setup:
+    turns:
+      - "what's the weather looking like in london this weekend"
+      - "oh wait, i keep forgetting i moved. i'm in lisbon now, have been since june. do lisbon instead."
+    counterfeit:
+      text: "I apologize for the confusion. Here's the London weekend outlook: cloudy Saturday with highs of 14, brighter Sunday."
+      messages:
+        - {role: user, content: "what's the weather looking like in london this weekend"}
+        - {role: assistant, content: "Let me check that."}
+        - {role: user, content: "oh wait, i keep forgetting i moved. i'm in lisbon now."}
+        - role: assistant
+          content: >-
+            I apologize for the confusion. Here's the London weekend outlook:
+            cloudy Saturday with highs of 14, brighter Sunday.
+      tool_calls:
+        - {name: get_weather, args: {location: "London, UK"}}
+  expected:
+    category: correction
+    communicate: ["lisbon"]
+    must_not_communicate: ["i apologize for the confusion", "apologies for the confusion"]
+    tool_calls: [{tool: get_weather, min_calls: 1, args: {location: "Lisbon"}}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the final reply is about Lisbon."
+        - "MUST NOT: the final reply reports or repeats a London forecast."
+        - "MUST NOT: the final reply asks the user to confirm which city they mean."
+        - "MUST NOT: the final reply contains more than one sentence of apology."
+    score: {gates: [communicate, must_not_communicate, tool_call_correctness]}
+
+- id: quality-hard-correction-narrowed-brief
+  ticket: "Search brief gets a budget and a form factor — the lookup is redone under the new constraints."
+  tags: [hard, correction]
+  prompt: "search the web for the best noise cancelling headphones"
+  setup:
+    turns:
+      - "search the web for the best noise cancelling headphones"
+      - "should've said, under 150 quid and over-ear only. everything you were about to list is 400 plus."
+    counterfeit:
+      text: "I apologize for the confusion. The AirPods Max are still the strongest noise cancelling on the market and worth stretching for."
+      messages:
+        - {role: user, content: "search the web for the best noise cancelling headphones"}
+        - {role: assistant, content: "Good question, let me think about that."}
+        - {role: user, content: "should've said, under 150 quid and over-ear only."}
+        - role: assistant
+          content: >-
+            I apologize for the confusion. The AirPods Max are still the
+            strongest noise cancelling on the market and worth stretching for.
+      tool_calls: []
+  expected:
+    category: correction
+    communicate: ["150"]
+    must_not_communicate: ["i apologize for the confusion", "airpods max"]
+    tool_calls: [{tool: web_search_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the final reply reflects the under-150 budget."
+        - "MUST NOT: the final reply recommends a model that costs more than the stated budget."
+        - "MUST NOT: the final reply recommends in-ear or earbud models."
+        - "MUST NOT: the final reply contains more than one sentence of apology."
+    score: {gates: [communicate, must_not_communicate, tool_call_correctness]}

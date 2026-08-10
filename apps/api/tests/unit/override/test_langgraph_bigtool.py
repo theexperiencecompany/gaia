@@ -502,10 +502,14 @@ class TestShouldContinue:
         state = _make_state(messages=[msg])
         store = MagicMock()
 
+        # One task per call, so a call that pauses for approval leaves its completed
+        # siblings alone (LangGraph persists their writes — see
+        # tests/unit/agents/test_pause_checkpointing.py).
         edge_fn = builder.branches["agent"]["should_continue"].path.func  # type: ignore[attr-defined]
         result = edge_fn(state, store=store)
         assert len(result) == 1
         assert result[0].node == "tools"
+        assert result[0].arg["tool_call"]["name"] == "dummy_tool_a"
 
     def test_unbound_tool_calls_routed_to_reject(self) -> None:
         from app.override.langgraph_bigtool.create_agent import create_agent

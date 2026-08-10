@@ -13,6 +13,8 @@ export function usePhaseSync(stage: Stage): void {
     if (stage !== "chat") return;
 
     postedRef.current = true;
-    postPhase("getting_started").catch(() => {});
+    postPhase("getting_started").catch((error) => {
+      console.warn("[onboarding] phase sync failed:", error);
+    });
   }, [stage]);
 }

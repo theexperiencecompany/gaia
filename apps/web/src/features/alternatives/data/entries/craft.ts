@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "AI features focus on writing assistance inside documents, not cross-tool intelligence",
     "Collaboration features require paid plans; free tier is restrictive",
   ],
-  metaTitle: "Best Craft Docs Alternative in 2026 | GAIA",
+  metaTitle: "Best Craft Docs Alternative in 2026",
   metaDescription:
     "Craft is a beautiful doc editor but has no proactive AI. GAIA manages email, tasks, calendar, and knowledge automatically. Free tier + open-source self-hosting.",
   keywords: [

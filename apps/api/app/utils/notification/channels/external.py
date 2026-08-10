@@ -11,7 +11,7 @@ Subclasses set only ``channel_type`` and ``platform``.
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any
+from typing import TypedDict
 
 from app.config.settings import settings
 from app.models.chat_models import ConversationSource
@@ -24,12 +24,18 @@ from app.services.outbound_delivery import OutboundResult, publish_outbound_mess
 from app.utils.notification.channels.base import ChannelAdapter
 
 
+class ExternalPayload(TypedDict):
+    """What this adapter hands the bot consumers: the rendered CommonMark parts."""
+
+    parts: list[str]
+
+
 def _join_nonempty(*segments: str, sep: str = "\n") -> str:
     """Join only the non-empty segments with ``sep`` (no leading/trailing seps)."""
     return sep.join(s for s in segments if s)
 
 
-class ExternalPlatformAdapter(ChannelAdapter):
+class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
     """Publishes notification content to a platform's outbound queue."""
 
     @property
@@ -54,7 +60,7 @@ class ExternalPlatformAdapter(ChannelAdapter):
         """
         return True
 
-    async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
+    async def transform(self, notification: NotificationRequest) -> ExternalPayload:
         """Render notification content to platform-agnostic CommonMark parts.
 
         The bot consumer converts each part to the platform's native formatting
@@ -75,9 +81,9 @@ class ExternalPlatformAdapter(ChannelAdapter):
             if links:
                 text = _join_nonempty(text, " · ".join(links), sep="\n\n")
 
-        return {"parts": [text]}
+        return ExternalPayload(parts=[text])
 
-    async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
+    async def deliver(self, content: ExternalPayload, user_id: str) -> ChannelDeliveryStatus:
         """Publish the rendered parts to the user's linked platform chat.
 
         Returns a success status when the broker accepts the message, an error

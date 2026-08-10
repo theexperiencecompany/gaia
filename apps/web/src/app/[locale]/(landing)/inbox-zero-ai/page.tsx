@@ -35,7 +35,7 @@ const faqs = [
   {
     question: "Does GAIA read my emails?",
     answer:
-      "Yes — that's how it triages them. GAIA reads the subject, sender, and body of each email to classify urgency and draft replies. On the self-hosted tier, this processing happens entirely on your own server. On the cloud tier, emails are processed securely and never used for model training or shared with third parties.",
+      "Yes — that's how it triages them. GAIA reads the subject, sender, and body of each email to classify urgency and draft replies. On the self-hosted tier, this processing happens entirely on your own server. On the cloud tier, emails are processed securely and never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy.",
   },
   {
     question: "Can I customize how GAIA triages my inbox?",

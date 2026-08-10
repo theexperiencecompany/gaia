@@ -102,6 +102,9 @@ interface OnboardingProcessingProps {
   hasGmail: boolean;
   completedStages?: Set<OnboardingStage>;
   progressByStage?: Partial<Record<OnboardingStage, string>>;
+  /** True while the user hasn't confirmed integrations yet — the
+   * "Setting up automations" step stays pending instead of spinning. */
+  gateWorkflowsStep?: boolean;
 }
 
 // Stages that prove the inbox scan finished. writing_style_ready excluded:
@@ -130,6 +133,7 @@ function OnboardingProcessingImpl({
   hasGmail,
   completedStages,
   progressByStage,
+  gateWorkflowsStep,
 }: OnboardingProcessingProps) {
   const steps = hasGmail ? GMAIL_STEPS : NO_GMAIL_STEPS;
   const [showSlowNotice, setShowSlowNotice] = useState(false);
@@ -147,11 +151,14 @@ function OnboardingProcessingImpl({
     return completedStages?.has(step.stage) ?? false;
   };
 
+  const isStepGated = (i: number): boolean =>
+    gateWorkflowsStep === true && steps[i].stage === "workflows_ready";
+
   const activeStepIndex = (() => {
     for (let i = 0; i < steps.length; i++) {
-      if (!isStepDone(i)) return i;
+      if (!isStepDone(i) && !isStepGated(i)) return i;
     }
-    return steps.length - 1;
+    return -1;
   })();
 
   return (

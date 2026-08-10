@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { mailApi } from "@/features/mail/api/mailApi";
-import type { EmailImportanceSummary } from "@/types/features/mailTypes";
 
 /**
  * Hook to fetch email importance summary/analysis for a specific email
@@ -88,6 +87,3 @@ export function useEmailAnalysisIndicators(
     missingCount: bulkQuery.data?.missing_count || 0,
   };
 }
-
-// Re-export types for convenience
-export type { EmailImportanceSummary };

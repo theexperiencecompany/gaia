@@ -2,12 +2,12 @@
 Todoist trigger handler.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.trigger_configs import TodoistNewTaskCreatedConfig
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import log
@@ -16,11 +16,11 @@ from shared.py.wide_events import log
 class TodoistTriggerHandler(TriggerHandler):
     """Handler for Todoist triggers."""
 
-    SUPPORTED_TRIGGERS = ["todoist_new_task_created"]
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = ["todoist_new_task_created"]
 
-    SUPPORTED_EVENTS = {"TODOIST_NEW_TASK_CREATED"}
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {"TODOIST_NEW_TASK_CREATED"}
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "todoist_new_task_created": "TODOIST_NEW_TASK_CREATED",
     }
 
@@ -35,7 +35,7 @@ class TodoistTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -72,36 +72,22 @@ class TodoistTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, _data: dict[str, Any]
     ) -> list[Workflow]:
         """Find workflows matching a Todoist trigger event."""
         log.set_ns("trigger", integration_id="todoist", trigger_type=event_type)
         try:
-            query = {
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.enabled": True,
-                "trigger_config.composio_trigger_ids": trigger_id,
-            }
-
-            cursor = workflows_collection.find(query)
             workflows: list[Workflow] = []
-
-            async for workflow_doc in cursor:
-                try:
-                    workflow_doc["id"] = workflow_doc.get("_id")
-                    if "_id" in workflow_doc:
-                        del workflow_doc["_id"]
-                    workflow = Workflow(**workflow_doc)
-                    workflows.append(workflow)
-                except Exception as e:
-                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
-                    continue
-
+            workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding workflows for trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
 

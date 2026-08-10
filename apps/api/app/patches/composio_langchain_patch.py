@@ -1,7 +1,10 @@
 import typing as t
 
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
 
-def apply():
+
+def apply() -> None:
     try:
         from composio.utils import shared
         from langchain_core.tools import base as lc_base
@@ -11,9 +14,12 @@ def apply():
         original_json_schema_to_pydantic_type = shared.json_schema_to_pydantic_type
 
         def patched_json_schema_to_pydantic_type(
-            json_schema: dict[str, t.Any],
+            json_schema: dict[str, t.Any] | bool,
         ) -> t.Union[type, t.Any | None]:
-            if "anyOf" in json_schema:
+            # Boolean JSON Schemas (draft-06+, e.g. bare `true`/`false` sub-schemas)
+            # have no "anyOf" to flatten — delegate straight to the original,
+            # which already handles them (isinstance(json_schema, bool) branch).
+            if isinstance(json_schema, dict) and "anyOf" in json_schema:
                 options = json_schema["anyOf"]
                 pydantic_types = [patched_json_schema_to_pydantic_type(o) for o in options]
                 valid_types = [pt for pt in pydantic_types if pt is not None and pt is not dict]
@@ -24,7 +30,7 @@ def apply():
                 from functools import reduce
 
                 cast_types = [t.cast(type, ptype) for ptype in valid_types]
-                return reduce(lambda a, b: t.Union[a, b], cast_types)  # type: ignore
+                return reduce(lambda a, b: t.Union[a, b], cast_types)  # type: ignore[arg-type,return-value]
 
             return original_json_schema_to_pydantic_type(json_schema)
 
@@ -37,21 +43,28 @@ def apply():
             *,
             flag: t.Union[bool, str, t.Callable[[t.Any], str]],
         ) -> str:
-            if isinstance(flag, bool):
-                # Return real exception message
-                return f"Tool input validation error: {e!s}"
             if isinstance(flag, str):
                 return flag
-            if callable(flag):
+            # bool is not callable, but check it explicitly: `callable()` cannot
+            # narrow a bool out on its own, and True must fall through to the
+            # real message rather than be invoked.
+            if not isinstance(flag, bool) and callable(flag):
                 return flag(e)
+            # flag is True (langchain's "handle it" signal) or something outside
+            # the documented union — either way, surface the actual error, which
+            # is the whole point of this patch.
             return f"Tool input validation error: {e!s}"
 
         lc_base._handle_validation_error = patched_handle_validation_error
 
-        # Print success
-        print("[PATCH] Applied composio_langchain_patch for arrays and tool validation errors")
+        log.info(f"{LogTag.PATCH} Applied composio_langchain_patch", patch="composio_langchain")
     except Exception as e:
-        print(f"[PATCH] Failed to apply composio langchain patch: {e}")
+        log.error(
+            f"{LogTag.PATCH} Failed to apply composio langchain patch",
+            patch="composio_langchain",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 # Call it directly on importing

@@ -74,7 +74,8 @@ sys.path.insert(0, str(backend_dir))
 from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 
 from app.config.settings import settings  # noqa: E402
-from app.models.payment_models import PlanDB  # noqa: E402
+from app.constants.memory import FREE_MEMORY_FACT_LIMIT
+from app.models.payment_models import PlanDocument  # noqa: E402
 
 
 async def cleanup_old_indexes(collection):
@@ -127,7 +128,8 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "features": [
                 "All tools & 100s of integrations",
                 "Standard models",
-                "Standard usage limits",
+                "Daily AI usage allowance",
+                f"{FREE_MEMORY_FACT_LIMIT} saved memories",
                 "Community support",
             ],
             "is_active": True,
@@ -141,8 +143,10 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "duration": "monthly",
             "max_users": 1,
             "features": [
-                "Higher usage limits",
+                "Much higher usage limits",
+                "Unlimited memories",
                 "More powerful models",
+                "Long running tasks",
                 "Priority support",
                 "Early access to new features",
             ],
@@ -152,13 +156,15 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "dodo_product_id": yearly_product_id,  # Yearly plan
             "name": "Pro",
             "description": "For serious users who want to save time.",
-            "amount": 27000,  # $270.00 in cents (3 months free, 25% discount)
+            "amount": 30000,  # $300.00 in cents (2 months free, ~16.7% discount)
             "currency": "USD",
             "duration": "yearly",
             "max_users": 1,
             "features": [
-                "Higher usage limits",
+                "Much higher usage limits",
+                "Unlimited memories",
                 "More powerful models",
+                "Long running tasks",
                 "Priority support",
                 "Early access to new features",
             ],
@@ -217,7 +223,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
                     }
                 )
 
-                plan_doc = PlanDB.model_validate(
+                plan_doc = PlanDocument.model_validate(
                     {
                         "dodo_product_id": dodo_product_id,
                         "name": plan_item["name"],

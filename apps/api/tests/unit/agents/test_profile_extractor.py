@@ -205,11 +205,13 @@ class TestUsernameExtraction:
 @pytest.mark.asyncio
 class TestExtractUsernameWithLLM:
     async def test_empty_emails_returns_not_found(self) -> None:
-        result = await extract_username_with_llm("github", [])
+        result = await extract_username_with_llm("github", [], user_id="u1")
         assert result == "NOT_FOUND"
 
     async def test_unknown_platform_returns_not_found(self) -> None:
-        result = await extract_username_with_llm("unknown_platform", [{"messageText": "hi"}])
+        result = await extract_username_with_llm(
+            "unknown_platform", [{"messageText": "hi"}], user_id="u1"
+        )
         assert result == "NOT_FOUND"
 
     @patch("app.agents.memory.profile_extractor.settings")
@@ -229,7 +231,7 @@ class TestExtractUsernameWithLLM:
             },
         ]
 
-        result = await extract_username_with_llm("github", emails)
+        result = await extract_username_with_llm("github", emails, user_id="u1")
         assert result == "octocat"
 
     @patch("app.agents.memory.profile_extractor.settings")
@@ -244,7 +246,7 @@ class TestExtractUsernameWithLLM:
 
         emails = [{"messageText": "Hello @octocat from GitHub", "subject": "Test"}]
 
-        result = await extract_username_with_llm("github", emails)
+        result = await extract_username_with_llm("github", emails, user_id="u1")
         assert result == "octocat"
 
     @patch("app.agents.memory.profile_extractor.settings")
@@ -257,7 +259,7 @@ class TestExtractUsernameWithLLM:
 
         emails = [{"messageText": "Hello from GitHub notifications", "subject": "Test"}]
 
-        result = await extract_username_with_llm("github", emails)
+        result = await extract_username_with_llm("github", emails, user_id="u1")
         assert result == "NOT_FOUND"
 
     @patch("app.agents.memory.profile_extractor.settings")
@@ -272,7 +274,9 @@ class TestExtractUsernameWithLLM:
 
         emails = [{"messageText": "Welcome @jdoe to GitHub", "subject": "Test"}]
 
-        result = await extract_username_with_llm("github", emails, user_name="John Doe")
+        result = await extract_username_with_llm(
+            "github", emails, user_name="John Doe", user_id="u1"
+        )
         assert result == "jdoe"
 
     @patch("app.agents.memory.profile_extractor.settings")
@@ -289,7 +293,7 @@ class TestExtractUsernameWithLLM:
         # Email with very short content after cleaning
         emails = [{"messageText": "hi", "subject": "Test"}]
 
-        result = await extract_username_with_llm("github", emails)
+        result = await extract_username_with_llm("github", emails, user_id="u1")
         assert result == "NOT_FOUND"
 
 

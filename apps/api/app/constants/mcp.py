@@ -24,3 +24,16 @@ GAIA_OAUTH_CLIENT_NAME = "GAIA"
 GAIA_OAUTH_LOGO_PATH = "/android-chrome-512x512.png"
 GAIA_OAUTH_TOS_PATH = "/terms"
 GAIA_OAUTH_PRIVACY_PATH = "/privacy"
+
+# What the model sees when a tool call succeeds but carries no content items —
+# legal in MCP for void actions (a delete, a set-state). An empty ToolMessage
+# tells the model nothing and some providers reject it outright.
+EMPTY_TOOL_RESULT = "(tool succeeded with no content)"
+# Beyond MAX_MEDIA_BLOCKS_PER_TOOL_RESULT images, further ones are not decoded.
+# Emitted once per result, not once per dropped image.
+MCP_MEDIA_DROPPED_NOTICE = (
+    "[{count} more image(s) omitted: this result returned more images than can be inlined.]"
+)
+# A content item that is neither text nor an inlinable image (audio, a binary
+# resource). Its pydantic repr must never be what the model sees.
+MCP_UNSUPPORTED_CONTENT_NOTICE = "[{kind} omitted: this result type cannot be shown as text.]"

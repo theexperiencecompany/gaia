@@ -57,27 +57,3 @@ def convert_legacy_tool_data(message: dict[str, Any]) -> dict[str, Any]:
         converted_message["tool_data"] = tool_data_entries
 
     return converted_message
-
-
-def convert_conversation_messages(conversation: dict[str, Any]) -> dict[str, Any]:
-    """
-    Convert all messages in a conversation from legacy format to unified tool_data format.
-
-    Args:
-        conversation: Conversation document from database
-
-    Returns:
-        Conversation with all messages converted to unified format
-    """
-    if "messages" not in conversation:
-        return conversation
-
-    conversation = conversation.copy()
-    converted_messages = []
-
-    for message in conversation["messages"]:
-        converted_message = convert_legacy_tool_data(message)
-        converted_messages.append(converted_message)
-
-    conversation["messages"] = converted_messages
-    return conversation

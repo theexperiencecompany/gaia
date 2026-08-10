@@ -46,6 +46,31 @@ type Block =
 
 // -- Parsing ------------------------------------------------------------------
 
+function segmentFromMatch(match: RegExpExecArray): InlineSegment | null {
+  if (match[2] && match[3]) {
+    return { type: "link", text: match[2], url: match[3] };
+  }
+  if (match[4] || match[5]) {
+    return { type: "boldItalic", text: match[4] || match[5] };
+  }
+  if (match[6] || match[7]) {
+    return { type: "bold", text: match[6] || match[7] };
+  }
+  if (match[8] || match[9]) {
+    return { type: "italic", text: match[8] || match[9] };
+  }
+  if (match[10]) {
+    return { type: "strikethrough", text: match[10] };
+  }
+  if (match[11]) {
+    return { type: "mathInline", text: match[11] };
+  }
+  if (match[12]) {
+    return { type: "code", text: match[12] };
+  }
+  return null;
+}
+
 function parseInline(text: string): InlineSegment[] {
   const segments: InlineSegment[] = [];
   // Order matters: bold-italic before bold before italic; $...$ before backtick
@@ -61,20 +86,9 @@ function parseInline(text: string): InlineSegment[] {
       segments.push({ type: "text", text: text.slice(lastIndex, match.index) });
     }
 
-    if (match[2] && match[3]) {
-      segments.push({ type: "link", text: match[2], url: match[3] });
-    } else if (match[4] || match[5]) {
-      segments.push({ type: "boldItalic", text: match[4] || match[5] });
-    } else if (match[6] || match[7]) {
-      segments.push({ type: "bold", text: match[6] || match[7] });
-    } else if (match[8] || match[9]) {
-      segments.push({ type: "italic", text: match[8] || match[9] });
-    } else if (match[10]) {
-      segments.push({ type: "strikethrough", text: match[10] });
-    } else if (match[11]) {
-      segments.push({ type: "mathInline", text: match[11] });
-    } else if (match[12]) {
-      segments.push({ type: "code", text: match[12] });
+    const segment = segmentFromMatch(match);
+    if (segment) {
+      segments.push(segment);
     }
 
     lastIndex = match.index + match[0].length;
@@ -92,124 +106,172 @@ function parseInline(text: string): InlineSegment[] {
   return segments;
 }
 
+// A single parsing step: an optional block plus the index to resume from.
+// `block === null` means lines were consumed without producing a block.
+type BlockParseResult = { block: Block | null; next: number };
+
+function parseMathBlockLines(
+  lines: string[],
+  start: number,
+): BlockParseResult | null {
+  if (lines[start].trim() !== "$$") return null;
+  const mathLines: string[] = [];
+  let i = start + 1;
+  while (i < lines.length && lines[i].trim() !== "$$") {
+    mathLines.push(lines[i]);
+    i++;
+  }
+  i++; // skip closing $$
+  return { block: { type: "mathBlock", code: mathLines.join("\n") }, next: i };
+}
+
+function parseCodeBlockLines(
+  lines: string[],
+  start: number,
+): BlockParseResult | null {
+  if (!lines[start].trimStart().startsWith("```")) return null;
+  const language = lines[start].trimStart().slice(3).trim();
+  const codeLines: string[] = [];
+  let i = start + 1;
+  while (i < lines.length && !lines[i].trimStart().startsWith("```")) {
+    codeLines.push(lines[i]);
+    i++;
+  }
+  i++; // skip closing ```
+  return {
+    block: { type: "codeBlock", language, code: codeLines.join("\n") },
+    next: i,
+  };
+}
+
+// Captures the first marker and requires every repeat to match it, so mixed
+// sequences like "- * _" stay text (CommonMark only treats a uniform run as a
+// rule). Unambiguous by construction (every \s* is anchored between mandatory
+// chars), so it cannot backtrack exponentially on adversarial input.
+const HR_LINE_REGEX = /^\s*([-*_])(?:\s*\1){2,}\s*$/;
+
+function isHrLine(line: string): boolean {
+  return HR_LINE_REGEX.test(line);
+}
+
+function parseHrLine(lines: string[], start: number): BlockParseResult | null {
+  if (!isHrLine(lines[start])) return null;
+  return { block: { type: "hr" }, next: start + 1 };
+}
+
+function parseHeadingLine(
+  lines: string[],
+  start: number,
+): BlockParseResult | null {
+  const headingMatch = lines[start].match(/^(#{1,6})\s+(.+)/);
+  if (!headingMatch) return null;
+  return {
+    block: {
+      type: "heading",
+      level: headingMatch[1].length,
+      segments: parseInline(headingMatch[2]),
+    },
+    next: start + 1,
+  };
+}
+
+function parseBlockquoteLines(
+  lines: string[],
+  start: number,
+): BlockParseResult | null {
+  if (!lines[start].trimStart().startsWith("> ")) return null;
+  const quoteLines: string[] = [];
+  let i = start;
+  while (i < lines.length && lines[i].trimStart().startsWith("> ")) {
+    quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
+    i++;
+  }
+  return {
+    block: { type: "blockquote", segments: parseInline(quoteLines.join(" ")) },
+    next: i,
+  };
+}
+
+function parseListLines(
+  lines: string[],
+  start: number,
+): BlockParseResult | null {
+  const unordered = /^\s*[-*+]\s+/;
+  const ordered = /^\s*\d+[.)]\s+/;
+  const matcher = unordered.test(lines[start])
+    ? unordered
+    : ordered.test(lines[start])
+      ? ordered
+      : null;
+  if (!matcher) return null;
+  const items: InlineSegment[][] = [];
+  let i = start;
+  while (i < lines.length && matcher.test(lines[i])) {
+    items.push(parseInline(lines[i].replace(matcher, "")));
+    i++;
+  }
+  return {
+    block: {
+      type: matcher === unordered ? "unorderedList" : "orderedList",
+      items,
+    },
+    next: i,
+  };
+}
+
+function isBlockBoundary(line: string): boolean {
+  return (
+    line.trim() === "" ||
+    line.trim() === "$$" ||
+    line.trimStart().startsWith("```") ||
+    line.trimStart().startsWith("> ") ||
+    /^#{1,6}\s+/.test(line) ||
+    /^\s*[-*+]\s+/.test(line) ||
+    /^\s*\d+[.)]\s+/.test(line) ||
+    isHrLine(line)
+  );
+}
+
+function parseParagraphLines(lines: string[], start: number): BlockParseResult {
+  // Empty line: consume without producing a block.
+  if (lines[start].trim() === "") {
+    return { block: null, next: start + 1 };
+  }
+  const paraLines: string[] = [];
+  let i = start;
+  while (i < lines.length && !isBlockBoundary(lines[i])) {
+    paraLines.push(lines[i]);
+    i++;
+  }
+  return {
+    block:
+      paraLines.length > 0
+        ? { type: "paragraph", segments: parseInline(paraLines.join(" ")) }
+        : null,
+    next: i,
+  };
+}
+
 function parseMarkdown(raw: string): Block[] {
   const blocks: Block[] = [];
   const lines = raw.split("\n");
   let i = 0;
 
   while (i < lines.length) {
-    const line = lines[i];
+    // Order matters and mirrors the original precedence.
+    const result =
+      parseMathBlockLines(lines, i) ??
+      parseCodeBlockLines(lines, i) ??
+      parseHrLine(lines, i) ??
+      parseHeadingLine(lines, i) ??
+      parseBlockquoteLines(lines, i) ??
+      parseListLines(lines, i) ??
+      parseParagraphLines(lines, i);
 
-    // Display math block $$...$$
-    if (line.trim() === "$$") {
-      const mathLines: string[] = [];
-      i++;
-      while (i < lines.length && lines[i].trim() !== "$$") {
-        mathLines.push(lines[i]);
-        i++;
-      }
-      i++; // skip closing $$
-      blocks.push({ type: "mathBlock", code: mathLines.join("\n") });
-      continue;
+    if (result.block) {
+      blocks.push(result.block);
     }
-
-    // Code block
-    if (line.trimStart().startsWith("```")) {
-      const language = line.trimStart().slice(3).trim();
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].trimStart().startsWith("```")) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      i++; // skip closing ```
-      blocks.push({ type: "codeBlock", language, code: codeLines.join("\n") });
-      continue;
-    }
-
-    // Horizontal rule
-    if (/^(\s*[-*_]\s*){3,}$/.test(line)) {
-      blocks.push({ type: "hr" });
-      i++;
-      continue;
-    }
-
-    // Heading
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
-    if (headingMatch) {
-      blocks.push({
-        type: "heading",
-        level: headingMatch[1].length,
-        segments: parseInline(headingMatch[2]),
-      });
-      i++;
-      continue;
-    }
-
-    // Blockquote
-    if (line.trimStart().startsWith("> ")) {
-      const quoteLines: string[] = [];
-      while (i < lines.length && lines[i].trimStart().startsWith("> ")) {
-        quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
-        i++;
-      }
-      blocks.push({
-        type: "blockquote",
-        segments: parseInline(quoteLines.join(" ")),
-      });
-      continue;
-    }
-
-    // Unordered list
-    if (/^\s*[-*+]\s+/.test(line)) {
-      const items: InlineSegment[][] = [];
-      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
-        items.push(parseInline(lines[i].replace(/^\s*[-*+]\s+/, "")));
-        i++;
-      }
-      blocks.push({ type: "unorderedList", items });
-      continue;
-    }
-
-    // Ordered list
-    if (/^\s*\d+[.)]\s+/.test(line)) {
-      const items: InlineSegment[][] = [];
-      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
-        items.push(parseInline(lines[i].replace(/^\s*\d+[.)]\s+/, "")));
-        i++;
-      }
-      blocks.push({ type: "orderedList", items });
-      continue;
-    }
-
-    // Empty line
-    if (line.trim() === "") {
-      i++;
-      continue;
-    }
-
-    // Paragraph: accumulate contiguous non-empty lines
-    const paraLines: string[] = [];
-    while (
-      i < lines.length &&
-      lines[i].trim() !== "" &&
-      lines[i].trim() !== "$$" &&
-      !lines[i].trimStart().startsWith("```") &&
-      !lines[i].trimStart().startsWith("> ") &&
-      !/^#{1,6}\s+/.test(lines[i]) &&
-      !/^\s*[-*+]\s+/.test(lines[i]) &&
-      !/^\s*\d+[.)]\s+/.test(lines[i]) &&
-      !/^(\s*[-*_]\s*){3,}$/.test(lines[i])
-    ) {
-      paraLines.push(lines[i]);
-      i++;
-    }
-    if (paraLines.length > 0) {
-      blocks.push({
-        type: "paragraph",
-        segments: parseInline(paraLines.join(" ")),
-      });
-    }
+    i = result.next;
   }
 
   return blocks;
@@ -225,6 +287,10 @@ function blockKey(block: Block, idx: number): string {
   if (block.type === "codeBlock") return `cb-${idx}-${block.language}`;
   if (block.type === "hr") return `hr-${idx}`;
   return `${block.type}-${idx}`;
+}
+
+function listItemKey(item: InlineSegment[], idx: number): string {
+  return `li-${idx}-${item[0]?.text.slice(0, 12)}`;
 }
 
 // -- Rendering components -----------------------------------------------------
@@ -471,7 +537,7 @@ function ListBlock({
     <View style={{ marginVertical: 4, paddingLeft: 16 }}>
       {items.map((item, idx) => (
         <View
-          key={`li-${idx}-${item[0]?.text.slice(0, 12)}`}
+          key={listItemKey(item, idx)}
           style={{ flexDirection: "row", marginBottom: 8, paddingRight: 8 }}
         >
           {ordered ? (
@@ -573,7 +639,9 @@ function MermaidBlock({ code }: { code: string }) {
           try {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.height) setHeight(Math.max(data.height, 100));
-          } catch {}
+          } catch {
+            /* ignore: web content may post non-JSON messages */
+          }
         }}
         originWhitelist={["*"]}
         javaScriptEnabled
@@ -630,7 +698,9 @@ function MathBlock({ code, inline }: { code: string; inline?: boolean }) {
         try {
           const data = JSON.parse(event.nativeEvent.data);
           if (data.height) setHeight(Math.max(data.height, inline ? 20 : 40));
-        } catch {}
+        } catch {
+          /* ignore: web content may post non-JSON messages */
+        }
       }}
       originWhitelist={["*"]}
       javaScriptEnabled
@@ -707,5 +777,5 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
 
 const MarkdownRenderer = memo(MarkdownRendererInner);
 
-export { MarkdownRenderer };
 export type { MarkdownRendererProps };
+export { MarkdownRenderer };

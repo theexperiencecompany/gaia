@@ -29,6 +29,7 @@ from app.helpers.message_helpers import (
     build_workspace_session_banner,
 )
 from app.memory.engine import memory_engine
+from app.models.agent_models import AgentConfigurable
 from app.services.integration_instructions_service import get_instructions
 from app.services.provider_metadata_service import get_provider_metadata
 from shared.py.wide_events import log
@@ -36,27 +37,21 @@ from shared.py.wide_events import log
 
 async def build_subagent_system_prompt(
     integration_id: str,
-    user_id: str | None = None,
     base_system_prompt: str | None = None,
 ) -> str:
     """Return the STATIC subagent system prompt.
 
-    Per-user provider metadata (username, email, etc.) is NOT injected here —
-    it lives in the dynamic-context message built alongside by
-    `create_agent_context_message`. Keeping this string independent of user_id
-    is what lets the implicit prompt cache hit on subagent invocations.
-
-    The ``user_id`` parameter is accepted for back-compat with existing
-    callers; it is intentionally unused.
+    Takes no user: per-user provider metadata (username, email, etc.) lives in
+    the dynamic-context message built alongside by `create_agent_context_message`.
+    Keeping this string independent of the user is what lets the implicit prompt
+    cache hit on subagent invocations.
     """
-    del user_id  # retained for signature compat; metadata flows via dynamic context
-
     subagent = get_subagent_by_id(integration_id) if integration_id else None
     if not subagent:
         # Custom or public MCP fallback — universal prompt; no per-user injection.
         if integration_id:
             return base_system_prompt or CUSTOM_MCP_SUBAGENT_PROMPT
-        log.warning(f"{LogTag.AGENT} Integration {integration_id} not found")
+        log.warning(f"{LogTag.AGENT} Integration not found", integration_id=integration_id)
         return base_system_prompt or ""
 
     return base_system_prompt or subagent.config.system_prompt or ""
@@ -64,18 +59,11 @@ async def build_subagent_system_prompt(
 
 async def create_subagent_system_message(
     integration_id: str,
-    agent_name: str,
-    user_id: str | None = None,
     base_system_prompt: str | None = None,
 ) -> SystemMessage:
-    """Return the static subagent prompt as a SystemMessage.
-
-    ``user_id`` is intentionally unused here; provider metadata for this user
-    is carried on the dynamic-context SystemMessage emitted beside this one.
-    """
+    """Return the static subagent prompt as a SystemMessage."""
     system_prompt = await build_subagent_system_prompt(
         integration_id=integration_id,
-        user_id=user_id,
         base_system_prompt=base_system_prompt,
     )
     return SystemMessage(content=system_prompt)
@@ -87,20 +75,33 @@ def _mark_dynamic(msg: SystemMessage) -> SystemMessage:
     return msg
 
 
-async def _fetch_provider_metadata_block(integration_id: str | None, user_id: str | None) -> str:
-    """Return the provider-metadata lines for the dynamic context, or ''."""
+async def _fetch_provider_metadata_block(
+    integration_id: str | None,
+    user_id: str | None,
+    metadata: dict[str, str] | None = None,
+) -> str:
+    """Return the provider-metadata lines for the dynamic context, or ''.
+
+    ``metadata`` is the pre-fetched provider metadata; if provided, skips the
+    Mongo lookup (same rationale as the memories/skills prefetch params).
+    """
     if not (integration_id and user_id):
         return ""
     integration = get_integration_by_id(integration_id)
     if not integration or not integration.provider:
         return ""
-    try:
-        metadata = await get_provider_metadata(user_id, integration.provider)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.AGENT} Failed to fetch provider metadata for {integration.provider}: {e}"
-        )
-        return ""
+    if metadata is None:
+        try:
+            metadata = await get_provider_metadata(user_id, integration.provider)
+        except Exception as e:
+            log.warning(
+                f"{LogTag.AGENT} Failed to fetch provider metadata",
+                provider=integration.provider,
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            return ""
     if not metadata:
         return ""
     lines = [f"- {k}: {v}" for k, v in metadata.items()]
@@ -120,7 +121,13 @@ async def _fetch_instructions_block(integration_id: str | None, user_id: str | N
     try:
         content = await get_instructions(user_id, integration_id)
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Failed to fetch custom instructions for {integration_id}: {e}")
+        log.warning(
+            f"{LogTag.AGENT} Failed to fetch custom instructions",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return ""
     if not content:
         return ""
@@ -133,13 +140,14 @@ async def _fetch_instructions_block(integration_id: str | None, user_id: str | N
 
 
 async def create_agent_context_message(
-    configurable: dict,
+    configurable: AgentConfigurable,
     user_id: str | None = None,
     query: str | None = None,
     subagent_id: str | None = None,
     integration_id: str | None = None,
     memories_text: str | None = None,
     skills_text: str | None = None,
+    provider_metadata: dict[str, str] | None = None,
     include_connected_integrations: bool = False,
 ) -> SystemMessage:
     """Build the dynamic-context system message for executor/subagent runs.
@@ -162,6 +170,9 @@ async def create_agent_context_message(
             ChromaDB lookup. Memory fetched by the caller is passed through
             the handoff payload so subagents don't re-run the same search.
         skills_text: Pre-fetched skills section; same rationale as memories.
+        provider_metadata: Pre-fetched provider metadata dict; if provided,
+            skips the Mongo lookup (the handoff path already fetched it for
+            task sanitization).
         include_connected_integrations: When True (executor only), append the
             live connected-integrations manifest (names + handoff subagent_ids).
     """
@@ -215,13 +226,19 @@ async def create_agent_context_message(
             results = await memory_engine.recall(user_id, query, limit=5)
             if results.memories:
                 log.info(
-                    f"{LogTag.AGENT} Added {len(results.memories)} memories to subagent context"
+                    f"{LogTag.AGENT} Added memories to subagent context",
+                    memory_count=len(results.memories),
                 )
                 return "\n\nBased on our previous conversations:\n" + "\n".join(
                     f"- {mem.content}" for mem in results.memories
                 )
         except Exception as e:
-            log.warning(f"{LogTag.AGENT} Error retrieving memories for subagent: {e}")
+            log.warning(
+                f"{LogTag.AGENT} Error retrieving memories for subagent",
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
         return ""
 
     async def _fetch_skills() -> str:
@@ -235,10 +252,18 @@ async def create_agent_context_message(
                 agent_for_skills = subagent_id or EXECUTOR_SUBAGENT_ID
                 text = await get_available_skills_text(user_id=user_id, agent_name=agent_for_skills)
                 if text:
-                    log.info(f"{LogTag.AGENT} Injected installable skills for {agent_for_skills}")
+                    log.info(
+                        f"{LogTag.AGENT} Injected installable skills",
+                        agent_name=agent_for_skills,
+                    )
                     block = text
             except Exception as e:
-                log.warning(f"{LogTag.AGENT} Error injecting installable skills: {e}")
+                log.warning(
+                    f"{LogTag.AGENT} Error injecting installable skills",
+                    user_id=user_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
 
         if subagent_id:
             # `subagent_id` carries the agent_name ("docgen_agent"), but
@@ -270,7 +295,7 @@ async def create_agent_context_message(
     ) = await asyncio.gather(
         _fetch_memories(),
         _fetch_skills(),
-        _fetch_provider_metadata_block(integration_id, user_id),
+        _fetch_provider_metadata_block(integration_id, user_id, metadata=provider_metadata),
         _fetch_instructions_block(integration_id or subagent_id, user_id),
         _fetch_integrations_manifest(),
     )

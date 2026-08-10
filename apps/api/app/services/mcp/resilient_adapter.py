@@ -13,15 +13,18 @@ subsequent cold connect (post worker restart, post LRU eviction) skips it.
 
 from functools import lru_cache
 import json
-from typing import Any
+from typing import Any, cast
 
 from langchain_core.tools import BaseTool
 import mcp_use.agents.adapters.langchain_adapter as _mcp_use_lc_adapter
+from mcp_use.client.client import MCPClient
+from mcp_use.client.connectors.base import BaseConnector
 from pydantic import BaseModel
 
 from app.constants.log_tags import LogTag
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.utils.schema_fixes import patch_tool_schema
+from mcp.types import Tool
 from shared.py.wide_events import log
 
 _ORIGINAL_JSONSCHEMA_TO_PYDANTIC = _mcp_use_lc_adapter.jsonschema_to_pydantic
@@ -29,10 +32,12 @@ _ORIGINAL_JSONSCHEMA_TO_PYDANTIC = _mcp_use_lc_adapter.jsonschema_to_pydantic
 
 @lru_cache(maxsize=10000)
 def _cached_jsonschema_to_pydantic_by_key(schema_key: str) -> type[BaseModel]:
-    return _ORIGINAL_JSONSCHEMA_TO_PYDANTIC(json.loads(schema_key))
+    # mcp_use's jsonschema_to_pydantic is untyped (returns Any); it always
+    # builds a pydantic model class from a JSON schema.
+    return cast(type[BaseModel], _ORIGINAL_JSONSCHEMA_TO_PYDANTIC(json.loads(schema_key)))
 
 
-def _memoized_jsonschema_to_pydantic(schema: Any) -> type[BaseModel]:
+def _memoized_jsonschema_to_pydantic(schema: dict[str, Any]) -> type[BaseModel]:
     """Drop-in replacement for mcp_use's jsonschema_to_pydantic with an LRU cache.
 
     Falls through to the original when the schema isn't JSON-serializable
@@ -44,7 +49,7 @@ def _memoized_jsonschema_to_pydantic(schema: Any) -> type[BaseModel]:
     try:
         key = json.dumps(schema, sort_keys=True)
     except (TypeError, ValueError):
-        return _ORIGINAL_JSONSCHEMA_TO_PYDANTIC(schema)
+        return cast(type[BaseModel], _ORIGINAL_JSONSCHEMA_TO_PYDANTIC(schema))
     return _cached_jsonschema_to_pydantic_by_key(key)
 
 
@@ -64,7 +69,7 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
     This allows integrations to work even if some tools are broken.
     """
 
-    async def create_tools(self, client) -> list[BaseTool]:
+    async def create_tools(self, client: MCPClient) -> list[BaseTool]:
         """Create LangChain tools, skipping any with invalid schemas.
 
         Args:
@@ -87,31 +92,46 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
         # Get tools from MCP server
         try:
             mcp_tools = await connector.list_tools()
-            log.info(f"{LogTag.MCP} [{integration_id}] MCP server returned {len(mcp_tools)} tools")
+            log.info(
+                f"{LogTag.MCP} MCP server returned tools",
+                integration_id=integration_id,
+                mcp_tools_count=len(mcp_tools),
+            )
         except Exception as e:
-            log.error(f"{LogTag.MCP} [{integration_id}] Failed to list tools: {e}")
+            log.error(
+                f"{LogTag.MCP} Failed to list tools",
+                integration_id=integration_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             raise
 
         if not mcp_tools:
-            log.warning(f"{LogTag.MCP} [{integration_id}] No tools returned from MCP server")
+            log.warning(
+                f"{LogTag.MCP} No tools returned from MCP server", integration_id=integration_id
+            )
             return []
 
         # Normalize schemas before conversion
-        normalized_tools = []
+        normalized_tools: list[Tool] = []
         for tool in mcp_tools:
             try:
                 normalized_tool = patch_tool_schema(tool)
                 normalized_tools.append(normalized_tool)
             except Exception as e:
                 log.warning(
-                    f"{LogTag.MCP} [{integration_id}] Could not normalize schema for {tool.name}: {e}"
+                    f"{LogTag.MCP} Could not normalize schema for",
+                    integration_id=integration_id,
+                    name=tool.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
                 # Still try to use the original tool
                 normalized_tools.append(tool)
 
         # Try to convert each tool individually
-        successfully_converted = []
-        failed_tools = []
+        successfully_converted: list[BaseTool] = []
+        failed_tools: list[tuple[str, str]] = []
 
         for tool in normalized_tools:
             try:
@@ -140,23 +160,32 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
                             "permissions": ui_meta.get("permissions", []),
                         }
                         log.debug(
-                            f"{LogTag.MCP} [{integration_id}] Attached mcp_ui metadata to tool: {tool.name}"
+                            f"{LogTag.MCP} Attached mcp_ui metadata to tool",
+                            integration_id=integration_id,
+                            name=tool.name,
                         )
 
                 successfully_converted.append(langchain_tool)
-                log.debug(f"{LogTag.MCP} [{integration_id}] Converted tool: {tool.name}")
+                log.debug(
+                    f"{LogTag.MCP} Converted tool", integration_id=integration_id, name=tool.name
+                )
             except Exception as e:
                 failed_tools.append((tool.name, str(e)))
                 log.warning(
-                    f"{LogTag.MCP} [{integration_id}] Failed to convert tool '{tool.name}': "
-                    f"{type(e).__name__}: {e}"
+                    f"{LogTag.MCP} Failed to convert tool",
+                    integration_id=integration_id,
+                    tool_name=tool.name,
+                    error_type=type(e).__name__,
                 )
                 # Continue with other tools
 
         # Log summary
         if successfully_converted:
             log.info(
-                f"{LogTag.MCP} [{integration_id}] Successfully converted {len(successfully_converted)}/{len(mcp_tools)} tools"
+                f"{LogTag.MCP} Successfully converted / tools",
+                integration_id=integration_id,
+                successfully_converted_count=len(successfully_converted),
+                mcp_tools_count=len(mcp_tools),
             )
 
         if failed_tools:
@@ -175,7 +204,7 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
 
         return successfully_converted
 
-    async def _convert_single_tool(self, mcp_tool: Any, connector: Any) -> BaseTool:
+    async def _convert_single_tool(self, mcp_tool: Tool, connector: BaseConnector) -> BaseTool:
         """Convert a single MCP tool to LangChain format.
 
         Args:

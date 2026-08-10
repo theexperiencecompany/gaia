@@ -6,15 +6,12 @@ when OAuth integrations are connected. This metadata is used to enhance agent
 system prompts with user context.
 """
 
-from datetime import UTC, datetime
 import json
 from typing import Any
 
-from bson import ObjectId
-
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import PROVIDER_METADATA_CACHE_TTL
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.services.composio.composio_service import get_composio_service
 from shared.py.wide_events import log
@@ -32,7 +29,12 @@ def _extract_nested_field(data: dict[str, Any], field_path: str) -> str | None:
                 return None
         return str(value) if value is not None else None
     except Exception as e:
-        log.error(f"Error extracting field '{field_path}': {e}")
+        log.error(
+            "Error extracting field",
+            field_path=field_path,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
 
 
@@ -57,30 +59,62 @@ async def fetch_tool_response(
         )
 
         if not tool:
-            log.error(f"Tool {tool_name} not found for {integration_id}")
+            log.error(
+                "Tool not found for",
+                tool_name=tool_name,
+                integration_id=integration_id,
+                user_id=user_id,
+            )
             return None
 
         # Execute the tool to get user info
         result = await tool.ainvoke({})
         data = result.get("data", {})
 
-        log.info(f"Fetched {tool_name} for {integration_id}: {type(data)}")
+        log.info(
+            "Fetched provider metadata tool result",
+            tool_name=tool_name,
+            integration_id=integration_id,
+            data_type=type(data).__name__,
+        )
 
         # Handle different response types
         if isinstance(data, dict):
             return data
         if isinstance(data, str):
             try:
-                return json.loads(data)
+                parsed = json.loads(data)
             except json.JSONDecodeError:
-                log.warning(f"Could not parse tool response as JSON: {data[:100]}")
+                log.warning(
+                    "Could not parse tool response as JSON",
+                    tool_name=tool_name,
+                    response_length=len(data),
+                )
                 return None
-        else:
-            log.warning(f"Unexpected response type from {tool_name}: {type(data)}")
+            if isinstance(parsed, dict):
+                return parsed
+            log.warning(
+                "Tool response JSON was not an object",
+                tool_name=tool_name,
+                data_type=type(parsed).__name__,
+            )
             return None
+        log.warning(
+            "Unexpected response type from tool",
+            tool_name=tool_name,
+            data_type=type(data).__name__,
+        )
+        return None
 
     except Exception as e:
-        log.error(f"Error fetching {tool_name} for {integration_id}: {e}")
+        log.error(
+            "Error fetching for",
+            tool_name=tool_name,
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None
 
 
@@ -91,7 +125,7 @@ async def fetch_provider_user_info(user_id: str, integration_id: str) -> dict[st
     integration = get_integration_by_id(integration_id)
 
     if not integration or not integration.metadata_config:
-        log.debug(f"No metadata config for integration {integration_id}")
+        log.debug("No metadata config for integration", integration_id=integration_id)
         return None
 
     metadata: dict[str, str] = {}
@@ -102,7 +136,12 @@ async def fetch_provider_user_info(user_id: str, integration_id: str) -> dict[st
         response = await fetch_tool_response(user_id, tool_config.tool, integration_id)
 
         if not response:
-            log.warning(f"Failed to fetch {tool_config.tool} for {integration_id}, skipping")
+            log.warning(
+                "Failed to fetch provider metadata, skipping",
+                tool=tool_config.tool,
+                integration_id=integration_id,
+                user_id=user_id,
+            )
             continue
 
         # Extract each configured variable from the response
@@ -110,11 +149,15 @@ async def fetch_provider_user_info(user_id: str, integration_id: str) -> dict[st
             value = _extract_nested_field(response, var.field_path)
             if value:
                 metadata[var.name] = value
-                log.debug(f"Extracted {var.name}={value} from {tool_config.tool}")
+                log.debug("Extracted = from", name=var.name, value=value, tool=tool_config.tool)
             else:
                 log.warning(
-                    f"Could not extract {var.name} from {var.field_path} "
-                    f"in {tool_config.tool} response"
+                    "Could not extract from in response",
+                    name=var.name,
+                    field_path=var.field_path,
+                    tool=tool_config.tool,
+                    user_id=user_id,
+                    integration_id=integration_id,
                 )
 
     return metadata if metadata else None
@@ -129,24 +172,24 @@ async def store_provider_metadata(user_id: str, provider: str, metadata: dict[st
         provider_metadata_keys=list(metadata.keys()),
     )
     try:
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    f"provider_metadata.{provider}": metadata,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
+        stored = await user_repository.set_provider_metadata(user_id, provider, metadata)
 
-        if result.modified_count > 0:
-            log.info(f"Stored {provider} metadata for user {user_id}: {metadata}")
+        if stored:
+            log.info(
+                "Stored metadata for user", provider=provider, user_id=user_id, metadata=metadata
+            )
             return True
-        log.warning(f"No document updated for user {user_id}")
+        log.warning("No document updated for user", user_id=user_id)
         return False
 
     except Exception as e:
-        log.error(f"Error storing {provider} metadata for user {user_id}: {e}")
+        log.error(
+            "Error storing metadata for user",
+            provider=provider,
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return False
 
 
@@ -157,16 +200,22 @@ async def store_provider_metadata(user_id: str, provider: str, metadata: dict[st
 async def get_provider_metadata(user_id: str, provider: str) -> dict[str, str] | None:
     """Retrieve provider metadata for a user, or None if not found."""
     try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)}, {"provider_metadata": 1})
+        user = await user_repository.get(user_id)
 
         if not user:
             return None
 
-        provider_metadata = user.get("provider_metadata", {})
-        return provider_metadata.get(provider)
+        metadata = (user.provider_metadata or {}).get(provider)
+        return metadata if isinstance(metadata, dict) else None
 
     except Exception as e:
-        log.error(f"Error getting {provider} metadata for user {user_id}: {e}")
+        log.error(
+            "Error getting metadata for user",
+            provider=provider,
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
 
 
@@ -178,20 +227,23 @@ async def fetch_and_store_provider_metadata(user_id: str, integration_id: str) -
     integration = get_integration_by_id(integration_id)
 
     if not integration:
-        log.debug(f"Integration {integration_id} not found")
+        log.debug("Integration not found", integration_id=integration_id)
         return False
 
     if not integration.metadata_config:
-        log.debug(f"No metadata config for integration {integration_id}")
+        log.debug("No metadata config for integration", integration_id=integration_id)
         return False
 
     # Fetch and extract metadata from all configured tools
     metadata = await fetch_provider_user_info(user_id, integration_id)
 
     if not metadata:
-        log.warning(f"Failed to fetch/extract metadata for {integration_id}")
+        log.warning(
+            "Failed to fetch/extract metadata for", integration_id=integration_id, user_id=user_id
+        )
         return False
 
     # Store metadata in database
     # Use provider name for storage (matches handoff tool lookup)
-    return await store_provider_metadata(user_id, integration.provider, metadata)
+    stored: bool = await store_provider_metadata(user_id, integration.provider, metadata)
+    return stored

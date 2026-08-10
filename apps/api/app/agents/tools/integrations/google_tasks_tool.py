@@ -4,6 +4,7 @@ from datetime import date
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
@@ -15,13 +16,14 @@ def register_google_tasks_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="GOOGLETASKS")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Google Tasks context snapshot: task lists and overdue/due-today tasks.
 
         Zero required parameters. Returns task lists and urgent tasks.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = auth_credentials.get("user_id", "")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")

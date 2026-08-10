@@ -103,9 +103,17 @@ flowchart TD
 ## Per-Workflow Steps
 ### `.github/workflows/main.yml`
 1. Enter from PRs targeting `develop`/`master` and pushes to `master`.
-2. Run master promotion policy guard (`develop`, `release-please--*`, or `hotfix/*` to `master`).
-3. Delegate the full quality gate to the Dagger module via `dagger call quality-checks`. All toolchain setup, dependency installation, linting, type-checking, building, testing, dead code detection, and release manifest validation run inside the Dagger container. No host-level pre-flight steps.
-4. If run is a successful push on `master`, call `build.yml`.
+2. `detect`: run master promotion policy guard (`develop`, `release-please--*`, or `hotfix/*` to `master`), validate the release manifest, and compute Nx-affected Python/TypeScript project lists (fail-loud — an nx error fails the job rather than silently skipping every lane).
+3. Correctness lanes, each gated on the affected lists: `build` (TS builds), `test-typescript` (vitest via Nx), and `test-python` — pytest run directly on the runner against live PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers started by `scripts/ci/start-test-services.sh` (same images/credentials as the local `dagger call test-python` harness), with coverage measured in the same run and gated at `--cov-fail-under=80` (a separate coverage job would re-run the whole suite a second time per PR, so it lives here instead). Static checks (ruff, mypy, Biome, tsc, custom AST lints, dead code) intentionally do NOT run here — they are enforced lanes in `code-quality.yml`.
+4. `quality-gate` (branch protection target) fails on any failed/cancelled lane; skipped lanes pass.
+5. If run is a successful push on `master`, call `build.yml`.
+
+### `.github/workflows/code-quality.yml`
+1. Enter from PRs targeting `develop`/`master`, pushes to those branches, and manual dispatch.
+2. `changes`: one cheap no-toolchain job detects which languages a PR touches; Python lanes and TypeScript lanes are skipped wholesale when their language is untouched (on push/dispatch everything runs).
+3. Eighteen hygiene lanes (Biome, deps, circular, file-size, types-location, components-per-file, jscpd, type-coverage, package hygiene, tsc, ruff + custom AST lints, mypy, interrogate, xenon, bandit, evlog-map observability score, wide-event cross-runtime conformance, knip/vulture dead code), each self-scoping to changed files via `scripts/ci/changed-files.sh`. The `wide-event-conformance` lane runs the Python and TypeScript logging stacks for real and diffs the log shapes they actually emit against each other and against `scripts/ci/wide-event-conformance/contract.json`, so the two halves cannot drift apart. The observability lane (`tools/evlog_map`, enforced) posts the full-repo score to the job summary and fails PRs whose changed files score below the same files at the merge-base.
+
+4. `Quality gate (required)` (the single required status check) fails the merge if any lane is neither `success` nor `skipped`; a lane skipped by `changes` counts as passing, but a failed `changes` job fails the gate. All lanes are enforced — there is no informational tier.
 
 ### `.github/workflows/build.yml`
 1. Start two build lanes: `docker-release` and `docker-web`.
@@ -152,10 +160,10 @@ flowchart TD
 2. Validate PR title against configured semantic type list.
 
 ## File Map
-- `.github/workflows/main.yml`: CI quality gate and master promotion policy — delegates to Dagger for quality checks.
+- `.github/workflows/main.yml`: CI correctness gate (build + tests) and master promotion policy. Python tests run runner-native against live service containers.
+- `.github/workflows/code-quality.yml`: code-hygiene lanes (lint/type/dead-code/complexity/security) behind the ratcheted `Quality gate (required)` check.
 - `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
 - `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.
-- `.github/workflows/deploy.yml`: legacy compose-based deploy (superseded by deploy-swarm-prod.yml, kept for reference).
 - `.github/workflows/deploy-frontend.yml`: frontend sync path for Vercel source repository.
 - `.github/workflows/release-please.yml`: release PR/tag automation and CLI publish dispatch.
 - `.github/workflows/publish-cli.yml`: CLI package validation/build/publish workflow.

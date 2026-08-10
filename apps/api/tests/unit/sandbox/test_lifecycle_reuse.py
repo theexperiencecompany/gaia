@@ -11,13 +11,9 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 import uuid
 
-import pytest
-
 from app.constants.sandbox import SANDBOX_TIMEOUT_REFRESH_SECONDS
 from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
-
-pytestmark = pytest.mark.unit
 
 
 def _healthy_entry() -> PooledSandbox:

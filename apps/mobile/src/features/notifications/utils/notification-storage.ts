@@ -40,7 +40,7 @@ export async function unregisterDeviceOnLogout(): Promise<void> {
     const token = await getStoredPushToken();
 
     if (token) {
-      console.log("[Notifications] Unregistering device token on logout");
+      console.debug("[Notifications] Unregistering device token on logout");
 
       // Unregister from backend with retry logic
       const MAX_RETRIES = 3;
@@ -49,7 +49,9 @@ export async function unregisterDeviceOnLogout(): Promise<void> {
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
           await notificationsApi.unregisterDeviceToken(token);
-          console.log("[Notifications] Device token unregistered from backend");
+          console.debug(
+            "[Notifications] Device token unregistered from backend",
+          );
           lastError = null;
           break;
         } catch (error) {
@@ -79,7 +81,7 @@ export async function unregisterDeviceOnLogout(): Promise<void> {
 
       // Clear from local storage
       await clearStoredPushToken();
-      console.log("[Notifications] Cleared stored push token");
+      console.debug("[Notifications] Cleared stored push token");
     }
   } catch (error) {
     console.error("[Notifications] Error during device unregistration:", error);

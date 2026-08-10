@@ -3,7 +3,13 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+from app.models.notification.notification_models import (
+    NotificationContentView,
+    NotificationSourceEnum,
+    NotificationStatus,
+    NotificationType,
+    NotificationView,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,14 +38,17 @@ def _make_notification(
     notification_id: str = "notif-1",
     title: str = "Test Notification",
     body: str = "This is a test",
-) -> dict[str, Any]:
-    """Create a sample notification dict."""
-    return {
-        "id": notification_id,
-        "content": {"title": title, "body": body},
-        "status": "delivered",
-        "type": "info",
-    }
+) -> NotificationView:
+    """Create a sample notification view — the shape the service now returns."""
+    return NotificationView(
+        id=notification_id,
+        user_id=FAKE_USER_ID,
+        status=NotificationStatus.DELIVERED,
+        created_at="2026-01-01T00:00:00+00:00",
+        content=NotificationContentView(title=title, body=body),
+        source=NotificationSourceEnum.AI_AGENT,
+        type=NotificationType.INFO,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +56,6 @@ def _make_notification(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNotifications:
     """Tests for the get_notifications tool."""
 
@@ -70,7 +78,7 @@ class TestGetNotifications:
 
         result = await get_notifications.coroutine(config=_make_config())
 
-        assert result["notifications"] == notifications
+        assert result["notifications"] == [n.model_dump(mode="json") for n in notifications]
         assert "error" not in result
         mock_service.get_user_notifications.assert_awaited_once()
 
@@ -132,7 +140,9 @@ class TestGetNotifications:
 
         notif_calls = [c for c in writer.call_args_list if "notification_data" in c[0][0]]
         assert len(notif_calls) == 1
-        assert notif_calls[0][0][0]["notification_data"]["notifications"] == notifications
+        assert notif_calls[0][0][0]["notification_data"]["notifications"] == [
+            n.model_dump(mode="json") for n in notifications
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +150,6 @@ class TestGetNotifications:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSearchNotifications:
     """Tests for the search_notifications tool."""
 
@@ -273,7 +282,6 @@ class TestSearchNotifications:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNotificationCount:
     """Tests for the get_notification_count tool."""
 
@@ -331,7 +339,6 @@ class TestGetNotificationCount:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMarkNotificationsRead:
     """Tests for the mark_notifications_read tool."""
 

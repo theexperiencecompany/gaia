@@ -5,7 +5,7 @@ import {
 } from "@/lib/feature-data";
 import type { BlogPost } from "./blog.types";
 
-export type { Author, BlogPost, BlogPostMeta } from "./blog.types";
+export type { BlogPost, BlogPostMeta } from "./blog.types";
 
 // Posts are generated from content/blog/*.mdx into public/data/blog/*.json by
 // scripts/extract-blog-data.mjs and loaded via the feature-data loader (fs at

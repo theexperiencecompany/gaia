@@ -1,4 +1,11 @@
-DEFAULT_LLM_PROVIDER = "gemini"
+from typing import Any
+
+from app.models.models_models import DevModelOption
+
+GEMINI_PROVIDER = "gemini"
+OPENROUTER_PROVIDER = "openrouter"
+
+DEFAULT_LLM_PROVIDER = OPENROUTER_PROVIDER
 
 # How often the messages DeltaChannel writes a full snapshot blob (every Nth
 # update). Between snapshots only per-step deltas are persisted, so checkpoint
@@ -18,6 +25,11 @@ AGENT_RECURSION_LIMIT = 40  # Comms + provider subagents (routing / focused work
 # this, so enforcement and analytics stay in sync.
 EXECUTOR_RECURSION_LIMIT = 100
 SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
+# The workflow authoring subagent only discovers integrations/triggers then emits
+# JSON; it never executes. A handful of discovery calls is plenty, so it gets a
+# tighter budget than a full agent. On hitting it the runner forces a final
+# answer instead of crashing, so this doubles as the "stop wandering" bound.
+WORKFLOW_SUBAGENT_RECURSION_LIMIT = 20
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
@@ -46,6 +58,16 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
+# Total wall-clock ceiling for one ainvoke_llm call — retries, backoff sleeps and the
+# fallback attempt included. A backstop against a provider that accepts the connection
+# and then never answers, which no retry can rescue because nothing ever raises.
+#
+# Sized for the slowest legitimate caller (onboarding intelligence, workflow generation,
+# document analysis), NOT as a per-caller latency budget: a call on a user-blocking path
+# should pass its own tighter value, the way the HIL gate passes
+# HIL_LLM_TIMEOUT_SECONDS. Pass timeout=None to opt out entirely.
+LLM_INVOKE_TIMEOUT_SECONDS = 120
+
 # Near-deterministic default for every LLM call; creative tasks opt into more
 # variation via get_default_llm(temperature=...).
 DEFAULT_LLM_TEMPERATURE = 0.1
@@ -53,7 +75,7 @@ DEFAULT_LLM_TEMPERATURE = 0.1
 # Context window of the default model below, in input tokens. The summarization /
 # compaction middleware trigger on a fraction of this, and get_default_llm() feeds
 # it to the model's profile (LangChain has no profile for newer models). Update it
-# whenever DEFAULT_GEMINI_MODEL_NAME changes.
+# whenever DEFAULT_MODEL_NAME changes.
 # Known limitation: middleware is constructed at graph-build time, so the fractional
 # triggers are denominated in THIS window even when a different chat model serves the
 # request (e.g. the paid OpenRouter model or a dev-menu override).
@@ -62,19 +84,57 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # you do, confirm for the new model:
 #   - context window  -> update DEFAULT_MAX_TOKENS above (else fractional-token
 #     middleware fails to build and the whole agent graph dies; see get_default_llm)
-#   - pricing entry    -> app/config/model_pricing.py
+#   - pricing entry    -> the `ai_models` collection (scripts/seed_models.py);
+#     without one, calculate_token_cost falls back to DEFAULT_PRICING and the
+#     cost budgets meter at the wrong rate
 #   - it's multimodal if vision/file tools rely on it
-# Direct Gemini API model name.
+# Default model for every tier and every auxiliary call, served over OpenRouter.
+# Text-only: tool results carrying images are captioned for it rather than shown
+# (see agents/llm/vision/capability.py).
+DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+# Retained for the direct-Gemini lane, which is still selectable as a provider
+# alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
-# Default model for free / unspecified configs — always the Gemini model above.
-DEFAULT_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
 DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
-# Per-plan model policy (hardcoded; not user-selectable). Free accounts run the
-# default Gemini model above; every paid (non-free) plan runs a more capable
-# model via OpenRouter.
-PAID_MODEL_PROVIDER = "openrouter"
-PAID_MODEL_NAME = "z-ai/glm-5.2"
+# The model behind every image -> text call: the vision fallback for a lane that
+# cannot take pixels (see vision/capability.py), plus the image-upload and
+# file-summary paths, which produce text as their product and therefore always
+# need it. Deliberately NOT tied to DEFAULT_MODEL_NAME: the default is chosen for
+# cheap text and may be text-only, and a blind describer fails SILENTLY —
+# describe_image degrades to None, so images would just stop being understood
+# with nothing in the logs to say why. Direct Gemini is the one lane
+# resolve_media_delivery treats as unconditionally multimodal.
+VISION_MODEL_PROVIDER = GEMINI_PROVIDER
+VISION_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
+
+# GAIA_SIM_MODE (see app/agents/llm/client.py): every model factory resolves to
+# the local scripted stub (tools/llm-stub) at this address. The model name is a
+# marker the stub ignores; the key satisfies client construction only.
+SIM_STUB_BASE_URL = "http://localhost:9797/api/v1"
+SIM_STUB_API_KEY = "sk-stub-dev"  # pragma: allowlist secret
+SIM_STUB_MODEL_NAME = "gaia-sim-stub"
+
+# Per-plan model policy (hardcoded; not user-selectable). Both tiers currently
+# run the SAME model, so plan routing is a no-op on model choice and the pro
+# monthly-budget degrade in apply_plan_model has nothing to degrade to — kept in
+# place deliberately, so re-pointing PAID_MODEL_NAME at a stronger model is the
+# only change needed to make that guard bite again.
+PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
+PAID_MODEL_NAME = DEFAULT_MODEL_NAME
+
+# Which OpenRouter models accept image input, straight from the live catalog's
+# `architecture.input_modalities` — so vision support needs no per-model
+# curation here. See app/agents/llm/model_catalog.py for the cache, and
+# app/agents/llm/vision/ for how each lane then receives the media.
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_MODEL_CATALOG_TTL_SECONDS = 3600
+OPENROUTER_MODEL_CATALOG_TIMEOUT_SECONDS = 10
+# How long a failed catalog refresh is remembered. The catalog is consulted on
+# the pre-model hook, so without a backoff an OpenRouter outage would cost every
+# model call a full fetch timeout — turning a degraded dependency into an
+# unusable product.
+OPENROUTER_MODEL_CATALOG_RETRY_SECONDS = 300
 
 # GLM 5.2's first-party (z-ai) lane exposes a 1M-token context window and a 131k
 # output ceiling. Cap output well under that; the summarization / compaction
@@ -84,20 +144,26 @@ OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
 
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
-OPENROUTER_REASONING = {"effort": "medium"}
+OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
 # Pin the paid model to the first-party "z-ai" provider on OpenRouter. Without
 # this, OpenRouter may load-balance z-ai/glm-5.2 across resellers (DeepInfra,
 # Together, Parasail, etc.) whose shared pools get rate-limited upstream (429). `only`
 # forces the first-party lane. Passed via ChatOpenRouter's `model_kwargs` (the
 # OpenRouter `provider` routing param) and inherited by child agents via
 # agent_helpers._inherit_from_parent_configurable so subagents stay on the same lane.
-PAID_MODEL_PROVIDER_SLUG = "z-ai"
+PAID_MODEL_PROVIDER_SLUG = "deepseek"
 PAID_MODEL_MODEL_KWARGS = {"provider": {"only": [PAID_MODEL_PROVIDER_SLUG]}}
 # Comms-specific reasoning: "low" instead of the executor's "medium". Comms is
 # mostly routing/ack work, so the reasoning budget is most useful for the executor's
 # tool selection. GLM 5.2 also documents "high"/"xhigh" efforts — revisit these
 # levels if comms routing or executor tool-selection quality needs more headroom.
-COMMS_REASONING = {"effort": "low"}
+COMMS_REASONING: dict[str, Any] = {"effort": "low"}
+
+# Output cap for the env-defined custom dev provider (the "custom" entry below;
+# endpoint/key/model all come from the DEV_LLM_* settings). 64k fits under the
+# completion ceilings of the cheap lanes this is meant for (e.g. DeepSeek V4
+# Flash caps at 65,536).
+DEV_LLM_MAX_OUTPUT_TOKENS = 64_000
 
 # OpenRouter app attribution (https://openrouter.ai/docs/app-attribution). The
 # OpenRouter client surfaces these as the HTTP-Referer / X-Title /
@@ -113,7 +179,7 @@ OPENROUTER_APP_CATEGORIES = ["personal-agent", "general-chat"]
 # applied per-role at override time (comms -> COMMS_REASONING, executor ->
 # OPENROUTER_REASONING). Gemini models route direct via the "gemini" provider and
 # ignore OpenRouter `model_kwargs`/`reasoning`. This menu is NEVER used in production.
-DEV_MODEL_OPTIONS: dict[str, dict] = {
+DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "minimax-m3": {
         "provider": "openrouter",
         "model": "minimax/minimax-m3",
@@ -138,6 +204,23 @@ DEV_MODEL_OPTIONS: dict[str, dict] = {
         "model_kwargs": None,
         "reasoning": False,
     },
+    "deepseek-v4-flash": {
+        # Pinned snapshot — same id also served by the cheap OpenRouter-compatible
+        # lanes (e.g. Nous Research), so the custom endpoint below can run the
+        # identical model for A/B-ing routes.
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash-0731",
+        "model_kwargs": None,
+        "reasoning": False,
+    },
+    "custom": {
+        # The env-defined endpoint (DEV_LLM_* settings). `model` None = don't pin
+        # one here; the client's own default (DEV_LLM_MODEL) serves the request.
+        "provider": "custom",
+        "model": None,
+        "model_kwargs": None,
+        "reasoning": False,
+    },
     "gemini-3.1-flash-lite": {
         "provider": "gemini",
         "model": "gemini-3.1-flash-lite",
@@ -145,6 +228,42 @@ DEV_MODEL_OPTIONS: dict[str, dict] = {
         "reasoning": False,
     },
 }
+
+# --- Tier cost enforcement (free = usage walls, pro = abuse guards) --------------
+# Hard ceiling on TOTAL tokens (input + output, summed across comms + executor +
+# every subagent) a single request may consume before it is stopped mid-flight
+# via the accounting middleware. Free = usage wall; pro is set high enough that
+# only a runaway loop trips it — real work (full-inbox triage) must finish.
+FREE_PER_REQUEST_TOKEN_CEILING = 300_000  # TUNE
+PRO_PER_REQUEST_TOKEN_CEILING = 5_000_000  # TUNE
+
+# Rolling daily USD cost budget. Free: a real usage wall — when the UTC day's
+# cumulative cost reaches it, ALL chat is blocked until reset. Pro: an
+# abuse-level burst guard only — a legitimate power user must never hit it.
+#
+# The budget covers what the user actively asks for: chat turns and the agent
+# work they trigger. Auxiliary background spend (memory extraction/reconcile/
+# consolidation, follow-up suggestions, onboarding, workflow generation) is
+# metered for per-user COGS observability via ``ainvoke_structured`` but
+# deliberately NOT charged to these windows — a memory save or an onboarding
+# question must never consume the user's chat allowance. Memory volume is
+# bounded by its own count cap (``FREE_MEMORY_FACT_LIMIT``), not by cost.
+FREE_DAILY_COST_BUDGET_USD = 0.05  # TUNE
+PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
+
+# Rolling monthly USD cost budget for pro: the ECONOMIC guard. Set ~1x the
+# subscription price so the worst-case whale is break-even. On exhaustion pro
+# is NOT blocked — model routing degrades to the free-tier model for the rest
+# of the month (see apply_plan_model).
+PRO_MONTHLY_COST_BUDGET_USD = 25.00  # TUNE
+
+# TTLs for the budget Redis keys: sized just past their window so keys expire
+# on their own (26h > 24h day, 32d > 31d month) even with clock skew.
+DAILY_BUDGET_TTL_SECONDS = 26 * 60 * 60
+MONTHLY_BUDGET_TTL_SECONDS = 32 * 24 * 60 * 60
+# TTL for the per-request aggregate token counter (a single request never runs
+# this long; the key just needs to outlive the longest legitimate run).
+REQUEST_TOKEN_COUNTER_TTL_SECONDS = 30 * 60
 
 # --- Tool-loop guardrails (LoopGuardMiddleware) ---------------------------------
 # Escalating thresholds for a model stuck retrying a failing tool. "Identical"

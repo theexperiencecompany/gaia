@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Relatively new; feature set still maturing compared to Superhuman",
     "Requires switching from Gmail's native interface",
   ],
-  metaTitle: "Best Shortwave Alternative in 2026 | GAIA",
+  metaTitle: "Best Shortwave Alternative in 2026",
   metaDescription:
     "Shortwave stays inside your email. GAIA is a proactive AI assistant that connects email, calendar, and tasks across all your tools. Free tier + self-hosting.",
   keywords: [

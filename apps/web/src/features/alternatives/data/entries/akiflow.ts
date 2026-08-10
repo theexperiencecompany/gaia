@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "AI features are limited to writing assistance rather than proactive management",
     "Desktop-heavy; mobile experience is less capable",
   ],
-  metaTitle: "Best Akiflow Alternative in 2026 | GAIA",
+  metaTitle: "Best Akiflow Alternative in 2026",
   metaDescription:
     "Akiflow requires manual time-blocking with no free tier. GAIA proactively manages tasks, email, and calendar automatically. Free tier + open-source self-hosting.",
   keywords: [

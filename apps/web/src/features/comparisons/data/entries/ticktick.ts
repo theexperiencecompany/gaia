@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Capture anything, accomplish everything",
   description:
     "TickTick is a polished to-do and habit tracking app with natural language input, a built-in Pomodoro timer, and calendar views. GAIA goes beyond task capture to proactively manage your email, calendar, and entire digital workflow.",
-  metaTitle: "TickTick Alternative with Proactive AI | GAIA vs TickTick",
+  metaTitle: "TickTick Alternative with Proactive AI — GAIA vs TickTick",
   metaDescription:
     "TickTick is a solid to-do app but requires manual task entry and lacks email automation. GAIA is an open-source TickTick alternative with proactive AI that creates tasks from email, manages your calendar, and automates workflows — with a free tier.",
   keywords: [

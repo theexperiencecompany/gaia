@@ -1,7 +1,10 @@
 from datetime import UTC, datetime
 from enum import Enum
+from typing import Any, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.db.repositories.base import MongoDocument
 
 
 class ModelProvider(str, Enum):
@@ -13,6 +16,23 @@ class ModelProvider(str, Enum):
     OPENROUTER = "openrouter"
 
 
+class DevModelOption(TypedDict):
+    """One entry of the DEV-ONLY model menu (``constants.llm.DEV_MODEL_OPTIONS``).
+
+    A TypedDict, not a model: it is a fixed in-process shape that is only ever
+    spread onto a LangGraph configurable, so it crosses no validation boundary.
+
+    ``model_kwargs`` and ``reasoning``'s effort payload stay ``dict[str, Any]``
+    because that is exactly how ``ChatOpenRouter`` declares the fields they are
+    bound to — free-form OpenRouter request params, not a shape we own.
+    """
+
+    provider: str
+    model: str
+    model_kwargs: dict[str, Any] | None
+    reasoning: bool
+
+
 class PlanType(str, Enum):
     """Subscription plan types."""
 
@@ -20,10 +40,10 @@ class PlanType(str, Enum):
     PRO = "pro"
 
 
-class ModelConfig(BaseModel):
-    """Configuration for an AI model."""
+class ModelConfig(MongoDocument):
+    """Configuration for an AI model as stored in the ``ai_models`` collection."""
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     model_id: str = Field(..., description="Unique identifier for the model")
     name: str = Field(..., description="Display name of the model")
@@ -36,6 +56,16 @@ class ModelConfig(BaseModel):
     supports_streaming: bool = Field(default=True, description="Whether model supports streaming")
     supports_function_calling: bool = Field(
         default=True, description="Whether model supports function calling"
+    )
+    supports_tool_result_images: bool = Field(
+        default=True,
+        description=(
+            "Whether the model can see images delivered inside a TOOL result. Not the "
+            "same as being multimodal: OpenRouter exposes nothing that answers it (two "
+            "models identical in `architecture` can disagree), so it is established by "
+            "tests/model_onboarding and declared here. False routes tool media through "
+            "the caption fallback instead."
+        ),
     )
     available_in_plans: list[PlanType] = Field(
         ..., description="Plans where this model is available"
@@ -57,6 +87,15 @@ class ModelConfig(BaseModel):
     )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class AiModelUpdate(BaseModel):
+    """Typed ``$set`` fields for an AI model row (admin/seed edits)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_active: bool | None = None
+    is_default: bool | None = None
 
 
 class ModelResponse(BaseModel):

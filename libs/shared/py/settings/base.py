@@ -5,7 +5,7 @@ These classes provide the foundation for application-specific settings.
 Each app should extend these classes with their own configuration.
 """
 
-from typing import Literal
+from typing import Any, Literal, Self
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -25,14 +25,18 @@ class BaseAppSettings(BaseSettings):
     )
 
     @classmethod
-    def from_env(cls, **kwargs):
+    def from_env(cls, **kwargs: Any) -> Self:
         """Create settings from environment variables with fallback handling."""
         try:
             return cls(**kwargs)
         except Exception as e:
             log.warning(f"Error creating settings: {e!s}")
             fields = cls.model_fields
-            defaults = {
+            # dict[str, Any], not dict[str, str]: this is a kwargs bag aimed at
+            # per-field types (ENV is a Literal, SHOW_MISSING_KEY_WARNINGS a bool).
+            # The annotation filter below — not the type system — is what keeps
+            # only str-annotated fields in it.
+            defaults: dict[str, Any] = {
                 field_name: ""
                 for field_name in fields
                 if field_name not in kwargs and "str" in str(fields[field_name].annotation)

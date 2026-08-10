@@ -13,8 +13,10 @@ from collections.abc import Awaitable, Callable
 from typing import (
     Annotated,
     Any,
+    TypeAlias,
     TypedDict,
     Union,
+    cast,
 )
 
 from langchain_core.runnables import RunnableConfig
@@ -26,6 +28,7 @@ from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.tools.core.registry import (
     DESKTOP_TOOL_CATEGORY,
     DESKTOP_TOOL_SPACE,
+    ToolRegistry,
     get_tool_registry,
 )
 from app.agents.tools.research_tool import deep_research
@@ -33,6 +36,7 @@ from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
+from app.models.agent_models import agent_configurable
 from app.models.chat_models import ConversationSource
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
@@ -66,7 +70,9 @@ async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
         return names
     except Exception as e:
         log.warning(
-            f"{LogTag.TOOL} _user_mcp_tool_names: failed for user {user_id}: {type(e).__name__}: {e}"
+            f"{LogTag.TOOL} _user_mcp_tool_names failed",
+            user_id=user_id,
+            error_type=type(e).__name__,
         )
         return set()
 
@@ -177,9 +183,9 @@ Simple read task:
 
 Multi-tool task:
   retrieve_tools(query="fetch emails, send reply")
-  → ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
-  retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD"])
-  → GMAIL_FETCH_EMAILS(...) → find the thread
+  → ["GMAIL_FETCH_MESSAGES", "GMAIL_REPLY_TO_THREAD", ...]
+  retrieve_tools(exact_tool_names=["GMAIL_FETCH_MESSAGES", "GMAIL_REPLY_TO_THREAD"])
+  → GMAIL_FETCH_MESSAGES(...) → find the thread
   → GMAIL_REPLY_TO_THREAD(...) → send reply. Done.
 
 Write task with verification:
@@ -208,6 +214,24 @@ class RetrieveToolsResult(TypedDict):
 
     tools_to_bind: list[str]
     response: list[str]
+
+
+class ScoredToolHit(TypedDict):
+    """One ranked discovery hit, threaded from a search result to the final list.
+
+    ``id`` is either a tool name or a ``subagent:<id> (Name)`` key; ``score`` is
+    the backing store's relevance, absent on stores that don't rank.
+    """
+
+    id: str
+    score: float | None
+
+
+# What one entry of the gathered search fan-out yields: Chroma's typed
+# ``SearchItem``s from the tool namespaces, or the public-integration store's
+# raw dicts. Kept as a union because the two backends genuinely differ; the
+# consumer discriminates on the first element and narrows with ``cast``.
+SearchTaskResult: TypeAlias = Union[list[SearchItem], list[dict[str, Any]]]
 
 
 async def _resolve_connected_subagents(user_id: str) -> dict[str, str | None]:
@@ -279,12 +303,16 @@ async def _get_user_context(
         if include_subagents:
             connected_integrations = await _resolve_connected_subagents(user_id)
             log.info(
-                f"{LogTag.TOOL} User {user_id} connected subagents: {set(connected_integrations)}"
+                f"{LogTag.TOOL} User connected subagents",
+                user_id=user_id,
+                connected_integrations=sorted(set(connected_integrations)),
             )
 
-        log.info(f"{LogTag.TOOL} User {user_id} namespaces: {user_namespaces}")
+        log.info(
+            f"{LogTag.TOOL} User namespaces resolved", user_id=user_id, namespaces=user_namespaces
+        )
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Failed to get user namespaces: {e}")
+        log.warning(f"{LogTag.TOOL} Failed to get user namespaces", error_type=type(e).__name__)
 
     return user_namespaces, connected_integrations, internal_subagents
 
@@ -297,7 +325,7 @@ def _build_search_tasks(
     include_subagents: bool,
     limit: int,
     include_desktop: bool = False,
-) -> list[Awaitable[Union[list[SearchItem], list[dict[str, Any]]]]]:
+) -> list[Awaitable[SearchTaskResult]]:
     """Build list of search tasks to execute.
 
     The `tool_space in user_namespaces` gate is the security boundary that
@@ -307,11 +335,11 @@ def _build_search_tasks(
     to search it (always for platform integrations, only when the user
     has the integration connected for custom MCPs).
     """
-    search_tasks: list[Awaitable[Union[list[SearchItem], list[dict[str, Any]]]]] = []
+    search_tasks: list[Awaitable[SearchTaskResult]] = []
 
     # Search in tool_space
     if tool_space in user_namespaces or tool_space == "general":
-        log.info(f"{LogTag.TOOL} Adding search for tool_space: {tool_space}")
+        log.info(f"{LogTag.TOOL} Adding search for tool space", tool_space=tool_space)
         search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
     else:
         # Caller is in a subagent whose namespace they don't own. This is
@@ -346,9 +374,9 @@ def _build_search_tasks(
 
 def _process_public_integration_result(
     result: list[dict[str, Any]],
-) -> list[dict[str, str | float | None]]:
+) -> list[ScoredToolHit]:
     """Process public integration search results."""
-    processed = []
+    processed: list[ScoredToolHit] = []
 
     for item in result:
         integration_id = item.get("integration_id")
@@ -358,12 +386,7 @@ def _process_public_integration_result(
             subagent_key = (
                 f"subagent:{integration_id} ({name})" if name else f"subagent:{integration_id}"
             )
-            processed.append(
-                {
-                    "id": subagent_key,
-                    "score": item.get("relevance_score", 0),
-                }
-            )
+            processed.append(ScoredToolHit(id=subagent_key, score=item.get("relevance_score", 0)))
 
     return processed
 
@@ -371,12 +394,12 @@ def _process_public_integration_result(
 def _process_chroma_search_result(
     result: list[SearchItem],
     available_tool_names: set[str],
-    tool_registry,
+    tool_registry: ToolRegistry,
     include_subagents: bool,
     tool_space: str = "general",
-) -> list[dict[str, str | float | None]]:
+) -> list[ScoredToolHit]:
     """Process Chroma store search results."""
-    processed: list[dict[str, str | float | None]] = []
+    processed: list[ScoredToolHit] = []
 
     for item in result:
         tool_key = str(item.key)
@@ -397,14 +420,14 @@ def _process_chroma_search_result(
             else:
                 subagent_key = f"subagent:{tool_key} ({name})" if name else f"subagent:{tool_key}"
 
-            processed.append({"id": subagent_key, "score": item.score})
+            processed.append(ScoredToolHit(id=subagent_key, score=item.score))
             continue
 
         # Handle keys with subagent: prefix — skip if subagents not included
         if tool_key.startswith("subagent:"):
             if not include_subagents:
                 continue
-            processed.append({"id": tool_key, "score": item.score})
+            processed.append(ScoredToolHit(id=tool_key, score=item.score))
             continue
 
         # Filter general namespace results for subagents - only allow webpage tools
@@ -427,20 +450,20 @@ def _process_chroma_search_result(
 
         # Add regular tools
         if tool_key in available_tool_names:
-            processed.append({"id": tool_key, "score": item.score})
+            processed.append(ScoredToolHit(id=tool_key, score=item.score))
 
     return processed
 
 
 async def _process_search_results(
-    results: list[Any],
+    results: list[SearchTaskResult | BaseException],
     available_tool_names: set[str],
-    tool_registry,
+    tool_registry: ToolRegistry,
     include_subagents: bool,
     tool_space: str = "general",
-) -> list[dict[str, str | float | None]]:
+) -> list[ScoredToolHit]:
     """Process all search results and return unified list."""
-    all_results = []
+    all_results: list[ScoredToolHit] = []
 
     for idx, result in enumerate(results):
         if isinstance(result, BaseException):
@@ -454,8 +477,9 @@ async def _process_search_results(
         is_public_search = isinstance(result[0], dict)
 
         if is_public_search:
-            processed = _process_public_integration_result(result)
+            processed = _process_public_integration_result(cast(list[dict[str, Any]], result))
         else:
+            items = cast(list[SearchItem], result)
             try:
                 preview = [
                     {
@@ -463,16 +487,23 @@ async def _process_search_results(
                         "namespace": item.namespace if hasattr(item, "namespace") else None,
                         "score": item.score,
                     }
-                    for item in result[:20]
+                    for item in items[:20]
                 ]
                 log.debug(
-                    f"{LogTag.TOOL} Chroma search raw hits (task={idx}, tool_space={tool_space}): "
-                    f"{len(result)} items, preview={preview}"
+                    f"{LogTag.TOOL} Chroma search raw hits",
+                    task_index=idx,
+                    tool_space=tool_space,
+                    hit_count=len(result),
+                    preview=preview,
                 )
             except Exception as e:
-                log.debug(f"{LogTag.TOOL} Chroma search raw hits log failed (task={idx}): {e}")
+                log.debug(
+                    f"{LogTag.TOOL} Chroma search raw hits log failed",
+                    task_index=idx,
+                    error_type=type(e).__name__,
+                )
             processed = _process_chroma_search_result(
-                result,
+                items,
                 available_tool_names,
                 tool_registry,
                 include_subagents,
@@ -485,12 +516,12 @@ async def _process_search_results(
 
 
 def _deduplicate_and_sort(
-    results: list[dict[str, str | float | None]],
+    results: list[ScoredToolHit],
     limit: int,
 ) -> list[str]:
     """Remove duplicates, sort by score, and return top results."""
-    seen = set()
-    unique_results = []
+    seen: set[str] = set()
+    unique_results: list[ScoredToolHit] = []
 
     for r in results:
         if r["id"] not in seen:
@@ -574,6 +605,12 @@ def get_retrieve_tools_function(
 ) -> Callable[..., Awaitable[RetrieveToolsResult]]:
     """Get a retrieve_tools function configured for specific context.
 
+    The ``...`` in the return type is deliberate (Type Safety items 11/14): the
+    result is handed to ``create_agent(retrieve_tools_coroutine=...)``, which
+    wraps it in a ``StructuredTool``. LangGraph then calls it by keyword with
+    ``store``/``config`` injected and the rest supplied by the model, so pinning
+    a parameter list here would describe a call shape that never happens.
+
     This unified function handles both tool discovery (semantic search) and tool binding.
     - When `query` is provided: Returns tool names for discovery (not bound)
     - When `exact_tool_names` is provided: Binds and returns validated tool names
@@ -609,7 +646,7 @@ def get_retrieve_tools_function(
             exact_tool_names=exact_tool_names,
             tool_space=tool_space,
             include_subagents=include_subagents,
-            user_id=config.get("configurable", {}).get("user_id")
+            user_id=agent_configurable(config).get("user_id")
             or config.get("metadata", {}).get("user_id"),
         )
         if not query and not exact_tool_names:
@@ -633,19 +670,22 @@ def get_retrieve_tools_function(
 
         tool_registry = await get_tool_registry()
         available_tool_names = tool_registry.get_tool_names()
-        log.info(f"{LogTag.TOOL} Registry has {len(available_tool_names)} available tools")
+        log.info(
+            f"{LogTag.TOOL} Registry available tools",
+            available_tool_count=len(available_tool_names),
+        )
 
         # Desktop tools only surface for desktop-app conversations, and only
         # in the main agent context (subagents keep their own tool space).
         conversation_source = ConversationSource.coerce(
-            config.get("configurable", {}).get("conversation_source")
+            agent_configurable(config).get("conversation_source")
         )
         desktop_enabled = (
             conversation_source is ConversationSource.DESKTOP and tool_space == "general"
         )
 
         # Get user_id from config (try configurable first, then metadata as fallback)
-        user_id = config.get("configurable", {}).get("user_id")
+        user_id = agent_configurable(config).get("user_id")
         if not user_id:
             # Fallback to metadata
             user_id = config.get("metadata", {}).get("user_id")
@@ -864,9 +904,9 @@ def get_retrieve_tools_function(
         )
         if chroma_hits == 0 and tool_space != "general":
             log.warning(
-                f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits for tool_space='{tool_space}' "
-                f"user={user_id} query={query!r}. Check that index_tools_to_store "
-                f"actually wrote docs for this namespace."
+                f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits — check that index_tools_to_store actually wrote docs for this namespace",
+                tool_space=tool_space,
+                user_id=user_id,
             )
 
         return RetrieveToolsResult(

@@ -8,6 +8,7 @@ import { useCallback, useMemo } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
 import { useIsMobile } from "@/hooks/ui/useMobile";
+import { useConversationArtifacts } from "@/stores/chatStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 
@@ -88,10 +89,14 @@ function resolveContentType(artifact: ArtifactData, filename: string): string {
   return EXT_CONTENT_TYPE[ext] || "application/octet-stream";
 }
 
-/** De-dupe by path (last wins) and drop removed artifacts — artifacts are
- * pushed repeatedly in real time, so without this the same file would stack
- * duplicate cards. */
-function normalize(input: ArtifactData | ArtifactData[]): ArtifactData[] {
+/** De-dupe by path (last wins), drop removed artifacts, and resolve each path
+ * reference to its full data from the conversation registry. Entries are path
+ * references; full data (size, inline body) lives in `artifactMap`. The `?? a`
+ * fallback keeps legacy full-data messages rendering before any registry sync. */
+function normalize(
+  input: ArtifactData | ArtifactData[],
+  artifactMap: Record<string, ArtifactData>,
+): ArtifactData[] {
   const list = Array.isArray(input) ? input : [input];
   const byPath = new Map<string, ArtifactData>();
   for (const a of list) {
@@ -100,7 +105,7 @@ function normalize(input: ArtifactData | ArtifactData[]): ArtifactData[] {
       byPath.delete(a.path);
       continue;
     }
-    byPath.set(a.path, a);
+    byPath.set(a.path, artifactMap[a.path] ?? a);
   }
   return Array.from(byPath.values());
 }
@@ -221,7 +226,15 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
 const FileArtifactSection: React.FC<FileArtifactSectionProps> = ({
   artifact_data,
 }) => {
-  const artifacts = useMemo(() => normalize(artifact_data), [artifact_data]);
+  const conversationId = useMemo(() => {
+    const list = Array.isArray(artifact_data) ? artifact_data : [artifact_data];
+    return list.find((a) => a?.session_id)?.session_id ?? "";
+  }, [artifact_data]);
+  const artifactMap = useConversationArtifacts(conversationId);
+  const artifacts = useMemo(
+    () => normalize(artifact_data, artifactMap),
+    [artifact_data, artifactMap],
+  );
 
   if (artifacts.length === 0) return null;
 

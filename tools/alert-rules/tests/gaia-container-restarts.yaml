@@ -1,0 +1,48 @@
+# gaia-container-restarts — fires when a swarm_service has spawned >3 distinct
+# containers in 15m (the old changes() form could never fire under Swarm).
+#
+# `count by (swarm_service)` counts distinct container incarnations of the same
+# service; a healthy service reads 1, a service mid-deploy reads 2, a crash loop
+# reads 4+. The series here are four different `name` values that all resolve to
+# the same swarm_service via label_replace.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-container-restarts fires at 4 incarnations of one service
+    interval: 1m
+    input_series:
+      - series: 'container_start_time_seconds{name="gaia-prod_api.aaa",id="1"}'
+        values: '1x30'
+      - series: 'container_start_time_seconds{name="gaia-prod_api.bbb",id="2"}'
+        values: '1x30'
+      - series: 'container_start_time_seconds{name="gaia-prod_api.ccc",id="3"}'
+        values: '1x30'
+      - series: 'container_start_time_seconds{name="gaia-prod_api.ddd",id="4"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-container-restarts
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: availability
+              swarm_service: gaia-prod_api
+            exp_annotations:
+              description: >-
+                A crash-looping container is being replaced by Swarm faster than it can serve traffic, so the service flaps rather than staying cleanly down. The count is distinct container incarnations, not restarts, so a healthy service reads 1 and a service mid-deploy reads 2. Check that service's logs for the startup exception — a failing dependency, a bad migration or a missing secret at boot are the usual causes.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-container-restarts
+              __dashboardUid__: gaia-containers
+              __panelId__: '1'
+
+  - name: gaia-container-restarts stays quiet at 2 incarnations
+    interval: 1m
+    input_series:
+      - series: 'container_start_time_seconds{name="gaia-prod_api.aaa",id="1"}'
+        values: '1x30'
+      - series: 'container_start_time_seconds{name="gaia-prod_api.bbb",id="2"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-container-restarts
+        exp_alerts: []

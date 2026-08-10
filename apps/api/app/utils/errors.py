@@ -32,6 +32,12 @@ class AppError(Exception):
     status_code: int = 500
     meta: dict[str, Any] = field(default_factory=dict)
 
+    def __str__(self) -> str:
+        # The dataclass-generated __init__ never populates Exception.args, so
+        # the default Exception.__str__ would return "". Surface the message so
+        # f-string logging and any str(exc) callers see a meaningful error.
+        return self.message
+
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {"message": self.message}
         if self.why:
@@ -47,7 +53,7 @@ def create_error(
     why: str = "",
     fix: str = "",
     status_code: int = 500,
-    **meta: Any,
+    **meta: object,
 ) -> AppError:
     """Create a structured AppError with optional context metadata."""
     return AppError(
@@ -59,4 +65,14 @@ def create_error(
     )
 
 
-__all__ = ["AppError", "create_error"]
+@dataclass
+class EmptyUpdateError(AppError):
+    """An update model carried no set fields — a silent no-op write is a bug."""
+
+
+@dataclass
+class RepositoryMisconfigured(AppError):
+    """A repository subclass is missing required ClassVars (raised at import)."""
+
+
+__all__ = ["AppError", "EmptyUpdateError", "RepositoryMisconfigured", "create_error"]

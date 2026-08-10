@@ -7,7 +7,6 @@ routing, status codes, response bodies, and auth checks.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 BOT_BASE = "/api/v1/bot"
 
@@ -28,7 +27,6 @@ def _make_request(bot_api_key_valid: bool = True, **extra_state: object) -> Magi
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateLinkToken:
     """POST /api/v1/bot/create-link-token"""
 
@@ -80,7 +78,6 @@ class TestCreateLinkToken:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetLinkTokenInfo:
     """GET /api/v1/bot/link-token-info/{token}"""
 
@@ -119,7 +116,6 @@ class TestGetLinkTokenInfo:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestResetSession:
     """POST /api/v1/bot/reset-session"""
 
@@ -195,7 +191,6 @@ class TestResetSession:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCheckAuthStatus:
     """GET /api/v1/bot/auth-status/{platform}/{platform_user_id}"""
 
@@ -249,7 +244,6 @@ class TestCheckAuthStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetSettings:
     """GET /api/v1/bot/settings/{platform}/{platform_user_id}"""
 
@@ -311,7 +305,6 @@ class TestGetSettings:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUnlinkAccount:
     """POST /api/v1/bot/unlink"""
 
@@ -398,7 +391,6 @@ class TestUnlinkAccount:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBotChatStream:
     """POST /api/v1/bot/chat-stream"""
 
@@ -424,7 +416,6 @@ class TestBotChatStream:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBotTranscribe:
     """POST /api/v1/bot/transcribe"""
 
@@ -458,7 +449,6 @@ class TestBotTranscribe:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBotChatRequestFiles:
     """Pydantic validation for the new file_ids / file_data fields."""
 

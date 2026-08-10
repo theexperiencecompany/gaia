@@ -10,25 +10,25 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
+    get_user_id,
     get_user_timezone_from_preferences,
 )
 from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.decorators import tiered_rate_limit
-from app.models.chat_models import ConversationSource
+from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
+from app.models.chat_models import CancelStreamResponse, ConversationSource
 from app.models.message_models import MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.chat.stream import run_chat_stream_background
-from shared.py.wide_events import ChatContext, log
-
-# asyncio.create_task only keeps a weakref; without this set the task can be GC'd mid-flight.
-_background_tasks: set[asyncio.Task] = set()
+from app.utils.background_tasks import spawn_background_task
+from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
 
 _USER_ID_REQUIRED = "user_id is required"
 _DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
@@ -76,24 +76,45 @@ async def _stream_from_redis(
 
     The log replays from ``last_event_id`` (or the beginning), so this can be
     attached at any point in the turn's lifetime without losing frames.
-    """
-    if not redis_cache.redis:
-        log.error(f"{LogTag.CHAT} Redis unavailable for stream {stream_id}")
-        yield "data: [STREAM_ERROR]\n\n"
-        return
 
-    try:
-        async for chunk in stream_manager.subscribe_stream(stream_id, last_event_id=last_event_id):
-            if await request.is_disconnected():
-                log.info(
-                    f"{LogTag.CHAT} Client disconnected, stream {stream_id} continues in background"
-                )
-                break
-            yield chunk
-    except asyncio.CancelledError:
-        log.info(f"{LogTag.CHAT} Stream {stream_id}: client connection cancelled")
-    except Exception as e:
-        log.error(f"{LogTag.CHAT} Error streaming to client: {e}")
+    The body runs while the response streams — after the request's
+    ``http_request`` event has emitted — so it needs its own boundary or the
+    delivery outcome (disconnects, delivery errors) is silently discarded.
+    The generator body inherits the request's context, so ``get_trace_id()``
+    here still returns the request's trace_id (verified against
+    ``LoggingMiddleware`` + ``StreamingResponse``).
+    """
+    async with log_context("sse_delivery", trace_id=get_trace_id() or None, stream_id=stream_id):
+        if not redis_cache.redis:
+            log.error(f"{LogTag.CHAT} Redis unavailable for stream", stream_id=stream_id)
+            yield "data: [STREAM_ERROR]\n\n"
+            return
+
+        try:
+            async for chunk in stream_manager.subscribe_stream(
+                stream_id, last_event_id=last_event_id
+            ):
+                if await request.is_disconnected():
+                    log.set(client_disconnected=True)
+                    log.info(
+                        f"{LogTag.CHAT} Client disconnected, stream continues in background",
+                        stream_id=stream_id,
+                    )
+                    break
+                yield chunk
+        except asyncio.CancelledError:
+            # Client disconnected mid-stream — expected, not an error. The
+            # background LangGraph task keeps running and persists the result.
+            log.set(client_disconnected=True)
+            log.info(f"{LogTag.CHAT} Client connection cancelled", stream_id=stream_id)
+            raise
+        except Exception as e:
+            log.error(
+                f"{LogTag.CHAT} Error streaming to client",
+                stream_id=stream_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
 
 
 @router.post("/chat-stream")
@@ -101,8 +122,7 @@ async def _stream_from_redis(
 async def chat_stream_endpoint(
     request: Request,
     body: MessageRequestWithHistory,
-    background_tasks: BackgroundTasks,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     home_timezone: Annotated[str, Depends(get_user_timezone_from_preferences)],
 ) -> StreamingResponse:
     """Stream a chat turn. Continues in the background if the client disconnects."""
@@ -114,6 +134,10 @@ async def chat_stream_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_USER_ID_REQUIRED,
         )
+    # Cost wall: the decorator above caps how MANY messages; this caps how
+    # EXPENSIVE they were. 429s before any stream work when the day's LLM
+    # spend (recorded per call by LLMAccountingMiddleware) is exhausted.
+    await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
     # Seed the agent's home zone (DB-resolved, browser-header-healed) so its
     # "now" and schedule defaults run in the user's real zone, not stored UTC.
     user = {**user, "timezone": home_timezone}
@@ -146,7 +170,7 @@ async def chat_stream_endpoint(
         user_id=user_id,
     )
 
-    task = asyncio.create_task(
+    spawn_background_task(
         run_chat_stream_background(
             stream_id=stream_id,
             body=body,
@@ -155,8 +179,6 @@ async def chat_stream_endpoint(
             source=_resolve_source(request),
         )
     )
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
 
     # Don't set Access-Control-Allow-Origin here — CORSMiddleware echoes the
     # request Origin per-request against the allowlist; hardcoding it would
@@ -176,24 +198,20 @@ async def chat_stream_endpoint(
 @router.post("/cancel-stream/{stream_id}")
 async def cancel_stream_endpoint(
     stream_id: str,
-    user: dict = Depends(get_current_user),
-) -> dict:
+    user_id: str = Depends(get_user_id),
+) -> CancelStreamResponse:
     """Cancel a running stream owned by the requesting user."""
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=_USER_ID_REQUIRED,
-        )
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
+    # Progress is a free-form JSON blob deserialized from Redis, not a model —
+    # keyed access is the honest read here.
     progress = await stream_manager.get_progress(stream_id)
     if not progress:
-        return {
-            "success": False,
-            "stream_id": stream_id,
-            "error": "Stream not found",
-        }
+        return CancelStreamResponse(
+            success=False,
+            stream_id=stream_id,
+            error="Stream not found",
+        )
 
     if progress.get("user_id") != user_id:
         raise HTTPException(
@@ -202,19 +220,16 @@ async def cancel_stream_endpoint(
         )
 
     success = await stream_manager.cancel_stream(stream_id)
-    log.info(f"{LogTag.CHAT} Cancel stream request: stream_id={stream_id}, success={success}")
+    log.info(f"{LogTag.CHAT} Cancel stream request", stream_id=stream_id, success=success)
 
-    return {
-        "success": success,
-        "stream_id": stream_id,
-    }
+    return CancelStreamResponse(success=success, stream_id=stream_id)
 
 
 @router.get("/stream/{stream_id}")
 async def subscribe_executor_stream(
     stream_id: str,
     request: Request,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> StreamingResponse:
     """
     Subscribe to a background executor SSE stream by stream_id.
@@ -248,7 +263,10 @@ async def subscribe_executor_stream(
     # Race condition: executor finished before frontend subscribed.
     # Return [DONE] immediately so the client closes cleanly.
     if progress.get("is_complete"):
-        log.info(f"{LogTag.CHAT} Executor stream {stream_id} already complete, returning [DONE]")
+        log.info(
+            f"{LogTag.CHAT} Executor stream already complete, returning [DONE]",
+            stream_id=stream_id,
+        )
 
         async def _already_done() -> AsyncGenerator[str, None]:
             yield "data: [DONE]\n\n"
@@ -264,7 +282,7 @@ async def subscribe_executor_stream(
             },
         )
 
-    log.info(f"{LogTag.CHAT} Client subscribed to executor stream {stream_id}")
+    log.info(f"{LogTag.CHAT} Client subscribed to executor stream", stream_id=stream_id)
 
     return StreamingResponse(
         _stream_from_redis(stream_id, request, last_event_id=request.headers.get("Last-Event-ID")),

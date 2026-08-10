@@ -11,7 +11,12 @@ Tests cover:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
+
+from app.models.user_models import (
+    OnboardingPreferences,
+    OnboardingStatusResponse,
+    UserDocument,
+)
 
 BASE_URL = "/api/v1/onboarding"
 STATUS_URL = f"{BASE_URL}/status"
@@ -22,8 +27,10 @@ PERSONALIZATION_URL = f"{BASE_URL}/personalization"
 # Patch targets
 _COMPLETE_ONBOARDING = "app.api.v1.endpoints.onboarding.complete_onboarding"
 _GET_STATUS = "app.api.v1.endpoints.onboarding.get_user_onboarding_status"
-_USERS_COLLECTION = "app.api.v1.endpoints.onboarding.users_collection"
-_WORKFLOWS_COLLECTION = "app.api.v1.endpoints.onboarding.workflows_collection"
+_REPO = "app.api.v1.endpoints.onboarding.user_repository"
+_GET_USER = _REPO + ".get"
+_SET_PHASE = _REPO + ".set_onboarding_phase"
+_COUNT_BEFORE = _REPO + ".count_created_before"
 _UPDATE_PREFERENCES = "app.api.v1.endpoints.onboarding.update_onboarding_preferences"
 _COMPOSIO_SERVICE = "app.api.v1.endpoints.onboarding.get_composio_service"
 _WEBSOCKET_MANAGER = "app.api.v1.endpoints.onboarding.websocket_manager"
@@ -40,11 +47,9 @@ def _make_onboarding_request(**overrides) -> dict:
     return base
 
 
-def _make_user_doc(**overrides) -> dict:
-    from bson import ObjectId
-
+def _make_user_doc(**overrides) -> UserDocument:
     base = {
-        "_id": ObjectId("507f1f77bcf86cd799439011"),
+        "id": "507f1f77bcf86cd799439011",
         "name": "Test User",
         "onboarding": {
             "phase": "personalization_complete",
@@ -61,7 +66,7 @@ def _make_user_doc(**overrides) -> dict:
         "created_at": None,
     }
     base.update(overrides)
-    return base
+    return UserDocument.model_validate(base)
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +74,6 @@ def _make_user_doc(**overrides) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCompleteOnboarding:
     """Tests for the complete user onboarding endpoint."""
 
@@ -87,9 +91,9 @@ class TestCompleteOnboarding:
             ),
             patch(_COMPOSIO_SERVICE, return_value=mock_composio),
             patch(
-                _USERS_COLLECTION + ".find_one",
+                _GET_USER,
                 new_callable=AsyncMock,
-                return_value={"email_memory_processed": False},
+                return_value=UserDocument(email_memory_processed=False),
             ),
             patch(
                 _REDIS_POOL_MANAGER + ".get_pool",
@@ -151,27 +155,40 @@ class TestCompleteOnboarding:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
+def _status(*, completed: bool, phase: str) -> OnboardingStatusResponse:
+    return OnboardingStatusResponse(
+        completed=completed,
+        completed_at=None,
+        phase=phase,
+        preferences=OnboardingPreferences(),
+        first_message_conversation_id=None,
+    )
+
+
 class TestGetOnboardingStatus:
     """Tests for the get onboarding status endpoint."""
 
+    # BUG: the handler logged `status.get("is_complete")`, a key the service has
+    # never returned — the completion flag was always logged as False. The wire
+    # field is `completed`, which is what mobile reads.
     async def test_get_status_returns_200(self, client: AsyncClient):
-        mock_status = {"is_complete": True, "phase": "completed"}
+        mock_status = _status(completed=True, phase="completed")
         with patch(_GET_STATUS, new_callable=AsyncMock, return_value=mock_status):
             response = await client.get(STATUS_URL)
 
         assert response.status_code == 200
         data = response.json()
-        assert data["is_complete"] is True
+        assert data["completed"] is True
+        assert data["phase"] == "completed"
 
     async def test_get_status_incomplete_user(self, client: AsyncClient):
-        mock_status = {"is_complete": False, "phase": "initial"}
+        mock_status = _status(completed=False, phase="initial")
         with patch(_GET_STATUS, new_callable=AsyncMock, return_value=mock_status):
             response = await client.get(STATUS_URL)
 
         assert response.status_code == 200
         data = response.json()
-        assert data["is_complete"] is False
+        assert data["completed"] is False
 
     async def test_get_status_service_error(self, client: AsyncClient):
         with patch(
@@ -189,18 +206,12 @@ class TestGetOnboardingStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateOnboardingPhase:
     """Tests for the update onboarding phase endpoint."""
 
     async def test_update_phase_success(self, client: AsyncClient):
-        mock_result = MagicMock(modified_count=1)
         with (
-            patch(
-                _USERS_COLLECTION + ".update_one",
-                new_callable=AsyncMock,
-                return_value=mock_result,
-            ),
+            patch(_SET_PHASE, new_callable=AsyncMock, return_value=True),
             patch(
                 _WEBSOCKET_MANAGER + ".broadcast_to_user",
                 new_callable=AsyncMock,
@@ -214,12 +225,7 @@ class TestUpdateOnboardingPhase:
         assert data["phase"] == "getting_started"
 
     async def test_update_phase_user_not_found_returns_404(self, client: AsyncClient):
-        mock_result = MagicMock(matched_count=0)
-        with patch(
-            _USERS_COLLECTION + ".update_one",
-            new_callable=AsyncMock,
-            return_value=mock_result,
-        ):
+        with patch(_SET_PHASE, new_callable=AsyncMock, return_value=False):
             response = await client.post(PHASE_URL, json={"phase": "completed"})
 
         assert response.status_code == 404
@@ -234,7 +240,7 @@ class TestUpdateOnboardingPhase:
 
     async def test_update_phase_service_error_returns_500(self, client: AsyncClient):
         with patch(
-            _USERS_COLLECTION + ".update_one",
+            _SET_PHASE,
             new_callable=AsyncMock,
             side_effect=RuntimeError("DB error"),
         ):
@@ -248,7 +254,6 @@ class TestUpdateOnboardingPhase:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdatePreferences:
     """Tests for the update preferences endpoint."""
 
@@ -311,7 +316,6 @@ class TestUpdatePreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetPersonalization:
     """Tests for the get personalization data endpoint."""
 
@@ -320,16 +324,8 @@ class TestGetPersonalization:
         mock_composio = MagicMock()
         mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
         with (
-            patch(
-                _USERS_COLLECTION + ".find_one",
-                new_callable=AsyncMock,
-                return_value=user_doc,
-            ),
-            patch(
-                _USERS_COLLECTION + ".count_documents",
-                new_callable=AsyncMock,
-                return_value=41,
-            ),
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=41),
             patch(_COMPOSIO_SERVICE, return_value=mock_composio),
         ):
             response = await client.get(PERSONALIZATION_URL)
@@ -341,18 +337,14 @@ class TestGetPersonalization:
         assert data["has_personalization"] is True
 
     async def test_get_personalization_user_not_found_returns_404(self, client: AsyncClient):
-        with patch(
-            _USERS_COLLECTION + ".find_one",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
+        with patch(_GET_USER, new_callable=AsyncMock, return_value=None):
             response = await client.get(PERSONALIZATION_URL)
 
         assert response.status_code == 404
 
     async def test_get_personalization_service_error_returns_500(self, client: AsyncClient):
         with patch(
-            _USERS_COLLECTION + ".find_one",
+            _GET_USER,
             new_callable=AsyncMock,
             side_effect=RuntimeError("DB error"),
         ):
@@ -362,27 +354,17 @@ class TestGetPersonalization:
 
     async def test_get_personalization_no_phase_defaults(self, client: AsyncClient):
         """User doc with empty onboarding should return default values."""
-        from bson import ObjectId
-
-        user_doc = {
-            "_id": ObjectId("507f1f77bcf86cd799439011"),
-            "name": "New User",
-            "onboarding": {},
-            "created_at": None,
-        }
+        user_doc = UserDocument(
+            id="507f1f77bcf86cd799439011",
+            name="New User",
+            onboarding={},
+            created_at=None,
+        )
         mock_composio = MagicMock()
         mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
         with (
-            patch(
-                _USERS_COLLECTION + ".find_one",
-                new_callable=AsyncMock,
-                return_value=user_doc,
-            ),
-            patch(
-                _USERS_COLLECTION + ".count_documents",
-                new_callable=AsyncMock,
-                return_value=0,
-            ),
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
             patch(_COMPOSIO_SERVICE, return_value=mock_composio),
         ):
             response = await client.get(PERSONALIZATION_URL)

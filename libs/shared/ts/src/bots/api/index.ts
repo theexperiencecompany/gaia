@@ -16,7 +16,8 @@ import type {
   SettingsResponse,
 } from "../types";
 import { getHttpStatus } from "../utils/logger";
-import { streamChat } from "./chat-stream";
+import { wideLog } from "../utils/wide-events";
+import { type ApprovalUpdateHandler, streamChat } from "./chat-stream";
 import {
   downloadArtifactRequest,
   transcribeAudioRequest,
@@ -100,6 +101,14 @@ export class GaiaClient {
       headers.Authorization = `Bearer ${sessionToken}`;
     }
 
+    // Propagate the active wide-event boundary's trace_id so the backend's
+    // LoggingMiddleware stamps its request event with the same id (it honours
+    // an incoming x-trace-id and echoes it back) — one trace across bot + API.
+    const traceId = wideLog.getTraceId();
+    if (traceId) {
+      headers["x-trace-id"] = traceId;
+    }
+
     return headers;
   }
 
@@ -158,6 +167,7 @@ export class GaiaClient {
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
+    onApprovalUpdate?: ApprovalUpdateHandler,
   ): Promise<string> {
     return streamChat(
       {
@@ -171,6 +181,7 @@ export class GaiaClient {
       onDone,
       onError,
       "/api/v1/bot/chat-stream",
+      onApprovalUpdate,
     );
   }
 

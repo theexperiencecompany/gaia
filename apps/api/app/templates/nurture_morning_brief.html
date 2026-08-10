@@ -1,0 +1,15 @@
+{% extends "_base_email.html" %}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+This is the feature I most want you to see.<br /><br />
+Every morning at 8, GAIA sends you a Morning Brief. It's not a summary of
+your day. It's a report of work that already got done.<br /><br />
+While you were asleep, GAIA ran the night shift on your goals and todos. The
+brief tells you what it finished overnight, what it has staged and ready to
+go the moment you tap Approve, and the handful of things that genuinely need
+you.<br /><br />
+Most mornings, that last list is a lot shorter than you'd expect. You start
+the day ahead of it instead of behind it.<br /><br />
+Best,<br />
+Aryan
+{% endblock %}

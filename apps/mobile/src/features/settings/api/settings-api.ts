@@ -1,10 +1,10 @@
+import type { HilPreferences } from "@gaia/shared/chat";
 import type { FeatureUsage, UsageSummary } from "@gaia/shared/types";
 import { apiService } from "@/lib/api";
 
 export type {
+  BudgetWindow,
   FeatureUsage,
-  TokenUsage,
-  TokenUsagePeriod,
   UsagePeriod,
   UsageSummary,
 } from "@gaia/shared/types";
@@ -95,5 +95,26 @@ export const settingsApi = {
 
   getUserStats(): Promise<UserStats> {
     return apiService.get<UserStats>("/user/stats");
+  },
+
+  getHilPreferences(): Promise<HilPreferences> {
+    return apiService.get<HilPreferences>("/approvals/preferences");
+  },
+
+  updateHilPreferences(
+    payload: Partial<HilPreferences>,
+  ): Promise<HilPreferences> {
+    return apiService.put<HilPreferences>("/approvals/preferences", payload);
+  },
+
+  // ask: true = always ask, false = never ask, null = clear override (use default).
+  setToolOverride(
+    toolName: string,
+    ask: boolean | null,
+  ): Promise<HilPreferences> {
+    return apiService.put<HilPreferences>(
+      `/approvals/tools/${encodeURIComponent(toolName)}`,
+      { ask },
+    );
   },
 };

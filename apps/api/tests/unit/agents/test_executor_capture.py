@@ -44,7 +44,6 @@ def _tool_call_event(tool_call_id: str, subagent_id: str | None = None) -> dict:
     return {"tool_data": entry}
 
 
-@pytest.mark.unit
 class TestRegisterAndDone:
     def test_register_creates_live_session_and_returns_its_done_event(self) -> None:
         done = register_executor_capture("s1")
@@ -65,7 +64,6 @@ class TestRegisterAndDone:
         await await_executor_done("s1")  # returns because the event is set
 
 
-@pytest.mark.unit
 class TestDrain:
     def test_drain_without_session_returns_empty(self) -> None:
         assert drain_executor_tool_data("missing") == []
@@ -131,7 +129,6 @@ class TestDrain:
         assert drain_executor_tool_data("s1") == []
 
 
-@pytest.mark.unit
 class TestRedisStreamWriter:
     async def test_writer_appends_event_to_session_and_publishes(self) -> None:
         create_session("s1", RunKind.QUEUED)

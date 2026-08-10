@@ -6,7 +6,8 @@ from bson import ObjectId
 from fastapi import HTTPException
 import pytest
 
-from app.models.user_models import BioStatus
+from app.models.integration_models import UserIntegrationDocument
+from app.models.user_models import BioStatus, UserDocument
 from app.services.oauth.oauth_service import (
     check_integration_status,
     check_multiple_integrations_status,
@@ -15,24 +16,33 @@ from app.services.oauth.oauth_service import (
     store_user_info,
 )
 
+
+def _ui_doc(integration_id: str, status: str) -> UserIntegrationDocument:
+    """Build a UserIntegrationDocument as list_for_user would return it."""
+    return UserIntegrationDocument(user_id="user123", integration_id=integration_id, status=status)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def mock_users_collection():
-    with patch("app.services.oauth.oauth_service.users_collection") as mock_col:
-        yield mock_col
+def mock_user_repo():
+    with patch("app.services.oauth.oauth_service.user_repository") as mock_repo:
+        mock_repo.get_by_email = AsyncMock()
+        mock_repo.get = AsyncMock()
+        mock_repo.update = AsyncMock()
+        mock_repo.create = AsyncMock()
+        mock_repo.set_bio_status = AsyncMock()
+        yield mock_repo
 
 
 @pytest.fixture
-def mock_user_integrations_collection():
-    with patch("app.services.oauth.oauth_service.user_integrations_collection") as mock_col:
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(return_value=[])
-        mock_col.find = MagicMock(return_value=mock_cursor)
-        yield mock_col
+def mock_user_integration_repo():
+    with patch("app.services.oauth.oauth_service.user_integration_repository") as mock_repo:
+        mock_repo.list_for_user = AsyncMock(return_value=[])
+        yield mock_repo
 
 
 @pytest.fixture
@@ -69,7 +79,7 @@ def mock_websocket_manager():
 
 
 @pytest.fixture
-def mock_redis_pool_manager():
+def mock_redis_pool_manager(route_enqueue_via_pool):
     mock_pool = AsyncMock()
     mock_pool.enqueue_job = AsyncMock()
     with patch("app.services.oauth.oauth_service.RedisPoolManager") as mock_rpm:
@@ -99,9 +109,9 @@ def mock_send_welcome_email():
 
 
 @pytest.fixture
-def mock_add_contact_to_resend():
+def mock_add_marketing_contact():
     with patch(
-        "app.services.oauth.oauth_service.add_contact_to_resend",
+        "app.services.oauth.oauth_service.add_marketing_contact",
         new_callable=AsyncMock,
     ) as mock_acr:
         yield mock_acr
@@ -162,140 +172,119 @@ def _make_integration_config(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestStoreUserInfo:
-    async def test_raises_400_when_email_is_empty(self, mock_users_collection):
+    async def test_raises_400_when_email_is_empty(self, mock_user_repo):
         with pytest.raises(HTTPException) as exc_info:
             await store_user_info("Test", "", "https://pic.example.com/pic.jpg")
         assert exc_info.value.status_code == 400
         assert "Email is required" in exc_info.value.detail
 
-    async def test_raises_400_when_email_is_none(self, mock_users_collection):
+    async def test_raises_400_when_email_is_none(self, mock_user_repo):
         with pytest.raises(HTTPException) as exc_info:
             await store_user_info("Test", None, "https://pic.example.com/pic.jpg")
         assert exc_info.value.status_code == 400
 
-    async def test_updates_existing_user_with_picture(
-        self, mock_users_collection, mock_track_login
-    ):
-        oid = ObjectId()
-        existing_user = {
-            "_id": oid,
-            "email": "alice@test.com",
-            "name": "Alice",
-            "picture": "https://old-pic.example.com/old.jpg",
-        }
-        mock_users_collection.find_one = AsyncMock(return_value=existing_user)
-        mock_users_collection.update_one = AsyncMock()
+    async def test_updates_existing_user_with_picture(self, mock_user_repo, mock_track_login):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="Alice",
+            picture="https://old-pic.example.com/old.jpg",
+        )
 
         result = await store_user_info(
             "Alice Updated", "alice@test.com", "https://new-pic.example.com/new.jpg"
         )
 
-        assert result == (oid, False)
-        mock_users_collection.update_one.assert_awaited_once()
-        call_args = mock_users_collection.update_one.call_args
-        update_data = call_args[0][1]["$set"]
-        assert update_data["name"] == "Alice Updated"
-        assert update_data["picture"] == "https://new-pic.example.com/new.jpg"
-        assert "updated_at" in update_data
+        assert result == (uid, False)
+        mock_user_repo.update.assert_awaited_once()
+        doc_id, update = mock_user_repo.update.call_args.args
+        assert doc_id == uid
+        fields = update.model_dump(exclude_unset=True)
+        assert fields["name"] == "Alice Updated"
+        assert fields["picture"] == "https://new-pic.example.com/new.jpg"
 
     async def test_updates_existing_user_without_picture_keeps_existing(
-        self, mock_users_collection, mock_track_login
+        self, mock_user_repo, mock_track_login
     ):
-        oid = ObjectId()
-        existing_user = {
-            "_id": oid,
-            "email": "alice@test.com",
-            "name": "Alice",
-            "picture": "https://existing.example.com/pic.jpg",
-        }
-        mock_users_collection.find_one = AsyncMock(return_value=existing_user)
-        mock_users_collection.update_one = AsyncMock()
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="Alice",
+            picture="https://existing.example.com/pic.jpg",
+        )
 
         result = await store_user_info("Alice Updated", "alice@test.com", None)
 
-        assert result == (oid, False)
-        call_args = mock_users_collection.update_one.call_args
-        update_data = call_args[0][1]["$set"]
+        assert result == (uid, False)
+        fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
         # Should NOT set picture when no new URL provided and user has existing pic
-        assert "picture" not in update_data
+        assert "picture" not in fields
 
     async def test_updates_existing_user_without_picture_sets_empty_when_no_existing(
-        self, mock_users_collection, mock_track_login
+        self, mock_user_repo, mock_track_login
     ):
-        oid = ObjectId()
-        existing_user = {
-            "_id": oid,
-            "email": "alice@test.com",
-            "name": "Alice",
-            # No "picture" field
-        }
-        mock_users_collection.find_one = AsyncMock(return_value=existing_user)
-        mock_users_collection.update_one = AsyncMock()
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="Alice",  # no picture
+        )
 
         result = await store_user_info("Alice Updated", "alice@test.com", None)
 
-        assert result == (oid, False)
-        call_args = mock_users_collection.update_one.call_args
-        update_data = call_args[0][1]["$set"]
-        assert update_data["picture"] == ""
+        assert result == (uid, False)
+        fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
+        assert fields["picture"] == ""
 
     async def test_creates_new_user_with_picture(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
-        inserted_id = ObjectId()
-        mock_result = MagicMock()
-        mock_result.inserted_id = inserted_id
-        mock_users_collection.insert_one = AsyncMock(return_value=mock_result)
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(
+            id=uid, name="Bob", email="bob@test.com", picture="https://pic.example.com/bob.jpg"
+        )
 
         result = await store_user_info("Bob", "bob@test.com", "https://pic.example.com/bob.jpg")
 
-        assert result == (inserted_id, True)
-        call_args = mock_users_collection.insert_one.call_args
-        user_data = call_args[0][0]
-        assert user_data["name"] == "Bob"
-        assert user_data["email"] == "bob@test.com"
-        assert user_data["picture"] == "https://pic.example.com/bob.jpg"
-        assert "created_at" in user_data
-        assert "updated_at" in user_data
+        assert result == (uid, True)
+        created = mock_user_repo.create.call_args.args[0]
+        assert created.name == "Bob"
+        assert created.email == "bob@test.com"
+        assert created.picture == "https://pic.example.com/bob.jpg"
 
     async def test_creates_new_user_without_picture_defaults_to_empty(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
-        inserted_id = ObjectId()
-        mock_result = MagicMock()
-        mock_result.inserted_id = inserted_id
-        mock_users_collection.insert_one = AsyncMock(return_value=mock_result)
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid, name="Bob", email="bob@test.com")
 
         result = await store_user_info("Bob", "bob@test.com", None)
 
-        assert result == (inserted_id, True)
-        call_args = mock_users_collection.insert_one.call_args
-        user_data = call_args[0][0]
-        assert user_data["picture"] == ""
+        assert result == (uid, True)
+        assert mock_user_repo.create.call_args.args[0].picture == ""
 
     async def test_new_user_tracks_signup(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
-        mock_result = MagicMock()
-        mock_result.inserted_id = ObjectId()
-        mock_users_collection.insert_one = AsyncMock(return_value=mock_result)
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=str(ObjectId()))
 
         await store_user_info("Bob", "bob@test.com", None)
 
@@ -308,15 +297,13 @@ class TestStoreUserInfo:
 
     async def test_new_user_sends_welcome_email(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
-        mock_result = MagicMock()
-        mock_result.inserted_id = ObjectId()
-        mock_users_collection.insert_one = AsyncMock(return_value=mock_result)
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=str(ObjectId()))
 
         await store_user_info("Bob", "bob@test.com", None)
 
@@ -324,68 +311,63 @@ class TestStoreUserInfo:
 
     async def test_new_user_adds_contact_to_resend(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
-        mock_result = MagicMock()
-        mock_result.inserted_id = ObjectId()
-        mock_users_collection.insert_one = AsyncMock(return_value=mock_result)
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=str(ObjectId()))
 
         await store_user_info("Bob", "bob@test.com", None)
 
-        mock_add_contact_to_resend.assert_awaited_once_with("bob@test.com", "Bob")
+        mock_add_marketing_contact.assert_awaited_once_with("bob@test.com", "Bob")
 
     async def test_new_user_signup_tracking_failure_does_not_raise(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
-        mock_result = MagicMock()
-        mock_result.inserted_id = ObjectId()
-        mock_users_collection.insert_one = AsyncMock(return_value=mock_result)
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid)
         mock_track_signup.side_effect = Exception("PostHog unavailable")
 
         # Should not raise
         result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == (mock_result.inserted_id, True)
+        assert result == (uid, True)
 
     async def test_new_user_welcome_email_failure_does_not_raise(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
-        mock_result = MagicMock()
-        mock_result.inserted_id = ObjectId()
-        mock_users_collection.insert_one = AsyncMock(return_value=mock_result)
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid)
         mock_send_welcome_email.side_effect = Exception("SMTP error")
 
         result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == (mock_result.inserted_id, True)
+        assert result == (uid, True)
 
     async def test_new_user_resend_failure_does_not_raise(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_track_signup,
         mock_send_welcome_email,
-        mock_add_contact_to_resend,
+        mock_add_marketing_contact,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
-        mock_result = MagicMock()
-        mock_result.inserted_id = ObjectId()
-        mock_users_collection.insert_one = AsyncMock(return_value=mock_result)
-        mock_add_contact_to_resend.side_effect = Exception("Resend API error")
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid)
+        mock_add_marketing_contact.side_effect = Exception("Resend API error")
 
         result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == (mock_result.inserted_id, True)
+        assert result == (uid, True)
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +375,6 @@ class TestStoreUserInfo:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetAllIntegrationsStatus:
     """Tests for get_all_integrations_status.
 
@@ -403,7 +384,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_unavailable_integrations_marked_false(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -423,18 +404,14 @@ class TestGetAllIntegrationsStatus:
 
     async def test_integration_connected_in_mongodb(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
         """If user_integrations has status='connected', result should be True."""
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"integration_id": "notion", "status": "connected"},
-            ]
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("notion", "connected")]
         )
-        mock_user_integrations_collection.find = MagicMock(return_value=mock_cursor)
 
         integration = MagicMock()
         integration.id = "notion"
@@ -453,18 +430,14 @@ class TestGetAllIntegrationsStatus:
 
     async def test_integration_disconnected_in_mongodb(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
         """If user_integrations has status != 'connected', result should be False."""
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"integration_id": "notion", "status": "created"},
-            ]
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("notion", "created")]
         )
-        mock_user_integrations_collection.find = MagicMock(return_value=mock_cursor)
 
         integration = MagicMock()
         integration.id = "notion"
@@ -483,7 +456,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_mcp_integration_not_in_mongo_returns_false(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -504,7 +477,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_composio_integration_falls_back_to_composio_check(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -528,7 +501,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_composio_batch_check_failure_returns_false(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -553,7 +526,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_self_managed_integration_with_valid_token(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -589,7 +562,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_self_managed_integration_with_missing_scopes(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -625,7 +598,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_self_managed_integration_with_no_token(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -654,18 +627,14 @@ class TestGetAllIntegrationsStatus:
 
     async def test_custom_integrations_in_mongo_included(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
         """Custom integrations in MongoDB not in OAUTH_INTEGRATIONS are still included."""
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"integration_id": "custom_tool", "status": "connected"},
-            ]
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("custom_tool", "connected")]
         )
-        mock_user_integrations_collection.find = MagicMock(return_value=mock_cursor)
 
         with patch(
             "app.services.oauth.oauth_service.OAUTH_INTEGRATIONS",
@@ -677,18 +646,14 @@ class TestGetAllIntegrationsStatus:
 
     async def test_mixed_integrations(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
         """Test a mix of connected, disconnected, and unavailable integrations."""
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"integration_id": "notion", "status": "connected"},
-            ]
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("notion", "connected")]
         )
-        mock_user_integrations_collection.find = MagicMock(return_value=mock_cursor)
 
         # Composio returns twitter as connected
         mock_composio_service.check_connection_status = AsyncMock(return_value={"slack": False})
@@ -733,7 +698,6 @@ class TestGetAllIntegrationsStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCheckIntegrationStatus:
     async def test_returns_true_for_connected_integration(self):
         with patch(
@@ -777,7 +741,6 @@ class TestCheckIntegrationStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCheckMultipleIntegrationsStatus:
     async def test_returns_status_for_requested_integrations(self):
         with patch(
@@ -825,7 +788,6 @@ class TestCheckMultipleIntegrationsStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHandleOAuthConnection:
     async def test_invalidates_cache_and_updates_integration_status(
         self,
@@ -841,7 +803,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -868,7 +829,6 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )
 
@@ -892,7 +852,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -905,25 +864,19 @@ class TestHandleOAuthConnection:
 
     async def test_gmail_connection_queues_email_processing(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
     ):
         """Gmail integration should queue email processing via ARQ."""
         user_id = "507f1f77bcf86cd799439011"
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId(user_id),
-                "onboarding": {"completed": True},
-            }
-        )
+        mock_user_repo.get.return_value = UserDocument(onboarding={"completed": True})
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
 
         await handle_oauth_connection(
             user_id=user_id,
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -933,64 +886,45 @@ class TestHandleOAuthConnection:
 
     async def test_gmail_connection_updates_bio_status_when_no_gmail(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_update_user_integration_status,
         mock_websocket_manager,
         mock_redis_pool_manager,
     ):
         """Gmail connection should update bio_status from no_gmail to processing."""
         user_id = "507f1f77bcf86cd799439011"
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId(user_id),
-                "onboarding": {
-                    "completed": True,
-                    "bio_status": BioStatus.NO_GMAIL,
-                },
-            }
+        mock_user_repo.get.return_value = UserDocument(
+            onboarding={"completed": True, "bio_status": BioStatus.NO_GMAIL}
         )
-        mock_users_collection.update_one = AsyncMock()
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
 
         await handle_oauth_connection(
             user_id=user_id,
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
-        mock_users_collection.update_one.assert_awaited_once()
-        call_args = mock_users_collection.update_one.call_args
-        update_data = call_args[0][1]["$set"]
-        assert update_data["onboarding.bio_status"] == BioStatus.PROCESSING
+        mock_user_repo.set_bio_status.assert_awaited_once_with(user_id, BioStatus.PROCESSING)
 
     async def test_gmail_connection_sends_websocket_update(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_update_user_integration_status,
         mock_websocket_manager,
         mock_redis_pool_manager,
     ):
         """Gmail with no_gmail bio_status should broadcast WebSocket update."""
         user_id = "507f1f77bcf86cd799439011"
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId(user_id),
-                "onboarding": {
-                    "completed": True,
-                    "bio_status": "no_gmail",
-                },
-            }
+        mock_user_repo.get.return_value = UserDocument(
+            onboarding={"completed": True, "bio_status": "no_gmail"}
         )
-        mock_users_collection.update_one = AsyncMock()
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
 
         await handle_oauth_connection(
             user_id=user_id,
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -1001,74 +935,53 @@ class TestHandleOAuthConnection:
 
     async def test_gmail_connection_skips_bio_update_when_already_completed(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
     ):
         """If bio_status is 'completed', don't update to processing."""
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId("507f1f77bcf86cd799439011"),
-                "onboarding": {
-                    "completed": True,
-                    "bio_status": BioStatus.COMPLETED,
-                },
-            }
+        mock_user_repo.get.return_value = UserDocument(
+            onboarding={"completed": True, "bio_status": BioStatus.COMPLETED}
         )
-        mock_users_collection.update_one = AsyncMock()
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
 
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
-        mock_users_collection.update_one.assert_not_awaited()
+        mock_user_repo.set_bio_status.assert_not_awaited()
 
     async def test_gmail_connection_skips_bio_when_onboarding_not_completed(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
     ):
         """If onboarding not completed, don't update bio_status."""
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId("507f1f77bcf86cd799439011"),
-                "onboarding": {
-                    "completed": False,
-                    "bio_status": BioStatus.NO_GMAIL,
-                },
-            }
+        mock_user_repo.get.return_value = UserDocument(
+            onboarding={"completed": False, "bio_status": BioStatus.NO_GMAIL}
         )
-        mock_users_collection.update_one = AsyncMock()
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
 
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
-        mock_users_collection.update_one.assert_not_awaited()
+        mock_user_repo.set_bio_status.assert_not_awaited()
 
     async def test_gmail_arq_queue_failure_does_not_raise(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_update_user_integration_status,
     ):
         """ARQ enqueue failure should be logged, not raised."""
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId("507f1f77bcf86cd799439011"),
-                "onboarding": {"completed": True},
-            }
-        )
+        mock_user_repo.get.return_value = UserDocument(onboarding={"completed": True})
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
 
@@ -1081,7 +994,6 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )
 
@@ -1097,7 +1009,6 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )
 
@@ -1120,7 +1031,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -1145,7 +1055,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -1157,25 +1066,19 @@ class TestHandleOAuthConnection:
 
     async def test_gmail_provisions_system_workflows(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_update_user_integration_status,
         mock_provision_system_workflows,
         mock_redis_pool_manager,
     ):
         """Gmail connection should provision system workflows."""
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId("507f1f77bcf86cd799439011"),
-                "onboarding": {"completed": False},
-            }
-        )
+        mock_user_repo.get.return_value = UserDocument(onboarding={"completed": False})
         config = _make_integration_config(integration_id="gmail", name="Gmail")
         background_tasks = MagicMock()
 
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -1201,7 +1104,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -1227,7 +1129,6 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )
 
@@ -1251,27 +1152,19 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )
 
     async def test_websocket_failure_does_not_block_flow(
         self,
-        mock_users_collection,
+        mock_user_repo,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
     ):
         """WebSocket broadcast failure should not block the OAuth flow."""
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId("507f1f77bcf86cd799439011"),
-                "onboarding": {
-                    "completed": True,
-                    "bio_status": BioStatus.NO_GMAIL,
-                },
-            }
+        mock_user_repo.get.return_value = UserDocument(
+            onboarding={"completed": True, "bio_status": BioStatus.NO_GMAIL}
         )
-        mock_users_collection.update_one = AsyncMock()
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
 
@@ -1282,6 +1175,5 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )

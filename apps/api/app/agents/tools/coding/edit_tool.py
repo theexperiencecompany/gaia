@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
-from e2b import NotFoundException
+from e2b import AsyncSandbox, NotFoundException
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
@@ -77,11 +77,11 @@ async def edit(
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
-        log.error(f"edit tool failed: {e}", exc_info=True)
+        log.error("edit tool failed", error_type=type(e).__name__, exc_info=True)
         return f"Error editing file: {e}"
 
 
-async def _read_editable_content(sbx: Any, abs_path: str) -> tuple[str | None, str]:
+async def _read_editable_content(sbx: AsyncSandbox, abs_path: str) -> tuple[str | None, str]:
     """Read a workspace file's UTF-8 content. Returns ``(content, error)``.
 
     On success ``error`` is empty; on failure ``content`` is ``None`` and
@@ -104,7 +104,7 @@ async def _read_editable_content(sbx: Any, abs_path: str) -> tuple[str | None, s
 
 
 async def _do_edit(
-    sbx: Any,
+    sbx: AsyncSandbox,
     user_id: str,
     abs_path: str,
     role: MountRole,

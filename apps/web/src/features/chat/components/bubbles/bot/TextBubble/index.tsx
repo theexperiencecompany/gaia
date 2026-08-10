@@ -1,6 +1,10 @@
 import { Chip } from "@heroui/chip";
 import { Alert01Icon } from "@icons";
 import {
+  APPROVAL_REQUEST_TOOL_NAME,
+  type ApprovalRequestData,
+} from "@shared/chat";
+import {
   parseOpenUISegments,
   splitByBreaksPreservingFences,
 } from "@shared/utils";
@@ -17,8 +21,13 @@ import {
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
+import { db } from "@/lib/db/chatDb";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
+import {
+  ApprovalResolveProvider,
+  type ApprovalResolver,
+} from "../ApprovalResolveContext";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
@@ -93,7 +102,205 @@ function FailedResponse({ error }: Readonly<{ error: string }>) {
   );
 }
 
+type PartTransition = {
+  duration: number;
+  ease: typeof MESSAGE_BREAK_EASE_OUT_QUART;
+  delay: number;
+};
+
+/** Bubble body: markdown plus an optional disclaimer chip on the last block. */
+function BubbleContent({
+  content,
+  showDisclaimer,
+  disclaimer,
+  isStreaming,
+}: Readonly<{
+  content: string;
+  showDisclaimer: boolean;
+  disclaimer: ChatBubbleBotProps["disclaimer"];
+  isStreaming: ChatBubbleBotProps["loading"];
+}>) {
+  return (
+    <div className="flex flex-col gap-3">
+      <MarkdownRenderer content={content} isStreaming={isStreaming} />
+      {!!disclaimer && showDisclaimer && (
+        <Chip
+          className="text-xs font-medium text-warning-500"
+          color="warning"
+          size="sm"
+          startContent={
+            <Alert01Icon className="text-warning-500" height={17} />
+          }
+          variant="flat"
+        >
+          {disclaimer}
+        </Chip>
+      )}
+    </div>
+  );
+}
+
+/** Resolve grouping + emoji-scaling classes for a pure-markdown bubble. */
+function resolveMarkdownBubbleStyles({
+  isSingle,
+  isLast,
+  isFirst,
+  isEmojiOnly,
+  emojiCount,
+}: {
+  isSingle: boolean;
+  isLast: boolean;
+  isFirst: boolean;
+  isEmojiOnly: boolean;
+  emojiCount: number;
+}): { bubbleClassName: string; groupedClasses: string; textClass: string } {
+  // Single message shows tail (last styling); otherwise first = no tail,
+  // middle = no tail, last = show tail.
+  let groupedClasses: string;
+  if (isSingle || isLast) {
+    groupedClasses = "imessage-grouped-last";
+  } else if (isFirst) {
+    groupedClasses = "imessage-grouped-first mb-1.5";
+  } else {
+    groupedClasses = "imessage-grouped-middle mb-1.5";
+  }
+  let bubbleClassName = "imessage-bubble imessage-from-them";
+  let textClass = "";
+
+  if (isEmojiOnly) {
+    if (emojiCount === 1) {
+      bubbleClassName = "select-none";
+      groupedClasses = "";
+      textClass = "text-[4rem] leading-none";
+    } else if (emojiCount === 2) {
+      textClass = "text-5xl";
+    } else if (emojiCount === 3) {
+      textClass = "text-4xl";
+    }
+  }
+
+  return { bubbleClassName, groupedClasses, textClass };
+}
+
+interface TextPartProps {
+  isFirst: boolean;
+  isLast: boolean;
+  isSingle: boolean;
+  baseId: string;
+  originalIndex: number;
+  loading: ChatBubbleBotProps["loading"];
+  disclaimer: ChatBubbleBotProps["disclaimer"];
+  replyToMessage: ChatBubbleBotProps["replyToMessage"];
+  partTransition: PartTransition;
+}
+
+/** Pure-markdown part — normal iMessage bubble. */
+function MarkdownPartBubble({
+  part,
+  isFirst,
+  isLast,
+  isSingle,
+  loading,
+  disclaimer,
+  replyToMessage,
+  partTransition,
+}: Readonly<TextPartProps & { part: string }>) {
+  const isEmojiOnly = isOnlyEmojis(part);
+  const emojiCount = isEmojiOnly ? getEmojiCount(part) : 0;
+  const { bubbleClassName, groupedClasses, textClass } =
+    resolveMarkdownBubbleStyles({
+      isSingle,
+      isLast,
+      isFirst,
+      isEmojiOnly,
+      emojiCount,
+    });
+
+  return (
+    <m.div
+      className={`${bubbleClassName} ${groupedClasses}`}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={partTransition}
+    >
+      {/* Reply quote: full-width card, scrolls to original on click */}
+      {isFirst && replyToMessage?.content && (
+        <ReplyQuote replyToMessage={replyToMessage} />
+      )}
+      <div className={textClass}>
+        <BubbleContent
+          content={part}
+          showDisclaimer={isLast}
+          disclaimer={disclaimer}
+          isStreaming={loading}
+        />
+      </div>
+    </m.div>
+  );
+}
+
+/** Mixed part: OpenUI segments render OUTSIDE the bubble. */
+function MixedPart({
+  segments,
+  isFirst,
+  isLast,
+  baseId,
+  originalIndex,
+  loading,
+  disclaimer,
+  replyToMessage,
+  partTransition,
+}: Readonly<
+  TextPartProps & { segments: ReturnType<typeof parseOpenUISegments> }
+>) {
+  const lastMdIdx = segments.reduce(
+    (acc, s, i) => (s.type === "markdown" && s.content.trim() ? i : acc),
+    -1,
+  );
+
+  return (
+    <m.div
+      className="flex flex-col"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={partTransition}
+    >
+      {segments.map((seg, segIdx) => {
+        const segKey = `${baseId}-seg-${originalIndex}-${segIdx}`;
+        if (seg.type === "openui") {
+          return (
+            <OpenUIRenderer
+              key={segKey}
+              code={seg.content}
+              isStreaming={!!loading && !seg.isComplete}
+            />
+          );
+        }
+        if (!seg.content.trim()) return null;
+        const isLastMdInLastPart = isLast && segIdx === lastMdIdx;
+        return (
+          <div
+            key={segKey}
+            className={`imessage-bubble imessage-from-them ${isLastMdInLastPart ? "imessage-grouped-last" : "imessage-grouped-first"} mb-1.5`}
+          >
+            {isFirst && segIdx === 0 && replyToMessage?.content && (
+              <ReplyQuote replyToMessage={replyToMessage} />
+            )}
+            <BubbleContent
+              content={seg.content}
+              showDisclaimer={isLastMdInLastPart}
+              disclaimer={disclaimer}
+              isStreaming={loading}
+            />
+          </div>
+        );
+      })}
+    </m.div>
+  );
+}
+
 export default function TextBubble({
+  message_id,
   text,
   disclaimer,
   tool_data,
@@ -105,6 +312,24 @@ export default function TextBubble({
 }: Readonly<ChatBubbleBotProps>) {
   const baseId = useId();
 
+  // Persist a HIL approval decision into THIS message's tool_data, so the pending
+  // card becomes a settled receipt (clearing the derived "Waiting for approval"
+  // pill) and survives reload. The resolved frame is published on the resumed
+  // run's stream — a different message — so it never reaches this card otherwise.
+  const resolveApproval = React.useCallback<ApprovalResolver>(
+    (approvalId, resolved) => {
+      if (!message_id || !tool_data) return;
+      const next = tool_data.map((entry) =>
+        entry.tool_name === APPROVAL_REQUEST_TOOL_NAME &&
+        (entry.data as ApprovalRequestData | null)?.approval_id === approvalId
+          ? { ...entry, data: resolved }
+          : entry,
+      );
+      void db.updateMessage(message_id, { tool_data: next });
+    },
+    [message_id, tool_data],
+  );
+
   // Parse thinking content from text
   const parsedContent = React.useMemo(() => {
     return parseThinkingFromText(text?.toString() || "");
@@ -114,8 +339,23 @@ export default function TextBubble({
   // and the remaining tool_data entries that render via TOOL_RENDERERS.
   const { timeline, processedTools } = useSubagentSynthesis(tool_data);
 
+  // Tool calls currently blocked on a HIL approval, keyed by the shared
+  // tool_call_id. Lets the tool row/subagent show "Waiting for approval"
+  // instead of a generic spinner while the approval card handles the decision.
+  const pendingApprovalToolCallIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    tool_data?.forEach((entry) => {
+      if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
+      const data = entry.data as ApprovalRequestData | null;
+      if (data?.status === "pending" && data.tool_call_id) {
+        ids.add(data.tool_call_id);
+      }
+    });
+    return ids;
+  }, [tool_data]);
+
   return (
-    <>
+    <ApprovalResolveProvider value={resolveApproval}>
       {parsedContent.thinking && (
         <ThinkingBubble thinkingContent={parsedContent.thinking} />
       )}
@@ -125,6 +365,7 @@ export default function TextBubble({
           key={`${baseId}-unified-tools`}
           timeline={timeline}
           isStreaming={!!loading}
+          pendingApprovalToolCallIds={pendingApprovalToolCallIds}
         />
       )}
 
@@ -178,28 +419,6 @@ export default function TextBubble({
             ? splitByBreaksPreservingFences(displayText)
             : splitMessageByBreaks(displayText);
 
-          const renderBubbleContent = (
-            content: string,
-            showDisclaimer: boolean,
-          ) => (
-            <div className="flex flex-col gap-3">
-              <MarkdownRenderer content={content} isStreaming={loading} />
-              {!!disclaimer && showDisclaimer && (
-                <Chip
-                  className="text-xs font-medium text-warning-500"
-                  color="warning"
-                  size="sm"
-                  startContent={
-                    <Alert01Icon className="text-warning-500" height={17} />
-                  }
-                  variant="flat"
-                >
-                  {disclaimer}
-                </Chip>
-              )}
-            </div>
-          );
-
           // Filter empty/whitespace-only parts up front so first/last/single
           // reflect the *visible* list, not the array index. Without this, a
           // single visible part sandwiched between blanks (e.g. trailing break,
@@ -221,104 +440,41 @@ export default function TextBubble({
                 const isSingle = visibleParts.length === 1;
                 const segments = parseOpenUISegments(part, !!loading);
                 const hasOpenUI = segments.some((s) => s.type === "openui");
-                const partTransition = {
+                const partKey = `${baseId}-text-part-${originalIndex}`;
+                const partTransition: PartTransition = {
                   duration: MESSAGE_BREAK_DURATION_SECONDS,
                   ease: MESSAGE_BREAK_EASE_OUT_QUART,
                   delay: visibleIndex * MESSAGE_BREAK_STAGGER_SECONDS,
                 };
 
-                // ── Pure markdown part — normal iMessage bubble ──
-                if (!hasOpenUI) {
-                  const isEmojiOnly = isOnlyEmojis(part);
-                  const emojiCount = isEmojiOnly ? getEmojiCount(part) : 0;
-
-                  // Single message shows tail (last styling); otherwise first =
-                  // no tail, middle = no tail, last = show tail.
-                  let groupedClasses: string;
-                  if (isSingle || isLast) {
-                    groupedClasses = "imessage-grouped-last";
-                  } else if (isFirst) {
-                    groupedClasses = "imessage-grouped-first mb-1.5";
-                  } else {
-                    groupedClasses = "imessage-grouped-middle mb-1.5";
-                  }
-                  let bubbleClassName = "imessage-bubble imessage-from-them";
-                  let textClass = "";
-
-                  if (isEmojiOnly) {
-                    if (emojiCount === 1) {
-                      bubbleClassName = "select-none";
-                      groupedClasses = "";
-                      textClass = "text-[4rem] leading-none";
-                    } else if (emojiCount === 2) {
-                      textClass = "text-5xl";
-                    } else if (emojiCount === 3) {
-                      textClass = "text-4xl";
-                    }
-                  }
-
-                  return (
-                    <m.div
-                      key={`${baseId}-text-part-${originalIndex}`}
-                      className={`${bubbleClassName} ${groupedClasses}`}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={partTransition}
-                    >
-                      {/* Reply quote: full-width card, scrolls to original on click */}
-                      {isFirst && replyToMessage?.content && (
-                        <ReplyQuote replyToMessage={replyToMessage} />
-                      )}
-                      <div className={textClass}>
-                        {renderBubbleContent(part, isLast)}
-                      </div>
-                    </m.div>
-                  );
-                }
-
-                // ── Mixed part: OpenUI segments render OUTSIDE the bubble ──
-                const lastMdIdx = segments.reduce(
-                  (acc, s, i) =>
-                    s.type === "markdown" && s.content.trim() ? i : acc,
-                  -1,
-                );
-
-                return (
-                  <m.div
-                    key={`${baseId}-text-part-${originalIndex}`}
-                    className="flex flex-col"
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={partTransition}
-                  >
-                    {segments.map((seg, segIdx) => {
-                      const segKey = `${baseId}-seg-${originalIndex}-${segIdx}`;
-                      if (seg.type === "openui") {
-                        return (
-                          <OpenUIRenderer
-                            key={segKey}
-                            code={seg.content}
-                            isStreaming={!!loading && !seg.isComplete}
-                          />
-                        );
-                      }
-                      if (!seg.content.trim()) return null;
-                      const isLastMdInLastPart = isLast && segIdx === lastMdIdx;
-                      return (
-                        <div
-                          key={segKey}
-                          className={`imessage-bubble imessage-from-them ${isLastMdInLastPart ? "imessage-grouped-last" : "imessage-grouped-first"} mb-1.5`}
-                        >
-                          {isFirst &&
-                            segIdx === 0 &&
-                            replyToMessage?.content && (
-                              <ReplyQuote replyToMessage={replyToMessage} />
-                            )}
-                          {renderBubbleContent(seg.content, isLastMdInLastPart)}
-                        </div>
-                      );
-                    })}
-                  </m.div>
+                return hasOpenUI ? (
+                  <MixedPart
+                    key={partKey}
+                    segments={segments}
+                    isFirst={isFirst}
+                    isLast={isLast}
+                    isSingle={isSingle}
+                    baseId={baseId}
+                    originalIndex={originalIndex}
+                    loading={loading}
+                    disclaimer={disclaimer}
+                    replyToMessage={replyToMessage}
+                    partTransition={partTransition}
+                  />
+                ) : (
+                  <MarkdownPartBubble
+                    key={partKey}
+                    part={part}
+                    isFirst={isFirst}
+                    isLast={isLast}
+                    isSingle={isSingle}
+                    baseId={baseId}
+                    originalIndex={originalIndex}
+                    loading={loading}
+                    disclaimer={disclaimer}
+                    replyToMessage={replyToMessage}
+                    partTransition={partTransition}
+                  />
                 );
               })}
             </div>
@@ -331,6 +487,6 @@ export default function TextBubble({
       {!!error &&
         !shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
         !parsedContent.cleanText.trim() && <FailedResponse error={error} />}
-    </>
+    </ApprovalResolveProvider>
   );
 }

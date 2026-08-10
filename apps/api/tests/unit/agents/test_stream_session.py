@@ -12,15 +12,18 @@ from app.agents.core.background import session as sess
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
-    append_bg_subagent_result,
+    claim_bg_integration,
+    claim_tool_output,
     create_session,
     decrement_pending_subagents,
-    drain_bg_subagent_results,
     get_or_create_session,
     get_pending_subagents,
     get_session,
+    has_bg_integration,
     increment_pending_subagents,
     mark_executor_spawned,
+    note_tool_output_owner,
+    release_bg_integration,
     signal_executor_done,
     teardown_session,
     was_executor_spawned,
@@ -35,7 +38,6 @@ def _clean_registry():
     sess._sessions.clear()
 
 
-@pytest.mark.unit
 class TestSessionRegistry:
     def test_create_then_get_returns_same_session(self) -> None:
         created = create_session("s1", RunKind.LIVE)
@@ -56,14 +58,14 @@ class TestSessionRegistry:
         create_session("s1", RunKind.QUEUED)
         mark_executor_spawned("s1")
         increment_pending_subagents("s1")
-        append_bg_subagent_result("s1", "agent", "result")
+        claim_bg_integration("s1", "gmail")
 
         teardown_session("s1")
 
         assert get_session("s1") is None
         assert was_executor_spawned("s1") is False
         assert get_pending_subagents("s1") == 0
-        assert drain_bg_subagent_results("s1") == []
+        assert has_bg_integration("s1", "gmail") is False
 
     def test_teardown_is_idempotent(self) -> None:
         create_session("s1", RunKind.LIVE)
@@ -79,7 +81,6 @@ class TestSessionRegistry:
         assert session.kind is RunKind.LIVE
 
 
-@pytest.mark.unit
 class TestExecutorLifecycleFlags:
     def test_spawned_flag_lifecycle(self) -> None:
         create_session("s1", RunKind.LIVE)
@@ -97,7 +98,6 @@ class TestExecutorLifecycleFlags:
         signal_executor_done("missing")  # must not raise
 
 
-@pytest.mark.unit
 class TestOwnershipRule:
     """The single source of truth that prevents duplicate/lost tool cards.
 
@@ -174,7 +174,6 @@ class TestOwnershipRule:
         assert run.executor_owns_tool_data is False
 
 
-@pytest.mark.unit
 class TestSubagentCoordination:
     def test_counter_increments_and_decrements(self) -> None:
         create_session("s1", RunKind.LIVE)
@@ -192,18 +191,61 @@ class TestSubagentCoordination:
         assert get_pending_subagents("missing") == 0
         assert decrement_pending_subagents("missing") == 0
 
-    def test_results_drain_returns_and_clears(self) -> None:
+    def test_integration_slot_claim_is_exclusive_until_released(self) -> None:
+        # The slot is what stops two concurrent background handoffs to the same
+        # integration from sharing (and corrupting) one checkpoint thread.
         create_session("s1", RunKind.LIVE)
-        append_bg_subagent_result("s1", "researcher", "found it")
-        append_bg_subagent_result("s1", "writer", "wrote it")
+        assert claim_bg_integration("s1", "gmail") is True
+        assert claim_bg_integration("s1", "gmail") is False  # second claim loses
+        assert claim_bg_integration("s1", "slack") is True  # other integrations unaffected
 
-        results = drain_bg_subagent_results("s1")
+        release_bg_integration("s1", "gmail")
+        assert claim_bg_integration("s1", "gmail") is True  # reusable after release
 
-        assert results == [
-            {"agent": "researcher", "message": "found it"},
-            {"agent": "writer", "message": "wrote it"},
-        ]
-        assert drain_bg_subagent_results("s1") == []  # drained
+    def test_integration_slot_for_missing_session_is_safe(self) -> None:
+        release_bg_integration("missing", "gmail")  # must not raise
+        assert has_bg_integration("missing", "gmail") is False
 
-    def test_results_for_missing_session_empty(self) -> None:
-        assert drain_bg_subagent_results("missing") == []
+
+class TestToolOutputOwnership:
+    """Who may stream a tool result, when both drivers see the same ToolMessage.
+
+    A subagent handed off to from an executor tool is a nested run, and "messages"
+    mode replays its chunks into the outer run's stream. Only the subagent's copy
+    carries a subagent_id, so if the outer driver wins the card renders outside the
+    subagent's row. Ownership — recorded when the call is announced, before any
+    result exists — is what decides it; arrival order must not.
+    """
+
+    def test_the_announcing_run_wins_however_late_it_looks(self) -> None:
+        create_session("s1", RunKind.LIVE)
+        note_tool_output_owner("s1", "tc_fetch", "row-1")
+
+        # The outer driver (no subagent_id) sees the echo FIRST and must lose.
+        assert claim_tool_output("s1", "tc_fetch", None) is False
+        assert claim_tool_output("s1", "tc_fetch", "row-1") is True
+
+    def test_the_owner_still_streams_only_once(self) -> None:
+        create_session("s1", RunKind.LIVE)
+        note_tool_output_owner("s1", "tc_fetch", "row-1")
+
+        assert claim_tool_output("s1", "tc_fetch", "row-1") is True
+        assert claim_tool_output("s1", "tc_fetch", "row-1") is False
+
+    def test_an_executors_own_call_is_owned_by_the_untagged_run(self) -> None:
+        create_session("s1", RunKind.LIVE)
+        note_tool_output_owner("s1", "tc_exec", None)
+
+        assert claim_tool_output("s1", "tc_exec", "row-1") is False
+        assert claim_tool_output("s1", "tc_exec", None) is True
+
+    def test_an_unannounced_call_fails_open(self) -> None:
+        # A HIL resume announced its call in the run before the pause, so nothing
+        # owns it here. Suppressing would drop the only copy.
+        create_session("s1", RunKind.LIVE)
+        assert claim_tool_output("s1", "tc_resumed", "row-1") is True
+        assert claim_tool_output("s1", "tc_resumed", "row-1") is False
+
+    def test_ownership_for_missing_session_is_safe(self) -> None:
+        note_tool_output_owner("missing", "tc_fetch", "row-1")  # must not raise
+        assert claim_tool_output("missing", "tc_fetch", None) is True

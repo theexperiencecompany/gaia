@@ -1,0 +1,315 @@
+---
+title: "Logging & Querying Logs"
+description: "GAIA's wide-event logging model and how to query it with LogQL in Grafana/Loki"
+icon: "magnifying-glass-chart"
+---
+
+## The model: wide events
+
+GAIA emits **one context-rich structured event per unit of work** (a "wide
+event" / canonical log line) instead of scattering log lines through a request:
+
+- **HTTP requests** — `LoggingMiddleware` emits one `http_request` JSON line per
+  request with method, path, status, duration, user, and every field handlers
+  attached via `log.set(...)`.
+- **ARQ worker tasks** — `wide_task()` emits one `worker_task` line per job.
+- **Background asyncio work** — `log_context()` (or `spawn_logged_task()`,
+  the sanctioned fire-and-forget spawner) emits one `background_task` line
+  correlated to the spawning request's `trace_id`.
+- **WebSocket connections** — a `log_context()` boundary per connection emits
+  one event per connection lifetime.
+
+Every **line** — not just the boundary event — carries environment
+characteristics (`env`, `service`, `commit`), stamped by the JSON sink itself.
+Every **event** additionally carries `task` (the unit of work's name), a
+`trace_id` (echoed on the `x-trace-id` response header), high-cardinality
+identifiers (`user.id`, `chat.conversation_id`, …), and `warnings[]` /
+`errors[]` / `audit[]` arrays accumulated mid-flight.
+
+In code:
+
+```python
+from shared.py.wide_events import log
+
+log.set(user={"id": user_id}, todo={"operation": "create"})  # context → the event
+log.audit("subscription cancelled", actor=user_id)           # audit trail (auth/money)
+log.error("upstream failed", error_type=type(e).__name__,     # errors[] + real-time line
+          error=str(e))                                      # the two exception fields
+```
+
+The canonical field schema is `WideEventFields` in
+`libs/shared/py/wide_events.py` — always use its namespaces (`user`, `chat`,
+`todo`, `payment`, …) so queries work uniformly across endpoints.
+
+---
+
+## Where logs land
+
+| Run mode | Canonical line lives | Read it with |
+|---|---|---|
+| `mise dev` (native) | terminal + `apps/api/logs/structured-<date>.json` | `rg` the JSON file |
+| `nx worker api` (native) | `apps/api/logs/worker/structured-<date>.json` | `rg` the JSON file |
+| `nx dev voice-agent` (native) | `apps/voice-agent/logs/structured-<date>.json` | `rg` the JSON file |
+| `nx dev bot-<platform>` (native) | terminal + `apps/bots/<platform>/logs/structured-<date>.json` | `rg` the JSON file |
+| `mise dev:vm` / Docker | container stdout (JSON) | `docker logs -f gaia-backend` |
+| Bots in Docker | container stdout (JSON) | `docker logs -f discord-bot` |
+| Observability stack up | Loki (via Promtail) | Grafana Explore / LogQL |
+
+Promtail reaches both halves of that table: a **file** job (`gaia_api_local`,
+`gaia_bots_local`) tails the `structured-<date>.json` files that natively-run
+services write, and a **Docker service-discovery** job scrapes container
+stdout. Files rotate daily and are pruned after 30 days. Both paths produce the
+same `service` label — `{service="discord-bot"}` finds a bot whether it ran
+locally or in Docker.
+
+### One query, every surface
+
+The Python services and the TypeScript bots emit the **same key names, with
+the same value types, for the same concepts**, so a single LogQL query spans
+both.
+
+On every line: `time` (UTC, milliseconds, `Z`), `level` (loguru names —
+`WARNING`, not `WARN`), `env`, `service`, `commit`, `logger`, `message`.
+On every boundary event: `task` (the unit of work's name), `trace_id`,
+`duration_ms`, `outcome`, `final_level`, and the `errors[]` / `warnings[]` /
+`audit[]` arrays (each entry keyed by `msg`).
+Describing a thrown value: `error_type` (its class) and `error` (its message) —
+two flat strings, never a nested object, on both surfaces.
+
+```logql
+{service=~"gaia-backend|discord-bot"} | json | trace_id="<TRACE_ID>"
+sum by (task) (count_over_time({service=~"gaia-backend|discord-bot"} | json [5m]))
+```
+
+The event name lives under `message` on both surfaces — `worker_task` /
+`background_task` / `http_request` for Python, `bot_event` for the bots.
+
+Two asymmetries are deliberate and written down: Python adds loguru provenance
+(`module`, `line`, `worker`) that has no TypeScript equivalent, and the bots
+stamp `platform`/`component` on every line while Python carries the same two
+keys as ordinary optional fields.
+
+**This is enforced, not just documented.** `scripts/ci/wide-event-conformance/`
+runs both logging stacks for real, captures what each prints, and diffs the
+shapes against each other and against `contract.json`. A field renamed,
+retyped, or added on only one side fails the `wide-event-conformance` lane:
+
+```bash
+python3 scripts/ci/wide-event-conformance/run.py
+```
+
+Start the stack:
+
+```bash
+cd infra/docker
+docker compose --profile observability up -d
+# Grafana → http://localhost:4000 (admin / $GRAFANA_ADMIN_PASSWORD, default "changeme")
+```
+
+Grafana is pre-provisioned: the Loki datasource is the default, and the
+dashboards (**GAIA — API Logs**, **API Endpoints**, **ARQ Worker**, …) are all
+built on the wide events.
+
+---
+
+## LogQL in five minutes
+
+LogQL reads like `grep` piped through `jq`. A query has two halves:
+
+```text
+{stream selector} | processing pipeline
+```
+
+**1. Stream selector — labels, in braces.** Labels are the only indexed
+fields. GAIA ships exactly these: `service`, `service_name`, `container`,
+`level`, `logger_name`, plus `stack` / `compose_project` / `stream` from the
+Docker scrape job and `filename` from the local-file one.
+
+```logql
+{service="gaia-backend"}                  # all API logs
+{service="gaia-backend", level="ERROR"}   # only ERROR lines
+{service="arq_worker"}                    # the background worker
+```
+
+High-cardinality fields (`user_id`, `trace_id`, `path`) are deliberately
+**not** labels — that would explode Loki's index. They live in the JSON body.
+
+**2. Line filters — fast substring search.** `|=` (contains), `!=` (not
+contains), `|~` (regex). Use these first; they're the cheapest operation.
+
+```logql
+{service="gaia-backend"} |= "user_abc123"     # any line mentioning this user
+{service="gaia-backend"} |~ "timeout|refused" # regex
+```
+
+**3. `| json` — parse the line, then filter on any field.**
+
+```logql
+{service="gaia-backend"} | json | status_code >= 500
+{service="gaia-backend"} | json | duration_ms > 2000
+{service="gaia-backend"} | json | user_id = "abc123" | path =~ "/api/v1/todos.*"
+```
+
+Nested **objects** flatten with underscores: `user.id` → `user_id`,
+`chat.conversation_id` → `chat_conversation_id`.
+
+<Warning>
+Bare `| json` **drops every array**. `errors[]`, `warnings[]` and `audit[]`
+produce no field at all — not an empty one — so `| errors != "[]"` matches
+*every* line (an absent field compares as `""`, and `"" != "[]"` is true).
+Reach into an array with an explicit JSON expression instead:
+
+```logql
+| json first_error="errors[0].msg"   # the message of the first error
+| json all_errors="errors"           # the whole array as a JSON string
+```
+
+Also: when a parsed field collides with a stream label, the **label wins** and
+the parsed value is renamed with an `_extracted` suffix. After `| json`,
+`service` and `level` still mean the Promtail label; the values from the log
+body are `service_extracted` and `level_extracted`.
+</Warning>
+
+**4. Metrics — turn logs into graphs.** Wrap a query in a range function:
+
+```logql
+# requests per second, by path
+sum by (path) (count_over_time({service="gaia-backend"} | json | message="http_request" [1m]))
+
+# p95 latency — the `by (...)` clause is required: `| json` promotes every
+# field to a label, so without it you get one series per request, not a p95
+quantile_over_time(0.95, {service="gaia-backend"} | json | message="http_request" | unwrap duration_ms [5m]) by (path)
+
+# error ratio
+sum(count_over_time({service="gaia-backend", level="ERROR"} [5m]))
+  /
+sum(count_over_time({service="gaia-backend"} [5m]))
+```
+
+---
+
+## Recipes (copy-paste)
+
+**Everything about one request** — grab `x-trace-id` from the response header:
+
+```logql
+{service="gaia-backend"} | json | trace_id = "<TRACE_ID>"
+```
+
+**All canonical request summaries, errors only:**
+
+```logql
+{service="gaia-backend"} | json | message = "http_request" | status_code >= 500
+```
+
+**Everything a specific user did:**
+
+```logql
+{service="gaia-backend"} | json | message = "http_request" | user_id = "<USER_ID>"
+```
+
+**Every request that failed** — `final_level` is the worst of the HTTP status
+and any `log.warning/error` call, so this also catches a 5xx that logged
+nothing:
+
+```logql
+{service="gaia-backend"} | json | message = "http_request" | final_level =~ "ERROR|CRITICAL"
+```
+
+**Requests that logged an error mid-flight but still returned 200** — note the
+second `| json`: the first one parses the flat fields, the second reaches into
+the `errors[]` array (which bare `| json` drops):
+
+```logql
+{service="gaia-backend"} | json | message = "http_request" | status_code = 200
+  | json first_error="errors[0].msg" | first_error != ""
+```
+
+`first_error` is worth keeping in the pipeline even when you don't filter on
+it — it turns the result list into a triage summary.
+
+**Audit trail (auth/payment operations):**
+
+```logql
+{service="gaia-backend"} | json | json first_audit="audit[0].msg" | first_audit != ""
+```
+
+Or, for just the real-time audit lines, a pure label selector (cheapest — no
+parsing at all):
+
+```logql
+{service="gaia-backend", level="AUDIT"}
+```
+
+**Slow chat requests:**
+
+```logql
+{service="gaia-backend"} | json | path =~ "/api/v1/chat.*" | duration_ms > 5000
+```
+
+**Errors introduced by a specific deploy** (the `commit` field is stamped from
+`GIT_COMMIT_SHA` at image build):
+
+```logql
+{service="gaia-backend"} | json | commit = "<SHORT_SHA>"
+  | json first_error="errors[0].msg" | first_error != ""
+```
+
+**Failed units of work, by name — spans workers, background tasks and bots:**
+
+```logql
+sum by (task) (count_over_time(
+  {service=~"arq_worker|gaia-backend|.*-bot"} | json | outcome = "failed" [5m]))
+```
+
+**One chat streaming turn:**
+
+```logql
+{service="gaia-backend"} |= "<STREAM_ID>"
+```
+
+No Grafana? Query Loki directly:
+
+```bash
+curl -sG http://localhost:3100/loki/api/v1/query_range \
+  --data-urlencode 'query={service="gaia-backend"} | json | trace_id="<TRACE_ID>"' \
+  --data-urlencode "start=$(python3 -c 'import time; print(int((time.time()-3600)*1e9))')" \
+  | jq '.data.result'
+```
+
+---
+
+## Keeping it healthy: the observability score
+
+`tools/evlog_map` (a Python port of [evlog](https://evlog.dev)'s `map`
+command) statically scores every FastAPI/ARQ entry point and the LiveKit voice
+worker on wide-event instrumentation. The TypeScript bots run on their own
+logging stack and are scored by the matching port,
+`scripts/ci/evlog-map-bots.mjs`:
+
+```bash
+python3 tools/evlog_map            # full report (apps/api + apps/voice-agent)
+python3 tools/evlog_map --all      # per-entry check matrix
+node scripts/ci/evlog-map-bots.mjs # bots surface (apps/bots + libs/shared/ts)
+```
+
+CI runs both on every PR (`observability` lane in code-quality.yml): changed
+Python files are scored at the merge-base and at HEAD and the lane fails if the
+score regressed, while the bots surface is held at 100. See
+`tools/evlog_map/README.md` for the checks, weights, and suppression
+comments.
+
+### Rules of thumb when writing logs
+
+1. **`log.set()` over `log.info()`** — info lines never reach the wide event.
+   Accumulate context; let the middleware emit one line.
+2. **Structured kwargs, not f-strings** — `log.error("sync failed",
+   error_type=type(e).__name__, account_id=aid)` is queryable;
+   `log.error(f"sync failed: {e}")` is prose. The one sanctioned f-string is
+   the `LogTag` prefix (`f"{LogTag.SANDBOX} mounted"`), which tags the *human
+   message* for grepping — anything you'd ever filter on still goes in
+   kwargs or `log.set()`, never interpolated into the message.
+3. **Canonical namespaces** — use `WideEventFields` keys so dashboards see
+   your fields.
+4. **`log.audit()` on sensitive operations** — auth, payments, PII writes.
+5. **Never swallow exceptions** — every `except` must log or re-raise.

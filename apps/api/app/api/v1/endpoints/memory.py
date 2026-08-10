@@ -6,11 +6,12 @@ parameterized /{memory_id} routes so they never shadow each other.
 """
 
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.memory import (
     MEMORY_EPISODES_DEFAULT_DAYS,
     MEMORY_EPISODES_MAX_RANGE_DAYS,
@@ -20,6 +21,7 @@ from app.constants.memory import (
 )
 from app.decorators import tiered_rate_limit
 from app.memory.engine import memory_engine
+from app.memory.ingestion import MemoryLimitReachedError
 from app.models.memory_models import (
     CreateMemoryRequest,
     CreateMemoryResponse,
@@ -36,6 +38,7 @@ from app.models.memory_models import (
     UpdateDocumentRequest,
     UpdateMemoryRequest,
 )
+from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 USER_DELETED_REASON = "user_deleted"
@@ -43,9 +46,9 @@ USER_DELETED_REASON = "user_deleted"
 router = APIRouter()
 
 
-def _require_user_id(user: dict) -> str:
+def _require_user_id(user: AuthenticatedUser) -> str:
     """Extract the authenticated user's ID or fail the request."""
-    user_id = user.get("user_id")
+    user_id: str | None = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     return user_id
@@ -53,8 +56,8 @@ def _require_user_id(user: dict) -> str:
 
 @router.get("")
 async def list_memories(
-    user: Annotated[dict, Depends(get_current_user)],
-    page: int = Query(default=1, ge=1, description="1-based page number"),
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    page: int = Query(default=1, ge=1, le=MAX_PAGE_NUMBER, description="1-based page number"),
     page_size: int = Query(default=20, ge=1, le=100, description="Memories per page"),
     category: str | None = Query(
         default=None, description="Exact folder to list (e.g. 'work/gaia')"
@@ -81,7 +84,7 @@ async def list_memories(
 
 @router.get("/search")
 async def search_memories(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     q: str = Query(min_length=1, max_length=500, description="Search query"),
     limit: int = Query(default=20, ge=1, le=50, description="Max results"),
 ) -> MemorySearchResult:
@@ -96,12 +99,14 @@ async def search_memories(
     result = await memory_engine.recall(user_id, q, limit=limit, include_graph_expansion=False)
 
     log.set(memory=MemoryContext(operation="recall", result_count=len(result.memories)))
-    return result
+    # Cacheable erases the wrapped function's return type; recall is declared
+    # -> MemorySearchResult, so this is correct by construction.
+    return cast(MemorySearchResult, result)
 
 
 @router.get("/overview")
 async def get_memory_overview(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> MemoryOverviewResponse:
     """Headline counts and core-document previews for the settings UI."""
     user_id = _require_user_id(user)
@@ -121,7 +126,7 @@ async def get_memory_overview(
 
 @router.get("/tree")
 async def get_memory_tree(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> MemoryTreeResponse:
     """The memory folder tree with per-folder counts (memories lazy-load)."""
     user_id = _require_user_id(user)
@@ -141,7 +146,7 @@ async def get_memory_tree(
 
 @router.get("/graph")
 async def get_memory_graph(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> MemoryGraphResponse:
     """The entity graph: nodes, labeled edges, and their provenance memories."""
     user_id = _require_user_id(user)
@@ -167,7 +172,7 @@ async def get_memory_graph(
     },
 )
 async def get_memory_episodes(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     start: date | None = Query(default=None, description="Range start (inclusive)"),
     end: date | None = Query(default=None, description="Range end (inclusive)"),
 ) -> MemoryEpisodesResponse:
@@ -201,7 +206,7 @@ async def get_memory_episodes(
 
 @router.get("/documents")
 async def get_memory_documents(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> MemoryDocumentsResponse:
     """All of the user's core memory documents."""
     user_id = _require_user_id(user)
@@ -218,7 +223,7 @@ async def get_memory_documents(
 async def update_memory_document(
     doc_type: MemoryDocType,
     request: UpdateDocumentRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> MemoryDocument:
     """Rewrite one core document (full replace; bumps its version)."""
     user_id = _require_user_id(user)
@@ -241,7 +246,7 @@ async def update_memory_document(
 @tiered_rate_limit("memory")
 async def create_memory(
     request: CreateMemoryRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> CreateMemoryResponse:
     """Store one explicit memory (auto-categorized when no folder is given)."""
     user_id = _require_user_id(user)
@@ -261,6 +266,11 @@ async def create_memory(
             category_path=request.category_path,
             source_type=MemorySourceType.MANUAL,
         )
+    except MemoryLimitReachedError as e:
+        # Free-plan cap: fail loud with the actionable upgrade copy (the modal
+        # renders response.message) instead of the generic failure below.
+        log.set(memory=MemoryContext(operation="create", success=False))
+        return CreateMemoryResponse(success=False, message=str(e))
     except Exception as e:
         log.error(
             "create_memory_failed",
@@ -282,7 +292,7 @@ async def create_memory(
 
 @router.get("/{memory_id}/history")
 async def get_memory_history(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     memory_id: str = Path(pattern=UUID_PATH_PATTERN),
 ) -> MemorySearchResult:
     """The memory's full supersession chain, newest version first.
@@ -313,7 +323,7 @@ async def get_memory_history(
 @tiered_rate_limit("memory")
 async def update_memory(
     request: UpdateMemoryRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     memory_id: str = Path(pattern=UUID_PATH_PATTERN),
 ) -> MemoryEntry:
     """Correct a memory: chains a new version, returns the new chain head."""
@@ -338,7 +348,7 @@ async def update_memory(
 )
 @tiered_rate_limit("memory")
 async def delete_memory(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     memory_id: str = Path(pattern=UUID_PATH_PATTERN),
 ) -> DeleteMemoryResponse:
     """Soft-delete one memory (hidden from recall, kept for lineage history)."""
@@ -360,7 +370,7 @@ async def delete_memory(
 @router.delete("")
 @tiered_rate_limit("memory")
 async def clear_all_memories(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> DeleteMemoryResponse:
     """Hard-wipe the user's entire memory (memories, graph, journal, documents)."""
     user_id = _require_user_id(user)

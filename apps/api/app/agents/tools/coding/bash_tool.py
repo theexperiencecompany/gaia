@@ -48,13 +48,11 @@ from app.services.storage import FsOps, fs_timer
 from app.services.storage.metrics import _register_once
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
-from shared.py.logging import get_contextual_logger
 from shared.py.wide_events import log
 
 MAX_TIMEOUT_SECONDS = 600
 DEFAULT_TIMEOUT_SECONDS = 120
 MAX_COMMAND_LENGTH = 16_000
-_metrics_log = get_contextual_logger("app.agents.tools.coding.bash_tool.metrics")
 
 # Bucketed bash exit code counter. The buckets (string labels) are part of the
 # `fs-metrics-coverage` capability contract; changing them requires a spec
@@ -125,15 +123,15 @@ def _emit_bash_error(run_id: str, chunk: str, return_message: str, session_id: s
     return return_message
 
 
-def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, bool, str | None]:
+def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, str | None]:
     """Resolve the working directory for a bash run.
 
-    Returns ``(cwd, use_session_cwd, error)``. ``error`` is non-None when the
-    LLM-supplied cwd escapes the workspace, in which case the caller returns it.
+    Returns ``(cwd, error)``. ``error`` is non-None when the LLM-supplied cwd
+    escapes the workspace, in which case the caller returns it. Any non-empty
+    resolved cwd is guaranteed to be inside the workspace.
     """
-    use_session_cwd = bool(session_id) and (not cwd or cwd == WORKSPACE_ROOT)
-    if use_session_cwd and session_id:
-        return session_dir(session_id), True, None
+    if session_id and (not cwd or cwd == WORKSPACE_ROOT):
+        return session_dir(session_id), None
     if cwd:
         # A relative cwd joins to the session dir (or /workspace), mirroring
         # canonical_path so `cwd="scratch"` means the session's scratch — the
@@ -148,9 +146,9 @@ def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, bool, str | Non
         # reaching host-internal config (`/etc/gaia`).
         normalized = posixpath.normpath(cwd)
         if not is_under_workspace(normalized):
-            return cwd, False, f"Error: cwd must be under {WORKSPACE_ROOT} (got {cwd!r})"
-        return normalized, False, None
-    return cwd, use_session_cwd, None
+            return cwd, f"Error: cwd must be under {WORKSPACE_ROOT} (got {cwd!r})"
+        return normalized, None
+    return cwd, None
 
 
 @tool
@@ -189,7 +187,7 @@ async def bash(
         return f"Error: {e}"
 
     session_id = get_session_id(config)
-    cwd, use_session_cwd, cwd_error = _resolve_cwd(cwd, session_id)
+    cwd, cwd_error = _resolve_cwd(cwd, session_id)
     if cwd_error:
         return cwd_error
 
@@ -207,11 +205,12 @@ async def bash(
 
     try:
         async with fs_timer(FsOps.TOOL_BASH), acquire_sandbox(user_id) as sbx:
-            if use_session_cwd:
-                # Session scratch is created host-side at chat start, but
-                # silent/background runs may reach here first — make it cheap
-                # and idempotent rather than failing on a missing cwd.
-                # `make_dir` creates parents and no-ops if the dir exists.
+            if cwd:
+                # Session dirs are created on demand — nothing pre-creates them
+                # host-side at chat start — so any resolved cwd (the session
+                # root or e.g. `scratch/<job>`) may not exist yet. `make_dir`
+                # creates parents and no-ops if the dir exists; _resolve_cwd
+                # guarantees a non-empty cwd is inside the workspace.
                 with contextlib.suppress(Exception):
                     await sbx.files.make_dir(cwd)
             if background:
@@ -232,7 +231,7 @@ async def bash(
     except Exception as e:
         # acquire_sandbox already evicted the sandbox if this failure means it
         # died (it health-checks on any error) — here we just surface it.
-        log.error(f"{LogTag.SANDBOX} bash tool failed: {e}", exc_info=True)
+        log.error(f"{LogTag.SANDBOX} bash tool failed", error_type=type(e).__name__, exc_info=True)
         return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
 
 

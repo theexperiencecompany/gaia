@@ -431,8 +431,8 @@ class TestFormatFilesList:
 
     def test_all_files(self) -> None:
         files = [
-            FileData(fileId="f1", url="u1", filename="a.txt"),
-            FileData(fileId="f2", url="u2", filename="b.pdf"),
+            FileData(fileId="f1", url="u1", filename="a.txt", sandbox_path="/mirrored/a.txt"),
+            FileData(fileId="f2", url="u2", filename="b.pdf", sandbox_path="/mirrored/b.pdf"),
         ]
         result = format_files_list(files)
         assert "a.txt" in result
@@ -458,6 +458,40 @@ class TestFormatFilesList:
         assert "a.txt" in result
 
     def test_conversation_id_in_path(self) -> None:
-        files = [FileData(fileId="f1", url="u", filename="a.txt")]
+        files = [FileData(fileId="f1", url="u", filename="a.txt", sandbox_path="/mirrored/a.txt")]
         result = format_files_list(files, conversation_id="conv123")
         assert "/workspace/sessions/conv123/user-uploaded/a.txt" in result
+
+    # The workspace mirror is best-effort — it needs JuiceFS, and `sandbox_path`
+    # is None whenever it was unavailable. Handing the agent a path anyway sent
+    # the executor into read/bash attempts that could only fail; it burned the
+    # recursion limit on a real GAIA .xlsx case doing exactly that.
+
+    def test_omits_the_path_when_the_file_never_reached_the_workspace(self) -> None:
+        files = [FileData(fileId="f1", url="u", filename="a.txt", sandbox_path=None)]
+        result = format_files_list(files, conversation_id="conv123")
+        assert "/workspace/sessions/conv123/user-uploaded/a.txt" not in result
+        assert "a.txt" in result
+        assert "search_uploaded_files" in result
+
+    def test_drops_the_read_bash_guide_when_nothing_is_on_disk(self) -> None:
+        files = [FileData(fileId="f1", url="u", filename="a.txt", description="a summary")]
+        result = format_files_list(files, conversation_id="conv123")
+        assert "read the file at its path" not in result
+        assert "copy into" not in result
+        assert ".summary.md" not in result
+        assert "a summary" in result
+
+    def test_keeps_the_full_guide_when_a_file_is_on_disk(self) -> None:
+        files = [
+            FileData(
+                fileId="f1",
+                url="u",
+                filename="a.txt",
+                description="a summary",
+                sandbox_path="/mirrored/a.txt",
+            )
+        ]
+        result = format_files_list(files, conversation_id="conv123")
+        assert "read the file at its path" in result
+        assert "/workspace/sessions/conv123/user-uploaded/a.txt.summary.md" in result

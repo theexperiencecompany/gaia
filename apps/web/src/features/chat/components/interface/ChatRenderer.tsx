@@ -200,7 +200,7 @@ export default function ChatRenderer({
   // Loading state for the ACTIVE conversation only — a stream running in
   // another conversation renders its own indicator there, not here. Includes
   // the awaiting-executor bridge and auxiliary (voice/upload) loading.
-  const { isLoading, loadingText, loadingTextKey, toolInfo } =
+  const { isLoading, loadingText, loadingTextKey, toolInfo, awaitingApproval } =
     useActiveLoading();
   const { id: convoIdParam } = useParams<{ id: string }>();
   // NB: compare against the store's `activeConversationId`, not the route param
@@ -496,6 +496,7 @@ export default function ChatRenderer({
             loadingText={loadingText}
             loadingTextKey={loadingTextKey}
             toolInfo={toolInfo}
+            awaitingApproval={awaitingApproval}
             noPadding={compact}
             spinner={
               // The orb replaces the wave spinner in the popup; the

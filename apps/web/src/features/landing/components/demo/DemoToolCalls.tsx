@@ -36,7 +36,7 @@ export default function DemoToolCalls({
         <div className="flex items-center -space-x-2">
           {tools.map((t, i) => (
             <div
-              key={`${t.name}-${i}`}
+              key={t.name}
               className="relative flex h-7 w-7 items-center justify-center"
               style={{ rotate: i % 2 === 0 ? "8deg" : "-8deg", zIndex: i }}
             >
@@ -72,7 +72,7 @@ export default function DemoToolCalls({
             <div className="py-1">
               {tools.map((t, i) => (
                 <div
-                  key={`${t.name}-${i}-detail`}
+                  key={`${t.name}-detail`}
                   className="flex items-stretch gap-2"
                 >
                   <div className="flex flex-col items-center self-stretch">

@@ -36,12 +36,15 @@ dependencies = [
   "fastembed>=0.7",
   "psutil>=7.0.0",
   "langchain-openrouter>=0.2.3",
+  "firecrawl-anydoc==0.1.2",
+  "pdf-inspector==0.2.6",
+  "langchain-text-splitters>=1.1.2",
 ]
 
 [tool.taskipy.tasks]
 dev = "uv run --group backend --group voice_agent uvicorn app.main:app --port 8000 --reload --log-level warning"
 start = "uv run --group backend --group voice_agent fastapi run"
-arq = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings"
+arq = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG"
 worker = "task arq"
 lint = "uvx ruff check ."
 "lint.fix" = "uvx ruff check . --fix"
@@ -54,6 +57,15 @@ pip_audit = "uvx pip-audit"
 detect_secrets = "uvx detect-secrets scan --all-files"  # pragma: allowlist secret
 
 
+# NOTE: mypy config for the API lives in the ROOT /pyproject.toml, not here.
+# mypy discovers the nearest pyproject.toml with a [tool.mypy] table and does not
+# merge with a parent — an app-level [tool.mypy] here would shadow the root
+# baseline (strict_optional, follow_imports, the builtin-skill exclude, the tests
+# override). The strict-repository island lives as a [[tool.mypy.overrides]] block
+# in the root config so `nx type-check api` (which runs mypy from this directory)
+# picks up one merged config.
+
+
 [dependency-groups]
 dev = [
   "mypy>=1.16.1",
@@ -62,7 +74,10 @@ dev = [
   "cfgv>=3.4.0",
   "types-pytz>=2025.2.0.20250516",
   "types-croniter>=6.0.0.20250626",
-  "types-redis",
+  # No types-redis: it is frozen at the redis 4.6 API and mypy prefers a stub
+  # package over a library's own inline types, so installing it *downgrades*
+  # what mypy knows about redis 5.2.1 — aclose() (added 5.0.1) reads as
+  # missing. redis-py ships py.typed; that is the accurate source.
   "types-requests>=2.32.4.20250611",
   "types-beautifulsoup4>=4.12.0.20250516",
   "types-python-dateutil>=2.9.0.20250708",
@@ -99,6 +114,13 @@ dev = [
   "pyyaml>=6.0.3",
   "fakeredis[aioredis]>=2.0.0",
   "pytest-xdist>=3.8.0",
+  "pika>=1.4.1",
+  "pytest-randomly>=4.1.0",
+  "pytest-timeout>=2.4.0",
+  "time-machine>=3.3.1",
+  "schemathesis>=4.24.3",
+  "hypothesis>=6.165.2",
+  "mutmut>=3.7.0",
 ]
 
 backend = [
@@ -129,9 +151,9 @@ backend = [
   "llama-cloud-services>=0.6.15",
   "pymupdf>=1.25.5",
   "markdown2>=2.5.3",
-  "pillow==12.1.1",
+  "pillow==12.2.0",
   "pandas>=2.3.0",
-  "beautifulsoup4==4.12.3",
+  "beautifulsoup4>=4.13.5,<5",
   "bs4==0.0.2",
   "lxml>=5.3",
   "html2text>=2024.2.26",
@@ -160,7 +182,7 @@ backend = [
   "tomli>=2.2.1",
   "itsdangerous>=2.2.0",
   "hyperframe==6.1.0",
-  "idna==3.10",
+  "idna==3.15",
   "joblib==1.4.2",
   "more-itertools==10.6.0",
   "protobuf==5.29.6",
@@ -174,6 +196,7 @@ backend = [
   "litellm>=1.83.4,<1.90",
   "prometheus-fastapi-instrumentator>=7.0.0",
   "prometheus-client>=0.20.0",
+  "pyarrow>=25.0.0",
 ]
 
 [tool.uv.sources]
@@ -187,3 +210,22 @@ Homepage = "https://heygaia.io"
 Documentation = "https://docs.heygaia.io"
 Repository = "https://github.com/theexperiencecompany/gaia"
 Issues = "https://github.com/theexperiencecompany/gaia/issues"
+
+[tool.mutmut]
+# Mutation spot-checks (scripts/test/mutation.sh) — see that script for how
+# the pieces fit. Key repo integration points:
+# - Single-process pytest: the repo pytest.ini addopts carry -n 4 (xdist),
+#   but mutmut's trampoline stats are collected by in-process pytest plugins
+#   (pytest_runtest_teardown) — xdist workers run the tests where the
+#   collector does not exist, so no test ever associates with a mutant.
+# - also_copy: the mutants/ dir isolates mutated files, but tests/conftest
+#   imports the whole app at collection; a full copy keeps imports resolving.
+# - The script swaps source_paths + pytest_add_cli_args_test_selection to
+#   the module + its test file per run; stats then executes only that file.
+# - mutate_only_covered_lines is deliberately OFF everywhere: its coverage
+#   pass unloads every module imported during the stats run, and numpy (and
+#   other C extensions) cannot be re-imported in the same process.
+source_paths = ["app"]
+also_copy = ["app", "tests", "scripts"]
+pytest_add_cli_args_test_selection = []
+pytest_add_cli_args = ["-p", "no:xdist", "-o", 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300']

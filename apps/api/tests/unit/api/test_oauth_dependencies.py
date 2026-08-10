@@ -10,8 +10,6 @@ import asyncio
 from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone,
     get_user_timezone_from_preferences,
@@ -20,7 +18,6 @@ from app.api.v1.dependencies.oauth_dependencies import (
 _BACKFILL = "app.api.v1.dependencies.oauth_dependencies._backfill_user_timezone"
 
 
-@pytest.mark.unit
 class TestGetUserTimezoneFromPreferences:
     async def test_real_stored_zone_returned_without_backfill(self) -> None:
         with patch(_BACKFILL, new_callable=AsyncMock) as backfill:
@@ -83,7 +80,6 @@ class TestGetUserTimezoneFromPreferences:
         backfill.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestGetUserTimezoneHeaderDependency:
     def test_returns_canonical_zone_and_now_in_zone(self) -> None:
         tz_str, now = get_user_timezone(x_timezone="Asia/Kolkata")

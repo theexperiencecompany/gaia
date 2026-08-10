@@ -10,12 +10,11 @@ execution pipeline (trigger → webhook → queue → agent) handles them with n
 """
 
 from collections.abc import Callable
-from datetime import UTC, datetime
 
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -65,7 +64,7 @@ async def provision_system_workflows(
     onboarding UI surfaces the workflows itself).
     """
     log.set(
-        service="system_workflow_provisioner",
+        component="system_workflow_provisioner",
         operation="provision_system_workflows",
         user_id=user_id,
         integration_id=integration_id,
@@ -74,13 +73,16 @@ async def provision_system_workflows(
     entries = SYSTEM_WORKFLOWS_BY_INTEGRATION.get(integration_id)
     if not entries:
         log.debug(
-            f"{LogTag.WORKFLOW} No system workflows defined for integration '{integration_id}'"
+            f"{LogTag.WORKFLOW} No system workflows defined for integration",
+            integration_id=integration_id,
         )
         return
 
     log.info(
-        f"{LogTag.WORKFLOW} Provisioning {len(entries)} system workflow(s) for user {user_id}, "
-        f"integration {integration_id}"
+        f"{LogTag.WORKFLOW} Provisioning system workflow(s)",
+        entries_count=len(entries),
+        user_id=user_id,
+        integration_id=integration_id,
     )
 
     created: list[CreateWorkflowRequest] = []
@@ -88,12 +90,12 @@ async def provision_system_workflows(
 
     for key, factory in entries:
         # Idempotency: skip if this key already exists for this user
-        existing = await workflows_collection.find_one(
-            {"user_id": user_id, "system_workflow_key": key, "is_system_workflow": True}
-        )
+        existing = await workflow_repository.find_system_workflow(user_id, key)
         if existing:
             log.info(
-                f"{LogTag.WORKFLOW} System workflow '{key}' already exists for user {user_id}, skipping"
+                f"{LogTag.WORKFLOW} System workflow already exists, skipping",
+                key=key,
+                user_id=user_id,
             )
             continue
 
@@ -111,11 +113,14 @@ async def provision_system_workflows(
                 request.trigger_config = trigger_config
             await WorkflowService.create_workflow(request, user_id)
             created.append(request)
-            log.info(f"{LogTag.WORKFLOW} Provisioned system workflow '{key}' for user {user_id}")
+            log.info(
+                f"{LogTag.WORKFLOW} Provisioned system workflow for user", key=key, user_id=user_id
+            )
         except DuplicateKeyError:
             log.info(
-                f"{LogTag.WORKFLOW} System workflow '{key}' already exists for user {user_id} "
-                "(concurrent creation), skipping"
+                f"{LogTag.WORKFLOW} System workflow already exists for user (concurrent creation), skipping",
+                key=key,
+                user_id=user_id,
             )
         except Exception as e:
             log.error(
@@ -179,12 +184,16 @@ async def _notify_workflows_provisioned(
             )
         )
         log.info(
-            f"{LogTag.WORKFLOW} Sent system workflow provisioning notification to user {user_id} "
-            f"for integration '{integration_display_name}'"
+            f"{LogTag.WORKFLOW} Sent system workflow provisioning notification to user for integration",
+            user_id=user_id,
+            integration_display_name=integration_display_name,
         )
     except Exception as e:
         log.error(
-            f"{LogTag.WORKFLOW} Failed to send provisioning notification for user {user_id}: {e}",
+            f"{LogTag.WORKFLOW} Failed to send provisioning notification for user",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
             exc_info=True,
         )
 
@@ -197,32 +206,31 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     Returns False if the workflow is not found or not resettable.
     """
     log.set(
-        service="system_workflow_provisioner",
+        component="system_workflow_provisioner",
         operation="reset_system_workflow_to_default",
         user_id=user_id,
         workflow_id=workflow_id,
     )
-    existing = await workflows_collection.find_one(
-        {"_id": workflow_id, "user_id": user_id, "is_system_workflow": True}
-    )
+    existing = await workflow_repository.get_system_workflow_for_user(workflow_id, user_id)
     if not existing:
         return False
 
-    key: str | None = existing.get("system_workflow_key")
+    key: str | None = existing.system_workflow_key
     factory = SYSTEM_WORKFLOW_REGISTRY.get(key) if key else None
     if not factory:
         log.warning(
-            f"{LogTag.WORKFLOW} No definition found for system_workflow_key '{key}' on workflow {workflow_id}"
+            f"{LogTag.WORKFLOW} No definition found for system_workflow_key on workflow",
+            key=key,
+            workflow_id=workflow_id,
+            user_id=user_id,
         )
         return False
 
     request = factory()
     trigger_config = ensure_trigger_config_object(request.trigger_config)
 
-    old_trigger_ids: list[str] = (
-        existing.get("trigger_config", {}).get("composio_trigger_ids") or []
-    )
-    trigger_name: str | None = existing.get("trigger_config", {}).get("trigger_name")
+    old_trigger_ids: list[str] = existing.trigger_config.composio_trigger_ids or []
+    trigger_name: str | None = existing.trigger_config.trigger_name
 
     # Register fresh triggers FIRST (old still active if this fails)
     new_trigger_ids: list[str] = []
@@ -237,14 +245,19 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
             )
         except Exception as e:
             log.error(
-                f"{LogTag.WORKFLOW} Failed to re-register triggers, aborting reset of {workflow_id}: {e}"
+                f"{LogTag.WORKFLOW} Failed to re-register triggers, aborting reset of",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
             )
             return False
 
         if not new_trigger_ids:
             log.error(
-                f"{LogTag.WORKFLOW} New trigger registration returned empty result for {workflow_id}, "
-                "aborting reset to avoid leaving workflow without triggers"
+                f"{LogTag.WORKFLOW} New trigger registration returned an empty result, aborting reset to avoid leaving the workflow without triggers",
+                workflow_id=workflow_id,
+                user_id=user_id,
             )
             return False
 
@@ -259,28 +272,26 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
             )
         except Exception as e:
             log.warning(
-                f"{LogTag.WORKFLOW} Failed to unregister old triggers during reset of {workflow_id} (non-fatal): {e}"
+                f"{LogTag.WORKFLOW} Failed to unregister old triggers during reset of (non-fatal)",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
             )
 
-    # Python mode keeps trigger_config.next_run a native datetime (BSON date),
-    # consistent with the create and re-arm paths.
-    trigger_doc = trigger_config.model_dump()
-    trigger_doc["composio_trigger_ids"] = new_trigger_ids
-
-    await workflows_collection.update_one(
-        {"_id": workflow_id},
-        {
-            "$set": {
-                "title": request.title,
-                "description": request.description,
-                "steps": [s.model_dump() for s in (request.steps or [])],
-                "trigger_config": trigger_doc,
-                "updated_at": datetime.now(UTC),
-            }
-        },
+    await workflow_repository.reset_system_workflow(
+        workflow_id,
+        title=request.title,
+        description=request.description or "",
+        steps=request.steps or [],
+        trigger_config=trigger_config,
+        composio_trigger_ids=new_trigger_ids,
     )
 
     log.info(
-        f"{LogTag.WORKFLOW} Reset system workflow '{key}' ({workflow_id}) to default for user {user_id}"
+        f"{LogTag.WORKFLOW} Reset system workflow to default for user",
+        key=key,
+        workflow_id=workflow_id,
+        user_id=user_id,
     )
     return True

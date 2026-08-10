@@ -59,7 +59,11 @@ def build_user_context_parts(preferences: dict[str, Any]) -> list[str]:
                 parts.append(f"Special Instructions: {instructions}")
 
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Error building user context parts: {e!s}")
+        log.warning(
+            f"{LogTag.AGENT} Error building user context parts",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return parts
 
@@ -89,7 +93,7 @@ def format_writing_style_for_prompt(
     return "\n".join(lines)
 
 
-def _example_blocks_to_text(raw: Any) -> str:
+def _example_blocks_to_text(raw: object) -> str:
     """Render example blocks dict ({greeting, body[], signoff, name}) or legacy string as text."""
     if isinstance(raw, str):
         return raw
@@ -136,5 +140,9 @@ def format_user_preferences_for_agent(
         return None
 
     except Exception as e:
-        log.error(f"{LogTag.AGENT} Error formatting user preferences for agent: {e!s}")
+        log.error(
+            f"{LogTag.AGENT} Error formatting user preferences for agent",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None

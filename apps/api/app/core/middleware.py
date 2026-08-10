@@ -18,6 +18,7 @@ from app.api.v1.middleware import (
 )
 from app.api.v1.middleware.rate_limiter import limiter
 from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
+from app.api.v1.middleware.websocket_wide_event import WebSocketWideEventMiddleware
 from app.config.settings import settings
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from shared.py.wide_events import log as wide_log
@@ -58,20 +59,29 @@ def configure_middleware(app: FastAPI) -> None:
     # Exception handler for rate limiting
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
-    # Add rate limiting middleware
+    # Middleware stack, innermost → outermost (add order == inner first).
+    # LoggingMiddleware is deliberately the OUTERMOST app middleware: it owns
+    # the per-request wide event, and everything that runs inside its
+    # dispatch — auth, CORS, timeout, rate limiting, the handler — both gets
+    # recorded (an auth 401, a timeout 504 and a rate-limit 429 all emit an
+    # http_request line) and can attach context with log.set(). Any response
+    # produced outside the boundary is invisible in Loki, which is how
+    # timed-out requests used to produce zero telemetry.
+
+    # Rate limiting (innermost — a 429 flows up through the boundary)
     app.add_middleware(SlowAPIMiddleware)
 
-    # Add pyinstrument profiling middleware for detailed call stack analysis
+    # Pyinstrument profiling for detailed call stack analysis
     app.add_middleware(ProfilingMiddleware)
 
-    # Add logging middleware
-    app.add_middleware(LoggingMiddleware)
-
-    # Add request timeout middleware (inside CORS so CORS headers always present,
-    # outside Logging so timeouts are logged)
+    # Request timeout — INSIDE Logging on purpose: its anyio cancel scope is
+    # contained in its own __call__, so the 504 it synthesizes travels up to
+    # LoggingMiddleware as a normal response and gets emitted. With timeout
+    # outside Logging, the cancellation killed the emit and the slowest
+    # requests were the only ones with no canonical event.
     app.add_middleware(RequestTimeoutMiddleware)
 
-    # Configure CORS
+    # CORS (inside Logging so preflight rejections are visible in Loki)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=get_allowed_origins(),
@@ -81,14 +91,25 @@ def configure_middleware(app: FastAPI) -> None:
         allow_headers=["*"],
     )
 
-    # Add bot authentication middleware (before WorkOS to allow bot auth to take precedence)
+    # Bot authentication (before WorkOS to allow bot auth to take precedence)
     app.add_middleware(BotAuthMiddleware)
 
-    # Add WorkOS authentication middleware
+    # WorkOS authentication — inside the logging boundary, so its rejections
+    # are logged and its log.set()/log.error() calls reach the wide event.
     workos_client = AsyncWorkOSClient(
         api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
     )
     app.add_middleware(WorkOSAuthMiddleware, workos_client=workos_client)
+
+    # Wide-event boundary — outermost (see block comment above).
+    app.add_middleware(LoggingMiddleware)
+
+    # WebSocket wide-event boundary — outermost, after Logging. This is a pure
+    # ASGI middleware (not BaseHTTPMiddleware, which drops websocket scope), so
+    # add_middleware still works and the app keeps its FastAPI type. It wraps
+    # every websocket connection in a log_context() boundary so a handler just
+    # calls log.set() like an HTTP handler — see the middleware's docstring.
+    app.add_middleware(WebSocketWideEventMiddleware)
 
 
 def get_allowed_origins() -> list[str]:

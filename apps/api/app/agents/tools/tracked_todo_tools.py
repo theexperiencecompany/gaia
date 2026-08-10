@@ -5,25 +5,23 @@ Allows GAIA's executor to create tracked todos with VFS canvas
 and search across canvas context via ChromaDB.
 """
 
-import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
 
-from bson import ObjectId
 from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.todos import GAIA_TRACKED_LABEL
-from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import Priority, TodoResponse
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
 from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import search_canvas_context
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone, is_valid_timezone
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
 _UTC_OFFSET = "+00:00"
@@ -41,7 +39,7 @@ async def _get_user_tz(user_id: str) -> str:
         user = await get_user_by_id(user_id)
         if user and user.get("timezone"):
             tz_name = user["timezone"]
-            if is_valid_timezone(tz_name):
+            if isinstance(tz_name, str) and is_valid_timezone(tz_name):
                 return tz_name
             log.debug("tracked_todo.invalid_user_tz", user_id=user_id, tz_name=tz_name)
     except Exception as e:
@@ -63,21 +61,14 @@ def _is_cron_expression(recurrence: str) -> bool:
     return recurrence not in _RECURRENCE_SHORTCUTS
 
 
-_background_tasks: set[asyncio.Task] = set()
-
-
-def _fire_and_forget(coro) -> None:
-    task = asyncio.create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-
-
 def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
     """Parse an ISO datetime; require it to be in the future. Returns (parsed, error)."""
     try:
         parsed = datetime.fromisoformat(iso_str.replace("Z", _UTC_OFFSET))
     except ValueError:
         return None, f"Error: invalid {field_name} format '{iso_str}'."
+    if parsed.tzinfo is None:
+        return None, f"Error: {field_name} '{iso_str}' must include a timezone offset."
     if parsed <= datetime.now(UTC):
         return None, f"Error: {field_name} must be in the future."
     return parsed, None
@@ -143,6 +134,7 @@ def _resolve_first_fire(
 
 async def _persist_scheduling_fields(
     todo_id: str,
+    user_id: str,
     parsed_scheduled_at: datetime | None,
     recurrence: str | None,
     expires_at: str | None,
@@ -150,22 +142,17 @@ async def _persist_scheduling_fields(
     """Save scheduled_at / recurrence / expires_at onto a freshly-created todo doc."""
     if not (parsed_scheduled_at or recurrence or expires_at):
         return None
-    update_fields: dict[str, object] = {}
+    fields: dict[str, object] = {}
     if parsed_scheduled_at:
-        update_fields["scheduled_at"] = parsed_scheduled_at
+        fields["scheduled_at"] = parsed_scheduled_at
     if recurrence:
-        update_fields["recurrence"] = recurrence
+        fields["recurrence"] = recurrence
     if expires_at:
         try:
-            update_fields["expires_at"] = datetime.fromisoformat(
-                expires_at.replace("Z", _UTC_OFFSET)
-            )
+            fields["expires_at"] = datetime.fromisoformat(expires_at.replace("Z", _UTC_OFFSET))
         except ValueError:
             return f"Error: invalid expires_at format '{expires_at}'."
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id)},
-        {"$set": update_fields},
-    )
+    await todo_repository.update(todo_id, user_id=user_id, update=TodoUpdate.model_validate(fields))
     return None
 
 
@@ -262,6 +249,8 @@ def _build_scheduled_at_update(
         parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", _UTC_OFFSET))
     except ValueError:
         return f"Error: invalid scheduled_at format '{scheduled_at}'."
+    if parsed_at.tzinfo is None:
+        return f"Error: scheduled_at '{scheduled_at}' must include a timezone offset."
     if parsed_at <= datetime.now(UTC):
         return "Error: scheduled_at must be in the future."
     update_fields["scheduled_at"] = parsed_at
@@ -269,17 +258,22 @@ def _build_scheduled_at_update(
 
 
 def _validate_recurrence_format(recurrence: str) -> str | None:
-    """Return a user-facing error if `recurrence` is neither a valid cron nor a known shortcut."""
-    if _is_cron_expression(recurrence):
-        try:
-            _croniter(recurrence)
-        except (ValueError, KeyError):
-            return f"Error: invalid recurrence '{recurrence}'."
+    """Return a user-facing error if `recurrence` is neither a valid cron nor a known shortcut.
+
+    _is_cron_expression is defined as "not a known shortcut", so the two cases
+    are exhaustive: anything that isn't a shortcut is validated as a cron
+    expression here — there is no separate "unknown shortcut-like string"
+    branch to fall through to.
+    """
+    if not _is_cron_expression(recurrence):
         return None
-    if recurrence not in _RECURRENCE_SHORTCUTS:
+    try:
+        _croniter(recurrence)
+    except (ValueError, KeyError):
         return (
             f"Error: invalid recurrence '{recurrence}'. "
-            f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, or a cron expression."
+            f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, "
+            "or a valid 5-field cron expression."
         )
     return None
 
@@ -327,41 +321,38 @@ async def _build_recurrence_update(
     return None
 
 
-def _build_list_detail_parts(doc: dict, now: datetime) -> list[str]:
+def _build_list_detail_parts(doc: TodoDocument, now: datetime) -> list[str]:
     """Build the pipe-separated detail fragments shown on the second line of each todo."""
     parts: list[str] = []
-    if due_date := doc.get("due_date"):
-        days_until = (due_date - now).days
+    if doc.due_date:
+        days_until = (doc.due_date - now).days
         parts.append(f"Due: OVERDUE {-days_until}d" if days_until < 0 else f"Due: {days_until}d")
-    if scheduled := doc.get("scheduled_at"):
-        parts.append(f"Scheduled: {scheduled.isoformat()}")
-    if recurrence := doc.get("recurrence"):
-        parts.append(f"Recurrence: {recurrence}")
-    if expires := doc.get("expires_at"):
-        expires_days = (expires - now).days
+    if doc.scheduled_at:
+        parts.append(f"Scheduled: {doc.scheduled_at.isoformat()}")
+    if doc.recurrence:
+        parts.append(f"Recurrence: {doc.recurrence}")
+    if doc.expires_at:
+        expires_days = (doc.expires_at - now).days
         parts.append(
             f"Expires: EXPIRED {-expires_days}d ago"
             if expires_days < 0
             else f"Expires: in {expires_days}d"
         )
-    if doc.get("gaia_retry_count", 0) > 0:
-        parts.append(f"Retries: {doc['gaia_retry_count']}")
+    if doc.gaia_retry_count > 0:
+        parts.append(f"Retries: {doc.gaia_retry_count}")
     return parts
 
 
-def _format_tracked_todo_full(doc: dict, now: datetime) -> str:
+def _format_tracked_todo_full(doc: TodoDocument, now: datetime) -> str:
     """Format one tracked-todo doc as the multi-line block used by list_tracked_todos."""
-    todo_id = str(doc["_id"])
-    title = doc.get("title", "Untitled")
-    labels = [lbl for lbl in doc.get("labels", []) if lbl != "gaia-tracked"]
+    labels = [lbl for lbl in doc.labels if lbl != GAIA_TRACKED_LABEL]
     labels_str = f" [{', '.join(labels)}]" if labels else ""
-    priority = doc.get("priority", "none")
-    age_days = (now - doc.get("created_at", now)).days
-    last_update = (now - doc.get("updated_at", now)).days
+    age_days = (now - (doc.created_at or now)).days
+    last_update = (now - (doc.updated_at or now)).days
 
     parts = [
-        f'- "{title}"{labels_str} (ID: {todo_id})',
-        f"  Priority: {priority} | Age: {age_days}d | Last updated: {last_update}d ago",
+        f'- "{doc.title}"{labels_str} (ID: {doc.id})',
+        f"  Priority: {doc.priority.value} | Age: {age_days}d | Last updated: {last_update}d ago",
     ]
     detail_parts = _build_list_detail_parts(doc, now)
     if detail_parts:
@@ -372,11 +363,29 @@ def _format_tracked_todo_full(doc: dict, now: datetime) -> str:
 def _patch_canvas_section(current: str, section: str, content: str) -> str:
     """Replace (or append) a `## {section}` block within a canvas markdown string."""
     heading = f"## {section}"
-    heading_pos = current.find(f"\n{heading}")
-    if heading_pos == -1:
+    head_end: int | None = None
+    search_start = 0
+    while True:
+        pos = current.find(heading, search_start)
+        if pos == -1:
+            break
+        # A real heading match must (a) start a line — position 0 or right
+        # after a "\n" — and (b) end the heading exactly — end-of-string or
+        # right before a "\n". Without both checks a plain substring search
+        # either misses the section when it's the canvas's first line (no
+        # leading "\n" to match against), or false-positives on a DIFFERENT
+        # section whose name happens to start with this one (e.g. searching
+        # for "Current" would otherwise match inside "## Current State").
+        at_line_start = pos == 0 or current[pos - 1] == "\n"
+        end_pos = pos + len(heading)
+        is_exact_heading = end_pos == len(current) or current[end_pos] == "\n"
+        if at_line_start and is_exact_heading:
+            head_end = end_pos
+            break
+        search_start = pos + 1
+    if head_end is None:
         # Section does not exist — append it as a fresh trailing block.
         return current.rstrip() + f"\n\n{heading}\n{content}"
-    head_end = heading_pos + len(f"\n{heading}")
     next_section = current.find("\n## ", head_end + 1)
     if next_section == -1:
         return current[:head_end] + "\n" + content
@@ -518,7 +527,7 @@ async def create_tracked_todo(
     )
 
     persist_error = await _persist_scheduling_fields(
-        result.id, parsed_scheduled_at, recurrence, expires_at
+        result.id, user_id, parsed_scheduled_at, recurrence, expires_at
     )
     if persist_error:
         return persist_error
@@ -618,10 +627,7 @@ async def update_tracked_todo_canvas(
     if mode == "section" and not section:
         return "Error: 'section' mode requires a section name."
 
-    doc = await todos_collection.find_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {"_id": 1},
-    )
+    doc = await todo_repository.get(todo_id, user_id=user_id)
     if not doc:
         return f"Error: tracked todo {todo_id} not found"
 
@@ -634,7 +640,12 @@ async def update_tracked_todo_canvas(
         new_canvas = _patch_canvas_section(current, section or "", content)
         await write_canvas(todo_id, user_id, new_canvas)
 
-    _fire_and_forget(tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id))
+    spawn_logged_task(
+        "canvas_reindex",
+        tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id),
+        user={"id": user_id},
+        todo={"id": todo_id},
+    )
     section_suffix = f", section={section}" if section else ""
     await tracked_todo_service.system_log(
         todo_id=todo_id,
@@ -736,7 +747,11 @@ async def update_tracked_todo(
     # Validate each field sequentially with short-circuit so we don't keep doing
     # work (in particular the async _get_user_tz Mongo lookup inside the
     # recurrence validator) after an earlier field has already failed.
-    if error := _build_labels_update(labels, update_fields):
+    # _build_labels_update can never actually return an error today (there is
+    # no label validation yet) — the check-and-return is kept for the same
+    # shape as every other field below, so adding label validation later
+    # doesn't require restoring this line.
+    if error := _build_labels_update(labels, update_fields):  # pragma: no cover
         return error
     if error := _build_clearable_datetime_update(due_date, "due_date", update_fields):
         return error
@@ -756,26 +771,22 @@ async def update_tracked_todo(
 
     # Validate the resulting state against the existing doc — the in-call guards
     # alone can't catch corruption when the DB already has scheduling fields set.
-    existing = await todos_collection.find_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id, "vfs_path": {"$exists": True}}
-    )
+    existing = await todo_repository.get(todo_id, user_id=user_id)
     if not existing:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
 
-    effective_scheduled_at = update_fields.get("scheduled_at", existing.get("scheduled_at"))
-    effective_recurrence = update_fields.get("recurrence", existing.get("recurrence"))
+    effective_scheduled_at = update_fields.get("scheduled_at", existing.scheduled_at)
+    effective_recurrence = update_fields.get("recurrence", existing.recurrence)
     if effective_recurrence and not effective_scheduled_at:
         return (
             "Error: cannot have recurrence without scheduled_at. "
             "Either clear recurrence or provide a scheduled_at value."
         )
 
-    update_fields["updated_at"] = datetime.now(UTC)
-    result = await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {"$set": update_fields},
+    updated = await todo_repository.update(
+        todo_id, user_id=user_id, update=TodoUpdate.model_validate(update_fields)
     )
-    if result.matched_count == 0:
+    if updated is None:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
 
     # If scheduled_at landed in update_fields with a real datetime (agent-passed or
@@ -784,12 +795,9 @@ async def update_tracked_todo(
     if isinstance(new_scheduled_at, datetime):
         await tracked_todo_service.reschedule_execution(todo_id, new_scheduled_at)
 
-    updated_keys = [k for k in update_fields if k != "updated_at"]
+    updated_keys = list(update_fields)
     if references is not None:
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id},
-            {"$addToSet": {"references": {"$each": references}}},
-        )
+        await todo_repository.add_references(todo_id, user_id=user_id, references=references)
         updated_keys.append("references")
 
     msg = f"Updated tracked todo {todo_id}: {', '.join(updated_keys)}"
@@ -813,19 +821,7 @@ async def list_tracked_todos(
     if not user_id:
         return _ERR_NO_USER_ID
 
-    cursor = (
-        todos_collection.find(
-            {
-                "user_id": user_id,
-                "labels": "gaia-tracked",
-                "completed": False,
-            }
-        )
-        .sort("updated_at", -1)
-        .limit(50)
-    )
-
-    docs = await cursor.to_list(length=50)
+    docs = await todo_repository.list_active_tracked(user_id, limit=50)
     if not docs:
         return "No active tracked todos."
 

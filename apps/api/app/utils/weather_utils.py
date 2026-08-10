@@ -163,7 +163,7 @@ async def get_location_data(
     }
 
 
-async def user_weather(location_name: str | None = None):
+async def user_weather(location_name: str | None = None) -> dict[str, Any] | str:
     """
     Fetch weather data for a specified location.
 
@@ -189,9 +189,12 @@ async def user_weather(location_name: str | None = None):
             location_data = await get_location_data(location_name=location_name)
             cache_key = location_data["cache_key"]
 
-            cached_weather = await get_cache(cache_key)
+            cached_weather: dict[str, Any] | None = await get_cache(cache_key)
             if cached_weather:
-                log.debug(f"{LogTag.TOOL} Using cached weather data for location {cached_weather}")
+                log.debug(
+                    f"{LogTag.TOOL} Using cached weather data for location",
+                    cached_weather=cached_weather,
+                )
                 return cached_weather
 
             weather = await prepare_weather_data(
@@ -204,11 +207,17 @@ async def user_weather(location_name: str | None = None):
 
         except Exception as e:
             error_msg = f"Could not find location: {location_name}"
-            log.error(f"{LogTag.TOOL} Error getting location data: {e!s}")
+            log.error(
+                f"{LogTag.TOOL} Error getting location data",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return error_msg
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error fetching weather: {e!s}")
+        log.error(
+            f"{LogTag.TOOL} Error fetching weather", error=str(e), error_type=type(e).__name__
+        )
         return f"Failed to fetch weather: {e!s}"
 
 
@@ -335,5 +344,10 @@ async def geocode_location(location_name: str) -> dict[str, Any]:
         }
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error geocoding location '{location_name}': {e!s}")
+        log.error(
+            f"{LogTag.TOOL} Error geocoding location",
+            location_name=location_name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise Exception(f"Failed to geocode location: {e!s}")

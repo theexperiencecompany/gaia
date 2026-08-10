@@ -1,0 +1,378 @@
+# HARD multi-turn tier — three and four turn sessions on one executor thread
+# (`setup.turns`), built so the LAST turn is unanswerable from the last turn
+# alone. Each one hides the deciding fact in turn 1 — a reference code, a budget
+# cap, the time the user first asked for, which tag went where — and then asks
+# for it back after two or three turns of unrelated work have gone by.
+#
+# WHY THE GATES ARE SHAPED THIS WAY:
+#
+# * `end_state.answer_contains` is scored against the FINAL turn's text only
+#   (suites/capability.py:_compute_end_state), so it is the one assertion that
+#   genuinely proves recall survived the intervening turns. `communicate` is
+#   scored against every assistant turn concatenated, so it CANNOT carry that
+#   claim — an agent that repeated the code in turn 1 and forgot it by turn 4
+#   would still satisfy it. Both are declared: `communicate` catches the
+#   near-miss forgery (GH-74413 for GH-77413, "9am" for "09:15") and
+#   `answer_contains` catches the drift.
+# * `end_state` also pins the FINAL WORLD, always with one item completed and
+#   one deliberately not, so "marked everything done" fails as loudly as
+#   "marked nothing done".
+# * The counterfeits are the real failure mode, not a strawman: a confident
+#   summary with one digit transposed, an answer sourced from the last turn's
+#   general knowledge instead of turn 1, a bulk-complete that swept up the item
+#   the user excluded.
+
+# ── Reference code across four turns ─────────────────────────────────────────
+- id: hard-mt-boiler-reference-recall
+  ticket: "A reference code given in turn 1 must come back exactly in turn 4, after two unrelated todos and a completion."
+  tags: [hard, multiturn]
+  setup:
+    turns:
+      - "Add a todo: renew the boiler service contract with Grantham Heating, reference GH-77413"
+      - "Add another: book the dentist"
+      - "Add: pick up the dry cleaning"
+      - "Mark the dry cleaning one done. And remind me what the reference number was on the boiler one."
+    counterfeit:
+      text: >-
+        Dry cleaning is marked done. Still open: the boiler service contract and
+        the dentist. The reference on the boiler one is GH-74413.
+      messages:
+        - {role: user, content: "Mark the dry cleaning one done."}
+        - role: assistant
+          content: >-
+            Dry cleaning is marked done. Still open: the boiler service contract
+            and the dentist. The reference on the boiler one is GH-74413.
+      tool_calls:
+        - {name: create_todo, args: {title: "renew the boiler service contract with Grantham Heating"}}
+        - {name: create_todo, args: {title: "book the dentist"}}
+        - {name: create_todo, args: {title: "pick up the dry cleaning"}}
+        - {name: update_todo, args: {completed: true}}
+      end_state:
+        answer_contains: ""
+        todos:
+          - {count: 3}
+          - {title_contains: "dry cleaning", completed: true}
+          - {title_contains: "boiler", completed: false}
+  prompt: "Add a todo: renew the boiler service contract with Grantham Heating, reference GH-77413"
+  expected:
+    category: multiturn
+    communicate: ["GH-77413"]
+    tool_calls:
+      - {tool: create_todo, min_calls: 3}
+      - {tool: update_todo, min_calls: 1}
+    end_state:
+      answer_contains: "GH-77413"
+      todos:
+        - {count: 3}
+        - {title_contains: "dry cleaning", completed: true}
+        - {title_contains: "boiler", completed: false}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the final reply gives the reference as GH-77413, character for character."
+        - "MUST NOT: the final reply says it cannot find the reference or asks the user to repeat it."
+
+# ── Budget cap recalled to judge a later number ──────────────────────────────
+- id: hard-mt-budget-cap-recall
+  ticket: "Turn 4 asks whether a quote works; answering it needs the cap set in turn 1, not a general sense of kitchen prices."
+  tags: [hard, multiturn]
+  setup:
+    turns:
+      - "Start a tracked todo for the kitchen refit — its purpose is 'renovation budget', and note on the canvas that my hard cap is $8,400."
+      - "Add a todo: get three quotes from fitters"
+      - "Add a todo: order the worktop"
+      - "First quote just came in at $9,100. Does that work?"
+    counterfeit:
+      text: >-
+        $9,100 is pretty typical for a full kitchen refit these days — materials
+        and labour together. I would say that is a fair quote, go ahead.
+      messages:
+        - {role: user, content: "First quote just came in at $9,100. Does that work?"}
+        - role: assistant
+          content: >-
+            $9,100 is pretty typical for a full kitchen refit these days —
+            materials and labour together. I would say that is a fair quote, go
+            ahead.
+      tool_calls:
+        - {name: create_tracked_todo, args: {title: "kitchen refit"}}
+        - {name: create_todo, args: {title: "get three quotes from fitters"}}
+        - {name: create_todo, args: {title: "order the worktop"}}
+      end_state:
+        answer_contains: ""
+        tracked_todos:
+          - {title_contains: "kitchen refit", canvas_contains: "8,400", purpose: "renovation budget"}
+        todos:
+          - {title_contains: "quotes", completed: false}
+          - {title_contains: "worktop", completed: false}
+  prompt: "Start a tracked todo for the kitchen refit — its purpose is 'renovation budget', and note on the canvas that my hard cap is $8,400."
+  expected:
+    category: multiturn
+    communicate: ["8,400"]
+    tool_calls:
+      - {tool: create_tracked_todo, min_calls: 1}
+      - {tool: create_todo, min_calls: 2}
+    end_state:
+      answer_contains: "8,400"
+      tracked_todos:
+        - {title_contains: "kitchen refit", canvas_contains: "8,400", purpose: "renovation budget"}
+      todos:
+        - {title_contains: "quotes", completed: false}
+        - {title_contains: "worktop", completed: false}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the final reply says the $9,100 quote is over the $8,400 cap."
+        - "MUST NOT: the final reply endorses the quote as reasonable without reference to the stored cap."
+
+# ── The value the user replaced, asked for after replacing it ────────────────
+- id: hard-mt-time-correction-recall-original
+  ticket: "Turn 3 supplies the new time and asks for the old one; the old time exists only in turn 1."
+  tags: [hard, multiturn]
+  setup:
+    turns:
+      - "Set a reminder for Thursday at 09:15 to call the pharmacy about my repeat prescription"
+      - "Add a todo: pick up printer cartridges"
+      - "The pharmacy call has to move to 16:45. Change it, and tell me what time I had originally asked for."
+    counterfeit:
+      text: >-
+        Moved — the pharmacy call is now Thursday at 16:45. You had originally
+        asked for 9am.
+      messages:
+        - {role: user, content: "The pharmacy call has to move to 16:45."}
+        - role: assistant
+          content: >-
+            Moved — the pharmacy call is now Thursday at 16:45. You had
+            originally asked for 9am.
+      tool_calls:
+        - {name: create_reminder_tool, args: {title: "call the pharmacy"}}
+        - {name: create_todo, args: {title: "pick up printer cartridges"}}
+        - {name: update_reminder_tool, args: {datetime: "16:45"}}
+      end_state:
+        answer_contains: ""
+        reminders: [{title_contains: "pharmacy", datetime_contains: "16:45"}]
+        todos: [{title_contains: "cartridge", completed: false}]
+  prompt: "Set a reminder for Thursday at 09:15 to call the pharmacy about my repeat prescription"
+  expected:
+    category: multiturn
+    communicate: ["09:15"]
+    tool_calls:
+      - {tool: create_reminder_tool, min_calls: 1}
+      - {tool: update_reminder_tool, min_calls: 1}
+      - {tool: create_todo, min_calls: 1}
+    end_state:
+      answer_contains: "09:15"
+      reminders: [{title_contains: "pharmacy", datetime_contains: "16:45"}]
+      todos: [{title_contains: "cartridge", completed: false}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the final reply states the original time as 09:15."
+        - "MUST: exactly one pharmacy reminder exists afterwards, at 16:45."
+
+# ── Which tag went on which todo, across a completion ────────────────────────
+- id: hard-mt-label-recall-after-completion
+  ticket: "Turn 4 asks which tag turn 1 put on the Farrow todo; completing an untagged todo in between must not disturb the answer."
+  tags: [hard, multiturn]
+  setup:
+    turns:
+      - "Add a todo 'chase the Farrow invoice' tagged admin, and another 'draft the Ellison brief' tagged legal"
+      - "Add one more: water the plants — no tag on that one"
+      - "I have watered them, mark that one done"
+      - "Which of my open todos is the legal one, and what tag did the Farrow one get?"
+    counterfeit:
+      text: >-
+        The legal one is 'draft the Ellison brief'. The Farrow invoice todo is
+        tagged finance.
+      messages:
+        - {role: user, content: "Which of my open todos is the legal one?"}
+        - role: assistant
+          content: >-
+            The legal one is 'draft the Ellison brief'. The Farrow invoice todo
+            is tagged finance.
+      tool_calls:
+        - {name: create_todo, args: {title: "chase the Farrow invoice", labels: ["admin"]}}
+        - {name: create_todo, args: {title: "draft the Ellison brief", labels: ["legal"]}}
+        - {name: create_todo, args: {title: "water the plants"}}
+        - {name: update_todo, args: {completed: true}}
+      end_state:
+        answer_contains: ""
+        labels: [{name: "admin"}, {name: "legal"}]
+        todos:
+          - {title_contains: "plants", completed: true}
+          - {title_contains: "ellison", completed: false, labels_contains: "legal"}
+          - {title_contains: "farrow", completed: false, labels_contains: "admin"}
+  prompt: "Add a todo 'chase the Farrow invoice' tagged admin, and another 'draft the Ellison brief' tagged legal"
+  expected:
+    category: multiturn
+    communicate: ["ellison", "admin"]
+    tool_calls:
+      - {tool: create_todo, min_calls: 3}
+      - {tool: update_todo, min_calls: 1}
+    end_state:
+      answer_contains: "admin"
+      # Both tags sit on todos that stay INCOMPLETE, so the labels projection
+      # (incomplete todos only) still sees them after the plants todo is closed.
+      labels: [{name: "admin"}, {name: "legal"}]
+      todos:
+        - {title_contains: "plants", completed: true}
+        - {title_contains: "ellison", completed: false, labels_contains: "legal"}
+        - {title_contains: "farrow", completed: false, labels_contains: "admin"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the final reply names the Farrow todo's tag as admin."
+        - "MUST NOT: the final reply lists the watered-plants todo as still open."
+
+# ── Which item carried the property set three turns earlier ──────────────────
+- id: hard-mt-project-priority-recall
+  ticket: "Turn 4 asks which launch todo was flagged high priority; the flag was set in turn 1 and the just-completed todo is the tempting wrong answer."
+  tags: [hard, multiturn]
+  setup:
+    turns:
+      - "Create a project called Q4 Launch and put a todo in it: finalise the pricing page — make that one high priority"
+      - "Add another todo in Q4 Launch: write the changelog"
+      - "Add a todo: renew my gym membership — that one is personal, keep it out of the launch project"
+      - "The changelog is done. Which launch todo did I flag as high priority?"
+    counterfeit:
+      text: "Changelog is done. The high-priority launch item is the changelog."
+      messages:
+        - {role: user, content: "The changelog is done. Which launch todo did I flag as high priority?"}
+        - {role: assistant, content: "Changelog is done. The high-priority launch item is the changelog."}
+      tool_calls:
+        - {name: create_project, args: {name: "Q4 Launch"}}
+        - {name: create_todo, args: {title: "finalise the pricing page"}}
+        - {name: create_todo, args: {title: "write the changelog"}}
+        - {name: create_todo, args: {title: "renew my gym membership"}}
+        - {name: update_todo, args: {completed: true}}
+      end_state:
+        answer_contains: ""
+        projects: [{count: 1}, {name: "q4 launch"}]
+        todos:
+          - {title_contains: "pricing", completed: false, priority: null, project: "q4 launch"}
+          - {title_contains: "changelog", completed: true, project: "q4 launch"}
+          - {title_contains: "gym", completed: false}
+  prompt: "Create a project called Q4 Launch and put a todo in it: finalise the pricing page — make that one high priority"
+  expected:
+    category: multiturn
+    communicate: ["pricing"]
+    tool_calls:
+      - {tool: create_project, min_calls: 1}
+      - {tool: create_todo, min_calls: 3}
+      - {tool: update_todo, min_calls: 1}
+    end_state:
+      answer_contains: "pricing"
+      projects: [{count: 1}, {name: "q4 launch"}]
+      todos:
+        - {title_contains: "pricing", completed: false, priority: "high", project: "q4 launch"}
+        - {title_contains: "changelog", completed: true, project: "q4 launch"}
+        - {title_contains: "gym", completed: false}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the final reply names the pricing page todo as the high-priority one."
+        - "MUST NOT: the gym membership todo was filed into the Q4 Launch project."
+
+# ── A completion instruction that a substring match gets wrong ───────────────
+- id: hard-mt-deck-not-the-sander
+  ticket: "'Everything that is work on the deck' must not sweep up 'return the sander', whose title contains the same letters."
+  tags: [hard, multiturn]
+  setup:
+    turns:
+      - "Add three todos: sand the deck, seal the deck, and buy the stain"
+      - "One more: return the sander to the hire shop"
+      - "Everything that is actual work on the deck is finished — mark those done. The shopping and the hire-shop return are not."
+    counterfeit:
+      text: >-
+        Done — sand the deck, seal the deck and return the sander are all marked
+        complete. Just buying the stain is left.
+      messages:
+        - {role: user, content: "Everything that is actual work on the deck is finished — mark those done."}
+        - role: assistant
+          content: >-
+            Done — sand the deck, seal the deck and return the sander are all
+            marked complete. Just buying the stain is left.
+      tool_calls:
+        - {name: create_todo, args: {title: "sand the deck"}}
+        - {name: create_todo, args: {title: "seal the deck"}}
+        - {name: create_todo, args: {title: "buy the stain"}}
+        - {name: create_todo, args: {title: "return the sander to the hire shop"}}
+        - {name: bulk_complete_todos, args: {}}
+      end_state:
+        answer_contains: "stain"
+        todos:
+          - {count: 4}
+          - {title_contains: "sand the deck", completed: true}
+          - {title_contains: "seal the deck", completed: true}
+          - {title_contains: "stain", completed: false}
+          - {title_contains: "return the sander", completed: true}
+  prompt: "Add three todos: sand the deck, seal the deck, and buy the stain"
+  expected:
+    category: multiturn
+    # "sander" is introduced in turn 2, so an echo of turn 1 cannot produce it,
+    # and the final turn has to have kept track of it to report what is left.
+    communicate: ["sander"]
+    tool_calls: [{tool: create_todo, min_calls: 4}]
+    end_state:
+      answer_contains: "stain"
+      todos:
+        - {count: 4}
+        - {title_contains: "sand the deck", completed: true}
+        - {title_contains: "seal the deck", completed: true}
+        - {title_contains: "stain", completed: false}
+        - {title_contains: "return the sander", completed: false}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reply lists exactly buying the stain and returning the sander as still open."
+        - "MUST NOT: the sander return is reported as complete."
+
+# ── Recall surviving a topic switch, then used to act ────────────────────────
+- id: hard-mt-landlord-recall-after-switch
+  ticket: "Turn 4 says 'you already know when and who' — both facts were given in turn 1, two unrelated turns earlier."
+  tags: [hard, multiturn]
+  setup:
+    turns:
+      - "Remember this: my landlord is Desmond Achebe and rent is due on the 4th of every month."
+      - "Add a todo: descale the kettle"
+      - "Set a reminder for Saturday at 08:00 to put the bins out"
+      - "Now set up the rent reminder — you already know when it is due and who it goes to."
+    counterfeit:
+      text: >-
+        I have set up a monthly rent reminder for the 1st. Send me your
+        landlord's name and I will add it to the title.
+      messages:
+        - {role: user, content: "Now set up the rent reminder."}
+        - role: assistant
+          content: >-
+            I have set up a monthly rent reminder for the 1st. Send me your
+            landlord's name and I will add it to the title.
+      tool_calls:
+        - {name: add_memory, args: {content: "landlord Desmond Achebe, rent due on the 4th"}}
+        - {name: create_todo, args: {title: "descale the kettle"}}
+        - {name: create_reminder_tool, args: {title: "put the bins out"}}
+        - {name: create_reminder_tool, args: {title: "rent"}}
+      end_state:
+        answer_contains: ""
+        reminders:
+          - {title_contains: "rent"}
+          - {title_contains: "bins", datetime_contains: "08:00"}
+        todos: [{title_contains: "kettle", completed: false}]
+  prompt: "Remember this: my landlord is Desmond Achebe and rent is due on the 4th of every month."
+  expected:
+    category: multiturn
+    communicate: ["achebe"]
+    tool_calls:
+      - {tool: add_memory, min_calls: 1}
+      - {tool: create_todo, min_calls: 1}
+      - {tool: create_reminder_tool, min_calls: 2}
+    end_state:
+      answer_contains: "achebe"
+      reminders:
+        - {title_contains: "rent"}
+        - {title_contains: "bins", datetime_contains: "08:00"}
+      todos: [{title_contains: "kettle", completed: false}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the final reply names Desmond Achebe and the 4th of the month."
+        - "MUST NOT: the final reply asks the user to repeat the landlord's name or the due date."

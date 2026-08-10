@@ -119,9 +119,9 @@ class TestGetConfigOptionsSpreadsheets:
         )
 
         assert len(result) == 2
-        assert result[0]["value"] == "sp1"
-        assert result[0]["label"] == "My Sheet"
-        assert "(Shared)" in result[1]["label"]
+        assert result[0].value == "sp1"
+        assert result[0].label == "My Sheet"
+        assert "(Shared)" in result[1].label
 
     @patch("app.services.triggers.handlers.google_sheets.get_composio_service")
     async def test_returns_empty_on_tool_not_found(self, mock_get_svc: MagicMock) -> None:
@@ -182,7 +182,7 @@ class TestGetConfigOptionsSpreadsheets:
             integration_id="google_sheets",
         )
         assert len(result) == 1
-        assert result[0]["value"] == "sp2"
+        assert result[0].value == "sp2"
 
     async def test_unknown_field_returns_empty(self) -> None:
         result = await self.handler.get_config_options(
@@ -239,8 +239,8 @@ class TestGetConfigOptionsSheetNames:
         )
 
         assert len(result) == 1
-        assert result[0]["group"] == "sp1"
-        assert len(result[0]["options"]) == 2
+        assert result[0].group == "sp1"
+        assert len(result[0].options) == 2
 
     @patch("app.services.triggers.handlers.google_sheets.get_composio_service")
     async def test_sheet_names_without_parent_ids_returns_empty(
@@ -500,92 +500,56 @@ class TestFindWorkflows:
     def setup_method(self) -> None:
         self.handler = GoogleSheetsTriggerHandler()
 
-    @patch("app.services.triggers.handlers.google_sheets.workflows_collection")
-    async def test_finds_matching_workflows(self, mock_coll: MagicMock) -> None:
-        workflow_doc = {
-            "_id": "wf1",
-            "user_id": "user1",
-            "title": "Test WF",
-            "steps": [],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "composio_trigger_ids": ["tid1"],
-            },
-        }
-
-        async def mock_cursor():
-            yield workflow_doc
-
-        mock_coll.find = MagicMock(return_value=mock_cursor())
+    # find_workflows delegates the Mongo query + doc parsing to
+    # workflow_repository.find_active_by_composio_trigger (contract-tested). Here we
+    # verify the handler's delegation, payload validation, and fail-loud-swallow.
+    @patch("app.services.triggers.handlers.google_sheets.workflow_repository")
+    async def test_finds_matching_workflows(self, mock_repo: MagicMock) -> None:
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[MagicMock()])
 
         result = await self.handler.find_workflows(
             "GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {"row": "data"}
         )
 
         assert len(result) == 1
+        mock_repo.find_active_by_composio_trigger.assert_awaited_once_with("tid1")
 
-    @patch("app.services.triggers.handlers.google_sheets.workflows_collection")
-    async def test_returns_empty_on_no_match(self, mock_coll: MagicMock) -> None:
-        async def mock_cursor():
-            return
-            yield  # NOSONAR — intentionally unreachable: makes this an async generator
-
-        mock_coll.find = MagicMock(return_value=mock_cursor())
+    @patch("app.services.triggers.handlers.google_sheets.workflow_repository")
+    async def test_returns_empty_on_no_match(self, mock_repo: MagicMock) -> None:
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
         result = await self.handler.find_workflows("GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {})
         assert result == []
 
-    @patch("app.services.triggers.handlers.google_sheets.workflows_collection")
-    async def test_handles_db_error(self, mock_coll: MagicMock) -> None:
-        mock_coll.find = MagicMock(side_effect=RuntimeError("db down"))
+    @patch("app.services.triggers.handlers.google_sheets.workflow_repository")
+    async def test_handles_db_error(self, mock_repo: MagicMock) -> None:
+        mock_repo.find_active_by_composio_trigger = AsyncMock(side_effect=RuntimeError("db down"))
 
         result = await self.handler.find_workflows("GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {})
         assert result == []
 
-    @patch("app.services.triggers.handlers.google_sheets.workflows_collection")
-    async def test_skips_invalid_workflow_docs(self, mock_coll: MagicMock) -> None:
-        # This doc will cause Workflow() to fail
-        bad_doc = {"_id": "wf1"}  # Missing required fields
-
-        async def mock_cursor():
-            yield bad_doc
-
-        mock_coll.find = MagicMock(return_value=mock_cursor())
-
-        result = await self.handler.find_workflows("GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {})
-        assert result == []
-
-    @patch("app.services.triggers.handlers.google_sheets.workflows_collection")
-    async def test_validates_new_row_payload(self, mock_coll: MagicMock) -> None:
-        """Should attempt payload validation but still query even if it fails."""
-
-        async def mock_cursor():
-            return
-            yield
-
-        mock_coll.find = MagicMock(return_value=mock_cursor())
-
-        # Invalid payload structure, but find_workflows should still work
-        result = await self.handler.find_workflows(
-            "GOOGLESHEETS_NEW_ROWS_TRIGGER",
-            "tid1",
-            {"invalid": "payload"},
-        )
-        assert result == []
-
-    @patch("app.services.triggers.handlers.google_sheets.workflows_collection")
-    async def test_validates_new_sheet_event(self, mock_coll: MagicMock) -> None:
-        async def mock_cursor():
-            return
-            yield  # NOSONAR — intentionally unreachable: makes this an async generator
-
-        mock_coll.find = MagicMock(return_value=mock_cursor())
+    @patch("app.services.triggers.handlers.google_sheets.GoogleSheetsNewRowPayload")
+    @patch("app.services.triggers.handlers.google_sheets.workflow_repository")
+    async def test_validates_new_row_payload(
+        self, mock_repo: MagicMock, mock_payload: MagicMock
+    ) -> None:
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
         result = await self.handler.find_workflows(
-            "GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
-            "tid1",
-            {"sheet": "data"},
+            "GOOGLESHEETS_NEW_ROWS_TRIGGER", "tid1", {"invalid": "payload"}
         )
         assert result == []
+        mock_payload.model_validate.assert_called_once()
+
+    @patch("app.services.triggers.handlers.google_sheets.GoogleSheetsNewSheetAddedPayload")
+    @patch("app.services.triggers.handlers.google_sheets.workflow_repository")
+    async def test_validates_new_sheet_event(
+        self, mock_repo: MagicMock, mock_payload: MagicMock
+    ) -> None:
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
+
+        result = await self.handler.find_workflows(
+            "GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER", "tid1", {"sheet": "data"}
+        )
+        assert result == []
+        mock_payload.model_validate.assert_called_once()

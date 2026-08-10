@@ -2,60 +2,71 @@ from langchain_core.documents import Document
 
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
-from app.db.mongodb.collections import notes_collection
-from app.db.redis import delete_cache, set_cache
-from app.models.notes_models import NoteModel, NoteResponse
+from app.db.repositories.notes import note_repository
+from app.models.notes_models import NoteDocument, NoteModel, NoteResponse, NoteUpdate
 from shared.py.wide_events import log
 
 
 async def insert_note(
     note: NoteModel,
     user_id: str,
-    auto_created=False,
+    auto_created: bool = False,
 ) -> NoteResponse:
     log.set(user_id=user_id, auto_created=auto_created, operation="insert_note")
-    log.info(f"{LogTag.API} Creating new note for user: {user_id}")
+    log.info(f"{LogTag.API} Creating new note for user", user_id=user_id)
 
-    langchain_chroma_client = await ChromaClient.get_langchain_client(collection_name="notes")
+    created = await note_repository.create(
+        NoteDocument(
+            user_id=user_id,
+            content=note.content,
+            plaintext=note.plaintext,
+            auto_created=auto_created,
+        )
+    )
+    note_id = created.id
+    log.info(f"{LogTag.API} Note created with ID", note_id=note_id)
 
-    note_data = note.model_dump()
-    note_data["user_id"] = user_id
-    note_data["auto_created"] = auto_created
+    # The note is already committed, so a vector-store failure must not fail the
+    # request — telling the user their note was lost would be a lie. But an
+    # unindexed note is invisible to search, so flag it for repair rather than
+    # letting it degrade silently.
+    try:
+        await index_note(note_id, user_id, created.plaintext or "")
+    except Exception as e:
+        log.error(
+            f"{LogTag.API} Note persisted but vector indexing failed; flagged for reindex",
+            exc_info=True,
+            error_type=type(e).__name__,
+            error=str(e),
+            note_id=note_id,
+            user_id=user_id,
+        )
+        await note_repository.update(
+            note_id, user_id=user_id, update=NoteUpdate(needs_reindex=True)
+        )
+        created.needs_reindex = True
 
-    result = await notes_collection.insert_one(note_data)
+    return NoteResponse.model_validate(created.model_dump())
 
-    note_id = str(result.inserted_id)
 
-    log.info(f"{LogTag.API} Note created with ID: {note_id}")
-
-    # Add note to ChromaDB for vector search
-    await langchain_chroma_client.aadd_documents(
+async def index_note(note_id: str, user_id: str, plaintext: str) -> None:
+    """Index one note's plaintext into the ``notes`` vector collection."""
+    collection = await ChromaClient.get_langchain_client(collection_name="notes")
+    await collection.aadd_documents(
         documents=[
-            Document(
-                page_content=note_data.get("plaintext") or "",
-                metadata={
-                    "note_id": note_id,
-                    "user_id": user_id,
-                },
-            )
+            Document(page_content=plaintext, metadata={"note_id": note_id, "user_id": user_id})
         ],
         ids=[note_id],
     )
-    log.info(f"{LogTag.API} Note with id {note_id} indexed in ChromaDB")
+    log.info(f"{LogTag.API} Note with id indexed in ChromaDB", note_id=note_id)
 
-    response_data = {
-        "id": note_id,
-        "content": note_data["content"],
-        "plaintext": note_data["plaintext"],
-        "user_id": user_id,
-        "auto_created": note_data.get("auto_created", False),
-        "title": note_data.get("title"),
-        "description": note_data.get("description"),
-    }
 
-    await delete_cache(f"notes:{user_id}")
+async def reindex_note(note_id: str, user_id: str, plaintext: str) -> None:
+    """Re-index a note whose first indexing attempt failed, clearing the flag.
 
-    await set_cache(f"note:{user_id}:{note_id}", response_data)
-    log.info(f"{LogTag.API} Note created with ID: {note_id} and cache updated")
-
-    return NoteResponse(**response_data)
+    Mirrors ``reindex_file`` in app/services/files/store.py — the repair entry
+    point for notes flagged by ``insert_note``. Failures propagate so a caller
+    repairing a batch sees which notes are still broken.
+    """
+    await index_note(note_id, user_id, plaintext)
+    await note_repository.update(note_id, user_id=user_id, update=NoteUpdate(needs_reindex=False))

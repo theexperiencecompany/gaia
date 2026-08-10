@@ -10,27 +10,24 @@ Each handler implements its own `process_event()` method which handles:
 """
 
 import asyncio
-from typing import Any
 
 from fastapi import APIRouter, Request
 
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.models.webhook_models import ComposioWebhookEvent
+from app.models.webhook_models import ComposioWebhookAckResponse, ComposioWebhookEvent
 from app.services.triggers import get_handler_by_event
+from app.services.triggers.base import TriggerHandler
 from app.utils.webhook_utils import verify_composio_webhook_signature
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 router = APIRouter()
-
-# Prevent GC of fire-and-forget tasks
-_webhook_tasks: set[asyncio.Task[Any]] = set()
 
 # Background tasks are cancelled after this many seconds to prevent indefinite hangs.
 _WEBHOOK_TASK_TIMEOUT: float = 120.0
 
 
-async def _process_webhook_event(handler: Any, event_data: ComposioWebhookEvent) -> None:
+async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWebhookEvent) -> None:
     """Background task: find matching workflows and queue them."""
     try:
         await asyncio.wait_for(
@@ -49,17 +46,23 @@ async def _process_webhook_event(handler: Any, event_data: ComposioWebhookEvent)
         )
     except TimeoutError:
         log.error(
-            f"{LogTag.COMPOSIO} Webhook background processing timed out after {_WEBHOOK_TASK_TIMEOUT}s "
-            f"for {event_data.type}"
+            f"{LogTag.COMPOSIO} Webhook background processing timed out",
+            timeout_s=_WEBHOOK_TASK_TIMEOUT,
+            event_type=event_data.type,
+            user_id=event_data.user_id,
         )
     except Exception as e:
         log.error(
-            f"{LogTag.COMPOSIO} Webhook background processing failed for {event_data.type}: {e}"
+            f"{LogTag.COMPOSIO} Webhook background processing failed",
+            event_type=event_data.type,
+            user_id=event_data.user_id,
+            error_type=type(e).__name__,
+            error=str(e),
         )
 
 
 @router.post("/webhook/composio")
-async def webhook_composio(request: Request) -> dict[str, str]:
+async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
     """Handle incoming Composio webhooks.
 
     Routes events to the appropriate handler based on event type.
@@ -74,8 +77,8 @@ async def webhook_composio(request: Request) -> dict[str, str]:
             f"webhook:composio:{webhook_id}", "1", nx=True, ex=3600
         )
         if already_processed:
-            log.info(f"{LogTag.COMPOSIO} Duplicate webhook ignored: {webhook_id}")
-            return {"status": "success", "message": "Duplicate webhook ignored"}
+            log.info(f"{LogTag.COMPOSIO} Duplicate webhook ignored", webhook_id=webhook_id)
+            return ComposioWebhookAckResponse(message="Duplicate webhook ignored")
 
     body = await request.json()
     data = body.get("data")
@@ -98,13 +101,16 @@ async def webhook_composio(request: Request) -> dict[str, str]:
     # Find handler for this event type
     handler = get_handler_by_event(event_data.type)
     if not handler:
-        log.debug(f"{LogTag.COMPOSIO} Unhandled webhook type: {event_data.type}")
-        return {"status": "success", "message": "Webhook received"}
+        log.debug(f"{LogTag.COMPOSIO} Unhandled webhook type", event_type=event_data.type)
+        return ComposioWebhookAckResponse(message="Webhook received")
 
     # Fire-and-forget: return 200 immediately, process in background
-    task = asyncio.create_task(_process_webhook_event(handler, event_data))
-    _webhook_tasks.add(task)
-    task.add_done_callback(_webhook_tasks.discard)
+    spawn_logged_task(
+        "composio_webhook_processing",
+        _process_webhook_event(handler, event_data),
+        user={"id": event_data.user_id},
+        webhook={"event_type": event_data.type, "trigger_id": event_data.trigger_id},
+    )
 
     log.set(operation="webhook_accepted", outcome="success")
-    return {"status": "success", "message": "Webhook accepted"}
+    return ComposioWebhookAckResponse(message="Webhook accepted")

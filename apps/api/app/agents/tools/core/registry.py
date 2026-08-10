@@ -1,5 +1,6 @@
 import asyncio
-from collections.abc import ItemsView, Iterator, KeysView, Mapping
+from collections.abc import ItemsView, Iterator, KeysView, Mapping, Sequence, ValuesView
+from typing import cast
 
 from langchain_core.tools import BaseTool
 
@@ -8,7 +9,7 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import RawToolMetadata, store_mcp_tools_batch
 from shared.py.wide_events import log
 
 # Desktop-executed tools (screenshot, clipboard, ...) — discovery and binding
@@ -62,7 +63,7 @@ class DynamicToolDict(Mapping[str, BaseTool]):
         """Add extra tools (like handoff) that aren't in the registry."""
         self._extra_tools.update(other)
 
-    def values(self):
+    def values(self) -> ValuesView[BaseTool]:
         """Return all tool values for ToolNode initialization."""
         all_tools = dict(self._registry._get_tool_dict_internal())
         all_tools.update(self._extra_tools)
@@ -106,10 +107,15 @@ class Tool:
         tool: BaseTool,
         name: str | None = None,
         is_core: bool = False,
+        destructive: bool | None = None,
     ):
         self.tool = tool
         self.name = name or tool.name
         self.is_core = is_core
+        # HIL destructive flag — the single source of truth for tool risk.
+        # None = unclassified (custom/MCP tools until the LLM classifier decides);
+        # True/False = reviewed (internal tools + curated integration slugs).
+        self.destructive = destructive
 
 
 class ToolCategory:
@@ -126,6 +132,9 @@ class ToolCategory:
     ):
         self.name = name
         self.space = space
+        # True for integration-specific categories (Composio toolkits) that need
+        # the user to have connected that integration; core built-in categories
+        # leave it False. `get_core_categories` filters on this flag.
         self.require_integration = require_integration
         self.integration_name = integration_name
         self.is_delegated = is_delegated
@@ -135,14 +144,32 @@ class ToolCategory:
         self.internal = internal
         self.tools: list[Tool] = []
 
-    def add_tool(self, tool: BaseTool, is_core: bool = False, name: str | None = None):
+    def add_tool(
+        self,
+        tool: BaseTool,
+        is_core: bool = False,
+        name: str | None = None,
+        destructive: bool | None = None,
+    ) -> None:
         """Add a tool to this category."""
-        self.tools.append(Tool(tool=tool, name=name, is_core=is_core))
+        self.tools.append(Tool(tool=tool, name=name, is_core=is_core, destructive=destructive))
 
-    def add_tools(self, tools: list[BaseTool], is_core: bool = False):
-        """Add multiple tools to this category."""
+    def add_tools(
+        self,
+        tools: Sequence[BaseTool],
+        is_core: bool = False,
+        destructive_tools: set[str] | None = None,
+    ) -> None:
+        """Add multiple tools to this category.
+
+        ``destructive_tools`` is a curated set of tool names: when provided,
+        every tool is stamped destructive by membership (so an empty set marks
+        the whole category reviewed-safe); when ``None`` the tools stay
+        unclassified and fall to the HIL LLM classifier at gate time.
+        """
         for tool in tools:
-            self.add_tool(tool, is_core=is_core)
+            destructive = None if destructive_tools is None else (tool.name in destructive_tools)
+            self.add_tool(tool, is_core=is_core, destructive=destructive)
 
     def get_tool_objects(self) -> list[BaseTool]:
         """Get the actual tool objects for binding."""
@@ -169,22 +196,35 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._categories: dict[str, ToolCategory] = {}
+        # name -> (category_name, Tool) index. Tool names are globally unique
+        # (the executor's tool dict is keyed by name), so a flat map is safe;
+        # it serves the per-tool-call lookups on the HIL gate path without
+        # scanning every category.
+        self._tools_by_name: dict[str, tuple[str, Tool]] = {}
 
-    async def setup(self):
+    def setup(self) -> None:
         self._initialize_categories()
 
     def _add_category(
         self,
         name: str,
-        tools: list[BaseTool] | None = None,
-        core_tools: list[BaseTool] | None = None,
+        tools: Sequence[BaseTool] | None = None,
+        core_tools: Sequence[BaseTool] | None = None,
         space: str = "general",
         require_integration: bool = False,
         integration_name: str | None = None,
         is_delegated: bool = False,
         internal: bool = False,
-    ):
-        """Helper to create and register a category."""
+        destructive_tools: set[str] | None = None,
+    ) -> None:
+        """Helper to create and register a category.
+
+        ``destructive_tools`` is the curated HIL risk set for this category
+        (see ``ToolCategory.add_tools``). Every internal category MUST pass an
+        explicit set (empty if none are destructive) so in-repo tools are never
+        left unclassified; ``None`` is reserved for uncurated (custom MCP /
+        provider) tools that the HIL LLM classifier resolves at gate time.
+        """
         replacing = name in self._categories
         prior_tools_count = len(self._categories[name].tools) if replacing else 0
         category = ToolCategory(
@@ -196,10 +236,15 @@ class ToolRegistry:
             internal=internal,
         )
         if core_tools:
-            category.add_tools(core_tools, is_core=True)
+            category.add_tools(core_tools, is_core=True, destructive_tools=destructive_tools)
         if tools:
-            category.add_tools(tools)
+            category.add_tools(tools, destructive_tools=destructive_tools)
         self._categories[name] = category
+        if replacing:
+            # Drop the replaced category's entries so removed tools don't linger.
+            self._tools_by_name = {k: v for k, v in self._tools_by_name.items() if v[0] != name}
+        for registered in category.tools:
+            self._tools_by_name[registered.name] = (name, registered)
         log.set(
             tool_category={
                 "name": name,
@@ -212,19 +257,33 @@ class ToolRegistry:
             }
         )
         log.info(
-            f"{LogTag.TOOL} _add_category: '{name}' space='{space}' tools_in="
-            f"{len(tools) if tools else 0} core_in="
-            f"{len(core_tools) if core_tools else 0} final="
-            f"{len(category.tools)} replacing={replacing} (was {prior_tools_count})"
+            f"{LogTag.TOOL} _add_category",
+            category_name=name,
+            space=space,
+            tools_in=len(tools) if tools else 0,
+            core_in=len(core_tools) if core_tools else 0,
+            final=len(category.tools),
+            replacing=replacing,
+            prior_tools_count=prior_tools_count,
         )
 
-    def _initialize_categories(self):
-        """Initialize core tool categories. Provider tools are loaded lazily."""
+    def _initialize_categories(self) -> None:
+        """Initialize core tool categories. Provider tools are loaded lazily.
+
+        HIL INVARIANT: every internal category passes an explicit
+        ``destructive_tools`` set (empty when none are destructive) so no in-repo
+        tool is ever left unclassified. The three destructive built-ins are
+        code-reviewed: ``send_notification`` (external delivery),
+        ``execute_workflow`` (autonomous run-now), ``connect_integration``
+        (connects an external account). Everything else is reversible /
+        user-owned / read-only / sandbox-local and therefore safe.
+        """
 
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
             context_tool,
             desktop_tools,
+            download_tool,
             file_tools,
             finish_task_tool,
             flowchart_tool,
@@ -251,19 +310,27 @@ class ToolRegistry:
                 webpage_tool.web_search_tool,
                 webpage_tool.fetch_webpages,
                 research_tool.deep_research,
+                *download_tool.tools,
             ],
+            destructive_tools=set(),
         )
 
         self._add_category(
             "documents",
-            tools=[file_tools.query_file],
+            tools=[file_tools.search_uploaded_files],
+            destructive_tools=set(),
         )
 
-        self._add_category("notifications", tools=[*notification_tool.tools])
+        self._add_category(
+            "notifications",
+            tools=[*notification_tool.tools],
+            destructive_tools={"send_notification"},
+        )
         self._add_category(
             "tracked_todos",
             tools=[*tracked_todo_tools.tools],
             space="tasks",
+            destructive_tools=set(),
         )
         self._add_category(
             "todos",
@@ -271,6 +338,7 @@ class ToolRegistry:
             is_delegated=True,
             integration_name="todos",
             space="todos",
+            destructive_tools=set(),
         )
         self._add_category(
             "reminders",
@@ -278,6 +346,7 @@ class ToolRegistry:
             is_delegated=True,
             integration_name="reminders",
             space="reminders",
+            destructive_tools=set(),
         )
         self._add_category(
             "skills",
@@ -285,36 +354,61 @@ class ToolRegistry:
             is_delegated=True,
             integration_name="skills",
             space="skills",
+            destructive_tools=set(),
         )
 
         # General tools - directly accessible by executor
-        self._add_category("workflows", tools=workflow_tool.tools)
-        self._add_category("control", tools=[finish_task_tool.finish_task], internal=True)
-        self._add_category("support", tools=[support_tool.create_support_ticket])
-        self._add_category("manual", tools=[*manual_tool.tools])
-        self._add_category("memory", tools=memory_tools.tools)
-        self._add_category("integrations", tools=integration_tool.tools)
+        self._add_category(
+            "workflows",
+            tools=workflow_tool.tools,
+            destructive_tools={"execute_workflow"},
+        )
+        self._add_category(
+            "control",
+            tools=[finish_task_tool.finish_task],
+            internal=True,
+            destructive_tools=set(),
+        )
+        self._add_category(
+            "support",
+            tools=[support_tool.create_support_ticket],
+            destructive_tools=set(),
+        )
+        self._add_category("manual", tools=[*manual_tool.tools], destructive_tools=set())
+        self._add_category("memory", tools=memory_tools.tools, destructive_tools=set())
+        self._add_category(
+            "integrations",
+            tools=integration_tool.tools,
+            destructive_tools={"connect_integration"},
+        )
         self._add_category(
             "integration_instructions",
             tools=[*integration_instructions_tools.tools],
             internal=True,
+            destructive_tools=set(),
         )
         from app.agents.tools import coding
 
-        # Sandbox coding tools (bash/read/write/edit) are agent-only plumbing.
-        self._add_category("development", tools=[*coding.tools], internal=True)
+        # Sandbox coding tools (bash/read/write/edit) are agent-only plumbing
+        # that act only inside the user's isolated sandbox.
+        self._add_category(
+            "development", tools=[*coding.tools], internal=True, destructive_tools=set()
+        )
         self._add_category(
             "creative",
             tools=[image_tool.generate_image, flowchart_tool.create_flowchart],
+            destructive_tools=set(),
         )
-        self._add_category("weather", tools=[weather_tool.get_weather])
-        self._add_category("context", tools=[context_tool.gather_context])
+        self._add_category("weather", tools=[weather_tool.get_weather], destructive_tools=set())
+        self._add_category("context", tools=[context_tool.gather_context], destructive_tools=set())
         # Desktop-executed tools live in their own space so discovery can be
-        # gated to conversations that originate from the desktop app.
+        # gated to conversations that originate from the desktop app. They act on
+        # the user's own machine and are reversible, so none are destructive.
         self._add_category(
             DESKTOP_TOOL_CATEGORY,
             tools=[*desktop_tools.tools],
             space=DESKTOP_TOOL_SPACE,
+            destructive_tools=set(),
         )
 
     async def register_provider_tools(
@@ -322,7 +416,8 @@ class ToolRegistry:
         toolkit_name: str,
         space_name: str,
         specific_tools: list[str] | None = None,
-    ):
+        exclude_tools: list[str] | None = None,
+    ) -> ToolCategory:
         """
         Register provider tools on-demand when subagent is created.
         Tools are loaded from Composio and indexed in ChromaDB.
@@ -331,15 +426,21 @@ class ToolRegistry:
             return self._categories[toolkit_name]
 
         log.info(
-            f"{LogTag.TOOL} Registering provider tools for {toolkit_name} (space: {space_name})"
+            f"{LogTag.TOOL} Registering provider tools",
+            toolkit_name=toolkit_name,
+            space_name=space_name,
         )
 
         composio_service = get_composio_service()
 
         if specific_tools:
             tools = await composio_service.get_tools_by_name(specific_tools)
+            if exclude_tools:
+                tools = [t for t in tools if t.name not in exclude_tools]
         else:
-            tools = await composio_service.get_tools(tool_kit=toolkit_name)
+            tools = await composio_service.get_tools(
+                tool_kit=toolkit_name, exclude_tools=exclude_tools
+            )
 
         self._add_category(
             name=toolkit_name,
@@ -348,11 +449,16 @@ class ToolRegistry:
             integration_name=toolkit_name,
             is_delegated=True,
             space=space_name,
+            destructive_tools=integration_destructive_tools(toolkit_name),
         )
 
         await self._index_category_tools(toolkit_name)
 
-        log.info(f"{LogTag.TOOL} Registered {len(tools)} tools for {toolkit_name}")
+        log.info(
+            f"{LogTag.TOOL} Registered tools for toolkit",
+            tool_count=len(tools),
+            toolkit_name=toolkit_name,
+        )
         return self._categories[toolkit_name]
 
     async def populate_provider_catalog(self) -> int:
@@ -378,7 +484,6 @@ class ToolRegistry:
         from app.db.chroma.chroma_tools_store import index_tools_to_store
 
         composio_service = get_composio_service()
-        mcp_store = get_mcp_tools_store()
 
         integrations = [
             integration
@@ -391,7 +496,7 @@ class ToolRegistry:
             )
         ]
 
-        mongo_batch: list[tuple[str, list[dict]]] = []
+        mongo_batch: list[tuple[str, list[RawToolMetadata]]] = []
         total = 0
 
         async def load_metadata(integration: OAuthIntegration) -> None:
@@ -399,17 +504,23 @@ class ToolRegistry:
             toolkit = integration.composio_config.toolkit
             space = integration.subagent_config.tool_space
             specific = integration.subagent_config.specific_tools
+            exclude = set(integration.subagent_config.exclude_tools or [])
             try:
                 raw_tools = await composio_service.get_raw_tools_metadata(
                     tool_kit=toolkit, specific_tools=specific
                 )
             except Exception as e:
-                log.error(f"{LogTag.TOOL} Failed to load catalog metadata for {toolkit}: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Failed to load catalog metadata",
+                    toolkit=toolkit,
+                    error_type=type(e).__name__,
+                )
                 return
 
             metas = [
                 _CatalogToolMeta(name=t.slug, description=getattr(t, "description", "") or "")
                 for t in raw_tools
+                if t.slug not in exclude
             ]
             if not metas:
                 return
@@ -420,7 +531,11 @@ class ToolRegistry:
             try:
                 await index_tools_to_store([(m, space) for m in metas])
             except Exception as e:
-                log.error(f"{LogTag.TOOL} Failed to index catalog metadata for {toolkit}: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Failed to index catalog metadata",
+                    toolkit=toolkit,
+                    error_type=type(e).__name__,
+                )
                 return
 
             mongo_batch.append(
@@ -439,25 +554,28 @@ class ToolRegistry:
         for integration, result in zip(integrations, results):
             if isinstance(result, Exception):
                 log.error(
-                    f"{LogTag.TOOL} Catalog metadata population failed for "
-                    f"{integration.composio_config.toolkit}: {result}"
+                    f"{LogTag.TOOL} Catalog metadata population failed",
+                    toolkit=integration.composio_config.toolkit,
+                    error_type=type(result).__name__,
                 )
 
         if mongo_batch:
             try:
-                await mcp_store.store_tools_batch(mongo_batch)
+                await store_mcp_tools_batch(mongo_batch)
             except Exception as e:
                 log.warning(
-                    f"{LogTag.TOOL} Failed to store provider catalog metadata to Mongo: {e}"
+                    f"{LogTag.TOOL} Failed to store provider catalog metadata to Mongo",
+                    error_type=type(e).__name__,
                 )
 
         log.info(
-            f"{LogTag.TOOL} Provider catalog metadata indexed: {total} tools "
-            f"across {len(integrations)} toolkits (no StructuredTools materialized)"
+            f"{LogTag.TOOL} Provider catalog metadata indexed (no StructuredTools materialized)",
+            tool_count=total,
+            toolkit_count=len(integrations),
         )
         return total
 
-    async def _index_category_tools(self, category_name: str):
+    async def _index_category_tools(self, category_name: str) -> None:
         """Index tools from a category into ChromaDB store.
 
         Delegates all caching and diff logic to index_tools_to_store(),
@@ -473,8 +591,9 @@ class ToolRegistry:
         category = self._categories.get(category_name)
         if not category:
             log.warning(
-                f"{LogTag.TOOL} _index_category_tools: category '{category_name}' not in registry, "
-                f"known={sorted(self._categories.keys())[:20]}..."
+                f"{LogTag.TOOL} _index_category_tools: category not in registry",
+                category_name=category_name,
+                known_categories=sorted(self._categories.keys())[:20],
             )
             return
 
@@ -487,16 +606,18 @@ class ToolRegistry:
             }
         )
         log.info(
-            f"{LogTag.TOOL} _index_category_tools: '{category_name}' space='{category.space}' "
-            f"category.tools count={category_tools_count}"
+            f"{LogTag.TOOL} _index_category_tools",
+            category_name=category_name,
+            space=category.space,
+            category_tools_count=category_tools_count,
         )
 
         tools_with_space = [(tool.tool, category.space) for tool in category.tools]
         if not tools_with_space:
             log.warning(
-                f"{LogTag.TOOL} _index_category_tools: category '{category_name}' has 0 tools "
-                f"(space='{category.space}'), nothing to index — caller likely passed "
-                f"empty tools to _add_category"
+                f"{LogTag.TOOL} _index_category_tools: category has 0 tools, nothing to index — caller likely passed empty tools to _add_category",
+                category_name=category_name,
+                space=category.space,
             )
             return
 
@@ -518,9 +639,10 @@ class ToolRegistry:
         return None
 
     def get_all_category_objects(
-        self, ignore_categories: list[str] = []
+        self, ignore_categories: list[str] | None = None
     ) -> dict[str, ToolCategory]:
         """Get all categories as ToolCategory objects."""
+        ignore_categories = ignore_categories or []
         return {
             name: category
             for name, category in self._categories.items()
@@ -529,11 +651,29 @@ class ToolRegistry:
 
     def get_category_of_tool(self, tool_name: str) -> str:
         """Get the category of a specific tool by name."""
-        for category in self._categories.values():
-            for tool in category.tools:
-                if tool.name == tool_name:
-                    return category.name
-        return "unknown"
+        entry = self._tools_by_name.get(tool_name)
+        return entry[0] if entry else "unknown"
+
+    def get_tool_meta(self, tool_name: str) -> Tool | None:
+        """Return the registry ``Tool`` wrapper for a tool name, or None.
+
+        Served from the name index — this sits on the HIL gate's per-tool-call
+        path, where a scan over every category × tool is measurable waste.
+        """
+        entry = self._tools_by_name.get(tool_name)
+        return entry[1] if entry else None
+
+    def is_tool_destructive(self, tool_name: str) -> bool | None:
+        """HIL risk flag for a tool: True/False if reviewed, None if unclassified
+        or absent from the registry."""
+        meta = self.get_tool_meta(tool_name)
+        return meta.destructive if meta else None
+
+    def mark_tool_destructive(self, tool_name: str, value: bool) -> None:
+        """Write an LLM classification back onto the live registry (custom tools)."""
+        meta = self.get_tool_meta(tool_name)
+        if meta is not None:
+            meta.destructive = value
 
     def get_all_tools_for_search(self, include_delegated: bool = True) -> list[Tool]:
         """
@@ -595,6 +735,21 @@ class ToolRegistry:
         return [tool.name for tool in tools]
 
 
+def integration_destructive_tools(name: str) -> set[str] | None:
+    """Curated HIL destructive tools for an integration, matched by id or (for
+    Composio) toolkit. ``None`` (uncurated) leaves the tools unclassified so the
+    HIL LLM classifier resolves them at gate time (fail closed)."""
+    for integration in OAUTH_INTEGRATIONS:
+        toolkit = integration.composio_config.toolkit if integration.composio_config else None
+        if integration.id == name or (toolkit and toolkit.lower() == name.lower()):
+            return (
+                None
+                if integration.destructive_tools is None
+                else set(integration.destructive_tools)
+            )
+    return None
+
+
 async def get_tool_registry() -> ToolRegistry:
     """
     Accessor for the global tool registry instance.
@@ -610,7 +765,9 @@ async def get_tool_registry() -> ToolRegistry:
     if tool_registry is None:
         raise RuntimeError("ToolRegistry is not available")
 
-    return tool_registry
+    # providers.aget declares -> Any | None; init_tool_registry (below) always
+    # registers a real ToolRegistry instance under this provider name.
+    return cast(ToolRegistry, tool_registry)
 
 
 @lazy_provider(
@@ -619,7 +776,7 @@ async def get_tool_registry() -> ToolRegistry:
     strategy=MissingKeyStrategy.ERROR,
     auto_initialize=True,
 )
-async def init_tool_registry():
+async def init_tool_registry() -> ToolRegistry:
     tool_registry = ToolRegistry()
-    await tool_registry.setup()
+    tool_registry.setup()
     return tool_registry

@@ -1,15 +1,18 @@
 import asyncio
+from collections.abc import AsyncGenerator
 import json
 import secrets
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
+from app.constants.auth import AUDIT_ACTOR_BOT_API, AUDIT_ACTOR_UNAUTHENTICATED
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX, PLATFORM_LINK_TOKEN_TTL
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
@@ -22,9 +25,15 @@ from app.models.bot_models import (
     CreateLinkTokenResponse,
     IntegrationInfo,
     LinkedUsersResponse,
+    LinkTokenInfoResponse,
+    LinkTokenRecord,
     ResetSessionRequest,
+    ResetSessionResponse,
+    TranscribeAudioResponse,
+    UnlinkAccountResponse,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.audio_transcription_service import (
     MAX_AUDIO_BYTES,
     AudioTooLargeError,
@@ -38,11 +47,10 @@ from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.platform_link_service import Platform, PlatformLinkService
-from shared.py.wide_events import log
+from app.utils.background_tasks import spawn_background_task
+from shared.py.wide_events import get_trace_id, log, log_context
 
 router = APIRouter()
-
-_background_tasks: set[asyncio.Task] = set()
 
 
 async def require_bot_api_key(request: Request) -> None:
@@ -51,7 +59,7 @@ async def require_bot_api_key(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing bot API key")
 
 
-def _bot_rate_limit_notice(chunk: dict) -> str | None:
+def _bot_rate_limit_notice(chunk: dict[str, Any]) -> str | None:
     """Render a web-only rate-limit card as a plain-text notice for bots.
 
     Rate limits are streamed as a ``tool_data`` card for the web UI to render.
@@ -75,6 +83,21 @@ def _bot_rate_limit_notice(chunk: dict) -> str | None:
         pricing_url = f"{settings.FRONTEND_URL}/pricing"
         notice += f" [Upgrade to Pro]({pricing_url}) for higher limits."
     return notice
+
+
+def _bot_approval_payload(chunk: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract a HIL ``approval_request`` card as a bot ``approval`` payload.
+
+    Bots drop ``tool_data``, but the approval prompt MUST reach the user — a bot
+    has no buttons, so the user answers yes/no in chat and the conversational
+    resolver relays it. The bot client renders this as an out-of-band message.
+    Returns the approval data, or ``None`` if ``chunk`` isn't such a card.
+    """
+    tool_data = chunk.get("tool_data")
+    if not isinstance(tool_data, dict) or tool_data.get("tool_name") != APPROVAL_REQUEST_TOOL_NAME:
+        return None
+    data = tool_data.get("data")
+    return data if isinstance(data, dict) else None
 
 
 @router.post(
@@ -101,11 +124,25 @@ async def create_link_token(
     state_user_id = getattr(request.state, "bot_platform_user_id", None)
 
     if state_platform and state_platform != body.platform:
+        log.audit(
+            "platform link token rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource=body.platform_user_id,
+            provider=body.platform,
+            reason="platform_header_mismatch",
+        )
         raise HTTPException(
             status_code=403,
             detail="Platform in body does not match X-Bot-Platform header",
         )
     if state_user_id and state_user_id != body.platform_user_id:
+        log.audit(
+            "platform link token rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource=body.platform_user_id,
+            provider=body.platform,
+            reason="platform_user_id_header_mismatch",
+        )
         raise HTTPException(
             status_code=403,
             detail="platform_user_id in body does not match X-Bot-Platform-User-Id header",
@@ -115,7 +152,7 @@ async def create_link_token(
     redis_client = redis_cache.client
     token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{token}"
 
-    mapping: dict = {
+    mapping: dict[str, str] = {
         "platform": body.platform,
         "platform_user_id": body.platform_user_id,
     }
@@ -129,17 +166,26 @@ async def create_link_token(
 
     auth_url = f"{settings.FRONTEND_URL}/auth/link-platform?platform={body.platform}&token={token}"
 
+    # `token` (and the auth_url embedding it) is the link credential — the record
+    # names the platform account it was minted for, never the token.
+    log.audit(
+        "platform link token issued",
+        actor=AUDIT_ACTOR_BOT_API,
+        resource=body.platform_user_id,
+        provider=body.platform,
+    )
     log.set(outcome="success")
     return CreateLinkTokenResponse(token=token, auth_url=auth_url)
 
 
 @router.get(
     "/link-token-info/{token}",
+    response_model=LinkTokenInfoResponse,
     status_code=200,
     summary="Get Link Token Display Info",
     description="Return non-sensitive display metadata for a pending link token.",
 )
-async def get_link_token_info(token: str) -> dict:
+async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
     """Return display metadata from a link token for the confirmation page.
 
     The token itself is the credential — no additional auth required.
@@ -151,14 +197,28 @@ async def get_link_token_info(token: str) -> dict:
     token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{token}"
     data = await redis_client.hgetall(token_key)
     if not data:
+        # The route is unauthenticated and the token in the path is the whole
+        # credential, so a miss is a probe against the link flow — recorded with
+        # the outcome, never with the token that was presented.
+        log.audit(
+            "platform link token lookup rejected",
+            actor=AUDIT_ACTOR_UNAUTHENTICATED,
+            reason="unknown_or_expired_token",
+        )
         raise HTTPException(status_code=404, detail="Token not found or expired")
-    log.set(platform=data.get("platform"))
+    record = LinkTokenRecord.model_validate(data)
+    log.set(platform=record.platform)
+    log.audit(
+        "platform link token presented",
+        actor=AUDIT_ACTOR_UNAUTHENTICATED,
+        provider=record.platform,
+    )
     log.set(outcome="success")
-    return {
-        "platform": data.get("platform"),
-        "username": data.get("username"),
-        "display_name": data.get("display_name"),
-    }
+    return LinkTokenInfoResponse(
+        platform=record.platform,
+        username=record.username,
+        display_name=record.display_name,
+    )
 
 
 @router.post(
@@ -182,7 +242,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
     if not user:
 
-        async def auth_required():
+        async def auth_required() -> AsyncGenerator[str, None]:
             """Emit a single `not_authenticated` SSE event for unlinked users."""
             yield f"data: {json.dumps({'error': 'not_authenticated'})}\n\n"
 
@@ -223,122 +283,171 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     await stream_manager.start_stream(stream_id, conversation_id, user_id)
 
     # Launch background task
-    task = asyncio.create_task(
+    def _log_stream_failure(t: asyncio.Task) -> None:
+        if not t.cancelled() and (exc := t.exception()):
+            log.error(
+                f"{LogTag.API} Background stream task failed",
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+
+    spawn_background_task(
         run_chat_stream_background(
             stream_id=stream_id,
             body=message_request,
             user=user,
             conversation_id=conversation_id,
             source=body.platform,
-        )
+        ),
+        on_done=_log_stream_failure,
     )
 
-    def task_done_callback(t: asyncio.Task):
-        """Drop the finished background task from the registry and log failures."""
-        _background_tasks.discard(t)
-        if t.exception():
-            log.error(f"{LogTag.API} Background stream task failed: {t.exception()}")
+    async def stream_from_redis() -> AsyncGenerator[str, None]:
+        """Subscribe to Redis stream and translate chunks for bot clients.
 
-    task.add_done_callback(task_done_callback)
-    _background_tasks.add(task)
+        The body runs while the response streams — after the request's
+        ``http_request`` event has emitted — so it needs its own boundary or
+        the delivery outcome is silently discarded. The generator body
+        inherits the request's context, so ``get_trace_id()`` still returns
+        the request's trace_id.
+        """
+        async with log_context(
+            "sse_delivery",
+            trace_id=get_trace_id() or None,
+            stream_id=stream_id,
+            platform=body.platform,
+        ):
+            # Send session token as first event
+            yield f"data: {json.dumps({'session_token': session_token})}\n\n"
 
-    async def stream_from_redis():
-        """Subscribe to Redis stream and translate chunks for bot clients."""
-        # Send session token as first event
-        yield f"data: {json.dumps({'session_token': session_token})}\n\n"
+            # Send initial keepalive to establish connection
+            yield ": keepalive\n\n"
 
-        # Send initial keepalive to establish connection
-        yield ": keepalive\n\n"
-
-        try:
-            async for chunk in stream_manager.subscribe_stream(stream_id):
-                # Match the web stream path: stop forwarding if the bot client
-                # dropped the connection. The background task keeps running and
-                # persists the conversation.
-                if await request.is_disconnected():
-                    log.info(
-                        f"{LogTag.API} Bot client disconnected, stream {stream_id} continues in background"
-                    )
-                    break
-                # Forward keepalive comments directly
-                if chunk.startswith(":"):
-                    yield chunk
-                    continue
-
-                if not chunk.startswith("data: "):
-                    continue
-
-                raw = chunk[len("data: ") :].strip()
-                if raw == "[DONE]":
-                    yield f"data: {json.dumps({'done': True, 'conversation_id': conversation_id})}\n\n"
-                    return
-
-                try:
-                    data = json.loads(raw)
-
-                    # Forward keepalives so bot clients reset inactivity timers
-                    if data.get("keepalive"):
-                        yield f"data: {json.dumps({'keepalive': True})}\n\n"
-                        continue
-
-                    # Surface rate-limit cards (web-only UI) to bots as a short
-                    # text notice, before the web-only fields are dropped below.
-                    # Non-terminal: the agent's partial reply still streams, so
-                    # pad with blank lines on both sides to keep the notice on its
-                    # own paragraph rather than running into adjacent agent text.
-                    rate_limit_notice = _bot_rate_limit_notice(data)
-                    if rate_limit_notice is not None:
-                        payload = json.dumps({"text": f"\n\n{rate_limit_notice}\n\n"})
-                        yield f"data: {payload}\n\n"
-                        continue
-
-                    # Skip web-only fields
-                    if any(
-                        key in data
-                        for key in [
-                            "conversation_description",
-                            "user_message_id",
-                            "bot_message_id",
-                            "stream_id",
-                            "tool_data",
-                            "tool_output",
-                            "follow_up_actions",
-                        ]
-                    ):
-                        continue
-
-                    # Translate {"response": "..."} → {"text": "..."}
-                    if "response" in data:
-                        yield f"data: {json.dumps({'text': data['response']})}\n\n"
-                    elif "error" in data:
-                        yield f"data: {json.dumps({'error': data['error']})}\n\n"
+            try:
+                async for chunk in stream_manager.subscribe_stream(stream_id):
+                    # Match the web stream path: stop forwarding if the bot client
+                    # dropped the connection. The background task keeps running and
+                    # persists the conversation.
+                    if await request.is_disconnected():
+                        log.set(client_disconnected=True)
+                        log.info(
+                            f"{LogTag.API} Bot client disconnected, stream continues in background",
+                            stream_id=stream_id,
+                        )
                         break
-                except json.JSONDecodeError:
-                    log.warning(f"{LogTag.API} Bot stream: dropped a malformed SSE chunk")
-                    continue
-        except asyncio.CancelledError:
-            # Client disconnected mid-stream — expected, not an error. The
-            # background LangGraph task keeps running and persists the result.
-            log.info(f"{LogTag.API} Bot stream cancelled (client disconnected)")
-            raise
-        except Exception as e:
-            log.error(f"{LogTag.API} Bot stream subscription error: {e}", error=str(e))
-            yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
+                    # Forward keepalive comments directly
+                    if chunk.startswith(":"):
+                        yield chunk
+                        continue
+
+                    # subscribe_stream id-tags every frame ("id: <redis-id>\ndata: ...")
+                    # for Last-Event-ID resume — split the id line off before the data
+                    # checks, or every content frame is silently dropped.
+                    if chunk.startswith("id: "):
+                        _, _, chunk = chunk.partition("\n")
+
+                    if not chunk.startswith("data: "):
+                        continue
+
+                    raw = chunk[len("data: ") :].strip()
+                    if raw == "[DONE]":
+                        yield f"data: {json.dumps({'done': True, 'conversation_id': conversation_id})}\n\n"
+                        return
+
+                    try:
+                        data = json.loads(raw)
+
+                        # Forward keepalives so bot clients reset inactivity timers
+                        if data.get("keepalive"):
+                            yield f"data: {json.dumps({'keepalive': True})}\n\n"
+                            continue
+
+                        # Surface rate-limit cards (web-only UI) to bots as a short
+                        # text notice, before the web-only fields are dropped below.
+                        # Non-terminal: the agent's partial reply still streams, so
+                        # pad with blank lines on both sides to keep the notice on its
+                        # own paragraph rather than running into adjacent agent text.
+                        rate_limit_notice = _bot_rate_limit_notice(data)
+                        if rate_limit_notice is not None:
+                            payload = json.dumps({"text": f"\n\n{rate_limit_notice}\n\n"})
+                            yield f"data: {payload}\n\n"
+                            continue
+
+                        # Surface HIL approval cards to bots as a dedicated frame the
+                        # client renders as an out-of-band prompt (before tool_data
+                        # is dropped below).
+                        approval_payload = _bot_approval_payload(data)
+                        if approval_payload is not None:
+                            yield f"data: {json.dumps({'approval': approval_payload})}\n\n"
+                            continue
+
+                        # Skip web-only fields
+                        if any(
+                            key in data
+                            for key in [
+                                "conversation_description",
+                                "user_message_id",
+                                "bot_message_id",
+                                "stream_id",
+                                "tool_data",
+                                "tool_output",
+                                "follow_up_actions",
+                            ]
+                        ):
+                            continue
+
+                        # Translate {"response": "..."} → {"text": "..."}
+                        if "response" in data:
+                            yield f"data: {json.dumps({'text': data['response']})}\n\n"
+                        elif "error" in data:
+                            yield f"data: {json.dumps({'error': data['error']})}\n\n"
+                            break
+                    except json.JSONDecodeError as exc:
+                        log.warning(
+                            f"{LogTag.API} Bot stream: dropped a malformed SSE chunk",
+                            error_type=type(exc).__name__,
+                        )
+                        continue
+            except asyncio.CancelledError:
+                # Client disconnected mid-stream — expected, not an error. The
+                # background LangGraph task keeps running and persists the result.
+                log.set(client_disconnected=True)
+                log.info(f"{LogTag.API} Bot stream cancelled (client disconnected)")
+                raise
+            except Exception as e:
+                log.error(
+                    f"{LogTag.API} Bot stream subscription error",
+                    stream_id=stream_id,
+                    conversation_id=conversation_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
+                yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
 
     return StreamingResponse(stream_from_redis(), media_type="text/event-stream")
 
 
 @router.post(
     "/reset-session",
+    response_model=ResetSessionResponse,
     status_code=200,
     summary="Reset Bot Session",
     description="Start a new conversation, archiving the current one.",
 )
-async def reset_session(request: Request, body: ResetSessionRequest) -> dict:
+async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSessionResponse:
     """Archive the current conversation and start a fresh bot session."""
     await require_bot_api_key(request)
     log.set(operation="reset_session", platform=body.platform)
 
+    # `user` is one of two genuinely different untyped dict shapes here —
+    # middleware's `build_user_context()` output (has "user_id", no "_id") or
+    # PlatformLinkService's legacy dict (has "_id", no "user_id") — normalized
+    # below and handed to BotService, which re-normalizes it the same way for
+    # every other bot endpoint. Unifying the two shapes is a cross-file change
+    # (platform_link_service.py, bot_auth_middleware.py, bot_service.py) out
+    # of scope here; see API CLAUDE.md Type Safety §14.
     user = getattr(request.state, "user", None)
     if not user or not getattr(request.state, "authenticated", False):
         user = await PlatformLinkService.get_user_by_platform_id(
@@ -356,7 +465,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> dict:
         body.platform, body.platform_user_id, body.channel_id, user
     )
     log.set(outcome="success")
-    return {"success": True, "conversation_id": new_conversation_id}
+    return ResetSessionResponse(success=True, conversation_id=new_conversation_id)
 
 
 @router.get(
@@ -366,6 +475,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> dict:
     summary="Check Auth Status",
     description="Check if a platform user is linked to a GAIA account.",
 )
+# evlog-map-disable-next-line audit -- read-only auth status probe, no state change to audit
 async def check_auth_status(
     request: Request,
     platform: str,
@@ -387,12 +497,11 @@ async def check_auth_status(
 
 @router.get(
     "/linked-users/{platform}",
-    response_model=LinkedUsersResponse,
     status_code=200,
     summary="List Linked Platform Users",
     description="List platform_user_ids of accounts linked to a platform (bots use this to pre-warm DM caches).",
 )
-async def list_linked_users(request: Request, platform: str) -> JSONResponse:
+async def list_linked_users(request: Request, platform: str) -> LinkedUsersResponse:
     """Return the platform_user_ids linked on the given platform."""
     await require_bot_api_key(request)
     log.set(operation="list_linked_users", platform=platform)
@@ -400,7 +509,7 @@ async def list_linked_users(request: Request, platform: str) -> JSONResponse:
         raise HTTPException(status_code=400, detail="Invalid platform")
     ids = await PlatformLinkService.list_platform_user_ids(platform)
     log.set(outcome="success", linked_count=len(ids))
-    return JSONResponse(content=LinkedUsersResponse(platform_user_ids=ids).model_dump())
+    return LinkedUsersResponse(platform_user_ids=ids)
 
 
 @router.get(
@@ -451,7 +560,12 @@ async def get_settings(
                         )
                     )
     except Exception as e:
-        log.error(f"{LogTag.API} Error fetching integrations for settings: {e}")
+        log.error(
+            f"{LogTag.API} Error fetching integrations for settings",
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
 
     user_name = user.get("name") or user.get("username")
     profile_image_url = user.get("profile_image_url") or user.get("avatar_url")
@@ -471,11 +585,12 @@ async def get_settings(
 
 @router.post(
     "/unlink",
+    response_model=UnlinkAccountResponse,
     status_code=200,
     summary="Unlink Platform Account",
     description="Disconnect a platform account from the linked GAIA user.",
 )
-async def unlink_account(request: Request) -> dict:
+async def unlink_account(request: Request) -> UnlinkAccountResponse:
     """Unlink a platform user from their GAIA account."""
     await require_bot_api_key(request)
     log.set(operation="unlink_account")
@@ -489,18 +604,35 @@ async def unlink_account(request: Request) -> dict:
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
 
+    # PlatformLinkService.get_user_by_platform_id returns a transitional
+    # legacy dict (see `user_to_legacy_dict`) shared by several bot endpoints;
+    # only "_id" is read here, so it stays a dict rather than introducing a
+    # one-off model for a single field (API CLAUDE.md Type Safety §14).
     user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
     if not user:
+        log.audit(
+            "platform account unlink rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource=platform_user_id,
+            provider=platform,
+            reason="account_not_linked",
+        )
         raise HTTPException(status_code=404, detail="Account not linked")
 
     user_id = str(user["_id"])
     await PlatformLinkService.unlink_account(user_id, platform)
+    log.audit(
+        "platform account unlinked",
+        actor=user_id,
+        resource=platform_user_id,
+        provider=platform,
+    )
 
     cache_key = f"bot_user:{platform}:{platform_user_id}"
     await redis_cache.client.delete(cache_key)
 
     log.set(platform=platform, outcome="success")
-    return {"success": True}
+    return UnlinkAccountResponse(success=True)
 
 
 @router.post(
@@ -522,9 +654,13 @@ async def unlink_account(request: Request) -> dict:
 async def transcribe_bot_audio(
     request: Request,
     file: Annotated[UploadFile, File(...)],
-    user: Annotated[dict, Depends(get_current_user)],
+    # `tiered_rate_limit` finds the caller by reading the `user` keyword argument
+    # FastAPI injects and pulling "user_id" off it, so this stays the full auth
+    # dict rather than a `get_user_id` string — narrowing it would silently skip
+    # rate limiting for this route.
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     content_length: Annotated[int | None, Header(alias="content-length")] = None,
-) -> dict:
+) -> TranscribeAudioResponse:
     """Convert audio bytes into a transcript for bot adapters."""
     await require_bot_api_key(request)
     log.set(operation="bot_transcribe_audio", user={"id": user.get("user_id")})
@@ -545,9 +681,9 @@ async def transcribe_bot_audio(
     try:
         normalized = validate_audio_payload(content_type=file.content_type, size=len(audio_bytes))
     except AudioTooLargeError as e:
-        raise HTTPException(status_code=413, detail=str(e))
+        raise HTTPException(status_code=413, detail=str(e)) from e
     except UnsupportedAudioFormatError as e:
-        raise HTTPException(status_code=415, detail=str(e))
+        raise HTTPException(status_code=415, detail=str(e)) from e
 
     filename = file.filename or "voice-note"
     try:
@@ -557,7 +693,13 @@ async def transcribe_bot_audio(
             content_type=normalized,
         )
     except Exception as e:
-        log.error(f"{LogTag.API} Transcription failed: {e}", exc_info=True)
-        raise HTTPException(status_code=502, detail="Transcription failed")
+        log.error(
+            f"{LogTag.API} Transcription failed",
+            filename=filename,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=502, detail="Transcription failed") from e
 
-    return {"text": text}
+    return TranscribeAudioResponse(text=text)

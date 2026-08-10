@@ -3,8 +3,6 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 # Pre-import to break circular dependency chain:
 # workflow_tool -> workflow_utils -> workflow.subagent_output -> workflow.__init__ -> service -> workflow_utils
 import app.services.workflow.service  # noqa: F401
@@ -99,7 +97,6 @@ def _make_workflow_mock(**overrides: Any) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateWorkflow:
     """Tests for the create_workflow tool."""
 
@@ -121,7 +118,6 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="send me a summary every morning",
-                mode="new",
             )
 
         assert result["success"] is True
@@ -145,7 +141,6 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="create a workflow",
-                mode="new",
             )
 
         assert result["success"] is True
@@ -169,7 +164,6 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="create workflow",
-                mode="new",
             )
 
         assert result["success"] is False
@@ -185,66 +179,10 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="",
-                mode="new",
             )
 
         assert result["success"] is False
         assert result["error"] == "missing_request"
-
-    async def test_invalid_mode(self) -> None:
-        """Invalid mode returns error."""
-        from app.agents.tools.workflow_tool import create_workflow
-
-        with patch(f"{MODULE}.get_stream_writer") as mock_writer_factory:
-            mock_writer_factory.return_value = _writer_mock()
-
-            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
-                config=_make_config(),
-                user_request="test",
-                mode="invalid",
-            )
-
-        assert result["success"] is False
-        assert result["error"] == "invalid_mode"
-
-    async def test_from_conversation_no_thread(self) -> None:
-        """from_conversation mode without thread_id returns error."""
-        from app.agents.tools.workflow_tool import create_workflow
-
-        config = _make_config()
-        config["configurable"]["thread_id"] = ""
-
-        with patch(f"{MODULE}.get_stream_writer") as mock_writer_factory:
-            mock_writer_factory.return_value = _writer_mock()
-
-            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
-                config=config,
-                user_request="save this",
-                mode="from_conversation",
-            )
-
-        assert result["success"] is False
-        assert result["error"] == "no_context"
-
-    async def test_from_conversation_extraction_fails(self) -> None:
-        """from_conversation returns error when context extraction fails."""
-        from app.agents.tools.workflow_tool import create_workflow
-
-        with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
-            patch(f"{MODULE}.WorkflowContextExtractor") as mock_extractor,
-        ):
-            mock_writer_factory.return_value = _writer_mock()
-            mock_extractor.extract_from_thread = AsyncMock(return_value=None)
-
-            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
-                config=_make_config(),
-                user_request="save this",
-                mode="from_conversation",
-            )
-
-        assert result["success"] is False
-        assert result["error"] == "extraction_failed"
 
     async def test_subagent_exception(self) -> None:
         """Subagent runner exception returns error."""
@@ -260,7 +198,6 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="make a workflow",
-                mode="new",
             )
 
         assert result["success"] is False
@@ -291,7 +228,6 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="run daily at 9am",
-                mode="new",
             )
 
         assert result == direct_result
@@ -321,7 +257,6 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="run daily",
-                mode="new",
             )
 
         assert result["success"] is True
@@ -334,7 +269,6 @@ class TestCreateWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWorkflow:
     """Tests for the get_workflow tool."""
 
@@ -403,7 +337,6 @@ class TestGetWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteWorkflow:
     """Tests for the execute_workflow tool."""
 
@@ -456,7 +389,6 @@ class TestExecuteWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSearchTriggers:
     """Tests for the search_triggers shared tool."""
 
@@ -502,7 +434,6 @@ class TestSearchTriggers:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListWorkflows:
     """Tests for the list_workflows shared tool."""
 
@@ -518,7 +449,7 @@ class TestListWorkflows:
         ):
             writer = _writer_mock()
             mock_writer_factory.return_value = writer
-            mock_service.list_workflows = AsyncMock(return_value=[workflow])
+            mock_service.list_workflows = AsyncMock(return_value=([workflow], 1))
 
             result = await list_workflows.coroutine(config=_make_config())  # type: ignore[attr-defined]
 

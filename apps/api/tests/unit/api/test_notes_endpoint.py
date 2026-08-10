@@ -12,7 +12,6 @@ propagate to the global handler. With ``ASGITransport(raise_app_exceptions=True)
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 NOTES_BASE = "/api/v1/notes"
 
@@ -27,7 +26,6 @@ FAKE_NOTE_RESPONSE = {
 }
 
 
-@pytest.mark.unit
 class TestCreateNote:
     """POST /api/v1/notes"""
 
@@ -88,7 +86,6 @@ class TestCreateNote:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestGetNote:
     """GET /api/v1/notes/{note_id}"""
 
@@ -116,7 +113,6 @@ class TestGetNote:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestGetAllNotes:
     """GET /api/v1/notes"""
 
@@ -155,7 +151,6 @@ class TestGetAllNotes:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestUpdateNote:
     """PUT /api/v1/notes/{note_id}"""
 
@@ -214,7 +209,6 @@ class TestUpdateNote:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestDeleteNote:
     """DELETE /api/v1/notes/{note_id}"""
 

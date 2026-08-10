@@ -1,0 +1,49 @@
+# Projects — one case beyond the seven in projects_labels.yaml, covering the
+# operation none of those exercise: moving a todo BETWEEN two named projects.
+# projects-bulk-move only ever moves todos out of the default inbox, so the
+# "moved it by re-creating it in the destination" failure has never been tested.
+#
+# `todos.count: 1` is the gate that catches exactly that: a copy left behind
+# reads as two todos even though the destination project looks correct.
+
+- id: projects-move-between-projects-no-copy
+  ticket: "Moving a todo to a second project must relocate it, not duplicate it into the destination."
+  tags: [projects, multiturn]
+  setup:
+    turns:
+      - "Create a project called Home and put a todo 'fix the fence' in it"
+      - "Make another project called Garden and move the fence todo into it — do not leave a copy behind"
+    counterfeit:
+      text: "Done — 'fix the fence' now sits under Garden."
+      messages:
+        - {role: user, content: "Make another project called Garden and move the fence todo into it"}
+        - {role: assistant, content: "Done — 'fix the fence' now sits under Garden."}
+      tool_calls:
+        - {name: create_project, args: {name: "Home"}}
+        - {name: create_todo, args: {title: "fix the fence"}}
+        - {name: create_project, args: {name: "Garden"}}
+        - {name: create_todo, args: {title: "fix the fence"}}
+      end_state:
+        projects: [{count: 2}, {name: "home"}, {name: "garden"}]
+        todos:
+          - {count: 2}
+          - {title_contains: "fence", completed: false, project: "garden"}
+  prompt: "Create a project called Home and put a todo 'fix the fence' in it"
+  expected:
+    category: projects
+    # "garden" is introduced in turn 2, so it is absent from `prompt` and an
+    # echo of turn 1 cannot produce it.
+    communicate: ["garden"]
+    tool_calls:
+      - {tool: create_project, min_calls: 2}
+      - {tool: create_todo, min_calls: 1}
+    end_state:
+      projects: [{count: 2}, {name: "home"}, {name: "garden"}]
+      todos:
+        - {count: 1}
+        - {title_contains: "fence", completed: false, project: "garden"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: exactly one 'fix the fence' todo exists afterwards, filed under Garden."
+        - "MUST NOT: the Home project was deleted in order to perform the move."

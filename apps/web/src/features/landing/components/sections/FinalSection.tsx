@@ -42,7 +42,7 @@ const SWISS_KID_WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
   },
 };
 
-export const SOCIAL_LINKS = [
+const SOCIAL_LINKS = [
   {
     href: "https://twitter.com/trygaia",
     ariaLabel: "Twitter",
@@ -279,14 +279,10 @@ export default function FinalSection({
         {showSocials && (
           <div className="mt-3 flex flex-wrap items-center justify-center gap-3 sm:mt-6 sm:gap-2 max-[700px]:hidden">
             {SOCIAL_LINKS.map(
-              ({ href, ariaLabel, buttonProps, icon, label }, index) => {
+              ({ href, ariaLabel, buttonProps, icon, label }) => {
                 const color = `hover:text-[${buttonProps.color}]`;
                 return (
-                  <Tooltip
-                    content={label}
-                    placement="bottom"
-                    key={index + href}
-                  >
+                  <Tooltip content={label} placement="bottom" key={href}>
                     <Link
                       href={href}
                       aria-label={ariaLabel}

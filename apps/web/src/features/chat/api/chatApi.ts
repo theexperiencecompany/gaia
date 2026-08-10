@@ -2,17 +2,28 @@ import {
   type EventSourceMessage,
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
+import type {
+  ApprovalDecisionPayload,
+  BatchApprovalDecisionPayload,
+  BatchApprovalDecisionResponse,
+} from "@shared/chat";
 
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { apiService } from "@/lib/api/service";
 import { desktopClientHeaders } from "@/lib/electron/api";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { getBrowserTimezone } from "@/lib/timezone";
+import { toast } from "@/lib/toast";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
+import {
+  getErrorMessage,
+  handleRateLimitError,
+} from "@/utils/interceptorUtils";
 
 /** Thrown when the backend rejects a send whose turn_id was already claimed —
  *  the original request is (or was) processing; the retry must not re-run. */
@@ -23,7 +34,19 @@ export class DuplicateTurnError extends Error {
   }
 }
 
+/** Thrown when a send is rejected by a usage wall (429). The rate-limit
+ *  upsell toast is shown at throw time, so downstream failure handling must
+ *  not add a generic error toast on top. */
+export class RateLimitError extends Error {
+  constructor(message?: string) {
+    super(message || "Usage limit reached");
+    this.name = "RateLimitError";
+  }
+}
+
 const HTTP_CONFLICT = 409;
+const HTTP_GONE = 410;
+const HTTP_TOO_MANY_REQUESTS = 429;
 
 export interface ChatStreamRequest {
   inputText: string;
@@ -129,6 +152,7 @@ export interface SyncedConversation {
   createdAt: string;
   updatedAt?: string;
   messages: MessageType[];
+  artifacts?: ArtifactData[];
   /** Stream id of the conversation's in-flight turn, null when idle — the
    *  re-attach discovery for reloads, carried on the sync response so opening
    *  a conversation costs a single request. */
@@ -164,9 +188,15 @@ export const chatApi = {
   },
 
   // File upload
-  uploadFile: async (file: File): Promise<FileUploadResponse> => {
+  uploadFile: async (
+    file: File,
+    conversationId?: string,
+  ): Promise<FileUploadResponse> => {
     const formData = new FormData();
     formData.append("file", file);
+    if (conversationId) {
+      formData.append("conversation_id", conversationId);
+    }
 
     // No errorMessage override: let the backend detail surface (e.g. the 413
     // "File size exceeds the N MB limit." or 415 unsupported-type message)
@@ -339,6 +369,16 @@ export const chatApi = {
           if (response.status === HTTP_CONFLICT) {
             throw new DuplicateTurnError();
           }
+          // Usage wall (message count or cost budget exhausted): render the
+          // rate-limit upsell UI here — the axios interceptor never sees this
+          // request — and throw typed so failure handling skips its generic toast.
+          if (response.status === HTTP_TOO_MANY_REQUESTS) {
+            const data: unknown = await response.json().catch(() => undefined);
+            if (!handleRateLimitError(data)) {
+              toast.error("Too many requests. Please try again later.");
+            }
+            throw new RateLimitError(getErrorMessage(data));
+          }
           if (
             !response.ok ||
             !response.headers.get("content-type")?.includes("text/event-stream")
@@ -473,5 +513,41 @@ export const chatApi = {
     await apiService.post("/desktop/tool-result", result, {
       silent: true,
     });
+  },
+
+  /**
+   * Relay a HIL approval decision to the awaiting agent gate. Silent — the
+   * caller surfaces real failures; a 410 (already resolved elsewhere) resolves
+   * over the stream regardless, so it's swallowed here rather than surfaced.
+   */
+  postApprovalDecision: async (
+    approvalId: string,
+    decision: ApprovalDecisionPayload,
+  ): Promise<void> => {
+    try {
+      await apiService.post(`/approvals/${approvalId}/decision`, decision, {
+        silent: true,
+      });
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      if (status === HTTP_GONE) return;
+      throw error;
+    }
+  },
+
+  /**
+   * Decide several pending approvals in one submission (the batch review's
+   * "Approve all"/"Decline all"). Per-approval outcomes come back in the
+   * response — an already-resolved item never fails the rest.
+   */
+  postApprovalBatchDecision: async (
+    payload: BatchApprovalDecisionPayload,
+  ): Promise<BatchApprovalDecisionResponse> => {
+    return apiService.post<BatchApprovalDecisionResponse>(
+      "/approvals/batch-decision",
+      payload,
+      { silent: true },
+    );
   },
 };

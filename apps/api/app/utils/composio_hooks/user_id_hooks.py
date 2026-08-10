@@ -50,7 +50,12 @@ def extract_user_id_from_params(
     # The Composio API requires entity_id for connected account authentication
     params["user_id"] = user_id
     params["entity_id"] = user_id
-    log.debug(f"{LogTag.COMPOSIO} Extracted user_id/entity_id '{user_id}' for {toolkit}:{tool}")
+    log.debug(
+        f"{LogTag.COMPOSIO} Extracted user_id/entity_id for",
+        user_id=user_id,
+        toolkit=toolkit,
+        tool=tool,
+    )
     return params
 
 

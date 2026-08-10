@@ -15,7 +15,6 @@ set -e
 # ---------------------------------------------------------------------------
 # 1. Docker Swarm secrets → env vars
 # ---------------------------------------------------------------------------
-[ -f /run/secrets/gaia_infisical_token ]                          && export INFISICAL_TOKEN=$(cat /run/secrets/gaia_infisical_token)
 [ -f /run/secrets/gaia_infisical_machine_identity_client_id ]     && export INFISICAL_MACHINE_IDENTITY_CLIENT_ID=$(cat /run/secrets/gaia_infisical_machine_identity_client_id)
 [ -f /run/secrets/gaia_infisical_machine_identity_client_secret ] && export INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=$(cat /run/secrets/gaia_infisical_machine_identity_client_secret)
 [ -f /run/secrets/gaia_infisical_project_id ]                     && export INFISICAL_PROJECT_ID=$(cat /run/secrets/gaia_infisical_project_id)
@@ -49,7 +48,7 @@ for v in $_jfs_required; do
     fi
 done
 
-if [ "$_jfs_missing" = "1" ] && [ -n "${INFISICAL_TOKEN:-}" ] && [ -n "${INFISICAL_MACHINE_IDENTITY_CLIENT_ID:-}" ]; then
+if [ "$_jfs_missing" = "1" ] && [ -n "${INFISICAL_MACHINE_IDENTITY_CLIENT_ID:-}" ] && [ -n "${INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET:-}" ] && [ -n "${INFISICAL_PROJECT_ID:-}" ]; then
     _jfs_env_file="$(mktemp)"
     if python - "$_jfs_env_file" <<'PY'
 import os

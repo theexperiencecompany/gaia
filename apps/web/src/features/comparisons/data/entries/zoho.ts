@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "All-in-one business suite covering CRM, email, projects, and more",
   description:
     "Zoho One bundles 50+ business applications into a single subscription covering CRM, project management, email, HR, and finance. GAIA is a proactive AI assistant that augments the tools you already use — including Zoho apps — rather than requiring a full platform migration.",
-  metaTitle: "Zoho Alternative with Proactive AI Assistance | GAIA vs Zoho",
+  metaTitle: "Zoho Alternative with Proactive AI Assistance — GAIA vs Zoho",
   metaDescription:
     "Zoho One bundles 50+ apps but requires learning a new ecosystem. GAIA is an open-source alternative that adds proactive AI to your existing tools — Gmail, Slack, Notion, and 50+ more — free tier available.",
   keywords: [

@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
   description:
     "Forest is a focus app that helps you stay off your phone by growing a virtual tree during focus sessions. GAIA takes a proactive approach to focus — scheduling protected work blocks, managing distracting email, and automating routine tasks so you can focus on the work that actually matters.",
   metaTitle:
-    "Forest App Alternative with AI-Powered Focus Management | GAIA vs Forest",
+    "Forest App Alternative with AI-Powered Focus Management — GAIA vs Forest",
   metaDescription:
     "Forest helps you avoid your phone but can't manage your workflow. GAIA is an open-source alternative that proactively schedules focus time, manages your inbox, and automates tasks across 50+ tools — free tier available.",
   keywords: [

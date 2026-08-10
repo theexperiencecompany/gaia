@@ -38,6 +38,10 @@ services:
       FORCE_COLOR: 0
       WORKER_TYPE: main_app
       PYTHONPATH: /app/apps/api
+      # Dev auth bypass: off unless the caller exports it (e.g. `mise dev:vm --agent`
+      # / `--sim`, which derive it from DEV_USER). Overrides the commented-out value
+      # in apps/api/.env; empty means real WorkOS login. Development compose only.
+      DEV_AUTH_BYPASS_EMAIL: ${DEV_AUTH_BYPASS_EMAIL:-}
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       # Share one copy of the embedding/reranker weights via the sidecar.
@@ -70,12 +74,16 @@ services:
       # ("cannot watch path on network filesystem"). Use the JuiceFS-native
       # .accesslog tail instead — the Phase 0 verdict for this stack.
       ARTIFACT_DETECTION_MODE: accesslog
-      # JUICEFS_META_URL_TEMPLATE is intentionally NOT overridden: the API host
-      # and the E2B sandboxes must share one JuiceFS namespace (the artifact
-      # watcher reads host-side what the sandbox wrote). Let Infisical supply
-      # the same cloud meta the sandboxes use. A local postgres meta would be a
-      # separate namespace over the same R2 volume — JuiceFS refuses to
-      # double-format it ("Storage ... is not empty; pick another volume name").
+      # Dev overrides the Infisical/cloud JUICEFS_META_URL_TEMPLATE (redis DB
+      # numbers, {shard} = the DB index) with the local jfs-meta-redis service.
+      # Prod keeps the cloud meta so the API host and the E2B sandboxes share
+      # one namespace — a local meta is a separate namespace over the same R2
+      # volume, so juicefs refuses to double-format it. That constraint is
+      # acceptable in dev (no sandbox mounts against the dev API); if you hit
+      # "Storage ... is not empty", point the sandbox and API at the same meta
+      # URL or format against a fresh bucket. The cache/queue redis below is
+      # NOT a valid meta store — its eviction policy can corrupt the FS.
+      JUICEFS_META_URL_TEMPLATE: redis://jfs-meta-redis:6379/{shard}
     env_file:
       - ../../apps/api/.env
     volumes:
@@ -114,6 +122,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      jfs-meta-redis:
         condition: service_healthy
       mongo:
         condition: service_healthy
@@ -157,7 +167,8 @@ services:
       POSTGRES_DB: langgraph
     volumes:
       - pgdata:/var/lib/postgresql
-      # postgres-init/*.sql runs once on first init — creates gaia_juicefs_0
+      # postgres-init/*.sql runs once on first init (test DB for the real-infra
+      # suite). JuiceFS metadata now lives in jfs-meta-redis, not Postgres.
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
@@ -170,7 +181,9 @@ services:
     networks:
       - gaia_network
 
-  # Redis Service
+  # Redis Service (app cache/queue — SSE channels, rate limits, ARQ). NOT a
+  # JuiceFS metadata store: default Redis eviction can silently corrupt the
+  # filesystem. Metadata lives in jfs-meta-redis below.
   redis:
     image: redis:8-alpine
     container_name: redis
@@ -178,6 +191,47 @@ services:
       - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - gaia_network
+
+  # JuiceFS metadata Redis. Mirrors prod (docker-compose.prod.yml) minus TLS
+  # and auth — the dev API mounts over the compose network, never the public
+  # internet. Holds the whole directory tree + inode→chunk mapping; R2 stores
+  # only anonymous blocks, so losing this loses the filesystem. Hence
+  # noeviction (a cache miss is a bad read; an evicted metadata key is
+  # corruption) and appendfsync always. Every dev client uses its own DB
+  # number: redis://jfs-meta-redis:6379/{shard}.
+  jfs-meta-redis:
+    image: redis:8-alpine
+    container_name: jfs-meta-redis
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--appendfsync",
+        "always",
+        "--maxmemory-policy",
+        "noeviction",
+        "--stop-writes-on-bgsave-error",
+        "yes",
+        "--save",
+        "900 1",
+        "--save",
+        "300 10",
+        "--save",
+        "60 10000",
+      ]
+    ports:
+      - "${JFS_META_REDIS_HOST_PORT:-6380}:6379"
+    volumes:
+      - jfs_meta_data:/data
     restart: on-failure
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -258,10 +312,10 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - CHROMADB_HOST=chromadb
       - CHROMADB_PORT=8000
-      - JUICEFS_META_URL_TEMPLATE=postgres://postgres:postgres@postgres:5432/gaia_juicefs_{shard}?sslmode=disable
+      - JUICEFS_META_URL_TEMPLATE=redis://jfs-meta-redis:6379/{shard}
     expose:
       - "9100"
-    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
+    command: ["python", "-m", "arq", "app.worker.WorkerSettings", "--custom-log-dict", "app.workers.config.log_config.ARQ_LOG_CONFIG"]
     restart: always
     volumes:
       - ../../apps/api/app:/app/apps/api/app
@@ -278,6 +332,8 @@ services:
       - apparmor:unconfined
     depends_on:
       redis:
+        condition: service_healthy
+      jfs-meta-redis:
         condition: service_healthy
       mongo:
         condition: service_healthy
@@ -515,6 +571,12 @@ services:
     container_name: promtail
     profiles: ["observability", "all"]
     user: root
+    # The config expands ${LOKI_PUSH_URL:-...} — promtail only expands env vars
+    # when told to, and the image default doesn't. Without this flag promtail
+    # dies at startup parsing the unexpanded URL.
+    command:
+      - -config.file=/etc/promtail/config.yaml
+      - -config.expand-env=true
     # Prevent log feedback loop — Promtail's own stdout must not be captured by
     # Docker, or JSON parse errors spiral into tens of GB of disk usage.
     logging:
@@ -522,12 +584,30 @@ services:
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
+      # Persist read positions across container recreations — without this,
+      # promtail re-ingests every retained structured-*.json from byte 0.
+      - promtail_positions:/var/lib/promtail
       # Mount local log files so promtail can ship them even when services
-      # run outside Docker (nx dev api, nx worker api, nx dev voice-agent).
+      # run outside Docker (nx dev api, nx worker api, nx dev voice-agent,
+      # nx dev bot-<platform>). These back the file jobs in
+      # observability/promtail-config.yaml — a __path__ whose directory is not
+      # mounted here reads nothing, forever, silently.
+      #
+      # The bots need this for the SAME reason the Python services do, and only
+      # for the same case: a bot started with `nx dev bot-<platform>` runs on
+      # the host with cwd apps/bots/<platform> and writes
+      # logs/structured-<date>.json (libs/shared/ts/src/bots/utils/log-file-sink.ts).
+      # A *dockered* bot writes no such file — the image's WORKDIR is /app so
+      # the sink never resolves a directory — and is scraped from container
+      # stdout by the `docker` job below instead, which explicitly keeps
+      # discord-bot|slack-bot|telegram-bot|whatsapp-bot.
       - ../../apps/api/logs:/var/log/gaia-api:ro
       - ../../apps/api/logs/worker:/var/log/gaia-worker:ro
       - ../../apps/voice-agent/logs:/var/log/gaia-voice-agent:ro
-    command: -config.file=/etc/promtail/config.yaml
+      - ../../apps/bots/discord/logs:/var/log/gaia-discord-bot:ro
+      - ../../apps/bots/slack/logs:/var/log/gaia-slack-bot:ro
+      - ../../apps/bots/telegram/logs:/var/log/gaia-telegram-bot:ro
+      - ../../apps/bots/whatsapp/logs:/var/log/gaia-whatsapp-bot:ro
     restart: unless-stopped
     depends_on:
       loki:
@@ -555,7 +635,10 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
       # Use the provisioned GAIA Overview dashboard as the home page
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/overview.json
-      # Slack webhook consumed by contact-points.yaml (leave empty to disable alerts)
+      # Slack webhook consumed by contact-points.yaml. Empty = no alerts; Grafana
+      # 11 still validates provisioning cleanly with an empty webhook (verified).
+      # A real webhook enables alert delivery when set. No placeholder is used —
+      # a fake hooks.slack.com URL trips GitHub push protection's secret scanner.
       SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
       SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
       # Destination for the email contact point ($__env{GRAFANA_ALERT_EMAIL} in
@@ -605,6 +688,7 @@ volumes:
   chroma_data:
   pgdata:
   redis_data:
+  jfs_meta_data:
   mongo_data:
   rabbitmq_data:
   voice_agent_models:
@@ -612,6 +696,7 @@ volumes:
   loki_data:
   grafana_data:
   prometheus_data:
+  promtail_positions:
   juicefs_cache:
 
 networks:

@@ -12,8 +12,8 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
 )
 from app.api.v1.middleware.agent_auth import create_agent_token
-from app.api.v1.middleware.tiered_rate_limiter import tiered_rate_limit
 from app.config.settings import settings
+from app.decorators import tiered_rate_limit
 from app.schemas.voice_schemas import (
     StarredVoicesResponse,
     StarVoiceRequest,
@@ -98,7 +98,7 @@ async def get_token(
             )
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate voice token: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate voice token: {e!s}") from e
 
     log.set(outcome="success")
     return VoiceTokenResponse(

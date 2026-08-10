@@ -12,8 +12,22 @@ from app.agents.core.subagents.handoff_tools import (
     index_custom_mcp_as_subagent,
 )
 from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
+from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
+
+
+def _integration(integration_id: str, name: str, **overrides: object) -> Integration:
+    data: dict[str, object] = {
+        "integration_id": integration_id,
+        "name": name,
+        "description": "",
+        "category": "custom",
+        "managed_by": "mcp",
+        "source": "custom",
+    }
+    data.update(overrides)
+    return Integration.model_validate(data)
 
 
 def _make_subagent_config(agent_name: str = "gmail_agent") -> SubAgentConfig:
@@ -154,14 +168,14 @@ class TestGetSubagentById:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch("app.agents.core.subagents.handoff_tools.integrations_collection") as mock_col,
+            patch("app.agents.core.subagents.handoff_tools.integration_repository") as mock_repo,
             patch("app.agents.core.subagents.handoff_tools.IntegrationResolver") as mock_resolver,
             patch(
                 "app.agents.core.subagents.handoff_tools.set_cache",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_col.find_one = AsyncMock(return_value=None)
+            mock_repo.find_by_id_prefix_or_name = AsyncMock(return_value=None)
             mock_resolver.resolve = AsyncMock(return_value=None)
             result = await _get_subagent_by_id("slack")
         assert result is None
@@ -198,14 +212,12 @@ class TestGetSubagentById:
         assert result is None
 
     async def test_finds_custom_from_mongodb(self):
-        custom_doc = {
-            "integration_id": "abc",
-            "name": "My MCP",
-            "source": "custom",
-            "managed_by": "mcp",
-            "mcp_config": {"url": "https://example.com"},
-            "icon_url": "https://example.com/icon.png",
-        }
+        custom = _integration(
+            "abc",
+            "My MCP",
+            mcp_config=MCPConfig(server_url="https://example.com"),
+            icon_url="https://example.com/icon.png",
+        )
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
@@ -216,13 +228,13 @@ class TestGetSubagentById:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch("app.agents.core.subagents.handoff_tools.integrations_collection") as mock_col,
+            patch("app.agents.core.subagents.handoff_tools.integration_repository") as mock_repo,
             patch(
                 "app.agents.core.subagents.handoff_tools.set_cache",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_col.find_one = AsyncMock(return_value=custom_doc)
+            mock_repo.find_by_id_prefix_or_name = AsyncMock(return_value=custom)
             result = await _get_subagent_by_id("abc")
 
         assert result["id"] == "abc"
@@ -246,14 +258,14 @@ class TestGetSubagentById:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch("app.agents.core.subagents.handoff_tools.integrations_collection") as mock_col,
+            patch("app.agents.core.subagents.handoff_tools.integration_repository") as mock_repo,
             patch("app.agents.core.subagents.handoff_tools.IntegrationResolver") as mock_resolver,
             patch(
                 "app.agents.core.subagents.handoff_tools.set_cache",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_col.find_one = AsyncMock(return_value=None)
+            mock_repo.find_by_id_prefix_or_name = AsyncMock(return_value=None)
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             result = await _get_subagent_by_id("res_id")
 

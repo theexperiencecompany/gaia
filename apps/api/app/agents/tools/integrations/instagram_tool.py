@@ -3,6 +3,7 @@
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
@@ -17,13 +18,14 @@ def register_instagram_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="INSTAGRAM")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Instagram context snapshot: profile info and recent media.
 
         Zero required parameters. Returns authenticated user's Instagram state.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = auth_credentials.get("user_id")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")
@@ -74,7 +76,11 @@ def register_instagram_custom_tools(composio: Composio) -> list[str]:
                 for m in media_data.get("data", [])
             ]
         except Exception as e:
-            log.warning(f"{LogTag.TOOL} Instagram media fetch failed for user {user_id}: {e}")
+            log.warning(
+                f"{LogTag.TOOL} Instagram media fetch failed",
+                user_id=user_id,
+                error_type=type(e).__name__,
+            )
 
         return {
             "user": {

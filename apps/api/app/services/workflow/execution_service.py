@@ -8,10 +8,12 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflow_executions_collection
+from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.workflow_execution_models import (
     WorkflowExecution,
+    WorkflowExecutionDocument,
     WorkflowExecutionsResponse,
+    WorkflowExecutionStatus,
 )
 from shared.py.wide_events import log
 
@@ -34,17 +36,17 @@ async def create_execution(
     Returns:
         The created WorkflowExecution record
     """
-    execution = WorkflowExecution(
-        execution_id=f"exec_{uuid4().hex[:12]}",
-        workflow_id=workflow_id,
-        user_id=user_id,
-        status="running",
-        started_at=datetime.now(UTC),
-        trigger_type=trigger_type,
-        conversation_id=conversation_id,
+    execution = await workflow_executions_repository.create(
+        WorkflowExecutionDocument(
+            execution_id=f"exec_{uuid4().hex[:12]}",
+            workflow_id=workflow_id,
+            user_id=user_id,
+            status="running",
+            started_at=datetime.now(UTC),
+            trigger_type=trigger_type,
+            conversation_id=conversation_id,
+        )
     )
-
-    await workflow_executions_collection.insert_one(execution.model_dump())
     log.set(
         workflow={
             "id": workflow_id,
@@ -54,7 +56,9 @@ async def create_execution(
         }
     )
     log.info(
-        f"{LogTag.WORKFLOW} Created execution {execution.execution_id} for workflow {workflow_id}"
+        f"{LogTag.WORKFLOW} Created execution for workflow",
+        execution_id=execution.execution_id,
+        workflow_id=workflow_id,
     )
 
     return execution
@@ -62,7 +66,7 @@ async def create_execution(
 
 async def complete_execution(
     execution_id: str,
-    status: str,
+    status: WorkflowExecutionStatus,
     summary: str | None = None,
     error_message: str | None = None,
     conversation_id: str | None = None,
@@ -80,51 +84,39 @@ async def complete_execution(
     Returns:
         True if update succeeded, False otherwise
     """
-    completed_at = datetime.now(UTC)
-
-    # Calculate duration
-    execution = await workflow_executions_collection.find_one({"execution_id": execution_id})
-    if not execution:
-        log.warning(f"{LogTag.WORKFLOW} Execution {execution_id} not found for completion")
+    updated = await workflow_executions_repository.complete(
+        execution_id,
+        status=status,
+        summary=summary,
+        error_message=error_message,
+        conversation_id=conversation_id,
+    )
+    if updated is None:
+        log.warning(
+            f"{LogTag.WORKFLOW} Execution not found for completion",
+            execution_id=execution_id,
+            conversation_id=conversation_id,
+        )
         return False
 
-    started_at = execution.get("started_at")
-    duration_seconds = None
-    if started_at:
-        if isinstance(started_at, datetime):
-            duration_seconds = (completed_at - started_at).total_seconds()
-
-    update_data = {
-        "status": status,
-        "completed_at": completed_at,
-        "duration_seconds": duration_seconds,
-    }
-
-    if summary:
-        update_data["summary"] = summary
-    if error_message:
-        update_data["error_message"] = error_message
-    if conversation_id:
-        update_data["conversation_id"] = conversation_id
-
-    result = await workflow_executions_collection.update_one(
-        {"execution_id": execution_id}, {"$set": update_data}
-    )
-
+    duration_seconds = updated.duration_seconds
     duration_ms = int(duration_seconds * 1000) if duration_seconds is not None else None
     log.set(
         workflow={
-            "id": execution.get("workflow_id"),
+            "id": updated.workflow_id,
             "status": status,
             "execution_id": execution_id,
             "duration_ms": duration_ms,
         }
     )
     log.info(
-        f"{LogTag.WORKFLOW} Completed execution {execution_id} with status {status}, duration {duration_seconds}s"
+        f"{LogTag.WORKFLOW} Completed execution",
+        execution_id=execution_id,
+        status=status,
+        duration_seconds=duration_seconds,
     )
 
-    return result.modified_count > 0
+    return True
 
 
 async def get_workflow_executions(
@@ -145,26 +137,13 @@ async def get_workflow_executions(
     Returns:
         WorkflowExecutionsResponse with paginated executions
     """
-    query = {"workflow_id": workflow_id, "user_id": user_id}
-
-    # Get total count
-    total = await workflow_executions_collection.count_documents(query)
-
-    # Get paginated executions, sorted by most recent first
-    cursor = (
-        workflow_executions_collection.find(query).sort("started_at", -1).skip(offset).limit(limit)
+    executions, total = await workflow_executions_repository.list_for_workflow(
+        workflow_id, user_id, limit=limit, offset=offset
     )
-
-    executions = []
-    async for doc in cursor:
-        # Remove MongoDB _id field
-        doc.pop("_id", None)
-        executions.append(WorkflowExecution(**doc))
-
     has_more = offset + len(executions) < total
 
     return WorkflowExecutionsResponse(
-        executions=executions,
+        executions=list(executions),
         total=total,
         has_more=has_more,
     )

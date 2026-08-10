@@ -7,7 +7,6 @@ to verify routing, status codes, redirects, and cookie handling.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 OAUTH_BASE = "/api/v1/oauth"
 
@@ -38,7 +37,6 @@ def _mock_auth_response(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestClientMetadata:
     """GET /api/v1/oauth/client-metadata.json"""
 
@@ -61,7 +59,6 @@ class TestClientMetadata:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestLoginWorkOS:
     """GET /api/v1/oauth/login/workos"""
 
@@ -106,7 +103,6 @@ class TestLoginWorkOS:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestLoginWorkOSMobile:
     """GET /api/v1/oauth/login/workos/mobile"""
 
@@ -133,7 +129,6 @@ class TestLoginWorkOSMobile:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkOSMobileCallback:
     """GET /api/v1/oauth/workos/mobile/callback"""
 
@@ -205,7 +200,6 @@ class TestWorkOSMobileCallback:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestLoginWorkOSDesktop:
     """GET /api/v1/oauth/login/workos/desktop"""
 
@@ -227,7 +221,6 @@ class TestLoginWorkOSDesktop:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkOSDesktopCallback:
     """GET /api/v1/oauth/workos/desktop/callback"""
 
@@ -278,7 +271,6 @@ class TestWorkOSDesktopCallback:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkOSCallback:
     """GET /api/v1/oauth/workos/callback"""
 
@@ -358,7 +350,6 @@ class TestWorkOSCallback:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestComposioCallback:
     """GET /api/v1/oauth/composio/callback"""
 

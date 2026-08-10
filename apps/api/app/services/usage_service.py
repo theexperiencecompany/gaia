@@ -1,79 +1,36 @@
 """
-Usage tracking service for database operations.
+Usage tracking service — thin orchestration over the usage-snapshot repository.
 """
 
 from datetime import UTC, datetime, timedelta
 
-from app.db.mongodb.collections import usage_snapshots_collection
+from app.db.repositories.usage_snapshots import usage_snapshot_repository
 from app.models.usage_models import UserUsageSnapshot
 
 
 class UsageService:
     @staticmethod
-    def _prepare_doc_for_model(doc: dict) -> dict:
-        """Helper to prepare MongoDB document for Pydantic model."""
-        doc["_id"] = str(doc["_id"])
-        return doc
-
-    @staticmethod
     async def save_usage_snapshot(snapshot: UserUsageSnapshot) -> str:
-        """Save usage snapshot with smart aggregation to prevent document explosion."""
-        snapshot_dict = snapshot.model_dump()
-
-        # Use hourly aggregation to prevent too many documents
-        current_hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
-
-        # Try to update existing document for this hour, or insert new one
-        filter_query = {
-            "user_id": snapshot.user_id,
-            "snapshot_date": {
-                "$gte": current_hour,
-                "$lt": current_hour + timedelta(hours=1),
-            },
-        }
-
-        existing_doc = await usage_snapshots_collection.find_one(filter_query)
-
-        if existing_doc:
-            # Update existing document by merging usage data
-            update_query = {
-                "$set": {
-                    "plan_type": snapshot.plan_type,
-                    "features": [f.model_dump() for f in snapshot.features],
-                    "credits": [c.model_dump() for c in snapshot.credits],
-                    "updated_at": datetime.now(UTC),
-                }
-            }
-            await usage_snapshots_collection.update_one(filter_query, update_query)
-            return str(existing_doc["_id"])
-        # Insert new document
-        snapshot_dict["snapshot_date"] = current_hour
-        result = await usage_snapshots_collection.insert_one(snapshot_dict)
-        return str(result.inserted_id)
+        """Save a usage snapshot, hourly-aggregated to prevent document explosion."""
+        return await usage_snapshot_repository.upsert_hourly(snapshot)
 
     @staticmethod
     async def get_usage_history(
         user_id: str, feature_key: str | None = None, days: int = 30
     ) -> list[UserUsageSnapshot]:
-        query = {
-            "user_id": user_id,
-            "created_at": {
-                "$gte": datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-                - timedelta(days=days)
-            },
-        }
+        since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
+            days=days
+        )
+        snapshots = await usage_snapshot_repository.history_for_user(user_id, since=since)
 
-        snapshots = []
-        async for doc in usage_snapshots_collection.find(query).sort("created_at", -1):
-            snapshot = UserUsageSnapshot(**UsageService._prepare_doc_for_model(doc))
+        if not feature_key:
+            return snapshots
 
-            if feature_key:
-                # Filter to only include the requested feature (create new list, don't mutate)
-                filtered_features = [f for f in snapshot.features if f.feature_key == feature_key]
-                if filtered_features:
-                    snapshot.features = filtered_features
-                    snapshots.append(snapshot)
-            else:
-                snapshots.append(snapshot)
-
-        return snapshots
+        filtered = []
+        for snapshot in snapshots:
+            # Keep only the requested feature (new list, don't mutate the shared one).
+            matching = [f for f in snapshot.features if f.feature_key == feature_key]
+            if matching:
+                snapshot.features = matching
+                filtered.append(snapshot)
+        return filtered

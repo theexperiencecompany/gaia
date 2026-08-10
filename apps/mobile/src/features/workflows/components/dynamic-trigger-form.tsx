@@ -216,6 +216,144 @@ function DynamicSelectField({
   );
 }
 
+interface TriggerFieldProps {
+  name: string;
+  schema: TriggerFieldSchema;
+  derivedOptions?: SelectOption[];
+  currentValue: unknown;
+  onChange: (value: unknown) => void;
+  integrationId?: string;
+  triggerSlug?: string;
+  fontSize: { xs: number; sm: number };
+  spacing: { xs: number; sm: number; md: number };
+  moderateScale: (size: number, factor?: number) => number;
+}
+
+function TriggerFieldControl({
+  name,
+  schema,
+  currentValue,
+  onChange,
+  derivedOptions,
+  integrationId,
+  triggerSlug,
+  hasOptions,
+  fontSize,
+  spacing,
+  moderateScale,
+}: TriggerFieldProps & { hasOptions: boolean }) {
+  const inputStyle = {
+    backgroundColor: "#2c2c2e",
+    borderRadius: moderateScale(10, 0.5),
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: fontSize.sm,
+    color: "#fff",
+  };
+
+  if (schema.type === "boolean") {
+    const value = Boolean(currentValue ?? schema.default);
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          backgroundColor: "#2c2c2e",
+          borderRadius: moderateScale(10, 0.5),
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm,
+        }}
+      >
+        <Text style={{ fontSize: fontSize.sm, color: "#d4d4d8" }}>
+          {value ? "Enabled" : "Disabled"}
+        </Text>
+        <Switch
+          value={value}
+          onValueChange={(val) => onChange(val)}
+          trackColor={{ false: "#3f3f46", true: "#0077aa" }}
+          thumbColor={value ? "#00bbff" : "#71717a"}
+        />
+      </View>
+    );
+  }
+
+  if (schema.type === "string" && hasOptions) {
+    return (
+      <DynamicSelectField
+        fieldName={name}
+        schema={schema}
+        value={String(currentValue ?? schema.default ?? "")}
+        onChange={(val) => onChange(val)}
+        derivedOptions={derivedOptions}
+        integrationId={integrationId}
+        triggerSlug={triggerSlug}
+        fontSize={fontSize}
+        spacing={spacing}
+        moderateScale={moderateScale}
+      />
+    );
+  }
+
+  if (schema.type === "integer" || schema.type === "number") {
+    return (
+      <TextInput
+        style={inputStyle}
+        keyboardType="numeric"
+        placeholder={String(schema.default ?? "")}
+        placeholderTextColor="#52525b"
+        value={currentValue != null ? String(currentValue) : ""}
+        onChangeText={(text) => {
+          const parsed =
+            schema.type === "integer"
+              ? Number.parseInt(text, 10)
+              : Number.parseFloat(text);
+          onChange(Number.isNaN(parsed) ? undefined : parsed);
+        }}
+      />
+    );
+  }
+
+  return (
+    <TextInput
+      style={inputStyle}
+      placeholder={schema.description ?? String(schema.default ?? "")}
+      placeholderTextColor="#52525b"
+      value={currentValue != null ? String(currentValue) : ""}
+      onChangeText={(text) => onChange(text)}
+    />
+  );
+}
+
+function TriggerField(props: TriggerFieldProps) {
+  const { name, schema, fontSize, spacing, derivedOptions } = props;
+  const labelText = name
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  const hasOptions =
+    (derivedOptions && derivedOptions.length > 0) ||
+    Boolean(schema.options_endpoint);
+
+  return (
+    <View style={{ gap: spacing.xs }}>
+      <View
+        style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}
+      >
+        <Text style={{ fontSize: fontSize.xs, color: "#8a9099" }}>
+          {labelText}
+        </Text>
+        {schema.description ? (
+          <Text style={{ fontSize: fontSize.xs - 1, color: "#52525b" }}>
+            {schema.description}
+          </Text>
+        ) : null}
+      </View>
+
+      <TriggerFieldControl {...props} hasOptions={hasOptions} />
+    </View>
+  );
+}
+
 export function DynamicTriggerForm({
   fields,
   config,
@@ -235,111 +373,21 @@ export function DynamicTriggerForm({
 
   return (
     <View style={{ gap: spacing.md }}>
-      {fields.map(({ name, schema, derivedOptions }) => {
-        const currentValue = config[name];
-        const labelText = name
-          .replace(/_/g, " ")
-          .replace(/\b\w/g, (c) => c.toUpperCase());
-
-        const hasOptions =
-          (derivedOptions && derivedOptions.length > 0) ||
-          Boolean(schema.options_endpoint);
-
-        return (
-          <View key={name} style={{ gap: spacing.xs }}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.xs,
-              }}
-            >
-              <Text style={{ fontSize: fontSize.xs, color: "#8a9099" }}>
-                {labelText}
-              </Text>
-              {schema.description ? (
-                <Text style={{ fontSize: fontSize.xs - 1, color: "#52525b" }}>
-                  {schema.description}
-                </Text>
-              ) : null}
-            </View>
-
-            {schema.type === "boolean" ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  backgroundColor: "#2c2c2e",
-                  borderRadius: moderateScale(10, 0.5),
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.sm,
-                }}
-              >
-                <Text style={{ fontSize: fontSize.sm, color: "#d4d4d8" }}>
-                  {currentValue ? "Enabled" : "Disabled"}
-                </Text>
-                <Switch
-                  value={Boolean(currentValue ?? schema.default)}
-                  onValueChange={(val) => updateField(name, val)}
-                  trackColor={{ false: "#3f3f46", true: "#0077aa" }}
-                  thumbColor={currentValue ? "#00bbff" : "#71717a"}
-                />
-              </View>
-            ) : schema.type === "string" && hasOptions ? (
-              <DynamicSelectField
-                fieldName={name}
-                schema={schema}
-                value={String(currentValue ?? schema.default ?? "")}
-                onChange={(val) => updateField(name, val)}
-                derivedOptions={derivedOptions}
-                integrationId={integrationId}
-                triggerSlug={triggerSlug}
-                fontSize={fontSize}
-                spacing={spacing}
-                moderateScale={moderateScale}
-              />
-            ) : schema.type === "integer" || schema.type === "number" ? (
-              <TextInput
-                style={{
-                  backgroundColor: "#2c2c2e",
-                  borderRadius: moderateScale(10, 0.5),
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.md,
-                  fontSize: fontSize.sm,
-                  color: "#fff",
-                }}
-                keyboardType="numeric"
-                placeholder={String(schema.default ?? "")}
-                placeholderTextColor="#52525b"
-                value={currentValue != null ? String(currentValue) : ""}
-                onChangeText={(text) => {
-                  const parsed =
-                    schema.type === "integer"
-                      ? Number.parseInt(text, 10)
-                      : Number.parseFloat(text);
-                  updateField(name, Number.isNaN(parsed) ? undefined : parsed);
-                }}
-              />
-            ) : (
-              <TextInput
-                style={{
-                  backgroundColor: "#2c2c2e",
-                  borderRadius: moderateScale(10, 0.5),
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.md,
-                  fontSize: fontSize.sm,
-                  color: "#fff",
-                }}
-                placeholder={schema.description ?? String(schema.default ?? "")}
-                placeholderTextColor="#52525b"
-                value={currentValue != null ? String(currentValue) : ""}
-                onChangeText={(text) => updateField(name, text)}
-              />
-            )}
-          </View>
-        );
-      })}
+      {fields.map(({ name, schema, derivedOptions }) => (
+        <TriggerField
+          key={name}
+          name={name}
+          schema={schema}
+          derivedOptions={derivedOptions}
+          currentValue={config[name]}
+          onChange={(value) => updateField(name, value)}
+          integrationId={integrationId}
+          triggerSlug={triggerSlug}
+          fontSize={fontSize}
+          spacing={spacing}
+          moderateScale={moderateScale}
+        />
+      ))}
     </View>
   );
 }

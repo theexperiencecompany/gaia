@@ -21,7 +21,7 @@ export const DEV_SERVER_ORIGIN = `http://localhost:${DEV_SERVER_PORT}`;
  * build) rather than the external `nx dev web` dev server.
  */
 export function isProductionServer(): boolean {
-  return process.env.NODE_ENV === "production" || app.isPackaged;
+  return process.env["NODE_ENV"] === "production" || app.isPackaged;
 }
 
 /**

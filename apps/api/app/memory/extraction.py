@@ -14,7 +14,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, silent_metered_config
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 from app.constants.memory import (
     EXTRACTION_TRANSCRIPT_HEAD_CHARS,
@@ -43,16 +43,21 @@ _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 
 _TRANSCRIPT_TRUNCATION_MARKER = "\n[... transcript truncated ...]\n"
 
+
 # These LLM calls run inside the LangGraph run that spawned them (the
 # add_memory tool, or a background ingestion task that inherited the graph's
 # callback context). Without this marker their structured-output tokens are
 # captured by the chat token stream and rendered as assistant text. ``silent``
 # is the same flag the chat stream consumers use to drop internal-LLM chunks.
-_SILENT_CONFIG: RunnableConfig = {
-    "silent": True,  # top-level flag, matching follow_up_actions_node
-    "metadata": {"silent": True},  # canonical location the messages-stream consumers read
-    "tags": ["memory_internal"],
-}  # type: ignore[typeddict-unknown-key]
+# ``configurable.user_id`` is who this background spend is metered against —
+# see ``ainvoke_structured``; without it the pipeline's real COGS would land in
+# nobody's budget.
+def _silent_config(user_id: str) -> RunnableConfig:
+    return {
+        **silent_metered_config(user_id),
+        "tags": ["memory_internal"],
+    }  # type: ignore[typeddict-unknown-key]
+
 
 # Provider failures and malformed structured output both degrade to None so the
 # memory helper never breaks the chat that spawned it. ``OutputParserException``
@@ -98,15 +103,17 @@ async def _invoke_structured(
     messages: list[BaseMessage],
     *,
     operation: str,
+    user_id: str,
 ) -> _StructuredT | None:
     """Structured-output call on the default model via the canonical
-    ``ainvoke_structured`` (which owns retry + validation). Returns None on any
-    provider failure (or when no provider is configured) so extraction degrades
-    gracefully and never breaks the chat that spawned it. ``_SILENT_CONFIG``
-    keeps the structured-output tokens out of the chat stream."""
+    ``ainvoke_structured`` (which owns retry + validation, and meters the spend
+    against ``user_id``). Returns None on any provider failure (or when no
+    provider is configured) so extraction degrades gracefully and never breaks
+    the chat that spawned it. The silent config keeps the structured-output
+    tokens out of the chat stream."""
     try:
         return await ainvoke_structured(
-            output_model, messages, label=f"memory:{operation}", config=_SILENT_CONFIG
+            output_model, messages, label=f"memory:{operation}", config=_silent_config(user_id)
         )
     except LLMNotConfiguredError as e:
         log.error(
@@ -159,6 +166,7 @@ async def extract_memories(
         ExtractedMemoryBatch,
         [SystemMessage(content=system_prompt), HumanMessage(content=transcript)],
         operation="extraction",
+        user_id=user_id,
     )
     if result is None:
         # Memory context (operation/counts) is owned by retain, the orchestrator;
@@ -172,6 +180,7 @@ async def extract_memories(
 async def categorize_fact(
     content: str,
     *,
+    user_id: str,
     folder_tree: str,
     current_date: datetime,
 ) -> FactCategorization | None:
@@ -188,10 +197,11 @@ async def categorize_fact(
         FactCategorization,
         [SystemMessage(content=system_prompt), HumanMessage(content=content)],
         operation="categorize",
+        user_id=user_id,
     )
 
 
-async def summarize_episode_entries(entries: list[str]) -> str | None:
+async def summarize_episode_entries(entries: list[str], *, user_id: str) -> str | None:
     """Summarize one day's journal entries (day-rollover, one LLM call).
 
     Returns None on total LLM failure — the day simply stays unsummarized
@@ -206,11 +216,12 @@ async def summarize_episode_entries(entries: list[str]) -> str | None:
             HumanMessage(content="\n".join(entries)),
         ],
         operation="episode_summary",
+        user_id=user_id,
     )
     return result.summary if result else None
 
 
-async def rewrite_core_document(system_prompt: str, inputs: str) -> str | None:
+async def rewrite_core_document(system_prompt: str, inputs: str, *, user_id: str) -> str | None:
     """Rewrite one core memory document from its inputs (consolidation pass).
 
     Returns None on total LLM failure — the document simply keeps its
@@ -220,6 +231,7 @@ async def rewrite_core_document(system_prompt: str, inputs: str) -> str | None:
         ConsolidatedDocument,
         [SystemMessage(content=system_prompt), HumanMessage(content=inputs)],
         operation="consolidate",
+        user_id=user_id,
     )
     return result.content if result else None
 
@@ -253,6 +265,8 @@ def _all_new_decisions(count: int) -> ReconcileBatchResult:
 
 async def reconcile_facts(
     pairs: list[tuple[ExtractedFact, list[SimilarMemory]]],
+    *,
+    user_id: str,
 ) -> ReconcileBatchResult:
     """Decide how each new fact relates to its similar existing memories.
 
@@ -269,6 +283,7 @@ async def reconcile_facts(
             HumanMessage(content=_format_reconcile_input(pairs)),
         ],
         operation="reconcile",
+        user_id=user_id,
     )
     if result is None:
         log.error(

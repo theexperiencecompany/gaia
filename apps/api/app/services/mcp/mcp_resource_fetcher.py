@@ -5,9 +5,8 @@ Fetches HTML content from MCP servers using existing user credentials.
 
 from __future__ import annotations
 
-from typing import Any
-
 from app.constants.log_tags import LogTag
+from app.models.mcp_config import McpUiResourceDetails
 from app.services.mcp.mcp_client import get_mcp_client
 from shared.py.wide_events import McpContext, log
 
@@ -16,7 +15,7 @@ async def fetch_mcp_ui_resource(
     server_url: str,
     resource_uri: str,
     user_id: str,
-) -> dict[str, Any] | None:
+) -> McpUiResourceDetails | None:
     """
     Fetch an MCP UI resource from an MCP server using the user's credentials.
 
@@ -26,7 +25,7 @@ async def fetch_mcp_ui_resource(
         user_id: The user ID for credential lookup
 
     Returns:
-        Dict with ``html`` and optional UI metadata, or None on failure
+        The resource's HTML plus its ``_meta.ui`` hints, or None on failure
     """
     log.set(
         mcp_ui={

@@ -17,6 +17,7 @@
 import type { GaiaClient } from "../api";
 import type { BotFileData, BotUserContext, PlatformName } from "../types";
 import { getHttpStatus } from "./logger";
+import { wideLog } from "./wide-events";
 
 const MB = 1024 * 1024;
 
@@ -167,6 +168,11 @@ export function extensionForMime(mimeType: string, fallback: string): string {
  * a download. The only side effects are the GAIA upload/transcribe network
  * calls, injected via {@link GaiaClient}; everything else is pure, which keeps
  * the routing logic testable with a fake client and no platform SDK.
+ *
+ * Every exit records why it took the branch it did under the event's `media`
+ * namespace (`BaseBotAdapter.resolveIncomingMedia` opens the boundary), so a
+ * user whose attachment "did nothing" is answerable from the log instead of
+ * from a guess.
  */
 export async function processBotMedia(
   gaia: GaiaClient,
@@ -175,13 +181,21 @@ export async function processBotMedia(
   ctx: BotUserContext,
 ): Promise<MediaOutcome> {
   if (media.kind === "video" || media.kind === "sticker") {
+    wideLog.setNs("media", { action: "reply", rejected: "unsupported_kind" });
     return { action: "reply", text: unsupportedMediaMessage(media.kind) };
   }
 
   const bytes = await downloadBytes();
+  wideLog.setNs("media", { bytes: bytes.byteLength });
 
   if (media.kind === "audio") {
     if (bytes.byteLength > BOT_MEDIA_LIMITS.audio) {
+      wideLog.warning("media_over_audio_limit", {
+        media_kind: media.kind,
+        bytes: bytes.byteLength,
+        limit: BOT_MEDIA_LIMITS.audio,
+      });
+      wideLog.setNs("media", { action: "reply", rejected: "audio_too_large" });
       return {
         action: "reply",
         text: `That voice note is too large to transcribe (limit: ${
@@ -201,6 +215,8 @@ export async function processBotMedia(
     ).trim();
 
     if (!transcript) {
+      wideLog.warning("media_transcript_empty", { media_kind: media.kind });
+      wideLog.setNs("media", { action: "reply", rejected: "empty_transcript" });
       return {
         action: "reply",
         text: "I couldn't understand that audio. Could you try recording again or sending a text message?",
@@ -211,11 +227,21 @@ export async function processBotMedia(
     const text = media.caption
       ? `${media.caption.trim()}\n\n${transcript}`
       : transcript;
+    wideLog.setNs("media", {
+      action: "chat",
+      transcript_length: transcript.length,
+    });
     return { action: "chat", text, attachments: [] };
   }
 
   // image | document
   if (bytes.byteLength > BOT_MEDIA_LIMITS.file) {
+    wideLog.warning("media_over_file_limit", {
+      media_kind: media.kind,
+      bytes: bytes.byteLength,
+      limit: BOT_MEDIA_LIMITS.file,
+    });
+    wideLog.setNs("media", { action: "reply", rejected: "file_too_large" });
     return {
       action: "reply",
       text: `That file is too large to process (limit: ${

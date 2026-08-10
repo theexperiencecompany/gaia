@@ -93,10 +93,14 @@ search_todo_context → (nothing relevant found) → create_tracked_todo(schedul
 
 ```python
 # Log what a subagent did — no read needed
-update_tracked_todo_canvas(todo_id="...", mode="append", content="\n### 2026-03-26\n- **Gmail agent**: Sent email...")
+update_tracked_todo_canvas(
+    todo_id="...", mode="append", content="\n### 2026-03-26\n- **Gmail agent**: Sent email..."
+)
 
 # Update a single section — no read needed
-update_tracked_todo_canvas(todo_id="...", mode="section", section="Current State", content="Waiting for Rahul's reply.")
+update_tracked_todo_canvas(
+    todo_id="...", mode="section", section="Current State", content="Waiting for Rahul's reply."
+)
 
 # Full rewrite — only when restructuring
 update_tracked_todo_canvas(todo_id="...", mode="replace", content="# Title\n\n## Key Details\n...")
@@ -249,8 +253,8 @@ Before calling `complete_tracked_todo`, update the canvas with a thorough `## Le
 
 ```python
 create_tracked_todo(
-  title="Sent Q2 report to Sarah",
-  initial_canvas="# Sent Q2 report to Sarah\n\n## Key Details\n- Recipient: sarah@example.com\n\n## Activity Log\n\n## Learnings\n"
+    title="Sent Q2 report to Sarah",
+    initial_canvas="# Sent Q2 report to Sarah\n\n## Key Details\n- Recipient: sarah@example.com\n\n## Activity Log\n\n## Learnings\n",
 )
 # handoff to Gmail → collect report → update canvas → complete
 ```
@@ -259,11 +263,11 @@ create_tracked_todo(
 
 ```python
 create_tracked_todo(
-  title="Follow up with Rahul re: contract",
-  description="Sent initial email. Follow up if no reply.",
-  scheduled_at="2026-04-01T09:00:00Z",
-  expires_at="2026-04-08T00:00:00Z",
-  initial_canvas="# Rahul Contract Follow-up\n\n## Key Details\n- Email: rahul@example.com\n- Thread ID: 18f3a2b\n- Contract: Q2 vendor agreement\n\n## Current State\nInitial email sent. Waiting for reply.\n\n## Activity Log\n### 2026-03-25\n- **Gmail agent**: Sent email re: Q2 contract. Tools: GMAIL_CREATE_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b.\n\n## Learnings\n"
+    title="Follow up with Rahul re: contract",
+    description="Sent initial email. Follow up if no reply.",
+    scheduled_at="2026-04-01T09:00:00Z",
+    expires_at="2026-04-08T00:00:00Z",
+    initial_canvas="# Rahul Contract Follow-up\n\n## Key Details\n- Email: rahul@example.com\n- Thread ID: 18f3a2b\n- Contract: Q2 vendor agreement\n\n## Current State\nInitial email sent. Waiting for reply.\n\n## Activity Log\n### 2026-03-25\n- **Gmail agent**: Sent email re: Q2 contract. Tools: GMAIL_CREATE_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b.\n\n## Learnings\n",
 )
 ```
 
@@ -271,9 +275,7 @@ create_tracked_todo(
 
 ```python
 create_tracked_todo(
-  title="Daily HN top posts summary",
-  scheduled_at="2026-03-26T08:00:00Z",
-  recurrence="daily"
+    title="Daily HN top posts summary", scheduled_at="2026-03-26T08:00:00Z", recurrence="daily"
 )
 ```
 
@@ -281,9 +283,7 @@ create_tracked_todo(
 
 ```python
 create_tracked_todo(
-  title="Weekday standup prep",
-  scheduled_at="2026-03-26T09:00:00Z",
-  recurrence="0 9 * * 1-5"
+    title="Weekday standup prep", scheduled_at="2026-03-26T09:00:00Z", recurrence="0 9 * * 1-5"
 )
 ```
 

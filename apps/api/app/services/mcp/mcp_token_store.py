@@ -8,6 +8,7 @@ Follows same patterns as Composio for parity.
 from datetime import UTC, datetime
 import json
 import secrets
+from typing import Any, cast
 
 from cryptography.fernet import Fernet
 from sqlalchemy import select
@@ -24,7 +25,7 @@ from app.constants.log_tags import LogTag
 from app.db.postgresql import get_db_session
 from app.db.redis import get_and_delete_cache, get_cache, set_cache
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
-from app.models.mcp_config import OAuthDiscovery
+from app.models.mcp_config import DCRClientRegistration, OAuthDiscovery
 from app.utils.mcp_oauth_utils import introspect_token as do_introspect
 from shared.py.wide_events import log
 
@@ -86,26 +87,32 @@ class MCPTokenStore:
         """Get decrypted OAuth access token if not expired."""
         cred = await self.get_credential(integration_id)
         if not cred:
-            log.debug(f"{LogTag.MCP} [{integration_id}] No credential record found in DB")
+            log.debug(
+                f"{LogTag.MCP} No credential record found in DB", integration_id=integration_id
+            )
             return None
 
         if not cred.access_token:
-            log.debug(f"{LogTag.MCP} [{integration_id}] Credential exists but no access_token")
+            log.debug(
+                f"{LogTag.MCP} Credential exists but no access_token", integration_id=integration_id
+            )
             return None
 
         if cred.status != MCPCredentialStatus.CONNECTED:
             log.debug(
-                f"{LogTag.MCP} [{integration_id}] Credential status is '{cred.status}', expected 'connected'"
+                f"{LogTag.MCP} Credential status is not 'connected'",
+                integration_id=integration_id,
+                status=cred.status,
             )
             return None
 
         # token_expires_at is a timezone-aware column (DateTime(timezone=True)),
         # so compare against timezone-aware UTC.
         if cred.token_expires_at and cred.token_expires_at < datetime.now(UTC):
-            log.warning(f"{LogTag.MCP} OAuth token expired for {integration_id}")
+            log.warning(f"{LogTag.MCP} OAuth token expired for", integration_id=integration_id)
             return None
 
-        log.debug(f"{LogTag.MCP} [{integration_id}] Returning decrypted OAuth token")
+        log.debug(f"{LogTag.MCP} Returning decrypted OAuth token", integration_id=integration_id)
         return self._decrypt(cred.access_token)
 
     async def get_refresh_token(self, integration_id: str) -> str | None:
@@ -177,7 +184,7 @@ class MCPTokenStore:
                 )
                 session.add(cred)
             await session.commit()
-            log.info(f"{LogTag.MCP} Stored bearer token for {integration_id}")
+            log.info(f"{LogTag.MCP} Stored bearer token for", integration_id=integration_id)
 
     async def store_oauth_tokens(
         self,
@@ -222,7 +229,7 @@ class MCPTokenStore:
                 )
                 session.add(cred)
             await session.commit()
-            log.info(f"{LogTag.MCP} Stored OAuth tokens for {integration_id}")
+            log.info(f"{LogTag.MCP} Stored OAuth tokens for", integration_id=integration_id)
 
     async def store_unauthenticated(self, integration_id: str) -> None:
         """Store connection for unauthenticated MCP.
@@ -251,7 +258,8 @@ class MCPTokenStore:
                 session.add(cred)
                 await session.commit()
                 log.info(
-                    f"{LogTag.MCP} Created credential record for unauthenticated {integration_id}"
+                    f"{LogTag.MCP} Created credential record for unauthenticated",
+                    integration_id=integration_id,
                 )
 
     async def create_oauth_state(self, integration_id: str, code_verifier: str) -> str:
@@ -270,7 +278,7 @@ class MCPTokenStore:
         # IMPORTANT: Pass dict directly - set_cache handles serialization via TypeAdapter.
         # Pre-serializing with json.dumps() causes double-encoding, breaking code_verifier retrieval.
         cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
-        state_data = {"state": state, "code_verifier": code_verifier}
+        state_data: dict[str, str] = {"state": state, "code_verifier": code_verifier}
         await set_cache(cache_key, state_data, ttl=OAUTH_STATE_TTL)
 
         return state
@@ -290,11 +298,14 @@ class MCPTokenStore:
         if not stored_data:
             return False, None
 
+        stored_state: str | None
+        code_verifier: str | None
         try:
-            if isinstance(stored_data, dict):
-                data = stored_data
-            else:
-                data = json.loads(stored_data)
+            # Written by create_oauth_state as {"state": ..., "code_verifier": ...};
+            # set_cache may hand it back already deserialized or still as JSON text.
+            data: dict[str, str] = (
+                stored_data if isinstance(stored_data, dict) else json.loads(stored_data)
+            )
             stored_state = data.get("state")
             code_verifier = data.get("code_verifier")
         except (json.JSONDecodeError, TypeError):
@@ -319,7 +330,7 @@ class MCPTokenStore:
             if cred:
                 await session.delete(cred)
                 await session.commit()
-                log.info(f"{LogTag.MCP} Deleted MCP credentials for {integration_id}")
+                log.info(f"{LogTag.MCP} Deleted MCP credentials for", integration_id=integration_id)
 
     async def is_connected(self, integration_id: str) -> bool:
         """Check if user has a connected credential for this integration.
@@ -329,12 +340,14 @@ class MCPTokenStore:
         cred = await self.get_credential(integration_id)
         return cred is not None and cred.status == MCPCredentialStatus.CONNECTED
 
-    async def get_dcr_client(self, integration_id: str) -> dict | None:
+    async def get_dcr_client(self, integration_id: str) -> DCRClientRegistration | None:
         """Get stored DCR client registration."""
         cred = await self.get_credential(integration_id)
         if cred and cred.client_registration:
             try:
-                return json.loads(cred.client_registration)
+                # Written by store_dcr_client from an RFC 7591 registration
+                # response; only the credential fields are ever read back.
+                return cast(DCRClientRegistration, json.loads(cred.client_registration))
             except json.JSONDecodeError:
                 return None
         return None
@@ -358,10 +371,15 @@ class MCPTokenStore:
                 cred.client_registration = None
                 session.add(cred)
                 await session.commit()
-                log.info(f"{LogTag.MCP} Deleted DCR client for {integration_id}")
+                log.info(f"{LogTag.MCP} Deleted DCR client for", integration_id=integration_id)
 
-    async def store_dcr_client(self, integration_id: str, dcr_data: dict) -> None:
-        """Store DCR client registration from dynamic registration."""
+    async def store_dcr_client(self, integration_id: str, dcr_data: dict[str, Any]) -> None:
+        """Store DCR client registration from dynamic registration.
+
+        The whole RFC 7591 response is persisted verbatim — servers return
+        arbitrary extra metadata alongside the credentials — so the write side
+        stays a raw mapping. Reads go through :class:`DCRClientRegistration`.
+        """
         async with get_db_session() as session:
             result = await session.execute(
                 select(MCPCredential).where(
@@ -384,7 +402,7 @@ class MCPTokenStore:
                 )
                 session.add(cred)
             await session.commit()
-            log.info(f"{LogTag.MCP} Stored DCR client for {integration_id}")
+            log.info(f"{LogTag.MCP} Stored DCR client for", integration_id=integration_id)
 
     async def store_oauth_discovery(self, integration_id: str, discovery: OAuthDiscovery) -> None:
         """
@@ -402,7 +420,7 @@ class MCPTokenStore:
         """
         cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
         await set_cache(cache_key, discovery.model_dump(mode="json"), ttl=OAUTH_DISCOVERY_TTL)
-        log.info(f"{LogTag.MCP} Cached OAuth discovery for {integration_id}")
+        log.info(f"{LogTag.MCP} Cached OAuth discovery for", integration_id=integration_id)
 
     async def get_oauth_discovery(self, integration_id: str) -> OAuthDiscovery | None:
         """Get cached OAuth discovery data from Redis."""
@@ -423,7 +441,7 @@ class MCPTokenStore:
         """
         cache_key = f"mcp_oauth_nonce:{self.user_id}:{integration_id}"
         await set_cache(cache_key, nonce, ttl=OAUTH_STATE_TTL)
-        log.debug(f"{LogTag.MCP} Stored OIDC nonce for {integration_id}")
+        log.debug(f"{LogTag.MCP} Stored OIDC nonce for", integration_id=integration_id)
 
     async def get_and_delete_oauth_nonce(self, integration_id: str) -> str | None:
         """
@@ -432,7 +450,7 @@ class MCPTokenStore:
         Returns the nonce if found, None otherwise.
         """
         cache_key = f"mcp_oauth_nonce:{self.user_id}:{integration_id}"
-        return await get_and_delete_cache(cache_key)
+        return cast(str | None, await get_and_delete_cache(cache_key))
 
     async def get_excluded_scopes(self, integration_id: str) -> set[str]:
         """
@@ -442,7 +460,7 @@ class MCPTokenStore:
         re-authorization retry drops the offending scope(s) and converges.
         """
         cache_key = f"{OAUTH_EXCLUDED_SCOPES_PREFIX}:{self.user_id}:{integration_id}"
-        cached = await get_cache(cache_key)
+        cached = cast(list[str] | None, await get_cache(cache_key))
         return set(cached) if cached else set()
 
     async def add_excluded_scopes(self, integration_id: str, scopes: set[str]) -> set[str]:
@@ -462,11 +480,13 @@ class MCPTokenStore:
         integration_id: str,
         client_id: str | None = None,
         client_secret: str | None = None,
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         """
         Introspect token at authorization server per RFC 7662.
 
         Returns introspection response with 'active' field, or None if failed.
+        The body stays a raw mapping: past ``active``, RFC 7662 lets the
+        authorization server return any claims it likes.
         """
         discovery = await self.get_oauth_discovery(integration_id)
         if not discovery:

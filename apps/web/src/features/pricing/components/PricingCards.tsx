@@ -153,7 +153,7 @@ export function PricingCards({
           // The backend always sets plan_type ("free" | "pro") for an active
           // subscription, but current_plan can be null when the subscribed
           // product isn't in the active plan list — so don't rely on it. Pro is
-          // the only paid tier, so the paid card is "current" iff plan_type is
+          // the only paid tier, so the paid card is "current" if plan_type is
           // pro; fall back to a name match for any other (future) paid tier.
           const isCurrentPlan =
             user.userId && subscriptionStatus

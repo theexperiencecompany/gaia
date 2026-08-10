@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Limitless AI is a memory-capture platform built around a wearable pendant and desktop app that transcribes and summarizes conversations and meetings. GAIA is a proactive productivity OS that manages your email, calendar, tasks, and workflows across 50+ integrations — no hardware required.",
   metaTitle:
-    "Limitless Alternative with Full Productivity AI | GAIA vs Limitless",
+    "Limitless Alternative with Full Productivity AI — GAIA vs Limitless",
   metaDescription:
     "Limitless captures conversations via a wearable but doesn't manage your inbox or automate workflows. GAIA is an open-source Limitless alternative with full productivity AI — managing email, calendar, tasks, and 50+ tool workflows entirely in software.",
   keywords: [

@@ -6,6 +6,11 @@ production and staging deployments. Not required for self-hosting or
 contributor development - use local .env files instead.
 
 Local environment variables take precedence over Infisical secrets.
+
+Resolution:
+- All machine-identity vars set -> fetch remote secrets
+- None set in dev -> skip (local .env only); in prod -> raise
+- Partially set -> warn in dev, raise in prod
 """
 
 import os
@@ -18,44 +23,51 @@ class InfisicalConfigError(Exception):
     """Raised when Infisical configuration is missing or invalid."""
 
 
-def inject_infisical_secrets():
+_INFISICAL_VARS = (
+    "INFISICAL_PROJECT_ID",
+    "INFISICAL_MACHINE_IDENTITY_CLIENT_ID",
+    "INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET",
+)
+
+
+def inject_infisical_secrets() -> None:
     """
     Load secrets from Infisical and inject into environment.
 
-    Required environment variables:
-    - INFISICAL_TOKEN
-    - INFISICAL_PROJECT_ID
-    - INFISICAL_MACHINE_IDENTITY_CLIENT_ID
-    - INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET
+    Authenticates with a machine identity (Universal Auth) via
+    INFISICAL_PROJECT_ID, INFISICAL_MACHINE_IDENTITY_CLIENT_ID and
+    INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET.
 
     ENV doubles as the Infisical environment slug (development/staging/
     production).
-
-    In development, missing Infisical config logs a warning and returns.
-    In production, raises InfisicalConfigError.
     """
-    INFISICAL_TOKEN = os.getenv("INFISICAL_TOKEN")
-    INFISICAL_PROJECT_ID = os.getenv("INFISICAL_PROJECT_ID")
-    ENV = os.getenv("ENV", "production")
-    CLIENT_ID = os.getenv("INFISICAL_MACHINE_IDENTITY_CLIENT_ID")
-    CLIENT_SECRET = os.getenv("INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET")
+    env = os.getenv("ENV", "production")
+    is_production = env == "production"
 
-    is_production = ENV == "production"
+    present = [name for name in _INFISICAL_VARS if os.getenv(name)]
+    missing = [name for name in _INFISICAL_VARS if not os.getenv(name)]
 
-    missing_configs = [
-        (INFISICAL_TOKEN, "INFISICAL_TOKEN"),
-        (INFISICAL_PROJECT_ID, "INFISICAL_PROJECT_ID"),
-        (CLIENT_ID, "INFISICAL_MACHINE_IDENTITY_CLIENT_ID"),
-        (CLIENT_SECRET, "INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET"),
-    ]
+    if not present:
+        if is_production:
+            raise InfisicalConfigError(
+                f"Infisical is required in production. Missing: {', '.join(missing)}"
+            )
+        log.info("Infisical skipped: no config vars set (using local .env only)")
+        return
 
-    for config_value, config_name in missing_configs:
-        if not config_value:
-            message = f"{config_name} is missing. This is required for secrets management."
-            if is_production:
-                raise InfisicalConfigError(message)
-            log.warning(f"Development environment: {message}")
-            return
+    if missing:
+        message = (
+            f"Incomplete Infisical config: missing {', '.join(missing)} "
+            f"(found {', '.join(present)})"
+        )
+        if is_production:
+            raise InfisicalConfigError(message)
+        log.warning(message)
+        return
+
+    project_id = os.environ["INFISICAL_PROJECT_ID"]
+    client_id = os.environ["INFISICAL_MACHINE_IDENTITY_CLIENT_ID"]
+    client_secret = os.environ["INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET"]
 
     try:
         from infisical_sdk import InfisicalSDKClient
@@ -68,15 +80,15 @@ def inject_infisical_secrets():
             cache_ttl=3600,
         )
         client.auth.universal_auth.login(
-            client_id=CLIENT_ID,
-            client_secret=CLIENT_SECRET,
+            client_id=client_id,
+            client_secret=client_secret,
         )
         log.info(f"Infisical authentication completed in {time.time() - start_time:.3f}s")
 
         secrets_start = time.time()
         secrets = client.secrets.list_secrets(
-            project_id=INFISICAL_PROJECT_ID,
-            environment_slug=ENV,
+            project_id=project_id,
+            environment_slug=env,
             secret_path="/",  # nosec B106 - Infisical folder path, not a credential
             expand_secret_references=True,
             view_secret_value=True,

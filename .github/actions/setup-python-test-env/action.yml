@@ -1,0 +1,103 @@
+name: Setup Python test environment
+description: >
+  Prepare the runner to execute the API pytest suite against live services:
+  install Node + pnpm deps (the device-bridge e2e tests drive the real
+  `gaia bridge` CLI via tsx), sync Python deps with uv, and start
+  PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers on the local Docker
+  daemon. Mirrors the topology of `dagger call test-python` so the suite runs
+  identically in CI and in the local Dagger harness.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js + pnpm
+      uses: ./.github/actions/setup-node-pnpm
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      with:
+        version: "0.8.17"
+        enable-cache: true
+
+    - name: Sync Python dependencies
+      shell: bash
+      # --no-build (Sonar S8541) is impossible: pysher ships no wheel in any
+      # release. Versions are hash-pinned via --frozen, so sdist builds run
+      # the same audited code as every other install path.
+      run: uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
+
+    - name: Start service containers
+      shell: bash
+      run: bash scripts/ci/start-test-services.sh
+
+    # Single source of truth for the suite's service env — consuming jobs
+    # (test-python, coverage) inherit these instead of duplicating them.
+    - name: Export test-suite service environment
+      shell: bash
+      run: |
+        {
+          echo "ENV=test"
+          echo "USE_REAL_SERVICES=1"
+          echo "DATABASE_URL=postgresql://gaia:gaia@localhost:5432/gaia_test" # pragma: allowlist secret
+          echo "POSTGRES_URL=postgresql://gaia:gaia@localhost:5432/gaia_test" # pragma: allowlist secret
+          echo "REDIS_URL=redis://localhost:6379/0"
+          echo "MONGODB_URL=mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin" # pragma: allowlist secret
+          echo "MONGO_DB=mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin" # pragma: allowlist secret
+          echo "CHROMADB_HOST=localhost"
+          echo "CHROMADB_PORT=8000"
+          echo "RABBITMQ_URL=amqp://guest:guest@localhost/"
+          echo "MEMORY_MODEL_CACHE_DIR=/tmp/fastembed_cache"
+        } >> "$GITHUB_ENV"
+
+    # The memory suite loads ~1.3 GB of ONNX weights (mxbai-embed-large plus the
+    # jina reranker). Downloading them inside pytest made the whole suite
+    # hostage to one network blip: fastembed catches a failed download and
+    # silently falls back to whatever is on disk, so a half-written blob
+    # surfaces minutes later as an opaque onnxruntime NO_SUCHFILE from an
+    # unrelated test instead of the actual transfer error. Fetch them here,
+    # where a failure is loud and names itself, and cache them so the download
+    # happens once per key rather than on every run.
+    - name: Restore embedding models
+      id: model-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: /tmp/fastembed_cache
+        key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}
+
+    - name: Prefetch embedding models
+      if: steps.model-cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: apps/api
+      # Goes through the app's own loaders, so the models, cache dir and ONNX
+      # settings are the ones the suite actually uses — a prefetch that drifted
+      # from them would warm the wrong cache and prove nothing. The environment
+      # is already synced above, so --no-sync makes this a pure run of it and
+      # --no-build is then free (nothing is installed here to build). Attempts are
+      # retried because huggingface_hub resumes a partial blob rather than
+      # restarting the transfer; three consecutive failures is a real outage,
+      # not a blip, and fails the job.
+      run: |
+        for attempt in 1 2 3; do
+          if uv run --frozen --no-sync --no-build python -c '
+        from app.memory.embeddings import _embed_sync, _rerank_sync
+
+        _embed_sync(["warmup"])
+        _rerank_sync("warmup", ["warmup document"])
+        print("embedding + reranker models ready")
+        '; then
+            exit 0
+          fi
+          echo "::warning::model prefetch attempt ${attempt}/3 failed; retrying (resumes the partial download)"
+          sleep $((attempt * 10))
+        done
+        echo "::error::could not fetch the memory embedding models after 3 attempts"
+        exit 1
+
+    # Only reached when the prefetch above succeeded, so a poisoned partial
+    # download is never what gets cached for every later run.
+    - name: Save embedding models
+      if: steps.model-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: /tmp/fastembed_cache
+        key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}

@@ -12,13 +12,15 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
 if TYPE_CHECKING:
+    # Import under TYPE_CHECKING only: mcp_client.py imports this module for
+    # get_mcp_client_pool, so a runtime import back would be circular.
     from app.services.mcp.mcp_client import MCPClient
 
 
@@ -49,7 +51,7 @@ class MCPClientPool:
                 # Move to end (most recently used) so LRU eviction picks the
                 # truly oldest entry when we hit the cap.
                 self._clients.move_to_end(user_id)
-                log.debug(f"{LogTag.MCP} Reusing pooled MCPClient for {user_id}")
+                log.debug(f"{LogTag.MCP} Reusing pooled MCPClient for", user_id=user_id)
                 return pooled.client
 
             # Pop oldest if at capacity (close outside lock)
@@ -57,7 +59,9 @@ class MCPClientPool:
                 oldest_key = next(iter(self._clients))
                 evicted = self._clients.pop(oldest_key)
                 log.info(
-                    f"{LogTag.MCP} MCPClientPool at capacity ({self._max_clients}); LRU-evicting {oldest_key}"
+                    f"{LogTag.MCP} MCPClientPool at capacity ; LRU-evicting",
+                    _max_clients=self._max_clients,
+                    oldest_key=oldest_key,
                 )
 
             # Create new client (local import to avoid circular dependency)
@@ -65,18 +69,23 @@ class MCPClientPool:
 
             client = MCPClient(user_id=user_id)
             self._clients[user_id] = PooledClient(client=client)
-            log.debug(f"{LogTag.MCP} Created new pooled MCPClient for {user_id}")
+            log.debug(f"{LogTag.MCP} Created new pooled MCPClient for", user_id=user_id)
 
         # Close evicted sessions outside the lock to avoid blocking
         if evicted:
             try:
                 await evicted.client.close_all_client_sessions()
             except Exception as e:
-                log.warning(f"{LogTag.MCP} Error closing evicted MCP sessions: {e}")
+                log.warning(
+                    f"{LogTag.MCP} Error closing evicted MCP sessions",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
 
         return client
 
-    async def _evict(self, user_id: str):
+    async def _evict(self, user_id: str) -> None:
         """Evict a client from the pool and close its connections."""
         if user_id not in self._clients:
             return
@@ -85,10 +94,15 @@ class MCPClientPool:
         try:
             await pooled.client.close_all_client_sessions()
         except Exception as e:
-            log.warning(f"{LogTag.MCP} Error closing MCP sessions for user {user_id}: {e}")
-        log.debug(f"{LogTag.MCP} Evicted MCPClient for {user_id}")
+            log.warning(
+                f"{LogTag.MCP} Error closing MCP sessions for user",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+        log.debug(f"{LogTag.MCP} Evicted MCPClient for", user_id=user_id)
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """Graceful shutdown of all clients."""
         async with self._lock:
             for user_id in list(self._clients.keys()):
@@ -118,4 +132,6 @@ async def get_mcp_client_pool() -> MCPClientPool:
     pool = await providers.aget("mcp_client_pool")
     if pool is None:
         raise RuntimeError("MCPClientPool not available")
-    return pool
+    # aget() is typed Any | None; "mcp_client_pool" is always registered via
+    # init_mcp_client_pool(), which returns MCPClientPool.
+    return cast(MCPClientPool, pool)
