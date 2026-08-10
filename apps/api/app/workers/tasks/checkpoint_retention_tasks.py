@@ -196,7 +196,10 @@ async def sweep_orphan_threads(
             await cur.execute(
                 "SELECT count(*) FROM checkpoints WHERE thread_id = ANY(%s)", (orphans,)
             )
-            checkpoints_deleted = (await cur.fetchone())[0]
+            count_row = await cur.fetchone()
+            if count_row is None:
+                raise RuntimeError("checkpoint count query returned no rows")
+            checkpoints_deleted = count_row[0]
 
     for tid in orphans:
         await checkpointer.adelete_thread(tid)
@@ -349,6 +352,8 @@ async def prune_checkpoint_versions(_ctx: dict[str, Any]) -> str:
 
     manager = await get_checkpointer_manager()
     pool = manager.pool
+    if pool is None:
+        raise RuntimeError("checkpointer manager has no connection pool — cannot prune")
     checkpointer = manager.get_checkpointer()
 
     orphan = await sweep_orphan_threads(pool, checkpointer)

@@ -79,8 +79,8 @@ async def update_user_profile(
 
         return UserUpdateResponse(
             user_id=updated_user.id,
-            name=updated_user.name,
-            email=updated_user.email,
+            name=updated_user.name or "",
+            email=updated_user.email or "",
             picture=updated_user.picture,
             updated_at=updated_user.updated_at,
         )

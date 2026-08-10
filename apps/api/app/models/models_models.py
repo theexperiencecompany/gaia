@@ -28,7 +28,7 @@ class DevModelOption(TypedDict):
     """
 
     provider: str
-    model: str
+    model: str | None
     model_kwargs: dict[str, Any] | None
     reasoning: bool
 

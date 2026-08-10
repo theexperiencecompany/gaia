@@ -312,8 +312,8 @@ async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
                 {
                     "user_id": run.user.get("user_id", ""),
                     "email": run.user.get("email", ""),
-                    "user_name": run.user.get("name", ""),
-                    "user_timezone": run.user.get("timezone"),
+                    "user_name": run.user.get("name") or "",
+                    "user_timezone": run.user.get("timezone") or "",
                 },
             )
     except Exception as e:  # noqa: BLE001 — a failed wake must not strand the queue handoff

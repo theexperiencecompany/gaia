@@ -252,6 +252,11 @@ class BaseSchedulerService(ABC):
         trigger_config: TriggerConfigLike | None,
     ) -> None:
         """Persist the next occurrence and re-enqueue the recurring task."""
+        # A task being rescheduled was loaded from the DB, so its id is set; the
+        # model keeps it Optional for not-yet-persisted docs.
+        task_id = task.id
+        if task_id is None:
+            raise RuntimeError(f"cannot reschedule recurring task without an id: {task!r}")
         # Store scheduled_at as a native datetime so the `$lte` scan can match it.
         update_fields: dict[str, Any] = {
             "scheduled_at": next_run,
@@ -263,8 +268,8 @@ class BaseSchedulerService(ABC):
         # not get a phantom `trigger_config.next_run` key written into Mongo.
         if trigger_config is not None and hasattr(trigger_config, "next_run"):
             update_fields["trigger_config.next_run"] = next_run
-        await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
-        await self.reschedule_task(task.id, next_run)
+        await self.update_task_status(task_id, ScheduledTaskStatus.SCHEDULED, update_fields)
+        await self.reschedule_task(task_id, next_run)
         log.info("Rescheduled recurring task for", id=task.id, next_run=next_run)
 
     def _build_job_args(self, task_id: str) -> tuple[object, ...]:

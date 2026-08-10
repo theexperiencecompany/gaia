@@ -75,6 +75,10 @@ async def _send_step(user: UserDocument, step: NurtureStep) -> None:
     if step.context_builder:
         context.update(await CONTEXT_BUILDERS[step.context_builder](user))
 
+    if user.email is None:
+        log.warning("Skipping nurture email — user has no email address", user_id=user.id)
+        return
+
     await send_email(
         EmailMessage(
             sender=FOUNDER_SENDER,

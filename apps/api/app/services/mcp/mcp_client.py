@@ -1907,13 +1907,13 @@ class MCPClient:
 
         candidate_ids: list[str] = []
         for integration_doc in user_integrations:
-            integration_id = integration_doc.get("integration_id")
+            doc_integration_id = integration_doc.get("integration_id")
             status = integration_doc.get("status")
-            if integration_id is None:
+            if doc_integration_id is None:
                 continue
             if status and status != "connected":
                 continue
-            candidate_ids.append(str(integration_id))
+            candidate_ids.append(str(doc_integration_id))
 
         if not candidate_ids:
             return None

@@ -698,7 +698,7 @@ async def prepare_executor_execution(
 
     # Build user dict for config
     user: AgentUserContext = {
-        "user_id": user_id,
+        "user_id": user_id or "",
         "email": configurable.get("email"),
         "name": configurable.get("user_name"),
     }

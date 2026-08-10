@@ -117,13 +117,13 @@ class ChatContext(TypedDict, total=False):
     conversation_id: str
     stream_id: str
     is_new_conversation: bool
-    message_count: int
+    message_count: int | None
     has_files: bool
     file_count: int
-    tool_category: str
+    tool_category: str | None
     has_reply: bool
     has_calendar_event: bool
-    selected_workflow_id: str
+    selected_workflow_id: str | None
 
 
 class ModelContext(TypedDict, total=False):
@@ -201,11 +201,11 @@ class MemoryContext(TypedDict, total=False):
     #   background: "retain"|"consolidate"|"vfs_sync"
     operation: str
     source_type: str  # retain: "conversation"|"email"|"manual"|...
-    memory_id: str
-    new_memory_id: str  # update → superseding entry id
+    memory_id: str | None
+    new_memory_id: str | None  # update → superseding entry id
     content_length: int
     query: str
-    category: str
+    category: str | None
     doc_type: str
     version: int
     page: int
@@ -274,12 +274,12 @@ class WorkflowContext(TypedDict, total=False):
 
     id: str
     title: str
-    trigger_type: str
-    steps_count: int
+    trigger_type: str | None
+    steps_count: int | None
     operation: str  # "create"|"list"|"get"|"update"|"delete"|"execute"|"status"|"list_executions"|"publish"|"generate_prompt"|"regenerate_steps"
-    execution_id: str
+    execution_id: str | None
     is_integration_trigger: bool
-    result_count: int
+    result_count: int | None
 
 
 class SearchContext(TypedDict, total=False):
@@ -462,7 +462,7 @@ class VoiceContext(TypedDict, total=False):
     operation: (
         str  # "session_start"|"turn"|"drain"|"credentials"|"tts"|"stt"|"tool_call"|"session_end"
     )
-    room: str
+    room: str | None
     participant: str
     model: str
     provider: str

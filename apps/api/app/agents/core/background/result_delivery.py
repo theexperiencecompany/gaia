@@ -190,8 +190,8 @@ async def _narrate_and_deliver(
     # user's last message so quoting it is visual noise; queued tasks may have
     # other messages between them and the original.
     user_msg_content = ""
-    show_reply_quote = run.is_queued and bool(run.user_message_id)
-    if show_reply_quote:
+    show_reply_quote = run.is_queued and run.user_message_id is not None
+    if run.is_queued and run.user_message_id is not None:
         user_msg_content = await _lookup_user_message_content(
             run.conversation_id, run.user_message_id, user_id
         )

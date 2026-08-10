@@ -93,7 +93,7 @@ class LoopGuardMiddleware(AgentMiddleware):
     ) -> ToolMessage | Command[Any]:
         tool_call = request.tool_call
         tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
-        tool_call_id = tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
+        tool_call_id = (tool_call.get("id") if isinstance(tool_call, dict) else tool_call.id) or ""
         args = tool_call.get("args", {}) if isinstance(tool_call, dict) else tool_call.args
         args_key = self._args_key(args)
         failure_key = (tool_name, args_key)

@@ -276,6 +276,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             ctx=ctx, stream_writer=writer, subagent_id=sa_id
         )
         while outcome.paused:
+            if outcome.interrupt is None:
+                raise RuntimeError("paused subagent run without an interrupt payload")
             decision = resume_for_gate(outcome.interrupt)
             outcome = await execute_subagent_stream(
                 ctx=ctx,
@@ -299,7 +301,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             raise ValueError("Spawn graph not configured for subagent execution")
 
         configurable = agent_configurable(config)
-        user_id = configurable.get("user_id")
+        user_id = configurable.get("user_id") or ""
         conversation_id = str(configurable.get("conversation_id") or "")
 
         middleware_factory = self._spawn_middleware_factory

@@ -220,4 +220,6 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
         # Use the parent class's conversion logic
         # This calls jsonschema_to_pydantic internally
         converted = self._convert_tool(mcp_tool, connector)
+        if converted is None:
+            raise ValueError(f"Failed to convert MCP tool {mcp_tool.name}: invalid schema")
         return converted

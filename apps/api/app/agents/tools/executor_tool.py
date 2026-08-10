@@ -147,7 +147,7 @@ async def call_executor(
         # unconditional delete here freed a FOREIGN lock when the failure
         # happened in the queue branch (lock held by a live run), allowing a
         # second concurrent executor in the same conversation.
-        await release_lock_if_owned(conversation_id, configurable.get("stream_id"), task_id)
+        await release_lock_if_owned(conversation_id, configurable.get("stream_id") or "", task_id)
         return f"Error starting task: {e!s}"
 
 
@@ -317,7 +317,7 @@ async def cancel_executor(
         if cancelled:
             # Only once the RUNNING task is actually gone: a cancel that spared it
             # (queued-only) must leave its approvals alone — it is still waiting on them.
-            await cancel_conversation_approvals(conversation_id, configurable.get("user_id", ""))
+            await cancel_conversation_approvals(conversation_id, configurable.get("user_id") or "")
         cancelled += await _cancel_queued_tasks(
             queue_key,
             task_ids,
@@ -332,7 +332,7 @@ async def cancel_executor(
         # stuck executor-pending loading state and finalize in-flight tool cards
         # — it has no other way to learn of a cancel it didn't initiate.
         await _broadcast_executor_cancelled(
-            user_id=configurable.get("user_id", ""),
+            user_id=configurable.get("user_id") or "",
             conversation_id=conversation_id,
             cancelled=cancelled,
         )

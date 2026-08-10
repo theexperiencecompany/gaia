@@ -34,7 +34,9 @@ class PaymentWebhookService:
 
     def __init__(self) -> None:
         self.webhook_secret = settings.DODO_WEBHOOK_PAYMENTS_SECRET
-        # Initialize Standard Webhooks verifier
+        # Initialize Standard Webhooks verifier; None when no secret is configured
+        # or the verifier failed to build (verify_webhook_signature rejects those).
+        self.webhook_verifier: Webhook | None = None
         if self.webhook_secret:
             try:
                 # The secret should be base64 encoded for Standard Webhooks

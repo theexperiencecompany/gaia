@@ -1266,7 +1266,7 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
             future_deadlines = [
                 t for t in all_todos if t.due_date and not t.completed and t.due_date > now
             ]
-            future_deadlines.sort(key=lambda x: x.due_date)
+            future_deadlines.sort(key=lambda x: x.due_date or datetime.min.replace(tzinfo=UTC))
             next_deadline = future_deadlines[0] if future_deadlines else None
 
             return overdue, high_priority, recently_completed, next_deadline

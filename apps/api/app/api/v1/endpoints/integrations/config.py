@@ -200,7 +200,7 @@ async def connect_integration_endpoint(
                 raise HTTPException(status_code=400, detail="Provider not configured")
             result = await connect_self_integration(
                 user_id=str(user_id),
-                user_email=user.get("email", ""),
+                user_email=user.get("email") or "",
                 integration_id=integration_id,
                 integration_name=resolved.name,
                 provider=provider,

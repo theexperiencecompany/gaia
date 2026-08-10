@@ -109,8 +109,6 @@ def twitter_create_post_before_hook(
     """Stream post creation data to frontend for preview."""
     try:
         writer = get_stream_writer()
-        if writer is None:
-            return params
 
         arguments = params.get("arguments", {})
 
@@ -145,8 +143,6 @@ def twitter_search_before_hook(
     """Send search progress to frontend."""
     try:
         writer = get_stream_writer()
-        if writer is None:
-            return params
 
         arguments = params.get("arguments", {})
         query = arguments.get("query", "")

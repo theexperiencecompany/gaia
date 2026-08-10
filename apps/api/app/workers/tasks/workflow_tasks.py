@@ -580,6 +580,12 @@ async def execute_workflow_as_chat(
 
     user_id = user["user_id"]
 
+    # The caller loaded this workflow from the DB, so its id is set; the model
+    # keeps it Optional for not-yet-persisted docs.
+    task_id = workflow.id
+    if task_id is None:
+        raise RuntimeError(f"cannot execute workflow without an id: {workflow!r}")
+
     try:
         log.info(
             f"{LogTag.WORKER} Executing workflow as chat session",
@@ -626,14 +632,14 @@ async def execute_workflow_as_chat(
 
         # Get or create the workflow conversation for thread context
         conversation_id = await get_or_create_workflow_conversation(
-            workflow_id=workflow.id,
+            workflow_id=task_id,
             user_id=user_id,
             workflow_title=workflow.title,
         )
         log.set(conversation_context_found=bool(conversation_id))
 
         selected_workflow_data = SelectedWorkflowData(
-            id=workflow.id,
+            id=task_id,
             title=workflow.title,
             description=workflow.description,
             prompt=workflow.prompt,

@@ -108,7 +108,7 @@ class ExecutorRun:
             stream_id=stream_id,
             conversation_id=conversation_id,
             user={
-                "user_id": configurable.get("user_id", ""),
+                "user_id": configurable.get("user_id") or "",
                 "email": configurable.get("email", ""),
                 "name": configurable.get("user_name", ""),
                 # Carry the home timezone forward so the comms re-voicing run

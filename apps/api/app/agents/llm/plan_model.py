@@ -201,7 +201,7 @@ def apply_dev_model_override(
         _apply_dev_model(configurable, comms_option, COMMS_REASONING)
     # The executor builds its own configurable (inheriting comms's), so it can't be
     # pinned here. Stash the id; apply_dev_executor_model pins it after inheritance.
-    if (executor_model or "") in DEV_MODEL_OPTIONS:
+    if executor_model and executor_model in DEV_MODEL_OPTIONS:
         configurable["__dev_executor_model__"] = executor_model
     if comms_option or (executor_model or "") in DEV_MODEL_OPTIONS:
         log.set(dev_model_override={"comms": comms_model, "executor": executor_model})

@@ -19,6 +19,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore, PutOp
 from langgraph.types import Command
 
@@ -328,7 +329,9 @@ async def _resolve_subagent(
 
         # Create subagent for custom MCP
         try:
-            subagent_graph = await create_subagent_for_user(integration_id, user_id)
+            subagent_graph: (
+                CompiledStateGraph[Any, None, Any, Any] | None
+            ) = await create_subagent_for_user(integration_id, user_id)
         except SubagentUnavailableError as e:
             return (
                 None,
@@ -473,7 +476,7 @@ async def prepare_subagent_execution(
     subagent_thread_id = f"{integration_id}_{thread_id}"
 
     user: AgentUserContext = {
-        "user_id": user_id,
+        "user_id": user_id or "",
         "email": configurable.get("email"),
         "name": configurable.get("user_name"),
     }
@@ -604,6 +607,8 @@ async def _run_blocking_handoff(
     # replay — recovery fast-forwards to the latest park, so an earlier gate's already
     # -applied decision must not be replayed onto it (matched out by approval_id).
     while outcome.paused:
+        if outcome.interrupt is None:
+            raise RuntimeError("paused subagent run without an interrupt payload")
         decision = resume_for_gate(outcome.interrupt)
         outcome = await execute_subagent_stream(
             ctx=ctx,

@@ -416,7 +416,7 @@ async def prepare_run_from_item(
     configurable: AgentConfigurable = item.get("configurable") or {}
 
     queued_stream_id = f"{QUEUED_STREAM_ID_PREFIX}{uuid4()}"
-    user_id: str = configurable.get("user_id", "")
+    user_id: str = configurable.get("user_id") or ""
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     # Overwrite the busy lock with this queued run's value using the RAW client,

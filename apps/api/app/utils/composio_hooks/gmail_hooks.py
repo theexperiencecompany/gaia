@@ -542,8 +542,6 @@ def gmail_label_before_hook(
     """Handle label management progress."""
     try:
         writer = get_stream_writer()
-        if writer is None:
-            return params
 
         arguments = params.get("arguments", {})
 
@@ -577,8 +575,6 @@ def gmail_modify_labels_before_hook(
     """Handle message label modification progress."""
     try:
         writer = get_stream_writer()
-        if writer is None:
-            return params
 
         arguments = params.get("arguments", {})
         message_ids = arguments.get("message_ids", [])
@@ -635,8 +631,6 @@ def gmail_list_drafts_before_hook(
     """Handle drafts listing progress."""
     try:
         writer = get_stream_writer()
-        if writer is None:
-            return params
 
         arguments = params.get("arguments", {})
         max_results = arguments.get("max_results", 20)

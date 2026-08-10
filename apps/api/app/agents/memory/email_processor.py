@@ -789,7 +789,7 @@ async def _process_single_platform(
                 platform=platform,
                 error=crawl_result.get("error"),
             )
-            return {"error": crawl_result.get("error", "Crawl failed")}
+            return {"error": crawl_result.get("error") or "Crawl failed"}
 
         # 3. Store profile
         t0_store = time.monotonic()

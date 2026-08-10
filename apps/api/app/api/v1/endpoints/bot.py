@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 import json
 import secrets
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
@@ -248,6 +248,9 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
         return StreamingResponse(auth_required(), media_type="text/event-stream")
 
+    # The resolved user is a plain user dict (middleware state or the platform
+    # lookup); its shape matches AuthenticatedUser, which is what the services take.
+    user = cast(AuthenticatedUser, user)
     user_id = user.get("user_id") or str(user.get("_id", ""))
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform, outcome="success")
@@ -457,6 +460,9 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     if not user:
         raise HTTPException(status_code=401, detail="User not authenticated")
 
+    # Same shape as the chat-stream path: the platform lookup yields a plain user
+    # dict that matches AuthenticatedUser, which is what the service takes.
+    user = cast(AuthenticatedUser, user)
     user_id = user.get("user_id") or str(user.get("_id", ""))
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform)

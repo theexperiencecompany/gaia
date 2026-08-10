@@ -147,7 +147,7 @@ class ChromaClient:
             raise RuntimeError(
                 f"Failed to create Langchain client for collection '{collection_name}'"
             )
-        return instance
+        return cast(Chroma, instance)
 
 
 @lazy_provider(

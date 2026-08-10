@@ -609,7 +609,7 @@ show_error_codes = true
 show_column_numbers = true
 pretty = true
 # The legacy app code is untyped at many seams; tightening these is staged work.
-strict_optional = false
+strict_optional = true
 no_implicit_reexport = true
 check_untyped_defs = true
 disallow_untyped_defs = true

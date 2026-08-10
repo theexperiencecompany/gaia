@@ -501,10 +501,16 @@ class ToolRegistry:
 
         async def load_metadata(integration: OAuthIntegration) -> None:
             nonlocal total
-            toolkit = integration.composio_config.toolkit
-            space = integration.subagent_config.tool_space
-            specific = integration.subagent_config.specific_tools
-            exclude = set(integration.subagent_config.exclude_tools or [])
+            # The caller filters these non-None; re-narrow inside this function
+            # because mypy does not carry attribute narrowing across the call.
+            composio_config = integration.composio_config
+            subagent_config = integration.subagent_config
+            if composio_config is None or subagent_config is None:
+                return
+            toolkit = composio_config.toolkit
+            space = subagent_config.tool_space
+            specific = subagent_config.specific_tools
+            exclude = set(subagent_config.exclude_tools or [])
             try:
                 raw_tools = await composio_service.get_raw_tools_metadata(
                     tool_kit=toolkit, specific_tools=specific
@@ -555,7 +561,11 @@ class ToolRegistry:
             if isinstance(result, Exception):
                 log.error(
                     f"{LogTag.TOOL} Catalog metadata population failed",
-                    toolkit=integration.composio_config.toolkit,
+                    toolkit=(
+                        integration.composio_config.toolkit
+                        if integration.composio_config is not None
+                        else None
+                    ),
                     error_type=type(result).__name__,
                 )
 

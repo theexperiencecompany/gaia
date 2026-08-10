@@ -260,9 +260,13 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 trigger_name,
             )
 
-        # Build list of trigger configs to register
+        # Build list of trigger configs to register; None monitors the default sheet.
         configs: list[dict[str, Any]] = []
-        spreadsheets_to_monitor = spreadsheet_ids if spreadsheet_ids else [None]
+        spreadsheets_to_monitor: Sequence[str | None]
+        if spreadsheet_ids:
+            spreadsheets_to_monitor = spreadsheet_ids
+        else:
+            spreadsheets_to_monitor = [None]
 
         for spreadsheet_id in spreadsheets_to_monitor:
             if trigger_name == "google_sheets_new_row" and sheet_names:

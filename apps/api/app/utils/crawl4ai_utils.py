@@ -219,6 +219,7 @@ def _extract_content_or_error(
     # With a markdown_generator configured, ``result.markdown`` is a
     # MarkdownGenerationResult (not a str): prefer the pruned ``fit_markdown``,
     # fall back to ``raw_markdown``. Keep the plain-str path for safety/back-compat.
+    text: str | None
     if isinstance(markdown, str):
         text = markdown
     elif markdown is not None:

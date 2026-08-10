@@ -329,7 +329,7 @@ async def get_calendar_events(
             else:
                 events = (
                     await fetch_calendar_events(
-                        cal.id, user_id, None, time_min, time_max, max_results
+                        cal.id, user_id, None, time_min, time_max, max_results or 20
                     )
                 ).items
 

@@ -582,9 +582,12 @@ class _InterceptHandler(logging.Handler):
             level = record.levelno
 
         frame, depth = logging.currentframe(), 2
-        while frame and frame.f_code.co_filename == logging.__file__:
-            frame = frame.f_back
+        while frame is not None and frame.f_code.co_filename == logging.__file__:
             depth += 1
+            next_frame = frame.f_back
+            if next_frame is None:
+                break
+            frame = next_frame
 
         if record.name.startswith("app."):
             display_name = record.name.split(".")[-1].upper()[:7]

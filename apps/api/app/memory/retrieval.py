@@ -259,16 +259,16 @@ async def _hydrate_candidates(
     kind_values = {kind.value for kind in kinds} if kinds else None
     candidates: list[MemoryRecord] = []
     for memory_id in fused_ids:
-        row = rows_by_id.get(memory_id)
-        if row is None or not row.is_latest or row.is_forgotten:
+        candidate = rows_by_id.get(memory_id)
+        if candidate is None or not candidate.is_latest or candidate.is_forgotten:
             continue
-        if row.forget_after is not None and row.forget_after <= now:
+        if candidate.forget_after is not None and candidate.forget_after <= now:
             continue
-        if kind_values and row.kind not in kind_values:
+        if kind_values and candidate.kind not in kind_values:
             continue
-        if category_prefix and not _in_category(row.category_path, category_prefix):
+        if category_prefix and not _in_category(candidate.category_path, category_prefix):
             continue
-        candidates.append(row)
+        candidates.append(candidate)
     return candidates
 
 

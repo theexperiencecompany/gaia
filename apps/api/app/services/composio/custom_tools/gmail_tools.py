@@ -299,7 +299,7 @@ def _fetch_message_view(
     # The attachment list lives in the MIME ``parts`` tree, which only
     # ``format=full`` returns — request it when ``attachments`` is selected,
     # even if no body is wanted.
-    wants_attachments = bool(fields) and "attachments" in fields
+    wants_attachments = fields is not None and "attachments" in fields
     needs_full = needs_body or wants_attachments
     full = _gmail_proxy(
         user_id,
@@ -539,8 +539,6 @@ def _emit_email_card(views: list[dict[str, Any]]) -> None:
         writer = get_stream_writer()
     except RuntimeError:
         # No runnable context (background/silent/test): streaming unavailable.
-        return
-    if writer is None:
         return
     email_fetch_data = [
         {

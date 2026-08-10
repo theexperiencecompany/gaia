@@ -270,5 +270,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         # Fire-and-forget: touch_last_active is debounced and never raises, so a
         # failed last-active write can no longer turn a valid session into a
         # failed authentication (the previous try/except returned None here).
-        await user_repository.touch_last_active(user_info["email"])
+        # A session without an email just skips the touch (the DB write by a
+        # None email would match nothing anyway).
+        email = user_info["email"]
+        if email is not None:
+            await user_repository.touch_last_active(email)
         return user_info, new_session

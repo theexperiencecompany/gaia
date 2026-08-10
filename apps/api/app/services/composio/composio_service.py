@@ -259,6 +259,10 @@ class ComposioService:
         def _fetch() -> list[Tool]:
             if specific_tools:
                 return self.composio.tools.get_raw_composio_tools(tools=specific_tools)
+            if tool_kit is None:
+                raise ValueError(
+                    "get_raw_tools_metadata requires tool_kit when specific_tools is not set"
+                )
             return self.composio.tools.get_raw_composio_tools(toolkits=[tool_kit], limit=1000)
 
         return await asyncio.to_thread(_fetch)

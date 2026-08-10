@@ -357,7 +357,7 @@ def build_agent_config(  # NOSONAR python:S107
         "user_messages": resolved["user_messages"],
         "user_id": user.get("user_id"),
         "email": user.get("email"),
-        "user_name": user.get("name", ""),
+        "user_name": user.get("name") or "",
         "user_timezone": home_timezone,
         "root_request_id": root_request_id,
         "provider": resolved["provider"],
