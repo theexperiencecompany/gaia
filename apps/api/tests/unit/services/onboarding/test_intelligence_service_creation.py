@@ -51,6 +51,7 @@ from app.services.onboarding.intelligence_service import (
     _run_holo_card,
     _TodoListFromEmails,
     _TodoSpec,
+    _truncate_title,
     _wait_for_early_phase,
     _WorkflowList,
     _WorkflowSpec,
@@ -90,6 +91,19 @@ def _style(summary: str = "Terse") -> WritingStyleProfile:
     return WritingStyleProfile(summary=summary, example=WritingStyleExampleBlocks(body=["Thanks."]))
 
 
+def _scripted_clock(*values: float) -> MagicMock:
+    """A fake `time` module with a scripted monotonic clock.
+
+    Patch `f"{MODULE}.time"` with this (NOT `f"{MODULE}.time.monotonic"`):
+    replacing the module's `time` binding leaves the real stdlib `time` module
+    — and the asyncio event loop's own clock reads — untouched, so the script
+    is consumed only by the code under test, never by loop internals.
+    """
+    fake_time = MagicMock()
+    fake_time.monotonic.side_effect = list(values)
+    return fake_time
+
+
 def _registered_trigger_slugs() -> tuple[str, str]:
     """(config-free slug, config-bearing slug) from the real oauth registry, so
     the integration-suggestion tests exercise the real schema lookup."""
@@ -109,6 +123,30 @@ def _registered_trigger_slugs() -> tuple[str, str]:
     if config_free is None or config_bearing is None:
         pytest.skip("workflow trigger schemas missing from oauth registry")
     return config_free, config_bearing
+
+
+# ---------------------------------------------------------------------------
+# _truncate_title
+# ---------------------------------------------------------------------------
+
+
+class TestTruncateTitle:
+    def test_a_double_space_in_the_head_keeps_the_space_before_the_split(
+        self,
+    ) -> None:
+        # rsplit(" ", 1) splits on the last single space, so the first space of
+        # a double-space run survives in the head; rsplit(None, 1) would collapse
+        # the whole run and drop it. The title must exceed the 80-char head and
+        # the double space must fall inside the head.
+        title = "x" * 40 + "  " + "y" * 39 + "z"
+        assert _truncate_title(title) == "x" * 40 + " "
+
+    def test_a_tab_in_the_head_is_not_a_split_separator(self) -> None:
+        # rsplit(" ", 1) only splits on literal spaces; a tab is part of the
+        # last word, not a boundary. rsplit(None, 1) would split on the tab and
+        # drop the final word entirely.
+        title = "x" * 40 + "\ty" * 20 + "z"
+        assert _truncate_title(title) == "x" * 40 + "\ty" * 20
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +375,36 @@ class TestCreateFocusTodos:
             service.create_todo.await_args.args[0].description
             == f"Created from your focus: {'f' * 200}"
         )
+
+    async def test_duration_metrics_are_pinned_exactly(self) -> None:
+        # The wide-event stream carries llm/create/total durations; a mutated
+        # clock (subtraction -> addition) or precision (2 -> 3 decimals) must
+        # change what lands in the log, so pin the exact values.
+        parsed = _FocusTodoList(todos=["Draft the brief"])
+        with (
+            patch(f"{MODULE}.ainvoke_structured", AsyncMock(return_value=parsed)),
+            patch(f"{MODULE}.TodoService") as service,
+            patch(f"{MODULE}.log") as log,
+            patch(f"{MODULE}.time", _scripted_clock(1000.0, 1001.0, 1001.1234, 1002.0, 1002.5678, 1003.9876)),
+        ):
+            service.create_todo = AsyncMock(return_value=_made_todo())
+            await _create_focus_todos(USER, "Ann", "lawyer", "close Q3")
+
+        done = [c for c in log.info.call_args_list if "focus_todos done" in str(c)]
+        assert done[-1].kwargs["llm_duration_s"] == 0.12
+        assert done[-1].kwargs["create_duration_s"] == 0.57
+        assert done[-1].kwargs["duration_s"] == 3.99
+
+    async def test_the_failure_duration_is_pinned_exactly(self) -> None:
+        with (
+            patch(f"{MODULE}.ainvoke_structured", AsyncMock(side_effect=RuntimeError("llm"))),
+            patch(f"{MODULE}.log") as log,
+            patch(f"{MODULE}.time", _scripted_clock(1000.0, 1001.0, 1003.9876)),
+        ):
+            await _create_focus_todos(USER, "Ann", "lawyer", "close Q3")
+
+        warns = [c for c in log.warning.call_args_list if "focus_todos failed" in str(c)]
+        assert warns[-1].kwargs["duration_s"] == 3.99
 
 
 # ---------------------------------------------------------------------------
@@ -596,6 +664,34 @@ class TestCreateTodosFromTriage:
         assert todo.project_id is None
         assert user_id == USER
 
+    async def test_duration_metrics_are_pinned_exactly(self) -> None:
+        triage = _triage()
+        parsed = _TodoListFromEmails(todos=[_spec()])
+        with (
+            patch(f"{MODULE}.ainvoke_structured", AsyncMock(return_value=parsed)),
+            patch(f"{MODULE}.TodoService") as service,
+            patch(f"{MODULE}.log") as log,
+            patch(f"{MODULE}.time", _scripted_clock(1000.0, 1001.0, 1001.1234, 1002.0, 1002.5678, 1003.9876)),
+        ):
+            service.create_todo = AsyncMock(return_value=_made_todo("t1"))
+            await _create_todos_from_triage(USER, triage)
+
+        done = [c for c in log.info.call_args_list if "triage_todos done" in str(c)]
+        assert done[-1].kwargs["llm_duration_s"] == 0.12
+        assert done[-1].kwargs["create_duration_s"] == 0.57
+        assert done[-1].kwargs["duration_s"] == 3.99
+
+    async def test_the_failure_duration_is_pinned_exactly(self) -> None:
+        with (
+            patch(f"{MODULE}.ainvoke_structured", AsyncMock(side_effect=RuntimeError("llm"))),
+            patch(f"{MODULE}.log") as log,
+            patch(f"{MODULE}.time", _scripted_clock(1000.0, 1001.0, 1003.9876)),
+        ):
+            await _create_todos_from_triage(USER, _triage())
+
+        warns = [c for c in log.warning.call_args_list if "triage_todos failed" in str(c)]
+        assert warns[-1].kwargs["duration_s"] == 3.99
+
 
 # ---------------------------------------------------------------------------
 # _build_one_workflow
@@ -792,6 +888,37 @@ class TestBuildOneWorkflow:
             await _build_one_workflow(USER, 0, _WorkflowSpec(title="t", description="d"), "UTC")
             is None
         )
+
+    async def test_duration_metrics_are_pinned_exactly(self, workflow_stack: Any) -> None:
+        with (
+            patch(f"{MODULE}.log") as log,
+            patch(f"{MODULE}.time", _scripted_clock(1000.0, 1001.0, 1001.1234, 1002.0, 1002.5678, 1003.9876)),
+        ):
+            await _build_one_workflow(USER, 0, _WorkflowSpec(title="t", description="d"), "UTC")
+
+        done = [c for c in log.info.call_args_list if "workflow spec done" in str(c)]
+        assert done[-1].kwargs["prompt_duration_s"] == 0.12
+        assert done[-1].kwargs["create_duration_s"] == 0.57
+        assert done[-1].kwargs["duration_s"] == 3.99
+
+    async def test_the_failure_log_pins_the_duration_and_trims_the_title(
+        self, workflow_stack: Any
+    ) -> None:
+        # The failure log carries the same duration contract, and the spec title
+        # must still be capped at 60 chars even when the workflow creation blew up.
+        _, service = workflow_stack
+        service.create_workflow = AsyncMock(side_effect=RuntimeError("mongo"))
+        with (
+            patch(f"{MODULE}.log") as log,
+            patch(f"{MODULE}.time", _scripted_clock(1000.0, 1001.0, 1001.1234, 1002.0, 1003.9876)),
+        ):
+            await _build_one_workflow(
+                USER, 0, _WorkflowSpec(title="t" * 100, description="d"), "UTC"
+            )
+
+        warns = [c for c in log.warning.call_args_list if "workflow spec failed" in str(c)]
+        assert warns[-1].kwargs["spec_title"] == "t" * 60
+        assert warns[-1].kwargs["duration_s"] == 3.99
 
     async def test_the_prompt_generator_is_called_with_the_spec(self, workflow_stack: Any) -> None:
         generation, _ = workflow_stack
@@ -1202,6 +1329,21 @@ class TestCreateOnboardingWorkflows:
             (USER, 3, "t3", "Europe/London", ["slack", "gmail"]),
         ]
 
+    async def test_duration_metrics_are_pinned_exactly(self) -> None:
+        with (
+            patch(f"{MODULE}._generate_workflow_specs", AsyncMock(return_value=_specs())),
+            patch(f"{MODULE}._build_one_workflow", AsyncMock(return_value=_card("w0"))),
+            patch(f"{MODULE}.log") as log,
+            patch(f"{MODULE}.time", _scripted_clock(1000.0, 1001.0, 1001.1234, 1003.9876)),
+        ):
+            await _create_onboarding_workflows(USER, "dev", True)
+
+        generated = [c for c in log.info.call_args_list if "workflow specs generated" in str(c)]
+        assert generated[-1].kwargs["llm_duration_s"] == 0.12
+        done = [c for c in log.info.call_args_list if "workflows specs done" in str(c)]
+        assert done[-1].kwargs["specs_llm_duration_s"] == 0.12
+        assert done[-1].kwargs["duration_s"] == 3.99
+
 
 class TestWorkflowPromptContextThroughCreator:
     """The prompt `_create_onboarding_workflows` feeds the spec LLM, exercised
@@ -1525,6 +1667,7 @@ class TestRunHoloCard:
                 f"{MODULE}.get_user_metadata", AsyncMock(side_effect=RuntimeError(long_error))
             ),
             patch(f"{MODULE}.log") as log,
+            patch(f"{MODULE}.time", _scripted_clock(1000.0, 1001.0, 1004.9876)),
         ):
             await _run_holo_card(USER, UserDocument(id=USER), "", None, None)
 
@@ -1536,7 +1679,8 @@ class TestRunHoloCard:
         assert errors[-1].kwargs["outcome"] == "failed"
         assert errors[-1].kwargs["error"] == "e" * 200
         assert errors[-1].kwargs["error_type"] == "RuntimeError"
-        assert isinstance(errors[-1].kwargs["duration_s"], float)
+        assert errors[-1].kwargs["exc_info"] is True
+        assert errors[-1].kwargs["duration_s"] == 4.99
 
     async def test_save_receives_every_field_in_order(self, holo_stack: Any) -> None:
         _, save, _ = holo_stack
@@ -1645,6 +1789,38 @@ class TestRunHoloCard:
         assert isinstance(done[-1].kwargs["phrase_bio_duration_s"], float)
         assert isinstance(done[-1].kwargs["save_duration_s"], float)
         assert isinstance(done[-1].kwargs["duration_s"], float)
+
+    async def test_duration_metrics_are_pinned_exactly(self, holo_stack: Any) -> None:
+        with (
+            patch(f"{MODULE}.log") as log,
+            patch(
+                f"{MODULE}.time",
+                _scripted_clock(1000.0, 1001.0, 1001.1234, 1002.0, 1002.5678, 1003.0, 1003.4321, 1004.9876),
+            ),
+        ):
+            await _run_holo_card(USER, UserDocument(id=USER), "", None, None)
+
+        done = [c for c in log.info.call_args_list if "holo_card done" in str(c)]
+        assert done[-1].kwargs["meta_duration_s"] == 0.12
+        assert done[-1].kwargs["phrase_bio_duration_s"] == 0.57
+        assert done[-1].kwargs["save_duration_s"] == 0.43
+        assert done[-1].kwargs["duration_s"] == 4.99
+
+    async def test_a_whitespace_only_kind_falls_back_to_context(self, holo_stack: Any) -> None:
+        # A kind that strips to nothing must render as the capitalized "Context"
+        # label; a mutated fallback string would leak "Xxcontextxx" into the card.
+        content, _, _ = holo_stack
+        await _run_holo_card(
+            USER,
+            UserDocument(id=USER),
+            "",
+            None,
+            None,
+            None,
+            [{"kind": "   ", "value": "some note"}],
+        )
+
+        assert "Context: some note" in content.await_args.args[1]
 
 
 # ---------------------------------------------------------------------------
