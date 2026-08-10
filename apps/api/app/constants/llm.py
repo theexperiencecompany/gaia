@@ -66,7 +66,11 @@ LLM_RETRY_MAX_ATTEMPTS = 3
 # document analysis), NOT as a per-caller latency budget: a call on a user-blocking path
 # should pass its own tighter value, the way the HIL gate passes
 # HIL_LLM_TIMEOUT_SECONDS. Pass timeout=None to opt out entirely.
-LLM_INVOKE_TIMEOUT_SECONDS = 120
+#
+# Measured 2026-08: a hard-refusal reasoning turn on the dev lane (deepseek-v4-flash)
+# takes ~98s to its first token — the old 120s cap killed the call before the model
+# answered, and the safety suite's refusal cases all errored with a silent stream.
+LLM_INVOKE_TIMEOUT_SECONDS = 300
 
 # Near-deterministic default for every LLM call; creative tasks opt into more
 # variation via get_default_llm(temperature=...).
