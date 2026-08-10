@@ -2386,3 +2386,132 @@ class TestSelectTools:
         result = await select_node.afunc(tool_calls, _make_config(), store=InMemoryStore())
 
         assert result["selected_tool_ids"] == ["dummy_tool_a"]
+
+# ---------------------------------------------------------------------------
+# compiled graph — real end-to-end runs through the built StateGraph
+# ---------------------------------------------------------------------------
+
+
+class TestCompiledGraphBehavior:
+    """Real compiled-graph runs: the state schema (append reducer on
+    ``messages``), node wiring and route selection as one runnable unit.
+
+    The construction-level tests pin the closures in isolation; these pin the
+    wiring between them. A schema-less graph (e.g. ``StateGraph(None)``)
+    silently loses the ``messages`` append reducer, so the multi-write runs
+    below fail loudly if the state schema is ever dropped.
+    """
+
+    @staticmethod
+    def _compile(builder: Any) -> Any:
+        from langgraph.checkpoint.memory import MemorySaver
+
+        return builder.compile(checkpointer=MemorySaver())
+
+    @pytest.mark.asyncio
+    async def test_tool_call_then_answer_accumulates_messages(self) -> None:
+        """One tool call followed by a plain answer: every message survives in order.
+
+        Fails if the compiled graph loses the ``messages`` append reducer
+        (schema-less StateGraph) or miswires the tools -> agent loop.
+        """
+        from app.override.langgraph_bigtool.create_agent import create_agent
+        from tests.helpers import BindableToolsFakeModel
+
+        tool_call = {
+            "name": "dummy_tool_a",
+            "args": {"query": "hello"},
+            "id": "tc_compiled_1",
+            "type": "tool_call",
+        }
+        llm = BindableToolsFakeModel(
+            responses=[
+                AIMessage(content="", tool_calls=[tool_call]),
+                AIMessage(content="Done."),
+            ]
+        )
+        registry = _make_tool_registry(dummy_tool_a)
+        builder = create_agent(
+            llm,
+            registry,
+            disable_retrieve_tools=True,
+            initial_tool_ids=["dummy_tool_a"],
+        )
+        graph = self._compile(builder)
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="hi")]},
+            config={"configurable": {"thread_id": "compiled_tool_route"}},
+        )
+
+        assert [type(m).__name__ for m in result["messages"]] == [
+            "HumanMessage",
+            "AIMessage",
+            "ToolMessage",
+            "AIMessage",
+        ]
+        tool_msg = result["messages"][2]
+        assert tool_msg.tool_call_id == "tc_compiled_1"
+        assert tool_msg.content == "result_a"
+        assert result["messages"][3].content == "Done."
+
+    @pytest.mark.asyncio
+    async def test_plain_answer_ends_graph(self) -> None:
+        """No tool calls: the run ends at END with the single AI reply."""
+        from app.override.langgraph_bigtool.create_agent import create_agent
+        from tests.helpers import BindableToolsFakeModel
+
+        llm = BindableToolsFakeModel(responses=[AIMessage(content="Just the answer.")])
+        registry = _make_tool_registry(dummy_tool_a)
+        builder = create_agent(
+            llm,
+            registry,
+            disable_retrieve_tools=True,
+            initial_tool_ids=["dummy_tool_a"],
+        )
+        graph = self._compile(builder)
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="hi")]},
+            config={"configurable": {"thread_id": "compiled_end_route"}},
+        )
+
+        assert [type(m).__name__ for m in result["messages"]] == [
+            "HumanMessage",
+            "AIMessage",
+        ]
+        assert result["messages"][1].content == "Just the answer."
+
+    @pytest.mark.asyncio
+    async def test_finish_task_ends_graph_with_tool_message(self) -> None:
+        """A finish_task call routes to the finish node, writes its ToolMessage
+        and ends the graph."""
+        from app.constants.general import FINISH_TASK_NAME
+        from app.override.langgraph_bigtool.create_agent import create_agent
+        from tests.helpers import BindableToolsFakeModel
+
+        finish_call = {
+            "name": FINISH_TASK_NAME,
+            "args": {"result": "wrapped up"},
+            "id": "tc_compiled_finish",
+            "type": "tool_call",
+        }
+        llm = BindableToolsFakeModel(responses=[AIMessage(content="", tool_calls=[finish_call])])
+        registry = _make_tool_registry(dummy_tool_a)
+        builder = create_agent(llm, registry, disable_retrieve_tools=True)
+        graph = self._compile(builder)
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="hi")]},
+            config={"configurable": {"thread_id": "compiled_finish_route"}},
+        )
+
+        assert [type(m).__name__ for m in result["messages"]] == [
+            "HumanMessage",
+            "AIMessage",
+            "ToolMessage",
+        ]
+        finish_msg = result["messages"][2]
+        assert finish_msg.name == FINISH_TASK_NAME
+        assert finish_msg.content == "wrapped up"
+        assert finish_msg.tool_call_id == "tc_compiled_finish"
