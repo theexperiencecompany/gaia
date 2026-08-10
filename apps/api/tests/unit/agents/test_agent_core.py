@@ -513,6 +513,33 @@ class TestCoreAgentLogic:
         assert kwargs["execution_mode"] == "interactive"
 
     @pytest.mark.asyncio
+    async def test_execution_mode_interactive_via_trigger(self):
+        """mode='interactive' in the trigger is honored, not just the default."""
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as mock_build_config,
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                trigger_context={
+                    "active_todo_id": "todo-1",
+                    "execution_mode": "interactive",
+                },
+            )
+
+        kwargs = mock_build_config.call_args.kwargs
+        assert kwargs["active_todo_id"] == "todo-1"
+        assert kwargs["execution_mode"] == "interactive"
+
+    @pytest.mark.asyncio
     async def test_invalid_execution_mode_stays_interactive(self):
         patches = _common_patches()
         with (
