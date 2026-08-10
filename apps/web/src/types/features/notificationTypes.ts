@@ -403,10 +403,6 @@ export interface BulkActionRequest {
   action: BulkActions;
 }
 
-export interface SnoozeRequest {
-  snooze_until: string;
-}
-
 export interface NotificationResponse {
   success: boolean;
   message: string;
