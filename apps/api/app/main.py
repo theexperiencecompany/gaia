@@ -8,16 +8,16 @@ import time
 
 from fastapi import FastAPI  # noqa: F401
 
+from app import patches  # noqa: F401 to apply patches
 from app.config.sentry import init_sentry
 from app.constants.log_tags import LogTag
 from app.core.app_factory import create_app
-import app.patches  # noqa: F401 to apply patches
 from shared.py.wide_events import log
 
 # Create the FastAPI application
 log.info(f"{LogTag.STARTUP} Starting application initialization...")
 app_creation_start = time.time()
-app: FastAPI = create_app()  # type: ignore[assignment, no-redef]
+app: FastAPI = create_app()
 init_sentry()
 
 log.info(

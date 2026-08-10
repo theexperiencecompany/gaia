@@ -430,7 +430,7 @@ class ChromaStore(BaseStore):
                         query_embeddings=[query_embedding],  # type: ignore[arg-type]
                         n_results=op.limit + op.offset,
                         include=["metadatas", "distances", "documents"],
-                        where=where_filter,  # type: ignore[arg-type]
+                        where=where_filter,
                     )
 
                     items = []

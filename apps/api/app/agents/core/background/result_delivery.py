@@ -114,7 +114,7 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
         date=datetime.now(UTC).isoformat(),
     )
     bot_message.message_id = run.task_id or str(uuid4())
-    bot_message.tool_data = tool_data  # type: ignore[assignment]
+    bot_message.tool_data = tool_data
 
     try:
         await update_messages(
@@ -184,7 +184,7 @@ async def _narrate_and_deliver(
     # Other runs have no placeholder, so a fresh id is fine.
     bot_message.message_id = (run.task_id if run.is_queued else None) or str(uuid4())
     if tool_data:
-        bot_message.tool_data = tool_data  # type: ignore[assignment]
+        bot_message.tool_data = tool_data
 
     # Reply-quote only for queued tasks — live tasks land directly after the
     # user's last message so quoting it is visual noise; queued tasks may have

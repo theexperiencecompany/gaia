@@ -607,7 +607,7 @@ def create_agent(
             )
 
     tool_node = DynamicToolNode(
-        tool_registry,  # type: ignore[arg-type]
+        tool_registry,
         middleware_executor=middleware_executor,
         middleware_tools=middleware_tools,
         # Parent-routed tools (InjectedState / middleware tools) previously
@@ -631,7 +631,7 @@ def create_agent(
         # execution, and re-running a side-effectful tool can double-execute it.
         builder.add_node(
             "select_tools",
-            select_tools_node,  # type: ignore[possibly-undefined]
+            select_tools_node,
             retry_policy=RetryPolicy(),
         )
     builder.add_node("tools", tool_node)

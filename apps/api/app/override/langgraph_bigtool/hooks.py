@@ -43,7 +43,7 @@ async def execute_hooks(
     for hook in hooks:
         result = hook(state, config, store)
         if inspect.iscoroutine(result):
-            state = await result  # type: ignore[misc]
+            state = await result
         else:
             state = result  # type: ignore[assignment]
     return state

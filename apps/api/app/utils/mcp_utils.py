@@ -161,7 +161,7 @@ def wrap_tool_with_null_filter(
 
     tool._arun = filtered_arun  # type: ignore[method-assign]
     # Stash original for the reconnect path to bypass this wrapper on retry.
-    tool._original_arun = original_arun  # type: ignore[attr-defined]
+    tool._original_arun = original_arun
     return tool
 
 

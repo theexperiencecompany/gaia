@@ -608,7 +608,7 @@ follow_imports = "silent"
 show_error_codes = true
 show_column_numbers = true
 pretty = true
-# The legacy app code is untyped at many seams; tightening these is staged work.
+# Full strictness: every --strict-family flag is on globally (see the flags below).
 strict_optional = true
 no_implicit_reexport = true
 check_untyped_defs = true
@@ -627,164 +627,15 @@ disallow_any_generics = true
 # .agents/plans/2026-08-10-mypy-full-strict.md for the remaining file list.
 warn_return_any = true
 warn_unreachable = true
-warn_unused_ignores = false
+warn_unused_ignores = true
 # Builtin-skill resource files (templates/, scripts/) are sandbox-executed assets,
 # not importable API modules — they run in the docgen sandbox toolchain (Typst,
 # openpyxl, docx-js), so they are not type-checked against the API environment.
 exclude = "app/agents/skills/builtin/[^/]+/(templates|scripts)/"
 
-# Shared library code: ratchet stricter than apps once legacy gaps are closed.
-# Today it inherits the global baseline; the per-module override exists so
-# individual flags can be flipped on without churning the rest of the config.
 [[tool.mypy.overrides]]
 module = "shared.*"
 warn_no_return = true
-
-# Strict-mypy island (API repository layer) — grows as each domain is migrated
-# onto it, never shrinks. The generics only bite (rejecting cross-domain confusion
-# at the call site) when the repositories and their document/update models are
-# checked strictly. This override lives in the ROOT config (not apps/api) so the
-# app-level pyproject.toml cannot shadow this baseline; `nx type-check api` runs
-# mypy from apps/api and discovers this file, applying baseline + island together.
-#
-# The strict flags are enumerated individually, NOT via `strict = true`: mypy
-# applies a bare `strict = true` inside a per-module override GLOBALLY (it turns
-# the whole app strict — 2000+ errors), whereas the individual flags are correctly
-# scoped to the matched module. This set is exactly what `--strict` enables, minus
-# `disallow_any_explicit`.
-#
-# `disallow_any_explicit` is deliberately omitted: subclassing `pydantic.BaseModel`
-# trips mypy's `explicit-any` at the class-definition line (BaseModel's own typing
-# carries an Any the check attributes to every subclass — the pydantic mypy plugin
-# does not change this), so the flag is incompatible with any module holding a
-# document/update model. The explicit `Any` / `dict[str, Any]` ban is instead
-# enforced on repository public signatures by the `repository-boundaries` lint
-# (Type-Safety Layer 2).
-[[tool.mypy.overrides]]
-module = [
-  "app.db.repositories.*",
-  "app.models.notes_models",
-  "app.models.todo_models",
-  "app.models.mail_models",
-  "app.models.workflow_execution_models",
-  "app.models.conversation_models",
-  "app.models.models_models",
-  "app.models.payment_models",
-  "app.models.usage_models",
-  "app.models.search_models",
-  "app.models.integration_instructions_models",
-  "app.models.user_models",
-  "app.models.workflow_models",
-  "app.models.reminder_models",
-  "app.models.integration_models",
-  "app.models.calendar_models",
-  "app.models.files_models",
-  "app.models.blog_models",
-  "app.models.bot_models",
-  "app.models.sandbox_models",
-  "app.models.support_models",
-  "app.models.notification.notification_models",
-]
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_calls = true
-disallow_untyped_decorators = true
-disallow_any_generics = true
-disallow_subclassing_any = true
-check_untyped_defs = true
-warn_return_any = true
-no_implicit_reexport = true
-strict_equality = true
-extra_checks = true
-warn_unused_ignores = true
-
-
-# ---------------------------------------------------------------------------
-# disallow_any_explicit exceptions — every file below is documented, nothing else.
-#
-# (1) Pydantic BaseModel/schema modules: subclassing pydantic.BaseModel trips
-#     mypy's explicit-any at the class-DEFINITION line (BaseModel's own typing
-#     carries an Any mypy attributes to every subclass). Verified with a minimal
-#     repro; the pydantic mypy plugin cannot load in this env (ImportError on
-#     mypy.expandtype.ExpandTypeVisitor), so there is no fix — only exclusion.
-#     The files listed here had NO other explicit-any errors when the flag was
-#     enabled; they are re-verified by the repository-boundaries lint and ruff
-#     ANN401 (which catches bare Any in annotations even where mypy is excluded).
-# (2) Ruff-aligned Any seams: the same files ruff's ANN401 per-file-ignores
-#     already exempt (arbitrary JSON bags, LazyLoader registries, proxy clients,
-#     framework adapters). Keeping mypy's list identical means one documented
-#     decision per file instead of two tools disagreeing.
-[[tool.mypy.overrides]]
-module = [
-  "app.agents.core.nodes.follow_up_actions_node",
-  "app.api.v1.endpoints.sessions",
-  "app.config.rate_limits",
-  "app.db.repositories.todos",
-  "app.memory.extraction",
-  "app.memory.schemas",
-  "app.models.common_models",
-  "app.models.composio_schemas.github",
-  "app.models.composio_schemas.google_people",
-  "app.models.composio_schemas.google_sheets",
-  "app.models.composio_schemas.linkedin",
-  "app.models.composio_schemas.sheets_tools",
-  "app.models.device_token_models",
-  "app.models.feedback_models",
-  "app.models.google_docs_models",
-  "app.models.google_sheets_models",
-  "app.models.health_models",
-  "app.models.image_models",
-  "app.models.linear_models",
-  "app.models.linkedin_models",
-  "app.models.memory_models",
-  "app.models.notification.request_models",
-  "app.models.notion_models",
-  "app.models.oauth_models",
-  "app.models.platform_models",
-  "app.models.tools_models",
-  "app.models.twitter_models",
-  "app.schemas.common",
-  "app.schemas.dev_schemas",
-  "app.schemas.device.requests",
-  "app.schemas.device.responses",
-  "app.schemas.file",
-  "app.schemas.integrations.requests",
-  "app.schemas.integrations.responses",
-  "app.schemas.outbound",
-  "app.schemas.usage",
-  "app.schemas.voice_schemas",
-  "app.services.composio.custom_tools.gmail_tools",
-  "app.services.email.models",
-  "app.services.embedding_sidecar.server",
-  "app.services.hil.classification",
-  "app.services.hil.conversational",
-  "app.services.integrations.profanity",
-  "app.services.onboarding.clarify_service",
-  "app.services.onboarding.social_profile_service",
-  "app.utils.search.models",
-]
-disallow_any_explicit = false
-# pydantic BaseModel class-line false positive (mypy x pydantic; see above)
-
-[[tool.mypy.overrides]]
-module = [
-  "app.agents.llm.client",
-  "app.agents.middleware.summarization",
-  "app.config.settings",
-  "app.core.lazy_loader",
-  "app.db.redis",
-  "app.helpers.agent_helpers",
-  "app.override.langgraph_bigtool.dynamic_tool_node",
-  "app.patches.composio_custom_tool_schema_patch",
-  "app.patches.composio_langchain_patch",
-  "app.services.composio.langchain_composio_service",
-  "app.services.composio.proxy_client",
-  "app.services.mcp.langchain_adapter",
-  "libs.shared.py.settings.base",
-  "libs.shared.py.wide_events",
-]
-disallow_any_explicit = false
-# ruff ANN401-aligned Any seams (arbitrary JSON bags, LazyLoader, adapters)
 
 # Tests stay loose everywhere — fixtures and mocks often pass through Any.
 # This block comes last so it wins for test modules under shared/.
