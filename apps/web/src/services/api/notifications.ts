@@ -8,6 +8,19 @@ import {
   type UseNotificationsOptions,
 } from "@/types/features/notificationTypes";
 
+/** Shape-only description of an unexpected payload — never its contents. */
+function describePayload(payload: unknown): string {
+  if (typeof payload === "string") {
+    return `a ${payload.length}-char string starting "${payload.slice(0, 40)}"`;
+  }
+  if (payload === null || payload === undefined) return String(payload);
+  if (Array.isArray(payload)) return `an array of ${payload.length}`;
+  if (typeof payload === "object") {
+    return `an object with keys [${Object.keys(payload).join(", ")}]`;
+  }
+  return `a ${typeof payload}`;
+}
+
 export class NotificationsAPI {
   private static BASE_URL = "/notifications";
 
@@ -29,13 +42,18 @@ export class NotificationsAPI {
       `${NotificationsAPI.BASE_URL}?${params.toString()}`,
     );
 
-    // The endpoint always returns a `notifications` array. Anything else means
-    // the body did not come from the API (proxy/edge error page parsed as the
-    // response, truncated JSON, …) — fail loudly here rather than letting an
-    // undefined leak into the store and surface as a TypeError deep in a hook.
+    // The endpoint always returns a `notifications` array (required field on the
+    // API's response model). Anything else means the body did not come from the
+    // API — a proxy/edge error page or truncated JSON that axios silently leaves
+    // as a string. Fail loudly, and describe what actually arrived, so the next
+    // occurrence identifies itself instead of surfacing as a TypeError deep in a
+    // hook. Only the status and the payload's shape are reported, never its
+    // contents, so this stays free of notification text.
     if (!Array.isArray(response.data?.notifications)) {
       throw new Error(
-        "Malformed notifications response: expected `notifications` to be an array",
+        `Malformed notifications response: expected \`notifications\` to be an array. ` +
+          `HTTP ${response.status}, content-type ${response.headers["content-type"] ?? "none"}, ` +
+          `received ${describePayload(response.data)}`,
       );
     }
 
