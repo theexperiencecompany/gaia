@@ -1076,6 +1076,44 @@ class TestGmailBeforeHooks:
         assert result["arguments"]["recipient_email"] == "original@example.com"
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.normalize_email_body_to_html")
+    def test_compose_before_hook_mapping_branch_returns_exact_params(
+        self, mock_normalize: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        """The to->recipient_email mapping branch rewrites ``params["arguments"]`` in place.
+
+        Exact params equality is required: a mutant that writes the mapped
+        arguments to a shadow key (``params["XXargumentsXX"]``) instead of
+        ``params["arguments"]`` is invisible to key-presence assertions (the
+        arguments dict is mutated in place, so ``params["arguments"]`` still
+        looks right) and only exact equality notices the injected extra key.
+        """
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        mock_normalize.side_effect = lambda body: f"<p>{body}</p>"
+        params = _make_params(
+            {
+                "to": "user@example.com",
+                "subject": "Hello",
+                "body": "Hi",
+            }
+        )
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        assert result == {
+            "arguments": {
+                "to": "user@example.com",
+                "recipient_email": "user@example.com",
+                "subject": "Hello",
+                "body": "<p>Hi</p>",
+                "is_html": True,
+            }
+        }
+        mock_normalize.assert_called_once_with("Hi")
+        writer.assert_called_once()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_compose_before_hook_skips_streaming_without_recipient(
         self, mock_writer: MagicMock
     ) -> None:
@@ -3772,6 +3810,21 @@ class TestTwitterSchemaModifiers:
         )
         assert result is schema
         assert result.input_parameters["properties"]["max_results"] == "not_a_dict"
+
+    def test_twitter_timeline_schema_non_dict_properties_unchanged(self) -> None:
+        """Non-dict ``properties`` (e.g. unparsed JSON) is left untouched."""
+        from app.utils.composio_hooks.twitter_hooks import (
+            twitter_timeline_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={"properties": '{"max_results": 20}'}
+        )
+        result = twitter_timeline_schema_modifier(
+            "TWITTER_USER_HOME_TIMELINE_BY_USER_ID", "TWITTER", schema
+        )
+        assert result is schema
+        assert result.input_parameters["properties"] == '{"max_results": 20}'
 
     def test_twitter_timeline_schema_no_properties_unchanged(self) -> None:
         from app.utils.composio_hooks.twitter_hooks import (
