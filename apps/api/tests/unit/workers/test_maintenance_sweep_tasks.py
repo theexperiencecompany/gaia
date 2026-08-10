@@ -961,6 +961,31 @@ class TestProcessExpired:
         assert checks == {"user-1": MAX_HEALTH_CHECKS_PER_USER, "user-2": 1}
         assert seams["health"].await_count == 1
 
+    async def test_fresh_user_is_below_a_cap_of_one(self):
+        """Pin the cap check's default: a user with no recorded checks is below the cap.
+
+        With the cap patched to 1, an absent user must still be processed (the
+        ``get(uid, 0)`` default is 0 < 1). A default of 1 would wrongly cap them
+        before their first health check.
+        """
+        pool = _pool()
+        seams = _process_seams()
+        checks: dict[str, int] = {}
+        cache: dict[str, bool] = {}
+        with (
+            patch(f"{MODULE}._is_user_daytime", seams["daytime"]),
+            patch(f"{MODULE}._call_health_check_agent", seams["health"]),
+            patch(f"{MODULE}._read_canvas", seams["canvas"]),
+            patch(f"{MODULE}.tracked_todo_service.archive_tracked_todo", seams["archive"]),
+            patch(f"{MODULE}.notification_service.create_notification", seams["notify"]),
+            patch(f"{MODULE}.MAX_HEALTH_CHECKS_PER_USER", 1),
+        ):
+            archived, _notified = await _process_expired([_doc(id="fresh")], pool, NOW, checks, cache)
+
+        assert archived == 1
+        assert checks == {"user-1": 1}
+        assert seams["health"].await_count == 1
+
 
 class TestProcessOverdue:
     async def test_counts_two_notified_overdue_todos(self):
@@ -1091,6 +1116,32 @@ class TestProcessDormant:
         assert requeued == 1
         assert [t.id for t in needs_attention] == ["capped"]
         assert checks == {"user-1": MAX_HEALTH_CHECKS_PER_USER, "user-2": 1}
+        assert seams["health"].await_count == 1
+
+    async def test_fresh_user_is_below_a_cap_of_one(self):
+        """Pin the cap check's default: a user with no recorded checks is below the cap.
+
+        With the cap patched to 1, an absent user must still be re-queued (the
+        ``get(uid, 0)`` default is 0 < 1). A default of 1 would wrongly shunt
+        them to the needs-attention digest before their first health check.
+        """
+        pool = _pool()
+        seams = _process_seams(health=AsyncMock(return_value="requeued"))
+        checks: dict[str, int] = {}
+        cache: dict[str, bool] = {}
+        with (
+            patch(f"{MODULE}._is_user_daytime", seams["daytime"]),
+            patch(f"{MODULE}._health_check_dormant", seams["health"]),
+            patch(f"{MODULE}.tracked_todo_service.schedule_execution", seams["schedule"]),
+            patch(f"{MODULE}.MAX_HEALTH_CHECKS_PER_USER", 1),
+        ):
+            requeued, needs_attention = await _process_dormant(
+                [_doc(id="fresh")], pool, NOW, checks, cache
+            )
+
+        assert requeued == 1
+        assert needs_attention == []
+        assert checks == {"user-1": 1}
         assert seams["health"].await_count == 1
 
 
