@@ -1,8 +1,10 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
+from collections.abc import AsyncGenerator
 from datetime import datetime
 import json
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
@@ -67,6 +69,22 @@ def _make_subagent(
         config=config,
         short_name=short_name,
     )
+
+
+class RecordingDict(dict):
+    """A dict that records every ``.get(key, *default)`` call so tests can pin
+    the exact defaults the module passes at dict seams (e.g. ``.get(k, "")`` vs
+    ``.get(k, None)`` vs a bare ``.get(k)``)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.get_calls: list[tuple] = []
+
+    def get(self, key, *default):
+        self.get_calls.append((key, default))
+        if default:
+            return super().get(key, default[0])
+        return super().get(key)
 
 
 # ---------------------------------------------------------------------------
@@ -1052,6 +1070,25 @@ class TestBuildAgentConfig:
 
         assert config["configurable"]["user_timezone"] == "UTC"
 
+    @patch("app.helpers.agent_helpers.providers")
+    def test_configurable_cast_seam_exact_type(self, mock_providers) -> None:
+        """The configurable bag is routed through ``cast(dict[str, Any], ...)`` —
+        the one seam where the typed bag becomes LangGraph's untyped field. Pins
+        the exact cast call so the typed contract survives mutation."""
+        mock_providers.get.return_value = None
+
+        with patch(
+            "app.helpers.agent_helpers.cast",
+            side_effect=lambda typ, value: value,
+        ) as mock_cast:
+            config = build_agent_config(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            )
+
+        mock_cast.assert_called_once_with(dict[str, Any], config["configurable"])
+
 
 # ---------------------------------------------------------------------------
 # build_initial_state
@@ -1870,6 +1907,52 @@ class TestExecuteGraphSilent:
 
         timestamp = tool_data["tool_data"][0]["timestamp"]
         assert timestamp.endswith("+00:00")
+
+    @patch("app.helpers.agent_helpers.cast", side_effect=lambda typ, value: value)
+    async def test_exact_cast_seam_of_async_generator(self, mock_cast):
+        """The astream result is routed through the exact AsyncGenerator cast
+        (pins the typed seam so a cast-arg mutation cannot survive)."""
+        events = []
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        msg, tool_data = await execute_graph_silent(
+            graph, {}, {"configurable": {"user_id": USER_ID}}
+        )
+
+        assert msg == ""
+        assert tool_data == {"tool_data": []}
+        assert mock_cast.call_args.args[0] == AsyncGenerator[
+            tuple[tuple[str, ...], str, Any], None
+        ]
+        # The wrapped value is the astream call's own result, passed through.
+        assert mock_cast.call_args.args[1] is graph.astream.return_value
+
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
+    async def test_handoff_args_get_exact_empty_string_default(
+        self, mock_handoff, mock_format
+    ):
+        """A handoff tool call without a subagent_id key requests it with an
+        exact '' default (pins the seam call)."""
+        mock_format.return_value = {"tool_name": "handoff", "data": {}}
+
+        args = RecordingDict()
+        msg = MagicMock()
+        msg.tool_calls = [{"id": "tc1", "name": "handoff", "args": args}]
+
+        events = [((), "updates", {"agent": {"messages": [msg]}})]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        _, tool_data = await execute_graph_silent(
+            graph, {}, {"configurable": {"user_id": USER_ID}}
+        )
+
+        assert args.get_calls == [("subagent_id", ("",))]
+        mock_handoff.assert_not_awaited()
+        assert tool_data["tool_data"] == [{"tool_name": "handoff", "data": {}}]
 
 
 # ---------------------------------------------------------------------------
@@ -3526,6 +3609,311 @@ class TestExecuteGraphStreaming:
             'nostream: {"complete_message": ""}',
             "data: [DONE]\n\n",
         ]
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    @patch("app.helpers.agent_helpers.cast", side_effect=lambda typ, value: value)
+    async def test_exact_cast_seam_of_async_generator(self, mock_cast, mock_sm):
+        """The astream result is routed through the exact AsyncGenerator cast
+        (pins the typed seam so a cast-arg mutation cannot survive)."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter([]))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        assert mock_cast.call_args.args[0] == AsyncGenerator[tuple[Any, ...], None]
+        assert mock_cast.call_args.args[1] is graph.astream.return_value
+        assert results == ['nostream: {"complete_message": ""}', "data: [DONE]\n\n"]
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    @patch("app.helpers.agent_helpers.cast", side_effect=lambda typ, value: value)
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    async def test_exact_cast_seam_of_tool_entry_data(self, mock_format, mock_cast, mock_sm):
+        """The tool_calls_data entry data is routed through cast(dict[str, Any])
+        before its keys are read on the mcp_app buffering path."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+        mock_format.return_value = {
+            "tool_name": "tool_calls_data",
+            "tool_category": "mcp",
+            "data": {"tool_call_id": "tc_app", "tool_name": "t", "inputs": {}},
+            "mcp_ui": {"resource_uri": "/app"},
+            "mcp_server_url": "https://mcp.example.com",
+            "timestamp": "t1",
+        }
+
+        msg = MagicMock()
+        msg.tool_calls = [{"id": "tc_app", "name": "t", "args": {}}]
+
+        events = [((), "updates", {"agent": {"messages": [msg]}})]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        # First cast = the astream generator seam; second = the tool_entry data seam.
+        assert mock_cast.call_args_list[1].args[0] == dict[str, Any]
+        assert any("tool_data" in r for r in results)
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
+    async def test_handoff_args_get_exact_empty_string_default(
+        self, mock_handoff, mock_format, mock_sm
+    ):
+        """A handoff tool call without a subagent_id key requests it with an
+        exact '' default (pins the seam call)."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+        mock_format.return_value = {"tool_name": "handoff", "data": {}}
+
+        args = RecordingDict()
+        msg = MagicMock()
+        msg.tool_calls = [{"id": "tc1", "name": "handoff", "args": args}]
+
+        events = [((), "updates", {"agent": {"messages": [msg]}})]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        assert args.get_calls == [("subagent_id", ("",))]
+        mock_handoff.assert_not_awaited()
+
+    @patch("app.helpers.agent_helpers.fetch_mcp_ui_resource", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.claim_tool_output", return_value=True)
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_tool_calls_data_pins_exact_tool_call_id_get(
+        self, mock_sm, mock_format, mock_claim, mock_fetch
+    ):
+        """A tool_calls_data entry with no tool_call_id key in its data is looked
+        up with an exact '' default and never buffered — even when a tool result
+        for the mutant's fallback id ("XXXX") arrives afterwards."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+        entry_data = RecordingDict()
+        mock_format.return_value = {
+            "tool_name": "tool_calls_data",
+            "tool_category": "mcp",
+            "data": entry_data,
+            "mcp_ui": {"resource_uri": "/x"},
+            "mcp_server_url": "https://mcp.x",
+            "timestamp": "t-x",
+        }
+        mock_fetch.return_value = {"html": "h"}
+
+        msg = MagicMock()
+        msg.tool_calls = [{"id": "tc_x", "name": "t", "args": {}}]
+        tool_msg = ToolMessage(content="result", tool_call_id="XXXX")
+
+        events = [
+            ((), "updates", {"agent": {"messages": [msg]}}),
+            ((), "messages", (tool_msg, {"agent_name": "comms_agent"})),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+        ):
+            results.append(s)
+
+        assert entry_data.get_calls == [("tool_call_id", ("",))]
+        mock_fetch.assert_not_awaited()
+        assert not any("mcp_app" in r for r in results)
+
+    @patch("app.helpers.agent_helpers.claim_tool_output", return_value=True)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_tool_message_without_name_attribute_not_suppressed(
+        self, mock_sm, mock_claim
+    ):
+        """A ToolMessage that carries no name attribute is not a todo tool: its
+        result still streams as tool_output (the getattr default must not raise)."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        tool_msg = ToolMessage(content="result", tool_call_id="t1")
+        del tool_msg.name
+        tool_msg.additional_kwargs = {}
+
+        events = [((), "messages", (tool_msg, {"agent_name": "comms_agent"}))]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+        ):
+            results.append(s)
+
+        assert results == [
+            'data: {"tool_output": {"tool_call_id": "t1", "output": "result"}}\n\n',
+            'nostream: {"complete_message": ""}',
+            "data: [DONE]\n\n",
+        ]
+
+    @patch("app.helpers.agent_helpers.claim_tool_output", return_value=True)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_todo_tool_check_pins_exact_get(self, mock_sm, mock_claim):
+        """The todo_tool suppression probe reads additional_kwargs with an exact
+        False default — a missing flag must not suppress the tool result."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        additional_kwargs = RecordingDict()
+        tool_msg = ToolMessage(content="result", tool_call_id="t1")
+        tool_msg.additional_kwargs = additional_kwargs
+
+        events = [((), "messages", (tool_msg, {"agent_name": "comms_agent"}))]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+        ):
+            results.append(s)
+
+        assert additional_kwargs.get_calls == [("todo_tool", (False,))]
+        assert results == [
+            'data: {"tool_output": {"tool_call_id": "t1", "output": "result"}}\n\n',
+            'nostream: {"complete_message": ""}',
+            "data: [DONE]\n\n",
+        ]
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_subagent_tool_calls_data_pins_exact_defaults(self, mock_sm):
+        """A subagent tool_calls_data event without a tool_call_id in its data is
+        looked up with an exact '' default (pins the seam call)."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        data = RecordingDict()
+        calls_event = {
+            "tool_data": {
+                "tool_name": "tool_calls_data",
+                "tool_category": "mcp",
+                "data": data,
+                "mcp_ui": {"resource_uri": "/sub/app"},
+                "mcp_server_url": "https://mcp2.example.com",
+                "timestamp": "t1",
+            }
+        }
+
+        events = [((), "custom", calls_event)]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        assert data.get_calls == [("tool_call_id", ("",))]
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_subagent_data_get_pins_exact_dict_default(self, mock_sm):
+        """The subagent buffering path reads the data bag with an exact {}
+        default for tool_name/inputs lookups (pins the seam calls)."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        sub_entry = RecordingDict(
+            {
+                "tool_name": "tool_calls_data",
+                "tool_category": "mcp",
+                "data": {
+                    "tool_call_id": "tc_sub",
+                    "tool_name": "search_github",
+                    "inputs": {"q": "x"},
+                },
+                "mcp_ui": {"resource_uri": "/sub/app"},
+                "mcp_server_url": "https://mcp2.example.com",
+                "timestamp": "t1",
+            }
+        )
+        calls_event = {"tool_data": sub_entry}
+
+        events = [((), "custom", calls_event)]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        assert sub_entry.get_calls == [
+            ("tool_name", ()),
+            ("mcp_ui", ()),
+            ("data", ({},)),
+            ("tool_category", ("",)),
+            ("data", ({},)),
+            ("mcp_server_url", ("",)),
+            ("timestamp", ()),
+            ("data", ({},)),
+        ]
+
+    @patch("app.helpers.agent_helpers.fetch_mcp_ui_resource", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_subagent_entry_without_tool_call_id_not_buffered(
+        self, mock_sm, mock_fetch
+    ):
+        """A subagent tool_calls_data event whose data lacks tool_call_id must
+        not buffer an mcp_app — even when a later tool_output carries the
+        mutant's fallback id ("XXXX")."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+        mock_fetch.return_value = {"html": "h"}
+
+        calls_event = {
+            "tool_data": {
+                "tool_name": "tool_calls_data",
+                "tool_category": "mcp",
+                "data": {},
+                "mcp_ui": {"resource_uri": "/sub/app"},
+                "mcp_server_url": "https://mcp2.example.com",
+                "timestamp": "t1",
+            }
+        }
+        output_event = {"tool_output": {"tool_call_id": "XXXX", "output": "sub result"}}
+
+        events = [((), "custom", calls_event), ((), "custom", output_event)]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        mock_fetch.assert_not_awaited()
+        assert not any("mcp_app" in r for r in results)
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_subagent_tool_output_pins_exact_tool_call_id_get(self, mock_sm):
+        """A subagent tool_output event is keyed by tool_call_id with an exact ''
+        default (pins the seam call)."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        sub_output = RecordingDict()
+        output_event = {"tool_output": sub_output}
+
+        events = [((), "custom", output_event)]
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        assert sub_output.get_calls == [("tool_call_id", ("",))]
 
 
 # ---------------------------------------------------------------------------
