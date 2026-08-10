@@ -11,6 +11,7 @@ from typing import cast
 from chromadb.api.models.AsyncCollection import AsyncCollection
 from langgraph.store.base import PutOp
 
+from app.agents.tools.core.store import get_store_embeddings
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -261,17 +262,19 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
         ChromaStore instance for triggers
     """
     chroma_client = await ChromaClient.get_client()
-    embeddings = await providers.aget("google_embeddings")
+    resolved = await get_store_embeddings()
 
-    if embeddings is None:
+    if resolved is None:
         raise RuntimeError("Embeddings not available for triggers store")
+
+    embeddings, dims = resolved
 
     store = ChromaStore(
         client=chroma_client,
         collection_name="langgraph_triggers_store",
         index={
             "embed": embeddings,
-            "dims": 768,
+            "dims": dims,
             "fields": ["rich_description"],
         },
     )

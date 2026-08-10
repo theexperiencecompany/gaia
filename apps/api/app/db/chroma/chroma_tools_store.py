@@ -7,11 +7,11 @@ from typing import Any, NotRequired, Protocol, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
 from chromadb.api.types import Where
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.store.base import PutOp
 
 from app.agents.core.subagents.registry import all_subagents
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.agents.tools.core.store import get_store_embeddings
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
@@ -374,19 +374,10 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
     )
     tools_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
 
-    # Check Redis cache BEFORE expensive ChromaDB operations
-    # Single source of truth for cache keys: always namespace-based
-    cache_key = f"chroma:indexed:{namespace}"
-    cached_hash = await get_cache(cache_key)
-    if cached_hash == tools_hash:
-        log.info(
-            f"{LogTag.CHROMA} index_tools_to_store: namespace Redis cache HIT, skipping reindex of tools",
-            namespace=namespace,
-            tools_hash=tools_hash,
-            input_count=input_count,
-        )
-        return
-
+    # Check Redis cache BEFORE expensive ChromaDB operations.
+    # The key carries the embedding dims so an embedder change (google ->
+    # local/sidecar, which deletes and recreates the collection) forces a full
+    # reindex instead of trusting a stale "already indexed" marker.
     raw_store = await providers.aget("chroma_tools_store")
     if raw_store is None:
         log.warning(
@@ -399,6 +390,18 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
     # providers.aget declares -> Any | None; this provider is registered by
     # initialize_chroma_tools_store below, which always returns a ChromaStore.
     store = cast(ChromaStore, raw_store)
+    store_dims = (store.index_config or {}).get("dims", "na")
+    cache_key = f"chroma:indexed:{namespace}:d{store_dims}"
+    cached_hash = await get_cache(cache_key)
+    if cached_hash == tools_hash:
+        log.info(
+            f"{LogTag.CHROMA} index_tools_to_store: namespace Redis cache HIT, skipping reindex of tools",
+            namespace=namespace,
+            tools_hash=tools_hash,
+            input_count=input_count,
+        )
+        return
+
     collection = await store._get_collection()
 
     current_tools: dict[str, IndexedToolEntry] = {}
@@ -512,20 +515,19 @@ async def initialize_chroma_tools_store() -> ChromaStore:
     """
     tool_registry = await get_tool_registry()
     chroma_client = await ChromaClient.get_client()
-    raw_embeddings = await providers.aget("google_embeddings")
+    resolved = await get_store_embeddings()
 
-    if raw_embeddings is None:
-        raise RuntimeError("Embeddings not available")
+    if resolved is None:
+        raise RuntimeError("Embeddings not available for tools store")
 
-    # Registered by init_embeddings() in app/agents/tools/core/store.py.
-    embeddings = cast(GoogleGenerativeAIEmbeddings, raw_embeddings)
+    embeddings, dims = resolved
 
     store = ChromaStore(
         client=chroma_client,
         collection_name="langgraph_tools_store",
         index={
             "embed": embeddings,
-            "dims": 768,
+            "dims": dims,
             "fields": ["description"],
         },
     )

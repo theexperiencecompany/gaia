@@ -133,7 +133,38 @@ class ChromaStore(BaseStore):
                         name=self.collection_name,
                     )
 
+        if self._collection_cache is not None and self.index_config:
+            await self._rebuild_on_dimension_change(self._collection_cache)
+
         return self._collection_cache
+
+    async def _rebuild_on_dimension_change(self, collection: AsyncCollection) -> None:
+        """Recreate the collection when its stored vectors use a different dimension.
+
+        The embedding backend is resolvable at boot (google 768-dim, local
+        sidecar 1024-dim) and the collection's dimension is fixed by its first
+        write, so a backend switch leaves a collection that rejects every
+        upsert. Detect it on the first stored vector and rebuild — the stores
+        reindex from source afterwards (hash-diff against an empty collection).
+        """
+        dims = self.index_config.get("dims") if self.index_config else None
+        if not dims:
+            return
+        existing = await collection.get(limit=1, include=["embeddings"])
+        stored = existing.get("embeddings", []) if isinstance(existing, dict) else []
+        if len(stored) > 0 and len(stored[0]) != dims:
+            log.warning(
+                f"{LogTag.CHROMA} Rebuilding ChromaDB collection for embedding dimension change",
+                collection_name=self.collection_name,
+                stored_dims=len(stored[0]),
+                configured_dims=dims,
+            )
+            await self.client.delete_collection(self.collection_name)
+            self._collection_cache = await self.client.create_collection(
+                name=self.collection_name,
+                metadata={"hnsw:space": "cosine"},
+                embedding_function=NoOpEmbeddingFunction(),
+            )
 
     def _namespace_to_id(self, namespace: tuple[str, ...], key: str) -> str:
         """Convert namespace tuple and key to ChromaDB ID."""

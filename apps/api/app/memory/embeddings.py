@@ -154,6 +154,28 @@ async def _sidecar_post(path: str, payload: dict) -> dict[str, Any]:
         return cast(dict[str, Any], response.json())
 
 
+def embed_query_sync(text: str) -> list[float]:
+    """Synchronous single-query embed (sidecar HTTP when configured, else in-process)."""
+    if _sidecar_url():
+        with httpx.Client(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS) as client:
+            response = client.post(f"{_sidecar_url()}/embed_query", json={"text": text})
+            response.raise_for_status()
+            return cast(list[float], response.json()["vector"])
+    return _embed_query_sync(text)
+
+
+def embed_batch_sync(texts: list[str]) -> list[list[float]]:
+    """Synchronous batch embed (sidecar HTTP when configured, else in-process)."""
+    if not texts:
+        return []
+    if _sidecar_url():
+        with httpx.Client(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS) as client:
+            response = client.post(f"{_sidecar_url()}/embed", json={"texts": texts})
+            response.raise_for_status()
+            return cast(list[list[float]], response.json()["vectors"])
+    return _embed_sync(texts)
+
+
 async def embed_query(text: str) -> list[float]:
     """Embed a single query string (with the model's query instruction)."""
     if _sidecar_url():
