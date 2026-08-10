@@ -252,6 +252,26 @@ async def _run_question(
 ) -> tuple[str, bool, str]:
     user_id = f"lme-{item['question_id']}"
     qtype = item["question_type"]
+
+    # Freeze the read path's clock at the question's date for the recall
+    # phase. The haystack sessions are retained at their own historical dates;
+    # without the matching read-side freeze, forget_after/recency filters
+    # evaluate against the wall clock, and every inherently-temporal fact
+    # (appointments, subscriptions, deadlines) is "already forgotten" the
+    # moment it is stored — recall comes back empty. Same mechanism the
+    # memory suite's runner uses for its scenarios.
+    import app.memory.management as management_mod
+    import app.memory.pg_store.memories as memories_mod
+    import app.memory.retrieval as retrieval_mod
+    from scripts.memory_benchmark.runner import _make_fake_datetime
+
+    question_now = _parse_date(item["question_date"])
+    _read_clock_modules = (retrieval_mod, management_mod, memories_mod)
+    _original_datetimes = {mod: mod.datetime for mod in _read_clock_modules}
+    fake_now = _make_fake_datetime(question_now)
+    for mod in _read_clock_modules:
+        mod.datetime = fake_now
+
     try:
         for date_raw, session in zip(item["haystack_dates"], item["haystack_sessions"]):
             messages = [
@@ -290,6 +310,8 @@ async def _run_question(
             await _print_diagnosis(user_id, item, notes)
         return qtype, correct, model_answer
     finally:
+        for mod in _read_clock_modules:
+            mod.datetime = _original_datetimes[mod]
         await memory_engine.delete_all(user_id)
 
 

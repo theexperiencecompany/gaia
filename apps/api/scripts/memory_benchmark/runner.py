@@ -100,6 +100,24 @@ async def run_scenario(scenario: dict) -> list[dict]:
     user_id = str(uuid.uuid4())
     results: list[dict] = []
 
+    # Freeze the read path's clock at the benchmark's base date for the whole
+    # probe phase. Ingestion already stamps turns at their day_offset; without
+    # the matching read-side freeze, forget_after/recency filters evaluate
+    # against the WALL clock (Aug 2026) while the scenario lives in Jan 2026 —
+    # every dated fact (deadline, subscription expiry) is then "already
+    # forgotten" and recall comes back empty. Same fake-datetime mechanism as
+    # _retain_at, applied to the modules the probe phase reads.
+    probe_now = BASE_DATE
+    import app.memory.management as management_mod
+    import app.memory.pg_store.memories as memories_mod
+    import app.memory.retrieval as retrieval_mod
+
+    _read_clock_modules = (retrieval_mod, management_mod, memories_mod)
+    _original_datetimes = {mod: mod.datetime for mod in _read_clock_modules}
+    fake_now = _make_fake_datetime(probe_now)
+    for mod in _read_clock_modules:
+        mod.datetime = fake_now
+
     try:
         # ── Ingestion phase ──────────────────────────────────────────────
         # Group consecutive turns that share the same day_offset into one
@@ -150,7 +168,6 @@ async def run_scenario(scenario: dict) -> list[dict]:
                     "is_negative": probe.get("is_negative", False),
                 }
             )
-
     except Exception as exc:  # noqa: BLE001
         # Capture harness errors as failed probes so the report stays complete.
         for probe in scenario["probes"]:
@@ -171,6 +188,8 @@ async def run_scenario(scenario: dict) -> list[dict]:
                 }
             )
     finally:
+        for mod in _read_clock_modules:
+            mod.datetime = _original_datetimes[mod]
         # Best-effort teardown of the throwaway benchmark user; a failure here
         # must not mask the probe results the caller is about to read.
         with suppress(Exception):
