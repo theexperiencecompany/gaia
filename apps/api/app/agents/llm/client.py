@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from functools import cache
+import json
 from typing import Any, TypeVar, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -8,6 +9,8 @@ from langchain_core.language_models import LanguageModelInput, LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
+from langchain_core.messages import SystemMessage
+from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -28,6 +31,7 @@ from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     DEV_LLM_MAX_OUTPUT_TOKENS,
+    DEV_MODEL_OPTIONS,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
     OPENROUTER_APP_CATEGORIES,
@@ -216,17 +220,21 @@ def init_custom_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    return _openrouter_wire_configurables(
-        ChatOpenRouter(
-            model=PROVIDER_MODELS["custom"],
-            temperature=DEFAULT_LLM_TEMPERATURE,
-            streaming=True,
-            stream_usage=True,
-            max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
-            api_key=settings.DEV_LLM_API_KEY,
-            base_url=settings.DEV_LLM_BASE_URL,
-        )
+    llm = ChatOpenRouter(
+        model=PROVIDER_MODELS["custom"],
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        streaming=True,
+        stream_usage=True,
+        max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+        api_key=settings.DEV_LLM_API_KEY,
+        base_url=settings.DEV_LLM_BASE_URL,
     )
+    # The custom endpoint's model has no entry in LangChain's profile registry;
+    # without the profile, the summarization/compaction fractional triggers
+    # cannot build and the graph dies at construction. Same pattern as
+    # _build_default_llm / init_openrouter_llm.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return _openrouter_wire_configurables(llm)
 
 
 def init_llm(
@@ -373,6 +381,22 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
     configured."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
+    dev_default = settings.DEV_DEFAULT_MODEL
+    if (
+        settings.ENV == "development"
+        and dev_default
+        and DEV_MODEL_OPTIONS.get(dev_default, {}).get("provider") == "custom"
+    ):
+        # DEV_DEFAULT_MODEL=custom routes ALL dev traffic — including this
+        # auxiliary seam (memory extraction, the HIL intent judge, follow-ups)
+        # — to the DEV_LLM_* endpoint, not just the agent models.
+        custom = providers.get("custom_llm")
+        if custom is None:
+            raise LLMNotConfiguredError(
+                "custom_llm not available — DEV_LLM_BASE_URL / DEV_LLM_API_KEY / "
+                "DEV_LLM_MODEL must be set (DEV_DEFAULT_MODEL=custom)"
+            )
+        return custom
     if not settings.OPENROUTER_API_KEY:
         raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
     return _build_default_llm(temperature)
@@ -665,10 +689,66 @@ async def ainvoke_structured(
     is what the call's spend is metered against). Adds the transient-retry + fallback
     of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
     is not configured (see ``get_default_llm``)."""
-    structured = get_default_llm(temperature=temperature).with_structured_output(schema)
+    model = get_default_llm(temperature=temperature)
+    if _is_custom_lane(model):
+        return await _structured_via_json_object(
+            model, schema, prompt, label=label, config=config, timeout=timeout
+        )
+    structured = model.with_structured_output(schema)
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(
         _StructuredT,
         await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout),
     )
+
+
+def _is_custom_lane(model: LanguageModelLike) -> bool:
+    """Whether ``model`` is the DEV_LLM_* custom lane.
+
+    The custom lane's gateways (nous / opencode-go) run in "thinking mode" and
+    reject both ``tool_choice`` and ``response_format: json_schema`` with a 400
+    — the ``with_structured_output`` default. They accept plain
+    ``response_format: json_object``, so structured calls on this lane route
+    through :func:`_structured_via_json_object` instead.
+    """
+    custom = providers.get("custom_llm")
+    return custom is not None and model is custom
+
+
+async def _structured_via_json_object(
+    model: LanguageModelLike,
+    schema: type[_StructuredT],
+    prompt: LanguageModelInput,
+    *,
+    label: str,
+    config: RunnableConfig | None,
+    timeout: float | None,
+) -> _StructuredT:
+    """Structured output for lanes that reject ``tool_choice``/``json_schema``.
+
+    Appends the schema as a system message (``json_object`` carries no schema)
+    and parses the model's content back into it.
+    """
+    schema_hint = SystemMessage(
+        content=(
+            "Reply with a single JSON object that conforms exactly to this JSON "
+            f"schema, no markdown fences and no commentary:\n{json.dumps(schema.model_json_schema())}"
+        )
+    )
+    messages = [*prompt, schema_hint] if isinstance(prompt, list) else [schema_hint, prompt]
+    invoke_config = cast(
+        RunnableConfig,
+        {
+            **(config or {}),
+            "configurable": {
+                **(config or {}).get("configurable", {}),
+                "model_kwargs": {"response_format": {"type": "json_object"}},
+            },
+        },
+    )
+    message = await ainvoke_llm(model, messages, config=invoke_config, label=label, timeout=timeout)
+    content = message.content
+    if isinstance(content, list):
+        content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+    return schema.model_validate(JsonOutputParser().parse(str(content)))

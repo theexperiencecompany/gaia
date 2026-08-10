@@ -27,8 +27,6 @@ from collections.abc import Awaitable
 from typing import ClassVar, TypedDict, TypeVar, cast
 from urllib.parse import urlsplit
 
-from langchain_core.messages import BaseMessage
-from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 
 from scripts.evals.core.cost import EvalCostTracker
@@ -219,71 +217,6 @@ def _patch_default_llm_to_pinned_provider() -> None:
     llm_client.get_default_llm = pinned_default_llm
 
 
-def _patch_structured_output_for_pinned_lane() -> None:
-    """Swap the memory module's structured-output seam to json-object mode.
-
-    ``with_structured_output`` defaults to the function-calling method
-    (``tool_choice``) on OpenAI-wire clients; the opencode-go lane runs in
-    "thinking mode" and rejects ``tool_choice`` — and also
-    ``response_format: json_schema`` — with a 400, so extraction would
-    silently degrade to empty batches. Plain ``response_format:
-    json_object`` is accepted, but requires the prompt to mention json and
-    does not carry the schema, so this seam appends the schema as a system
-    message and parses the content back into it. The app-level fix belongs
-    in ``client.ainvoke_structured`` (lane-aware method choice); this patch
-    targets the memory module's import-time binding, its only consumer here.
-    """
-
-    import json as json_module
-
-    from langchain_core.messages import SystemMessage
-    from langchain_core.output_parsers import JsonOutputParser
-
-    from app.agents.llm.client import ainvoke_llm, get_default_llm
-    from app.constants.llm import DEFAULT_LLM_TEMPERATURE, LLM_INVOKE_TIMEOUT_SECONDS
-    import app.memory.extraction as extraction_mod
-
-    async def json_object_ainvoke_structured(
-        schema: type[SchemaT],
-        prompt: BaseMessage | list[BaseMessage],
-        *,
-        label: str,
-        temperature: float = DEFAULT_LLM_TEMPERATURE,
-        config: RunnableConfig | None = None,
-        timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
-    ) -> SchemaT:
-        schema_hint = SystemMessage(
-            content=(
-                "Reply with a single JSON object that conforms exactly to this JSON "
-                f"schema, no markdown fences and no commentary:\n{json_module.dumps(schema.model_json_schema())}"
-            )
-        )
-        messages = [*prompt, schema_hint] if isinstance(prompt, list) else [schema_hint, prompt]
-        invoke_config = cast(
-            RunnableConfig,
-            {
-                **(config or {}),
-                "configurable": {
-                    **(config or {}).get("configurable", {}),
-                    "model_kwargs": {"response_format": {"type": "json_object"}},
-                },
-            },
-        )
-        message = await ainvoke_llm(
-            get_default_llm(temperature=temperature),
-            messages,
-            config=invoke_config,
-            label=label,
-            timeout=timeout,
-        )
-        content = message.content
-        if isinstance(content, list):
-            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-        return schema.model_validate(JsonOutputParser().parse(str(content)))
-
-    extraction_mod.ainvoke_structured = json_object_ainvoke_structured
-
-
 async def _ensure_ready(tracker: EvalCostTracker) -> None:
     """One-time process bootstrap: DB providers, LLM pin, token metering."""
     global _BOOTSTRAPPED, _LLM_PATCHED
@@ -295,7 +228,6 @@ async def _ensure_ready(tracker: EvalCostTracker) -> None:
 
         register_llm_providers()
         _patch_default_llm_to_pinned_provider()
-        _patch_structured_output_for_pinned_lane()
         _LLM_PATCHED = True
     from scripts.memory_benchmark.longmemeval import attach_extraction_meter
 
