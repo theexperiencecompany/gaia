@@ -25,7 +25,19 @@ from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.scorers import CommunicateGate, ProviderQuality, ToolCallCorrectness
 from scripts.evals.core.types import Case, CaseRun
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
+
+def _find_repo_root() -> Path:
+    """The repo root that owns this harness (the dir containing the LLM stub)."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "tools" / "llm-stub" / "server.py").exists():
+            return parent
+    raise FileNotFoundError(
+        "could not locate the repo root (no tools/llm-stub/server.py found above "
+        f"{Path(__file__).resolve()})"
+    )
+
+
+_REPO_ROOT = _find_repo_root()
 STUB_PORT = int(os.environ.get("LLM_STUB_PORT", "9797"))
 STUB_URL = f"http://localhost:{STUB_PORT}/api/v1"
 
