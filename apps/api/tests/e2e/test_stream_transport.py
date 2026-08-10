@@ -29,19 +29,23 @@ import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator
 import json
 from typing import Any
-from uuid import uuid4
+from unittest.mock import MagicMock
+from uuid import UUID, uuid4
 
 import fakeredis.aioredis
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from httpx import AsyncClient
 import pytest
 from starlette.requests import Request
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints import chat as chat_endpoint
-from app.constants.cache import STREAM_TURN_DEDUP_PREFIX
+from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
+from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
+from app.models.message_models import MessageRequestWithHistory
 from app.utils.agent_utils import format_sse_data
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.transcript import DONE, Transcript
@@ -138,11 +142,147 @@ def stub_turn(monkeypatch: pytest.MonkeyPatch, runs: list[dict[str, Any]]) -> No
         conversation_id: str,
         source: str | None = None,
     ) -> None:
-        runs.append({"stream_id": stream_id, "conversation_id": conversation_id})
+        runs.append(
+            {
+                "stream_id": stream_id,
+                "conversation_id": conversation_id,
+                "source": source,
+                "user": user,
+                "body": body,
+            }
+        )
         await stream_manager.publish_chunk(stream_id, TURN_FRAMES[0])
         await stream_manager.complete_stream(stream_id)
 
     monkeypatch.setattr(chat_endpoint, "run_chat_stream_background", _fake_turn)
+
+
+# ---------------------------------------------------------------------------
+# _resolve_source / _build_chat_context — the seams
+# ---------------------------------------------------------------------------
+
+
+def _request_with_headers(headers: list[tuple[bytes, bytes]]) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/",
+            "headers": headers,
+            "query_string": b"",
+        }
+    )
+
+
+class TestResolveSource:
+    """The X-Client-Type header → conversation source map, at the seam.
+
+    Only the desktop app is trusted to claim a non-web source; anything
+    else — absent, unknown, or a hostile casing — lands on web. A change
+    that widened trust (or broke desktop detection) would silently route
+    desktop-executed tools to the wrong tier, so every branch is exact.
+    """
+
+    def test_absent_header_resolves_to_web(self) -> None:
+        assert chat_endpoint._resolve_source(_request_with_headers([])) == "web"
+
+    def test_desktop_header_resolves_to_desktop(self) -> None:
+        request = _request_with_headers([(b"x-client-type", b"desktop")])
+        assert chat_endpoint._resolve_source(request) == "desktop"
+
+    def test_header_is_trimmed_and_case_insensitive(self) -> None:
+        request = _request_with_headers([(b"x-client-type", b"  DESKTOP  ")])
+        assert chat_endpoint._resolve_source(request) == "desktop"
+
+    def test_unknown_client_type_resolves_to_web(self) -> None:
+        request = _request_with_headers([(b"x-client-type", b"mobile")])
+        assert chat_endpoint._resolve_source(request) == "web"
+
+
+class TestBuildChatContext:
+    """The exact wide-event chat context, at the seam.
+
+    Every field is derived behavior — a wrong count, a flipped boolean, or a
+    missed attachment silently corrupts the per-turn wide event that chat
+    product decisions read. Two payloads (bare and fully-loaded) pin every
+    branch; the wire-level call is pinned by ``TestChatStreamEndpoint``.
+    """
+
+    def test_minimal_body(self) -> None:
+        body = MessageRequestWithHistory(
+            message="hi",
+            messages=[{"role": "user", "content": "hi"}],
+        )
+
+        assert chat_endpoint._build_chat_context(body, "conv-1", "stream-1") == {
+            "conversation_id": "conv-1",
+            "stream_id": "stream-1",
+            "is_new_conversation": True,
+            "message_count": 1,
+            "has_files": False,
+            "file_count": 0,
+            "tool_category": None,
+            "has_reply": False,
+            "has_calendar_event": False,
+            "selected_workflow_id": None,
+        }
+
+    def test_fully_loaded_body(self) -> None:
+        body = MessageRequestWithHistory(
+            message="hi",
+            conversation_id="conv-9",
+            messages=[
+                {"role": "user", "content": "first"},
+                {"role": "assistant", "content": "second"},
+            ],
+            fileIds=["f1", "f2"],
+            fileData=[
+                {"fileId": "f3", "url": "http://files/f3", "filename": "f3.txt"}
+            ],
+            toolCategory="research",
+            replyToMessage={"id": "m1", "content": "orig", "role": "user"},
+            selectedCalendarEvent={
+                "id": "evt-1",
+                "summary": "Standup",
+                "description": "",
+                "start": {"dateTime": "2025-01-01T10:00:00Z"},
+                "end": {"dateTime": "2025-01-01T10:30:00Z"},
+            },
+            selectedWorkflow={
+                "id": "wf-9",
+                "title": "Report",
+                "description": "",
+                "steps": [],
+            },
+        )
+
+        assert chat_endpoint._build_chat_context(body, "conv-9", "stream-9") == {
+            "conversation_id": "conv-9",
+            "stream_id": "stream-9",
+            "is_new_conversation": False,
+            "message_count": 2,
+            "has_files": True,
+            "file_count": 3,
+            "tool_category": "research",
+            "has_reply": True,
+            "has_calendar_event": True,
+            "selected_workflow_id": "wf-9",
+        }
+
+    def test_files_without_file_data_still_count(self) -> None:
+        """``has_files`` is the OR of the two attachment channels: a body
+        carrying only ``fileIds`` (or only ``fileData``) still has files."""
+        body = MessageRequestWithHistory(
+            message="hi",
+            messages=[{"role": "user", "content": "hi"}],
+            fileIds=["f1"],
+            fileData=[],
+        )
+
+        ctx = chat_endpoint._build_chat_context(body, "conv-1", "stream-1")
+
+        assert ctx["has_files"] is True
+        assert ctx["file_count"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +313,7 @@ class TestSubscribeAuthorization:
         response = await client.get(f"/api/v1/stream/{stream_id}")
 
         assert response.status_code == 403
+        assert response.json()["detail"] == "Not authorized to subscribe to this stream"
         assert "Hello" not in response.text
 
     async def test_unknown_stream_is_404(
@@ -183,6 +324,7 @@ class TestSubscribeAuthorization:
         response = await client.get(f"/api/v1/stream/{uuid4()}")
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Stream not found"
 
     async def test_principal_without_user_id_is_400(
         self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
@@ -193,6 +335,7 @@ class TestSubscribeAuthorization:
         response = await client.get(f"/api/v1/stream/{stream_id}")
 
         assert response.status_code == 400
+        assert response.json()["detail"] == "user_id is required"
 
 
 class TestAlreadyCompleteShortCircuit:
@@ -315,6 +458,9 @@ class TestTurnDedup:
         # The claim holds the winning stream id, so a client can find its turn.
         claimed = await fake_redis.get(f"{STREAM_TURN_DEDUP_PREFIX}{OWNER_ID}:turn-abc")
         assert claimed == first.headers["X-Stream-Id"] == runs[0]["stream_id"]
+        # And it expires: a claim that never TTLs would grow unbounded in Redis.
+        ttl = await fake_redis.ttl(f"{STREAM_TURN_DEDUP_PREFIX}{OWNER_ID}:turn-abc")
+        assert 0 < ttl <= STREAM_TURN_DEDUP_TTL
 
     async def test_a_different_turn_id_is_accepted(
         self,
@@ -363,6 +509,310 @@ class TestTurnDedup:
 
         first = await client.post("/api/v1/chat-stream", json=chat_payload())
         second = await client.post("/api/v1/chat-stream", json=chat_payload())
+
+        assert (first.status_code, second.status_code) == (200, 200)
+        assert len(runs) == 2
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/chat-stream — beyond dedup: context, cost wall, envelope
+# ---------------------------------------------------------------------------
+
+
+class TestChatStreamEndpoint:
+    """The POST surface the dedup tests ride over: the 400 gate, the
+    conversation/timezone/source plumbing into the turn, the cost wall, the
+    exact wide event, and the response envelope.
+    """
+
+    async def test_principal_without_user_id_is_400(self) -> None:
+        """The rate-limit wrapper's own 401 fires first over HTTP, so the
+        endpoint's 400 is exercised at the unwrapped seam."""
+        raw = chat_endpoint.chat_stream_endpoint.__wrapped__
+        body = MessageRequestWithHistory(
+            message="hi", messages=[{"role": "user", "content": "hi"}]
+        )
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/v1/chat-stream",
+                "headers": [],
+                "query_string": b"",
+            }
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await raw(request=request, body=body, user={"user_id": None}, home_timezone="UTC")
+
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "user_id is required"
+
+    async def test_new_conversation_gets_a_fresh_id_and_web_source(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        as_user(FAKE_USER)
+        runs: list[dict[str, Any]] = []
+        stub_turn(monkeypatch, runs)
+
+        response = await client.post("/api/v1/chat-stream", json=chat_payload())
+
+        assert response.status_code == 200
+        assert len(runs) == 1
+        # A fresh uuid must look like one — a "None" or "" stream id would
+        # silently break every client that addresses the stream by id.
+        assert UUID(runs[0]["conversation_id"])
+        assert runs[0]["source"] == "web"
+        # FAKE_USER stores "UTC" and no header is sent: the resolved zone is UTC.
+        assert runs[0]["user"]["timezone"] == "UTC"
+
+    async def test_existing_conversation_and_header_timezone_reach_the_turn(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        as_user(FAKE_USER)
+        runs: list[dict[str, Any]] = []
+        stub_turn(monkeypatch, runs)
+
+        response = await client.post(
+            "/api/v1/chat-stream",
+            json=chat_payload(conversation_id="conv-123"),
+            headers={"x-timezone": "America/New_York"},
+        )
+
+        assert response.status_code == 200
+        assert runs[0]["conversation_id"] == "conv-123"
+        # The stored "UTC" is healed from the header before the turn runs.
+        assert runs[0]["user"]["timezone"] == "America/New_York"
+        assert runs[0]["user"]["user_id"] == OWNER_ID
+        # The parsed body (not a copy or None) reaches the turn, and the
+        # progress record carries the owner + conversation for late viewers.
+        assert runs[0]["body"].conversation_id == "conv-123"
+        progress = await stream_manager.get_progress(runs[0]["stream_id"])
+        assert progress is not None
+        assert progress["conversation_id"] == "conv-123"
+        assert progress["user_id"] == OWNER_ID
+
+    async def test_client_type_header_selects_the_turn_source(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        as_user(FAKE_USER)
+        runs: list[dict[str, Any]] = []
+        stub_turn(monkeypatch, runs)
+
+        desktop = await client.post(
+            "/api/v1/chat-stream", json=chat_payload(), headers={"X-Client-Type": "desktop"}
+        )
+        other = await client.post(
+            "/api/v1/chat-stream", json=chat_payload(), headers={"X-Client-Type": "mobile"}
+        )
+
+        assert (desktop.status_code, other.status_code) == (200, 200)
+        assert runs[0]["source"] == "desktop"
+        assert runs[1]["source"] == "web"
+
+    async def test_cost_budget_wall_returns_429_and_runs_no_turn(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        blocked: list[tuple[str, str]] = []
+
+        async def _blocked(user_id: str, feature_key: str) -> None:
+            blocked.append((user_id, feature_key))
+            raise CostBudgetExceededException(feature="chat_messages")
+
+        monkeypatch.setattr(chat_endpoint, "enforce_daily_cost_budget", _blocked)
+        as_user(FAKE_USER)
+        runs: list[dict[str, Any]] = []
+        stub_turn(monkeypatch, runs)
+
+        response = await client.post("/api/v1/chat-stream", json=chat_payload())
+
+        assert response.status_code == 429
+        assert response.json()["detail"]["error"] == "rate_limit_exceeded"
+        assert blocked == [(OWNER_ID, "chat_messages")]
+        assert runs == []
+
+    async def test_post_logs_the_exact_wide_event(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        mock_log = MagicMock()
+        monkeypatch.setattr(chat_endpoint, "log", mock_log)
+        as_user(FAKE_USER)
+        runs: list[dict[str, Any]] = []
+        stub_turn(monkeypatch, runs)
+
+        payload = chat_payload(
+            message="hello there",
+            messages=[
+                {"role": "assistant", "content": "hi"},
+                {"role": "user", "content": "hello there"},
+            ],
+            conversation_id="conv-123",
+            fileIds=["file-1", "file-2"],
+            fileData=[
+                {"fileId": "file-3", "url": "http://files/file-3", "filename": "f3.txt"}
+            ],
+            toolCategory="research",
+            replyToMessage={"id": "m1", "content": "orig", "role": "user"},
+            selectedCalendarEvent={
+                "id": "evt-1",
+                "summary": "Standup",
+                "description": "",
+                "start": {"dateTime": "2025-01-01T10:00:00Z"},
+                "end": {"dateTime": "2025-01-01T10:30:00Z"},
+            },
+            selectedWorkflow={
+                "id": "wf-9",
+                "title": "Report",
+                "description": "",
+                "steps": [],
+            },
+            selectedTool="web_search",
+        )
+        response = await client.post("/api/v1/chat-stream", json=payload)
+
+        assert response.status_code == 200
+        mock_log.set.assert_called_once_with(
+            user={"id": OWNER_ID},
+            chat={
+                "conversation_id": "conv-123",
+                "stream_id": response.headers["x-stream-id"],
+                "is_new_conversation": False,
+                "message_count": 2,
+                "has_files": True,
+                "file_count": 3,
+                "tool_category": "research",
+                "has_reply": True,
+                "has_calendar_event": True,
+                "selected_workflow_id": "wf-9",
+            },
+            user_message_length=11,
+            selected_tool="web_search",
+        )
+
+    async def test_post_response_envelope(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        as_user(FAKE_USER)
+        runs: list[dict[str, Any]] = []
+        stub_turn(monkeypatch, runs)
+
+        response = await client.post("/api/v1/chat-stream", json=chat_payload())
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+        assert response.headers["x-stream-id"] == runs[0]["stream_id"]
+        assert UUID(response.headers["x-stream-id"])
+        assert response.headers["cache-control"] == "no-cache"
+        assert response.headers["connection"] == "keep-alive"
+        assert response.headers["x-accel-buffering"] == "no"
+        # CORSMiddleware owns the CORS header; the endpoint must not pin one.
+        assert "access-control-allow-origin" not in response.headers
+        assert Transcript.from_sse(response.text).final_text() == "Hello"
+
+    async def test_post_response_construction(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The exact ``StreamingResponse`` the POST builds, at the seam.
+
+        Starlette lowercases response header names, so header-key casing is
+        indistinguishable on the wire — but the endpoint's own dict is the
+        contract, and a misspelled key would first show here. Same recording
+        wrapper as the subscribe construction tests.
+        """
+        real = chat_endpoint.StreamingResponse
+        constructed: list[dict[str, Any]] = []
+
+        def recording(*args: Any, **kwargs: Any) -> Any:
+            constructed.append(kwargs)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(chat_endpoint, "StreamingResponse", recording)
+        as_user(FAKE_USER)
+        runs: list[dict[str, Any]] = []
+        stub_turn(monkeypatch, runs)
+
+        response = await client.post("/api/v1/chat-stream", json=chat_payload())
+
+        assert response.status_code == 200
+        assert constructed == [
+            {
+                "media_type": "text/event-stream",
+                "headers": {
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                    "X-Stream-Id": runs[0]["stream_id"],
+                },
+            }
+        ]
+
+    async def test_empty_message_history_logs_zero_length(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An empty history must read as zero, not as one missing message.
+
+        ``messages`` is required but may be ``[]``; the length expression's
+        else-branch is the only thing standing between a client that sends an
+        empty history and a wide event claiming one message existed.
+        """
+        mock_log = MagicMock()
+        monkeypatch.setattr(chat_endpoint, "log", mock_log)
+        as_user(FAKE_USER)
+        runs: list[dict[str, Any]] = []
+        stub_turn(monkeypatch, runs)
+
+        response = await client.post(
+            "/api/v1/chat-stream", json=chat_payload(messages=[])
+        )
+
+        assert response.status_code == 200
+        chat = mock_log.set.call_args.kwargs["chat"]
+        assert chat["message_count"] == 0
+        assert mock_log.set.call_args.kwargs["user_message_length"] == 0
+
+    async def test_turn_id_is_not_claimed_when_redis_is_down(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The dedup claim requires a live Redis; without one the send is
+        accepted (and the client's turn_id means nothing). A mutant that
+        dropped the ``and redis_cache.redis`` guard would crash on
+        ``None.set`` and 500 instead of 200."""
+        as_user(FAKE_USER)
+        runs: list[dict[str, Any]] = []
+        stub_turn(monkeypatch, runs)
+        redis_cache.redis = None
+
+        first = await client.post("/api/v1/chat-stream", json=chat_payload(turn_id="turn-abc"))
+        second = await client.post(
+            "/api/v1/chat-stream", json=chat_payload(turn_id="turn-abc")
+        )
 
         assert (first.status_code, second.status_code) == (200, 200)
         assert len(runs) == 2
@@ -587,3 +1037,406 @@ class TestClientDisconnect:
         assert progress is not None and progress["is_complete"] is True
         replayed = [chunk async for chunk in stream_manager.subscribe_stream(stream_id)]
         assert Transcript.from_sse("".join(replayed)).final_text() == "Hello there, friend!"
+
+
+# ---------------------------------------------------------------------------
+# _stream_from_redis — the failure branches
+# ---------------------------------------------------------------------------
+
+
+class TestStreamFromRedisErrorPaths:
+    """The generator's failure branches: no Redis, a cancelled client, a
+    broken subscription. Each must surface loudly — an error frame on the
+    wire, a re-raised cancellation, or a logged error — never a silent hang.
+    """
+
+    async def test_redis_unavailable_yields_a_stream_error_frame(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_log = MagicMock()
+        monkeypatch.setattr(chat_endpoint, "log", mock_log)
+        redis_cache.redis = None
+        stream_id = str(uuid4())
+
+        body = [
+            chunk
+            async for chunk in chat_endpoint._stream_from_redis(
+                stream_id, request_that_disconnects(asyncio.Event())
+            )
+        ]
+
+        assert body == ["data: [STREAM_ERROR]\n\n"]
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.CHAT} Redis unavailable for stream", stream_id=stream_id
+        )
+
+    async def test_stream_begins_the_log_context_boundary(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The SSE delivery boundary is the wide-event seam for the stream.
+
+        The operation name, the inherited trace id, and the stream id must
+        all land on it — a boundary that drops them would silently discard
+        every delivery outcome (disconnects, delivery errors).
+        """
+        monkeypatch.setattr(chat_endpoint, "get_trace_id", lambda: "trace-123")
+        calls: list[tuple[Any, ...]] = []
+
+        class _DummyBoundary:
+            async def __aenter__(self) -> None:
+                return None
+
+            async def __aexit__(self, *exc: Any) -> bool:
+                return False
+
+        def recording(
+            operation: str, *, trace_id: str | None = None, **initial: Any
+        ) -> Any:
+            calls.append((operation, trace_id, initial))
+            return _DummyBoundary()
+
+        monkeypatch.setattr(chat_endpoint, "log_context", recording)
+        redis_cache.redis = None
+        stream_id = str(uuid4())
+
+        body = [
+            chunk
+            async for chunk in chat_endpoint._stream_from_redis(
+                stream_id, request_that_disconnects(asyncio.Event())
+            )
+        ]
+
+        assert body == ["data: [STREAM_ERROR]\n\n"]
+        assert calls == [("sse_delivery", "trace-123", {"stream_id": stream_id})]
+
+    async def test_cancellation_is_reraised_and_logged(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_log = MagicMock()
+        monkeypatch.setattr(chat_endpoint, "log", mock_log)
+        stream_id = str(uuid4())
+
+        async def _cancelled(*args: Any, **kwargs: Any) -> AsyncIterator[str]:
+            raise asyncio.CancelledError()
+            yield  # pragma: no cover - unreachable; makes this an async generator
+
+        monkeypatch.setattr(stream_manager, "subscribe_stream", _cancelled)
+        generator = chat_endpoint._stream_from_redis(
+            stream_id, request_that_disconnects(asyncio.Event())
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            await generator.__anext__()
+
+        mock_log.set.assert_called_once_with(client_disconnected=True)
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.CHAT} Client connection cancelled", stream_id=stream_id
+        )
+
+    async def test_subscription_error_is_logged_and_the_stream_ends(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_log = MagicMock()
+        monkeypatch.setattr(chat_endpoint, "log", mock_log)
+        stream_id = str(uuid4())
+
+        async def _explode(*args: Any, **kwargs: Any) -> AsyncIterator[str]:
+            raise RuntimeError("redis exploded")
+            yield  # pragma: no cover - unreachable; makes this an async generator
+
+        monkeypatch.setattr(stream_manager, "subscribe_stream", _explode)
+        generator = chat_endpoint._stream_from_redis(
+            stream_id, request_that_disconnects(asyncio.Event())
+        )
+
+        with pytest.raises(StopAsyncIteration):
+            await generator.__anext__()
+
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.CHAT} Error streaming to client",
+            stream_id=stream_id,
+            error_type="RuntimeError",
+            error="redis exploded",
+        )
+
+    async def test_disconnect_logs_the_exact_wide_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_log = MagicMock()
+        monkeypatch.setattr(chat_endpoint, "log", mock_log)
+        stream_id = str(uuid4())
+        await stream_manager.start_stream(
+            stream_id=stream_id, conversation_id=str(uuid4()), user_id=OWNER_ID
+        )
+        await stream_manager.publish_chunk(stream_id, TURN_FRAMES[0])
+        disconnected = asyncio.Event()
+        generator = chat_endpoint._stream_from_redis(
+            stream_id, request_that_disconnects(disconnected)
+        )
+
+        assert (await generator.__anext__()).endswith(TURN_FRAMES[0])
+
+        disconnected.set()
+        await stream_manager.publish_chunk(stream_id, TURN_FRAMES[1])
+        with pytest.raises(StopAsyncIteration):
+            await generator.__anext__()
+
+        mock_log.set.assert_called_once_with(client_disconnected=True)
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.CHAT} Client disconnected, stream continues in background",
+            stream_id=stream_id,
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/cancel-stream/{id}
+# ---------------------------------------------------------------------------
+
+
+class TestCancelStream:
+    """Cancellation: ownership check, not-found soft failure, and the cancel
+    itself landing in Redis.
+    """
+
+    async def test_owner_cancels_their_stream(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        mock_log = MagicMock()
+        monkeypatch.setattr(chat_endpoint, "log", mock_log)
+        as_user(FAKE_USER)
+        stream_id = str(uuid4())
+        await stream_manager.start_stream(
+            stream_id=stream_id, conversation_id=str(uuid4()), user_id=OWNER_ID
+        )
+
+        response = await client.post(f"/api/v1/cancel-stream/{stream_id}")
+
+        assert response.status_code == 200
+        assert response.json() == {"success": True, "stream_id": stream_id, "error": None}
+        assert await stream_manager.is_cancelled(stream_id) is True
+        mock_log.set.assert_called_once_with(user={"id": OWNER_ID}, chat={"stream_id": stream_id})
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.CHAT} Cancel stream request", stream_id=stream_id, success=True
+        )
+
+    async def test_unknown_stream_fails_softly(
+        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+    ) -> None:
+        as_user(FAKE_USER)
+
+        response = await client.post(f"/api/v1/cancel-stream/{uuid4()}")
+
+        assert response.status_code == 200
+        assert response.json()["success"] is False
+        assert response.json()["error"] == "Stream not found"
+
+    async def test_another_users_stream_is_403(
+        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+    ) -> None:
+        as_user(FAKE_USER_2)
+        stream_id = str(uuid4())
+        await stream_manager.start_stream(
+            stream_id=stream_id, conversation_id=str(uuid4()), user_id=OWNER_ID
+        )
+
+        response = await client.post(f"/api/v1/cancel-stream/{stream_id}")
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Not authorized to cancel this stream"
+
+
+# ---------------------------------------------------------------------------
+# The response envelope: exact headers, media type, construction, and log calls
+# ---------------------------------------------------------------------------
+
+#: Every header the subscribe endpoint must set itself, on BOTH paths. The DONE
+#: short-circuit and the live attach share one envelope (same media type, same
+#: anti-caching headers, same CORS header) — asserted against the same dict.
+_EXPECTED_SUBSCRIBE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+    "Access-Control-Allow-Origin": "*",
+}
+
+_SSE_CONTENT_TYPE = "text/event-stream; charset=utf-8"
+
+
+async def _seed_completed_stream(user_id: str) -> str:
+    """A stream whose event log is terminated with ``is_complete`` true.
+
+    The one state that takes the already-complete short-circuit: progress
+    present and ``is_complete`` true, so the endpoint returns ``[DONE]``
+    instead of streaming the log again.
+    """
+    stream_id = str(uuid4())
+    await stream_manager.start_stream(
+        stream_id=stream_id, conversation_id=str(uuid4()), user_id=user_id
+    )
+    for frame in TURN_FRAMES:
+        await stream_manager.publish_chunk(stream_id, frame)
+    await stream_manager.complete_stream(stream_id)
+    return stream_id
+
+
+class TestSubscribeResponseSurface:
+    """The exact envelope a subscriber receives, on both paths.
+
+    The frame bodies are pinned byte-for-byte by the replay tests above; this
+    pins the response itself — status, media type, and every header. Dropping
+    any header (or changing its value) here would be a silent wire contract
+    break, so each is asserted exactly.
+    """
+
+    async def test_already_complete_envelope(
+        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+    ) -> None:
+        as_user(FAKE_USER)
+        stream_id = await _seed_completed_stream(OWNER_ID)
+
+        response = await client.get(f"/api/v1/stream/{stream_id}")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == _SSE_CONTENT_TYPE
+        for name, value in _EXPECTED_SUBSCRIBE_HEADERS.items():
+            assert response.headers[name] == value
+
+    async def test_live_envelope(
+        self, client: AsyncClient, as_user: Callable[[dict[str, Any]], None]
+    ) -> None:
+        as_user(FAKE_USER)
+        stream_id = await seed_cancelled_turn(OWNER_ID, TURN_FRAMES)
+
+        response = await client.get(f"/api/v1/stream/{stream_id}")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == _SSE_CONTENT_TYPE
+        for name, value in _EXPECTED_SUBSCRIBE_HEADERS.items():
+            assert response.headers[name] == value
+
+
+class TestSubscribeResponseConstruction:
+    """The exact ``StreamingResponse`` the endpoint builds, at the seam.
+
+    The HTTP envelope above proves what the client receives; this proves what
+    the endpoint *constructs*. Starlette lowercases response header names in
+    ``Response.init_headers``, so two spellings of a header name are
+    indistinguishable on the wire — but the endpoint's own dict is the real
+    contract, and the construction call is where a misspelled key or a dropped
+    kwarg would first show. A recording wrapper around the module's
+    ``StreamingResponse`` keeps the response streaming for real while capturing
+    the exact kwargs.
+    """
+
+    async def test_already_complete_construction(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        real = chat_endpoint.StreamingResponse
+        constructed: list[dict[str, Any]] = []
+
+        def recording(*args: Any, **kwargs: Any) -> Any:
+            constructed.append(kwargs)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(chat_endpoint, "StreamingResponse", recording)
+
+        as_user(FAKE_USER)
+        stream_id = await _seed_completed_stream(OWNER_ID)
+
+        response = await client.get(f"/api/v1/stream/{stream_id}")
+
+        assert response.status_code == 200
+        assert constructed == [
+            {
+                "media_type": "text/event-stream",
+                "headers": _EXPECTED_SUBSCRIBE_HEADERS,
+            }
+        ]
+
+    async def test_live_construction(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        real = chat_endpoint.StreamingResponse
+        constructed: list[dict[str, Any]] = []
+
+        def recording(*args: Any, **kwargs: Any) -> Any:
+            constructed.append(kwargs)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(chat_endpoint, "StreamingResponse", recording)
+
+        as_user(FAKE_USER)
+        stream_id = await seed_cancelled_turn(OWNER_ID, TURN_FRAMES)
+
+        response = await client.get(f"/api/v1/stream/{stream_id}")
+
+        assert response.status_code == 200
+        assert constructed == [
+            {
+                "media_type": "text/event-stream",
+                "headers": _EXPECTED_SUBSCRIBE_HEADERS,
+            }
+        ]
+
+
+class TestSubscribeLogging:
+    """The wide-event fields the subscribe paths emit, asserted exactly.
+
+    ``log.set`` seeds the request context with the owner and the stream; each
+    path's ``log.info`` names the branch taken. A dropped kwarg or a
+    misspelled key would silently corrupt the wide event, so the calls are
+    pinned in full.
+    """
+
+    async def test_already_complete_logs_owner_and_done(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        mock_log = MagicMock()
+        monkeypatch.setattr(chat_endpoint, "log", mock_log)
+        as_user(FAKE_USER)
+        stream_id = await _seed_completed_stream(OWNER_ID)
+
+        response = await client.get(f"/api/v1/stream/{stream_id}")
+
+        assert response.status_code == 200
+        mock_log.set.assert_called_once_with(
+            user={"id": OWNER_ID}, chat={"stream_id": stream_id}
+        )
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.CHAT} Executor stream already complete, returning [DONE]",
+            stream_id=stream_id,
+        )
+
+    async def test_live_subscribe_logs_owner_and_attach(
+        self,
+        client: AsyncClient,
+        as_user: Callable[[dict[str, Any]], None],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        mock_log = MagicMock()
+        monkeypatch.setattr(chat_endpoint, "log", mock_log)
+        as_user(FAKE_USER)
+        stream_id = await seed_cancelled_turn(OWNER_ID, TURN_FRAMES)
+
+        response = await client.get(f"/api/v1/stream/{stream_id}")
+
+        assert response.status_code == 200
+        mock_log.set.assert_called_once_with(
+            user={"id": OWNER_ID}, chat={"stream_id": stream_id}
+        )
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.CHAT} Client subscribed to executor stream",
+            stream_id=stream_id,
+        )
