@@ -2024,6 +2024,22 @@ class TestMarkdownToNotionBlocks:
             "content": "| not a table",
         }
 
+    def test_table_row_cells_with_x_chars_at_pipe_boundaries(self) -> None:
+        """X characters adjacent to pipes are preserved by row parsing.
+
+        Row edges are stripped of pipes only: a cell like "XX" touching the
+        pipe boundary must survive intact ("|XX|" is a data row, not a
+        separator), and a separator row like "| --- |" must keep filtering.
+        """
+        result = markdown_to_notion_blocks("| A |\n| --- |\n|XX|")
+        assert len(result) == 1
+        table = result[0]
+        assert table["type"] == "table"
+        assert table["table_width"] == 1
+        assert len(table["rows"]) == 2
+        assert table["rows"][0]["cells"][0][0]["text"]["content"] == "A"
+        assert table["rows"][1]["cells"][0][0]["text"]["content"] == "XX"
+
     def test_mixed_content(self) -> None:
         md = "# Title\n\nSome text\n\n- bullet\n\n1. numbered"
         result = markdown_to_notion_blocks(md)
