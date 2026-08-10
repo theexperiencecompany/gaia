@@ -13,9 +13,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.core.nodes import manage_system_prompts_node
+from app.agents.core.nodes.adapt_media import adapt_media_node
+from app.agents.core.nodes.executor_status import executor_status_hook
+from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.subagents.spawn_agent import get_spawn_graph
+from app.agents.tools import memory_tools
+from app.agents.tools.executor_tool import call_executor, cancel_executor
+from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
+
 _MOD = "app.agents.core.graph_builder.build_graph"
 _CM_MOD = "app.agents.core.graph_builder.checkpointer_manager"
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -265,6 +273,29 @@ class TestBuildCommsGraph:
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
             assert call_kwargs["checkpointer"] is fake_cp
+            store_mock = deps["mocks"][f"{_MOD}.get_tools_store"].return_value
+            assert call_kwargs["store"] is store_mock
+
+    async def test_default_in_memory_checkpointer_false_uses_postgres(self):
+        """With the default in_memory_checkpointer=False and a checkpointer
+        manager available, the postgres checkpointer is used."""
+        fake_cp = MagicMock(name="postgres_checkpointer")
+        fake_manager = MagicMock()
+        fake_manager.get_checkpointer.return_value = fake_cp
+
+        with ExitStack() as stack:
+            deps = _apply_patches(
+                stack,
+                {f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=fake_manager)},
+            )
+            from app.agents.core.graph_builder.build_graph import build_comms_graph
+
+            # No in_memory_checkpointer argument: the default False must win.
+            async with build_comms_graph(chat_llm=deps["llm"]) as graph:
+                assert graph is deps["compiled"]
+
+            call_kwargs = deps["builder"].compile.call_args.kwargs
+            assert call_kwargs["checkpointer"] is fake_cp
 
     async def test_falls_back_to_in_memory_when_no_manager(self):
         with ExitStack() as stack:
@@ -302,10 +333,27 @@ class TestBuildCommsGraph:
             mock_ca.assert_called_once()
             kwargs = mock_ca.call_args.kwargs
             assert kwargs["agent_name"] == "comms_agent"
+            assert kwargs["llm"] is deps["llm"]
             assert kwargs["disable_retrieve_tools"] is True
             assert "call_executor" in kwargs["initial_tool_ids"]
             assert "add_memory" in kwargs["initial_tool_ids"]
             assert "search_memory" in kwargs["initial_tool_ids"]
+
+    async def test_comms_initial_tool_ids_exact(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_comms_graph
+
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+            expected = [
+                "call_executor",
+                "cancel_executor",
+                *[tool.name for tool in memory_tools.tools],
+            ]
+            assert kwargs["initial_tool_ids"] == expected
 
     async def test_comms_graph_has_end_graph_hooks(self):
         with ExitStack() as stack:
@@ -321,7 +369,7 @@ class TestBuildCommsGraph:
             hook_names = {hook.__name__ for hook in kwargs["end_graph_hooks"]}
             assert hook_names == {"follow_up_actions_node", "memory_node"}
 
-    async def test_comms_tool_registry_contains_expected_tools(self):
+    async def test_comms_tool_registry_exact(self):
         with ExitStack() as stack:
             deps = _apply_patches(stack)
             from app.agents.core.graph_builder.build_graph import build_comms_graph
@@ -330,10 +378,12 @@ class TestBuildCommsGraph:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            tool_registry = kwargs["tool_registry"]
-            assert "call_executor" in tool_registry
-            assert "add_memory" in tool_registry
-            assert "search_memory" in tool_registry
+            expected = {
+                "call_executor": call_executor,
+                "cancel_executor": cancel_executor,
+                **{tool.name: tool for tool in memory_tools.tools},
+            }
+            assert kwargs["tool_registry"] == expected
 
     async def test_comms_pre_model_hooks_structure(self):
         with ExitStack() as stack:
@@ -346,8 +396,77 @@ class TestBuildCommsGraph:
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["pre_model_hooks"]
             # comms agent: filter_messages_node, executor_status_hook,
-            # manage_system_prompts_node
+            # manage_system_prompts_node — exact identity, in order.
             assert len(pre_model_hooks) == 3
+            assert pre_model_hooks[0] is filter_messages_node
+            assert pre_model_hooks[1] is executor_status_hook
+            assert pre_model_hooks[2] is manage_system_prompts_node
+
+    async def test_comms_logs_exact_in_memory(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_comms_graph
+
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
+                pass
+
+            mock_log = deps["mocks"][f"{_MOD}.log"]
+            mock_log.debug.assert_called_once_with(
+                "[AGENT] Comms graph compiled with in-memory checkpointer"
+            )
+            mock_log.set.assert_called_once_with(agent={"model": "test-model"})
+
+    async def test_comms_model_name_falls_back_to_model_attr(self):
+        """When model_name is missing but model is set, the model attr wins."""
+        llm_no_model_name = MagicMock(spec=[], model="claude-3-opus")
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_comms_graph
+
+            async with build_comms_graph(
+                chat_llm=llm_no_model_name, in_memory_checkpointer=True
+            ) as _:
+                pass
+
+            mock_log = deps["mocks"][f"{_MOD}.log"]
+            mock_log.set.assert_called_once_with(agent={"model": "claude-3-opus"})
+
+    async def test_comms_model_name_none_when_llm_has_no_attrs(self):
+        """A model-less LLM (no model_name, no model) yields model=None —
+        both getattr defaults must be present so this never raises."""
+        llm_no_attrs = MagicMock(spec=[])
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_comms_graph
+
+            async with build_comms_graph(chat_llm=llm_no_attrs, in_memory_checkpointer=True) as _:
+                pass
+
+            mock_log = deps["mocks"][f"{_MOD}.log"]
+            mock_log.set.assert_called_once_with(agent={"model": None})
+
+    async def test_comms_postgres_logs_exact(self):
+        fake_cp = MagicMock(name="postgres_checkpointer")
+        fake_manager = MagicMock()
+        fake_manager.get_checkpointer.return_value = fake_cp
+
+        with ExitStack() as stack:
+            deps = _apply_patches(
+                stack,
+                {f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=fake_manager)},
+            )
+            from app.agents.core.graph_builder.build_graph import build_comms_graph
+
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=False) as _:
+                pass
+
+            mock_log = deps["mocks"][f"{_MOD}.log"]
+            mock_log.debug.assert_called_once_with(
+                "[AGENT] Comms graph compiled with PostgreSQL checkpointer"
+            )
+            mock_log.set.assert_called_once_with(agent={"model": "test-model"})
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]
@@ -402,6 +521,191 @@ class TestBuildExecutorGraph:
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
             assert call_kwargs["checkpointer"] is fake_cp
+            store_mock = deps["mocks"][f"{_MOD}.get_tools_store"].return_value
+            assert call_kwargs["store"] is store_mock
+
+    async def test_default_in_memory_checkpointer_false_uses_postgres(self):
+        """With the default in_memory_checkpointer=False and a checkpointer
+        manager available, the postgres checkpointer is used."""
+        fake_cp = MagicMock(name="postgres_checkpointer")
+        fake_manager = MagicMock()
+        fake_manager.get_checkpointer.return_value = fake_cp
+
+        with ExitStack() as stack:
+            deps = _apply_patches(
+                stack,
+                {f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=fake_manager)},
+            )
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            # No in_memory_checkpointer argument: the default False must win.
+            async with build_executor_graph(chat_llm=deps["llm"]) as graph:
+                assert graph is deps["compiled"]
+
+            call_kwargs = deps["builder"].compile.call_args.kwargs
+            assert call_kwargs["checkpointer"] is fake_cp
+
+    async def test_create_todo_tools_source_exact(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
+                pass
+
+            deps["mocks"][f"{_MOD}.create_todo_tools"].assert_called_once_with(source="executor")
+
+    async def test_todo_hook_source_exact_and_in_pre_model_hooks(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
+                pass
+
+            deps["mocks"][f"{_MOD}.create_todo_pre_model_hook"].assert_called_once_with(
+                source="executor"
+            )
+            todo_hook = deps["mocks"][f"{_MOD}.create_todo_pre_model_hook"].return_value
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+            pre_model_hooks = kwargs["pre_model_hooks"]
+            assert len(pre_model_hooks) == 4
+            assert pre_model_hooks[3] is todo_hook
+
+    async def test_executor_middleware_args_exact(self):
+        rtc = MagicMock(name="child_tool_runtime_config")
+        with ExitStack() as stack:
+            deps = _apply_patches(
+                stack,
+                {f"{_MOD}.build_executor_child_tool_runtime_config": MagicMock(return_value=rtc)},
+            )
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
+                pass
+
+            deps["mocks"][f"{_MOD}.create_executor_middleware"].assert_called_once_with(
+                subagent_excluded_tools={"handoff", WAIT_FOR_SUBAGENTS_NAME},
+                subagent_tool_runtime_config=rtc,
+            )
+
+    async def test_executor_in_memory_compile_exact(self):
+        """In-memory path compiles with an InMemorySaver and the tools store."""
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
+                pass
+
+            call_kwargs = deps["builder"].compile.call_args.kwargs
+            assert isinstance(call_kwargs["checkpointer"], InMemorySaver)
+            store_mock = deps["mocks"][f"{_MOD}.get_tools_store"].return_value
+            assert call_kwargs["store"] is store_mock
+
+    async def test_executor_model_name_none_when_llm_has_no_attrs(self):
+        """A model-less LLM (no model_name, no model) yields model=None —
+        both getattr defaults must be present so this never raises."""
+        llm_no_attrs = MagicMock(spec=[])
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(
+                chat_llm=llm_no_attrs, in_memory_checkpointer=True
+            ) as _:
+                pass
+
+            mock_log = deps["mocks"][f"{_MOD}.log"]
+            mock_log.set.assert_called_once_with(agent={"model": None})
+
+    async def test_executor_fallback_logs_exact(self):
+        """No checkpointer manager: exact fallback warning + in-memory info."""
+        from app.agents.middleware.subagent import SubagentMiddleware
+
+        mock_sub_mw = MagicMock(spec=SubagentMiddleware)
+        with ExitStack() as stack:
+            deps = _apply_patches(
+                stack,
+                {f"{_MOD}.create_executor_middleware": MagicMock(return_value=[mock_sub_mw])},
+            )
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(
+                chat_llm=deps["llm"], in_memory_checkpointer=False
+            ) as _:
+                pass
+
+            mock_log = deps["mocks"][f"{_MOD}.log"]
+            mock_log.warning.assert_called_once_with(
+                "checkpointer_fallback_to_memory",
+                graph="comms",
+                reason="checkpointer_manager_unavailable",
+                model="test-model",
+            )
+            mock_log.info.assert_called_once_with(
+                "graph_compiled_in_memory", graph="comms", model="test-model"
+            )
+            mock_log.set.assert_called_once_with(agent={"model": "test-model"})
+
+    async def test_executor_postgres_logs_exact(self):
+        fake_cp = MagicMock(name="postgres_checkpointer")
+        fake_manager = MagicMock()
+        fake_manager.get_checkpointer.return_value = fake_cp
+        from app.agents.middleware.subagent import SubagentMiddleware
+
+        mock_sub_mw = MagicMock(spec=SubagentMiddleware)
+        with ExitStack() as stack:
+            deps = _apply_patches(
+                stack,
+                {
+                    f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=fake_manager),
+                    f"{_MOD}.create_executor_middleware": MagicMock(return_value=[mock_sub_mw]),
+                },
+            )
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(
+                chat_llm=deps["llm"], in_memory_checkpointer=False
+            ) as _:
+                pass
+
+            mock_log = deps["mocks"][f"{_MOD}.log"]
+            mock_log.info.assert_called_once_with(
+                "graph_compiled_postgres", graph="comms", model="test-model"
+            )
+            mock_log.set.assert_called_once_with(agent={"model": "test-model"})
+            store_mock = deps["mocks"][f"{_MOD}.get_tools_store"].return_value
+            deps["builder"].compile.assert_called_once_with(checkpointer=fake_cp, store=store_mock)
+
+    async def test_executor_initial_tool_ids_exact(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+            assert kwargs["initial_tool_ids"] == [
+                "handoff",
+                "plan_tasks",
+                "update_tasks",
+                "read",
+                "bash",
+                "deep_research",
+                "wait_for_subagents",
+                "read_manual",
+                "create_tracked_todo",
+                "update_tracked_todo",
+                "update_tracked_todo_canvas",
+                "complete_tracked_todo",
+                "search_todo_context",
+                "list_tracked_todos",
+            ]
 
     async def test_falls_back_to_in_memory_when_no_manager(self):
         with ExitStack() as stack:
@@ -435,6 +739,7 @@ class TestBuildExecutorGraph:
             mock_ca.assert_called_once()
             kwargs = mock_ca.call_args.kwargs
             assert kwargs["agent_name"] == "executor_agent"
+            assert kwargs["llm"] is deps["llm"]
             assert "handoff" in kwargs["initial_tool_ids"]
             assert "plan_tasks" in kwargs["initial_tool_ids"]
 
@@ -460,8 +765,13 @@ class TestBuildExecutorGraph:
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["pre_model_hooks"]
             # executor: filter_messages_node, adapt_media_node,
-            # manage_system_prompts_node, todo_hook
+            # manage_system_prompts_node, todo_hook — exact identity, in order.
             assert len(pre_model_hooks) == 4
+            assert pre_model_hooks[0] is filter_messages_node
+            assert pre_model_hooks[1] is adapt_media_node
+            assert pre_model_hooks[2] is manage_system_prompts_node
+            todo_hook = deps["mocks"][f"{_MOD}.create_todo_pre_model_hook"].return_value
+            assert pre_model_hooks[3] is todo_hook
 
     async def test_subagent_middleware_wired_when_present(self):
         """When SubagentMiddleware is in the middleware stack, set_llm/set_tools/set_store are called."""
@@ -480,8 +790,11 @@ class TestBuildExecutorGraph:
                 pass
 
         mock_sub_mw.set_llm.assert_called_once_with(deps["llm"])
-        mock_sub_mw.set_tools.assert_called_once()
-        mock_sub_mw.set_store.assert_called_once()
+        create_agent_kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+        mock_sub_mw.set_tools.assert_called_once_with(registry=create_agent_kwargs["tool_registry"])
+        store_mock = deps["mocks"][f"{_MOD}.get_tools_store"].return_value
+        mock_sub_mw.set_store.assert_called_once_with(store_mock)
+        mock_sub_mw.set_spawn_graph_provider.assert_called_once_with(get_spawn_graph)
 
     async def test_no_subagent_middleware_logs_warning(self):
         """When SubagentMiddleware is not in the stack, a warning is logged."""
@@ -493,8 +806,10 @@ class TestBuildExecutorGraph:
                 pass
 
             mock_log = deps["mocks"][f"{_MOD}.log"]
-            mock_log.warning.assert_called_once()
-            assert "SubagentMiddleware" in mock_log.warning.call_args[0][0]
+            mock_log.warning.assert_called_once_with(
+                "[AGENT] SubagentMiddleware not found in middleware stack; "
+                "spawn_subagent will be unavailable"
+            )
 
     async def test_model_name_extracted_from_llm(self):
         """Graph builder extracts model_name from the LLM and passes it to log.set."""
@@ -507,9 +822,7 @@ class TestBuildExecutorGraph:
                 pass
 
             mock_log = deps["mocks"][f"{_MOD}.log"]
-            mock_log.set.assert_called()
-            set_kwargs = mock_log.set.call_args.kwargs
-            assert set_kwargs["agent"]["model"] == "gpt-4"
+            mock_log.set.assert_called_once_with(agent={"model": "gpt-4"})
 
     async def test_model_fallback_to_model_attr(self):
         """When model_name is None, falls back to model attribute."""
@@ -527,9 +840,7 @@ class TestBuildExecutorGraph:
                 pass
 
             mock_log = deps["mocks"][f"{_MOD}.log"]
-            mock_log.set.assert_called()
-            set_kwargs = mock_log.set.call_args.kwargs
-            assert set_kwargs["agent"]["model"] == "claude-3-opus"
+            mock_log.set.assert_called_once_with(agent={"model": "claude-3-opus"})
 
     async def test_executor_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]
@@ -746,3 +1057,5 @@ class TestCompileKwargs:
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
             assert isinstance(call_kwargs["checkpointer"], InMemorySaver)
+            store_mock = deps["mocks"][f"{_MOD}.get_tools_store"].return_value
+            assert call_kwargs["store"] is store_mock
