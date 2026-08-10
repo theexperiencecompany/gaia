@@ -244,6 +244,25 @@ if [ "$MUTMUT_RC" -ne 0 ]; then
     echo "  $WORKDIR/plain-check.log (and mutmut's output above)." >&2
     exit 1
   fi
+  # mutmut's trampoline crashes on modules that execute code at import time
+  # from frozen importlib frames (patch modules calling apply() at import,
+  # template registries, ...): record_trampoline_hit does
+  # Path('<frozen importlib._bootstrap>').resolve(strict=True) and dies with
+  # FileNotFoundError before any mutant state is produced. Tool limitation,
+  # not a test weakness — self-verify against the plain workdir copy.
+  if grep -q "<frozen importlib._bootstrap>" "$WORKDIR/mutmut.log"; then
+    if "$VENV_PY" -m pytest -q "$TESTFILE" -p no:randomly -p no:random-order \
+        -o 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300' \
+        > "$WORKDIR/plain-check.log" 2>&1; then
+      echo "SKIP: $MODULE — mutmut's trampoline crashes on import-time code paths" >&2
+      echo "      (FileNotFoundError on <frozen importlib._bootstrap>), so no mutant" >&2
+      echo "      state is produced. Tests pass in the plain copy; tool limitation." >&2
+      exit 0
+    fi
+    echo "REAL FAILURE: $MODULE's tests fail in the plain copy too — see" >&2
+    echo "  $WORKDIR/plain-check.log (and mutmut's output above)." >&2
+    exit 1
+  fi
   # A nonzero exit AFTER the mutants ran is usually the loguru teardown
   # crash (forked children + the app's loop-bound redis client write to a
   # closed stream at interpreter shutdown) — the verdict below is the
