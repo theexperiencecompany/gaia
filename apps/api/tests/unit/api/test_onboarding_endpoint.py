@@ -21,7 +21,7 @@ _load_suggested_workflows, _build_writing_style, _load_onboarding_todos).
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from fastapi import BackgroundTasks
 from httpx import AsyncClient
@@ -35,6 +35,7 @@ from app.api.v1.endpoints.onboarding import (
     _resolve_account_identity,
     _resolve_display_bio,
 )
+from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.models.onboarding_models import (
     ClarifyQuestion,
@@ -87,6 +88,7 @@ _SAVE_EDITED_SUMMARY = "app.api.v1.endpoints.onboarding.save_user_edited_summary
 _REGENERATE_EXAMPLE = "app.api.v1.endpoints.onboarding.regenerate_example_for_style"
 _SAVE_GENERATED_EXAMPLE = "app.api.v1.endpoints.onboarding.save_generated_example"
 _SAVE_CONFIRMED_PROFILES = "app.api.v1.endpoints.onboarding.save_confirmed_profiles"
+_LOG = "app.api.v1.endpoints.onboarding.log"
 
 USER_ID = "507f1f77bcf86cd799439011"
 
@@ -196,6 +198,7 @@ class TestCompleteOnboarding:
                 new_callable=AsyncMock,
                 return_value=AsyncMock(),
             ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(BASE_URL, json=_make_onboarding_request())
 
@@ -204,6 +207,14 @@ class TestCompleteOnboarding:
         assert data["success"] is True
         assert data["message"] == "Onboarding completed successfully"
         assert data["user"] == {"user_id": USER_ID, "name": "Test User"}
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            onboarding={
+                "operation": "complete",
+                "is_complete": True,
+                "timezone": "UTC",
+            },
+        )
         mock_complete.assert_awaited_once()
         args, _kwargs = mock_complete.await_args
         assert args[0] == USER_ID
@@ -250,15 +261,25 @@ class TestCompleteOnboarding:
         assert response.status_code == 422
 
     async def test_complete_onboarding_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _COMPLETE_ONBOARDING,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("DB failure"),
+        with (
+            patch(
+                _COMPLETE_ONBOARDING,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("DB failure"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(BASE_URL, json=_make_onboarding_request())
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to complete onboarding"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Error completing onboarding",
+            user_id=USER_ID,
+            error_type="RuntimeError",
+            error="DB failure",
+            exc_info=True,
+        )
 
     async def test_complete_onboarding_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.post(BASE_URL, json=_make_onboarding_request())
@@ -274,17 +295,29 @@ class TestSubmitIntegrations:
     """POST /api/v1/onboarding/integrations — split-mode workflow deferral."""
 
     async def test_submit_integrations_success(self, client: AsyncClient):
-        with patch(
-            _SUBMIT_INTEGRATIONS,
-            new_callable=AsyncMock,
-            return_value=OnboardingIntegrationsStatus.QUEUED,
-        ) as mock_submit:
+        with (
+            patch(
+                _SUBMIT_INTEGRATIONS,
+                new_callable=AsyncMock,
+                return_value=OnboardingIntegrationsStatus.QUEUED,
+            ) as mock_submit,
+            patch(_LOG, new=MagicMock()) as mock_log,
+        ):
             response = await client.post(
                 INTEGRATIONS_URL, json={"selected_integrations": ["gmail", "slack"]}
             )
 
         assert response.status_code == 200
         assert response.json() == {"success": True, "status": "queued"}
+        mock_log.set.assert_has_calls(
+            [
+                call(
+                    user={"id": USER_ID},
+                    onboarding={"operation": "submit_integrations"},
+                ),
+                call(onboarding={"result_status": "queued"}),
+            ]
+        )
         mock_submit.assert_awaited_once_with(USER_ID, ["gmail", "slack"])
 
     async def test_submit_integrations_empty_selection_allowed(self, client: AsyncClient):
@@ -315,10 +348,13 @@ class TestSubmitIntegrations:
         mock_submit.assert_awaited_once_with(USER_ID, ["gmail", "slack"])
 
     async def test_submit_integrations_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _SUBMIT_INTEGRATIONS,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            patch(
+                _SUBMIT_INTEGRATIONS,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(
                 INTEGRATIONS_URL, json={"selected_integrations": ["gmail"]}
@@ -326,6 +362,13 @@ class TestSubmitIntegrations:
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to submit integrations"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Error submitting integrations",
+            user_id=USER_ID,
+            error_type="RuntimeError",
+            error="boom",
+            exc_info=True,
+        )
 
     async def test_submit_integrations_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.post(
@@ -354,11 +397,14 @@ class TestGetClarifyQuestions:
     """POST /api/v1/onboarding/clarify-questions — no-Gmail follow-up."""
 
     async def test_clarify_questions_success(self, client: AsyncClient):
-        with patch(
-            _GENERATE_CLARIFY,
-            new_callable=AsyncMock,
-            return_value=_make_questions(),
-        ) as mock_generate:
+        with (
+            patch(
+                _GENERATE_CLARIFY,
+                new_callable=AsyncMock,
+                return_value=_make_questions(),
+            ) as mock_generate,
+            patch(_LOG, new=MagicMock()) as mock_log,
+        ):
             response = await client.post(
                 CLARIFY_URL,
                 json={"name": "Ada", "profession": "Engineer", "focus": "calendar"},
@@ -368,6 +414,10 @@ class TestGetClarifyQuestions:
         data = response.json()
         assert data["questions"][0]["id"] == "scope"
         assert data["questions"][0]["question"] == "What should GAIA focus on?"
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            onboarding={"operation": "clarify_questions"},
+        )
         mock_generate.assert_awaited_once_with("Ada", "Engineer", "calendar", user_id=USER_ID)
 
     async def test_clarify_questions_empty_fields_fall_back(self, client: AsyncClient):
@@ -426,7 +476,10 @@ class TestResetOnboarding:
             integrations_disconnected=2,
             memories_cleared=4,
         )
-        with patch(_RESET_ONBOARDING, new_callable=AsyncMock, return_value=counts) as mock_reset:
+        with (
+            patch(_RESET_ONBOARDING, new_callable=AsyncMock, return_value=counts) as mock_reset,
+            patch(_LOG, new=MagicMock()) as mock_log,
+        ):
             response = await client.post(RESET_URL)
 
         assert response.status_code == 200
@@ -439,18 +492,32 @@ class TestResetOnboarding:
             "integrations_disconnected": 2,
             "memories_cleared": 4,
         }
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            onboarding={"operation": "reset"},
+        )
         mock_reset.assert_awaited_once_with(USER_ID)
 
     async def test_reset_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _RESET_ONBOARDING,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            patch(
+                _RESET_ONBOARDING,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(RESET_URL)
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to reset onboarding"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Error resetting onboarding",
+            user_id=USER_ID,
+            error_type="RuntimeError",
+            error="boom",
+            exc_info=True,
+        )
 
     async def test_reset_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.post(RESET_URL)
@@ -480,7 +547,10 @@ class TestGetOnboardingStatus:
     # field is `completed`, which is what mobile reads.
     async def test_get_status_returns_200(self, client: AsyncClient):
         mock_status = _status(completed=True, phase="completed")
-        with patch(_GET_STATUS, new_callable=AsyncMock, return_value=mock_status) as mock_get:
+        with (
+            patch(_GET_STATUS, new_callable=AsyncMock, return_value=mock_status) as mock_get,
+            patch(_LOG, new=MagicMock()) as mock_log,
+        ):
             response = await client.get(STATUS_URL)
 
         assert response.status_code == 200
@@ -496,6 +566,12 @@ class TestGetOnboardingStatus:
             },
             "first_message_conversation_id": None,
         }
+        mock_log.set.assert_has_calls(
+            [
+                call(user={"id": USER_ID}, onboarding={"operation": "get_status"}),
+                call(onboarding={"operation": "get_status", "is_complete": True}),
+            ]
+        )
         mock_get.assert_awaited_once_with(USER_ID)
 
     async def test_get_status_incomplete_user(self, client: AsyncClient):
@@ -509,15 +585,25 @@ class TestGetOnboardingStatus:
         assert data["phase"] == "initial"
 
     async def test_get_status_service_error(self, client: AsyncClient):
-        with patch(
-            _GET_STATUS,
-            new_callable=AsyncMock,
-            side_effect=Exception("DB error"),
+        with (
+            patch(
+                _GET_STATUS,
+                new_callable=AsyncMock,
+                side_effect=Exception("DB error"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.get(STATUS_URL)
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to get onboarding status"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Error getting onboarding status",
+            user_id=USER_ID,
+            error_type="Exception",
+            error="DB error",
+            exc_info=True,
+        )
 
     async def test_get_status_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.get(STATUS_URL)
@@ -539,6 +625,7 @@ class TestUpdateOnboardingPhase:
                 _WEBSOCKET_MANAGER + ".broadcast_to_user",
                 new_callable=AsyncMock,
             ) as mock_broadcast,
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(PHASE_URL, json={"phase": "getting_started"})
 
@@ -549,6 +636,25 @@ class TestUpdateOnboardingPhase:
             "phase": "getting_started",
             "message": "Onboarding phase updated to getting_started",
         }
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            onboarding={"operation": "update_step", "step": "getting_started"},
+        )
+        mock_log.info.assert_has_calls(
+            [
+                call(
+                    f"{LogTag.ONBOARDING} Updating phase",
+                    user_id=USER_ID,
+                    phase="getting_started",
+                ),
+                call(
+                    f"{LogTag.ONBOARDING} Sent WebSocket notification for phase update",
+                    phase="getting_started",
+                    user_id=USER_ID,
+                ),
+            ]
+        )
+        mock_log.set_ns.assert_called_once_with("onboarding", phase_updated=True)
         mock_set.assert_awaited_once_with(USER_ID, OnboardingPhase.GETTING_STARTED)
         mock_broadcast.assert_awaited_once_with(
             user_id=USER_ID,
@@ -566,29 +672,48 @@ class TestUpdateOnboardingPhase:
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("ws down"),
             ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(PHASE_URL, json={"phase": "completed"})
 
         assert response.status_code == 200
         assert response.json()["success"] is True
         assert response.json()["phase"] == "completed"
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Failed to send WebSocket update",
+            user_id=USER_ID,
+            error_type="RuntimeError",
+            error="ws down",
+        )
 
     async def test_update_phase_user_not_found_returns_404(self, client: AsyncClient):
-        with patch(_SET_PHASE, new_callable=AsyncMock, return_value=False):
+        with (
+            patch(_SET_PHASE, new_callable=AsyncMock, return_value=False),
+            patch(_LOG, new=MagicMock()) as mock_log,
+        ):
             response = await client.post(PHASE_URL, json={"phase": "completed"})
 
         assert response.status_code == 404
         assert response.json()["detail"] == "User not found"
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} No document found for user",
+            user_id=USER_ID,
+        )
 
     async def test_update_phase_missing_user_id_returns_400(self, client: AsyncClient, test_app):
         with (
             _override_current_user(test_app, {}),
             patch(_SET_PHASE, new_callable=AsyncMock) as mock_set,
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(PHASE_URL, json={"phase": "completed"})
 
         assert response.status_code == 400
         assert response.json()["detail"] == "Invalid user_id"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} user_id is missing or not a string",
+            user_id_type="NoneType",
+        )
         mock_set.assert_not_awaited()
 
     async def test_update_phase_non_string_user_id_returns_400(self, client: AsyncClient, test_app):
@@ -596,11 +721,16 @@ class TestUpdateOnboardingPhase:
         with (
             _override_current_user(test_app, {"user_id": 123}),
             patch(_SET_PHASE, new_callable=AsyncMock) as mock_set,
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(PHASE_URL, json={"phase": "completed"})
 
         assert response.status_code == 400
         assert response.json()["detail"] == "Invalid user_id"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} user_id is missing or not a string",
+            user_id_type="int",
+        )
         mock_set.assert_not_awaited()
 
     async def test_update_phase_invalid_phase_returns_422(self, client: AsyncClient):
@@ -612,15 +742,25 @@ class TestUpdateOnboardingPhase:
         assert response.status_code == 422
 
     async def test_update_phase_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _SET_PHASE,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("DB error"),
+        with (
+            patch(
+                _SET_PHASE,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("DB error"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(PHASE_URL, json={"phase": "completed"})
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to update onboarding phase"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Error updating onboarding phase",
+            user_id=USER_ID,
+            error_type="RuntimeError",
+            error="DB error",
+            exc_info=True,
+        )
 
     async def test_update_phase_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.post(PHASE_URL, json={"phase": "completed"})
@@ -636,11 +776,14 @@ class TestUpdatePreferences:
     """Tests for the update preferences endpoint."""
 
     async def test_update_preferences_success(self, client: AsyncClient):
-        with patch(
-            _UPDATE_PREFERENCES,
-            new_callable=AsyncMock,
-            return_value={"user_id": USER_ID},
-        ) as mock_update:
+        with (
+            patch(
+                _UPDATE_PREFERENCES,
+                new_callable=AsyncMock,
+                return_value={"user_id": USER_ID},
+            ) as mock_update,
+            patch(_LOG, new=MagicMock()) as mock_log,
+        ):
             response = await client.patch(
                 PREFERENCES_URL,
                 json={
@@ -655,6 +798,10 @@ class TestUpdatePreferences:
         assert data["success"] is True
         assert data["message"] == "Preferences updated successfully"
         assert data["user"] == {"user_id": USER_ID}
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            onboarding={"operation": "update_personality"},
+        )
         mock_update.assert_awaited_once()
         args, _kwargs = mock_update.await_args
         assert args[0] == USER_ID
@@ -717,10 +864,13 @@ class TestUpdatePreferences:
         assert response.status_code == 422
 
     async def test_update_preferences_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _UPDATE_PREFERENCES,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("DB error"),
+        with (
+            patch(
+                _UPDATE_PREFERENCES,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("DB error"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.patch(
                 PREFERENCES_URL,
@@ -729,6 +879,13 @@ class TestUpdatePreferences:
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to update preferences"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Error updating preferences",
+            user_id=USER_ID,
+            error_type="RuntimeError",
+            error="DB error",
+            exc_info=True,
+        )
 
     async def test_update_preferences_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.patch(PREFERENCES_URL, json={"profession": "Engineer"})
@@ -802,7 +959,7 @@ class TestGetPersonalization:
         todos = [_make_todo("td_1", "Reply to Sarah", source_email="sarah@x.com")]
         mock_composio = _mock_composio(gmail=False)
         with (
-            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc) as mock_get,
             patch(
                 _WORKFLOW_REPO + ".find_by_ids",
                 new_callable=AsyncMock,
@@ -814,6 +971,7 @@ class TestGetPersonalization:
                 return_value=todos,
             ) as mock_todos,
             patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.get(PERSONALIZATION_URL)
 
@@ -880,6 +1038,25 @@ class TestGetPersonalization:
         mock_workflows.assert_awaited_once_with(["wf_2", "wf_1"])
         mock_todos.assert_awaited_once_with(USER_ID, limit=ONBOARDING_TODO_LIMIT)
         mock_composio.check_connection_status.assert_not_awaited()
+        mock_get.assert_awaited_once_with(USER_ID)
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            onboarding={"operation": "get_personalization"},
+        )
+        mock_log.info.assert_has_calls(
+            [
+                call(
+                    f"{LogTag.ONBOARDING} Fetching personalization for user",
+                    user_id=USER_ID,
+                ),
+                call(
+                    f"{LogTag.ONBOARDING} User onboarding state",
+                    user_id=USER_ID,
+                    phase="personalization_complete",
+                    bio_status="completed",
+                ),
+            ]
+        )
 
     async def test_get_personalization_user_not_found_returns_404(self, client: AsyncClient):
         with patch(_GET_USER, new_callable=AsyncMock, return_value=None):
@@ -901,16 +1078,41 @@ class TestGetPersonalization:
         assert response.json()["detail"] == "Invalid user_id"
         mock_get.assert_not_awaited()
 
+    async def test_get_personalization_non_string_user_id_returns_400(
+        self, client: AsyncClient, test_app
+    ):
+        """A truthy non-string user_id is rejected before any DB read — the
+        isinstance check is load-bearing (a plain truthiness check would let
+        it through and hit the repository)."""
+        with (
+            _override_current_user(test_app, {"user_id": 123}),
+            patch(_GET_USER, new_callable=AsyncMock) as mock_get,
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid user_id"
+        mock_get.assert_not_awaited()
+
     async def test_get_personalization_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _GET_USER,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("DB error"),
+        with (
+            patch(
+                _GET_USER,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("DB error"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.get(PERSONALIZATION_URL)
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to fetch personalization data"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Error fetching personalization",
+            error="DB error",
+            error_type="RuntimeError",
+            exc_info=True,
+        )
 
     async def test_get_personalization_no_phase_defaults(self, client: AsyncClient):
         """User doc with empty onboarding should return default values."""
@@ -1087,16 +1289,20 @@ class TestSaveWritingStyle:
     """POST /api/v1/onboarding/writing-style — save the edited summary."""
 
     async def test_save_writing_style_success(self, client: AsyncClient):
-        with patch(
-            _SAVE_EDITED_SUMMARY,
-            new_callable=AsyncMock,
-        ) as mock_save:
+        with (
+            patch(_SAVE_EDITED_SUMMARY, new_callable=AsyncMock) as mock_save,
+            patch(_LOG, new=MagicMock()) as mock_log,
+        ):
             response = await client.post(
                 WRITING_STYLE_URL, json={"edited_summary": "  My edited summary.  "}
             )
 
         assert response.status_code == 200
         assert response.json() == {"success": True}
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            onboarding={"operation": "save_writing_style"},
+        )
         mock_save.assert_awaited_once_with(USER_ID, "My edited summary.")
 
     async def test_save_writing_style_empty_summary_allowed(self, client: AsyncClient):
@@ -1107,15 +1313,25 @@ class TestSaveWritingStyle:
         mock_save.assert_awaited_once_with(USER_ID, "")
 
     async def test_save_writing_style_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _SAVE_EDITED_SUMMARY,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            patch(
+                _SAVE_EDITED_SUMMARY,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(WRITING_STYLE_URL, json={"edited_summary": "x"})
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to save writing style"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Failed to save writing style",
+            user_id=USER_ID,
+            error_type="RuntimeError",
+            error="boom",
+            exc_info=True,
+        )
 
     async def test_save_writing_style_missing_field_returns_422(self, client: AsyncClient):
         response = await client.post(WRITING_STYLE_URL, json={})
@@ -1153,6 +1369,7 @@ class TestRegenerateWritingStyleExample:
                 _SAVE_GENERATED_EXAMPLE,
                 new_callable=AsyncMock,
             ) as mock_save,
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(
                 REGENERATE_EXAMPLE_URL,
@@ -1168,6 +1385,10 @@ class TestRegenerateWritingStyleExample:
                 "name": "Ada",
             }
         }
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            onboarding={"operation": "regenerate_style_example"},
+        )
         mock_regenerate.assert_awaited_once_with(
             summary="Punchy and short.", user_id=USER_ID, profession="Engineer"
         )
@@ -1198,15 +1419,25 @@ class TestRegenerateWritingStyleExample:
         mock_save.assert_not_awaited()
 
     async def test_regenerate_example_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _REGENERATE_EXAMPLE,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("llm down"),
+        with (
+            patch(
+                _REGENERATE_EXAMPLE,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("llm down"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(REGENERATE_EXAMPLE_URL, json={"edited_summary": "x"})
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to regenerate writing style example"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Failed to regenerate writing style example",
+            user_id=USER_ID,
+            error_type="RuntimeError",
+            error="llm down",
+            exc_info=True,
+        )
 
     async def test_regenerate_example_missing_field_returns_422(self, client: AsyncClient):
         response = await client.post(REGENERATE_EXAMPLE_URL, json={})
@@ -1222,10 +1453,10 @@ class TestConfirmSocialProfiles:
     """POST /api/v1/onboarding/social-profiles — save confirmed profiles."""
 
     async def test_confirm_social_profiles_success(self, client: AsyncClient):
-        with patch(
-            _SAVE_CONFIRMED_PROFILES,
-            new_callable=AsyncMock,
-        ) as mock_save:
+        with (
+            patch(_SAVE_CONFIRMED_PROFILES, new_callable=AsyncMock) as mock_save,
+            patch(_LOG, new=MagicMock()) as mock_log,
+        ):
             response = await client.post(
                 SOCIAL_PROFILES_URL,
                 json={
@@ -1238,6 +1469,10 @@ class TestConfirmSocialProfiles:
 
         assert response.status_code == 200
         assert response.json() == {"success": True, "saved": 2}
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            onboarding={"operation": "confirm_social_profiles"},
+        )
         mock_save.assert_awaited_once_with(
             USER_ID,
             [
@@ -1255,10 +1490,13 @@ class TestConfirmSocialProfiles:
         mock_save.assert_awaited_once_with(USER_ID, [])
 
     async def test_confirm_social_profiles_service_error_returns_500(self, client: AsyncClient):
-        with patch(
-            _SAVE_CONFIRMED_PROFILES,
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            patch(
+                _SAVE_CONFIRMED_PROFILES,
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             response = await client.post(
                 SOCIAL_PROFILES_URL, json={"profiles": [{"platform": "x", "url": "u"}]}
@@ -1266,6 +1504,13 @@ class TestConfirmSocialProfiles:
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to save social profiles"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Failed to save social profiles",
+            user_id=USER_ID,
+            error_type="RuntimeError",
+            error="boom",
+            exc_info=True,
+        )
 
     async def test_confirm_social_profiles_missing_field_returns_422(self, client: AsyncClient):
         response = await client.post(SOCIAL_PROFILES_URL, json={})
@@ -1300,6 +1545,14 @@ class TestNormalizeExampleBlocks:
     def test_dict_example_missing_body_returns_none(self) -> None:
         assert _normalize_example_blocks({"greeting": "Hey!"}) is None
 
+    def test_dict_example_missing_optional_fields_default_to_empty(self) -> None:
+        """A dict with a body but no greeting/signoff/name must render the
+        empty-string defaults — not some other placeholder."""
+        blocks = _normalize_example_blocks({"body": ["P"]})
+        assert blocks == WritingStyleExampleBlocks(
+            greeting="", body=["P"], signoff="", name=""
+        )
+
     def test_dict_example_whitespace_only_body_returns_none(self) -> None:
         assert _normalize_example_blocks({"body": ["   ", ""]}) is None
 
@@ -1333,6 +1586,14 @@ class TestBuildWritingStyle:
 
     def test_whitespace_only_summary_returns_none(self) -> None:
         assert _build_writing_style({"summary": "   "}) is None
+
+    def test_empty_summary_values_returns_none(self) -> None:
+        """A truthy dict whose summary fields are missing or empty still
+        yields None — the trailing '' fallback is load-bearing, not a
+        placeholder that could be swapped for a non-empty string."""
+        assert _build_writing_style({"summary": ""}) is None
+        assert _build_writing_style({"user_edited_summary": ""}) is None
+        assert _build_writing_style({"summary": "", "user_edited_summary": ""}) is None
 
     def test_prefers_user_edited_summary(self) -> None:
         style = _build_writing_style({"summary": "Original", "user_edited_summary": "Edited"})
@@ -1419,6 +1680,29 @@ class TestResolveDisplayBio:
         assert bio == _BIO_PROCESSING_MESSAGE
         mock_service.assert_not_called()
 
+    async def test_processing_string_match_is_exact(self) -> None:
+        """Only the exact lowercase 'processing' string (or the enum) takes the
+        processing branch — a differently-cased or mangled status is a plain
+        stored bio, never the processing message."""
+        with patch(_COMPOSIO_SERVICE) as mock_service:
+            bio = await _resolve_display_bio(
+                {"bio_status": "PROCESSING", "user_bio": "A bio."}, USER_ID
+            )
+
+        assert bio == "A bio."
+        mock_service.assert_not_called()
+
+    async def test_arbitrary_processing_string_falls_through_to_stored_bio(self) -> None:
+        """A status that is neither the exact string nor the enum is not the
+        processing branch — the list membership is the whole decision."""
+        with patch(_COMPOSIO_SERVICE) as mock_service:
+            bio = await _resolve_display_bio(
+                {"bio_status": "XXprocessingXX", "user_bio": "A bio."}, USER_ID
+            )
+
+        assert bio == "A bio."
+        mock_service.assert_not_called()
+
     async def test_completed_returns_stored_bio(self) -> None:
         with patch(_COMPOSIO_SERVICE) as mock_service:
             bio = await _resolve_display_bio(
@@ -1461,6 +1745,29 @@ class TestResolveDisplayBio:
 
         assert bio == _BIO_PROCESSING_MESSAGE
         mock_composio.check_connection_status.assert_awaited_once_with(["gmail"], USER_ID)
+
+    async def test_pending_string_match_is_exact(self) -> None:
+        """Only the exact lowercase 'pending' string (or the enum) takes the
+        pending path — a differently-cased or mangled status renders the
+        stored bio instead."""
+        with patch(_COMPOSIO_SERVICE) as mock_service:
+            bio = await _resolve_display_bio(
+                {"bio_status": "PENDING", "user_bio": "A bio."}, USER_ID
+            )
+
+        assert bio == "A bio."
+        mock_service.assert_not_called()
+
+    async def test_arbitrary_pending_string_falls_through_to_stored_bio(self) -> None:
+        """A status that is neither the exact string nor the enum skips the
+        pending path entirely and renders the stored bio."""
+        with patch(_COMPOSIO_SERVICE) as mock_service:
+            bio = await _resolve_display_bio(
+                {"bio_status": "XXpendingXX", "user_bio": "A bio."}, USER_ID
+            )
+
+        assert bio == "A bio."
+        mock_service.assert_not_called()
 
     async def test_pending_with_empty_connection_status_returns_setup_message(self) -> None:
         """A connection status missing the 'gmail' key must fall back to the
@@ -1521,14 +1828,23 @@ class TestLoadSuggestedWorkflows:
         assert [wf.id for wf in result] == ["wf_1"]
 
     async def test_repo_error_soft_fails_to_empty(self) -> None:
-        with patch(
-            _WORKFLOW_REPO + ".find_by_ids",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("db down"),
+        with (
+            patch(
+                _WORKFLOW_REPO + ".find_by_ids",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("db down"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             result = await _load_suggested_workflows(["wf_1"])
 
         assert result == []
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Error fetching workflows",
+            error="db down",
+            error_type="RuntimeError",
+            exc_info=True,
+        )
 
 
 class TestLoadOnboardingTodos:
@@ -1566,11 +1882,19 @@ class TestLoadOnboardingTodos:
         mock_list.assert_awaited_once_with(USER_ID, limit=ONBOARDING_TODO_LIMIT)
 
     async def test_repo_error_soft_fails_to_empty(self) -> None:
-        with patch(
-            _TODO_REPO + ".list_onboarding_todos",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("db down"),
+        with (
+            patch(
+                _TODO_REPO + ".list_onboarding_todos",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("db down"),
+            ),
+            patch(_LOG, new=MagicMock()) as mock_log,
         ):
             result = await _load_onboarding_todos(USER_ID)
 
         assert result == []
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Failed to fetch onboarding todos",
+            error="db down",
+            error_type="RuntimeError",
+        )
