@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
@@ -208,6 +209,36 @@ class TestUploadFile:
             error="Upload failed",
         )
 
+    @pytest.mark.parametrize(
+        ("status_code", "detail"),
+        [
+            (413, "File too large"),
+            (415, "Unsupported media type"),
+        ],
+    )
+    @patch("app.api.v1.endpoints.file.FileService.upload", new_callable=AsyncMock)
+    async def test_upload_file_service_http_error_passes_through(
+        self,
+        mock_upload: AsyncMock,
+        mock_log: MagicMock,
+        client: AsyncClient,
+        status_code: int,
+        detail: str,
+    ):
+        """4xx from the upload service (413 oversize, 415 bad type) reach the
+        client untouched — the endpoint preserves HTTPException and logs
+        nothing (the service owns the message)."""
+        mock_upload.side_effect = HTTPException(status_code=status_code, detail=detail)
+        file_content = BytesIO(b"data")
+        response = await client.post(
+            f"{FILE_BASE}/upload",
+            files={"file": ("test.txt", file_content, "text/plain")},
+        )
+        assert response.status_code == status_code
+        assert response.json() == {"detail": detail}
+        mock_log.error.assert_not_called()
+        mock_log.set.assert_not_called()
+
     async def test_upload_file_missing_file_returns_422(self, client: AsyncClient):
         response = await client.post(f"{FILE_BASE}/upload")
         assert response.status_code == 422
@@ -292,6 +323,28 @@ class TestUpdateFile:
             error="Update failed",
         )
 
+    @patch("app.api.v1.endpoints.file.FileService.update", new_callable=AsyncMock)
+    async def test_update_file_service_not_found_becomes_500(
+        self, mock_update: AsyncMock, mock_log: MagicMock, client: AsyncClient
+    ):
+        """FileService.update raises HTTPException(404) for a missing file; the
+        endpoint's generic except folds it into a 500 (current contract — unlike
+        upload, update has no HTTPException passthrough)."""
+        mock_update.side_effect = HTTPException(status_code=404, detail="File not found")
+        response = await client.put(
+            f"{FILE_BASE}/file-001",
+            json={"description": "New desc"},
+        )
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Failed to update file"}
+        mock_log.error.assert_called_once_with(
+            "Error updating file",
+            file_id="file-001",
+            user_id=USER_ID,
+            error_type="HTTPException",
+            error="404: File not found",
+        )
+
 
 class TestDeleteFile:
     """DELETE /api/v1/{file_id}"""
@@ -346,4 +399,23 @@ class TestDeleteFile:
             user_id=USER_ID,
             error_type="Exception",
             error="Delete failed",
+        )
+
+    @patch("app.api.v1.endpoints.file.FileService.delete", new_callable=AsyncMock)
+    async def test_delete_file_service_not_found_becomes_500(
+        self, mock_delete: AsyncMock, mock_log: MagicMock, client: AsyncClient
+    ):
+        """FileService.delete raises HTTPException(404) for a missing file; the
+        endpoint's generic except folds it into a 500 (current contract — unlike
+        upload, delete has no HTTPException passthrough)."""
+        mock_delete.side_effect = HTTPException(status_code=404, detail="File not found")
+        response = await client.delete(f"{FILE_BASE}/file-001")
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Failed to delete file"}
+        mock_log.error.assert_called_once_with(
+            "Error deleting file",
+            file_id="file-001",
+            user_id=USER_ID,
+            error_type="HTTPException",
+            error="404: File not found",
         )
