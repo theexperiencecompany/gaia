@@ -31,21 +31,37 @@ os.environ.setdefault(
     "MONGO_DB", "mongodb://localhost:27017/gaia_demo?serverSelectionTimeoutMS=100"
 )
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("WORKOS_API_KEY", "sk_test_fake")  # noqa: S105
+os.environ.setdefault("WORKOS_API_KEY", "sk_test_fake")  # noqa: S105  # ratchet-allow -- fake demo credential for settings validation, never a real key
 os.environ.setdefault("WORKOS_CLIENT_ID", "client_fake")
 os.environ.setdefault("WORKOS_COOKIE_PASSWORD", "a" * 32)
-os.environ.setdefault("MCP_ENCRYPTION_KEY", "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==")  # noqa: S105
-os.environ.setdefault("AGENT_SECRET", "demo-agent-secret-" + "x" * 32)  # noqa: S105
+os.environ.setdefault("MCP_ENCRYPTION_KEY", "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==")  # noqa: S105  # ratchet-allow -- fake Fernet key; settings require a structurally-valid 32-byte url-safe base64 value
+os.environ.setdefault("AGENT_SECRET", "demo-agent-secret-" + "x" * 32)  # noqa: S105  # ratchet-allow -- fake demo secret, no real credential
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage  # noqa: E402
-from langchain_core.tools import tool  # noqa: E402
-from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
-from langgraph.store.memory import InMemoryStore  # noqa: E402
+from langchain_core.messages import (  # noqa: E402  # ratchet-allow -- env vars must be set before app imports (standalone demo script)
+    AIMessage,
+    HumanMessage,
+    ToolMessage,
+)
+from langchain_core.tools import (
+    tool,  # noqa: E402  # ratchet-allow -- env vars must be set before app imports (standalone demo script)
+)
+from langgraph.checkpoint.memory import (
+    MemorySaver,  # noqa: E402  # ratchet-allow -- env vars must be set before app imports (standalone demo script)
+)
+from langgraph.store.memory import (
+    InMemoryStore,  # noqa: E402  # ratchet-allow -- env vars must be set before app imports (standalone demo script)
+)
 
-from app.agents.middleware.loop_guard import LoopGuardMiddleware  # noqa: E402
-from app.constants.llm import COMPLETION_NUDGE_MESSAGE  # noqa: E402
-from app.override.langgraph_bigtool.create_agent import create_agent  # noqa: E402
+from app.agents.middleware.loop_guard import (
+    LoopGuardMiddleware,  # noqa: E402  # ratchet-allow -- env vars must be set before app imports (standalone demo script)
+)
+from app.constants.llm import (
+    COMPLETION_NUDGE_MESSAGE,  # noqa: E402  # ratchet-allow -- env vars must be set before app imports (standalone demo script)
+)
+from app.override.langgraph_bigtool.create_agent import (
+    create_agent,  # noqa: E402  # ratchet-allow -- env vars must be set before app imports (standalone demo script)
+)
 
 # --- scripted inbox -------------------------------------------------------------
 

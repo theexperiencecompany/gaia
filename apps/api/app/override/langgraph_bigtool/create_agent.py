@@ -610,7 +610,7 @@ def create_agent(
     def nudge_continue_node(state: State) -> State:
         n = state.get("completion_nudges", 0)
         notice = HumanMessage(content=COMPLETION_NUDGE_MESSAGE)
-        return {"messages": [notice], "completion_nudges": n + 1}  # type: ignore[return-value]
+        return State(messages=[notice], completion_nudges=n + 1)
 
     async def anudge_continue_node(state: State) -> State:
         return nudge_continue_node(state)

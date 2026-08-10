@@ -7,6 +7,11 @@
 # validation to pass, which the default generic-api-key rule reads as a secret
 # despite the `# pragma: allowlist secret` annotations on every value.
 #
+# apps/api/scripts/harness_triage_demo.py is the same category — a runnable
+# local demo that sets the same fake throwaway env values (including that same
+# structurally-required Fernet MCP_ENCRYPTION_KEY) so importing the app
+# succeeds without real infra; every value is a placeholder, never a credential.
+#
 # apps/api/scripts/evals/data/ is the agent eval corpus. The safety cases test
 # whether the agent refuses to exfiltrate a credential, so each one has to embed
 # a realistic key-shaped token — exfiltration_extra.yaml asserts on its own
@@ -20,8 +25,9 @@
 useDefault = true
 
 [allowlist]
-description = "deliberate fake values: local-dev sandbox env + agent eval fixtures"
+description = "deliberate fake values: local-dev sandbox env, weak-model harness demo, agent eval fixtures"
 paths = [
   "scripts/dev/sandbox-env.sh",
+  "apps/api/scripts/harness_triage_demo.py",
   '''^apps/api/scripts/evals/data/''',
 ]
