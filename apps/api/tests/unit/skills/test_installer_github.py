@@ -148,6 +148,9 @@ class TestParseGithubUrl:
             ("  owner/repo  ", ("owner", "repo", None)),
             ("owner/repo/path/to/skill", ("owner", "repo", "path/to/skill")),
             ("owner/repo/a/b/c", ("owner", "repo", "a/b/c")),
+            ("owner/repo/a", ("owner", "repo", "a")),
+            ("owner/repo/a/b", ("owner", "repo", "a/b")),
+            ("owner/repo/skill/X", ("owner", "repo", "skill/X")),
             ("https://github.com/owner/repo", ("owner", "repo", None)),
             ("https://github.com/owner/repo/", ("owner", "repo", None)),
             ("http://github.com/owner/repo", ("owner", "repo", None)),
@@ -228,14 +231,14 @@ class TestFetchGithubContents:
         client = AsyncMock()
         client.get.return_value = _github_response(403)
 
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                "GitHub API rate limit exceeded. Please try again later, or set "
-                "GITHUB_TOKEN for higher limits (5000/hr vs 60/hr)."
-            ),
-        ):
+        with pytest.raises(ValueError) as excinfo:
             await _fetch_github_contents("org", "repo", "skills/my-skill", client=client)
+
+        # Exact message, not a substring: a mutated message string must not pass.
+        assert (
+            str(excinfo.value) == "GitHub API rate limit exceeded. Please try again later, or set "
+            "GITHUB_TOKEN for higher limits (5000/hr vs 60/hr)."
+        )
 
         log_seam.warning.assert_called_once()
         assert "GitHub API rate limit exceeded" in log_seam.warning.call_args.args[0]
@@ -311,6 +314,66 @@ class TestDownloadGithubDir:
         assert file_list == ["tool.py"]
         write_mock.assert_awaited_once_with("u1", "my-skill", "tool.py", "# tool content")
         client.get.assert_awaited_once_with(file_url, headers=get_github_headers())
+
+    async def test_recurses_through_two_directory_levels(self):
+        """owner/repo must flow through every recursion level: a mutated
+        recursion that drops owner or repo would fetch the second-level
+        directory from the wrong URL while still writing the deep file."""
+        client = AsyncMock()
+        client.get.side_effect = [
+            _github_response(
+                200,
+                json=[_contents_entry("nested", "dir", "skills/my-skill/resources/nested")],
+            ),
+            _github_response(
+                200,
+                json=[
+                    _contents_entry(
+                        "ref.md",
+                        "file",
+                        "skills/my-skill/resources/nested/ref.md",
+                        "https://raw/org/repo/main/skills/my-skill/resources/nested/ref.md",
+                    )
+                ],
+            ),
+            _github_response(200, text="# Deep"),
+        ]
+        contents = [_contents_entry("resources", "dir", "skills/my-skill/resources")]
+        file_list: list[str] = []
+
+        with patch(
+            "app.agents.skills.installer.write_skill_file",
+            new_callable=AsyncMock,
+        ) as write_mock:
+            await _download_github_dir(
+                user_id="u1",
+                skill_name="my-skill",
+                owner="org",
+                repo="repo",
+                remote_path="skills/my-skill",
+                contents=contents,
+                file_list=file_list,
+                client=client,
+            )
+
+        assert file_list == ["resources/nested/ref.md"]
+        write_mock.assert_awaited_once_with("u1", "my-skill", "resources/nested/ref.md", "# Deep")
+        assert client.get.await_args_list == [
+            call(
+                f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill/resources",
+                params={"ref": "main"},
+                headers=get_github_headers(),
+            ),
+            call(
+                f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill/resources/nested",
+                params={"ref": "main"},
+                headers=get_github_headers(),
+            ),
+            call(
+                "https://raw/org/repo/main/skills/my-skill/resources/nested/ref.md",
+                headers=get_github_headers(),
+            ),
+        ]
 
     async def test_recurses_into_subdirectories(self):
         client = AsyncMock()
@@ -428,11 +491,17 @@ class TestInstallFromGithubSuccess:
 
         assert result is not None
         install_mock.assert_awaited_once()
-        files = install_mock.await_args.kwargs["files"]
-        assert "SKILL.md" in files
-        assert "resources/reference.md" in files
-        written_paths = [c.args[2] for c in write_mock.await_args_list]
-        assert "resources/reference.md" in written_paths
+        assert install_mock.await_args.kwargs["files"] == [
+            "SKILL.md",
+            "resources/reference.md",
+        ]
+        # Recursive downloads must carry the exact user/skill identity down —
+        # a mutated recursion that drops user_id or skill_name would still
+        # produce a "plausible" file list while writing to the wrong location.
+        assert write_mock.await_args_list == [
+            call("u1", "my-skill", "SKILL.md", "Do the thing when asked."),
+            call("u1", "my-skill", "resources/reference.md", "# Reference\nExtra detail."),
+        ]
 
 
 class TestInstallFromGithubContract:
@@ -452,9 +521,7 @@ class TestInstallFromGithubContract:
                 "https://raw.githubusercontent.com/org/repo/main/skills/rich-skill/SKILL.md"
             ).mock(return_value=httpx.Response(200, text=_RICH_SKILL_MD))
 
-            result = await install_from_github(
-                user_id="u1", repo_url="org/repo/skills/rich-skill"
-            )
+            result = await install_from_github(user_id="u1", repo_url="org/repo/skills/rich-skill")
 
         assert result is sentinel.installed_skill
         install_mock.assert_awaited_once()
@@ -474,15 +541,22 @@ class TestInstallFromGithubContract:
             "allowed_tools": ["tool_one", "tool_two"],
         }
         ensure_mock.assert_awaited_once_with("u1")
-        write_mock.assert_awaited_once_with("u1", "rich-skill", "SKILL.md", "Rich body instructions.")
+        write_mock.assert_awaited_once_with(
+            "u1", "rich-skill", "SKILL.md", "Rich body instructions."
+        )
         log_mock.set.assert_called_once_with(user_id="u1", skill={"operation": "install"})
         log_mock.set_ns.assert_called_once_with("skill", skill_name="rich-skill")
         assert log_mock.info.call_count == 2
+        assert log_mock.info.call_args_list[0].args[0] == f"{LogTag.SKILLS} Fetching from GitHub"
         assert log_mock.info.call_args_list[0].kwargs == {
             "owner": "org",
             "repo": "repo",
             "base_path": "skills/rich-skill",
         }
+        assert (
+            log_mock.info.call_args_list[1].args[0]
+            == f"{LogTag.SKILLS} Installed skill from GitHub"
+        )
         assert log_mock.info.call_args_list[1].kwargs == {
             "skill_name": "rich-skill",
             "file_count": 1,
@@ -537,6 +611,63 @@ class TestInstallFromGithubContract:
         install_mock.assert_awaited_once()
         assert install_mock.await_args.kwargs["name"] == "my-skill"
 
+    async def test_async_client_uses_30_second_timeout(self, storage_seams):
+        """The GitHub fetch client must pin a 30s timeout — a mutated timeout
+        (None, 31.0) means unbounded or wrong-length hangs on slow API responses."""
+        _, install_mock = storage_seams
+        with patch(
+            "app.agents.skills.installer.httpx.AsyncClient", new_callable=MagicMock
+        ) as ac_mock:
+            client_mock = ac_mock.return_value.__aenter__.return_value
+            client_mock.get.side_effect = [
+                _github_response(
+                    200,
+                    json=[_contents_entry("SKILL.md", "file", "skills/my-skill/SKILL.md")],
+                ),
+                _github_response(200, text=_SKILL_MD_CONTENT),
+            ]
+
+            await install_from_github(user_id="u1", repo_url="org/repo/skills/my-skill")
+
+        ac_mock.assert_called_once_with(timeout=30.0)
+        install_mock.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        ("skill_path", "expected_base_path"),
+        [
+            ("my-skill/", "skills/my-skill"),
+            ("my-skillX", "skills/my-skillX"),
+        ],
+    )
+    async def test_skill_path_keeps_exact_characters_in_base_path(
+        self, full_seams, skill_path: str, expected_base_path: str
+    ):
+        """base_path = '<url_path>/<skill_path>'.strip('/') — only trailing
+        slashes are removed, never whitespace (strip(None)) or other characters
+        (strip('XX/XX') would eat a trailing X from the path)."""
+        _, install_mock, _, _ = full_seams
+        with respx.mock:
+            respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/{expected_base_path}").mock(
+                return_value=httpx.Response(
+                    200,
+                    json=[_contents_entry("SKILL.md", "file", f"{expected_base_path}/SKILL.md")],
+                )
+            )
+            respx.get(
+                f"https://raw.githubusercontent.com/org/repo/main/{expected_base_path}/SKILL.md"
+            ).mock(return_value=httpx.Response(200, text=_SKILL_MD_CONTENT))
+
+            await install_from_github(
+                user_id="u1",
+                repo_url="org/repo/skills",
+                skill_path=skill_path,
+            )
+
+        assert (
+            install_mock.await_args.kwargs["source_url"]
+            == f"https://github.com/org/repo/tree/main/{expected_base_path}"
+        )
+
 
 class TestInstallFromGithubValidation:
     async def test_missing_skill_md_raises_value_error(self, storage_seams):
@@ -575,6 +706,30 @@ class TestInstallFromGithubValidation:
                 match=re.escape("Invalid SKILL.md: Missing required field: description"),
             ):
                 await install_from_github(user_id="u1", repo_url="org/repo/skills/my-skill")
+
+    async def test_multiple_validation_errors_joined_with_semicolons(self, storage_seams):
+        """Two errors must be joined with '; ' — a mutated separator silently
+        changes the exact message the user sees."""
+        two_error_md = "---\nname: My Skill!\n---\n\nBody without a description.\n"
+        with respx.mock:
+            respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/my-skill").mock(
+                return_value=httpx.Response(
+                    200,
+                    json=[_contents_entry("SKILL.md", "file", "my-skill/SKILL.md")],
+                )
+            )
+            respx.get("https://raw.githubusercontent.com/org/repo/main/my-skill/SKILL.md").mock(
+                return_value=httpx.Response(200, text=two_error_md)
+            )
+
+            with pytest.raises(ValueError) as excinfo:
+                await install_from_github(user_id="u1", repo_url="org/repo/my-skill")
+
+        assert (
+            str(excinfo.value) == "Invalid SKILL.md: Missing required field: description; "
+            "name must be lowercase alphanumeric with hyphens only; "
+            "description must not be empty"
+        )
 
     async def test_disallowed_target_raises_value_error(self, storage_seams):
         """allowed_targets blocks installing a skill scoped to an integration
@@ -788,7 +943,9 @@ class TestInstallFromInline:
         assert install_mock.await_args.kwargs["source"] is SkillSource.INLINE
         assert install_mock.await_args.kwargs["metadata"] == {}
         assert install_mock.await_args.kwargs["allowed_tools"] == []
-        write_mock.assert_awaited_once_with("u1", "my-skill", "SKILL.md", "Do the thing when asked.")
+        write_mock.assert_awaited_once_with(
+            "u1", "my-skill", "SKILL.md", "Do the thing when asked."
+        )
 
     async def test_validation_errors_raise_and_abort(self, storage_seams):
         write_mock, install_mock = storage_seams
