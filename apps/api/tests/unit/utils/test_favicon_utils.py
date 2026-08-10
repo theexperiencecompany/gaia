@@ -1,11 +1,15 @@
 """Unit tests for app.utils.favicon_utils — favicon fetching with Redis caching."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import httpx
 import pytest
 
+from app.constants.cache import FAVICON_CACHE_TTL
+from app.constants.log_tags import LogTag
 from app.utils.favicon_utils import (
+    BROWSER_UA,
+    HTTP_TIMEOUT,
     _fetch_favicon_impl,
     _fetch_smithery_icon,
     _get_domain_cache_key,
@@ -18,6 +22,11 @@ from app.utils.favicon_utils import (
     fetch_favicon_from_url,
     legacy_favicon_url,
 )
+
+# Exact HTTP client construction and request shape the module is expected to
+# use. Pinning these arguments is what makes the tests notice a changed
+# timeout, header key, or follow_redirects flag.
+EXPECTED_CLIENT_KWARGS = {"timeout": HTTP_TIMEOUT, "headers": {"User-Agent": BROWSER_UA}}
 
 # ---------------------------------------------------------------------------
 # _get_domain_cache_key / _get_host_url — keyed by full host
@@ -54,6 +63,14 @@ class TestGetDomainCacheKey:
         """_get_host_url returns scheme + full host, no path."""
         assert _get_host_url("https://sub.example.com/a/b") == "https://sub.example.com"
 
+    def test_scheme_less_url_defaults_to_https(self) -> None:
+        """A URL without a scheme is prefixed with https:// before parsing."""
+        assert _get_host_url("example.com/path") == "https://example.com"
+
+    def test_empty_parsed_scheme_falls_back_to_https(self) -> None:
+        """A "://" without a scheme prefix still falls back to the https default."""
+        assert _get_host_url("://x") == "https://"
+
 
 # ---------------------------------------------------------------------------
 # legacy_favicon_url — Google S2 on the registered domain
@@ -86,8 +103,17 @@ class TestSmitheryQualifiedName:
             ("https://server.smithery.ai/@owner/name/sse", "@owner/name"),
             ("https://smithery.ai/@owner/name", "@owner/name"),
             ("https://server.smithery.ai:443/brave", "brave"),
+            ("https://server.smithery.ai/XbraveX/", "XbraveX"),
         ],
-        ids=["owner_name", "slug", "strips_mcp", "strips_sse", "apex_host", "with_port"],
+        ids=[
+            "owner_name",
+            "slug",
+            "strips_mcp",
+            "strips_sse",
+            "apex_host",
+            "with_port",
+            "x_padded_path",
+        ],
     )
     def test_smithery_hosts(self, url: str, expected: str) -> None:
         """Smithery hosts yield the path as the qualified name (transport stripped)."""
@@ -123,8 +149,16 @@ class TestParseFaviconSize:
             ("256x128", 256),
             ("128x256", 256),
             ("48x48 96x96", 96),
+            ("96x96 48x48", 96),
         ],
-        ids=["square_32", "square_16", "wider_rect", "taller_rect", "multiple_sizes_picks_max"],
+        ids=[
+            "square_32",
+            "square_16",
+            "wider_rect",
+            "taller_rect",
+            "multiple_sizes_picks_max",
+            "earlier_larger_than_later",
+        ],
     )
     def test_valid_sizes(self, sizes_attr: str, expected: int) -> None:
         """Valid NxN or WxH size strings are parsed correctly."""
@@ -218,6 +252,61 @@ class TestParseIconsFromHtml:
         assert len(icons) == 1
         assert icons[0]["href"] == "https://example.com/favicon.ico"
 
+    def test_lxml_parser_keeps_first_duplicate_attribute(self) -> None:
+        """The lxml parser is pinned explicitly — it keeps the FIRST duplicate attribute."""
+        html = """<html><head><link rel="icon" href="/a.png" href="/b.png"></head></html>"""
+        icons = _parse_icons_from_html(html, "https://example.com")
+        assert len(icons) == 1
+        assert icons[0]["href"] == "https://example.com/a.png"
+
+    def test_non_link_tags_with_icon_rel_ignored(self) -> None:
+        """Only <link> tags are candidates — other tags with rel=icon are ignored."""
+        html = (
+            "<html><body><a rel='icon' href='/a.ico'>x</a>"
+            "<link rel='icon' href='/l.ico'></body></html>"
+        )
+        icons = _parse_icons_from_html(html, "https://example.com")
+        assert len(icons) == 1
+        assert icons[0]["href"] == "https://example.com/l.ico"
+
+    def test_link_without_href_does_not_stop_scanning(self) -> None:
+        """A link missing href is skipped; later links are still scanned."""
+        html = """
+        <html><head>
+            <link rel="icon" sizes="32x32">
+            <link rel="icon" href="/real.png">
+        </head></html>
+        """
+        icons = _parse_icons_from_html(html, "https://example.com")
+        assert len(icons) == 1
+        assert icons[0]["href"] == "https://example.com/real.png"
+
+    def test_data_uri_skipped_but_later_links_scanned(self) -> None:
+        """A data: URI is skipped; later links are still scanned."""
+        html = """
+        <html><head>
+            <link rel="icon" href="data:image/png;base64,abc123">
+            <link rel="icon" href="/real.png">
+        </head></html>
+        """
+        icons = _parse_icons_from_html(html, "https://example.com")
+        assert len(icons) == 1
+        assert icons[0]["href"] == "https://example.com/real.png"
+
+    @patch("app.utils.favicon_utils._parse_favicon_size")
+    def test_sizes_lookup_uses_empty_string_default(self, mock_parse_size: MagicMock) -> None:
+        """A link without a sizes attribute passes exactly "" to _parse_favicon_size."""
+        mock_parse_size.return_value = 0
+        html = """
+        <html><head>
+            <link rel="icon" href="/a.png" sizes="16x16">
+            <link rel="icon" href="/b.png">
+        </head></html>
+        """
+        icons = _parse_icons_from_html(html, "https://example.com")
+        assert len(icons) == 2
+        mock_parse_size.assert_has_calls([call("16x16"), call("")])
+
 
 # ---------------------------------------------------------------------------
 # _select_best_icon
@@ -255,6 +344,39 @@ class TestSelectBestIcon:
         ]
         assert _select_best_icon(icons) == "https://example.com/small.png"
 
+    def test_ico_beats_other_and_svg(self) -> None:
+        """ICO is preferred over 'other' and SVG even when they are larger."""
+        icons = [
+            {"href": "https://example.com/other.weird", "size": 512, "format": "other"},
+            {"href": "https://example.com/huge.svg", "size": 1024, "format": "svg"},
+            {"href": "https://example.com/fav.ico", "size": 16, "format": "ico"},
+        ]
+        assert _select_best_icon(icons) == "https://example.com/fav.ico"
+
+    def test_other_beats_svg(self) -> None:
+        """'other' formats rank above SVG regardless of size."""
+        icons = [
+            {"href": "https://example.com/huge.svg", "size": 1024, "format": "svg"},
+            {"href": "https://example.com/icon.weird", "size": 16, "format": "other"},
+        ]
+        assert _select_best_icon(icons) == "https://example.com/icon.weird"
+
+    def test_unknown_format_uses_default_rank(self) -> None:
+        """Formats outside the priority table fall back to the default rank (2)."""
+        icons = [
+            {"href": "https://example.com/icon.webp", "size": 512, "format": "webp"},
+            {"href": "https://example.com/fav.png", "size": 16, "format": "png"},
+        ]
+        assert _select_best_icon(icons) == "https://example.com/fav.png"
+
+    def test_unknown_format_ranks_above_svg(self) -> None:
+        """The default rank (2) puts unknown formats above SVG (rank 3)."""
+        icons = [
+            {"href": "https://example.com/huge.svg", "size": 1024, "format": "svg"},
+            {"href": "https://example.com/icon.webp", "size": 32, "format": "webp"},
+        ]
+        assert _select_best_icon(icons) == "https://example.com/icon.webp"
+
 
 # ---------------------------------------------------------------------------
 # _validate_favicon_url
@@ -282,31 +404,72 @@ class TestValidateFaviconUrl:
         """200 response with image content-type returns True."""
         response = MagicMock(status_code=200, headers={"content-type": "image/png"})
         client = _mock_async_client(response)
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch(
+            "app.utils.favicon_utils.httpx.AsyncClient", return_value=client
+        ) as mock_async_client:
             assert await _validate_favicon_url("https://example.com/favicon.png") is True
+        mock_async_client.assert_called_once_with(**EXPECTED_CLIENT_KWARGS)
+        client.head.assert_called_once_with(
+            "https://example.com/favicon.png", follow_redirects=True
+        )
 
     @patch("app.utils.favicon_utils.log")
     async def test_non_200_returns_false(self, _mock_log: MagicMock) -> None:
         """Non-200 status code returns False."""
         response = MagicMock(status_code=404, headers={"content-type": "text/html"})
         client = _mock_async_client(response)
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch(
+            "app.utils.favicon_utils.httpx.AsyncClient", return_value=client
+        ) as mock_async_client:
             assert await _validate_favicon_url("https://example.com/favicon.png") is False
+        mock_async_client.assert_called_once_with(**EXPECTED_CLIENT_KWARGS)
+        client.head.assert_called_once_with(
+            "https://example.com/favicon.png", follow_redirects=True
+        )
 
     @patch("app.utils.favicon_utils.log")
     async def test_non_image_content_type_returns_false(self, _mock_log: MagicMock) -> None:
         """200 response with non-image content-type returns False."""
         response = MagicMock(status_code=200, headers={"content-type": "text/html"})
         client = _mock_async_client(response)
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch(
+            "app.utils.favicon_utils.httpx.AsyncClient", return_value=client
+        ) as mock_async_client:
             assert await _validate_favicon_url("https://example.com/favicon.png") is False
+        mock_async_client.assert_called_once_with(**EXPECTED_CLIENT_KWARGS)
+        client.head.assert_called_once_with(
+            "https://example.com/favicon.png", follow_redirects=True
+        )
 
     @patch("app.utils.favicon_utils.log")
-    async def test_http_error_returns_false(self, _mock_log: MagicMock) -> None:
-        """Network error during HEAD request returns False."""
+    async def test_http_error_returns_false(self, mock_log: MagicMock) -> None:
+        """Network error during HEAD request returns False and logs the exact fields."""
         client = _mock_async_client(head_side_effect=httpx.ConnectError("refused"))
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch(
+            "app.utils.favicon_utils.httpx.AsyncClient", return_value=client
+        ) as mock_async_client:
             assert await _validate_favicon_url("https://example.com/favicon.png") is False
+        mock_async_client.assert_called_once_with(**EXPECTED_CLIENT_KWARGS)
+        client.head.assert_called_once_with(
+            "https://example.com/favicon.png", follow_redirects=True
+        )
+        mock_log.debug.assert_called_once_with(
+            "Favicon validation failed for",
+            url="https://example.com/favicon.png",
+            error="refused",
+            error_type="ConnectError",
+        )
+
+    @patch("app.utils.favicon_utils.log")
+    async def test_content_type_lookup_uses_empty_default(self, _mock_log: MagicMock) -> None:
+        """The content-type lookup pins the exact ("content-type", "") get() contract."""
+        response = MagicMock(status_code=200)
+        response.headers = MagicMock()
+        response.headers.get.return_value = "image/png"
+        client = _mock_async_client(response)
+        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+            assert await _validate_favicon_url("https://example.com/favicon.png") is True
+        response.headers.get.assert_called_once_with("content-type", "")
 
 
 # ---------------------------------------------------------------------------
@@ -330,9 +493,15 @@ class TestFetchSmitheryIcon:
         response.json.return_value = {"iconUrl": "https://api.smithery.ai/servers/brave/icon"}
         client = _mock_async_client()
         client.get.return_value = response
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch(
+            "app.utils.favicon_utils.httpx.AsyncClient", return_value=client
+        ) as mock_async_client:
             result = await _fetch_smithery_icon("https://server.smithery.ai/brave")
         assert result == "https://api.smithery.ai/servers/brave/icon"
+        mock_async_client.assert_called_once_with(**EXPECTED_CLIENT_KWARGS)
+        client.get.assert_called_once_with(
+            "https://registry.smithery.ai/servers/brave", follow_redirects=True
+        )
 
     @patch("app.utils.favicon_utils.log")
     async def test_non_200_returns_none(self, _mock_log: MagicMock) -> None:
@@ -340,8 +509,14 @@ class TestFetchSmitheryIcon:
         response = MagicMock(status_code=403)
         client = _mock_async_client()
         client.get.return_value = response
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch(
+            "app.utils.favicon_utils.httpx.AsyncClient", return_value=client
+        ) as mock_async_client:
             assert await _fetch_smithery_icon("https://server.smithery.ai/brave") is None
+        mock_async_client.assert_called_once_with(**EXPECTED_CLIENT_KWARGS)
+        client.get.assert_called_once_with(
+            "https://registry.smithery.ai/servers/brave", follow_redirects=True
+        )
 
     @patch("app.utils.favicon_utils.log")
     async def test_missing_icon_url_returns_none(self, _mock_log: MagicMock) -> None:
@@ -350,8 +525,38 @@ class TestFetchSmitheryIcon:
         response.json.return_value = {"iconUrl": None}
         client = _mock_async_client()
         client.get.return_value = response
+        with patch(
+            "app.utils.favicon_utils.httpx.AsyncClient", return_value=client
+        ) as mock_async_client:
+            assert await _fetch_smithery_icon("https://server.smithery.ai/brave") is None
+        mock_async_client.assert_called_once_with(**EXPECTED_CLIENT_KWARGS)
+        client.get.assert_called_once_with(
+            "https://registry.smithery.ai/servers/brave", follow_redirects=True
+        )
+
+    @patch("app.utils.favicon_utils.log")
+    async def test_empty_icon_url_returns_none(self, _mock_log: MagicMock) -> None:
+        """An iconUrl that is an empty string is treated as absent (falsy)."""
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"iconUrl": ""}
+        client = _mock_async_client()
+        client.get.return_value = response
         with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
             assert await _fetch_smithery_icon("https://server.smithery.ai/brave") is None
+
+    @patch("app.utils.favicon_utils.log")
+    async def test_exception_logs_and_returns_none(self, mock_log: MagicMock) -> None:
+        """A registry request failure logs the exact fields and yields None."""
+        client = _mock_async_client()
+        client.get.side_effect = httpx.ConnectError("registry unreachable")
+        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+            assert await _fetch_smithery_icon("https://server.smithery.ai/brave") is None
+        mock_log.debug.assert_called_once_with(
+            "Smithery icon lookup failed for",
+            qualified_name="brave",
+            error="registry unreachable",
+            error_type="ConnectError",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -366,13 +571,17 @@ class TestFetchFaviconFromUrl:
     @patch("app.utils.favicon_utils.set_cache", new_callable=AsyncMock)
     @patch("app.utils.favicon_utils.get_cache", new_callable=AsyncMock)
     async def test_cache_hit_returns_cached_value(
-        self, mock_get_cache: AsyncMock, mock_set_cache: AsyncMock, _mock_log: MagicMock
+        self, mock_get_cache: AsyncMock, mock_set_cache: AsyncMock, mock_log: MagicMock
     ) -> None:
         """When Redis cache has a value, return it without fetching."""
         mock_get_cache.return_value = "https://cached.example.com/favicon.png"
         result = await fetch_favicon_from_url("https://example.com/page")
         assert result == "https://cached.example.com/favicon.png"
-        mock_get_cache.assert_called_once()
+        mock_log.set.assert_called_once_with(
+            server_url="https://example.com/page",
+            favicon_cache_key="favicon:https://example.com",
+        )
+        mock_get_cache.assert_awaited_once_with("favicon:https://example.com")
         mock_set_cache.assert_not_called()
 
     @patch("app.utils.favicon_utils.log")
@@ -384,24 +593,38 @@ class TestFetchFaviconFromUrl:
         mock_get_cache: AsyncMock,
         mock_set_cache: AsyncMock,
         mock_fetch_impl: AsyncMock,
-        _mock_log: MagicMock,
+        mock_log: MagicMock,
     ) -> None:
         """Cache miss triggers _fetch_favicon_impl and caches the result."""
         mock_get_cache.return_value = None
         mock_fetch_impl.return_value = "https://example.com/favicon.ico"
         result = await fetch_favicon_from_url("https://example.com/page")
         assert result == "https://example.com/favicon.ico"
-        mock_fetch_impl.assert_called_once_with("https://example.com/page")
-        mock_set_cache.assert_called_once()
+        mock_log.set.assert_called_once_with(
+            server_url="https://example.com/page",
+            favicon_cache_key="favicon:https://example.com",
+        )
+        mock_get_cache.assert_awaited_once_with("favicon:https://example.com")
+        mock_fetch_impl.assert_awaited_once_with("https://example.com/page")
+        mock_set_cache.assert_awaited_once_with(
+            "favicon:https://example.com", "https://example.com/favicon.ico", ttl=FAVICON_CACHE_TTL
+        )
 
     @patch("app.utils.favicon_utils.log")
     @patch("app.utils.favicon_utils.get_cache", new_callable=AsyncMock)
     async def test_exception_returns_none(
-        self, mock_get_cache: AsyncMock, _mock_log: MagicMock
+        self, mock_get_cache: AsyncMock, mock_log: MagicMock
     ) -> None:
-        """Unexpected exception in the outer try/except returns None."""
+        """Unexpected exception in the outer try/except returns None and logs the exact fields."""
         mock_get_cache.side_effect = RuntimeError("Redis down")
         assert await fetch_favicon_from_url("https://example.com") is None
+        mock_get_cache.assert_awaited_once_with("favicon:https://example.com")
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.TOOL} Failed to fetch favicon for",
+            server_url="https://example.com",
+            error="Redis down",
+            error_type="RuntimeError",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +644,7 @@ class TestFetchFaviconImpl:
         mock_smithery: AsyncMock,
         mock_validate: AsyncMock,
         mock_html: AsyncMock,
-        _mock_log: MagicMock,
+        mock_log: MagicMock,
     ) -> None:
         """A valid Smithery registry icon is returned without parsing HTML."""
         mock_smithery.return_value = "https://api.smithery.ai/servers/brave/icon"
@@ -429,6 +652,11 @@ class TestFetchFaviconImpl:
         result = await _fetch_favicon_impl("https://server.smithery.ai/brave")
         assert result == "https://api.smithery.ai/servers/brave/icon"
         mock_html.assert_not_called()
+        mock_log.debug.assert_called_once_with(
+            "Fetching favicon for host", host_url="https://server.smithery.ai"
+        )
+        mock_smithery.assert_awaited_once_with("https://server.smithery.ai/brave")
+        mock_validate.assert_awaited_once_with("https://api.smithery.ai/servers/brave/icon")
 
     @patch("app.utils.favicon_utils.log")
     @patch("app.utils.favicon_utils._try_html_link_parsing", new_callable=AsyncMock)
@@ -439,7 +667,7 @@ class TestFetchFaviconImpl:
         mock_smithery: AsyncMock,
         mock_validate: AsyncMock,
         mock_html: AsyncMock,
-        _mock_log: MagicMock,
+        mock_log: MagicMock,
     ) -> None:
         """The host's declared <link> icon is used when valid."""
         mock_smithery.return_value = None
@@ -447,6 +675,11 @@ class TestFetchFaviconImpl:
         mock_validate.return_value = True
         result = await _fetch_favicon_impl("https://example.com/mcp")
         assert result == "https://example.com/mcp-use/public/favicon.png"
+        mock_log.debug.assert_called_once_with(
+            "Fetching favicon for host", host_url="https://example.com"
+        )
+        mock_html.assert_awaited_once_with("https://example.com")
+        mock_validate.assert_awaited_once_with("https://example.com/mcp-use/public/favicon.png")
 
     @patch("app.utils.favicon_utils.log")
     @patch("app.utils.favicon_utils.legacy_favicon_url")
@@ -468,6 +701,7 @@ class TestFetchFaviconImpl:
         result = await _fetch_favicon_impl("https://example.com/mcp")
         assert result == "https://www.google.com/s2/favicons?domain=example.com&sz=256"
         mock_validate.assert_not_called()
+        mock_legacy.assert_called_once_with("https://example.com/mcp")
 
     @patch("app.utils.favicon_utils.log")
     @patch("app.utils.favicon_utils.legacy_favicon_url")
@@ -489,3 +723,10 @@ class TestFetchFaviconImpl:
         mock_legacy.return_value = "https://www.google.com/s2/favicons?domain=example.com&sz=256"
         result = await _fetch_favicon_impl("https://example.com/mcp")
         assert result == "https://www.google.com/s2/favicons?domain=example.com&sz=256"
+        mock_validate.assert_has_awaits(
+            [
+                call("https://api.smithery.ai/servers/x/icon"),
+                call("https://example.com/favicon.png"),
+            ]
+        )
+        mock_legacy.assert_called_once_with("https://example.com/mcp")
