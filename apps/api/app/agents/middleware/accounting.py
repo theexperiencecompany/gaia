@@ -35,6 +35,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
+from app.config.settings import settings
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
@@ -192,6 +193,10 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         a Redis hiccup must never take down the turn.
         """
         configurable = agent_configurable(_current_config())
+        if settings.DEV_UNLIMITED_RATE_LIMITS:
+            # The same dev knob that bypasses the endpoint gates: a dev/eval run
+            # must not be halted mid-flight by the free plan's budget walls.
+            return await handler(request)
         user_id = configurable.get("user_id")
         root_request_id = configurable.get("root_request_id")
         # plan_type is passed through when the path stamped it (the hot chat path,

@@ -22,6 +22,7 @@ from app.config.rate_limits import (
     RateLimitPeriod,
     get_reset_time,
 )
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.request_context import get_authenticated_user
 from app.models.payment_models import PlanType
@@ -350,6 +351,10 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
     ``feature_key`` names the surface being blocked (e.g. ``chat_messages``,
     ``trigger_workflow_executions``) for the 429 payload and reset copy.
     """
+    if settings.DEV_UNLIMITED_RATE_LIMITS:
+        # The same dev knob that bypasses the count limiter: a dev/eval run
+        # must not trip the free plan's daily cost wall mid-run.
+        return
     plan_type = await payment_service.get_cached_plan_type(user_id)
     # The tier this request was priced against, on the wide event — this gate is
     # the one place on the chat path that resolves the plan before any work runs.
