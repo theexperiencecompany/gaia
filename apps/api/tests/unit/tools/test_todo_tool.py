@@ -20,7 +20,6 @@ from app.models.todo_models import (
     SubTask,
     TodoLabelCount,
     TodoModel,
-    TodoStats,
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
@@ -228,6 +227,7 @@ class TestCreateTodo:
         )
         _assert_log_entry("create_todo", "create")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Creating todo", title="Buy groceries")
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.create_todo_service", new_callable=AsyncMock)
@@ -415,6 +415,7 @@ class TestListTodos:
         )
         _assert_log_entry("list_todos", "list")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Listing todos with filters")
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
@@ -593,6 +594,7 @@ class TestUpdateTodo:
         )
         _assert_log_entry("update_todo", "update")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Updating todo", todo_id="todo-1")
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
@@ -742,6 +744,7 @@ class TestDeleteTodo:
         )
         _assert_log_entry("delete_todo", "delete")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Deleting todo", todo_id="todo-1")
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.delete_todo_service", new_callable=AsyncMock)
@@ -860,6 +863,7 @@ class TestSearchTodos:
         )
         _assert_log_entry("search_todos", "search")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Searching todos", query="groceries")
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.search_todos_service", new_callable=AsyncMock)
@@ -1001,6 +1005,7 @@ class TestSemanticSearchTodos:
         )
         _assert_log_entry("semantic_search_todos", "search")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Semantic search", query="shopping list")
+        mock_get_user.assert_called_once_with(_make_config())
         todo.model_dump.assert_called_once_with(mode="json")
 
     @patch(f"{MODULE}.get_stream_writer")
@@ -1140,9 +1145,19 @@ class TestGetTodoStatistics:
     ) -> None:
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
-        stats_model = TodoStats(total=10, completed=5, pending=5)
+        stats_model = MagicMock()
+        stats = {
+            "total": 10,
+            "completed": 5,
+            "pending": 5,
+            "overdue": 0,
+            "by_priority": {},
+            "by_project": {},
+            "completion_rate": 0.0,
+            "labels": None,
+        }
+        stats_model.model_dump.return_value = stats
         mock_service.return_value = stats_model
-        stats = stats_model.model_dump(mode="json")
 
         from app.agents.tools.todo_tool import get_todo_statistics
 
@@ -1155,6 +1170,8 @@ class TestGetTodoStatistics:
         )
         _assert_log_entry("get_todo_statistics", "stats")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Getting todo statistics")
+        stats_model.model_dump.assert_called_once_with(mode="json")
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todo_stats_service", new_callable=AsyncMock)
@@ -1236,6 +1253,7 @@ class TestGetTodayTodos:
         )
         _assert_log_entry("get_today_todos", "get")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Getting today's todos")
+        mock_get_user.assert_called_once_with(_make_config())
         todo.model_dump.assert_called_once_with(mode="json")
 
     @patch(f"{MODULE}.datetime", _FixedDatetime)
@@ -1344,6 +1362,7 @@ class TestGetUpcomingTodos:
         )
         _assert_log_entry("get_upcoming_todos", "get")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Getting upcoming todos", days=7)
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.datetime", _FixedDatetime)
     @patch(f"{MODULE}.get_stream_writer")
@@ -1455,6 +1474,7 @@ class TestCreateProject:
         )
         _assert_log_entry("create_project", "create")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Creating project", project_name="New Project")
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.create_project_service", new_callable=AsyncMock)
@@ -1566,6 +1586,7 @@ class TestListProjects:
         )
         _assert_log_entry("list_projects", "list")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Listing all projects")
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
@@ -1674,6 +1695,7 @@ class TestUpdateProject:
         )
         _assert_log_entry("update_project", "update")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Updating project", project_id="proj-1")
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_project_service", new_callable=AsyncMock)
@@ -1785,6 +1807,7 @@ class TestDeleteProject:
         )
         _assert_log_entry("delete_project", "delete")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Deleting project", project_id="proj-1")
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.delete_project_service", new_callable=AsyncMock)
@@ -1931,6 +1954,7 @@ class TestGetTodosByLabel:
         )
         _assert_log_entry("get_todos_by_label", "get")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Getting todos by label", label="work")
+        mock_get_user.assert_called_once_with(_make_config())
         todo.model_dump.assert_called_once_with(mode="json")
 
     @patch(f"{MODULE}.get_stream_writer")
@@ -2041,6 +2065,7 @@ class TestGetAllLabels:
         )
         _assert_log_entry("get_all_labels", "get")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Getting all labels")
+        mock_get_user.assert_called_once_with(_make_config())
         mock_service.assert_awaited_once_with(FAKE_USER_ID)
 
     @patch(f"{MODULE}.get_all_labels_service", new_callable=AsyncMock)
@@ -2134,6 +2159,7 @@ class TestBulkCompleteTodos:
         )
         _assert_log_entry("bulk_complete_todos", "bulk_complete")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Bulk completing todos", todo_count=3)
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.bulk_complete_service", new_callable=AsyncMock)
@@ -2248,6 +2274,7 @@ class TestBulkMoveTodos:
         _assert_log_info(
             f"{LogTag.TOOL} Todo Tool: Bulk moving todos", todo_count=1, project_id="proj-2"
         )
+        mock_get_user.assert_called_once_with(_make_config())
         todo.model_dump.assert_called_once_with(mode="json")
 
     @patch(f"{MODULE}.get_stream_writer")
@@ -2356,6 +2383,7 @@ class TestBulkDeleteTodos:
         )
         _assert_log_entry("bulk_delete_todos", "bulk_delete")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Bulk deleting todos", todo_count=2)
+        mock_get_user.assert_called_once_with(_make_config())
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.bulk_delete_service", new_callable=AsyncMock)
@@ -2432,6 +2460,14 @@ class TestAddSubtask:
     """Tests for the add_subtask tool."""
 
     @patch(f"{MODULE}.uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678"))
+    @patch(
+        f"{MODULE}.SubTask",
+        return_value=SubTask(
+            id="12345678-1234-5678-1234-567812345678",
+            title="Buy milk",
+            completed=False,
+        ),
+    )
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
@@ -2442,6 +2478,7 @@ class TestAddSubtask:
         mock_get_todo: AsyncMock,
         mock_update: AsyncMock,
         mock_writer_factory: MagicMock,
+        mock_subtask_cls: MagicMock,
         _mock_uuid: MagicMock,
     ) -> None:
         writer = _writer_mock()
@@ -2485,6 +2522,12 @@ class TestAddSubtask:
         )
         _assert_log_entry("add_subtask", "create")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Adding subtask", todo_id="todo-1")
+        mock_subtask_cls.assert_called_once_with(
+            id="12345678-1234-5678-1234-567812345678",
+            title="Buy milk",
+            completed=False,
+        )
+        mock_get_user.assert_called_once_with(_make_config())
         updated.model_dump.assert_called_once_with(mode="json")
 
     @patch(f"{MODULE}.uuid.uuid4", return_value=uuid.UUID("12345678-1234-5678-1234-567812345678"))
@@ -2659,6 +2702,7 @@ class TestUpdateSubtask:
         _assert_log_info(
             f"{LogTag.TOOL} Todo Tool: Updating subtask", subtask_id="sub-1", todo_id="todo-1"
         )
+        mock_get_user.assert_called_once_with(_make_config())
         updated.model_dump.assert_called_once_with(mode="json")
 
     @patch(f"{MODULE}.get_stream_writer")
@@ -2892,6 +2936,7 @@ class TestDeleteSubtask:
         _assert_log_info(
             f"{LogTag.TOOL} Todo Tool: Deleting subtask", subtask_id="sub-1", todo_id="todo-1"
         )
+        mock_get_user.assert_called_once_with(_make_config())
         updated.model_dump.assert_called_once_with(mode="json")
 
     @patch(f"{MODULE}.get_stream_writer")
@@ -3086,29 +3131,29 @@ class TestGetTodosSummary:
         assert summary == {
             "today": {
                 "count": 5,
-                "todos": [t.model_dump(mode="json") for t in today_todos],
+                "todos": [t.model_dump.return_value for t in today_todos],
                 "has_more": False,
             },
             "overdue": {
                 "count": 1,
-                "todos": [todos["overdue"].model_dump(mode="json")],
+                "todos": [todos["overdue"].model_dump.return_value],
                 "has_more": False,
             },
             "upcoming_week": {
                 "count": 1,
-                "todos": [todos["future_late"].model_dump(mode="json")],
+                "todos": [todos["future_late"].model_dump.return_value],
                 "has_more": False,
             },
             "high_priority": {
                 "count": 1,
-                "todos": [todos["high"].model_dump(mode="json")],
+                "todos": [todos["high"].model_dump.return_value],
                 "has_more": False,
             },
             "recently_completed": {
                 "count": 1,
-                "todos": [todos["done_recent"].model_dump(mode="json")],
+                "todos": [todos["done_recent"].model_dump.return_value],
             },
-            "next_deadline": todos["future_soon"].model_dump(mode="json"),
+            "next_deadline": todos["future_soon"].model_dump.return_value,
             "stats": {
                 "total": 8,
                 "completed": 3,
@@ -3137,6 +3182,7 @@ class TestGetTodosSummary:
         _assert_tool_result(result, {"summary": summary, "error": None})
         _assert_log_entry("get_todos_summary", "summary")
         _assert_log_info(f"{LogTag.TOOL} Todo Tool: Getting comprehensive todos summary")
+        mock_get_user.assert_called_once_with(_make_config())
         for dumped in [
             *today_todos,
             todos["future_late"],
@@ -3145,7 +3191,7 @@ class TestGetTodosSummary:
             todos["done_recent"],
             todos["future_soon"],
         ]:
-            dumped.model_dump.assert_called_with(mode="json")
+            dumped.model_dump.assert_called_once_with(mode="json")
         writer.assert_called_once_with(
             {
                 "todo_data": {
@@ -3183,7 +3229,7 @@ class TestGetTodosSummary:
         summary = result["summary"]
         assert summary["today"] == {
             "count": 6,
-            "todos": [t.model_dump(mode="json") for t in today_todos[:5]],
+            "todos": [t.model_dump.return_value for t in today_todos[:5]],
             "has_more": True,
         }
         assert summary["stats"] == {
@@ -3267,9 +3313,9 @@ class TestGetTodosSummary:
         summary = result["summary"]
         assert summary["recently_completed"] == {
             "count": 4,
-            "todos": [d.model_dump(mode="json") for d in done[:3]],
+            "todos": [d.model_dump.return_value for d in done[:3]],
         }
-        assert summary["next_deadline"] == future_soon.model_dump(mode="json")
+        assert summary["next_deadline"] == future_soon.model_dump.return_value
         assert summary["stats"] == {
             "total": 6,
             "completed": 4,
@@ -3328,6 +3374,54 @@ class TestGetTodosSummary:
         assert (
             streamed["message"]
             == "Here's your productivity snapshot: 0 tasks today, 0 overdue, 0% completion rate"
+        )
+        _assert_tool_result(result, {"summary": result["summary"], "error": None})
+
+    @patch(f"{MODULE}.datetime", _FixedDatetime)
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
+    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
+    async def test_single_todo_completion_rate_is_100(
+        self,
+        mock_get_user: MagicMock,
+        mock_date_range: AsyncMock,
+        mock_all_todos: AsyncMock,
+        mock_all_projects: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        """With exactly one (completed) todo, the completion rate is computed, not
+        zeroed: the rate guard is `total > 0`, so a single task still gets a real
+        percentage (100.0)."""
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        solo = _make_todo_response(
+            id="solo",
+            completed=True,
+            completed_at=datetime(2026, 8, 10, 9, 0, tzinfo=UTC),
+        )
+        mock_date_range.side_effect = [[], []]
+        mock_all_todos.return_value = [solo]
+        mock_all_projects.return_value = []
+
+        from app.agents.tools.todo_tool import get_todos_summary
+
+        result = await get_todos_summary.coroutine(config=_make_config())
+
+        summary = result["summary"]
+        assert summary["stats"] == {
+            "total": 1,
+            "completed": 1,
+            "pending": 0,
+            "completed_today": 1,
+            "overdue": 0,
+            "completion_rate": 100.0,
+        }
+        streamed = writer.call_args.args[0]["todo_data"]
+        assert (
+            streamed["message"]
+            == "Here's your productivity snapshot: 0 tasks today, 0 overdue, 100.0% completion rate"
         )
         _assert_tool_result(result, {"summary": result["summary"], "error": None})
 
