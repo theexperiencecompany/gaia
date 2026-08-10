@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import time
 import tomllib
 
 import httpx
@@ -140,26 +141,36 @@ def health_check(p: ProviderConfig) -> ProviderHealth:
     if not p.base_url:
         return ProviderHealth(False, f"provider '{p.name}' has no base URL")
     url = p.base_url.rstrip("/") + "/chat/completions"
-    try:
-        r = httpx.post(
-            url,
-            headers={"Authorization": f"Bearer {p.api_key}"},
-            json={
-                "model": p.model,
-                "messages": [{"role": "user", "content": "hi"}],
-                "max_tokens": 1,
-            },
-            timeout=15.0,
-        )
-    except httpx.HTTPError as e:
-        return ProviderHealth(False, f"{p.name} unreachable: {e}")
-    if r.status_code == 401:
-        return ProviderHealth(False, f"{p.name} rejected the API key (401)")
-    if r.status_code in (429, 402):
-        return ProviderHealth(False, f"{p.name} quota exhausted ({r.status_code})")
-    if r.status_code >= 500:
-        return ProviderHealth(False, f"{p.name} server error ({r.status_code})")
-    return ProviderHealth(True)
+    payload = {
+        "model": p.model,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 1,
+    }
+    last_failure: ProviderHealth | None = None
+    for attempt in range(3):
+        try:
+            r = httpx.post(
+                url,
+                headers={"Authorization": f"Bearer {p.api_key}"},
+                json=payload,
+                timeout=15.0,
+            )
+        except httpx.HTTPError as e:
+            # Transient network blips are the observed failure mode of the cheap
+            # lanes — a single 503 at probe time must not abort a run.
+            last_failure = ProviderHealth(False, f"{p.name} unreachable: {e}")
+            time.sleep(2 * (attempt + 1))
+            continue
+        if r.status_code == 401:
+            return ProviderHealth(False, f"{p.name} rejected the API key (401)")
+        if r.status_code in (429, 402):
+            return ProviderHealth(False, f"{p.name} quota exhausted ({r.status_code})")
+        if r.status_code >= 500:
+            last_failure = ProviderHealth(False, f"{p.name} server error ({r.status_code})")
+            time.sleep(2 * (attempt + 1))
+            continue
+        return ProviderHealth(True)
+    return last_failure or ProviderHealth(False, f"{p.name} failed health probe")
 
 
 def rotation_chain(cfg: EvalConfig, providers: list[str] | None, exclude: list[str]) -> list[str]:
