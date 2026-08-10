@@ -5,7 +5,6 @@ import {
   BulkActions,
   type NotificationResponse,
   type PaginatedNotificationsResponse,
-  type SnoozeRequest,
   type UseNotificationsOptions,
 } from "@/types/features/notificationTypes";
 
@@ -30,45 +29,15 @@ export class NotificationsAPI {
       `${NotificationsAPI.BASE_URL}?${params.toString()}`,
     );
 
-    return response.data;
-  }
-
-  /**
-   * Fetch all notifications regardless of status
-   */
-  static async getAllNotifications(
-    options: Omit<UseNotificationsOptions, "status"> = {},
-  ): Promise<PaginatedNotificationsResponse> {
-    const params = new URLSearchParams();
-
-    if (options.limit) params.append("limit", options.limit.toString());
-    if (options.offset) params.append("offset", options.offset.toString());
-    if (options.channel_type)
-      params.append("channel_type", options.channel_type);
-
-    const response = await apiauth.get<PaginatedNotificationsResponse>(
-      `${NotificationsAPI.BASE_URL}?${params.toString()}`,
-    );
-
-    return response.data;
-  }
-
-  /**
-   * Fetch read notifications
-   */
-  static async getReadNotifications(
-    options: Omit<UseNotificationsOptions, "status"> = {},
-  ): Promise<PaginatedNotificationsResponse> {
-    const params = new URLSearchParams();
-
-    if (options.limit) params.append("limit", options.limit.toString());
-    if (options.offset) params.append("offset", options.offset.toString());
-    if (options.channel_type)
-      params.append("channel_type", options.channel_type);
-
-    const response = await apiauth.get<PaginatedNotificationsResponse>(
-      `${NotificationsAPI.BASE_URL}/status?${params.toString()}`,
-    );
+    // The endpoint always returns a `notifications` array. Anything else means
+    // the body did not come from the API (proxy/edge error page parsed as the
+    // response, truncated JSON, …) — fail loudly here rather than letting an
+    // undefined leak into the store and surface as a TypeError deep in a hook.
+    if (!Array.isArray(response.data?.notifications)) {
+      throw new Error(
+        "Malformed notifications response: expected `notifications` to be an array",
+      );
+    }
 
     return response.data;
   }
@@ -129,24 +98,6 @@ export class NotificationsAPI {
   }
 
   /**
-   * Snooze a notification until a specific time
-   */
-  static async snoozeNotification(
-    notificationId: string,
-    snoozeUntil: Date,
-  ): Promise<NotificationResponse> {
-    const snoozeRequest: SnoozeRequest = {
-      snooze_until: snoozeUntil.toISOString(),
-    };
-
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/${notificationId}/snooze`,
-      snoozeRequest,
-    );
-    return response.data;
-  }
-
-  /**
    * Bulk mark notifications as read
    */
   static async bulkMarkAsRead(
@@ -183,34 +134,6 @@ export class NotificationsAPI {
   }
 
   /**
-   * Delete notifications permanently
-   */
-  static async bulkDelete(
-    notificationIds: string[],
-  ): Promise<NotificationResponse> {
-    const bulkRequest: BulkActionRequest = {
-      notification_ids: notificationIds,
-      action: BulkActions.DELETE,
-    };
-
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/bulk-actions`,
-      bulkRequest,
-    );
-    return response.data;
-  }
-
-  /**
-   * Get unread notification count
-   */
-  static async getUnreadCount(): Promise<{ count: number }> {
-    const response = await apiauth.get<{ count: number }>(
-      `${NotificationsAPI.BASE_URL}/unread/count`,
-    );
-    return response.data;
-  }
-
-  /**
    * Get notification channel preferences (telegram, discord, whatsapp, slack)
    */
   static async getChannelPreferences(): Promise<
@@ -232,22 +155,5 @@ export class NotificationsAPI {
     await apiauth.put(`${NotificationsAPI.BASE_URL}/preferences/channels`, {
       [platform]: enabled,
     });
-  }
-
-  /**
-   * Create a test notification for debugging WebSocket
-   */
-  static async createTestNotification(
-    type: string = "all",
-  ): Promise<NotificationResponse> {
-    const params = new URLSearchParams();
-    if (type !== "all") {
-      params.append("notification_type", type);
-    }
-
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/test?${params.toString()}`,
-    );
-    return response.data;
   }
 }
