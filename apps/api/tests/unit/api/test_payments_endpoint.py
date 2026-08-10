@@ -633,6 +633,47 @@ class TestDodoWebhook:
             processing_status="processed",
         )
 
+    async def test_webhook_non_ascii_utf8_payload_decoded(self, client: AsyncClient):
+        """Raw body is decoded as UTF-8 (not latin-1/ascii) before verification."""
+        mock_result = DodoWebhookProcessingResult(
+            event_type="subscription.created",
+            status="processed",
+            message="ok",
+        )
+        payload = '{"type": "subscription.created", "data": {"name": "héllo ✓ 中文"}}'
+        with (
+            patch(
+                "app.services.payments.payment_webhook_service.payment_webhook_service.verify_webhook_signature",
+                return_value=True,
+            ) as mock_verify,
+            patch(
+                "app.services.payments.payment_webhook_service.payment_webhook_service.process_webhook",
+                new_callable=AsyncMock,
+                return_value=mock_result,
+            ) as mock_process,
+        ):
+            response = await client.post(
+                WEBHOOK_URL,
+                content=payload.encode("utf-8"),
+                headers=WEBHOOK_HEADERS,
+            )
+
+        assert response.status_code == 200
+        # The signature verifier must receive the byte-exact decoded string, so a
+        # wrong decoding (ascii/latin-1) or a corrupted payload fails the assertion.
+        mock_verify.assert_called_once_with(
+            payload,
+            {
+                "webhook-id": "wh_123",
+                "webhook-timestamp": "1234567890",
+                "webhook-signature": "v1,sig_abc",
+            },
+        )
+        mock_process.assert_awaited_once_with(
+            {"type": "subscription.created", "data": {"name": "héllo ✓ 中文"}},
+            "wh_123",
+        )
+
     async def test_webhook_without_type_logs_unknown_event_type(self, client: AsyncClient):
         mock_result = DodoWebhookProcessingResult(
             event_type="unknown",
