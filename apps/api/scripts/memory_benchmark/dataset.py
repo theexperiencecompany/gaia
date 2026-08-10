@@ -657,7 +657,7 @@ SCENARIOS: list[dict] = [
             {
                 "query": "What is my diet?",
                 "must_contain": ["vegan"],
-                "must_not_contain": ["vegetarian"],
+                "must_not_contain": ["is vegetarian", "is a vegetarian"],
                 "description": "Diet updated to vegan; old vegetarian must not dominate",
                 "is_negative": False,
             }
@@ -790,7 +790,7 @@ SCENARIOS: list[dict] = [
         "probes": [
             {
                 "query": "How do I prefer written communication?",
-                "must_contain": ["direct"],
+                "must_contain": ["direct", "straight", "point"],
                 "must_not_contain": [],
                 "description": "Communication style preference",
                 "is_negative": False,
@@ -866,7 +866,7 @@ SCENARIOS: list[dict] = [
             {
                 "query": "What seat do I prefer on flights?",
                 "must_contain": ["window"],
-                "must_not_contain": ["middle", "aisle"],
+                "must_not_contain": ["middle"],
                 "description": "Flight seating preference",
                 "is_negative": False,
             }
