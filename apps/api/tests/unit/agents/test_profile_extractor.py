@@ -221,6 +221,17 @@ class TestFilterGarbageContent:
     def test_empty_text(self) -> None:
         assert _filter_garbage_content("") == ""
 
+    @patch("app.agents.memory.profile_extractor.BeautifulSoup")
+    def test_parser_explicitly_html_parser(self, mock_bs: MagicMock) -> None:
+        # The second positional argument selects the parser; passing None or
+        # omitting it would fall back to whatever parser is installed first
+        # (lxml/html5lib on some environments), changing parse behavior.
+        mock_soup = MagicMock()
+        mock_soup.get_text.return_value = "Hello"
+        mock_bs.return_value = mock_soup
+        _filter_garbage_content("<p>Hello</p>")
+        mock_bs.assert_called_once_with("<p>Hello</p>", "html.parser")
+
 
 # ---------------------------------------------------------------------------
 # _deduplicate_emails
@@ -321,6 +332,56 @@ class TestDeduplicateEmails:
         result = _deduplicate_emails(emails)
         assert result == [emails[0]]
 
+    def test_whitespace_collapse_required_for_similarity(self) -> None:
+        # "a   b" vs "a b" are duplicates ONLY because the whitespace run is
+        # collapsed first; without the collapse their ratio is 0.75 < 0.9.
+        emails = [
+            {"messageText": "a   b"},
+            {"messageText": "a b"},
+        ]
+        result = _deduplicate_emails(emails)
+        assert result == [emails[0]]
+
+    def test_whitespace_replacement_is_single_space(self) -> None:
+        # "ab c x" vs "ab d x": ratio 0.833 (kept) with a single-space
+        # replacement, but 0.929 (duplicate) if the replacement were longer.
+        emails = [
+            {"messageText": "ab c x"},
+            {"messageText": "ab d x"},
+        ]
+        result = _deduplicate_emails(emails)
+        assert result == emails
+
+    def test_punctuation_removal_required_for_similarity(self) -> None:
+        # "a.b" and "ab" are duplicates only because punctuation is removed;
+        # without removal their ratio is 0.8 < 0.9.
+        emails = [
+            {"messageText": "a.b"},
+            {"messageText": "ab"},
+        ]
+        result = _deduplicate_emails(emails)
+        assert result == [emails[0]]
+
+    def test_lowercase_normalization_required_for_similarity(self) -> None:
+        # "straße".lower() != "strasse" (ratio 0.769, kept), but uppercasing
+        # maps both to "STRASSE" — the dedup must not collapse them.
+        emails = [
+            {"messageText": "straße"},
+            {"messageText": "STRASSE"},
+        ]
+        result = _deduplicate_emails(emails)
+        assert result == emails
+
+    def test_empty_normalized_body_does_not_stop_loop(self) -> None:
+        # An email that normalizes to nothing (digits only) is skipped; a
+        # later valid email must still be processed (continue, not break).
+        emails = [
+            {"messageText": "12345"},
+            {"messageText": "Real content here that stays"},
+        ]
+        result = _deduplicate_emails(emails)
+        assert result == [emails[1]]
+
     def test_similarity_at_threshold_is_duplicate(self) -> None:
         # SequenceMatcher ratio of these two is exactly 0.9 == threshold.
         emails = [
@@ -401,13 +462,38 @@ class TestWriteDebugJson:
     async def test_debug_enabled_writes_payload(
         self, mock_settings: MagicMock, mock_path: MagicMock, tmp_path: object
     ) -> None:
+        # The mock returns a path whose PARENT does not exist (tmp/a/b ->
+        # parent tmp/a is missing): the debug_dir.mkdir(parents=True) call is
+        # what makes the write succeed. Without parents=True the write raises
+        # FileNotFoundError, so this pins the parents/exist_ok contract.
         mock_settings.DEBUG_EMAIL_PROCESSING = True
-        mock_path.side_effect = lambda part: Path(tmp_path) / "__root__"
+        mock_path.side_effect = lambda part: Path(tmp_path) / "a" / "b"
         payload = {"platform": "github", "count": 2}
         await _write_debug_json("github", "llm_input", payload)
         mock_path.assert_called_once_with(pe_module.__file__)
-        target = Path(tmp_path) / "debug_logs" / "github_llm_input.json"
+        target = Path(tmp_path) / "a" / "debug_logs" / "github_llm_input.json"
         assert target.read_text(encoding="utf-8") == json.dumps(payload, indent=2)
+
+    @patch("app.agents.memory.profile_extractor.Path")
+    @patch("app.agents.memory.profile_extractor.settings")
+    async def test_debug_write_pins_utf8_encoding(
+        self, mock_settings: MagicMock, mock_path: MagicMock
+    ) -> None:
+        """The debug dump is explicitly written as UTF-8 (locale-independent)."""
+        mock_settings.DEBUG_EMAIL_PROCESSING = True
+        path_mock = MagicMock()
+        parent = MagicMock()
+        debug_dir = MagicMock()
+        file_handle = MagicMock()
+        path_mock.parent = parent
+        parent.__truediv__.return_value = debug_dir
+        debug_dir.__truediv__.return_value = file_handle
+        mock_path.side_effect = lambda part: path_mock
+        payload = {"platform": "github", "count": 2}
+        await _write_debug_json("github", "llm_input", payload)
+        file_handle.write_text.assert_called_once_with(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -486,6 +572,7 @@ class TestExtractUsernameWithLLM:
         result = await extract_username_with_llm("github", emails, user_id="u1")
         assert result == "octocat"
 
+    @patch("time.time", side_effect=[200.0, 200.456])
     @patch("app.agents.memory.profile_extractor.log")
     @patch("app.agents.memory.profile_extractor.settings")
     @patch("app.agents.memory.profile_extractor.ainvoke_structured", new_callable=AsyncMock)
@@ -494,6 +581,7 @@ class TestExtractUsernameWithLLM:
         mock_ainvoke_structured: AsyncMock,
         mock_settings: MagicMock,
         mock_log: MagicMock,
+        mock_time: MagicMock,
     ) -> None:
         mock_settings.DEBUG_EMAIL_PROCESSING = False
         mock_ainvoke_structured.side_effect = RuntimeError("LLM error")
@@ -509,7 +597,8 @@ class TestExtractUsernameWithLLM:
             if c.args[0] == f"{LogTag.MEMORY} LLM username extraction failed"
         )
         assert error_call.kwargs["platform"] == "github"
-        assert error_call.kwargs["duration_s"] == 0.0
+        # elapsed = 200.456 - 200.0 = 0.456, rounded to 2 decimals
+        assert error_call.kwargs["duration_s"] == 0.46
         assert isinstance(error_call.kwargs["duration_s"], float)
         assert error_call.kwargs["error_type"] == "RuntimeError"
         assert error_call.kwargs["error"] == "LLM error"
@@ -553,8 +642,10 @@ class TestExtractUsernameWithLLM:
     @patch("app.agents.memory.profile_extractor.metered_config")
     @patch("app.agents.memory.profile_extractor.settings")
     @patch("app.agents.memory.profile_extractor.ainvoke_structured", new_callable=AsyncMock)
+    @patch("time.time", side_effect=[100.0, 100.123])
     async def test_exact_llm_args_and_logs(
         self,
+        mock_time: MagicMock,
         mock_ainvoke_structured: AsyncMock,
         mock_settings: MagicMock,
         mock_metered_config: MagicMock,
@@ -583,6 +674,7 @@ class TestExtractUsernameWithLLM:
 
         prompt = args[1]
         assert "github" in prompt
+        assert "Platform: github" in prompt
         assert "The recipient's name is John Doe." in prompt
         assert "Email 1:" in prompt
         assert "Subject: PR merged" in prompt
@@ -603,7 +695,8 @@ class TestExtractUsernameWithLLM:
         assert extracted_call.kwargs["platform"] == "github"
         assert extracted_call.kwargs["username"] == "octocat"
         assert extracted_call.kwargs["confidence"] == "high"
-        assert extracted_call.kwargs["duration_s"] == 0.0
+        # elapsed = 100.123 - 100.0 = 0.123, rounded to 2 decimals
+        assert extracted_call.kwargs["duration_s"] == 0.12
         assert isinstance(extracted_call.kwargs["duration_s"], float)
 
     @patch("app.agents.memory.profile_extractor.metered_config")
@@ -681,7 +774,7 @@ class TestExtractUsernameWithLLM:
 
         args, _ = mock_ainvoke_structured.call_args
         prompt = args[1]
-        assert "[No Subject]" in prompt
+        assert "Subject: [No Subject]" in prompt
 
     @patch("app.agents.memory.profile_extractor.metered_config")
     @patch("app.agents.memory.profile_extractor.settings")
@@ -706,6 +799,56 @@ class TestExtractUsernameWithLLM:
             "github", [{"subject": "s", "messageText": "a" * 20}], user_id="u1"
         )
         assert "Email 1:" in mock_ainvoke_structured.call_args.args[1]
+
+    @patch("app.agents.memory.profile_extractor.metered_config")
+    @patch("app.agents.memory.profile_extractor.settings")
+    @patch("app.agents.memory.profile_extractor.ainvoke_structured", new_callable=AsyncMock)
+    async def test_short_email_skipped_not_end_of_list(
+        self,
+        mock_ainvoke_structured: AsyncMock,
+        mock_settings: MagicMock,
+        mock_metered_config: MagicMock,
+    ) -> None:
+        """A too-short email must be skipped (continue), not stop the loop
+        (break): a later valid email still gets numbered and included."""
+        mock_settings.DEBUG_EMAIL_PROCESSING = False
+        mock_ainvoke_structured.return_value = UsernameExtraction(
+            username="octocat", confidence="high"
+        )
+        emails = [
+            {"subject": "s", "messageText": "a" * 19},
+            {
+                "subject": "s",
+                "messageText": "A long enough real notification body text here",
+            },
+        ]
+        await extract_username_with_llm("github", emails, user_id="u1")
+
+        prompt = mock_ainvoke_structured.call_args.args[1]
+        assert "Email 2:" in prompt
+
+    @patch("app.agents.memory.profile_extractor.metered_config")
+    @patch("app.agents.memory.profile_extractor.settings")
+    @patch("app.agents.memory.profile_extractor.ainvoke_structured", new_callable=AsyncMock)
+    async def test_crlf_newline_replacement_contract(
+        self,
+        mock_ainvoke_structured: AsyncMock,
+        mock_settings: MagicMock,
+        mock_metered_config: MagicMock,
+    ) -> None:
+        """Each newline (including the \n of a \r\n pair, which BeautifulSoup
+        normalizes to \n) is replaced by a single space before collapsing."""
+        mock_settings.DEBUG_EMAIL_PROCESSING = False
+        mock_ainvoke_structured.return_value = UsernameExtraction(
+            username="octocat", confidence="high"
+        )
+        raw = "this is aXX\r\nXXb long enough text for the test ok"
+        await extract_username_with_llm(
+            "github", [{"subject": "s", "messageText": raw}], user_id="u1"
+        )
+
+        prompt = mock_ainvoke_structured.call_args.args[1]
+        assert "this is aXX XXb long enough text for the test ok" in prompt
 
     @patch("app.agents.memory.profile_extractor.metered_config")
     @patch("app.agents.memory.profile_extractor.settings")
@@ -883,6 +1026,10 @@ class TestExtractUsernameWithLLM:
         assert "Email 1:" in prompt
         assert "Email 2:" in prompt
         assert "---" in prompt
+        # The separator is exactly "\n---\n": it sits between the entries,
+        # whose trailing newline precedes it, so the joined text reads
+        # "...\n\n---\nEmail 2:".
+        assert "---\nEmail 2:" in prompt
         assert "Subject: Security alert" in prompt
 
     @patch("app.agents.memory.profile_extractor.metered_config")
