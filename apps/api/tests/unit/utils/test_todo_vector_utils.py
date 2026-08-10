@@ -312,6 +312,18 @@ class TestStoreTodoEmbedding:
         assert metadata2["completed"] == "false"
         assert metadata2["has_due_date"] == "false"
 
+    async def test_absent_title_and_completed_keys_fall_back_to_defaults(self) -> None:
+        """Keys that are entirely absent (not merely falsy) fall back to the
+        documented defaults: empty-string title, "false" completed."""
+        todo = _make_todo_data()
+        del todo["title"]
+        del todo["completed"]
+        await store_todo_embedding(TODO_ID, todo, USER_ID)
+
+        metadata = self.mock_collection.add_texts.call_args[1]["metadatas"][0]
+        assert metadata["title"] == ""
+        assert metadata["completed"] == "false"
+
     async def test_due_date_as_string_kept(self) -> None:
         todo = _make_todo_data(due_date="2026-03-20")
         await store_todo_embedding(TODO_ID, todo, USER_ID)
@@ -621,6 +633,16 @@ class TestSemanticSearchTodos:
                 "priority": "high",
                 "project_id": "proj_42",
             },
+        )
+        # The same filter values must reach the log context, not None.
+        self.mock_log.set.assert_called_once_with(
+            operation="semantic_search_todos",
+            user_id=USER_ID,
+            search_query="q",
+            top_k=10,
+            filter_completed=True,
+            filter_priority="high",
+            filter_project_id="proj_42",
         )
 
     async def test_completed_false_applied_as_lowercase_string(self) -> None:
@@ -976,6 +998,81 @@ class TestHybridSearchTodos:
         ):
             results = await hybrid_search_todos("query", USER_ID, project_id="proj_1")
             assert results == [t1]
+
+    async def test_top_k_default_is_ten(self) -> None:
+        """Without an explicit top_k, exactly 10 results are returned and the
+        semantic call receives top_k=10."""
+        sem = [_make_todo_response(id=f"s{i}") for i in range(3)]
+        trad = [_make_todo_response(id=f"t{i}") for i in range(12)]
+
+        with (
+            patch(
+                "app.utils.todo_vector_utils.semantic_search_todos",
+                new_callable=AsyncMock,
+                return_value=sem,
+            ) as mock_sem,
+            patch(
+                "app.services.todos.todo_service.search_todos",
+                new_callable=AsyncMock,
+                return_value=trad,
+            ),
+        ):
+            results = await hybrid_search_todos("query", USER_ID)
+            assert len(results) == 10
+            mock_sem.assert_awaited_once_with(
+                query="query",
+                user_id=USER_ID,
+                top_k=10,
+                completed=None,
+                priority=None,
+                project_id=None,
+                include_traditional_search=False,
+            )
+
+    async def test_duplicate_id_in_semantic_results_accumulates_score(self) -> None:
+        """If the same todo appears twice in the semantic results, its scores
+        accumulate (0.7 + 0.233) instead of the second occurrence overwriting
+        the first — which would drop it below the 0.35-scored other todo."""
+        dup = _make_todo_response(id="dup", title="Duplicated")
+        other = _make_todo_response(id="other", title="Other")
+
+        with (
+            patch(
+                "app.utils.todo_vector_utils.semantic_search_todos",
+                new_callable=AsyncMock,
+                return_value=[dup, other, dup],
+            ),
+            patch(
+                "app.services.todos.todo_service.search_todos",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            results = await hybrid_search_todos("query", USER_ID)
+            assert [r.id for r in results] == ["dup", "other"]
+
+    async def test_traditional_score_uses_rank_division_not_multiplication(self) -> None:
+        """Traditional scores are 0.3 * (1 - i/len). With 2 traditional results
+        the i=1 item scores 0.15 — still above the lowest semantic item's
+        0.14 (0.7 * (1 - 4/5)). A mutant computing i * len would give it
+        -0.3 and push it below s4, flipping the order."""
+        sem = [_make_todo_response(id=f"s{i}") for i in range(5)]
+        trad = [_make_todo_response(id=f"t{i}") for i in range(2)]
+
+        with (
+            patch(
+                "app.utils.todo_vector_utils.semantic_search_todos",
+                new_callable=AsyncMock,
+                return_value=sem,
+            ),
+            patch(
+                "app.services.todos.todo_service.search_todos",
+                new_callable=AsyncMock,
+                return_value=trad,
+            ),
+        ):
+            results = await hybrid_search_todos("query", USER_ID)
+            assert [r.id for r in results] == ["s0", "s1", "s2", "t0", "s3", "t1", "s4"]
 
     async def test_empty_results_from_both_returns_empty(self) -> None:
         with (
