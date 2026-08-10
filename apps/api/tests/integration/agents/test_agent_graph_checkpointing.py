@@ -791,7 +791,7 @@ class TestPreModelHooksExecution:
         config = _thread_config()
 
         with patch(
-            "app.override.langgraph_bigtool.create_agent.execute_hooks",
+            "app.override.langgraph_bigtool.nodes.execute_hooks",
             side_effect=sentinel,
         ):
             with pytest.raises(RuntimeError, match="hooks-execution-sentinel-error"):

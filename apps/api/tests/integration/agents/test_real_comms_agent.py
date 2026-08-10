@@ -708,7 +708,7 @@ class TestRealCommsAgent:
             io_patches,
             extra_patches=[
                 patch(
-                    "app.override.langgraph_bigtool.create_agent.execute_hooks",
+                    "app.override.langgraph_bigtool.nodes.execute_hooks",
                     side_effect=sentinel,
                 ),
             ],
