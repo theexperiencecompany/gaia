@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.constants.log_tags import LogTag
 from app.models.onboarding_models import SocialProfile, SocialProfileFilterOutput
 from app.services.onboarding import social_profile_service as svc
 from app.services.onboarding.social_profile_service import (
@@ -29,6 +30,7 @@ class _LLMStub:
         self.prompt: str = ""
         self.label: str | None = None
         self.structured_output_schema: type | None = None
+        self.structured_llm: object = None
         self.called = False
 
 
@@ -48,6 +50,7 @@ def llm(monkeypatch):
 
     async def fake_ainvoke_llm(structured_llm, messages, label=None):
         stub.called = True
+        stub.structured_llm = structured_llm
         stub.prompt = messages[0].content
         stub.label = label
         if stub.error is not None:
@@ -57,6 +60,13 @@ def llm(monkeypatch):
     monkeypatch.setattr(svc, "get_default_llm", fake_get_default_llm)
     monkeypatch.setattr(svc, "ainvoke_llm", fake_ainvoke_llm)
     return stub
+
+
+@pytest.fixture
+def mock_log(monkeypatch):
+    captured = MagicMock()
+    monkeypatch.setattr(svc, "log", captured)
+    return captured
 
 
 @pytest.fixture
@@ -87,6 +97,18 @@ class TestIsTrackingUrl:
 
     def test_plain_profile_link_is_not_tracking(self):
         assert _is_tracking_url("https://twitter.com/bob?lang=en") is False
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            # The indicators include the "=" — a bare utm word is a normal query key.
+            "https://twitter.com/bob?utm_source",
+            "https://twitter.com/bob?utm_medium",
+            "https://twitter.com/bob?utm_campaign",
+        ],
+    )
+    def test_bare_utm_words_are_not_tracking(self, url):
+        assert _is_tracking_url(url) is False
 
 
 class TestExtractUrlsFromText:
@@ -126,6 +148,30 @@ class TestExtractUrlsFromText:
     def test_bare_scheme_is_not_a_url(self):
         assert _extract_urls_from_text("https:// http://") == []
 
+    def test_no_urls_returns_empty(self):
+        assert _extract_urls_from_text("plain text without any links") == []
+
+    def test_https_url_at_exactly_the_minimum_length_is_rejected(self):
+        # len("https://abcde") == 13 == len(prefix) + 5 — must be *strictly* longer.
+        assert _extract_urls_from_text("https://abcde") == []
+
+    def test_http_url_at_exactly_the_minimum_length_is_rejected(self):
+        assert _extract_urls_from_text("http://abcde") == []
+
+    def test_http_url_just_over_the_minimum_is_kept(self):
+        assert _extract_urls_from_text("http://abcdef") == ["http://abcdef"]
+
+    @pytest.mark.parametrize("punctuation", [",", ";", ":", "!", "?"])
+    def test_strips_every_sentence_punctuation_character(self, punctuation):
+        assert _extract_urls_from_text(f"go to https://example.com/alice{punctuation}") == [
+            "https://example.com/alice"
+        ]
+
+    def test_letter_x_is_not_stripped_from_the_end(self):
+        assert _extract_urls_from_text("see https://example.com/aliceX") == [
+            "https://example.com/aliceX"
+        ]
+
 
 class TestMatchPlatform:
     @pytest.mark.parametrize(
@@ -158,6 +204,18 @@ class TestMatchPlatform:
     def test_unknown_domain_is_not_a_platform(self):
         assert _match_platform("https://example.com/alice") is None
 
+    def test_first_occurrence_of_the_domain_wins(self):
+        assert _match_platform("https://twitter.com/twitter.com/bob") == (
+            "twitter",
+            "twitter.com/bob",
+        )
+
+    def test_domain_is_matched_anywhere_in_the_url(self):
+        assert _match_platform("https://example.com/twitter.com/bob") == ("twitter", "bob")
+
+    def test_uppercase_host_is_matched_and_lowercased(self):
+        assert _match_platform("https://TWITTER.COM/Bob") == ("twitter", "bob")
+
     def test_handle_is_lowercased_for_stable_dedup(self):
         matched = _match_platform("https://twitter.com/JohnSmith")
         assert matched is not None
@@ -179,6 +237,12 @@ class TestIsGenericUrl:
             "https://github.com/orgs/foo/settings",
             "https://medium.com/@about",
             "https://linkedin.com/jobs",
+            "https://twitter.com/share",
+            "https://twitter.com/login",
+            "https://twitter.com/signup",
+            "https://twitter.com/help",
+            "https://twitter.com/home",
+            "https://twitter.com/explore",
         ],
     )
     def test_navigation_urls_are_generic(self, url):
@@ -186,6 +250,12 @@ class TestIsGenericUrl:
 
     def test_domain_without_path_is_generic(self):
         assert _is_generic_url("https://twitter.com") is True
+
+    def test_uppercase_generic_segments_are_generic(self):
+        assert _is_generic_url("https://twitter.com/Search") is True
+
+    def test_at_prefixed_generic_segments_are_generic(self):
+        assert _is_generic_url("https://twitter.com/@search") is True
 
     @pytest.mark.parametrize(
         "url",
@@ -202,6 +272,9 @@ class TestIsGenericUrl:
     def test_handles_that_merely_contain_a_generic_word_are_kept(self, url):
         assert _is_generic_url(url) is False
 
+    def test_query_only_url_is_generic(self):
+        assert _is_generic_url("https://twitter.com?x=1") is True
+
     def test_unparseable_url_is_treated_as_generic(self):
         assert _is_generic_url("https://[::1/twitter.com/bob") is True
 
@@ -209,6 +282,19 @@ class TestIsGenericUrl:
 class TestExtractHandle:
     def test_empty_remainder_has_no_handle(self):
         assert _extract_handle("") is None
+
+    def test_at_prefix_is_stripped(self):
+        assert _extract_handle("@bob") == "bob"
+
+    def test_only_an_at_sign_has_no_handle(self):
+        assert _extract_handle("@") is None
+
+    def test_handle_keeps_its_casing(self):
+        assert _extract_handle("Bob") == "Bob"
+
+    def test_only_the_first_path_segment_is_the_handle(self):
+        assert _extract_handle("bob/extra") == "bob"
+        assert _extract_handle("a/b/c") == "a"
 
     def test_handle_at_the_length_limit_is_kept(self):
         assert _extract_handle("a" * 60) == "a" * 60
@@ -224,8 +310,19 @@ class TestCanonicalizeSocialUrl:
             == "https://twitter.com/bob"
         )
 
+    def test_keeps_the_port(self):
+        assert _canonicalize_social_url("https://twitter.com:8080/bob") == (
+            "https://twitter.com:8080/bob"
+        )
+
+    def test_only_trailing_slashes_are_stripped(self):
+        assert _canonicalize_social_url("https://twitter.com/bobX") == "https://twitter.com/bobX"
+
     def test_unparseable_url_falls_back_to_trimmed_input(self):
         assert _canonicalize_social_url("https://[::1/bob/") == "https://[::1/bob"
+
+    def test_fallback_strips_only_trailing_slashes(self):
+        assert _canonicalize_social_url("https://[::1/bobX") == "https://[::1/bobX"
 
 
 class TestDedupProfilesByPlatform:
@@ -234,6 +331,17 @@ class TestDedupProfilesByPlatform:
             SocialProfile(platform="twitter", url="https://twitter.com/first"),
             SocialProfile(platform="twitter", url="https://twitter.com/second"),
             SocialProfile(platform="github", url="https://github.com/first"),
+        ]
+        assert dedup_profiles_by_platform(profiles) == [
+            SocialProfile(platform="twitter", url="https://twitter.com/first"),
+            SocialProfile(platform="github", url="https://github.com/first"),
+        ]
+
+    def test_dedupes_across_non_adjacent_entries(self):
+        profiles = [
+            SocialProfile(platform="twitter", url="https://twitter.com/first"),
+            SocialProfile(platform="github", url="https://github.com/first"),
+            SocialProfile(platform="twitter", url="https://twitter.com/second"),
         ]
         assert dedup_profiles_by_platform(profiles) == [
             SocialProfile(platform="twitter", url="https://twitter.com/first"),
@@ -480,6 +588,231 @@ class TestExtractSocialProfilesFromEmails:
 
         assert await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com") == []
 
+    async def test_blank_email_first_does_not_drop_later_emails(self, llm):
+        llm.owned_profiles = [{"platform": "linkedin", "handle": "john-smith-123"}]
+        emails = [
+            {"body": "", "sender": "", "subject": ""},
+            _email("resume: https://www.linkedin.com/in/john-smith-123"),
+        ]
+
+        result = await extract_social_profiles_from_emails(emails, "John", "john@x.com")
+
+        assert result == [
+            SocialProfile(platform="linkedin", url="https://www.linkedin.com/in/john-smith-123")
+        ]
+
+    async def test_tracking_link_first_does_not_drop_later_links(self, llm):
+        llm.owned_profiles = [{"platform": "github", "handle": "me"}]
+        emails = [
+            _email("newsletter https://twitter.com/brand?utm_source=mailchimp and https://github.com/me")
+        ]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [SocialProfile(platform="github", url="https://github.com/me")]
+
+    async def test_non_platform_link_first_does_not_drop_later_links(self, llm):
+        llm.owned_profiles = [{"platform": "github", "handle": "me"}]
+        emails = [_email("https://example.com/foo https://github.com/me")]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [SocialProfile(platform="github", url="https://github.com/me")]
+
+    async def test_generic_link_first_does_not_drop_later_links(self, llm):
+        llm.owned_profiles = [{"platform": "github", "handle": "me"}]
+        emails = [_email("https://twitter.com/search https://github.com/me")]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [SocialProfile(platform="github", url="https://github.com/me")]
+
+    async def test_oversized_handle_first_does_not_drop_later_links(self, llm):
+        llm.owned_profiles = [{"platform": "github", "handle": "me"}]
+        emails = [_email(f"https://twitter.com/{'a' * 61} https://github.com/me")]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [SocialProfile(platform="github", url="https://github.com/me")]
+
+    async def test_duplicate_link_does_not_drop_later_links(self, llm):
+        llm.owned_profiles = [{"platform": "github", "handle": "me"}]
+        emails = [_email("https://twitter.com/bob https://twitter.com/bob https://github.com/me")]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [SocialProfile(platform="github", url="https://github.com/me")]
+
+    async def test_platform_name_reaches_the_prompt(self, llm):
+        await extract_social_profiles_from_emails(
+            [_email("resume: https://www.linkedin.com/in/john-smith-123")],
+            "John",
+            "john@x.com",
+        )
+        assert "Platform: linkedin | Handle: john-smith-123" in llm.prompt
+
+    async def test_missing_sender_from_subject_and_snippet_stay_empty(self, llm):
+        llm.owned_profiles = [{"platform": "twitter", "handle": "bob"}]
+        emails = [{"body": "https://twitter.com/bob"}]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [SocialProfile(platform="twitter", url="https://twitter.com/bob")]
+        assert 'From:  | Subject:  | ""' in llm.prompt
+
+    async def test_empty_snippet_stays_empty_in_the_prompt(self, llm):
+        emails = [_email("https://twitter.com/bob", sender="a", subject="b", snippet="")]
+
+        await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert 'From: a | Subject: b | ""' in llm.prompt
+
+    async def test_missing_body_and_snippet_keys_fall_back_to_message_text(self, llm):
+        emails = [{"messageText": "https://github.com/fromtext"}]
+
+        await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert "Handle: fromtext" in llm.prompt
+
+    async def test_from_key_is_used_as_sender_fallback(self, llm):
+        emails = [{"body": "no links here", "from": "https://twitter.com/insender", "subject": ""}]
+
+        await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert "Handle: insender" in llm.prompt
+
+    async def test_context_line_uses_the_exact_format(self, llm):
+        await extract_social_profiles_from_emails(
+            [_email("https://twitter.com/bob")], "Bob", "bob@x.com"
+        )
+        assert "\n  Context 1 — From: friend@example.com | Subject: hello |" in llm.prompt
+
+    async def test_blank_line_separates_candidates(self, llm):
+        emails = [_email("https://twitter.com/bob"), _email("https://github.com/me")]
+
+        await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert "\n\nPlatform: github | Handle: me" in llm.prompt
+
+    async def test_result_url_is_the_canonical_url(self, llm):
+        llm.owned_profiles = [{"platform": "twitter", "handle": "bob"}]
+        emails = [_email("https://twitter.com/bob/?lang=en#bio")]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [SocialProfile(platform="twitter", url="https://twitter.com/bob")]
+
+    async def test_multiple_platforms_are_returned_in_order(self, llm):
+        llm.owned_profiles = [
+            {"platform": "twitter", "handle": "bob"},
+            {"platform": "github", "handle": "me"},
+        ]
+        emails = [_email("https://twitter.com/bob https://github.com/me")]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [
+            SocialProfile(platform="twitter", url="https://twitter.com/bob"),
+            SocialProfile(platform="github", url="https://github.com/me"),
+        ]
+
+    async def test_structured_llm_is_forwarded_to_ainvoke(self, llm):
+        await extract_social_profiles_from_emails(
+            [_email("https://twitter.com/bob")], "Bob", "bob@x.com"
+        )
+        assert llm.structured_llm == "structured-llm"
+
+    async def test_logs_harvest_candidate_filtered_and_accepted_events(self, llm, mock_log):
+        llm.owned_profiles = [{"platform": "twitter", "handle": "bob"}]
+        emails = [_email("https://twitter.com/bob"), {"body": "", "sender": "", "subject": ""}]
+
+        await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        mock_log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} Harvested social URL candidates across platforms from emails",
+            capped_count=1,
+            by_platform_count=1,
+            emails_count=2,
+        )
+        mock_log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} social profile candidate: / freq",
+            entry_platform="twitter",
+            entry_handle="bob",
+            entry_frequency=1,
+            sent_label="recv",
+        )
+        mock_log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} social_profiles LLM filtered to owned profiles from candidates",
+            owned_count=1,
+            capped_count=1,
+        )
+        mock_log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} social_profiles accepted",
+            platform="twitter",
+            url="https://twitter.com/bob",
+        )
+
+    async def test_logs_candidate_event_for_sent_email(self, llm, mock_log):
+        emails = [_email("https://twitter.com/bob", labelIds=["SENT"])]
+
+        await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        mock_log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} social profile candidate: / freq",
+            entry_platform="twitter",
+            entry_handle="bob",
+            entry_frequency=1,
+            sent_label="SENT",
+        )
+
+    async def test_logs_zero_owned_event(self, llm, mock_log):
+        llm.owned_profiles = []
+        emails = [_email("https://twitter.com/bob")]
+
+        await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        mock_log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} social_profiles LLM returned 0 owned. Raw output",
+            owned_profiles=[],
+        )
+
+    async def test_logs_no_candidates_event(self, llm, mock_log):
+        emails = [_email("just a note about https://example.com/blog/post")]
+
+        assert await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com") == []
+
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.ONBOARDING} No social URL candidates found in emails"
+        )
+
+    async def test_logs_warning_when_llm_not_configured(self, no_llm, mock_log):
+        emails = [_email("https://twitter.com/bob", labelIds=["SENT"])]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [SocialProfile(platform="twitter", url="https://twitter.com/bob")]
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} social_profiles LLM not available, using sent-email fallback"
+        )
+        # The fallback must return directly — an exception inside it must not be
+        # masked as an "LLM filter failed" error that happens to return the same
+        # value (that is how a bug in the fallback would hide).
+        mock_log.error.assert_not_called()
+
+    async def test_logs_error_event_with_fallback(self, llm, mock_log):
+        llm.error = RuntimeError("llm exploded")
+        emails = [_email("https://twitter.com/bob", labelIds=["SENT"])]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [SocialProfile(platform="twitter", url="https://twitter.com/bob")]
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.ONBOARDING} social_profiles LLM filter failed, using sent-email fallback",
+            error="llm exploded",
+            error_type="RuntimeError",
+            exc_info=True,
+        )
+
 
 class TestSaveConfirmedProfiles:
     async def test_persists_profiles_for_the_user(self):
@@ -500,3 +833,14 @@ class TestSaveConfirmedProfiles:
             await save_confirmed_profiles("user-1", [])
 
         set_profiles.assert_awaited_once_with("user-1", [])
+
+    async def test_logs_the_saved_event(self, mock_log):
+        profiles = [SocialProfile(platform="twitter", url="https://twitter.com/bob")]
+        with patch.object(svc.user_repository, "set_social_profiles", new_callable=AsyncMock):
+            await save_confirmed_profiles("user-1", profiles)
+
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.ONBOARDING} Saved confirmed social profiles for",
+            profiles_count=1,
+            user_id="user-1",
+        )

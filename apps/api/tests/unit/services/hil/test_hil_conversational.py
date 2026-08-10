@@ -19,18 +19,262 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.agents.llm.client import silent_metered_config
+from app.constants.hil import (
+    HIL_CLASSIFIER_MAX_ARG_CHARS,
+    HIL_CLASSIFIER_MAX_DETAIL_CHARS,
+    HIL_LLM_TIMEOUT_SECONDS,
+)
+from app.constants.log_tags import LogTag
+from app.services.hil import conversational as hil_conversational
 from app.services.hil.conversational import (
     UNRELATED_FEEDBACK,
     BatchDecisionResult,
     BatchItemDecision,
     DecisionResult,
+    _batch_prompt,
+    _history_block,
+    _prompt,
+    _safe_resolve,
+    interpret_batch_decision_message,
+    interpret_decision_message,
     resolve_pending_from_message,
 )
-from app.services.hil.resolution import ApprovalRequestNotFound
+from app.services.hil.resolution import ApprovalRequestForbidden, ApprovalRequestNotFound
+from app.utils.general_utils import clip_text
 
 from .conftest import CONVERSATION_ID, USER_ID, make_record
 
 MODULE = "app.services.hil.conversational"
+
+HISTORY: list[dict[str, str]] = [
+    {"role": "user", "content": "hey"},
+    {"role": "assistant", "content": "sure"},
+]
+
+SINGLE_ACTION = "Send email — to: bob@example.com"
+BATCH_ACTIONS = ["Send email", "Post to Slack"]
+
+# The classifier prompt is pinned VERBATIM: mutmut's string mutations (XX-wrapping,
+# case flips) and call-arg mutations all change the exact bytes a model sees, so only
+# an exact-equality assertion can tell a real prompt from a subtly broken one.
+EXPECTED_PROMPT_SINGLE_NO_HISTORY = (
+    "The user has a pending action awaiting their approval. They did NOT click "
+    "approve or decline — they replied in chat. Classify what the reply means.\n\n"
+    "PENDING ACTION (what the assistant is waiting to do):\n"
+    "Send email — to: bob@example.com\n\n"
+    "THE USER'S REPLY:\n"
+    "'yes'\n\n"
+    "Classify the reply as exactly one of:\n"
+    "- 'approve' — the user accepts the pending action EXACTLY as proposed, with "
+    "no change (e.g. 'yes', 'go ahead', 'ok send it'). Leave `feedback` empty.\n"
+    "- 'deny' — the user does NOT want the action run as proposed. This INCLUDES a "
+    "plain refusal ('no', 'don't'), a redirect or correction ('no, send it to Bob "
+    "instead', 'actually make it tomorrow'), AND an acceptance that attaches ANY "
+    "change, addition, or condition to it ('yes but cc finance', 'ok, but shorten "
+    "it first'). The assistant cannot edit the action's arguments, so any requested "
+    "change means the current action is wrong: mark it 'deny' and put the change "
+    "verbatim in `feedback`.\n"
+    "- 'unrelated' — a brand-new, standalone request that does NOT object to the "
+    "pending action and does not reference it (e.g. the pending action is 'send "
+    "email' and the user asks 'what's on my calendar tomorrow?').\n\n"
+    "Rules:\n"
+    "- An unambiguous 'yes'/'no' is decisive on its own. Honor it directly. The "
+    "recent conversation and action details are background for interpreting an "
+    "ambiguous reply — never grounds to overturn a clear yes or no.\n"
+    "- Only 'approve' when the action should run UNCHANGED. If the reply adds, "
+    "changes, or conditions anything about it, that is 'deny' with the change in "
+    "`feedback` — never approve an action the user wants changed.\n"
+    "- If the reply objects to, corrects, or countermands the pending action, it "
+    "is 'deny' (with the correction in `feedback`) even when it also proposes a "
+    "different action. 'unrelated' is only for a reply that adds a new topic "
+    "WITHOUT objecting to the pending action.\n"
+    "- If unsure whether the reply bears on the pending action and it expresses "
+    "any objection, choose 'deny'."
+)
+
+EXPECTED_PROMPT_SINGLE_WITH_HISTORY = (
+    "The user has a pending action awaiting their approval. They did NOT click "
+    "approve or decline — they replied in chat. Classify what the reply means.\n\n"
+    "PENDING ACTION (what the assistant is waiting to do):\n"
+    "Send email — to: bob@example.com\n\n"
+    "RECENT CONVERSATION (oldest to newest, context only):\n"
+    "user: hey\n"
+    "assistant: sure\n\n"
+    "THE USER'S REPLY:\n"
+    "'no'\n\n"
+    "Classify the reply as exactly one of:\n"
+    "- 'approve' — the user accepts the pending action EXACTLY as proposed, with "
+    "no change (e.g. 'yes', 'go ahead', 'ok send it'). Leave `feedback` empty.\n"
+    "- 'deny' — the user does NOT want the action run as proposed. This INCLUDES a "
+    "plain refusal ('no', 'don't'), a redirect or correction ('no, send it to Bob "
+    "instead', 'actually make it tomorrow'), AND an acceptance that attaches ANY "
+    "change, addition, or condition to it ('yes but cc finance', 'ok, but shorten "
+    "it first'). The assistant cannot edit the action's arguments, so any requested "
+    "change means the current action is wrong: mark it 'deny' and put the change "
+    "verbatim in `feedback`.\n"
+    "- 'unrelated' — a brand-new, standalone request that does NOT object to the "
+    "pending action and does not reference it (e.g. the pending action is 'send "
+    "email' and the user asks 'what's on my calendar tomorrow?').\n\n"
+    "Rules:\n"
+    "- An unambiguous 'yes'/'no' is decisive on its own. Honor it directly. The "
+    "recent conversation and action details are background for interpreting an "
+    "ambiguous reply — never grounds to overturn a clear yes or no.\n"
+    "- Only 'approve' when the action should run UNCHANGED. If the reply adds, "
+    "changes, or conditions anything about it, that is 'deny' with the change in "
+    "`feedback` — never approve an action the user wants changed.\n"
+    "- If the reply objects to, corrects, or countermands the pending action, it "
+    "is 'deny' (with the correction in `feedback`) even when it also proposes a "
+    "different action. 'unrelated' is only for a reply that adds a new topic "
+    "WITHOUT objecting to the pending action.\n"
+    "- If unsure whether the reply bears on the pending action and it expresses "
+    "any objection, choose 'deny'."
+)
+
+EXPECTED_PROMPT_BATCH_NO_HISTORY = (
+    "The assistant is waiting for the user to approve or decline these "
+    "numbered pending actions:\n"
+    "1. Send email\n"
+    "\n"
+    "2. Post to Slack\n"
+    "\n"
+    "THE USER'S REPLY:\n"
+    "'yes'\n\n"
+    "Decide per action. A blanket answer applies to all of them: a plain "
+    "'yes'/'go ahead' approves every action, a plain 'no'/'don't' declines "
+    "every action. A selective answer names some actions — mark each named one "
+    "approve or deny. Decide the UNNAMED actions by whether the reply is "
+    "exclusive: an exclusive answer ('just the email', 'only the email', 'just "
+    "do that and nothing else', 'skip the rest') means the user wants ONLY the "
+    "named actions — mark every unnamed action 'deny'. A non-exclusive partial "
+    "answer ('approve the email', 'yes to the first one') decides only what it "
+    "names and leaves each unnamed action 'leave' (the user may still answer the "
+    "rest separately). Also mark an action 'deny' when the reply rejects, "
+    "corrects, redirects, or attaches any change/condition to THAT action (put "
+    "the correction in its `feedback`) — the assistant cannot edit an action's "
+    "arguments, so 'do it but change X' is 'deny' with X in `feedback`, never "
+    "'approve'. "
+    "If the message asks a question about the actions or is otherwise not a "
+    "decision on any of them, mark all 'leave'. Set unrelated=true ONLY when the "
+    "message is clearly a new, different request that ignores the pending actions "
+    "without objecting to them. An unambiguous 'yes'/'no' is decisive on its own; "
+    "the recent conversation is background for ambiguous replies, never grounds to "
+    "overturn a clear answer. Extract any feedback or conditions per action."
+)
+
+EXPECTED_PROMPT_BATCH_WITH_HISTORY = (
+    "The assistant is waiting for the user to approve or decline these "
+    "numbered pending actions:\n"
+    "1. Send email\n"
+    "\n"
+    "2. Post to Slack\n"
+    "\n"
+    "RECENT CONVERSATION (oldest to newest, context only):\n"
+    "user: hey\n"
+    "assistant: sure\n\n"
+    "THE USER'S REPLY:\n"
+    "'no'\n\n"
+    "Decide per action. A blanket answer applies to all of them: a plain "
+    "'yes'/'go ahead' approves every action, a plain 'no'/'don't' declines "
+    "every action. A selective answer names some actions — mark each named one "
+    "approve or deny. Decide the UNNAMED actions by whether the reply is "
+    "exclusive: an exclusive answer ('just the email', 'only the email', 'just "
+    "do that and nothing else', 'skip the rest') means the user wants ONLY the "
+    "named actions — mark every unnamed action 'deny'. A non-exclusive partial "
+    "answer ('approve the email', 'yes to the first one') decides only what it "
+    "names and leaves each unnamed action 'leave' (the user may still answer the "
+    "rest separately). Also mark an action 'deny' when the reply rejects, "
+    "corrects, redirects, or attaches any change/condition to THAT action (put "
+    "the correction in its `feedback`) — the assistant cannot edit an action's "
+    "arguments, so 'do it but change X' is 'deny' with X in `feedback`, never "
+    "'approve'. "
+    "If the message asks a question about the actions or is otherwise not a "
+    "decision on any of them, mark all 'leave'. Set unrelated=true ONLY when the "
+    "message is clearly a new, different request that ignores the pending actions "
+    "without objecting to them. An unambiguous 'yes'/'no' is decisive on its own; "
+    "the recent conversation is background for ambiguous replies, never grounds to "
+    "overturn a clear answer. Extract any feedback or conditions per action."
+)
+
+# The public-path variants carry the FULL action detail (summary + bounded args),
+# which the interpret-level prompts above do not.
+EXPECTED_PROMPT_SINGLE_PUBLIC_WITH_HISTORY = (
+    "The user has a pending action awaiting their approval. They did NOT click "
+    "approve or decline — they replied in chat. Classify what the reply means.\n\n"
+    "PENDING ACTION (what the assistant is waiting to do):\n"
+    "Send email — to: bob@example.com\n"
+    "Arguments:\n"
+    "  to: bob@example.com\n\n"
+    "RECENT CONVERSATION (oldest to newest, context only):\n"
+    "user: hey\n"
+    "assistant: sure\n\n"
+    "THE USER'S REPLY:\n"
+    "'no'\n\n"
+    "Classify the reply as exactly one of:\n"
+    "- 'approve' — the user accepts the pending action EXACTLY as proposed, with "
+    "no change (e.g. 'yes', 'go ahead', 'ok send it'). Leave `feedback` empty.\n"
+    "- 'deny' — the user does NOT want the action run as proposed. This INCLUDES a "
+    "plain refusal ('no', 'don't'), a redirect or correction ('no, send it to Bob "
+    "instead', 'actually make it tomorrow'), AND an acceptance that attaches ANY "
+    "change, addition, or condition to it ('yes but cc finance', 'ok, but shorten "
+    "it first'). The assistant cannot edit the action's arguments, so any requested "
+    "change means the current action is wrong: mark it 'deny' and put the change "
+    "verbatim in `feedback`.\n"
+    "- 'unrelated' — a brand-new, standalone request that does NOT object to the "
+    "pending action and does not reference it (e.g. the pending action is 'send "
+    "email' and the user asks 'what's on my calendar tomorrow?').\n\n"
+    "Rules:\n"
+    "- An unambiguous 'yes'/'no' is decisive on its own. Honor it directly. The "
+    "recent conversation and action details are background for interpreting an "
+    "ambiguous reply — never grounds to overturn a clear yes or no.\n"
+    "- Only 'approve' when the action should run UNCHANGED. If the reply adds, "
+    "changes, or conditions anything about it, that is 'deny' with the change in "
+    "`feedback` — never approve an action the user wants changed.\n"
+    "- If the reply objects to, corrects, or countermands the pending action, it "
+    "is 'deny' (with the correction in `feedback`) even when it also proposes a "
+    "different action. 'unrelated' is only for a reply that adds a new topic "
+    "WITHOUT objecting to the pending action.\n"
+    "- If unsure whether the reply bears on the pending action and it expresses "
+    "any objection, choose 'deny'."
+)
+
+EXPECTED_PROMPT_BATCH_PUBLIC_WITH_HISTORY = (
+    "The assistant is waiting for the user to approve or decline these "
+    "numbered pending actions:\n"
+    "1. Send email\n"
+    "Arguments:\n"
+    "  to: bob@example.com\n"
+    "\n"
+    "2. Post to Slack\n"
+    "Arguments:\n"
+    "  channel: #general\n"
+    "\n"
+    "RECENT CONVERSATION (oldest to newest, context only):\n"
+    "user: hey\n"
+    "assistant: sure\n\n"
+    "THE USER'S REPLY:\n"
+    "'no'\n\n"
+    "Decide per action. A blanket answer applies to all of them: a plain "
+    "'yes'/'go ahead' approves every action, a plain 'no'/'don't' declines "
+    "every action. A selective answer names some actions — mark each named one "
+    "approve or deny. Decide the UNNAMED actions by whether the reply is "
+    "exclusive: an exclusive answer ('just the email', 'only the email', 'just "
+    "do that and nothing else', 'skip the rest') means the user wants ONLY the "
+    "named actions — mark every unnamed action 'deny'. A non-exclusive partial "
+    "answer ('approve the email', 'yes to the first one') decides only what it "
+    "names and leaves each unnamed action 'leave' (the user may still answer the "
+    "rest separately). Also mark an action 'deny' when the reply rejects, "
+    "corrects, redirects, or attaches any change/condition to THAT action (put "
+    "the correction in its `feedback`) — the assistant cannot edit an action's "
+    "arguments, so 'do it but change X' is 'deny' with X in `feedback`, never "
+    "'approve'. "
+    "If the message asks a question about the actions or is otherwise not a "
+    "decision on any of them, mark all 'leave'. Set unrelated=true ONLY when the "
+    "message is clearly a new, different request that ignores the pending actions "
+    "without objecting to them. An unambiguous 'yes'/'no' is decisive on its own; "
+    "the recent conversation is background for ambiguous replies, never grounds to "
+    "overturn a clear answer. Extract any feedback or conditions per action."
+)
 
 
 @pytest.fixture(autouse=True)
@@ -50,10 +294,19 @@ def resolver():
         yield {"resolve": resolve, "abandon": abandon, "llm": llm}
 
 
-def pending(*summaries: str) -> Any:
-    """Patch the store to report these approvals as awaiting a decision."""
+def pending(*summaries: str, args: list[dict[str, Any]] | None = None) -> Any:
+    """Patch the store to report these approvals as awaiting a decision.
+
+    ``args`` optionally overrides the per-record tool arguments, index-aligned
+    (defaults to the shared ``{"to": "bob@example.com"}`` record fixture).
+    """
+    arg_default = {"to": "bob@example.com"}
     records = [
-        make_record(approval_id=f"appr-{i}", summary=summary)
+        make_record(
+            approval_id=f"appr-{i}",
+            summary=summary,
+            args=args[i - 1] if args and i <= len(args) else arg_default,
+        )
         for i, summary in enumerate(summaries, start=1)
     ]
     return patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=records))
@@ -76,8 +329,9 @@ class TestNothingPending:
         # The resolver sits on the critical path of EVERY chat message. If it classified
         # before checking whether anything was pending, every user would pay an LLM call
         # per message for a feature most of them have switched off.
-        with patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[])):
+        with patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[])) as lp:
             assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "hey") is None
+        lp.assert_awaited_once_with(CONVERSATION_ID)
         resolver["llm"].assert_not_awaited()
         resolver["resolve"].assert_not_awaited()
 
@@ -85,10 +339,11 @@ class TestNothingPending:
 class TestSingleApproval:
     async def test_yes_approves_the_pending_action(self, resolver: dict) -> None:
         resolver["llm"].return_value = DecisionResult(action="approve")
-        with pending("Send email — to: bob@example.com"):
+        with pending("Send email — to: bob@example.com") as lp:
             action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes go ahead")
 
         assert action == "approve"
+        lp.assert_awaited_once_with(CONVERSATION_ID)
         assert resolved_ids(resolver["resolve"]) == ["appr-1"]
         assert resolved_kinds(resolver["resolve"]) == ["approve"]
 
@@ -133,6 +388,39 @@ class TestSingleApproval:
         text = prompt_of(resolver["llm"])
         assert "Delete 400 emails older than 2019" in text
         assert "yes" in text
+
+    async def test_the_prompt_is_pinned_verbatim_with_history_and_full_args(
+        self, resolver: dict
+    ) -> None:
+        # Every byte of what the model sees is pinned: a mutation that drops the
+        # history window, drops the action's args, mangles the reply, or mis-scopes
+        # the metering config must change the exact prompt and fail here.
+        resolver["llm"].return_value = DecisionResult(action="approve")
+        with pending("Send email — to: bob@example.com") as lp:
+            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "no", HISTORY)
+
+        assert action == "approve"
+        lp.assert_awaited_once_with(CONVERSATION_ID)
+        call = resolver["llm"].await_args
+        assert call.args[1] == EXPECTED_PROMPT_SINGLE_PUBLIC_WITH_HISTORY
+        assert call.kwargs == {
+            "label": "hil_conversational_resolve",
+            "timeout": HIL_LLM_TIMEOUT_SECONDS,
+            "config": silent_metered_config(USER_ID),
+        }
+
+    async def test_resolution_carries_user_id_and_scope(self, resolver: dict) -> None:
+        resolver["llm"].return_value = DecisionResult(action="approve")
+        with pending("Send email"):
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+        assert resolver["resolve"].await_args.kwargs == {
+            "approval_id": "appr-1",
+            "user_id": USER_ID,
+            "kind": "approve",
+            "feedback": None,
+            "scope": "once",
+        }
 
 
 class TestAnApprovalCannotCarryAnEdit:
@@ -298,8 +586,50 @@ class TestBatch:
             )
 
         assert action == "unrelated"
-        resolver["abandon"].assert_awaited_once()
+        resolver["abandon"].assert_awaited_once_with(CONVERSATION_ID, USER_ID, UNRELATED_FEEDBACK)
         resolver["resolve"].assert_not_awaited()
+
+    async def test_the_batch_prompt_is_pinned_verbatim_with_history_and_full_args(
+        self, resolver: dict
+    ) -> None:
+        resolver["llm"].return_value = BatchDecisionResult(unrelated=False)
+        with pending("Send email", "Post to Slack", args=[{"to": "bob@example.com"}, {"channel": "#general"}]) as lp:
+            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "no", HISTORY)
+
+        assert action is None
+        lp.assert_awaited_once_with(CONVERSATION_ID)
+        call = resolver["llm"].await_args
+        assert call.args[1] == EXPECTED_PROMPT_BATCH_PUBLIC_WITH_HISTORY
+        assert call.kwargs == {
+            "label": "hil_conversational_resolve_batch",
+            "timeout": HIL_LLM_TIMEOUT_SECONDS,
+            "config": silent_metered_config(USER_ID),
+        }
+
+    async def test_batch_resolutions_carry_user_id_and_scope(self, resolver: dict) -> None:
+        resolver["llm"].return_value = BatchDecisionResult(
+            unrelated=False,
+            decisions=[
+                BatchItemDecision(index=1, action="approve"),
+                BatchItemDecision(index=2, action="approve"),
+            ],
+        )
+        with pending("Send email", "Post to Slack"):
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes, all of them")
+
+        assert [
+            (
+                c.kwargs["approval_id"],
+                c.kwargs["user_id"],
+                c.kwargs["kind"],
+                c.kwargs["feedback"],
+                c.kwargs["scope"],
+            )
+            for c in resolver["resolve"].await_args_list
+        ] == [
+            ("appr-1", USER_ID, "approve", None, "once"),
+            ("appr-2", USER_ID, "approve", None, "once"),
+        ]
 
     async def test_the_numbered_list_starts_at_one_to_match_the_index_contract(
         self, resolver: dict
@@ -406,3 +736,176 @@ class TestRacingDecisions:
         resolver["resolve"].side_effect = ApprovalRequestNotFound()
         with pending("Send email"):
             assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") == "approve"
+
+
+class TestPromptContract:
+    """The classifier prompt is pinned byte-for-byte. Every one of mutmut's string
+    mutations (XX-wrapping, case flips, separators) and its history/context
+    argument mutations changes the exact bytes the model sees — the model's verdict
+    on a subtly corrupted prompt is not something a unit test can second-guess, so
+    the prompt itself is asserted verbatim."""
+
+    def test_single_prompt_without_history_is_exact(self) -> None:
+        assert _prompt("yes", [SINGLE_ACTION], None) == EXPECTED_PROMPT_SINGLE_NO_HISTORY
+
+    def test_single_prompt_joins_multiple_actions_with_a_blank_line(self) -> None:
+        # The single-action tests pin the whole prompt, but a one-element list never
+        # exercises the JOIN — so the separator between multiple actions gets its own
+        # exact assertion (a "\n\n" → "XX\n\nXX" mutation changes nothing for one item).
+        expected = EXPECTED_PROMPT_SINGLE_NO_HISTORY.replace(
+            "Send email — to: bob@example.com", "Send email\n\nPost to Slack", 1
+        )
+        assert _prompt("yes", BATCH_ACTIONS, None) == expected
+
+    def test_single_prompt_with_history_is_exact(self) -> None:
+        assert _prompt("no", [SINGLE_ACTION], HISTORY) == EXPECTED_PROMPT_SINGLE_WITH_HISTORY
+
+    def test_batch_prompt_without_history_is_exact(self) -> None:
+        assert _batch_prompt("yes", BATCH_ACTIONS, None) == EXPECTED_PROMPT_BATCH_NO_HISTORY
+
+    def test_batch_prompt_with_history_is_exact(self) -> None:
+        assert _batch_prompt("no", BATCH_ACTIONS, HISTORY) == EXPECTED_PROMPT_BATCH_WITH_HISTORY
+
+
+class TestHistoryBlock:
+    """The recent-turns window is context the classifier relies on; every mutation
+    here changes the bytes the model sees, so each shape is asserted exactly."""
+
+    def test_empty_histories_render_nothing(self) -> None:
+        assert _history_block(None) == ""
+        assert _history_block([]) == ""
+
+    def test_turns_render_as_role_content_lines(self) -> None:
+        assert _history_block(HISTORY) == "user: hey\nassistant: sure"
+
+    def test_missing_role_and_content_render_empty(self) -> None:
+        assert _history_block([{"content": "no role"}, {"role": "user"}, {}]) == (
+            ": no role\nuser: \n: "
+        )
+
+    def test_a_content_is_clipped_per_turn_not_lost(self) -> None:
+        content = "x" * (HIL_CLASSIFIER_MAX_ARG_CHARS + 10)
+        assert _history_block([{"role": "user", "content": content}]) == (
+            f"user: {clip_text(content, HIL_CLASSIFIER_MAX_ARG_CHARS)}"
+        )
+
+    def test_the_total_is_clipped_across_turns(self) -> None:
+        big = "y" * (HIL_CLASSIFIER_MAX_DETAIL_CHARS // 2)
+        raw = "\n".join(["user: " + big, "assistant: " + big])
+        assert _history_block([{"role": "user", "content": big}, {"role": "assistant", "content": big}]) == (
+            clip_text(raw, HIL_CLASSIFIER_MAX_DETAIL_CHARS)
+        )
+
+    def test_the_exact_boundary_is_not_clipped(self) -> None:
+        content = "z" * HIL_CLASSIFIER_MAX_ARG_CHARS
+        assert _history_block([{"role": "user", "content": content}]) == f"user: {content}"
+
+
+class TestInterpretCallContract:
+    """The LLM boundary is a mock, so every argument the production code passes to it
+    is an observable contract: the schema, the exact prompt, the label, the timeout,
+    and the metered silent config. A mutation that drops, Nones, or mangles any of
+    them must fail here."""
+
+    async def test_single_classification_passes_the_full_contract(self, resolver: dict) -> None:
+        resolver["llm"].return_value = DecisionResult(action="approve")
+        result = await interpret_decision_message("yes", [SINGLE_ACTION], None, user_id=USER_ID)
+
+        assert result == DecisionResult(action="approve")
+        call = resolver["llm"].await_args
+        assert call.args[0] is DecisionResult
+        assert call.args[1] == EXPECTED_PROMPT_SINGLE_NO_HISTORY
+        assert call.kwargs == {
+            "label": "hil_conversational_resolve",
+            "timeout": HIL_LLM_TIMEOUT_SECONDS,
+            "config": silent_metered_config(USER_ID),
+        }
+
+    async def test_single_classification_renders_history_into_the_prompt(
+        self, resolver: dict
+    ) -> None:
+        resolver["llm"].return_value = DecisionResult(action="deny")
+        await interpret_decision_message("no", [SINGLE_ACTION], HISTORY, user_id=USER_ID)
+
+        assert resolver["llm"].await_args.args[1] == EXPECTED_PROMPT_SINGLE_WITH_HISTORY
+
+    async def test_batch_classification_passes_the_full_contract(self, resolver: dict) -> None:
+        resolver["llm"].return_value = BatchDecisionResult(unrelated=False)
+        result = await interpret_batch_decision_message(
+            "yes", BATCH_ACTIONS, None, user_id=USER_ID
+        )
+
+        assert result == BatchDecisionResult(unrelated=False)
+        call = resolver["llm"].await_args
+        assert call.args[0] is BatchDecisionResult
+        assert call.args[1] == EXPECTED_PROMPT_BATCH_NO_HISTORY
+        assert call.kwargs == {
+            "label": "hil_conversational_resolve_batch",
+            "timeout": HIL_LLM_TIMEOUT_SECONDS,
+            "config": silent_metered_config(USER_ID),
+        }
+
+    async def test_batch_classification_renders_history_into_the_prompt(
+        self, resolver: dict
+    ) -> None:
+        resolver["llm"].return_value = BatchDecisionResult(unrelated=False)
+        await interpret_batch_decision_message("no", BATCH_ACTIONS, HISTORY, user_id=USER_ID)
+
+        assert resolver["llm"].await_args.args[1] == EXPECTED_PROMPT_BATCH_WITH_HISTORY
+
+    async def test_single_llm_error_leaves_the_approval_pending_and_logs_exactly(
+        self, resolver: dict
+    ) -> None:
+        resolver["llm"].side_effect = ConnectionError("provider down")
+        result = await interpret_decision_message("yes", [SINGLE_ACTION], None, user_id=USER_ID)
+
+        assert result is None
+        hil_conversational.log.warning.assert_called_once_with(
+            f"{LogTag.HIL} Conversational resolve failed, leaving pending",
+            error="provider down",
+            error_type="ConnectionError",
+        )
+
+    async def test_batch_llm_error_fails_toward_leave_and_logs_exactly(
+        self, resolver: dict
+    ) -> None:
+        resolver["llm"].side_effect = ConnectionError("provider down")
+        result = await interpret_batch_decision_message("yes", BATCH_ACTIONS, None, user_id=USER_ID)
+
+        assert result == BatchDecisionResult(unrelated=False)
+        assert result.decisions == []
+        hil_conversational.log.warning.assert_called_once_with(
+            f"{LogTag.HIL} Batch conversational resolve failed, leaving pending",
+            error="provider down",
+            error_type="ConnectionError",
+        )
+
+
+class TestSafeResolve:
+    """``_safe_resolve`` is the one place a decision becomes a durable resolution.
+    Its exact call contract (user, scope) and its tolerance for lost races are
+    pinned here."""
+
+    async def test_resolution_carries_the_full_decision_contract(self, resolver: dict) -> None:
+        await _safe_resolve("appr-9", USER_ID, "deny", "do it tomorrow")
+
+        assert resolver["resolve"].await_args.kwargs == {
+            "approval_id": "appr-9",
+            "user_id": USER_ID,
+            "kind": "deny",
+            "feedback": "do it tomorrow",
+            "scope": "once",
+        }
+
+    async def test_a_forbidden_approval_is_quietly_ignored(self, resolver: dict) -> None:
+        # The approval belongs to another user or stream — not ours to touch, and not
+        # an error the chat turn should crash on.
+        resolver["resolve"].side_effect = ApprovalRequestForbidden()
+        await _safe_resolve("appr-9", USER_ID, "approve", None)
+
+    async def test_a_non_approval_error_propagates(self, resolver: dict) -> None:
+        # Only the "lost the race" pair is tolerated. Anything else is a real bug and
+        # must fail loud, not vanish behind a broad except.
+        resolver["resolve"].side_effect = ValueError("boom")
+        with pytest.raises(ValueError):
+            await _safe_resolve("appr-9", USER_ID, "approve", None)

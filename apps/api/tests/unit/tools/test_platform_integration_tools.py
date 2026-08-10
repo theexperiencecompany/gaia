@@ -31,8 +31,11 @@ def _make_capturing_composio() -> tuple[MagicMock, dict[str, Callable[..., Any]]
     """Create a Composio mock whose custom_tool decorator captures inner functions."""
     composio = MagicMock()
     captured: dict[str, Callable[..., Any]] = {}
+    composio.tool_kwargs: list[dict[str, Any]] = []
 
     def _custom_tool(**kwargs: Any) -> Callable[..., Any]:
+        composio.tool_kwargs.append(kwargs)
+
         def wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
             captured[fn.__name__] = fn
             return fn
@@ -365,16 +368,44 @@ class TestMicrosoftTeamsGatherContext:
 # =============================================================================
 
 REDDIT_MODULE = "app.agents.tools.integrations.reddit_tool"
+REDDIT_ME_ENDPOINT = "https://oauth.reddit.com/api/v1/me"
+REDDIT_SUBS_ENDPOINT = "https://oauth.reddit.com/subreddits/mine/subscriber"
+REDDIT_MESSAGES_ENDPOINT = "https://oauth.reddit.com/message/unread"
+REDDIT_HEADERS = {"User-Agent": "GAIA/1.0"}
+REDDIT_LIMIT_QUERY = {"limit": 5}
 
 
 class TestRedditGatherContext:
-    def _register(self) -> dict[str, Callable[..., Any]]:
+    def _register(self) -> tuple[MagicMock, dict[str, Callable[..., Any]]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.reddit_tool import register_reddit_custom_tools
 
         names = register_reddit_custom_tools(composio)
-        assert "REDDIT_CUSTOM_GATHER_CONTEXT" in names
-        return captured
+        assert names == ["REDDIT_CUSTOM_GATHER_CONTEXT"]
+        return composio, captured
+
+    def _assert_proxy_call(
+        self,
+        mock_proxy: MagicMock,
+        index: int,
+        *,
+        endpoint: str,
+        query: dict[str, Any] | None = None,
+    ) -> None:
+        expected: dict[str, Any] = {
+            "user_id": FAKE_USER_ID,
+            "toolkit": "REDDIT",
+            "endpoint": endpoint,
+            "method": "GET",
+            "headers": REDDIT_HEADERS,
+        }
+        if query is not None:
+            expected["query"] = query
+        assert mock_proxy.call_args_list[index].kwargs == expected
+
+    def test_registers_custom_tool_with_reddit_toolkit(self) -> None:
+        composio, _ = self._register()
+        assert composio.tool_kwargs == [{"toolkit": "REDDIT"}]
 
     @patch(f"{REDDIT_MODULE}.proxy_request_sync")
     def test_basic_success(self, mock_proxy: MagicMock) -> None:
@@ -385,6 +416,7 @@ class TestRedditGatherContext:
                 "link_karma": 10,
                 "comment_karma": 5,
                 "total_karma": 15,
+                "icon_img": "https://reddit/avatar.png",
                 "is_gold": True,
             },
             {
@@ -416,38 +448,306 @@ class TestRedditGatherContext:
             },
         ]
 
-        captured = self._register()
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert mock_proxy.call_count == 3
+        self._assert_proxy_call(mock_proxy, 0, endpoint=REDDIT_ME_ENDPOINT)
+        self._assert_proxy_call(
+            mock_proxy, 1, endpoint=REDDIT_SUBS_ENDPOINT, query=REDDIT_LIMIT_QUERY
+        )
+        self._assert_proxy_call(
+            mock_proxy, 2, endpoint=REDDIT_MESSAGES_ENDPOINT, query=REDDIT_LIMIT_QUERY
+        )
+        assert result == {
+            "user": {
+                "name": "ada",
+                "id": "u1",
+                "link_karma": 10,
+                "comment_karma": 5,
+                "total_karma": 15,
+                "icon_img": "https://reddit/avatar.png",
+                "is_gold": True,
+            },
+            "subscribed_subreddits": [
+                {"name": "python", "title": "Python subreddit", "subscribers": 1000}
+            ],
+            "unread_messages": [
+                {"id": "msg1", "subject": "Hey", "author": "bob", "created_utc": 123}
+            ],
+            "unread_message_count": 1,
+        }
+
+    @patch(f"{REDDIT_MODULE}.proxy_request_sync")
+    @patch(f"{REDDIT_MODULE}.log")
+    def test_missing_fields_fall_back_to_defaults(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [
+            {"name": "ada"},
+            {
+                "data": {
+                    "children": [
+                        {"data": {"display_name": "python"}},
+                        {"data": {"display_name": "empty", "title": "T"}},
+                    ]
+                }
+            },
+            {"data": {"children": [{"data": {"id": "m1"}}]}},
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["user"] == {
+            "name": "ada",
+            "id": None,
+            "link_karma": 0,
+            "comment_karma": 0,
+            "total_karma": 0,
+            "icon_img": None,
+            "is_gold": False,
+        }
+        assert result["subscribed_subreddits"] == [
+            {"name": "python", "title": "", "subscribers": 0},
+            {"name": "empty", "title": "T", "subscribers": 0},
+        ]
+        assert result["unread_messages"] == [
+            {"id": "m1", "subject": "", "author": None, "created_utc": None}
+        ]
+        assert result["unread_message_count"] == 1
+        mock_log.error.assert_not_called()
+
+    @patch(f"{REDDIT_MODULE}.proxy_request_sync")
+    @patch(f"{REDDIT_MODULE}.log")
+    def test_title_and_subject_truncated_to_80_chars(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [
+            {},
+            {
+                "data": {
+                    "children": [
+                        {"data": {"display_name": "long", "title": "t" * 200}}
+                    ]
+                }
+            },
+            {
+                "data": {
+                    "children": [
+                        {"data": {"id": "m1", "subject": "s" * 200}}
+                    ]
+                }
+            },
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["subscribed_subreddits"][0]["title"] == "t" * 80
+        assert result["unread_messages"][0]["subject"] == "s" * 80
+        mock_log.error.assert_not_called()
+
+    @patch(f"{REDDIT_MODULE}.proxy_request_sync")
+    @patch(f"{REDDIT_MODULE}.log")
+    def test_none_responses_become_defaults(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [None, None, None]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["user"] == {
+            "name": None,
+            "id": None,
+            "link_karma": 0,
+            "comment_karma": 0,
+            "total_karma": 0,
+            "icon_img": None,
+            "is_gold": False,
+        }
+        assert result["subscribed_subreddits"] == []
+        assert result["unread_messages"] == []
+        assert result["unread_message_count"] == 0
+        mock_log.error.assert_not_called()
+
+    @patch(f"{REDDIT_MODULE}.proxy_request_sync")
+    @patch(f"{REDDIT_MODULE}.log")
+    def test_empty_payloads_yield_empty_sections(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [{}, {}, {}]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["user"] == {
+            "name": None,
+            "id": None,
+            "link_karma": 0,
+            "comment_karma": 0,
+            "total_karma": 0,
+            "icon_img": None,
+            "is_gold": False,
+        }
+        assert result["subscribed_subreddits"] == []
+        assert result["unread_messages"] == []
+        assert result["unread_message_count"] == 0
+        mock_log.error.assert_not_called()
+
+    @patch(f"{REDDIT_MODULE}.proxy_request_sync")
+    def test_multiple_items_preserve_order_and_count(self, mock_proxy: MagicMock) -> None:
+        mock_proxy.side_effect = [
+            {},
+            {
+                "data": {
+                    "children": [
+                        {"data": {"display_name": "a"}},
+                        {"data": {"display_name": "b"}},
+                    ]
+                }
+            },
+            {
+                "data": {
+                    "children": [
+                        {"data": {"id": "m1"}},
+                        {"data": {"id": "m2"}},
+                        {"data": {"id": "m3"}},
+                    ]
+                }
+            },
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert [s["name"] for s in result["subscribed_subreddits"]] == ["a", "b"]
+        assert [m["id"] for m in result["unread_messages"]] == ["m1", "m2", "m3"]
+        assert result["unread_message_count"] == 3
+
+    @patch(f"{REDDIT_MODULE}.proxy_request_sync")
+    @patch(f"{REDDIT_MODULE}.log")
+    def test_me_failure_keeps_other_sections(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        me_error = RuntimeError("me down")
+        mock_proxy.side_effect = [
+            me_error,
+            {"data": {"children": [{"data": {"display_name": "python"}}]}},
+            {"data": {"children": [{"data": {"id": "m1"}}]}},
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert mock_proxy.call_count == 3
+        assert result["user"] == {
+            "name": None,
+            "id": None,
+            "link_karma": 0,
+            "comment_karma": 0,
+            "total_karma": 0,
+            "icon_img": None,
+            "is_gold": False,
+        }
+        assert len(result["subscribed_subreddits"]) == 1
+        assert len(result["unread_messages"]) == 1
+        mock_log.set.assert_called_once_with(
+            user_id=FAKE_USER_ID, endpoint=REDDIT_ME_ENDPOINT, toolkit="REDDIT"
+        )
+        mock_log.error.assert_called_once_with(
+            "[TOOL] Reddit /me fetch failed", exc=me_error
+        )
+
+    @patch(f"{REDDIT_MODULE}.proxy_request_sync")
+    @patch(f"{REDDIT_MODULE}.log")
+    def test_subreddits_failure_keeps_other_sections(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        subs_error = RuntimeError("subs down")
+        mock_proxy.side_effect = [
+            {"name": "ada"},
+            subs_error,
+            {"data": {"children": [{"data": {"id": "m1"}}]}},
+        ]
+
+        _, captured = self._register()
         result = captured["CUSTOM_GATHER_CONTEXT"](
             GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
         )
 
         assert result["user"]["name"] == "ada"
-        assert result["user"]["is_gold"] is True
-        assert result["subscribed_subreddits"][0]["name"] == "python"
-        assert result["subscribed_subreddits"][0]["subscribers"] == 1000
+        assert result["subscribed_subreddits"] == []
         assert result["unread_message_count"] == 1
-        assert result["unread_messages"][0]["subject"] == "Hey"
+        mock_log.set.assert_called_once_with(
+            user_id=FAKE_USER_ID, endpoint=REDDIT_SUBS_ENDPOINT, toolkit="REDDIT"
+        )
+        mock_log.error.assert_called_once_with(
+            "[TOOL] Reddit subreddits fetch failed", exc=subs_error
+        )
 
     @patch(f"{REDDIT_MODULE}.proxy_request_sync")
-    def test_failed_fetches_return_empty_sections(self, mock_proxy: MagicMock) -> None:
+    @patch(f"{REDDIT_MODULE}.log")
+    def test_messages_failure_keeps_other_sections(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        messages_error = RuntimeError("messages down")
         mock_proxy.side_effect = [
-            RuntimeError("me down"),
-            {"data": {"children": []}},
-            RuntimeError("messages down"),
+            {"name": "ada"},
+            {"data": {"children": [{"data": {"display_name": "python"}}]}},
+            messages_error,
         ]
 
-        captured = self._register()
+        _, captured = self._register()
         result = captured["CUSTOM_GATHER_CONTEXT"](
             GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
         )
 
-        assert result["user"]["name"] is None  # /me failed -> defaults only
-        assert result["user"]["link_karma"] == 0
-        assert result["subscribed_subreddits"] == []
+        assert result["user"]["name"] == "ada"
+        assert len(result["subscribed_subreddits"]) == 1
+        assert result["unread_messages"] == []
         assert result["unread_message_count"] == 0
+        mock_log.set.assert_called_once_with(
+            user_id=FAKE_USER_ID, endpoint=REDDIT_MESSAGES_ENDPOINT, toolkit="REDDIT"
+        )
+        mock_log.error.assert_called_once_with(
+            "[TOOL] Reddit unread messages fetch failed", exc=messages_error
+        )
 
     @patch(f"{REDDIT_MODULE}.proxy_request_sync")
     def test_missing_user_id_raises_app_error(self, mock_proxy: MagicMock) -> None:
-        captured = self._register()
-        with pytest.raises(AppError, match="Missing user_id in auth_credentials"):
+        _, captured = self._register()
+        with pytest.raises(AppError) as exc_info:
             captured["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, {})
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.message == "Missing user_id in auth_credentials"
+        assert (
+            exc_info.value.why
+            == "CUSTOM_GATHER_CONTEXT requires a user-scoped auth context"
+        )
+        mock_proxy.assert_not_called()
+
+    @patch(f"{REDDIT_MODULE}.proxy_request_sync")
+    def test_empty_user_id_raises_app_error(self, mock_proxy: MagicMock) -> None:
+        _, captured = self._register()
+        with pytest.raises(AppError, match="Missing user_id in auth_credentials"):
+            captured["CUSTOM_GATHER_CONTEXT"](
+                GatherContextInput(), EXECUTE_REQUEST, {"user_id": ""}
+            )
+        mock_proxy.assert_not_called()
