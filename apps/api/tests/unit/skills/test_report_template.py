@@ -21,7 +21,13 @@ from openpyxl.styles import PatternFill
 from openpyxl.worksheet.worksheet import Worksheet
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[5]
+# The file sits 5 levels below the repo root in the live tree, but the
+# mutation lane's workdir adds one more level — walk up to the tree marker
+# (apps/api/app) so the path resolves in both layouts.
+REPO_ROOT = next(
+    (p for p in Path(__file__).resolve().parents if (p / "apps" / "api" / "app").is_dir()),
+    Path(__file__).resolve().parents[5],
+)
 _REPORT_PATH = (
     REPO_ROOT
     / "apps"
