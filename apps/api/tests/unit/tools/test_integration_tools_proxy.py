@@ -3298,3 +3298,531 @@ def test_linkedin_add_comment_uses_proxy_full() -> None:
         )
 
     assert result["comment_id"] == "comment-1"
+
+
+# ---------------------------------------------------------------------------
+# Twitter utils (app.utils.twitter_utils)
+# ---------------------------------------------------------------------------
+
+TWITTER_UTILS = "app.utils.twitter_utils"
+TWITTER_USERS_ME_ENDPOINT = "https://api.twitter.com/2/users/me"
+
+
+def test_twitter_utils_proxy_passes_exact_kwargs_and_returns_response() -> None:
+    from app.utils.twitter_utils import _proxy
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        proxy.return_value = {"data": {"id": "123"}}
+        result = _proxy(
+            "user-1",
+            endpoint="/tweets",
+            method="POST",
+            body={"text": "hi"},
+            query={"max_results": 5},
+        )
+
+    assert result == {"data": {"id": "123"}}
+    proxy.assert_called_once_with(
+        user_id="user-1",
+        toolkit="TWITTER",
+        endpoint="/tweets",
+        method="POST",
+        body={"text": "hi"},
+        query={"max_results": 5},
+    )
+
+
+def test_twitter_utils_proxy_passes_none_body_and_query() -> None:
+    from app.utils.twitter_utils import _proxy
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        proxy.return_value = None
+        result = _proxy("user-1", endpoint="/x", method="GET")
+
+    assert result is None
+    proxy.assert_called_once_with(
+        user_id="user-1",
+        toolkit="TWITTER",
+        endpoint="/x",
+        method="GET",
+        body=None,
+        query=None,
+    )
+
+
+def test_twitter_utils_get_my_user_id_exact_proxy_call_and_log_set() -> None:
+    from app.utils.twitter_utils import get_my_user_id
+
+    with (
+        patch(
+            f"{TWITTER_UTILS}.proxy_request_sync", return_value={"data": {"id": "tid-1"}}
+        ) as proxy,
+        patch(f"{TWITTER_UTILS}.log") as log_mock,
+    ):
+        result = get_my_user_id("user-1")
+
+    assert result == "tid-1"
+    proxy.assert_called_once_with(
+        user_id="user-1",
+        toolkit="TWITTER",
+        endpoint=TWITTER_USERS_ME_ENDPOINT,
+        method="GET",
+        body=None,
+        query=None,
+    )
+    log_mock.set.assert_called_once_with(operation="twitter_get_my_user_id")
+
+
+def test_twitter_utils_get_my_user_id_returns_none_when_data_missing() -> None:
+    from app.utils.twitter_utils import get_my_user_id
+
+    with (
+        patch(f"{TWITTER_UTILS}.proxy_request_sync", return_value=None) as proxy,
+        patch(f"{TWITTER_UTILS}.log") as log_mock,
+    ):
+        assert get_my_user_id("user-1") is None
+
+    proxy.assert_called_once()
+    # None response must resolve via the default-dict path, not the exception handler.
+    log_mock.error.assert_not_called()
+
+
+def test_twitter_utils_get_my_user_id_returns_none_when_data_has_no_id() -> None:
+    from app.utils.twitter_utils import get_my_user_id
+
+    with (
+        patch(f"{TWITTER_UTILS}.proxy_request_sync", return_value={"data": {}}) as proxy,
+        patch(f"{TWITTER_UTILS}.log"),
+    ):
+        assert get_my_user_id("user-1") is None
+
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_get_my_user_id_returns_none_when_proxy_response_lacks_data_key() -> None:
+    from app.utils.twitter_utils import get_my_user_id
+
+    with (
+        patch(f"{TWITTER_UTILS}.proxy_request_sync", return_value={"unexpected": True}) as proxy,
+        patch(f"{TWITTER_UTILS}.log") as log_mock,
+    ):
+        assert get_my_user_id("user-1") is None
+
+    proxy.assert_called_once()
+    # Missing key must resolve via the default-dict path, not the exception handler.
+    log_mock.error.assert_not_called()
+
+
+def test_twitter_utils_get_my_user_id_logs_error_and_returns_none_on_exception() -> None:
+    from app.constants.log_tags import LogTag
+    from app.utils.twitter_utils import get_my_user_id
+
+    with (
+        patch(f"{TWITTER_UTILS}.proxy_request_sync", side_effect=RuntimeError("boom")) as proxy,
+        patch(f"{TWITTER_UTILS}.log") as log_mock,
+    ):
+        result = get_my_user_id("user-1")
+
+    assert result is None
+    proxy.assert_called_once()
+    log_mock.error.assert_called_once_with(
+        f"{LogTag.INTEGRATION} Error getting user ID",
+        error="boom",
+        error_type="RuntimeError",
+        user_id="user-1",
+    )
+
+
+def test_twitter_utils_lookup_user_by_username_strips_at_and_exact_query() -> None:
+    from app.utils.twitter_utils import lookup_user_by_username
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        proxy.return_value = {"data": {"id": "u1", "username": "elon"}}
+        result = lookup_user_by_username("user-1", "@elon")
+
+    assert result == {"id": "u1", "username": "elon"}
+    proxy.assert_called_once_with(
+        user_id="user-1",
+        toolkit="TWITTER",
+        endpoint="https://api.twitter.com/2/users/by/username/elon",
+        method="GET",
+        body=None,
+        query={
+            "user.fields": (
+                "id,name,username,description,profile_image_url,verified,public_metrics"
+            ),
+        },
+    )
+
+
+def test_twitter_utils_lookup_user_by_username_without_at() -> None:
+    from app.utils.twitter_utils import lookup_user_by_username
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        proxy.return_value = {"data": {"id": "u1"}}
+        result = lookup_user_by_username("user-1", "jack")
+
+    assert result == {"id": "u1"}
+    assert proxy.call_args.kwargs["endpoint"] == (
+        "https://api.twitter.com/2/users/by/username/jack"
+    )
+
+
+def test_twitter_utils_lookup_user_by_username_strips_only_at_sign() -> None:
+    # Pin that ONLY the leading '@' is stripped: a username starting with 'X'
+    # must survive untouched (guards against lstrip char-set mutations).
+    from app.utils.twitter_utils import lookup_user_by_username
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        proxy.return_value = {"data": {"id": "u1"}}
+        result = lookup_user_by_username("user-1", "@Xavier")
+
+    assert result == {"id": "u1"}
+    assert proxy.call_args.kwargs["endpoint"] == (
+        "https://api.twitter.com/2/users/by/username/Xavier"
+    )
+
+
+def test_twitter_utils_lookup_user_by_username_returns_none_without_data() -> None:
+    from app.utils.twitter_utils import lookup_user_by_username
+
+    with (
+        patch(f"{TWITTER_UTILS}.proxy_request_sync", return_value=None) as proxy,
+        patch(f"{TWITTER_UTILS}.log") as log_mock,
+    ):
+        assert lookup_user_by_username("user-1", "elon") is None
+
+    proxy.assert_called_once()
+    # None response must resolve via the default-dict path, not the exception handler.
+    log_mock.error.assert_not_called()
+
+
+def test_twitter_utils_lookup_user_by_username_logs_error_and_returns_none_on_exception() -> None:
+    from app.constants.log_tags import LogTag
+    from app.utils.twitter_utils import lookup_user_by_username
+
+    with (
+        patch(f"{TWITTER_UTILS}.proxy_request_sync", side_effect=ValueError("bad")) as proxy,
+        patch(f"{TWITTER_UTILS}.log") as log_mock,
+    ):
+        result = lookup_user_by_username("user-1", "elon")
+
+    assert result is None
+    proxy.assert_called_once()
+    log_mock.error.assert_called_once_with(
+        f"{LogTag.INTEGRATION} Error looking up user",
+        username="elon",
+        error="bad",
+        error_type="ValueError",
+        user_id="user-1",
+    )
+
+
+def test_twitter_utils_follow_user_exact_proxy_call_and_success_result() -> None:
+    from app.utils.twitter_utils import follow_user
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        proxy.return_value = {"data": {"following": True}}
+        result = follow_user("user-1", "me-1", "target-1")
+
+    assert result == {"success": True, "data": {"data": {"following": True}}}
+    proxy.assert_called_once_with(
+        user_id="user-1",
+        toolkit="TWITTER",
+        endpoint="https://api.twitter.com/2/users/me-1/following",
+        method="POST",
+        body={"target_user_id": "target-1"},
+        query=None,
+    )
+
+
+def test_twitter_utils_follow_user_success_with_none_proxy_response() -> None:
+    from app.utils.twitter_utils import follow_user
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", return_value=None) as proxy:
+        result = follow_user("user-1", "me-1", "target-1")
+
+    assert result == {"success": True, "data": None}
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_follow_user_app_error_formats_http_message() -> None:
+    from app.utils.errors import AppError
+    from app.utils.twitter_utils import follow_user
+
+    err = AppError(
+        message="denied",
+        status_code=403,
+        meta={"provider_response": "Forbidden: token expired"},
+    )
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", side_effect=err) as proxy:
+        result = follow_user("user-1", "me-1", "target-1")
+
+    assert result == {
+        "success": False,
+        "error": "HTTP 403: Forbidden: token expired",
+    }
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_follow_user_app_error_without_provider_response() -> None:
+    from app.utils.errors import AppError
+    from app.utils.twitter_utils import follow_user
+
+    err = AppError(message="gone", status_code=404)
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", side_effect=err) as proxy:
+        result = follow_user("user-1", "me-1", "target-1")
+
+    assert result == {"success": False, "error": "HTTP 404: None"}
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_follow_user_generic_exception_returns_str_error() -> None:
+    from app.utils.twitter_utils import follow_user
+
+    with patch(
+        f"{TWITTER_UTILS}.proxy_request_sync", side_effect=ConnectionError("net down")
+    ) as proxy:
+        result = follow_user("user-1", "me-1", "target-1")
+
+    assert result == {"success": False, "error": "net down"}
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_unfollow_user_exact_proxy_call_and_success_result() -> None:
+    from app.utils.twitter_utils import unfollow_user
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        proxy.return_value = {"data": {"following": False}}
+        result = unfollow_user("user-1", "me-1", "target-1")
+
+    assert result == {"success": True, "data": {"data": {"following": False}}}
+    proxy.assert_called_once_with(
+        user_id="user-1",
+        toolkit="TWITTER",
+        endpoint="https://api.twitter.com/2/users/me-1/following/target-1",
+        method="DELETE",
+        body=None,
+        query=None,
+    )
+
+
+def test_twitter_utils_unfollow_user_app_error_formats_http_message() -> None:
+    from app.utils.errors import AppError
+    from app.utils.twitter_utils import unfollow_user
+
+    err = AppError(message="denied", status_code=403, meta={"provider_response": "nope"})
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", side_effect=err) as proxy:
+        result = unfollow_user("user-1", "me-1", "target-1")
+
+    assert result == {"success": False, "error": "HTTP 403: nope"}
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_unfollow_user_generic_exception_returns_str_error() -> None:
+    from app.utils.twitter_utils import unfollow_user
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", side_effect=OSError("io")) as proxy:
+        result = unfollow_user("user-1", "me-1", "target-1")
+
+    assert result == {"success": False, "error": "io"}
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_create_tweet_plain_text_exact_proxy_call() -> None:
+    from app.utils.twitter_utils import create_tweet
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        proxy.return_value = {"data": {"id": "tw-1"}}
+        result = create_tweet("user-1", "hello world")
+
+    assert result == {"success": True, "data": {"id": "tw-1"}}
+    proxy.assert_called_once_with(
+        user_id="user-1",
+        toolkit="TWITTER",
+        endpoint="https://api.twitter.com/2/tweets",
+        method="POST",
+        body={"text": "hello world"},
+        query=None,
+    )
+
+
+def test_twitter_utils_create_tweet_all_optional_fields_in_body() -> None:
+    from app.utils.twitter_utils import create_tweet
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        proxy.return_value = {"data": {"id": "tw-1"}}
+        result = create_tweet(
+            "user-1",
+            "text",
+            reply_to_tweet_id="rep-1",
+            media_ids=["m1", "m2"],
+            quote_tweet_id="quote-1",
+        )
+
+    assert result["success"] is True
+    proxy.assert_called_once_with(
+        user_id="user-1",
+        toolkit="TWITTER",
+        endpoint="https://api.twitter.com/2/tweets",
+        method="POST",
+        body={
+            "text": "text",
+            "reply": {"in_reply_to_tweet_id": "rep-1"},
+            "media": {"media_ids": ["m1", "m2"]},
+            "quote_tweet_id": "quote-1",
+        },
+        query=None,
+    )
+
+
+def test_twitter_utils_create_tweet_only_reply_field() -> None:
+    from app.utils.twitter_utils import create_tweet
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        create_tweet("user-1", "text", reply_to_tweet_id="rep-1")
+
+    assert proxy.call_args.kwargs["body"] == {
+        "text": "text",
+        "reply": {"in_reply_to_tweet_id": "rep-1"},
+    }
+
+
+def test_twitter_utils_create_tweet_only_media_field() -> None:
+    from app.utils.twitter_utils import create_tweet
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        create_tweet("user-1", "text", media_ids=["m1"])
+
+    assert proxy.call_args.kwargs["body"] == {
+        "text": "text",
+        "media": {"media_ids": ["m1"]},
+    }
+
+
+def test_twitter_utils_create_tweet_falsy_optional_fields_omitted() -> None:
+    from app.utils.twitter_utils import create_tweet
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        create_tweet("user-1", "text", reply_to_tweet_id="", media_ids=[], quote_tweet_id=None)
+
+    assert proxy.call_args.kwargs["body"] == {"text": "text"}
+
+
+def test_twitter_utils_create_tweet_missing_data_becomes_empty_dict() -> None:
+    from app.utils.twitter_utils import create_tweet
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", return_value=None) as proxy:
+        result = create_tweet("user-1", "text")
+
+    assert result == {"success": True, "data": {}}
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_create_tweet_data_without_data_key_becomes_empty_dict() -> None:
+    from app.utils.twitter_utils import create_tweet
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", return_value={"errors": [1]}) as proxy:
+        result = create_tweet("user-1", "text")
+
+    assert result == {"success": True, "data": {}}
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_create_tweet_app_error_formats_http_message() -> None:
+    from app.utils.errors import AppError
+    from app.utils.twitter_utils import create_tweet
+
+    err = AppError(message="rate limited", status_code=429, meta={"provider_response": "slow down"})
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", side_effect=err) as proxy:
+        result = create_tweet("user-1", "text")
+
+    assert result == {"success": False, "error": "HTTP 429: slow down"}
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_create_tweet_generic_exception_returns_str_error() -> None:
+    from app.utils.twitter_utils import create_tweet
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", side_effect=TimeoutError("slow")) as proxy:
+        result = create_tweet("user-1", "text")
+
+    assert result == {"success": False, "error": "slow"}
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_search_tweets_exact_proxy_call_and_log_set() -> None:
+    from app.utils.twitter_utils import search_tweets
+
+    with (
+        patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy,
+        patch(f"{TWITTER_UTILS}.log") as log_mock,
+    ):
+        proxy.return_value = {"data": [{"id": "t1"}], "meta": {"result_count": 1}}
+        result = search_tweets("user-1", "gaia ai", max_results=10)
+
+    assert result == {
+        "success": True,
+        "data": {"data": [{"id": "t1"}], "meta": {"result_count": 1}},
+    }
+    proxy.assert_called_once_with(
+        user_id="user-1",
+        toolkit="TWITTER",
+        endpoint="https://api.twitter.com/2/tweets/search/recent",
+        method="GET",
+        body=None,
+        query={
+            "query": "gaia ai",
+            "max_results": 10,
+            "user.fields": (
+                "id,name,username,description,profile_image_url,verified,"
+                "public_metrics,created_at,location"
+            ),
+            "expansions": "author_id",
+        },
+    )
+    log_mock.set.assert_called_once_with(
+        operation="twitter_search_tweets",
+        search_query="gaia ai",
+        max_results=10,
+    )
+
+
+def test_twitter_utils_search_tweets_caps_max_results_at_100() -> None:
+    from app.utils.twitter_utils import search_tweets
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        search_tweets("user-1", "q", max_results=500)
+
+    assert proxy.call_args.kwargs["query"]["max_results"] == 100
+
+
+def test_twitter_utils_search_tweets_default_max_results_is_10() -> None:
+    from app.utils.twitter_utils import search_tweets
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync") as proxy:
+        search_tweets("user-1", "q")
+
+    assert proxy.call_args.kwargs["query"]["max_results"] == 10
+
+
+def test_twitter_utils_search_tweets_app_error_formats_http_message() -> None:
+    from app.utils.errors import AppError
+    from app.utils.twitter_utils import search_tweets
+
+    err = AppError(message="blocked", status_code=401, meta={"provider_response": "unauthorized"})
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", side_effect=err) as proxy:
+        result = search_tweets("user-1", "q")
+
+    assert result == {"success": False, "error": "HTTP 401: unauthorized"}
+    proxy.assert_called_once()
+
+
+def test_twitter_utils_search_tweets_generic_exception_returns_str_error() -> None:
+    from app.utils.twitter_utils import search_tweets
+
+    with patch(f"{TWITTER_UTILS}.proxy_request_sync", side_effect=RuntimeError("x")) as proxy:
+        result = search_tweets("user-1", "q")
+
+    assert result == {"success": False, "error": "x"}
+    proxy.assert_called_once()
