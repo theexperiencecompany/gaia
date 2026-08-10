@@ -1617,3 +1617,61 @@ class TestBatchFetchWithCrawl4ai:
         assert contents == {"https://a.example": "content"}
         assert errors == {}
         mock_warning.assert_not_called()
+
+    @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
+    async def test_exact_match_preferred_over_case_sibling_normalized_key(
+        self, mock_crawler_cls: MagicMock
+    ) -> None:
+        """A result whose URL exactly equals a requested URL must map to that
+        request even when another requested URL normalizes to the same key
+        (case-variant sibling). The exact-match deque must win over the
+        normalized fallback, which would otherwise pop the sibling's index.
+        """
+        result = MagicMock(success=True, markdown="content", url="https://a.example.com/x")
+        crawler_inst = AsyncMock()
+        crawler_inst.__aenter__ = AsyncMock(return_value=crawler_inst)
+        crawler_inst.__aexit__ = AsyncMock(return_value=False)
+        crawler_inst.arun_many = AsyncMock(return_value=[result])
+        mock_crawler_cls.return_value = crawler_inst
+
+        urls = ["https://A.example.com/x", "https://a.example.com/x"]
+        contents, errors = await batch_fetch_with_crawl4ai(
+            urls,
+            page_timeout_ms=30_000,
+            total_timeout_seconds=60.0,
+            semaphore_count=3,
+            context_name="test",
+        )
+
+        assert contents == {"https://a.example.com/x": "content"}
+        assert errors == {"https://A.example.com/x": "test returned no result"}
+
+    @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
+    async def test_normalized_only_result_maps_to_its_request_index(
+        self, mock_crawler_cls: MagicMock
+    ) -> None:
+        """A single result whose URL matches the SECOND requested URL only via
+        normalization (trailing slash stripped) must land on the second URL,
+        not the first. The positional fallback would otherwise assign it to
+        the first remaining index.
+        """
+        result = MagicMock(
+            success=True, markdown="second content", url="https://second.example.com/x"
+        )
+        crawler_inst = AsyncMock()
+        crawler_inst.__aenter__ = AsyncMock(return_value=crawler_inst)
+        crawler_inst.__aexit__ = AsyncMock(return_value=False)
+        crawler_inst.arun_many = AsyncMock(return_value=[result])
+        mock_crawler_cls.return_value = crawler_inst
+
+        urls = ["https://first.example.com/x/", "https://second.example.com/x/"]
+        contents, errors = await batch_fetch_with_crawl4ai(
+            urls,
+            page_timeout_ms=30_000,
+            total_timeout_seconds=60.0,
+            semaphore_count=3,
+            context_name="test",
+        )
+
+        assert contents == {"https://second.example.com/x/": "second content"}
+        assert errors == {"https://first.example.com/x/": "test returned no result"}
