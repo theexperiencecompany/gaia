@@ -699,6 +699,14 @@ class TestIsBlockedIp:
             "224.0.0.1",
             "240.0.0.1",
             "0.0.0.0",  # noqa: S104 - test input IP, not a server bind address
+            # CGNAT (RFC 6598, 100.64.0.0/10): not private, but also not
+            # globally routable — the `not is_global` term must catch it.
+            "100.64.0.1",
+            "100.127.255.255",
+            # IPv6 special-registry ranges Python classifies as reserved but
+            # global — the `is_reserved` term must catch them.
+            "1::1",
+            "64:ff9b::1",
             "::1",
             "fe80::1",
             "fc00::1",
@@ -1013,6 +1021,28 @@ class TestAbsoluteUrl:
     ) -> None:
         assert _absolute_url(base_url, relative_url) == expected
 
+    @pytest.mark.parametrize(
+        "relative_url",
+        [
+            "http://example.com/a/../b",
+            "https://example.com/a/../b",
+            "HTTP://example.com/a/../b",
+            "HTTPS://example.com/a/../b",
+        ],
+    )
+    def test_absolute_http_url_returned_unchanged_even_if_normalizable(
+        self, relative_url: str
+    ) -> None:
+        """An absolute http(s) URL is returned verbatim — never re-joined,
+        even when urljoin would normalize it (dot segments, scheme case)."""
+        assert _absolute_url("https://example.com/page", relative_url) == relative_url
+
+    def test_http_scheme_opaque_path_kept_verbatim(self) -> None:
+        """A scheme-bearing URL without a netloc (RFC 3986 opaque form) is
+        still treated as absolute and returned verbatim — urljoin would merge
+        it onto an http base path."""
+        assert _absolute_url("http://example.com/page", "http:relative") == "http:relative"
+
 
 # ---------------------------------------------------------------------------
 # _parse_url_metadata
@@ -1193,6 +1223,40 @@ class TestParseUrlMetadata:
         assert result.favicon == "https://example.com/real.png"
         assert result.website_image == "https://example.com/real.png"
 
+    def test_duplicate_href_attribute_last_value_wins(self) -> None:
+        """The html.parser builder keeps the LAST duplicate attribute value
+        (lxml keeps the first) — the parser is pinned explicitly, so the
+        extracted favicon must come from the html.parser behavior."""
+        html = (
+            "<html><head>"
+            '<link rel="icon" href="/first.ico" href="/second.ico">'
+            "</head><body></body></html>"
+        )
+        assert self._parse(html).favicon == "https://example.com/second.ico"
+
+    def test_shortcut_icon_requires_link_tag(self) -> None:
+        """rel='shortcut icon' is only honored on <link> elements — a
+        non-link element carrying that rel must not be treated as the
+        favicon."""
+        html = (
+            "<html><head>"
+            '<a rel="shortcut icon" href="/decoy.png">x</a>'
+            "</head><body></body></html>"
+        )
+        result = self._parse(html)
+        assert result.favicon is None
+        assert result.website_image is None
+
+    def test_shortcut_icon_branch_ignores_links_without_rel(self) -> None:
+        """The shortcut-icon lookup must not match <link> elements that lack
+        a rel attribute entirely."""
+        html = (
+            "<html><head>"
+            '<link href="/norel.css">'
+            "</head><body></body></html>"
+        )
+        assert self._parse(html).favicon is None
+
 
 # ---------------------------------------------------------------------------
 # _fetch_following_redirects
@@ -1311,6 +1375,20 @@ class TestScrapeRedirectHandling:
         result = await scrape_url_metadata("https://example.com")
 
         assert result == URLResponse(url="https://example.com")
+
+    @patch("app.utils.internet_utils._empty_metadata")
+    @patch("app.utils.internet_utils._fetch_following_redirects", new_callable=AsyncMock)
+    async def test_empty_metadata_preserves_original_url(
+        self, mock_fetch: AsyncMock, mock_empty: MagicMock
+    ) -> None:
+        """When the fetch yields no response, the empty-metadata fallback is
+        built from the ORIGINAL url — never a nulled one."""
+        mock_fetch.return_value = None
+
+        result = await scrape_url_metadata("https://example.com/deep")
+
+        mock_empty.assert_called_once_with("https://example.com/deep")
+        assert result is mock_empty.return_value
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_redirect_to_blocked_ip_propagates_http_exception(
