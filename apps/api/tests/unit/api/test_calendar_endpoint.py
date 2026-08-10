@@ -15,10 +15,14 @@ so every handler's arguments and returned shapes are pinned.
 from typing import ClassVar
 from unittest.mock import AsyncMock, call, patch
 
+import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
+from app.api.v1.endpoints.calendar import query_events
 from app.models.calendar_models import (
     CalendarEventPageResponse,
+    CalendarEventsQueryRequest,
     CalendarEventsResponse,
     CalendarListResponse,
     CalendarPreferencesResponse,
@@ -208,6 +212,50 @@ class TestQueryEvents:
                 },
             )
         assert resp.status_code == 422
+
+    async def test_query_events_invalid_start_date_raises_400(self) -> None:
+        """The request model's validator rejects malformed dates with 422 before
+        the handler runs, so the handler's own strptime guard is only reachable
+        when validation is bypassed (model_construct). Pin the exact 400 it
+        raises and confirm the service is never consulted."""
+        request = CalendarEventsQueryRequest.model_construct(
+            selected_calendars=["primary"],
+            start_date="03-01-2026",
+            end_date=None,
+            max_results=50,
+            fetch_all=False,
+        )
+        with (
+            patch(LOG_PATCH) as mock_log,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await query_events(request=request, user_id=USER_ID)
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == START_DATE_ERROR
+        mock_log.set.assert_not_called()
+        mock_svc.get_calendar_events.assert_not_awaited()
+
+    async def test_query_events_invalid_end_date_raises_400(self) -> None:
+        """Mirror of the start_date guard for the end_date branch: same bypass,
+        exact 400 + error string, service never called."""
+        request = CalendarEventsQueryRequest.model_construct(
+            selected_calendars=["primary"],
+            start_date=None,
+            end_date="03-01-2026",
+            max_results=50,
+            fetch_all=False,
+        )
+        with (
+            patch(LOG_PATCH) as mock_log,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await query_events(request=request, user_id=USER_ID)
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == END_DATE_ERROR
+        mock_log.set.assert_not_called()
+        mock_svc.get_calendar_events.assert_not_awaited()
 
     async def test_query_events_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
@@ -777,6 +825,23 @@ class TestBatchCreateEvents:
         mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "batch_create"})
         mock_log.warning.assert_not_called()
 
+    async def test_batch_create_log_failure_returns_500(self, client: AsyncClient) -> None:
+        """Per-item service errors are collected, so the outer 500 guard only
+        fires for failures outside the loop (here: the log emission). Pin the
+        exact 500 + detail and that no event was ever created."""
+        with (
+            patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
+            patch(LOG_PATCH) as mock_log,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
+        ):
+            mock_log.set.side_effect = Exception("log sink down")
+            resp = await client.post(
+                f"{API}/calendar/events/batch", json={"events": [self.EVENT_1]}
+            )
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "log sink down"
+        mock_svc.create_calendar_event.assert_not_awaited()
+
     async def test_batch_create_partial_failure(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
@@ -867,6 +932,23 @@ class TestBatchUpdateEvents:
         mock_update.assert_awaited_once_with(update_event_model("ev-001", "Updated"), USER_ID)
         mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "batch_update"})
 
+    async def test_batch_update_log_failure_returns_500(self, client: AsyncClient) -> None:
+        """Failures outside the per-item loop (log emission) hit the outer 500
+        guard instead of being collected as a failed item."""
+        with (
+            patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
+            patch(LOG_PATCH) as mock_log,
+            patch(UPDATE_PATCH, new_callable=AsyncMock) as mock_update,
+        ):
+            mock_log.set.side_effect = Exception("log sink down")
+            resp = await client.put(
+                f"{API}/calendar/events/batch",
+                json={"events": [self.UPD_1]},
+            )
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "log sink down"
+        mock_update.assert_not_awaited()
+
     async def test_batch_update_partial_failure(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
@@ -937,6 +1019,24 @@ class TestBatchDeleteEvents:
         }
         mock_delete.assert_awaited_once_with(delete_event_model("ev-001"), USER_ID)
         mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "batch_delete"})
+
+    async def test_batch_delete_log_failure_returns_500(self, client: AsyncClient) -> None:
+        """Failures outside the per-item loop (log emission) hit the outer 500
+        guard instead of being collected as a failed item."""
+        with (
+            patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
+            patch(LOG_PATCH) as mock_log,
+            patch(DELETE_PATCH, new_callable=AsyncMock) as mock_delete,
+        ):
+            mock_log.set.side_effect = Exception("log sink down")
+            resp = await client.request(
+                "DELETE",
+                f"{API}/calendar/events/batch",
+                json={"events": [self.DEL_1]},
+            )
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "log sink down"
+        mock_delete.assert_not_awaited()
 
     async def test_batch_delete_partial_failure(self, client: AsyncClient) -> None:
         with (
