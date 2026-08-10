@@ -21,11 +21,30 @@ from langgraph.errors import GraphInterrupt
 import pytest
 
 from app.constants.hil import HIL_STATUS_KWARG
-from app.models.hil_models import HILApprovalStatus
+from app.constants.log_tags import LogTag
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.services.hil.approvals_store import approval_id_for
+from app.services.hil.bridge import ApprovalOutcome, build_summary
+from app.services.hil.gate import GateContext, _outcome_from_record, read_gate_context
 from app.services.hil.intent import IntentDecision
-from app.services.hil.utils import approval_window_label
+from app.services.hil.prompts import (
+    DENIED_TEMPLATE,
+    GATE_ERROR_TEMPLATE,
+    TIMEOUT_TEMPLATE,
+    UNPAUSABLE_DENIAL_TEMPLATE,
+)
+from app.services.hil.utils import GatedCall, PriorCall, approval_window_label
 
-from .conftest import make_record, make_request, run_through_gate
+from .conftest import (
+    CONVERSATION_ID,
+    STREAM_ID,
+    USER_ID,
+    ai_message_with_calls,
+    make_record,
+    make_request,
+    make_tool,
+    run_through_gate,
+)
 
 MODULE = "app.services.hil.gate"
 
@@ -53,16 +72,16 @@ def gate():
     earlier decline, no integration lookup."""
     log: list[str] = []
     with (
-        patch(f"{MODULE}.log"),
+        patch(f"{MODULE}.log") as logger,
         patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=None)) as approval,
-        patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=None)),
+        patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=None)) as recall,
         patch(f"{MODULE}.remember_declined_call", new=AsyncMock()) as remember,
-        patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value=None)),
+        patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value=None)) as integration,
         patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
         patch(f"{MODULE}.publish_decision", new=AsyncMock()) as outcome,
         patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")) as policy,
         patch(f"{MODULE}.judge_intent", new=AsyncMock()) as judge,
-        patch(f"{MODULE}.has_pausing_sibling", new=AsyncMock(return_value=False)),
+        patch(f"{MODULE}.has_pausing_sibling", new=AsyncMock(return_value=False)) as sibling,
         # Raises, exactly as LangGraph's does: it is control flow that EXITS the run,
         # not a call that returns a decision. A mock that returned one would let
         # ``settle_message_approvals`` spin forever on a still-pending approval.
@@ -81,9 +100,13 @@ def gate():
         receipt.side_effect = _record_receipt
         yield {
             "log": log,
+            "logger": logger,
             "approval": approval,
             "policy": policy,
             "judge": judge,
+            "sibling": sibling,
+            "recall": recall,
+            "integration": integration,
             "interrupt": interrupt,
             "card": request_card,
             "receipt": receipt,
@@ -106,16 +129,22 @@ async def asks(gate: dict, request: Any) -> None:
         await run_through_gate(request, Handler([]))
 
 
-def decides(gate: dict, *, status: str, scope: str = "once", feedback: str | None = None) -> None:
+def decides(
+    gate: dict, *, status: str, scope: str = "once", feedback: str | None = None
+) -> HILApprovalRecord:
     """The user's decision, as the gate reads it: a SETTLED RECORD.
 
     Never a resume payload. ``resolve_approval`` writes the decision to Mongo and the
     ``Command(resume=...)`` that follows is only a wake-up whose value is ignored — so a
     test that fed a payload would be exercising a path production no longer has.
+
+    Returns the record, so a test can assert it is the exact object the gate acts on.
     """
-    gate["approval"].return_value = make_record(
+    record = make_record(
         status=HILApprovalStatus(status), scope=scope, feedback=feedback
     )
+    gate["approval"].return_value = record
+    return record
 
 
 def status_of(result: ToolMessage) -> str:
@@ -126,13 +155,30 @@ class TestApproveJourney:
     async def test_an_approval_actually_reaches_the_tool(self, gate: dict) -> None:
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="approved", scope="once")
+        decides(gate, status="approved", scope="once", feedback="go ahead")
 
         result = await run_through_gate(make_request(), handler)
 
         assert handler.runs == 1
         assert result.content == "the tool really ran"
         assert gate["log"] == ["card", "handler"]
+
+    async def test_the_decision_is_published_exactly_as_the_record_holds_it(self, gate: dict) -> None:
+        # The record is the decision — the resume payload is a wake-up whose value is
+        # ignored. Publishing a different status or dropping the user's feedback would
+        # tell the client something the record does not say.
+        handler = Handler(gate["log"])
+        await asks(gate, make_request())
+        record = decides(gate, status="approved", scope="once", feedback="go ahead")
+
+        await run_through_gate(make_request(), handler)
+
+        gate["outcome"].assert_awaited_once_with(
+            record,
+            HILApprovalStatus.APPROVED,
+            stream_id=STREAM_ID,
+            feedback="go ahead",
+        )
 
     async def test_the_card_is_published_before_the_pause_not_after(self, gate: dict) -> None:
         # The pause checkpoints and EXITS the process. Anything published after
@@ -157,6 +203,7 @@ class TestApproveJourney:
         assert handler.runs == 1
         gate["override"].assert_awaited_once()
         args = gate["override"].await_args.args
+        assert args[0] == USER_ID, "the override must be filed against the caller, not nobody"
         assert args[1] == "send_email"
         assert args[2] is False, "always_tool must record 'never ask', not 'always ask'"
 
@@ -190,9 +237,15 @@ class TestDenyJourney:
 
         assert handler.runs == 0
         assert status_of(result) == "denied"
-        assert "wrong recipient" in result.content, (
+        assert result.content == DENIED_TEMPLATE.format(
+            tool="send_email",
+            feedback=" The user said: 'wrong recipient'.",
+            waited=approval_window_label(),
+        ), (
             "the user's correction must reach the model, or a decline is a dead end"
         )
+        assert result.name == "send_email"
+        assert result.tool_call_id == "call-1"
 
     async def test_a_bare_decline_still_forbids_routing_around_the_gate(self, gate: dict) -> None:
         # With no feedback, "adjust your approach" reads as "find another way" — the one
@@ -204,20 +257,31 @@ class TestDenyJourney:
         result = await run_through_gate(make_request(), handler)
 
         assert handler.runs == 0
-        assert "another tool" in result.content
+        # A bare decline must still name the tool that was refused — a message about
+        # "another tool" is the routing-around license this test forbids.
+        assert result.content == DENIED_TEMPLATE.format(
+            tool="send_email",
+            feedback="",
+            waited=approval_window_label(),
+        )
+        assert result.name == "send_email"
+        assert result.tool_call_id == "call-1"
 
     async def test_a_denial_is_remembered_so_a_retry_is_not_re_asked(self, gate: dict) -> None:
         # The executor never learns its subagent was declined, so it retries. Re-prompting
         # the user for the same call is the loop this kills.
         handler = Handler(gate["log"])
-        await asks(gate, make_request())
+        request = make_request(args={"to": "bob@example.com"})
+        await asks(gate, request)
         decides(gate, status="denied", feedback="no")
 
-        await run_through_gate(make_request(), handler)
+        await run_through_gate(request, handler)
 
         gate["remember"].assert_awaited_once()
         args = gate["remember"].await_args.args
+        assert args[0] == STREAM_ID, "the memory must be scoped to this run's stream"
         assert args[1] == "send_email"
+        assert args[2] == {"to": "bob@example.com"}, "the exact call must be remembered, not a lookalike"
         assert args[3] == "no", "the original feedback must ride along with the memory"
 
 
@@ -233,7 +297,13 @@ class TestExpiryJourney:
 
         assert handler.runs == 0
         assert status_of(result) == "timeout"
-        assert "expired" in result.content
+        assert result.content == TIMEOUT_TEMPLATE.format(
+            tool="send_email",
+            feedback="",
+            waited=approval_window_label(),
+        )
+        assert result.name == "send_email"
+        assert result.tool_call_id == "call-1"
 
     async def test_the_model_is_told_how_long_it_waited(self, gate: dict) -> None:
         handler = Handler(gate["log"])
@@ -365,6 +435,13 @@ class TestUnpausableRun:
 
         assert handler.runs == 0
         assert status_of(result) == "denied"
+        assert result.content == UNPAUSABLE_DENIAL_TEMPLATE.format(tool="send_email")
+        assert result.name == "send_email"
+        assert result.tool_call_id == "call-1"
+        gate["logger"].info.assert_called_once_with(
+            f"{LogTag.HIL} Denying gated : run cannot pause for approval",
+            name="send_email",
+        )
 
     async def test_nobody_is_asked_and_nothing_is_parked(self, gate: dict) -> None:
         # Publishing a card to a user who cannot answer it, or pausing a run nothing can
@@ -384,3 +461,370 @@ class TestUnpausableRun:
 
         assert handler.runs == 1
         assert result.content == "the tool really ran"
+
+
+class TestCardPayload:
+    """The pause that parks the run must carry the full identity of the card the user
+    sees — a payload missing any field strands the resume UI, and the values are what
+    the client matches the user's answer against."""
+
+    async def test_the_pause_carries_the_approval_identity(self, gate: dict) -> None:
+        gate["integration"].return_value = "gmail"
+        request = make_request(args={"to": "bob@example.com"})
+        with pytest.raises(GraphInterrupt):
+            await run_through_gate(request, Handler([]))
+
+        gate["interrupt"].assert_called_once_with(
+            {
+                "type": "hil_approval",
+                "approval_id": approval_id_for(CONVERSATION_ID, "call-1"),
+                "tool_name": "send_email",
+                "summary": build_summary("send_email", {"to": "bob@example.com"}, "gmail"),
+                "integration_name": "gmail",
+            }
+        )
+
+    async def test_the_record_is_read_under_the_calls_own_approval_id(self, gate: dict) -> None:
+        # The approval id is derived from conversation + call id — deterministic across
+        # replays, so the SAME record is re-read on resume (a fresh id would orphan the
+        # card the user already answered).
+        request = make_request(args={"to": "bob@example.com"})
+        with pytest.raises(GraphInterrupt):
+            await run_through_gate(request, Handler([]))
+
+        gate["approval"].assert_awaited_once_with(approval_id_for(CONVERSATION_ID, "call-1"))
+        gate["policy"].assert_awaited_once_with(request, USER_ID, "send_email")
+        gate["integration"].assert_awaited_once_with("send_email")
+
+
+class TestCardContents:
+    """The card is the only thing the user answers — it must name the call, its args,
+    and where the decision will be filed, or an approval would be orphaned."""
+
+    async def test_the_card_carries_the_call_args_and_identity(self, gate: dict) -> None:
+        request = make_request(args={"to": "bob@example.com"})
+        with pytest.raises(GraphInterrupt):
+            await run_through_gate(request, Handler([]))
+
+        gate["card"].assert_awaited_once_with(
+            approval_id=approval_id_for(CONVERSATION_ID, "call-1"),
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            tool_call=GatedCall(name="send_email", id="call-1", args={"to": "bob@example.com"}),
+            summary=build_summary("send_email", {"to": "bob@example.com"}, None),
+            integration_name=None,
+        )
+
+    async def test_an_integration_name_rides_onto_the_card_and_summary(self, gate: dict) -> None:
+        gate["integration"].return_value = "gmail"
+        request = make_request(args={"to": "bob@example.com"})
+        with pytest.raises(GraphInterrupt):
+            await run_through_gate(request, Handler([]))
+
+        gate["card"].assert_awaited_once_with(
+            approval_id=approval_id_for(CONVERSATION_ID, "call-1"),
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            tool_call=GatedCall(name="send_email", id="call-1", args={"to": "bob@example.com"}),
+            summary=build_summary("send_email", {"to": "bob@example.com"}, "gmail"),
+            integration_name="gmail",
+        )
+
+
+class TestResumedWithoutDecision:
+    """The resume wake-up arrived but the record still holds no decision. The gate must
+    refuse — clearing it would run the call unapproved, and re-pausing would loop."""
+
+    async def test_a_resume_with_no_record_denies_the_call(self, gate: dict) -> None:
+        # First pass pauses (the raise). The resume wake-up makes interrupt() RETURN —
+        # exactly LangGraph's contract — and the record still says nothing.
+        gate["interrupt"].side_effect = [GraphInterrupt(()), None]
+        with pytest.raises(GraphInterrupt):
+            await run_through_gate(make_request(), Handler([]))
+
+        result = await run_through_gate(make_request(), Handler([]))
+
+        assert status_of(result) == "denied"
+        assert result.content == UNPAUSABLE_DENIAL_TEMPLATE.format(tool="send_email")
+        assert result.name == "send_email"
+        assert result.tool_call_id == "call-1"
+        gate["logger"].error.assert_called_once_with(
+            f"{LogTag.HIL} resumed with no decision on its record",
+            approval_id=approval_id_for(CONVERSATION_ID, "call-1"),
+            tool_name="send_email",
+        )
+
+
+class TestDeclinedRetry:
+    """A RETRY of what the user already declined this turn must be auto-denied with
+    their original feedback — re-asking is the loop the decline memory kills."""
+
+    async def test_a_retry_is_auto_denied_with_the_original_feedback(self, gate: dict) -> None:
+        gate["recall"].return_value = ApprovalOutcome(
+            status=HILApprovalStatus.DENIED, feedback="no", scope="once"
+        )
+        request = make_request(args={"to": "bob@example.com"})
+
+        result = await run_through_gate(request, Handler([]))
+
+        assert status_of(result) == "denied"
+        assert result.content == DENIED_TEMPLATE.format(
+            tool="send_email",
+            feedback=" The user said: 'no'.",
+            waited=approval_window_label(),
+        )
+        assert result.name == "send_email"
+        gate["recall"].assert_awaited_once_with(STREAM_ID, "send_email", {"to": "bob@example.com"})
+        gate["logger"].info.assert_called_once_with(
+            f"{LogTag.HIL} auto-denying : declined earlier this turn", name="send_email"
+        )
+        gate["card"].assert_not_awaited()
+        gate["interrupt"].assert_not_called()
+        gate["judge"].assert_not_awaited()
+
+
+class TestReceiptContents:
+    """The auto-approval receipt is the accountability record — it must carry the call,
+    the identity, and the judge's reason, or a user seeing it cannot tell WHAT ran."""
+
+    async def test_the_receipt_carries_call_identity_and_reason(self, gate: dict) -> None:
+        gate["policy"].return_value = "auto"
+        gate["judge"].return_value = IntentDecision(True, "you said send the deck to bob")
+        gate["integration"].return_value = "gmail"
+        request = make_request(
+            tool=make_tool(),
+            args={"to": "bob@example.com"},
+            messages=[
+                ai_message_with_calls(
+                    {"id": "call-1", "name": "send_email", "args": {"to": "x@y"}},
+                    {"id": "call-0", "name": "search_memory", "args": {"q": "deck"}},
+                )
+            ],
+        )
+
+        await run_through_gate(request, Handler([]))
+
+        gate["receipt"].assert_awaited_once_with(
+            approval_id=approval_id_for(CONVERSATION_ID, "call-1"),
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            tool_call=GatedCall(name="send_email", id="call-1", args={"to": "bob@example.com"}),
+            summary=build_summary("send_email", {"to": "bob@example.com"}, "gmail"),
+            integration_name="gmail",
+            reason="you said send the deck to bob",
+        )
+        gate["logger"].info.assert_called_once_with(
+            f"{LogTag.HIL} auto-approved", call_name="send_email", reason="you said send the deck to bob"
+        )
+
+    async def test_the_judge_sees_the_call_its_tool_and_only_real_prior_actions(self, gate: dict) -> None:
+        # The judge decides whether the user's request authorizes THIS call — so it must
+        # see the call itself, the tool's description, and prior ACTIONS only (the
+        # pending call's own entry is excluded by id; the agent's prose is never read).
+        gate["policy"].return_value = "auto"
+        gate["judge"].return_value = IntentDecision(True, "ok")
+        request = make_request(
+            tool=make_tool(),
+            args={"to": "bob@example.com"},
+            messages=[
+                ai_message_with_calls(
+                    {"id": "call-1", "name": "send_email", "args": {"to": "x@y"}},
+                    {"id": "call-0", "name": "search_memory", "args": {"q": "deck"}},
+                )
+            ],
+        )
+
+        await run_through_gate(request, Handler([]))
+
+        assert gate["judge"].await_args.kwargs == {
+            "user_id": USER_ID,
+            "user_messages": ["send the deck to bob"],
+            "tool_name": "send_email",
+            "description": "Send an email.",
+            "args": {"to": "bob@example.com"},
+            "summary": build_summary("send_email", {"to": "bob@example.com"}, None),
+            "prior_calls": [PriorCall(name="search_memory", args={"q": "deck"})],
+        }
+        gate["sibling"].assert_awaited_once_with(request, USER_ID, "call-1")
+
+
+class TestPausingSibling:
+    """When a sibling call will pause, this node replays — and the judge is the one
+    thing in it that is not idempotent. No judge call, no receipt, just the card."""
+
+    async def test_a_pausing_sibling_skips_the_judge_and_asks(self, gate: dict) -> None:
+        gate["policy"].return_value = "auto"
+        gate["sibling"].return_value = True
+        request = make_request()
+
+        with pytest.raises(GraphInterrupt):
+            await run_through_gate(request, Handler([]))
+
+        gate["judge"].assert_not_awaited()
+        gate["receipt"].assert_not_awaited()
+        gate["sibling"].assert_awaited_once_with(request, USER_ID, "call-1")
+        gate["logger"].info.assert_called_once_with(
+            f"{LogTag.HIL} not auto-approving : a sibling call may pause", name="send_email"
+        )
+
+
+class TestPendingRecordBlocksAuto:
+    """A card is already up for this call — the user has been asked, and the answer is
+    theirs to give. The judge must not spend a call or pre-empt them."""
+
+    async def test_a_pending_record_skips_the_judge_and_asks(self, gate: dict) -> None:
+        gate["policy"].return_value = "auto"
+        gate["approval"].return_value = make_record(status="pending")
+
+        with pytest.raises(GraphInterrupt):
+            await run_through_gate(make_request(), Handler([]))
+
+        gate["judge"].assert_not_awaited()
+        gate["receipt"].assert_not_awaited()
+        gate["card"].assert_awaited_once()
+
+
+class TestGateFailure:
+    """The gate's own machinery broke. Fail closed: the tool must not run, the user was
+    never asked, and the model is told the system errored — not that they declined."""
+
+    async def test_a_policy_break_fails_closed(self, gate: dict) -> None:
+        gate["policy"].side_effect = RuntimeError("policy broke")
+
+        result = await run_through_gate(make_request(), Handler([]))
+
+        assert status_of(result) == "error"
+        assert result.content == GATE_ERROR_TEMPLATE.format(tool="send_email")
+        assert result.name == "send_email"
+        assert result.tool_call_id == "call-1"
+        gate["logger"].error.assert_called_once_with(
+            f"{LogTag.HIL} Gate check failed for ; denying",
+            name="send_email",
+            error="policy broke",
+            error_type="RuntimeError",
+        )
+
+
+class TestPublishFailure:
+    """Publishing the card broke. Same fail-closed contract as the policy break: the
+    call is denied with an error, and the failure is logged."""
+
+    async def test_a_card_publish_break_fails_closed(self, gate: dict) -> None:
+        gate["card"].side_effect = RuntimeError("card broke")
+
+        result = await run_through_gate(make_request(), Handler([]))
+
+        assert status_of(result) == "error"
+        assert result.content == GATE_ERROR_TEMPLATE.format(tool="send_email")
+        gate["logger"].error.assert_called_once_with(
+            f"{LogTag.HIL} Could not publish approval for ; denying",
+            name="send_email",
+            error="card broke",
+            error_type="RuntimeError",
+        )
+
+
+class TestOutcomeFromRecord:
+    """The record is the one durable copy of the decision — reading it wrong is the
+    only way a settled approval could be misapplied."""
+
+    def test_auto_approved_reads_as_a_plain_approval(self) -> None:
+        outcome = _outcome_from_record(
+            make_record(status="auto_approved", feedback="ok", scope="once")
+        )
+
+        assert outcome.status is HILApprovalStatus.APPROVED
+        assert outcome.feedback == "ok"
+        assert outcome.scope == "once"
+
+    def test_abandoned_reads_as_a_denial(self) -> None:
+        outcome = _outcome_from_record(make_record(status="abandoned", feedback="never mind"))
+
+        assert outcome.status is HILApprovalStatus.DENIED
+        assert outcome.feedback == "never mind"
+
+    def test_a_timeout_stays_a_timeout(self) -> None:
+        outcome = _outcome_from_record(make_record(status="timeout"))
+
+        assert outcome.status is HILApprovalStatus.TIMEOUT
+
+    def test_a_pending_record_stays_pending(self) -> None:
+        outcome = _outcome_from_record(make_record(status="pending"))
+
+        assert outcome.status is HILApprovalStatus.PENDING
+
+
+class TestReadGateContext:
+    """The run's approval identity. No identity → no gate at all; a background run →
+    an identity that cannot pause."""
+
+    @pytest.mark.parametrize("missing", ["stream_id", "user_id", "conversation_id"])
+    def test_a_missing_identity_field_clears_the_gate(self, missing: str) -> None:
+        configurable = {
+            "stream_id": STREAM_ID,
+            "user_id": USER_ID,
+            "conversation_id": CONVERSATION_ID,
+            "user_messages": ["send the deck to bob"],
+        }
+        del configurable[missing]
+
+        assert read_gate_context(make_request(configurable=configurable)) is None
+
+    def test_the_context_carries_the_runs_identity(self) -> None:
+        context = read_gate_context(
+            make_request(
+                configurable={
+                    "stream_id": STREAM_ID,
+                    "user_id": USER_ID,
+                    "conversation_id": CONVERSATION_ID,
+                    "execution_mode": "interactive",
+                    "user_messages": ["send the deck", 42, "to bob"],
+                }
+            )
+        )
+
+        assert context == GateContext(
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            user_messages=["send the deck", "to bob"],
+            pausable=True,
+        )
+
+    def test_background_runs_are_returned_but_not_pausable(self) -> None:
+        context = read_gate_context(
+            make_request(
+                configurable={
+                    "stream_id": STREAM_ID,
+                    "user_id": USER_ID,
+                    "conversation_id": CONVERSATION_ID,
+                    "execution_mode": "background",
+                    "user_messages": "not-a-list",
+                }
+            )
+        )
+
+        assert context == GateContext(
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            user_messages=[],
+            pausable=False,
+        )
+
+    def test_a_run_without_execution_mode_is_pausable(self) -> None:
+        context = read_gate_context(
+            make_request(
+                configurable={
+                    "stream_id": STREAM_ID,
+                    "user_id": USER_ID,
+                    "conversation_id": CONVERSATION_ID,
+                }
+            )
+        )
+
+        assert context.pausable is True
+        assert context.user_messages == []
