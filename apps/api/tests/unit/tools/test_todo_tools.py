@@ -18,6 +18,7 @@ from uuid import UUID
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool
+import pytest
 
 from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.agents.tools.todo_tools import (
@@ -149,6 +150,20 @@ class TestEmitTodoProgress:
         mock_log.warning.assert_called_once_with(
             "[TOOL] Stream writer not available for todo_progress", error_type="ValueError"
         )
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.log")
+    def test_base_exception_propagates_without_logging(
+        self, mock_log: MagicMock, mock_writer_factory: MagicMock
+    ) -> None:
+        """The guard is `except Exception` — BaseExceptions must propagate."""
+        writer = MagicMock(side_effect=KeyboardInterrupt())
+        mock_writer_factory.return_value = writer
+
+        with pytest.raises(KeyboardInterrupt):
+            _emit_todo_progress([], "executor")
+
+        mock_log.warning.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
