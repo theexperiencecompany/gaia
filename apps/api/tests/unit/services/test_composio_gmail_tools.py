@@ -25,6 +25,7 @@ from app.models.composio_schemas.gmail import (
 )
 from app.services.composio.custom_tools import gmail_tools
 from app.services.composio.custom_tools.gmail_constants import (
+    FETCH_CONCURRENCY,
     GMAIL_API_BASE,
     GMAIL_BATCH_MODIFY_CAP,
     GMAIL_FORMAT_FULL,
@@ -110,6 +111,30 @@ def _register_and_get_tools() -> dict[str, Any]:
     mock_composio.tools.custom_tool = MagicMock(side_effect=custom_tool_decorator)
     register_gmail_custom_tools(mock_composio)
     return tools
+
+
+class _RecordingExecutor:
+    """Thread-pool stand-in for hermetic unit tests.
+
+    Records the ``max_workers`` bound the module constructs the pool with
+    (FETCH_CONCURRENCY is the deliberate Gmail-proxy concurrency cap) and
+    runs ``map`` synchronously instead of spawning real threads.
+    """
+
+    instances: ClassVar[list["_RecordingExecutor"]] = []
+
+    def __init__(self, max_workers: int | None = None):
+        self.max_workers = max_workers
+        _RecordingExecutor.instances.append(self)
+
+    def __enter__(self) -> "_RecordingExecutor":
+        return self
+
+    def __exit__(self, *exc_info: Any) -> bool:
+        return False
+
+    def map(self, fn: Any, iterable: Any) -> list[Any]:
+        return [fn(item) for item in iterable]
 
 
 # ---------------------------------------------------------------------------
@@ -1438,6 +1463,52 @@ class TestAggregatePages:
             _, result = self._run(None)
         assert result == ([{"id": "m2"}], False)
 
+    def test_executor_uses_fetch_concurrency_bound(self):
+        """The per-message fan-out is bounded by FETCH_CONCURRENCY — the
+        deliberate cap on concurrent Gmail-proxy fetches."""
+        _RecordingExecutor.instances.clear()
+        with (
+            patch.object(
+                gmail_tools,
+                "_fetch_list_page",
+                return_value=self._page(messages=[{"id": "m1"}]),
+            ),
+            patch.object(gmail_tools, "_fetch_message_view", return_value={"id": "m1"}),
+            patch.object(gmail_tools, "ThreadPoolExecutor", _RecordingExecutor),
+        ):
+            self._run(None)
+        assert _RecordingExecutor.instances[-1].max_workers == FETCH_CONCURRENCY
+
+    def test_trimmed_page_all_views_none_still_truncated(self):
+        """A page trimmed at the cap still reports truncated=True even when
+        every fetched view comes back None (dropped weird responses)."""
+        with (
+            patch.object(
+                gmail_tools,
+                "_fetch_list_page",
+                return_value=self._page(messages=[{"id": f"m{i}"} for i in range(4)]),
+            ),
+            patch.object(gmail_tools, "_fetch_message_view", return_value=None) as view,
+        ):
+            _, result = self._run(None, max_messages=2)
+        assert result == ([], True)
+        assert view.call_count == 2
+
+    def test_exact_remaining_page_all_views_none_not_truncated(self):
+        """A page whose id count exactly equals the remaining budget is NOT
+        trimmed, so an all-None page does not set the truncated flag — the
+        cap was never actually hit."""
+        with (
+            patch.object(
+                gmail_tools,
+                "_fetch_list_page",
+                return_value=self._page(messages=[{"id": f"m{i}"} for i in range(3)]),
+            ),
+            patch.object(gmail_tools, "_fetch_message_view", return_value=None),
+        ):
+            _, result = self._run(None, max_messages=3)
+        assert result == ([], False)
+
     def test_per_message_error_raises_partial(self):
         with (
             patch.object(
@@ -1471,6 +1542,31 @@ class TestOffloadPath:
             path = _offload_path()
         assert path == "gmail/inbox_summary_20240810_123456_12345678.jsonl"
 
+    def test_timestamp_is_utc(self):
+        """The offload filename's timestamp must come from ``now(datetime.UTC)``
+        — a naive local ``now()`` would embed the machine's offset into the
+        session path."""
+        captured: dict[str, Any] = {}
+
+        class _FakeDatetime:
+            @classmethod
+            def now(cls, tz=None):
+                captured["tz"] = tz
+                return datetime.datetime(2024, 8, 10, 12, 34, 56)
+
+        with (
+            patch.object(gmail_tools, "datetime") as fake_mod,
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.uuid.uuid4",
+                return_value=uuid.UUID("12345678-1234-1234-1234-123456789012"),
+            ),
+        ):
+            fake_mod.datetime = _FakeDatetime
+            fake_mod.UTC = datetime.UTC
+            path = _offload_path()
+        assert captured["tz"] is datetime.UTC
+        assert path == "gmail/inbox_summary_20240810_123456_12345678.jsonl"
+
 
 class TestHumanSize:
     def test_bytes_under_1k(self):
@@ -1488,6 +1584,10 @@ class TestHumanSize:
 
     def test_mb_fraction(self):
         assert _human_size(5767168) == "5.5 MB"
+
+    def test_gibibyte_is_exactly_1024_mb(self):
+        # 1 GiB — pins the 1024*1024 divisor: a 1025 slip reads 1023.0 MB.
+        assert _human_size(1024**3) == "1024.0 MB"
 
 
 class TestBuildReadPlan:
@@ -1692,6 +1792,15 @@ class TestFormatOffloadResult:
         assert len(result["inline_preview"]) == OFFLOAD_PREVIEW_SIZE
         written = writer.call_args.kwargs["content"]
         assert len(written.splitlines()) == 15
+
+    def test_non_serializable_values_serialized_as_str(self):
+        # Views can carry non-JSON values (e.g. dates); the offload writer
+        # must fall back to str() instead of raising TypeError.
+        views = [{"id": "m1", "time": datetime.date(2024, 6, 18)}]
+        result, writer = self._run(views=views, fields=["id", "time"])
+        content = writer.call_args.kwargs["content"]
+        assert json.loads(content) == {"id": "m1", "time": "2024-06-18"}
+        assert result["file_size_bytes"] == len(content.encode("utf-8"))
 
 
 class TestEmitEmailCard:
@@ -2033,6 +2142,29 @@ class TestSummarize:
             _summarize("u1", FetchMessagesInput(fields=["id"], max_messages=5))
         assert agg.call_args.kwargs["effective_max"] == 5
 
+    def test_non_serializable_message_values_inline(self):
+        # The size probe must serialize with default=str: projected views can
+        # carry non-JSON values (dates) and the tool still has to answer.
+        view = {"id": datetime.date(2024, 6, 18)}
+        with (
+            patch.object(gmail_tools, "_current_config", return_value={}),
+            patch.object(
+                gmail_tools,
+                "home_timezone_from_config",
+                return_value=Timezone.utc(),
+            ),
+            patch.object(gmail_tools, "_aggregate_pages", return_value=([view], False)),
+            patch.object(gmail_tools, "_emit_email_card"),
+        ):
+            result = _summarize(
+                "u1", FetchMessagesInput(fields=["id"], body_processing="none")
+            )
+        assert result == {
+            "fetched_count": 1,
+            "truncated": False,
+            "messages": [{"id": datetime.date(2024, 6, 18)}],
+        }
+
 
 class TestNoSessionInlineFallback:
     def test_truncated_with_total_matched(self):
@@ -2336,6 +2468,17 @@ class TestAggregateThreads:
             user_id="u1",
         )
 
+    def test_executor_uses_fetch_concurrency_bound(self):
+        """Thread fetches fan out over a pool bounded by FETCH_CONCURRENCY."""
+        request = self._run()
+        _RecordingExecutor.instances.clear()
+        with (
+            patch.object(gmail_tools, "_fetch_one_thread", return_value=[{"id": "t1m1"}]),
+            patch.object(gmail_tools, "ThreadPoolExecutor", _RecordingExecutor),
+        ):
+            _aggregate_threads("u1", request)
+        assert _RecordingExecutor.instances[-1].max_workers == FETCH_CONCURRENCY
+
 
 class TestSummarizeThreads:
     THREADS: ClassVar[list[dict[str, Any]]] = [
@@ -2523,6 +2666,27 @@ class TestSummarizeThreads:
             result = _summarize_threads("u1", request)
         assert result["truncated"] is True
         assert "total_matched" not in result
+
+    def test_non_serializable_thread_values_inline(self):
+        # Same default=str contract on the thread path: a grouped thread view
+        # with a non-JSON value must size-check, not raise.
+        flat = [{"id": datetime.date(2024, 6, 18)}]
+        threads = [{"id": "t1", "message_count": 1, "messages": flat}]
+        request = FetchThreadInput(thread_ids=["t1"], fields=["id"], body_processing="none")
+        with (
+            patch.object(gmail_tools, "_current_config", return_value={}),
+            patch.object(gmail_tools, "_aggregate_threads", return_value=(threads, flat, False)),
+            patch.object(gmail_tools, "_emit_email_card"),
+        ):
+            result = _summarize_threads("u1", request)
+        assert result["fetched_threads"] == 1
+        assert result["threads"] == [
+            {
+                "id": "t1",
+                "message_count": 1,
+                "messages": [{"id": datetime.date(2024, 6, 18)}],
+            }
+        ]
 
 
 # ---------------------------------------------------------------------------
