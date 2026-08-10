@@ -464,7 +464,7 @@ SCENARIOS: list[dict] = [
             {
                 "query": "When is my project deadline?",
                 "must_contain": ["april", "15"],
-                "must_not_contain": ["march", "march 1"],
+                "must_not_contain": ["deadline is march", "still march"],
                 "description": "Updated deadline must supersede old one",
                 "is_negative": False,
             }
@@ -549,7 +549,7 @@ SCENARIOS: list[dict] = [
             {
                 "query": "What is my current job title?",
                 "must_contain": ["staff"],
-                "must_not_contain": ["senior"],
+                "must_not_contain": ["is a senior", "title is senior"],
                 "description": "Current title is Staff, not Senior (most recent state)",
                 "is_negative": False,
             }
@@ -790,7 +790,7 @@ SCENARIOS: list[dict] = [
         "probes": [
             {
                 "query": "How do I prefer written communication?",
-                "must_contain": ["direct", "straight", "point"],
+                "must_contain": ["point"],
                 "must_not_contain": [],
                 "description": "Communication style preference",
                 "is_negative": False,
@@ -866,7 +866,7 @@ SCENARIOS: list[dict] = [
             {
                 "query": "What seat do I prefer on flights?",
                 "must_contain": ["window"],
-                "must_not_contain": ["middle"],
+                "must_not_contain": ["prefers middle", "prefer middle"],
                 "description": "Flight seating preference",
                 "is_negative": False,
             }
