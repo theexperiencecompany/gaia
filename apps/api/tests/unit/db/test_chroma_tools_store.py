@@ -76,6 +76,18 @@ def _log_call(mock_log: MagicMock, level: str, fragment: str) -> MagicMock:
     raise AssertionError(f"no log.{level} call containing {fragment!r}")
 
 
+def _assert_batch_log_kwargs(call: MagicMock, batch_index: int, batch_total: int) -> None:
+    """Pin the exact batch-log kwargs, including the int types.
+
+    ``batch_index`` is computed with ``//`` floor division; a ``/`` mutation
+    yields an equal-valued float (``1.0 == 1``), so ``==`` alone cannot tell
+    them apart — the exact type is part of the logged event's contract.
+    """
+    assert call.kwargs == {"batch_index": batch_index, "batch_total": batch_total}
+    assert type(call.kwargs["batch_index"]) is int
+    assert type(call.kwargs["batch_total"]) is int
+
+
 # ---------------------------------------------------------------------------
 # _namespace_equals
 # ---------------------------------------------------------------------------
@@ -555,7 +567,7 @@ class TestExecuteBatchOperations:
         for i, batch_index in enumerate((1, 2, 3), start=1):
             call = mock_log.info.call_args_list[i - 1]
             assert MSG["processed_batch"] in call.args[0]
-            assert call.kwargs == {"batch_index": batch_index, "batch_total": 3}
+            _assert_batch_log_kwargs(call, batch_index, 3)
         final = mock_log.info.call_args_list[-1]
         assert MSG["updated_store"] in final.args[0]
         assert final.kwargs == {"total_ops": 120}
@@ -566,7 +578,7 @@ class TestExecuteBatchOperations:
         with patch("app.db.chroma.chroma_tools_store.log") as mock_log:
             await _execute_batch_operations(store, ops, batch_size=50)
         call = mock_log.info.call_args_list[0]
-        assert call.kwargs == {"batch_index": 1, "batch_total": 2}
+        _assert_batch_log_kwargs(call, 1, 2)
 
     async def test_batch_total_rounds_up(self):
         store = AsyncMock()
@@ -574,7 +586,7 @@ class TestExecuteBatchOperations:
         with patch("app.db.chroma.chroma_tools_store.log") as mock_log:
             await _execute_batch_operations(store, ops, batch_size=50)
         call = mock_log.info.call_args_list[0]
-        assert call.kwargs == {"batch_index": 1, "batch_total": 3}
+        _assert_batch_log_kwargs(call, 1, 3)
 
     async def test_default_batch_size_splits_101_ops_into_3(self):
         store = AsyncMock()
