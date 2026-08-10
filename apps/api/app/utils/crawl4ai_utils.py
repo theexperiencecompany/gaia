@@ -12,6 +12,8 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.search import CRAWL4AI_CLOSE_TIMEOUT_SECONDS, CRAWL4AI_WAIT_UNTIL
+from app.utils.background_tasks import spawn_background_task
+from app.utils.concurrency import loop_bound_semaphore
 from shared.py.wide_events import log
 
 # Tags that are almost never primary content; dropped before markdown conversion.
@@ -80,43 +82,25 @@ def _build_run_config(
 # limit itself is sourced from ``settings.CRAWL4AI_MAX_BROWSERS`` (env-driven,
 # already clamped to a safe minimum); see ``constants/search.py`` for context
 # on why the cap exists.
-_browser_semaphore: asyncio.Semaphore | None = None
-_browser_semaphore_loop: asyncio.AbstractEventLoop | None = None
-
-
 def get_browser_semaphore() -> asyncio.Semaphore:
-    """Return the shared browser semaphore bound to the running loop.
-
-    ``asyncio.Semaphore`` binds to the loop that created its internal futures, so
-    a semaphore built under one loop raises "bound to a different event loop" if
-    awaited under another (e.g. a sync caller that spins up a fresh loop, like
-    the profile crawler). Recreate it whenever the running loop changes.
-    """
-    global _browser_semaphore, _browser_semaphore_loop
-    loop = asyncio.get_running_loop()
-    if _browser_semaphore is None or _browser_semaphore_loop is not loop:
-        _browser_semaphore = asyncio.Semaphore(settings.CRAWL4AI_MAX_BROWSERS)
-        _browser_semaphore_loop = loop
-    return _browser_semaphore
-
-
-# Keeps detached close tasks alive until they finish (standard pattern to stop
-# the event loop garbage-collecting running tasks).
-_pending_close_tasks: set[asyncio.Task[None]] = set()
+    """Return the shared browser semaphore bound to the running loop."""
+    return loop_bound_semaphore("crawl4ai_browser", settings.CRAWL4AI_MAX_BROWSERS)
 
 
 async def _close_crawler(crawler: AsyncWebCrawler, context_name: str) -> None:
     try:
         await crawler.close()
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} {context_name} browser close failed: {e}")
+        log.warning(
+            f"{LogTag.TOOL} browser close failed",
+            context_name=context_name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 def _spawn_shielded_close(crawler: AsyncWebCrawler, context_name: str) -> asyncio.Task[None]:
-    task = asyncio.get_running_loop().create_task(_close_crawler(crawler, context_name))
-    _pending_close_tasks.add(task)
-    task.add_done_callback(_pending_close_tasks.discard)
-    return task
+    return spawn_background_task(_close_crawler(crawler, context_name))
 
 
 @asynccontextmanager
@@ -154,8 +138,9 @@ async def managed_crawler(
             # close() is wedged; it keeps running detached and the reaper
             # collects the driver if it never finishes.
             log.warning(
-                f"{LogTag.TOOL} {context_name} browser close still running after "
-                f"{CRAWL4AI_CLOSE_TIMEOUT_SECONDS:.0f}s; leaving it to finish in background"
+                f"{LogTag.TOOL} browser close still running ; leaving it to finish in background",
+                context_name=context_name,
+                crawl4ai_close_timeout_seconds=CRAWL4AI_CLOSE_TIMEOUT_SECONDS,
             )
 
 
@@ -356,8 +341,9 @@ async def batch_fetch_with_crawl4ai(
             )
     except TimeoutError:
         log.warning(
-            f"{LogTag.TOOL} {context_name} batch timed out after {total_timeout_seconds:.0f}s; "
-            "retrying URLs individually"
+            f"{LogTag.TOOL} batch timed out ; retrying URLs individually",
+            context_name=context_name,
+            total_timeout_seconds=total_timeout_seconds,
         )
         return await _recover_with_single_url_crawls(
             urls,
@@ -372,7 +358,9 @@ async def batch_fetch_with_crawl4ai(
         raise
     except Exception as e:
         error = f"{context_name} batch error: {e}"
-        log.warning(f"{LogTag.TOOL} {error}")
+        log.warning(
+            f"{LogTag.TOOL} batch error", context_name=context_name, error_type=type(e).__name__
+        )
         return {}, dict.fromkeys(urls, error)
 
     requested_by_exact: dict[str, deque[int]] = defaultdict(deque)
@@ -425,13 +413,18 @@ async def batch_fetch_with_crawl4ai(
 
     if len(results) > len(urls):
         log.warning(
-            f"{LogTag.TOOL} {context_name} returned {len(results)} results for {len(urls)} URLs; ignoring extras"
+            f"{LogTag.TOOL} returned results for URLs; ignoring extras",
+            context_name=context_name,
+            results_count=len(results),
+            urls_count=len(urls),
         )
 
     unmatched_count = max(len(unmatched_results) - len(matched_results), 0)
     if unmatched_count:
         log.warning(
-            f"{LogTag.TOOL} {context_name} could not map {unmatched_count} results to requested URLs"
+            f"{LogTag.TOOL} could not map results to requested URLs",
+            context_name=context_name,
+            unmatched_count=unmatched_count,
         )
 
     for url in urls:

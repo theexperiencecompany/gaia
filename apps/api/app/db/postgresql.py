@@ -6,12 +6,13 @@ This module provides SQLAlchemy setup for PostgreSQL database connection.
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import Connection, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.schema import DDL
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -45,6 +46,7 @@ def _ensure_timestamptz_columns(connection: Connection) -> None:
     Idempotent: columns already ``timestamp with time zone`` (or absent on a
     fresh DB, where create_all already made them correct) are skipped.
     """
+    preparer = connection.dialect.identifier_preparer
     for table, column in _TIMESTAMPTZ_COLUMNS:
         data_type = connection.execute(
             text(
@@ -55,11 +57,17 @@ def _ensure_timestamptz_columns(connection: Connection) -> None:
         ).scalar()
         if data_type is None or data_type == "timestamp with time zone":
             continue
-        # Identifiers come from the _TIMESTAMPTZ_COLUMNS whitelist, not user input.
+        # DDL, not text(): identifiers can never be bind parameters in any
+        # dialect, so this is the construct built for the job. They come from
+        # the _TIMESTAMPTZ_COLUMNS whitelist rather than user input, and the
+        # dialect's preparer quotes them so a reserved word or mixed-case name
+        # stays valid.
+        quoted_table = preparer.quote(table)
+        quoted_column = preparer.quote(column)
         connection.execute(
-            text(  # nosec B608
-                f"ALTER TABLE {table} ALTER COLUMN {column} "
-                f"TYPE timestamptz USING {column} AT TIME ZONE 'UTC'"
+            DDL(
+                f"ALTER TABLE {quoted_table} ALTER COLUMN {quoted_column} "
+                f"TYPE timestamptz USING {quoted_column} AT TIME ZONE 'UTC'"
             )
         )
         log.info(f"{LogTag.STARTUP} Promoted column to timestamptz", table=table, column=column)
@@ -85,14 +93,13 @@ def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, Any]]:
         sslmode = sslmode_values[0].lower()
         # asyncpg's `ssl` kwarg accepts True/False/'require'/etc.
         # 'disable' → no SSL; everything else → require SSL.
-        if sslmode in {"disable", "allow", "prefer"}:
-            connect_args["ssl"] = sslmode != "disable"
-        else:
-            connect_args["ssl"] = True
+        connect_args["ssl"] = sslmode != "disable"
 
     rebuilt_query = urlencode([(k, v) for k, vs in query.items() for v in vs])
-    rebuilt = urlunsplit((parts.scheme, parts.netloc, parts.path, rebuilt_query, parts.fragment))
-    url = rebuilt.replace("postgresql://", "postgresql+asyncpg://", 1)
+    # Replace the scheme structurally — a string replace of "postgresql://"
+    # is both fragile and (for the mutator) an equivalent-mutant generator:
+    # the count argument can never matter because the scheme appears once.
+    url = urlunsplit(parts._replace(scheme="postgresql+asyncpg", query=rebuilt_query))
     return url, connect_args
 
 
@@ -111,7 +118,7 @@ async def init_postgresql_engine() -> AsyncEngine:
     """
     log.debug(f"{LogTag.STARTUP} Initializing PostgreSQL async engine")
 
-    postgres_url: str = settings.POSTGRES_URL  # type: ignore
+    postgres_url: str = settings.POSTGRES_URL
     url, connect_args = _adapt_url_for_asyncpg(postgres_url)
 
     engine = create_async_engine(
@@ -145,7 +152,7 @@ async def get_postgresql_engine() -> AsyncEngine:
     engine = await providers.aget("postgresql_engine")
     if engine is None:
         raise RuntimeError("PostgreSQL engine not available")
-    return engine
+    return cast(AsyncEngine, engine)
 
 
 @asynccontextmanager
@@ -175,4 +182,8 @@ async def close_postgresql_db() -> None:
             await engine.dispose()
             log.info(f"{LogTag.STARTUP} PostgreSQL connections closed")
     except Exception as e:
-        log.error(f"{LogTag.STARTUP} Error closing PostgreSQL connections: {e}")
+        log.error(
+            f"{LogTag.STARTUP} Error closing PostgreSQL connections",
+            error=str(e),
+            error_type=type(e).__name__,
+        )

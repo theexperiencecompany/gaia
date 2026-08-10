@@ -2,148 +2,85 @@
 Service module for handling note operations.
 """
 
-from bson import ObjectId
 from fastapi import HTTPException, status
 from langchain_core.documents import Document
 
 from app.db.chroma.chromadb import ChromaClient
-from app.db.mongodb.collections import notes_collection
-from app.db.redis import delete_cache, get_cache, set_cache
-from app.db.utils import serialize_document
-from app.models.notes_models import NoteModel, NoteResponse
+from app.db.repositories.notes import note_repository
+from app.models.notes_models import NoteModel, NoteResponse, NoteUpdate
 from app.utils.notes_utils import insert_note
 from shared.py.wide_events import log
 
 
 async def get_note(note_id: str, user_id: str) -> NoteResponse:
     """Retrieve a single note by its ID for the user."""
-    log.info(f"Retrieving note with id: {note_id} for user: {user_id}")
-    log.set(service="notes_service", operation="get_note", note_id=note_id, user_id=user_id)
-    cache_key = f"note:{user_id}:{note_id}"
-    cached_note = await get_cache(cache_key)
-    if cached_note:
-        log.info("Note found in cache.")
-        return NoteResponse(**cached_note)
-
-    note = await notes_collection.find_one({"_id": ObjectId(note_id), "user_id": user_id})
-    if not note:
-        log.error("Note not found.")
+    log.set(component="notes_service", operation="get_note", note_id=note_id, user_id=user_id)
+    note = await note_repository.get(note_id, user_id=user_id)
+    if note is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
-
-    serialized_note = serialize_document(note)
-    await set_cache(cache_key, serialized_note)
-    log.info("Note retrieved from DB and cached.")
-    return NoteResponse(**serialized_note)
+    return NoteResponse.model_validate(note.model_dump())
 
 
 async def get_all_notes(user_id: str) -> list[NoteResponse]:
     """Retrieve all notes for the user."""
-    log.info(f"Retrieving all notes for user: {user_id}")
-    cache_key = f"notes:{user_id}"
-    cached_notes = await get_cache(cache_key)
-    if cached_notes and "notes" in cached_notes:
-        cached_notes = cached_notes["notes"]
-        log.info("All notes found in cache.")
-        return [NoteResponse(**note) for note in cached_notes]
-
-    notes = await notes_collection.find({"user_id": user_id}).to_list(length=None)
-    serialized_notes = [serialize_document(note) for note in notes]
-
-    # Convert the list to a dictionary for caching
-    notes_dict = {"notes": serialized_notes}
-    await set_cache(cache_key, notes_dict)
-
-    log.info("Notes retrieved from DB and cached.")
-    return [NoteResponse(**note) for note in serialized_notes]
+    log.set(component="notes_service", operation="get_all_notes", user_id=user_id)
+    notes = await note_repository.list_notes(user_id=user_id)
+    return [NoteResponse.model_validate(note.model_dump()) for note in notes]
 
 
 async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteResponse:
     """Update an existing note by its ID for the user."""
-    log.info(f"Updating note with id: {note_id} for user: {user_id}")
-    log.set(
-        service="notes_service",
-        operation="update_note",
-        note_id=note_id,
+    log.set(component="notes_service", operation="update_note", note_id=note_id, user_id=user_id)
+
+    updated = await note_repository.update(
+        note_id,
         user_id=user_id,
+        update=NoteUpdate(content=note.content, plaintext=note.plaintext),
     )
-
-    update_data = {k: v for k, v in note.model_dump().items() if v is not None}
-
-    result = await notes_collection.update_one(
-        {"_id": ObjectId(note_id), "user_id": user_id}, {"$set": update_data}
-    )
-    if result.matched_count == 0:
-        log.error("Note not found for update.")
+    if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
-    # Fetch the complete updated note
-    updated_note = await notes_collection.find_one({"_id": ObjectId(note_id), "user_id": user_id})
+    # Keep the vector index in sync; a ChromaDB hiccup must not fail the write.
+    try:
+        chroma_notes_collection = await ChromaClient.get_langchain_client(collection_name="notes")
+        await chroma_notes_collection.update_document(  # type: ignore[func-returns-value,misc]
+            document_id=note_id,
+            document=Document(page_content=note.plaintext),
+        )
+        log.info("Note with id updated in ChromaDB", note_id=note_id)
+    except Exception as e:
+        log.error(
+            "Failed to update note in ChromaDB",
+            error=str(e),
+            error_type=type(e).__name__,
+            note_id=note_id,
+            user_id=user_id,
+        )
 
-    if not updated_note:
-        raise ValueError(f"Note {note_id} not found after update")
-
-    serialized_note = serialize_document(updated_note)
-
-    # Update ChromaDB with the new content if client is provided
-    if "plaintext" in update_data:
-        try:
-            chroma_notes_collection = await ChromaClient.get_langchain_client(
-                collection_name="notes"
-            )
-
-            # Update the existing document in ChromaDB (no return value expected)
-            await chroma_notes_collection.update_document(  # type: ignore[func-returns-value,misc]
-                document_id=note_id,
-                document=Document(
-                    page_content=update_data["plaintext"],
-                ),
-            )
-            log.info(f"Note with id {note_id} updated in ChromaDB")
-        except Exception as e:
-            # Log the error but don't fail the request if ChromaDB update fails
-            log.error(f"Failed to update note in ChromaDB: {e!s}")
-
-    # Invalidate caches for this note and for all notes of the user
-    await delete_cache(f"note:{user_id}:{note_id}")
-    await delete_cache(f"notes:{user_id}")
-
-    # Update the cache with the new note data
-    await set_cache(f"note:{user_id}:{note_id}", serialized_note)
-    log.info("Note updated and cache refreshed.")
-
-    return NoteResponse(**serialized_note)
+    return NoteResponse.model_validate(updated.model_dump())
 
 
 async def delete_note(note_id: str, user_id: str) -> None:
     """Delete a note by its ID for the user."""
-    log.info(f"Deleting note with id: {note_id} for user: {user_id}")
-    log.set(
-        service="notes_service",
-        operation="delete_note",
-        note_id=note_id,
-        user_id=user_id,
-    )
+    log.set(component="notes_service", operation="delete_note", note_id=note_id, user_id=user_id)
 
-    # Delete from MongoDB
-    result = await notes_collection.delete_one({"_id": ObjectId(note_id), "user_id": user_id})
-    if result.deleted_count == 0:
-        log.error("Note not found for deletion.")
+    deleted = await note_repository.delete(note_id, user_id=user_id)
+    if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
-    # Invalidate caches for this note and for all notes of the user
-    await delete_cache(f"note:{user_id}:{note_id}")
-    await delete_cache(f"notes:{user_id}")
-
-    # Delete from ChromaDB if client is provided
+    # Best-effort vector-index cleanup; a ChromaDB hiccup must not fail the delete.
     try:
         chroma_notes_collection = await ChromaClient.get_langchain_client(collection_name="notes")
         await chroma_notes_collection.adelete(ids=[note_id])
-        log.info(f"Note with id {note_id} deleted from ChromaDB")
+        log.info("Note with id deleted from ChromaDB", note_id=note_id)
     except Exception as e:
-        # Log the error but don't fail the request if ChromaDB deletion fails
-        log.error(f"Failed to delete note from ChromaDB: {e!s}")
-
-    log.info("Note successfully deleted from MongoDB and cache invalidated.")
+        log.error(
+            "Failed to delete note from ChromaDB",
+            error=str(e),
+            error_type=type(e).__name__,
+            note_id=note_id,
+            user_id=user_id,
+        )
 
 
 async def create_note_service(note: NoteModel, user_id: str) -> NoteResponse:
@@ -151,5 +88,7 @@ async def create_note_service(note: NoteModel, user_id: str) -> NoteResponse:
     try:
         return await insert_note(note, user_id)
     except Exception as e:
-        log.error(f"Failed to create note: {e!s}")
+        log.error(
+            "Failed to create note", error=str(e), error_type=type(e).__name__, user_id=user_id
+        )
         raise HTTPException(status_code=500, detail="Failed to create note")

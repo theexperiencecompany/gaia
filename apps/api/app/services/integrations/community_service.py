@@ -1,15 +1,12 @@
 """Community marketplace service functions."""
 
-from typing import Any
-
 from app.constants.cache import COMMUNITY_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
-from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
+from app.db.repositories.integrations import integration_repository
 from app.schemas.integrations.responses import CommunityListResponse
 from app.services.integrations.integration_service import (
-    build_creator_lookup_stages,
     format_community_integrations,
 )
 from shared.py.wide_events import log
@@ -54,67 +51,54 @@ async def _search_community_integrations(
         search_results = await search_public_integrations(
             query=query,
             limit=limit,
-            category=category if category != "all" else None,
         )
     except Exception as e:
         log.warning(
-            f"{LogTag.INTEGRATION} Semantic search unavailable, using MongoDB fallback: "
-            f"{type(e).__name__}: {e}"
+            f"{LogTag.INTEGRATION} Semantic search unavailable, using MongoDB fallback",
+            error=str(e),
+            error_type=type(e).__name__,
         )
         search_results = []
 
-    integration_ids = [r.get("integration_id") for r in search_results if r.get("integration_id")]
+    integration_ids = [str(r["integration_id"]) for r in search_results if r.get("integration_id")]
 
     if integration_ids:
-        pipeline = [
-            {"$match": {"integration_id": {"$in": integration_ids}, "is_public": True}},
-            *build_creator_lookup_stages(),
-        ]
-        cursor = integrations_collection.aggregate(pipeline)
-        docs = await cursor.to_list(length=limit)
+        integrations = await integration_repository.community_by_ids(integration_ids)
+        by_id = {i.integration_id: i for i in integrations}
+        ordered = [by_id[iid] for iid in integration_ids if iid in by_id]
 
-        docs_map = {doc["integration_id"]: doc for doc in docs}
-        ordered_docs = [docs_map[iid] for iid in integration_ids if iid in docs_map]
+        # The category filter is applied here, not in the vector search: ChromaDB
+        # indexes only {"integration_id": ...} for these documents, so it has no
+        # category to filter on and returns hits from every one. Post-filtering can
+        # return fewer than `limit` rows when the top-k is dominated by other
+        # categories, which is the honest trade — the browse path beside this one
+        # filters by category (_community_search_filter), and a marketplace where
+        # picking a category only works until you also type a query is worse.
+        if category and category != "all":
+            ordered = [i for i in ordered if i.category == category]
 
-        return CommunityListResponse(
-            integrations=format_community_integrations(ordered_docs),
-            total=len(ordered_docs),
-            has_more=False,
-        )
+        # An empty list here means every semantic hit was in another category, so
+        # fall through to the Mongo path exactly as a no-hit search does — it
+        # filters by category itself and may reach rows the vector search ranked
+        # below the cut.
+        if ordered:
+            return CommunityListResponse(
+                integrations=format_community_integrations(ordered),
+                total=len(ordered),
+                has_more=False,
+            )
 
     # Fallback to MongoDB regex search
-    log.info(
-        f"{LogTag.INTEGRATION} ChromaDB returned no results for '{query}', falling back to MongoDB"
+    log.info(f"{LogTag.INTEGRATION} ChromaDB returned no results, falling back to MongoDB")
+    total = await integration_repository.count_community_search(query, category)
+    integrations = await integration_repository.community_search(
+        query, category, offset=offset, limit=limit
     )
-    search_regex = {"$regex": query, "$options": "i"}
-    mongo_query: dict[str, Any] = {
-        "is_public": True,
-        "$or": [
-            {"name": search_regex},
-            {"description": search_regex},
-            {"tools.name": search_regex},
-            {"tools.description": search_regex},
-        ],
-    }
-
-    if category and category != "all":
-        mongo_query["category"] = category
-
-    total = await integrations_collection.count_documents(mongo_query)
-    pipeline = [
-        {"$match": mongo_query},
-        {"$sort": {"clone_count": -1, "published_at": -1}},
-        {"$skip": offset},
-        {"$limit": limit},
-        *build_creator_lookup_stages(),
-    ]
-    cursor = integrations_collection.aggregate(pipeline)
-    docs = await cursor.to_list(length=limit)
 
     return CommunityListResponse(
-        integrations=format_community_integrations(docs),
+        integrations=format_community_integrations(integrations),
         total=total,
-        has_more=(offset + len(docs)) < total,
+        has_more=(offset + len(integrations)) < total,
     )
 
 
@@ -130,32 +114,15 @@ async def _browse_community_integrations(
     if cached:
         return CommunityListResponse(**cached)
 
-    query = {"is_public": True, "published_at": {"$ne": None}}
-
-    if category and category != "all":
-        query["category"] = category
-
-    sort_dict = {"clone_count": -1, "published_at": -1}
-    if sort == "recent":
-        sort_dict = {"published_at": -1}
-    elif sort == "name":
-        sort_dict = {"name": 1}
-
-    total = await integrations_collection.count_documents(query)
-    pipeline = [
-        {"$match": query},
-        {"$sort": sort_dict},
-        {"$skip": offset},
-        {"$limit": limit},
-        *build_creator_lookup_stages(),
-    ]
-    cursor = integrations_collection.aggregate(pipeline)
-    docs = await cursor.to_list(length=limit)
+    total = await integration_repository.count_community_browse(category)
+    integrations = await integration_repository.community_browse(
+        sort, category, offset=offset, limit=limit
+    )
 
     response = CommunityListResponse(
-        integrations=format_community_integrations(docs),
+        integrations=format_community_integrations(integrations),
         total=total,
-        has_more=(offset + len(docs)) < total,
+        has_more=(offset + len(integrations)) < total,
     )
 
     await set_cache(cache_key, response.model_dump(), ttl=COMMUNITY_CACHE_TTL)

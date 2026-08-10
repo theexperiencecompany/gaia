@@ -30,7 +30,8 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "GOOGLECALENDAR_CREATE_EVENT": "Adding to your calendar",
     "GOOGLECALENDAR_LIST_CALENDARS": "Checking your calendars",
     # ── Gmail ──────────────────────────────────────────────────────────
-    "GMAIL_FETCH_EMAILS": "Reading your inbox",
+    "GMAIL_FETCH_MESSAGES": "Reading your inbox",
+    "GMAIL_FETCH_THREAD": "Opening the thread",
     "GMAIL_FETCH_MESSAGE_BY_THREAD_ID": "Opening the thread",
     "GMAIL_SEND_EMAIL": "Sending the email",
     "GMAIL_CREATE_EMAIL_DRAFT": "Drafting the email",
@@ -109,7 +110,7 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "web_search_tool": "Searching the web",
     "deep_research": "Doing deep research",
     "fetch_webpages": "Reading the page",
-    "query_file": "Searching your files",
+    "search_uploaded_files": "Searching your files",
     # ── Native: daily context ──────────────────────────────────────────
     "gather_context": "Catching up on your day",
     "get_weather": "Checking the weather",
@@ -129,9 +130,12 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "mark_notifications_read": "Marking notifications read",
     # ── Native: workflows ──────────────────────────────────────────────
     "create_workflow": "Building the workflow",
+    "edit_workflow": "Editing the workflow",
     "execute_workflow": "Running the workflow",
     "get_workflow": "Opening the workflow",
     "list_workflows": "Checking your workflows",
+    "pause_workflow": "Pausing the workflow",
+    "resume_workflow": "Resuming the workflow",
     "search_triggers": "Finding triggers",
     # ── Native: integrations ───────────────────────────────────────────
     "list_integrations": "Checking your integrations",

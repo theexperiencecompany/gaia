@@ -42,7 +42,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 import json
-from typing import Any
+from typing import Any, cast
 
 from app.constants.cache import (
     STREAM_ACTIVE_PREFIX,
@@ -136,7 +136,11 @@ class StreamManager:
             ttl=STREAM_TTL,
         )
 
-        log.debug(f"{LogTag.STARTUP} Stream {stream_id} started for conversation {conversation_id}")
+        log.debug(
+            f"{LogTag.STARTUP} Stream started for conversation",
+            stream_id=stream_id,
+            conversation_id=conversation_id,
+        )
 
     @classmethod
     async def complete_stream(cls, stream_id: str) -> None:
@@ -157,7 +161,7 @@ class StreamManager:
         # Notify subscribers that stream is done
         await cls._publish(stream_id, STREAM_DONE_SIGNAL)
 
-        log.debug(f"{LogTag.STARTUP} Stream {stream_id} completed")
+        log.debug(f"{LogTag.STARTUP} Stream completed", stream_id=stream_id)
 
     @classmethod
     async def cleanup(cls, stream_id: str) -> None:
@@ -174,7 +178,7 @@ class StreamManager:
         await redis_cache.delete(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
         await redis_cache.delete(f"{STREAM_SIGNAL_PREFIX}{stream_id}")
 
-        log.debug(f"{LogTag.STARTUP} Stream {stream_id} cleaned up")
+        log.debug(f"{LogTag.STARTUP} Stream cleaned up", stream_id=stream_id)
 
     @classmethod
     async def _clear_active_index(cls, progress_data: dict[str, Any]) -> None:
@@ -183,6 +187,28 @@ class StreamManager:
         conversation_id = progress_data.get("conversation_id")
         if user_id and conversation_id:
             await redis_cache.delete(f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}")
+
+    @classmethod
+    async def _refresh_active_index(cls, progress_data: dict[str, Any]) -> None:
+        """Extend the reverse index's TTL for a turn that is still streaming.
+
+        Without this the index is written once at start_stream and expires after
+        STREAM_TTL even while the turn runs — and turns routinely outlive it
+        (EXECUTOR_WAIT_TIMEOUT is 30 minutes). get_resumable_stream_id then
+        reports "no turn is running" for a running turn, which the web client
+        treats as authoritative and marks the user's own message failed.
+
+        EXPIRE, not SET: a finished turn had its index deleted deliberately
+        (_clear_active_index), and re-creating it here would hand a reloading
+        client a stream that has already sent [DONE]. EXPIRE on a missing key is
+        a no-op, so that clear stays final.
+        """
+        user_id = progress_data.get("user_id")
+        conversation_id = progress_data.get("conversation_id")
+        if user_id and conversation_id and redis_cache.redis:
+            await redis_cache.redis.expire(
+                f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}", STREAM_TTL
+            )
 
     @classmethod
     async def get_active_stream_id(cls, user_id: str, conversation_id: str) -> str | None:
@@ -276,18 +302,24 @@ class StreamManager:
 
                         if data == STREAM_DONE_SIGNAL:
                             log.debug(
-                                f"{LogTag.STARTUP} Stream {stream_id} completed successfully "
-                                f"({chunks_received} chunks)"
+                                f"{LogTag.STARTUP} Stream completed successfully ( chunks)",
+                                stream_id=stream_id,
+                                chunks_received=chunks_received,
                             )
                             return
 
                         if data == STREAM_CANCELLED_SIGNAL:
-                            log.info(f"{LogTag.STARTUP} Stream {stream_id} was cancelled by user")
+                            log.info(
+                                f"{LogTag.STARTUP} Stream was cancelled by user",
+                                stream_id=stream_id,
+                            )
                             yield "data: [DONE]\n\n"
                             return
 
                         if data == STREAM_ERROR_SIGNAL:
-                            log.error(f"{LogTag.STARTUP} Stream {stream_id} encountered an error")
+                            log.error(
+                                f"{LogTag.STARTUP} Stream encountered an error", stream_id=stream_id
+                            )
                             progress = await cls.get_progress(stream_id)
                             error_msg = (
                                 progress.get("error", "An unexpected error occurred")
@@ -302,13 +334,18 @@ class StreamManager:
 
         except Exception as e:
             log.error(
-                f"{LogTag.STARTUP} Error in stream subscription {stream_id}: {e}", exc_info=True
+                f"{LogTag.STARTUP} Error in stream subscription",
+                stream_id=stream_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
             )
             yield f"data: {json.dumps({'error': 'Stream subscription failed'})}\n\n"
         finally:
             if chunks_received == 0:
                 log.warning(
-                    f"{LogTag.STARTUP} Stream {stream_id} ended without receiving any chunks"
+                    f"{LogTag.STARTUP} Stream ended without receiving any chunks",
+                    stream_id=stream_id,
                 )
 
     @classmethod
@@ -363,7 +400,7 @@ class StreamManager:
         # Notify subscribers
         await cls._publish(stream_id, STREAM_CANCELLED_SIGNAL)
 
-        log.info(f"{LogTag.STARTUP} Stream {stream_id} cancelled")
+        log.info(f"{LogTag.STARTUP} Stream cancelled", stream_id=stream_id)
         return True
 
     @classmethod
@@ -374,7 +411,7 @@ class StreamManager:
         Call this periodically in the streaming loop.
         """
         signal = await redis_cache.get(f"{STREAM_SIGNAL_PREFIX}{stream_id}")
-        return signal == "cancelled"
+        return bool(signal == "cancelled")
 
     # -------------------------------------------------------------------------
     # Progress Tracking
@@ -420,6 +457,9 @@ class StreamManager:
             progress_data["tool_data"] = existing
 
         await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
+        # The turn is demonstrably alive, so keep the resume index alive with it
+        # — the event log already self-refreshes on every publish_chunk.
+        await cls._refresh_active_index(progress_data)
 
     @classmethod
     async def get_progress(cls, stream_id: str) -> dict[str, Any] | None:
@@ -429,7 +469,9 @@ class StreamManager:
         Returns:
             Progress data dict or None if not found
         """
-        return await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
+        return cast(
+            "dict[str, Any] | None", await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
+        )
 
     @classmethod
     async def set_error(cls, stream_id: str, error: str) -> None:

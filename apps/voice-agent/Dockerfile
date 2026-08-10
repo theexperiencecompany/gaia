@@ -88,5 +88,11 @@ WORKDIR /app/apps/voice-agent
 # Download model files (into /home/appuser/.cache/huggingface)
 RUN uv run --frozen python -m src download-files
 
+# Stamped onto every wide event as the `commit` field (see shared.py.wide_events
+# env_context) so Loki queries can correlate errors with deploys. Declared after
+# the model download so a new commit sha never invalidates that cached layer.
+ARG GIT_COMMIT_SHA=""
+ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
+
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uv", "run", "--frozen", "python", "-m", "src", "start"]

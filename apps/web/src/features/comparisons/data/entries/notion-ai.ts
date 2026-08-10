@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Notion AI is an in-workspace AI assistant embedded inside the Notion editor — it writes, summarises, and autofills databases on demand. GAIA is a proactive AI assistant that operates across your email, calendar, tasks, and 50+ tools, acting on your behalf before you ask — and integrates with Notion directly so your workspace stays current without manual effort.",
   metaTitle:
-    "GAIA vs Notion AI: Proactive AI Assistant vs In-Workspace Writing Tool | GAIA",
+    "GAIA vs Notion AI: Proactive AI Assistant vs In-Workspace Writing Tool",
   metaDescription:
     "Compare GAIA and Notion AI. Notion AI enhances your Notion workspace with writing and summarisation. GAIA reads your email, manages your calendar, and acts proactively across 50+ tools.",
   keywords: [

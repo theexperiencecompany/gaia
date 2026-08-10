@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No email or calendar integration for automatic knowledge capture",
     "Still requires manual input for all knowledge — nothing is captured automatically",
   ],
-  metaTitle: "Best Capacities Alternative in 2026 | GAIA",
+  metaTitle: "Best Capacities Alternative in 2026",
   metaDescription:
     "Capacities has no proactive AI and requires manual note input. GAIA builds knowledge automatically from email and calendar. Free tier + open-source self-hosting.",
   keywords: [

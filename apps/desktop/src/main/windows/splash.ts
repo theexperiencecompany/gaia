@@ -58,10 +58,9 @@ export function createSplashWindow(): void {
     show: true,
     hasShadow: true,
     // Native liquid glass replaces vibrancy on macOS 26+ (see glass.ts).
-    vibrancy:
-      process.platform === "darwin" && !useLiquidGlass
-        ? "under-window"
-        : undefined,
+    ...(process.platform === "darwin" && !useLiquidGlass
+      ? { vibrancy: "under-window" as const }
+      : {}),
     visualEffectState: "active",
     webPreferences: {
       nodeIntegration: false,

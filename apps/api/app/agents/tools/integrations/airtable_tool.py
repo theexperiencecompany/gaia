@@ -3,6 +3,7 @@
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
@@ -16,13 +17,14 @@ def register_airtable_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="AIRTABLE")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Airtable context snapshot: bases (workspaces) and their tables.
 
         Zero required parameters. Returns current workspace structure for situational awareness.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "airtable", "action": "gather_context"})
         user_id = auth_credentials.get("user_id", "")
         if not user_id:
@@ -33,7 +35,7 @@ def register_airtable_custom_tools(composio: Composio) -> list[str]:
             data = execute_tool("AIRTABLE_LIST_BASES", {}, user_id)
             bases_raw = data.get("bases", [])
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Airtable bases fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Airtable bases fetch failed", error_type=type(e).__name__)
 
         bases: list[dict[str, Any]] = []
         for base in bases_raw[:3]:
@@ -50,7 +52,11 @@ def register_airtable_custom_tools(composio: Composio) -> list[str]:
                     for t in schema_data.get("tables", [])
                 ]
             except Exception as e:
-                log.debug(f"{LogTag.TOOL} Airtable tables fetch for {base_id} failed: {e}")
+                log.debug(
+                    f"{LogTag.TOOL} Airtable tables fetch failed",
+                    base_id=base_id,
+                    error_type=type(e).__name__,
+                )
             bases.append({"id": base_id, "name": base.get("name", ""), "tables": tables})
 
         return {"bases": bases, "base_count": len(bases_raw)}

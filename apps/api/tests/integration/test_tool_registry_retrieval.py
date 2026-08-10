@@ -111,6 +111,20 @@ class _NoOpEmbeddingFunction:
     def __call__(self, input: list[str]) -> list[list[float]]:
         return [[0.0] * 384 for _ in input]
 
+    @staticmethod
+    def name() -> str:
+        return "test-noop"
+
+    def get_config(self) -> dict[str, str]:
+        return {"name": "test-noop"}
+
+    @staticmethod
+    def build_from_config(config: dict) -> "_NoOpEmbeddingFunction":
+        return _NoOpEmbeddingFunction()
+
+    def is_legacy(self) -> bool:
+        return False
+
 
 _NOOP_EF = _NoOpEmbeddingFunction()
 

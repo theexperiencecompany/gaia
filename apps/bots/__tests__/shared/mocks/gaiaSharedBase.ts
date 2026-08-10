@@ -100,8 +100,12 @@ export function makeGaiaSharedMock(
       sendTyping: () => Promise<unknown>,
       _refreshMs: number,
     ): () => void {
-      void sendTyping().catch(() => {});
-      return () => {};
+      void sendTyping().catch(() => {
+        /* typing is fire-and-forget in tests */
+      });
+      return () => {
+        /* no-op stop function */
+      };
     }
 
     // Default: route media to a chat turn with no attachments. Tests that care
@@ -130,16 +134,29 @@ export function makeGaiaSharedMock(
 
   const sanitizeErrorForLog = vi.fn((error: unknown) => {
     if (error instanceof Error) {
-      return { error_name: error.name, error_message: error.message };
+      return { error_type: error.name, error: error.message };
     }
-    return { error_name: "Unknown", error_message: String(error) };
+    return { error_type: "Unknown", error: String(error) };
   });
+
+  const wideLog = {
+    set: vi.fn(),
+    setNs: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+    audit: vi.fn(),
+    getTraceId: vi.fn(() => undefined),
+  };
 
   return {
     BaseBotAdapter,
     createBotLogger,
     hashLogIdentifier,
     sanitizeErrorForLog,
+    wideLog,
+    withWideEvent: vi.fn(
+      (_task: string, _fields: unknown, fn: () => Promise<unknown>) => fn(),
+    ),
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),

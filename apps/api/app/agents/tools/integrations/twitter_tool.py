@@ -16,8 +16,10 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 from langgraph.config import get_stream_writer
 
+from app.constants.log_tags import LogTag
 from app.decorators.documentation import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.twitter_models import (
@@ -45,11 +47,12 @@ from app.utils.twitter_utils import (
     search_tweets,
     unfollow_user,
 )
+from shared.py.wide_events import log
 
 
 def _user_id(auth_credentials: dict[str, Any]) -> str:
     user_id = auth_credentials.get("user_id")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
 
@@ -61,10 +64,11 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_BATCH_FOLLOW_DOC)
     def CUSTOM_BATCH_FOLLOW(
         request: BatchFollowInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Follow multiple Twitter users at once."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
         user_id = _user_id(auth_credentials)
 
@@ -149,10 +153,11 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_BATCH_UNFOLLOW_DOC)
     def CUSTOM_BATCH_UNFOLLOW(
         request: BatchUnfollowInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Unfollow multiple Twitter users at once. DESTRUCTIVE - requires user consent."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
         user_id = _user_id(auth_credentials)
 
@@ -236,10 +241,11 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_CREATE_THREAD_DOC)
     def CUSTOM_CREATE_THREAD(
         request: CreateThreadInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Create a Twitter thread (multiple connected tweets)."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
         user_id = _user_id(auth_credentials)
 
@@ -321,10 +327,11 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_SEARCH_USERS_DOC)
     def CUSTOM_SEARCH_USERS(
         request: SearchUsersInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Search for Twitter users by name, bio, or keywords."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
         user_id = _user_id(auth_credentials)
 
@@ -381,7 +388,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_SCHEDULE_TWEET_DOC)
     def CUSTOM_SCHEDULE_TWEET(
         request: ScheduleTweetInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Schedule a tweet for later posting (creates a draft with scheduled time).
@@ -389,6 +396,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         Note: Twitter API doesn't support scheduled tweets directly for free tier.
         This creates a draft that can be stored and posted later by a scheduler.
         """
+        del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
         _user_id(auth_credentials)
 
@@ -413,13 +421,14 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="TWITTER")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Twitter/X context snapshot: profile info and recent tweets.
 
         Zero required parameters. Returns authenticated user's profile and recent activity.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
 
         me_data = (
@@ -463,8 +472,15 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
                     }
                     for t in (items if isinstance(items, list) else [])
                 ]
-            except Exception:  # nosec B110
-                pass
+            except Exception as e:
+                # Profile context is still useful without recent tweets, so this
+                # returns a partial result rather than failing the whole tool.
+                log.warning(
+                    f"{LogTag.TOOL} Failed to fetch recent tweets, returning profile without them",
+                    twitter_user_id=twitter_user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
         return {
             "user": {

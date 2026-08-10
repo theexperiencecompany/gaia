@@ -13,39 +13,43 @@ from app.services.workflow.scheduler import workflow_scheduler
 from shared.py.wide_events import log
 
 
-async def init_reminder_service():
+async def init_reminder_service() -> None:
     """Initialize reminder scheduler and scan for pending reminders."""
     try:
         await reminder_scheduler.initialize()
         await reminder_scheduler.scan_and_schedule_pending_tasks()
         log.info("Reminder scheduler initialized and pending reminders scheduled")
     except Exception as e:
-        log.error(f"Failed to initialize reminder scheduler: {e}")
+        log.error(
+            "Failed to initialize reminder scheduler", error=str(e), error_type=type(e).__name__
+        )
         raise
 
 
-async def init_workflow_service():
+async def init_workflow_service() -> None:
     """Initialize workflow service."""
     try:
         await workflow_scheduler.initialize()
         await workflow_scheduler.scan_and_schedule_pending_tasks()
         log.info("Workflow service initialized")
     except Exception as e:
-        log.error(f"Failed to initialize workflow service: {e}")
+        log.error(
+            "Failed to initialize workflow service", error=str(e), error_type=type(e).__name__
+        )
         raise
 
 
-async def init_websocket_consumer():
+async def init_websocket_consumer() -> None:
     """Initialize WebSocket event consumer."""
     try:
         await start_websocket_consumer()
         log.info("WebSocket event consumer started")
     except Exception as e:
-        log.error(f"Failed to start WebSocket consumer: {e}")
+        log.error("Failed to start WebSocket consumer", error=str(e), error_type=type(e).__name__)
         raise
 
 
-async def init_mongodb_async():
+async def init_mongodb_async() -> None:
     """Initialize MongoDB and create database indexes."""
     try:
         from app.db.mongodb.mongodb import init_mongodb
@@ -54,21 +58,25 @@ async def init_mongodb_async():
         await mongo_client._initialize_indexes()
         log.info("MongoDB initialized and indexes created")
     except Exception as e:
-        log.error(f"Failed to initialize MongoDB and create indexes: {e}")
+        log.error(
+            "Failed to initialize MongoDB and create indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
 # Shutdown methods
-async def close_postgresql_async():
+async def close_postgresql_async() -> None:
     """Close PostgreSQL database connection."""
     try:
         await close_postgresql_db()
         log.info("PostgreSQL database closed")
     except Exception as e:
-        log.error(f"Error closing PostgreSQL database: {e}")
+        log.error("Error closing PostgreSQL database", error=str(e), error_type=type(e).__name__)
 
 
-async def close_reminder_scheduler():
+async def close_reminder_scheduler() -> None:
     """Close reminder scheduler."""
     try:
         from app.services.reminder_service import reminder_scheduler
@@ -76,28 +84,28 @@ async def close_reminder_scheduler():
         await reminder_scheduler.close()
         log.info("Reminder scheduler closed")
     except Exception as e:
-        log.error(f"Error closing reminder scheduler: {e}")
+        log.error("Error closing reminder scheduler", error=str(e), error_type=type(e).__name__)
 
 
-async def close_workflow_scheduler():
+async def close_workflow_scheduler() -> None:
     """Close workflow scheduler."""
     try:
         await workflow_scheduler.close()
         log.info("Workflow scheduler closed")
     except Exception as e:
-        log.error(f"Error closing workflow scheduler: {e}")
+        log.error("Error closing workflow scheduler", error=str(e), error_type=type(e).__name__)
 
 
-async def close_websocket_async():
+async def close_websocket_async() -> None:
     """Close WebSocket event consumer."""
     try:
         await stop_websocket_consumer()
         log.info("WebSocket event consumer stopped")
     except Exception as e:
-        log.error(f"Error stopping WebSocket consumer: {e}")
+        log.error("Error stopping WebSocket consumer", error=str(e), error_type=type(e).__name__)
 
 
-async def close_publisher_async():
+async def close_publisher_async() -> None:
     """Close publisher connection."""
     try:
         # Avoid initializing the publisher during shutdown.
@@ -111,10 +119,10 @@ async def close_publisher_async():
 
         log.info("Publisher closed")
     except Exception as e:
-        log.error(f"Error closing publisher: {e}")
+        log.error("Error closing publisher", error=str(e), error_type=type(e).__name__)
 
 
-async def close_checkpointer_manager():
+async def close_checkpointer_manager() -> None:
     """Close checkpointer manager and connection pool."""
     try:
         # Avoid initializing the checkpointer during shutdown.
@@ -126,10 +134,10 @@ async def close_checkpointer_manager():
             await checkpointer_manager.close()
             log.info("Checkpointer manager closed")
     except Exception as e:
-        log.error(f"Error closing checkpointer manager: {e}")
+        log.error("Error closing checkpointer manager", error=str(e), error_type=type(e).__name__)
 
 
-async def close_mcp_client_pool():
+async def close_mcp_client_pool() -> None:
     """Close MCP client pool and all active connections."""
     try:
         if providers.is_initialized("mcp_client_pool"):
@@ -138,7 +146,7 @@ async def close_mcp_client_pool():
                 await pool.shutdown()
                 log.info("MCP client pool closed")
     except Exception as e:
-        log.error(f"Error closing MCP client pool: {e}")
+        log.error("Error closing MCP client pool", error=str(e), error_type=type(e).__name__)
 
 
 class StartupService(NamedTuple):
@@ -171,10 +179,12 @@ def _process_results(results: list[object], services: list[StartupService]) -> N
             continue
         if service.required:
             required_failures.append(service.name)
-            log.error(f"Failed to initialize {service.name}: {result}")
+            log.error("Failed to initialize", name=service.name, result=result)
         else:
             log.warning(
-                f"Best-effort startup service '{service.name}' failed; continuing degraded: {result}"
+                "Best-effort startup service failed; continuing degraded",
+                name=service.name,
+                result=result,
             )
 
     if required_failures:

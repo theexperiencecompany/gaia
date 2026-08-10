@@ -3,6 +3,7 @@ Prometheus metrics for the ARQ background worker.
 
 Exposes a histogram of task durations and a counter of task outcomes so the
 `arq-worker` dashboard can show real latency percentiles instead of scraping logs.
+The observations are recorded by ``app.workers.task_envelope.arq_task``.
 
 A standalone HTTP server is started in `startup()` on the port configured via
 ``ARQ_METRICS_PORT`` (default 9100). Prometheus scrapes this endpoint via the
@@ -16,10 +17,8 @@ custom ``REGISTRY`` so the same ``fs_op_*`` metric families show up at
 
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine
-import functools
-import time
-from typing import Any, TypeVar
+import contextlib
+from typing import ParamSpec, TypeVar
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, start_http_server
 
@@ -33,6 +32,7 @@ from app.services.storage.metrics import (
 )
 
 T = TypeVar("T")
+P = ParamSpec("P")
 
 REGISTRY = CollectorRegistry()
 
@@ -67,35 +67,9 @@ for _collector in (
     _FS_OP_IN_FLIGHT,
     _SANDBOX_POOL_SIZE,
 ):
-    try:
+    # Already registered on this registry (re-import under reload).
+    with contextlib.suppress(ValueError):
         REGISTRY.register(_collector)
-    except ValueError:
-        # Already registered on this registry (re-import under reload).
-        pass
-
-
-def instrument_task(
-    func: Callable[..., Coroutine[Any, Any, T]],
-) -> Callable[..., Coroutine[Any, Any, T]]:
-    """Wrap an ARQ task coroutine to record duration and outcome metrics."""
-
-    task_name = func.__name__
-
-    @functools.wraps(func)
-    async def wrapper(*args: Any, **kwargs: Any) -> T:
-        start = time.perf_counter()
-        status = "success"
-        try:
-            return await func(*args, **kwargs)
-        except Exception:
-            status = "error"
-            raise
-        finally:
-            elapsed = time.perf_counter() - start
-            TASK_DURATION_SECONDS.labels(task_name=task_name, status=status).observe(elapsed)
-            TASK_TOTAL.labels(task_name=task_name, status=status).inc()
-
-    return wrapper
 
 
 def start_metrics_server(port: int) -> None:

@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Lark (by ByteDance) is a unified team collaboration suite combining instant messaging, docs, spreadsheets, calendar, and video meetings. GAIA is a proactive AI assistant that layers autonomous intelligence on top of similar productivity capabilities — with open-source flexibility and 50+ integrations.",
   metaTitle:
-    "Lark Alternative with Proactive AI Automation & Open-Source Flexibility | GAIA vs Lark",
+    "Lark Alternative with Proactive AI Automation & Open-Source Flexibility — GAIA vs Lark",
   metaDescription:
     "Lark combines chat, docs, and calendar but relies on manual workflows. GAIA is a free, open-source Lark alternative with proactive AI email management, task automation, and workflow orchestration across 50+ integrations.",
   keywords: [

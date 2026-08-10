@@ -7,8 +7,6 @@ in test_timezone.py / test_cron_utils.py; here we assert the composition.
 
 from datetime import UTC, datetime
 
-import pytest
-
 from app.models.workflow_models import TriggerConfig, TriggerType
 
 BASE = datetime(2025, 1, 1, 0, 0, tzinfo=UTC)  # midnight UTC
@@ -18,7 +16,6 @@ def _schedule(cron: str = "0 9 * * *", tz: str | None = None) -> TriggerConfig:
     return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression=cron, timezone=tz)
 
 
-@pytest.mark.unit
 class TestTriggerConfigCalculateNextRun:
     def test_daily_9am_in_kolkata_is_0330_utc(self) -> None:
         # The bug: this must NOT be 09:00 UTC.
@@ -61,7 +58,6 @@ class TestTriggerConfigCalculateNextRun:
         assert result.tzinfo == UTC
 
 
-@pytest.mark.unit
 class TestTriggerConfigUpdateNextRun:
     def test_sets_next_run_and_reports_change(self) -> None:
         tc = _schedule(tz="Asia/Kolkata")

@@ -34,6 +34,7 @@ from app.services.storage._vfs_common import (
 )
 from app.services.storage.juicefs import _is_mounted, user_workspace_path
 from app.services.storage.metrics import fs_timer
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import UserContext, log, wide_task
 
 # Generic over each module's projection TypedDict (``GaiaTaskProjection``,
@@ -102,10 +103,9 @@ def make_scheduler(
       calling tools synchronously during startup).
     * Wraps every task body in a try/except that logs but never raises
       — fire-and-forget MUST NOT crash the host coroutine.
-    * Holds task refs in a closure-local set + ``add_done_callback`` so
-      tasks aren't garbage-collected mid-flight.
+    * Spawns via ``spawn_background_task`` so tasks aren't
+      garbage-collected mid-flight.
     """
-    tasks: set[asyncio.Task] = set()
 
     async def _safe(user_id: str) -> None:
         # Own ``wide_task`` scope: this body runs in a fire-and-forget task with
@@ -120,11 +120,9 @@ def make_scheduler(
         if not _is_mounted():
             return
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
             return
-        task = loop.create_task(_safe(user_id))
-        tasks.add(task)
-        task.add_done_callback(tasks.discard)
+        spawn_background_task(_safe(user_id))
 
     return schedule

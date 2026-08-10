@@ -53,6 +53,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.models.hil_models import HILApprovalStatus
+
 # ---------------------------------------------------------------------------
 # Structured payloads (wrapped in a one-word envelope key at the emit site)
 # ---------------------------------------------------------------------------
@@ -85,6 +87,37 @@ class ToolCallsDataEntry(BaseModel):
     timestamp: str
     mcp_ui: dict[str, Any] | None
     mcp_server_url: str | None
+
+
+class ApprovalRequestEntryData(BaseModel):
+    """Inner ``data`` object of a HIL ``approval_request`` entry."""
+
+    approval_id: str
+    tool_call_id: str
+    gated_tool_name: str
+    integration_name: str | None
+    summary: str
+    # The gated call's own arguments — arbitrary LLM-authored JSON, no fixed schema.
+    args_preview: dict[str, Any]
+    status: HILApprovalStatus
+    feedback: str | None
+    auto_reason: str | None
+    timeout_seconds: int
+
+
+class ApprovalRequestEntry(BaseModel):
+    """The ``approval_request`` tool_data entry built by ``hil.bridge``.
+
+    Emitted (wrapped in a ``tool_data`` envelope) when a gated call asks for the
+    user's decision, and re-emitted in its resolved status once decided —
+    ``stream_utils._append_or_upsert_tool_data`` replaces the earlier frame in
+    the persisted turn so only the final status survives.
+    """
+
+    tool_name: str
+    tool_category: str
+    data: ApprovalRequestEntryData
+    timestamp: str
 
 
 class ToolOutputPayload(BaseModel):
@@ -155,9 +188,15 @@ class ModelFallbackFrame(BaseModel):
 
 
 class MainResponseCompleteFrame(BaseModel):
-    """Marks the primary assistant response as finished."""
+    """Marks the primary assistant response as finished.
+
+    ``usage`` carries the turn's aggregate token usage (per-model input/output/
+    cached counts from the LangChain usage_metadata) — consumed by eval
+    transports for real token accounting; optional and backward-compatible.
+    """
 
     main_response_complete: bool
+    usage: dict[str, Any] | None = None
 
 
 class TodoProgressFrame(BaseModel):

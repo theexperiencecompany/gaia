@@ -32,6 +32,133 @@ interface OgWorkflow {
   creator?: { id?: string; name?: string; avatar?: string };
 }
 
+async function fetchWorkflow(
+  apiBaseUrl: string,
+  slug: string,
+): Promise<OgWorkflow | null> {
+  try {
+    const [exploreResponse, communityResponse] = await Promise.all([
+      fetch(`${apiBaseUrl}/workflows/explore`, { cache: "no-store" }),
+      fetch(`${apiBaseUrl}/workflows/community?limit=100`, {
+        cache: "no-store",
+      }),
+    ]);
+
+    if (exploreResponse.ok) {
+      const data = (await exploreResponse.json()) as {
+        workflows?: OgWorkflow[];
+      };
+      const found = data.workflows?.find((w) => w.id === slug);
+      if (found) return found;
+    }
+
+    if (communityResponse.ok) {
+      const data = (await communityResponse.json()) as {
+        workflows?: OgWorkflow[];
+      };
+      const found = data.workflows?.find((w) => w.id === slug);
+      if (found) return found;
+    }
+
+    const publicResponse = await fetch(
+      `${apiBaseUrl}/workflows/public/${slug}`,
+      { cache: "no-store" },
+    );
+    if (publicResponse.ok) {
+      const data = (await publicResponse.json()) as {
+        workflow?: OgWorkflow;
+      };
+      return data.workflow ?? null;
+    }
+  } catch (e) {
+    console.error("[OG Image] Fetch failed:", e);
+  }
+  return null;
+}
+
+interface ToolCategoryIconProps {
+  category: string;
+  index: number;
+  total: number;
+  siteBaseUrl: string;
+}
+
+function ToolCategoryIcon({
+  category,
+  index,
+  total,
+  siteBaseUrl,
+}: ToolCategoryIconProps) {
+  const iconConfig = getToolIconConfig(category.toLowerCase());
+  const iconPath = getOgIconPath(category.toLowerCase());
+
+  const rotation = total > 1 ? (index % 2 === 0 ? "8deg" : "-8deg") : "0deg";
+
+  const tileStyle = {
+    width: 100,
+    height: 100,
+    transform: `rotate(${rotation})`,
+    marginLeft: index > 0 ? -6 : 0,
+    zIndex: total - index,
+  } as const;
+
+  if (iconPath && iconConfig) {
+    return (
+      <div
+        tw="flex items-center justify-center rounded-xl"
+        style={{ ...tileStyle, backgroundColor: iconConfig.bgColorRaw }}
+      >
+        {/** biome-ignore lint/performance/noImgElement: og image */}
+        <img
+          alt="Icon"
+          src={`${siteBaseUrl}${iconPath}`}
+          width={80}
+          height={80}
+          style={{ objectFit: "contain" }}
+        />
+      </div>
+    );
+  }
+
+  const fallbackConfig = iconConfig || {
+    bgColorRaw: "rgba(113, 113, 122, 0.2)",
+    iconColorRaw: "#a1a1aa",
+  };
+
+  // Check if we have SVG paths for this category from generated file
+  const iconPathData = iconConfig?.icon ? getIconPaths(iconConfig.icon) : null;
+
+  return (
+    <div
+      tw="flex items-center justify-center rounded-xl"
+      style={{ ...tileStyle, backgroundColor: fallbackConfig.bgColorRaw }}
+    >
+      {iconPathData ? (
+        <svg
+          width="56"
+          height="56"
+          viewBox={iconPathData.viewBox}
+          fill={fallbackConfig.iconColorRaw}
+          role="img"
+          aria-label={category}
+        >
+          {iconPathData.paths.map((d, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: SVG paths are static and won't reorder
+            <path key={`${category}-path-${i}`} d={d} />
+          ))}
+        </svg>
+      ) : (
+        <span
+          tw="text-2xl font-semibold"
+          style={{ color: fallbackConfig.iconColorRaw }}
+        >
+          {getCategoryInitial(category)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -44,44 +171,7 @@ export async function GET(request: NextRequest) {
     const apiBaseUrl = getApiBaseUrl();
     const siteBaseUrl = getBaseUrl(request.url);
 
-    let workflow: OgWorkflow | null = null;
-    try {
-      const [exploreResponse, communityResponse] = await Promise.all([
-        fetch(`${apiBaseUrl}/workflows/explore`, { cache: "no-store" }),
-        fetch(`${apiBaseUrl}/workflows/community?limit=100`, {
-          cache: "no-store",
-        }),
-      ]);
-
-      if (exploreResponse.ok) {
-        const data = (await exploreResponse.json()) as {
-          workflows?: OgWorkflow[];
-        };
-        workflow = data.workflows?.find((w) => w.id === slug) ?? null;
-      }
-
-      if (!workflow && communityResponse.ok) {
-        const data = (await communityResponse.json()) as {
-          workflows?: OgWorkflow[];
-        };
-        workflow = data.workflows?.find((w) => w.id === slug) ?? null;
-      }
-
-      if (!workflow) {
-        const publicResponse = await fetch(
-          `${apiBaseUrl}/workflows/public/${slug}`,
-          { cache: "no-store" },
-        );
-        if (publicResponse.ok) {
-          const data = (await publicResponse.json()) as {
-            workflow?: OgWorkflow;
-          };
-          workflow = data.workflow ?? null;
-        }
-      }
-    } catch (e) {
-      console.error("[OG Image] Fetch failed:", e);
-    }
+    const workflow = await fetchWorkflow(apiBaseUrl, slug);
 
     const title = workflow?.title || "GAIA Workflow";
     const description = workflow?.description || "Automate your tasks with AI";
@@ -132,91 +222,15 @@ export async function GET(request: NextRequest) {
             }}
           >
             <div tw="flex items-center mb-6" style={{ marginLeft: -6 }}>
-              {toolCategories.map((category, index) => {
-                const iconConfig = getToolIconConfig(category.toLowerCase());
-                const iconPath = getOgIconPath(category.toLowerCase());
-
-                const rotation =
-                  toolCategories.length > 1
-                    ? index % 2 === 0
-                      ? "8deg"
-                      : "-8deg"
-                    : "0deg";
-
-                if (iconPath && iconConfig) {
-                  return (
-                    <div
-                      key={category}
-                      tw="flex items-center justify-center rounded-xl"
-                      style={{
-                        width: 100,
-                        height: 100,
-                        backgroundColor: iconConfig.bgColorRaw,
-                        transform: `rotate(${rotation})`,
-                        marginLeft: index > 0 ? -6 : 0,
-                        zIndex: toolCategories.length - index,
-                      }}
-                    >
-                      {/** biome-ignore lint/performance/noImgElement: og image */}
-                      <img
-                        alt="Icon"
-                        src={`${siteBaseUrl}${iconPath}`}
-                        width={80}
-                        height={80}
-                        style={{ objectFit: "contain" }}
-                      />
-                    </div>
-                  );
-                }
-
-                const fallbackConfig = iconConfig || {
-                  bgColorRaw: "rgba(113, 113, 122, 0.2)",
-                  iconColorRaw: "#a1a1aa",
-                };
-
-                // Check if we have SVG paths for this category from generated file
-                const iconPathData = iconConfig?.icon
-                  ? getIconPaths(iconConfig.icon)
-                  : null;
-
-                return (
-                  <div
-                    key={category}
-                    tw="flex items-center justify-center rounded-xl"
-                    style={{
-                      width: 100,
-                      height: 100,
-                      backgroundColor: fallbackConfig.bgColorRaw,
-                      transform: `rotate(${rotation})`,
-                      marginLeft: index > 0 ? -6 : 0,
-                      zIndex: toolCategories.length - index,
-                    }}
-                  >
-                    {iconPathData ? (
-                      <svg
-                        width="56"
-                        height="56"
-                        viewBox={iconPathData.viewBox}
-                        fill={fallbackConfig.iconColorRaw}
-                        role="img"
-                        aria-label={category}
-                      >
-                        {iconPathData.paths.map((d, i) => (
-                          // biome-ignore lint/suspicious/noArrayIndexKey: SVG paths are static and won't reorder
-                          <path key={`${category}-path-${i}`} d={d} />
-                        ))}
-                      </svg>
-                    ) : (
-                      <span
-                        tw="text-2xl font-semibold"
-                        style={{ color: fallbackConfig.iconColorRaw }}
-                      >
-                        {getCategoryInitial(category)}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+              {toolCategories.map((category, index) => (
+                <ToolCategoryIcon
+                  key={category}
+                  category={category}
+                  index={index}
+                  total={toolCategories.length}
+                  siteBaseUrl={siteBaseUrl}
+                />
+              ))}
               {toolCategories.length === 0 && (
                 <div
                   tw="flex items-center justify-center rounded-xl"

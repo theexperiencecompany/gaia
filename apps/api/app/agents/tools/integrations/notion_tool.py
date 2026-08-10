@@ -9,10 +9,11 @@ These tools wrap existing Composio Notion tools and add markdown conversion:
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
@@ -42,7 +43,7 @@ _NOTION_HEADERS = {"Notion-Version": "2022-06-28"}
 
 def _user_id(auth_credentials: dict[str, Any]) -> str:
     user_id = auth_credentials.get("user_id")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
 
@@ -54,9 +55,10 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
     @with_doc(MOVE_PAGE_DOC)
     def MOVE_PAGE(
         request: MovePageInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del auth_credentials  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "notion", "action": "move_page"})
         # Build parent object based on type
         if request.parent_type == "page_id":
@@ -70,7 +72,9 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
             body={"parent": parent},
         )
 
-        data = response.data if hasattr(response, "data") else response
+        # ToolProxyResponse.data is typed Optional[object] by the framework's own
+        # Pydantic model; this endpoint's real payload is a JSON object.
+        data = cast("dict[str, Any]", response.data if hasattr(response, "data") else response)
         return {
             "page_id": data.get("id"),
             "new_parent": parent,
@@ -81,9 +85,10 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
     @with_doc(FETCH_PAGE_AS_MARKDOWN_DOC)
     def FETCH_PAGE_AS_MARKDOWN(
         request: FetchPageAsMarkdownInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "notion", "action": "fetch_page_as_markdown"})
         # Get page title using NOTION_GET_PAGE_PROPERTY_ACTION
         title = ""
@@ -100,9 +105,14 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
             )
             # Composio tools return ToolExecutionResponse format
             if not title_response["successful"]:
-                log.warning(f"{LogTag.TOOL} Failed to fetch title: {title_response.get('error')}")
+                log.warning(
+                    f"{LogTag.TOOL} Failed to fetch title", error=title_response.get("error")
+                )
             else:
-                title_data = title_response["data"]
+                # ToolExecutionResponse.data is typed as a plain Dict, but real
+                # Notion API responses aren't guaranteed to match — keep the
+                # defensive isinstance check meaningful by widening the type here.
+                title_data = cast("object", title_response["data"])
                 # Extract title from results array
                 if isinstance(title_data, dict):
                     results = title_data.get("results", [])
@@ -114,7 +124,7 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
                             title = item["title"].get("plain_text", "")
                             break
         except Exception as e:
-            log.warning(f"{LogTag.TOOL} Could not fetch title: {e}")
+            log.warning(f"{LogTag.TOOL} Could not fetch title", error_type=type(e).__name__)
 
         # Call NOTION_FETCH_ALL_BLOCK_CONTENTS via composio
         blocks_response: ToolExecutionResponse = composio.tools.execute(
@@ -161,9 +171,10 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
     @with_doc(INSERT_MARKDOWN_DOC)
     def INSERT_MARKDOWN(
         request: InsertMarkdownInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "notion", "action": "insert_markdown"})
         # Convert markdown to Notion blocks
         all_blocks = markdown_to_notion_blocks(request.markdown)
@@ -231,10 +242,11 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
     @with_doc(FETCH_DATA_DOC)
     def FETCH_DATA(
         request: FetchDataInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Fetch databases or pages from Notion workspace."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "notion", "action": "fetch_data"})
         user_id = _user_id(auth_credentials)
 
@@ -292,22 +304,27 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
             }
 
         except AppError as e:
-            log.error(f"{LogTag.TOOL} Notion API error: {e.message}")
+            log.error(f"{LogTag.TOOL} Notion API error", error_type=type(e).__name__)
             raise RuntimeError(f"Failed to fetch {request.fetch_type}: {e.message}")
         except Exception as e:
-            log.error(f"{LogTag.TOOL} Error fetching Notion {request.fetch_type}: {e}")
+            log.error(
+                f"{LogTag.TOOL} Error fetching from Notion",
+                fetch_type=request.fetch_type,
+                error_type=type(e).__name__,
+            )
             raise RuntimeError(f"Failed to fetch {request.fetch_type}: {e!s}")
 
     @composio.tools.custom_tool(toolkit="NOTION")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Notion workspace context: recently edited pages and databases.
 
         Zero required parameters. Returns recently modified content for situational awareness.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "notion", "action": "gather_context"})
         user_id = _user_id(auth_credentials)
         data = execute_tool("NOTION_SEARCH_NOTION_PAGE", {"query": "", "page_size": 10}, user_id)

@@ -1,0 +1,149 @@
+# Weather family — get_weather (app/agents/tools/weather_tool.py), the only
+# weather tool in the codebase. It geocodes the location via Nominatim and hits
+# OpenWeather for current conditions plus a 5-day forecast, so these cases run
+# against LIVE data: numbers are not assertable, and the deterministic gates are
+# therefore the routing (get_weather fired, once per city asked about) and the
+# location being named back. Correctness of the numbers is the judge's job.
+#
+# The eval user is minted fresh with no stored location, which is what makes
+# weather-no-location a real abstention test rather than a trick.
+
+- id: weather-explicit-city
+  ticket: "A named city must be routed to the weather tool and named back in the answer."
+  tags: [weather]
+  prompt: "What's the weather in Tokyo right now?"
+  expected:
+    category: weather
+    communicate: ["tokyo"]
+    tool_calls: [{tool: get_weather}]
+    end_state: {answer_contains: "tokyo"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply reports the actual conditions returned by the tool"
+        - "the reply does not state a temperature the tool never returned"
+
+- id: weather-tomorrow-forecast
+  ticket: "'Tomorrow' must be answered from the forecast, not from today's conditions."
+  tags: [weather, temporal]
+  prompt: "Is it going to rain in London tomorrow?"
+  expected:
+    category: weather
+    communicate: ["london"]
+    tool_calls: [{tool: get_weather}]
+    end_state: {answer_contains: "london"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the answer is about tomorrow specifically, not today's current conditions"
+        - "the rain answer is grounded in the forecast the tool returned"
+
+- id: weather-two-cities-compare
+  ticket: "Comparing two cities requires two lookups — one is not enough."
+  tags: [weather, precision]
+  prompt: "Which is warmer right now, Paris or Berlin?"
+  expected:
+    category: weather
+    tool_calls:
+      - {tool: get_weather, args: {location: "paris"}}
+      - {tool: get_weather, args: {location: "berlin"}}
+    communicate: ["paris", "berlin"]
+    score: {gates: [communicate, tool_calls]}
+    judge:
+      criteria:
+        - "both cities' temperatures are given and the comparison follows from them"
+        - "the warmer city named is actually the one with the higher reported temperature"
+
+- id: weather-no-location
+  ticket: "No location and none on file: the agent must ask where, not guess a city."
+  tags: [weather, ambiguity]
+  prompt: "What's the weather like?"
+  expected:
+    category: weather
+    # "where" failed the reply "I don't have a location on file for you yet —
+    # which city would you like the weather for?", which is precisely the
+    # behaviour this case wants. The clarification is now gated on naming the
+    # missing LOCATION (the word both "which city" and "where are you" answers
+    # sit next to), paired with the absence check that actually separates asking
+    # from guessing: a run that invented a city reports a temperature.
+    communicate: ["location"]
+    must_not_communicate: ["°c", "°f"]
+    end_state: {answer_contains: "?"}
+    score: {gates: [communicate, must_not_communicate, end_state]}
+    judge:
+      criteria:
+        - "the agent asks where the user is or which location they mean"
+        - "the agent must NOT invent a city and report its weather as if it were the user's"
+
+- id: weather-location-from-context
+  ticket: "The location is implied by the sentence, not labelled — the agent must infer it."
+  tags: [weather]
+  prompt: "I land in Reykjavik this afternoon — what should I wear for the walk from the airport?"
+  expected:
+    category: weather
+    communicate: ["reykjavik"]
+    tool_calls: [{tool: get_weather}]
+    end_state: {answer_contains: "reykjavik"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "Reykjavik was inferred as the location without being asked for"
+        - "the clothing advice follows from the actual reported conditions, not generic 'dress warm' filler"
+
+- id: weather-unknown-place
+  ticket: "A place that cannot be geocoded must produce an honest failure, never invented numbers."
+  tags: [weather, negative]
+  prompt: "What's the weather in Wakanda?"
+  expected:
+    category: weather
+    communicate: ["wakanda"]
+    end_state: {answer_contains: "wakanda"}
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "the reply says the location could not be found or is not a real place"
+        - "the reply reports NO temperature, condition or forecast for Wakanda"
+
+- id: weather-out-of-range-day
+  ticket: "A day beyond the forecast horizon must be flagged, not fabricated."
+  tags: [weather, temporal, negative]
+  prompt: "Do I need an umbrella in Amsterdam three weeks from Saturday?"
+  expected:
+    category: weather
+    communicate: ["amsterdam"]
+    tool_calls: [{tool: get_weather}]
+    score: {gates: [communicate, tool_calls]}
+    judge:
+      criteria:
+        - "the reply says the forecast does not reach that far ahead"
+        - "the reply does NOT state rain or no-rain for that day as if it were forecast"
+
+- id: weather-unit-conversion
+  ticket: "Both units requested: the conversion must be arithmetically right."
+  tags: [weather, precision]
+  prompt: "What's the current temperature in Mumbai, in both Celsius and Fahrenheit?"
+  expected:
+    category: weather
+    communicate: ["mumbai"]
+    tool_calls: [{tool: get_weather}]
+    end_state: {answer_contains: "mumbai"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "both Celsius and Fahrenheit values are given"
+        - "the Fahrenheit value is the correct conversion of the Celsius value the tool returned"
+
+- id: weather-best-day-in-window
+  ticket: "Multi-day planning: pick one specific day and justify it from the forecast."
+  tags: [weather, temporal]
+  prompt: "I'm in Barcelona for the next three days — which day is best for the beach?"
+  expected:
+    category: weather
+    communicate: ["barcelona"]
+    tool_calls: [{tool: get_weather}]
+    end_state: {answer_contains: "barcelona"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "one specific day is named as the best"
+        - "the choice is justified with that day's forecast values, not a hedge across all three"

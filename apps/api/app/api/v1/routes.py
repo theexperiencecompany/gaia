@@ -7,12 +7,15 @@ This package contains the API routes and dependencies for version 1 of the GAIA 
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    approvals,
     blog,
     bot,
     calendar,
     chat,
     conversations,
     desktop,
+    device,
+    device_ws,
     feedback,
     file,
     image,
@@ -50,6 +53,9 @@ router = APIRouter()
 router.include_router(voice.router, tags=["Voice"])
 router.include_router(chat.router, tags=["Chat"])
 router.include_router(desktop.router)
+router.include_router(device.router)
+router.include_router(device_ws.router)
+router.include_router(approvals.router, tags=["Approvals"])
 router.include_router(conversations.router, tags=["Conversations"])
 router.include_router(sessions.router)
 router.include_router(feedback.router, tags=["Feedback"])

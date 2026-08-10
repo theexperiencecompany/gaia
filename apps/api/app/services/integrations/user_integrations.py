@@ -4,24 +4,20 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from bson import ObjectId
-
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    integrations_collection,
-    user_integrations_collection,
-    users_collection,
-)
 from app.db.redis import delete_cache
-from app.db.utils import serialize_document
+from app.db.repositories.integrations import integration_repository
+from app.db.repositories.user_integrations import user_integration_repository
+from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
     IntegrationResponse,
     IntegrationTool,
     UserIntegration,
+    UserIntegrationDocument,
     UserIntegrationResponse,
     UserIntegrationsListResponse,
 )
@@ -54,18 +50,7 @@ def _build_integration_response(
 
 async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
     """Get all integrations a user has added to their workspace."""
-    docs = (
-        await user_integrations_collection.find({"user_id": user_id})
-        .sort("created_at", -1)
-        .to_list(None)
-    )
-
-    parsed: list[UserIntegration] = []
-    for doc in docs:
-        try:
-            parsed.append(UserIntegration(**doc))
-        except Exception as e:
-            log.warning(f"{LogTag.INTEGRATION} Failed to parse user integration: {e}")
+    parsed = await user_integration_repository.list_for_user_newest_first(user_id)
 
     ids = [ui.integration_id for ui in parsed]
 
@@ -74,21 +59,14 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
     # per-integration DB round trips.
     int_docs: dict[str, dict] = {}
     if ids:
-        async for doc in integrations_collection.find({"integration_id": {"$in": ids}}):
-            int_docs[doc["integration_id"]] = doc
+        for doc_model in await integration_repository.find_by_ids(ids):
+            int_docs[doc_model.integration_id] = doc_model.model_dump()
 
     # One query for all creators referenced by the user's custom integrations.
-    creator_oids = [
-        ObjectId(doc["created_by"])
-        for doc in int_docs.values()
-        if doc.get("created_by") and ObjectId.is_valid(doc["created_by"])
-    ]
+    creator_ids = [doc["created_by"] for doc in int_docs.values() if doc.get("created_by")]
     creators: dict[str, dict] = {}
-    if creator_oids:
-        async for creator in users_collection.find(
-            {"_id": {"$in": creator_oids}}, {"name": 1, "picture": 1}
-        ):
-            creators[str(creator["_id"])] = creator
+    for creator in await user_repository.find_by_ids(creator_ids):
+        creators[creator.id] = {"name": creator.name, "picture": creator.picture}
 
     user_integrations: list[UserIntegrationResponse] = []
     for ui in parsed:
@@ -121,13 +99,8 @@ async def get_user_integration_records(user_id: str) -> list[dict[str, Any]]:
     states — callers that only want usable integrations filter on
     ``status == "connected"`` (see ``get_connected_integration_ids``).
     """
-    results = []
-    cursor = user_integrations_collection.find({"user_id": user_id})
-
-    async for doc in cursor:
-        results.append(serialize_document(doc))
-
-    return results
+    docs = await user_integration_repository.list_for_user(user_id)
+    return [doc.model_dump() for doc in docs]
 
 
 async def get_connected_integration_ids(user_id: str) -> set[str]:
@@ -170,11 +143,9 @@ async def get_connected_integrations_named(user_id: str) -> list[dict[str, str]]
             unresolved.append(iid)
 
     if unresolved:
-        async for doc in integrations_collection.find(
-            {"integration_id": {"$in": unresolved}}, {"integration_id": 1, "name": 1}
-        ):
-            if name := doc.get("name"):
-                names[str(doc["integration_id"])] = name
+        for custom in await integration_repository.find_by_ids(unresolved):
+            if custom.name:
+                names[custom.integration_id] = custom.name
 
     return [{"id": iid, "name": names.get(iid, iid)} for iid in connected]
 
@@ -223,13 +194,7 @@ async def add_user_integration(
     if not integration:
         raise ValueError(f"Integration '{integration_id}' not found")
 
-    existing = await user_integrations_collection.find_one(
-        {
-            "user_id": user_id,
-            "integration_id": integration_id,
-        }
-    )
-    if existing:
+    if await user_integration_repository.exists(user_id, integration_id):
         raise ValueError(f"Integration '{integration_id}' already added to workspace")
 
     status: Literal["created", "connected"]
@@ -237,51 +202,51 @@ async def add_user_integration(
         status = initial_status
     else:
         status = "connected" if not integration.requires_auth else "created"
-    connected_at = datetime.now(UTC) if status == "connected" else None
+    now = datetime.now(UTC)
+    connected_at = now if status == "connected" else None
 
-    user_integration = UserIntegration(
+    await user_integration_repository.create(
+        UserIntegrationDocument(
+            user_id=user_id,
+            integration_id=integration_id,
+            status=status,
+            created_at=now,
+            connected_at=connected_at,
+        )
+    )
+    log.info(
+        f"{LogTag.INTEGRATION} User added integration with status",
         user_id=user_id,
         integration_id=integration_id,
         status=status,
-        created_at=datetime.now(UTC),
+    )
+
+    return UserIntegration(
+        user_id=user_id,
+        integration_id=integration_id,
+        status=status,
+        created_at=now,
         connected_at=connected_at,
     )
-
-    await user_integrations_collection.insert_one(user_integration.model_dump())
-    log.info(
-        f"{LogTag.INTEGRATION} User {user_id} added integration {integration_id} with status {status}"
-    )
-
-    return user_integration
 
 
 @CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)
 async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     """Remove an integration from user's workspace."""
     log.set(integration={"provider": integration_id, "action": "remove_user_integration"})
-    result = await user_integrations_collection.delete_one(
-        {
-            "user_id": user_id,
-            "integration_id": integration_id,
-        }
-    )
-
-    if result.deleted_count > 0:
-        log.info(f"{LogTag.INTEGRATION} User {user_id} removed integration {integration_id}")
-        return True
-
-    return False
+    deleted = await user_integration_repository.delete_for_user(user_id, integration_id)
+    if deleted:
+        log.info(
+            f"{LogTag.INTEGRATION} User removed integration",
+            user_id=user_id,
+            integration_id=integration_id,
+        )
+    return deleted
 
 
 async def check_user_has_integration(user_id: str, integration_id: str) -> bool:
     """Check if a user has added a specific integration."""
-    doc = await user_integrations_collection.find_one(
-        {
-            "user_id": user_id,
-            "integration_id": integration_id,
-        }
-    )
-    return doc is not None
+    return await user_integration_repository.exists(user_id, integration_id)
 
 
 @Cacheable(key_pattern="tools:user:{user_id}:integration_capabilities", ttl=ONE_DAY_TTL)

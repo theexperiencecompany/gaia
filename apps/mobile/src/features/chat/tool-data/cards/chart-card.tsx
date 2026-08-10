@@ -149,7 +149,7 @@ function BarChartView({ data }: { data: ChartData }) {
         const color = BAR_COLORS[i % BAR_COLORS.length];
 
         return (
-          <G key={`bar-${el.label}-${i}`}>
+          <G key={`bar-${el.label}`}>
             <Rect
               x={x}
               y={y}
@@ -452,7 +452,7 @@ function DataTable({ data }: { data: ChartData }) {
       </View>
       {elements.map((el, i) => (
         <View
-          key={`row-${el.label}-${i}`}
+          key={`row-${el.label}`}
           className="flex-row px-3 py-2"
           style={{
             backgroundColor:

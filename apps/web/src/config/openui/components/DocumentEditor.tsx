@@ -160,7 +160,9 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     void navigator.clipboard
       .writeText(full)
       .then(flashCopied)
-      .catch(() => {});
+      .catch(() => {
+        /* best-effort copy: clipboard failures (permissions, insecure context) are non-actionable */
+      });
   }, [fields, editor]);
 
   const copyAsText = React.useCallback(() => {
@@ -172,7 +174,9 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     void navigator.clipboard
       .writeText(full)
       .then(flashCopied)
-      .catch(() => {});
+      .catch(() => {
+        /* best-effort copy: clipboard failures (permissions, insecure context) are non-actionable */
+      });
   }, [fields, editor]);
 
   return (

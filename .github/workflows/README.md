@@ -14,19 +14,10 @@ flowchart TD
   classDef external fill:#F0FDF4,stroke:#22C55E,color:#14532D,stroke-width:1.2px;
   classDef terminal fill:#F8FAFC,stroke:#94A3B8,color:#334155,stroke-width:1px;
 
-  START["Feature branch changes"]:::event --> PR_DEV["PR to develop"]:::event
-  PR_DEV --> PR_TITLE["pr-naming-conventions.yml<br/>Validate PR title"]:::ci
-  PR_DEV --> MAIN_PR_DEV["main.yml<br/>quality-checks (PR)"]:::ci
-  MAIN_PR_DEV --> DEV_MERGED{"Merged to develop?"}:::decision
-  DEV_MERGED -- "No" --> STOP1["Stop"]:::terminal
-  DEV_MERGED -- "Yes" --> PR_MASTER["PR develop -> master"]:::event
-
-  HOTFIX["hotfix/* cut from master<br/>(production defect, skips the develop backlog)"]:::event --> PR_MASTER
-  HOTFIX --> BACKPORT["Land on develop too<br/>(else the next develop -> master merge regresses it)"]:::event
-
-  PR_MASTER --> PR_TITLE
-  PR_MASTER --> MAIN_PR_MASTER["main.yml<br/>quality-checks (PR + master source policy)"]:::ci
-  MAIN_PR_MASTER --> MASTER_MERGED{"Merged to master?"}:::decision
+  START["Feature branch changes<br/>(humans, contributors, bots)"]:::event --> PR_MASTER["PR to master"]:::event
+  PR_MASTER --> PR_TITLE["pr-naming-conventions.yml<br/>Validate PR title"]:::ci
+  PR_MASTER --> MAIN_PR["main.yml + code-quality.yml<br/>quality gates (PR)"]:::ci
+  MAIN_PR --> MASTER_MERGED{"Merged to master?"}:::decision
   MASTER_MERGED -- "No" --> STOP2["Stop"]:::terminal
   MASTER_MERGED -- "Yes" --> PUSH_MASTER["push -> master"]:::event
 
@@ -102,10 +93,18 @@ flowchart TD
 
 ## Per-Workflow Steps
 ### `.github/workflows/main.yml`
-1. Enter from PRs targeting `develop`/`master` and pushes to `master`.
-2. Run master promotion policy guard (`develop`, `release-please--*`, or `hotfix/*` to `master`).
-3. Delegate the full quality gate to the Dagger module via `dagger call quality-checks`. All toolchain setup, dependency installation, linting, type-checking, building, testing, dead code detection, and release manifest validation run inside the Dagger container. No host-level pre-flight steps.
-4. If run is a successful push on `master`, call `build.yml`.
+1. Enter from PRs targeting `master` and pushes to `master`.
+2. `detect`: validate the release manifest and compute Nx-affected Python/TypeScript project lists (fail-loud — an nx error fails the job rather than silently skipping every lane).
+3. Correctness lanes, each gated on the affected lists: `build` (TS builds), `test-typescript` (vitest via Nx), and `test-python` — pytest run directly on the runner against live PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers started by `scripts/ci/start-test-services.sh` (same images/credentials as the local `dagger call test-python` harness), with coverage measured in the same run and gated at `--cov-fail-under=80` (a separate coverage job would re-run the whole suite a second time per PR, so it lives here instead). Static checks (ruff, mypy, Biome, tsc, custom AST lints, dead code) intentionally do NOT run here — they are enforced lanes in `code-quality.yml`.
+4. `quality-gate` (branch protection target) fails on any failed/cancelled lane; skipped lanes pass.
+5. If run is a successful push on `master`, call `build.yml`.
+
+### `.github/workflows/code-quality.yml`
+1. Enter from PRs targeting `master`, pushes to `master`, and manual dispatch.
+2. `changes`: one cheap no-toolchain job detects which languages a PR touches; Python lanes and TypeScript lanes are skipped wholesale when their language is untouched (on push/dispatch everything runs).
+3. Eighteen hygiene lanes (Biome, deps, circular, file-size, types-location, components-per-file, jscpd, type-coverage, package hygiene, tsc, ruff + custom AST lints, mypy, interrogate, xenon, bandit, evlog-map observability score, wide-event cross-runtime conformance, knip/vulture dead code), each self-scoping to changed files via `scripts/ci/changed-files.sh`. The `wide-event-conformance` lane runs the Python and TypeScript logging stacks for real and diffs the log shapes they actually emit against each other and against `scripts/ci/wide-event-conformance/contract.json`, so the two halves cannot drift apart. The observability lane (`tools/evlog_map`, enforced) posts the full-repo score to the job summary and fails PRs whose changed files score below the same files at the merge-base.
+
+4. `Quality gate (required)` (the single required status check) fails the merge if any lane is neither `success` nor `skipped`; a lane skipped by `changes` counts as passing, but a failed `changes` job fails the gate. All lanes are enforced — there is no informational tier.
 
 ### `.github/workflows/build.yml`
 1. Start two build lanes: `docker-release` and `docker-web`.
@@ -152,10 +151,10 @@ flowchart TD
 2. Validate PR title against configured semantic type list.
 
 ## File Map
-- `.github/workflows/main.yml`: CI quality gate and master promotion policy — delegates to Dagger for quality checks.
+- `.github/workflows/main.yml`: CI correctness gate (build + tests). Python tests run runner-native against live service containers.
+- `.github/workflows/code-quality.yml`: code-hygiene lanes (lint/type/dead-code/complexity/security) behind the ratcheted `Quality gate (required)` check.
 - `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
 - `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.
-- `.github/workflows/deploy.yml`: legacy compose-based deploy (superseded by deploy-swarm-prod.yml, kept for reference).
 - `.github/workflows/deploy-frontend.yml`: frontend sync path for Vercel source repository.
 - `.github/workflows/release-please.yml`: release PR/tag automation and CLI publish dispatch.
 - `.github/workflows/publish-cli.yml`: CLI package validation/build/publish workflow.

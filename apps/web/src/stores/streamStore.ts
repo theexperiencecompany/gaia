@@ -32,6 +32,10 @@ export interface TurnUiState {
   /** Loading indicator visibility — toggles within a phase (e.g. off at
    *  main_response_complete, back on when executor events resume). */
   spinnerActive: boolean;
+  /** The turn is blocked on a pending HIL approval. The loading indicator stays
+   *  visible but switches to a distinct "waiting for your approval" state
+   *  instead of the normal streaming spinner. */
+  awaitingApproval: boolean;
   /** True from send until `main_response_complete` — the window where the
    *  composer is locked and sends are queued. */
   composerLocked: boolean;
@@ -96,6 +100,7 @@ export const useStreamStore = create<StreamStore>()(
               [key]: {
                 phase: "connecting" as const,
                 spinnerActive: true,
+                awaitingApproval: false,
                 composerLocked: true,
                 loadingText: userMessage?.trim()
                   ? getRelevantThinkingMessage(userMessage)
@@ -319,16 +324,25 @@ export const useActiveLoading = (): {
   loadingText: string;
   loadingTextKey: number;
   toolInfo?: ToolInfo;
+  awaitingApproval: boolean;
 } => {
   const turn = useActiveTurn();
   const aux = useStreamStore((state) => state.auxLoading);
 
-  if (turn && (turn.spinnerActive || turn.phase === "awaiting_executor")) {
+  if (
+    turn &&
+    (turn.spinnerActive ||
+      turn.awaitingApproval ||
+      turn.phase === "awaiting_executor")
+  ) {
+    // While awaiting approval the indicator owns its own copy/icon, so drop the
+    // stale tool info/text from the last streamed step.
     return {
       isLoading: true,
-      loadingText: turn.loadingText,
+      loadingText: turn.awaitingApproval ? "" : turn.loadingText,
       loadingTextKey: turn.loadingTextKey,
-      toolInfo: turn.toolInfo,
+      toolInfo: turn.awaitingApproval ? undefined : turn.toolInfo,
+      awaitingApproval: turn.awaitingApproval,
     };
   }
   if (aux?.active) {
@@ -337,6 +351,7 @@ export const useActiveLoading = (): {
       loadingText: aux.text,
       loadingTextKey: aux.key,
       toolInfo: aux.toolInfo,
+      awaitingApproval: false,
     };
   }
   return {
@@ -344,6 +359,7 @@ export const useActiveLoading = (): {
     loadingText: turn?.loadingText ?? "",
     loadingTextKey: turn?.loadingTextKey ?? 0,
     toolInfo: undefined,
+    awaitingApproval: false,
   };
 };
 
@@ -369,6 +385,17 @@ export const useIsConversationStreaming = (
     const session = state.sessions[conversationId];
     return session != null && session.phase !== "awaiting_executor";
   });
+
+/** True while this conversation's live turn is blocked on a pending HIL
+ *  approval — drives the amber "waiting on you" dot in the chat list. */
+export const useIsConversationAwaitingApproval = (
+  conversationId: string | null,
+): boolean =>
+  useStreamStore((state) =>
+    conversationId
+      ? (state.sessions[conversationId]?.awaitingApproval ?? false)
+      : false,
+  );
 
 export const useIsAwaitingExecutor = (conversationId: string | null): boolean =>
   useStreamStore((state) =>

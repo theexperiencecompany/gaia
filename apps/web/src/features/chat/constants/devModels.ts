@@ -35,6 +35,18 @@ export const DEV_MODEL_OPTIONS: DevModelOption[] = [
     logo: "/images/icons/deepseek.png",
   },
   {
+    id: "deepseek-v4-flash",
+    name: "DeepSeek V4 Flash",
+    provider: "DeepSeek",
+    logo: "/images/icons/deepseek.png",
+  },
+  {
+    id: "custom",
+    name: "Custom (env)",
+    provider: "DEV_LLM_BASE_URL endpoint",
+    logo: "/images/logos/logo.webp",
+  },
+  {
     id: "gemini-3.1-flash-lite",
     name: "Gemini 3.1 Flash Lite",
     provider: "Google",

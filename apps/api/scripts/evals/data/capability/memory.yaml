@@ -1,0 +1,57 @@
+# Memory family — add_memory in turn 1, recall in turn 2. end_state verifies
+# durable recall through the memory engine (the fact must survive in the
+# user's memory and come back on recall).
+
+- id: memory-coffee-order
+  ticket: "Store a durable fact, then recall it; the fact must come back."
+  tags: [memory]
+  setup:
+    turns:
+      - "Remember that my coffee order is a large oat latte"
+      - "What's my coffee order?"
+  prompt: "Remember that my coffee order is a large oat latte"
+  expected:
+    category: memory
+    communicate: ["oat"]
+    tool_calls: [{tool: add_memory}]
+    end_state: {recalled: true}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply states the coffee order from memory"
+
+- id: memory-mothers-name
+  ticket: "Store a personal fact, then recall it in a follow-up turn."
+  tags: [memory]
+  setup:
+    turns:
+      - "Remember that my mother's name is Elena"
+      - "What's my mother's name?"
+  prompt: "Remember that my mother's name is Elena"
+  expected:
+    category: memory
+    communicate: ["elena"]
+    tool_calls: [{tool: add_memory}]
+    end_state: {recalled: true}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply states the mother's name from memory"
+
+- id: memory-team-meeting
+  ticket: "Store a recurring-schedule fact, then recall the schedule detail."
+  tags: [memory]
+  setup:
+    turns:
+      - "Remember that I have a design team meeting every Tuesday at 10am"
+      - "When is my design team meeting?"
+  prompt: "Remember that I have a design team meeting every Tuesday at 10am"
+  expected:
+    category: memory
+    communicate: ["tuesday"]
+    tool_calls: [{tool: add_memory}]
+    end_state: {recalled: true}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply states the meeting schedule from memory"

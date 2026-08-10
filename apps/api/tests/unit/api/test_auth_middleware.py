@@ -11,13 +11,25 @@ import pytest
 from starlette.testclient import TestClient
 
 from app.api.v1.middleware.auth import WorkOSAuthMiddleware, get_current_user
+from app.models.user_models import UserDocument
+
+
+@pytest.fixture(autouse=True)
+def _no_dev_bypass(monkeypatch):
+    """This file tests the WorkOS session/agent paths. The developer's ambient
+    .env legitimately sets DEV_AUTH_BYPASS_EMAIL, which would short-circuit the
+    middleware before anything under test runs — pin it off. The bypass path
+    itself is covered in tests/integration/api/test_dev_endpoints.py."""
+    from app.config.settings import settings
+
+    monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
+
 
 # ---------------------------------------------------------------------------
 # get_current_user dependency
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetCurrentUser:
     def test_returns_user_from_request_state(self) -> None:
         request = MagicMock()
@@ -68,7 +80,6 @@ def _build_test_app(middleware_kwargs: dict | None = None):
     return app
 
 
-@pytest.mark.unit
 class TestWorkOSAuthMiddlewareExcludedPaths:
     """Requests to excluded paths should pass through without authentication."""
 
@@ -88,7 +99,6 @@ class TestWorkOSAuthMiddlewareExcludedPaths:
         assert resp.json()["user"] is None
 
 
-@pytest.mark.unit
 class TestWorkOSAuthMiddlewareSessionAuth:
     """Session-based authentication via cookies and Authorization header."""
 
@@ -111,7 +121,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             return_value=(user_info, None),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "sealed_tok"})
+            client.cookies.set("wos_session", "sealed_tok")
+            resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
         data = resp.json()
         assert data["authenticated"] is True
@@ -145,7 +156,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             return_value=(user_info, new_session),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "old_tok"})
+            client.cookies.set("wos_session", "old_tok")
+            resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
         # The middleware should set a wos_session cookie
         assert "wos_session" in resp.cookies
@@ -159,7 +171,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             return_value=(None, None),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "bad_tok"})
+            client.cookies.set("wos_session", "bad_tok")
+            resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
         assert resp.json()["authenticated"] is False
 
@@ -172,24 +185,25 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             side_effect=RuntimeError("WorkOS error"),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "tok"})
+            client.cookies.set("wos_session", "tok")
+            resp = client.get("/api/v1/protected")
         # Request should still go through, just unauthenticated
         assert resp.status_code == 200
         assert resp.json()["authenticated"] is False
 
 
-@pytest.mark.unit
 class TestWorkOSAuthMiddlewareAgentAuth:
     """Agent-only paths use JWT agent tokens when no session is present."""
 
     def test_agent_token_authenticates_on_agent_path(self) -> None:
         app = _build_test_app()
-        user_data = {
-            "_id": "507f1f77bcf86cd799439011",
-            "email": "agent@test.com",
-            "name": "Agent User",
-            "picture": None,
-        }
+        user_doc = UserDocument.model_validate(
+            {
+                "id": "507f1f77bcf86cd799439011",
+                "email": "agent@test.com",
+                "name": "Agent User",
+            }
+        )
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
@@ -199,9 +213,9 @@ class TestWorkOSAuthMiddlewareAgentAuth:
                 },
             ),
             patch(
-                "app.api.v1.middleware.auth.users_collection.find_one",
+                "app.api.v1.middleware.auth.user_repository.get",
                 new_callable=AsyncMock,
-                return_value=user_data,
+                return_value=user_doc,
             ),
         ):
             client = TestClient(app)
@@ -239,7 +253,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
                 },
             ),
             patch(
-                "app.api.v1.middleware.auth.users_collection.find_one",
+                "app.api.v1.middleware.auth.user_repository.get",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -268,7 +282,6 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         assert resp.json()["authenticated"] is False
 
 
-@pytest.mark.unit
 class TestAuthenticateSession:
     """Unit tests for _authenticate_session helper."""
 
@@ -282,14 +295,14 @@ class TestAuthenticateSession:
                 return_value=(user_info, "new_sess"),
             ),
             patch(
-                "app.api.v1.middleware.auth.users_collection.update_one",
+                "app.api.v1.middleware.auth.user_repository.touch_last_active",
                 new_callable=AsyncMock,
-            ) as mock_update,
+            ) as mock_touch,
         ):
             result_user, result_sess = await middleware._authenticate_session("tok")
         assert result_user == user_info
         assert result_sess == "new_sess"
-        mock_update.assert_called_once()
+        mock_touch.assert_awaited_once_with("a@b.com")
 
     async def test_failed_authentication(self) -> None:
         middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
@@ -302,8 +315,10 @@ class TestAuthenticateSession:
         assert result_user is None
         assert result_sess is None
 
-    async def test_update_one_error_returns_none_user(self) -> None:
-        """If updating last_active_at fails, user_info becomes None."""
+    async def test_auth_outcome_is_independent_of_last_active_touch(self) -> None:
+        """The last-active touch is fire-and-forget: a valid WorkOS session
+        authenticates regardless of the touch (the previous swallow that turned a
+        touch failure into a failed auth is gone; touch_last_active never raises)."""
         user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
         middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
         with (
@@ -313,11 +328,10 @@ class TestAuthenticateSession:
                 return_value=(user_info, None),
             ),
             patch(
-                "app.api.v1.middleware.auth.users_collection.update_one",
+                "app.api.v1.middleware.auth.user_repository.touch_last_active",
                 new_callable=AsyncMock,
-                side_effect=RuntimeError("db err"),
-            ),
+            ) as mock_touch,
         ):
-            result_user, result_sess = await middleware._authenticate_session("tok")
-        # The middleware catches the exception and returns None for user
-        assert result_user is None
+            result_user, _ = await middleware._authenticate_session("tok")
+        assert result_user == user_info
+        mock_touch.assert_awaited_once_with("a@b.com")

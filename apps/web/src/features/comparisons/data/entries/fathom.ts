@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Fathom is a free AI meeting notetaker that records, transcribes, and summarizes calls with CRM sync for Salesforce and HubSpot. GAIA is a proactive AI assistant that manages your complete workflow across tasks, email, calendar, and meetings.",
   metaTitle:
-    "Fathom Alternative for Full Productivity Automation | GAIA vs Fathom",
+    "Fathom Alternative for Full Productivity Automation — GAIA vs Fathom",
   metaDescription:
     "Fathom's free notetaker is excellent but limited to meetings. GAIA is an open-source alternative that connects meeting outcomes to tasks, email follow-ups, and 50+ integrations automatically.",
   keywords: [

@@ -12,7 +12,7 @@ allowing bot requests to use the same endpoints as normal web auth.
 
 from collections.abc import Awaitable, Callable
 import secrets
-from typing import Any
+from typing import cast
 
 from fastapi import Request, Response
 from jose import JWTError
@@ -21,10 +21,13 @@ from starlette.types import ASGIApp
 
 from app.config.settings import settings
 from app.constants.cache import TEN_MINUTES_TTL
+from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
+from app.models.user_models import AuthenticatedUser
 from app.services.bot_token_service import verify_bot_session_token
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.auth_utils import build_user_context
+from shared.py.wide_events import log
 
 
 class BotAuthMiddleware(BaseHTTPMiddleware):
@@ -42,7 +45,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         self,
         app: ASGIApp,
         exclude_paths: list[str] | None = None,
-    ):
+    ) -> None:
         super().__init__(app)
         self.exclude_paths = exclude_paths or [
             "/docs",
@@ -73,9 +76,20 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
                     request.state.user = user_info
                     request.state.authenticated = True
                     authenticated = True
-            except (JWTError, Exception):
-                # JWT failed - will try API key below
-                pass
+            except JWTError as e:
+                log.debug(
+                    f"{LogTag.API} Bot JWT rejected, trying API key",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            except Exception as e:
+                # Not a token problem — Redis/Mongo lookups can fail here. Still
+                # falls through to API key auth, but never silently.
+                log.warning(
+                    f"{LogTag.API} Bot JWT authentication errored, trying API key",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
         # 2. Fall back to API key + platform headers
         if not authenticated:
@@ -103,19 +117,33 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
     def _verify_api_key(self, api_key: str) -> bool:
         bot_api_key = getattr(settings, "GAIA_BOT_API_KEY", None)
         if not bot_api_key:
+            # The API has no bot key configured at all — every bot request is
+            # silently rejected today. That is exactly the "Authentication
+            # required" dead-end the harness hits when the API was booted
+            # before GAIA_BOT_API_KEY was set. Fail loud instead.
+            log.warning(
+                f"{LogTag.API} Bot API key rejected: GAIA_BOT_API_KEY is not configured",
+                bot_auth_reason="server_key_unset",
+            )
             return False
         # Timing-safe comparison to avoid leaking the key via response-time diffs.
-        return secrets.compare_digest(api_key.encode(), bot_api_key.encode())
+        if not secrets.compare_digest(api_key.encode(), bot_api_key.encode()):
+            log.warning(
+                f"{LogTag.API} Bot API key rejected: X-Bot-API-Key does not match",
+                bot_auth_reason="key_mismatch",
+            )
+            return False
+        return True
 
     async def _authenticate_platform(
         self, platform: str, platform_user_id: str
-    ) -> dict[str, Any] | None:
+    ) -> AuthenticatedUser | None:
         """Authenticate via platform ID lookup with caching."""
         cache_key = f"bot_user:{platform}:{platform_user_id}"
         cached_user_info = await get_cache(cache_key)
 
         if cached_user_info and cached_user_info.get("user_id"):
-            return cached_user_info
+            return cast(AuthenticatedUser, cached_user_info)
 
         user_data = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
 
@@ -129,7 +157,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         await set_cache(cache_key, user_info, ttl=TEN_MINUTES_TTL)
         return user_info
 
-    async def _authenticate_jwt(self, token: str) -> dict[str, Any] | None:
+    async def _authenticate_jwt(self, token: str) -> AuthenticatedUser | None:
         """Authenticate via JWT session token with caching."""
         try:
             payload = verify_bot_session_token(token)
@@ -145,7 +173,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
             cached_user_info = await get_cache(cache_key)
 
             if cached_user_info and cached_user_info.get("user_id") == user_id:
-                return cached_user_info
+                return cast(AuthenticatedUser, cached_user_info)
 
             user_data = await PlatformLinkService.get_user_by_platform_id(
                 platform, platform_user_id

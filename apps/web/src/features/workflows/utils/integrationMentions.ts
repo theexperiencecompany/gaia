@@ -15,7 +15,7 @@ export const mentionableIntegrations = (
 /**
  * Resolve the integration ids referenced by `@<name>` mentions in a prompt.
  * Mentions are stored by display name; this maps them back to ids so the
- * generator (and persisted `selected_integrations`) get canonical ids.
+ * generator (and persisted `integration_ids`) get canonical ids.
  */
 export const mentionedIntegrationIds = (
   prompt: string,

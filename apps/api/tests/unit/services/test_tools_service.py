@@ -2,8 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.models.tools_models import ToolsCategoryResponse, ToolsListResponse
 from app.services.tools.tools_service import (
     _build_tools_response,
@@ -45,7 +43,6 @@ def _mock_category(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetIntegrationName:
     def test_returns_name_for_known_integration(self):
         # _INTEGRATION_NAME_MAP is built from OAUTH_INTEGRATIONS at module load
@@ -67,7 +64,6 @@ class TestGetIntegrationName:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetAvailableTools:
     async def test_coalesces_when_no_user(self):
         fake_response = ToolsListResponse(tools=[], total_count=0, categories=[])
@@ -99,7 +95,6 @@ class TestGetAvailableTools:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkspaceScoping:
     """_build_tools_response scopes all MCP tool visibility to the user's
     workspace using get_user_integration_records. These tests verify that
@@ -121,8 +116,8 @@ class TestWorkspaceScoping:
                 return_value=mock_registry,
             ),
             patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=mock_mcp_store.get_all_mcp_tools,
             ),
         ):
             result = await _build_tools_response(None)
@@ -149,8 +144,8 @@ class TestWorkspaceScoping:
                 return_value=mock_registry,
             ),
             patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=mock_mcp_store.get_all_mcp_tools,
             ),
             patch(
                 "app.services.tools.tools_service.get_user_integration_records",
@@ -180,8 +175,8 @@ class TestWorkspaceScoping:
                 return_value=mock_registry,
             ),
             patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=mock_mcp_store.get_all_mcp_tools,
             ),
             patch(
                 "app.services.tools.tools_service.get_user_integration_records",
@@ -199,7 +194,6 @@ class TestWorkspaceScoping:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBuildToolsResponse:
     """Tests for the unified _build_tools_response which handles both registry tools
     and MCP tools, scoped to the user's workspace via get_user_integration_records."""
@@ -232,8 +226,8 @@ class TestBuildToolsResponse:
         )
         stack.enter_context(
             patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=mock_mcp_store.get_all_mcp_tools,
             )
         )
         if user_records is not None:
@@ -411,7 +405,6 @@ class TestBuildToolsResponse:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetToolsByCategory:
     async def test_returns_tools_for_category(self):
         tool = _mock_tool("my_tool")
@@ -457,7 +450,6 @@ class TestGetToolsByCategory:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetToolCategories:
     async def test_returns_category_counts(self):
         cat1 = _mock_category(tools=[_mock_tool("t1"), _mock_tool("t2")])
@@ -481,7 +473,6 @@ class TestGetToolCategories:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestLockedAndFilteredTools:
     """Verifies workspace-scoping and locked/unlocked state in _build_tools_response.
     This replaces the old get_user_mcp_tools / merge_tools_responses test classes;
@@ -500,8 +491,8 @@ class TestLockedAndFilteredTools:
                 return_value=mock_registry,
             ),
             patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=mock_mcp_store.get_all_mcp_tools,
             ),
             patch(
                 "app.services.tools.tools_service.get_user_integration_records",

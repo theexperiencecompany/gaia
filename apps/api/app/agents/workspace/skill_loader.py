@@ -125,7 +125,11 @@ def _load_resources(skill_dir: Path) -> tuple[tuple[str, str], ...]:
             # A repo-owned template/script that can't be read signals broken
             # packaging or image contents — surface it so the gap is detectable
             # at load time instead of as an opaque downstream docgen failure.
-            log.warning(f"{LogTag.AGENT} skill_loader: skipping unreadable resource {path}: {exc}")
+            log.warning(
+                f"{LogTag.AGENT} skill_loader: skipping unreadable resource",
+                resource_path=str(path),
+                error_type=type(exc).__name__,
+            )
             continue
         resources.append((path.relative_to(skill_dir).as_posix(), content))
     return tuple(resources)

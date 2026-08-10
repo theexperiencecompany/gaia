@@ -166,45 +166,31 @@ interface ChatMessageProps {
   progressMessage?: string | null;
 }
 
-export function ChatMessage({
-  message,
-  onFollowUpAction,
-  onReply,
-  onLongPress,
-  isLoading = false,
-  isLastMessage = false,
-  loadingMessage = "Thinking...",
-  progressToolName = null,
-  progressMessage = null,
-}: ChatMessageProps) {
-  const isUser = message.isUser;
-  const { spacing } = useResponsive();
+type BubbleGrouping = "none" | "first" | "last" | "middle";
 
-  // Strip <thinking> tags from raw text so they are never rendered in the bubble.
-  const parsedContent = useMemo(
-    () => parseThinkingFromText(message.text ?? ""),
-    [message.text],
-  );
+/** Grouping position for a bubble within a list of `total` parts. */
+function bubbleGrouping(index: number, total: number): BubbleGrouping {
+  if (total === 1) return "none";
+  if (index === 0) return "first";
+  if (index === total - 1) return "last";
+  return "middle";
+}
 
-  const messageParts = splitByBreaksPreservingFences(
-    parsedContent.cleanText,
-  ).filter(Boolean);
+/** Font size for an emoji-only message, or null when it should render as text. */
+function emojiFontSize(count: number): number | null {
+  if (count === 1) return 52;
+  if (count === 2) return 40;
+  if (count === 3) return 32;
+  return null;
+}
 
-  const _hasContent = messageParts.length > 0;
-  const showLoadingState = !isUser && isLoading && !_hasContent;
-  const showToolProgress = showLoadingState && progressMessage !== null;
-  const showThinkingCard = showLoadingState && !showToolProgress;
-
-  const isGeneratingImage =
-    !isUser && message.imageData != null && !message.imageData.url;
-
-  const rawText = message.text ?? "";
-  const linkPreviewUrls = !isUser ? extractUrls(rawText) : [];
-  const { data: linkPreviewData } = useLinkPreview(
-    !isUser && !isLoading && rawText.length > 0 ? rawText : "",
-  );
-
-  const handleLongPress = useCallback(() => {
+/** Long-press handler shared by the sent and received message layouts. */
+function useMessageLongPress(
+  message: Message,
+  onLongPress?: (config: MessageActionConfig) => void,
+  onReply?: (message: Message) => void,
+) {
+  return useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (onLongPress) {
       onLongPress({
@@ -218,84 +204,279 @@ export function ChatMessage({
       onReply?.(message);
     }
   }, [onLongPress, onReply, message]);
+}
 
-  // ---- User message --------------------------------------------------------
-  if (isUser) {
-    return (
-      <Animated.View entering={FadeIn.duration(200)}>
-        <PressableFeedback
-          onLongPress={handleLongPress}
-          onPressIn={() =>
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-          }
-          delayLongPress={350}
-          style={{
-            flexDirection: "row",
-            paddingVertical: spacing.md,
-            alignItems: "flex-end",
-            justifyContent: "flex-end",
-            paddingHorizontal: spacing.md,
-          }}
+interface MessagePart {
+  part: string;
+  index: number;
+}
+
+function useMessageParts(text: string | undefined): {
+  parsedContent: ReturnType<typeof parseThinkingFromText>;
+  messageParts: MessagePart[];
+} {
+  // Strip <thinking> tags from raw text so they are never rendered in the bubble.
+  const parsedContent = useMemo(
+    () => parseThinkingFromText(text ?? ""),
+    [text],
+  );
+  const messageParts = splitByBreaksPreservingFences(parsedContent.cleanText)
+    .filter(Boolean)
+    .map((part, index) => ({ part, index }));
+  return { parsedContent, messageParts };
+}
+
+/** A single sent (user) message part: emoji-only text or a bubble. */
+function SentMessagePart({
+  part,
+  index,
+  total,
+}: {
+  part: string;
+  index: number;
+  total: number;
+}) {
+  const { isEmojiOnly, count } = getEmojiInfo(part);
+  if (isEmojiOnly && total === 1) {
+    const emojiSize = emojiFontSize(count);
+    if (emojiSize) {
+      return (
+        <Text style={{ fontSize: emojiSize, lineHeight: emojiSize + 8 }}>
+          {part}
+        </Text>
+      );
+    }
+  }
+  return (
+    <MessageBubble
+      message={part}
+      variant="sent"
+      grouped={bubbleGrouping(index, total)}
+    />
+  );
+}
+
+interface ChatMessageLayoutProps {
+  message: Message;
+  handleLongPress: () => void;
+}
+
+function UserChatMessage({
+  message,
+  handleLongPress,
+  messageParts,
+}: ChatMessageLayoutProps & { messageParts: MessagePart[] }) {
+  const { spacing } = useResponsive();
+
+  return (
+    <Animated.View entering={FadeIn.duration(200)}>
+      <PressableFeedback
+        onLongPress={handleLongPress}
+        onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+        delayLongPress={350}
+        style={{
+          flexDirection: "row",
+          paddingVertical: spacing.md,
+          alignItems: "flex-end",
+          justifyContent: "flex-end",
+          paddingHorizontal: spacing.md,
+        }}
+      >
+        <View
+          style={{ flexDirection: "column", gap: spacing.xs, maxWidth: "80%" }}
         >
-          <View
-            style={{
-              flexDirection: "column",
-              gap: spacing.xs,
-              maxWidth: "80%",
-            }}
-          >
-            {message.replyToMessage && (
-              <MessageReplyQuote
-                replyToMessage={message.replyToMessage}
-                isUserMessage={true}
-              />
-            )}
-            {messageParts.map((part, index) => {
-              const { isEmojiOnly, count } = getEmojiInfo(part);
-              if (isEmojiOnly && messageParts.length === 1) {
-                const emojiSize =
-                  count === 1 ? 52 : count === 2 ? 40 : count === 3 ? 32 : null;
-                if (emojiSize) {
-                  return (
-                    <Text
-                      key={`${message.id}-${index}`}
-                      style={{
-                        fontSize: emojiSize,
-                        lineHeight: emojiSize + 8,
-                      }}
-                    >
-                      {part}
-                    </Text>
-                  );
-                }
-              }
-              return (
-                <MessageBubble
-                  key={`${message.id}-${index}`}
-                  message={part}
-                  variant="sent"
-                  grouped={
-                    messageParts.length === 1
-                      ? "none"
-                      : index === 0
-                        ? "first"
-                        : index === messageParts.length - 1
-                          ? "last"
-                          : "middle"
-                  }
+          {message.replyToMessage && (
+            <MessageReplyQuote
+              replyToMessage={message.replyToMessage}
+              isUserMessage={true}
+            />
+          )}
+          {messageParts.map(({ part, index }) => (
+            <SentMessagePart
+              key={`${message.id}-${index}`}
+              part={part}
+              index={index}
+              total={messageParts.length}
+            />
+          ))}
+        </View>
+      </PressableFeedback>
+    </Animated.View>
+  );
+}
+
+/** The received (AI) message text/OpenUI parts. */
+function AITextParts({
+  parts,
+  messageId,
+  isLoading,
+  isLastMessage,
+}: {
+  parts: MessagePart[];
+  messageId: string;
+  isLoading: boolean;
+  isLastMessage: boolean;
+}) {
+  const { spacing } = useResponsive();
+
+  return (
+    <>
+      {parts.map(({ part, index: partIndex }) => {
+        const segments = parseOpenUISegments(part, isLoading);
+        const grouped = bubbleGrouping(partIndex, parts.length);
+
+        return segments.map((segment, segIndex) => {
+          const key = `${messageId}-${partIndex}-${segIndex}`;
+          const isLastSegmentOfLastPart =
+            partIndex === parts.length - 1 && segIndex === segments.length - 1;
+          const showCursor =
+            isLoading && isLastMessage && isLastSegmentOfLastPart;
+
+          if (segment.type === "openui") {
+            return (
+              <View
+                key={key}
+                style={{ paddingHorizontal: spacing.md, width: "100%" }}
+              >
+                <OpenUIRenderer
+                  code={segment.content}
+                  isStreaming={!segment.isComplete}
                 />
-              );
-            })}
-          </View>
-        </PressableFeedback>
-      </Animated.View>
+              </View>
+            );
+          }
+          return (
+            <MessageBubble
+              key={key}
+              message={segment.content}
+              variant="received"
+              grouped={grouped}
+              isStreaming={showCursor}
+            />
+          );
+        });
+      })}
+    </>
+  );
+}
+
+interface AIMainContentProps {
+  message: Message;
+  messageParts: MessagePart[];
+  isGeneratingImage: boolean;
+  showToolProgress: boolean;
+  showThinkingCard: boolean;
+  showLoadingState: boolean;
+  isLoading: boolean;
+  isLastMessage: boolean;
+  loadingMessage: string;
+  progressToolName: string | null;
+  progressMessage: string | null;
+}
+
+/** Main content area of an AI message — mutually exclusive render states. */
+function AIMainContent({
+  message,
+  messageParts,
+  isGeneratingImage,
+  showToolProgress,
+  showThinkingCard,
+  showLoadingState,
+  isLoading,
+  isLastMessage,
+  loadingMessage,
+  progressToolName,
+  progressMessage,
+}: AIMainContentProps) {
+  const { spacing } = useResponsive();
+  const loadingText =
+    loadingMessage !== "Thinking..." ? loadingMessage : undefined;
+
+  if (message.imageData || isGeneratingImage) {
+    return (
+      <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
+        <ImageBubble
+          imageData={message.imageData ?? { url: "", prompt: "" }}
+          isGenerating={isGeneratingImage}
+          caption={
+            messageParts.length > 0
+              ? messageParts.map(({ part }) => part).join(" ")
+              : undefined
+          }
+        />
+      </View>
     );
   }
+  if (showToolProgress) {
+    return (
+      <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
+        <ToolProgressCard
+          toolName={progressToolName}
+          progressMessage={progressMessage}
+        />
+      </View>
+    );
+  }
+  if (showThinkingCard) {
+    return (
+      <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
+        <ThinkingCard message={loadingText} />
+      </View>
+    );
+  }
+  if (showLoadingState) {
+    return <LoadingIndicator progress={loadingText} />;
+  }
+  if (messageParts.length > 0) {
+    return (
+      <AITextParts
+        parts={messageParts}
+        messageId={message.id}
+        isLoading={isLoading}
+        isLastMessage={isLastMessage}
+      />
+    );
+  }
+  return null;
+}
 
-  // ---- AI message ----------------------------------------------------------
-  // Don't render an empty wrapper — only render if there's actual content to show
+function AIChatMessage({
+  message,
+  handleLongPress,
+  parsedContent,
+  messageParts,
+  isLoading,
+  isLastMessage,
+  loadingMessage,
+  progressToolName,
+  progressMessage,
+  onFollowUpAction,
+}: ChatMessageLayoutProps & {
+  parsedContent: ReturnType<typeof parseThinkingFromText>;
+  messageParts: MessagePart[];
+  isLoading: boolean;
+  isLastMessage: boolean;
+  loadingMessage: string;
+  progressToolName: string | null;
+  progressMessage: string | null;
+  onFollowUpAction?: (action: string) => void;
+}) {
+  const { spacing } = useResponsive();
+
+  const hasContent = messageParts.length > 0;
+  const showLoadingState = isLoading && !hasContent;
+  const showToolProgress = showLoadingState && progressMessage !== null;
+  const showThinkingCard = showLoadingState && !showToolProgress;
+  const isGeneratingImage = message.imageData != null && !message.imageData.url;
+
+  const rawText = message.text ?? "";
+  const linkPreviewUrls = extractUrls(rawText);
+  const { data: linkPreviewData } = useLinkPreview(
+    !isLoading && rawText.length > 0 ? rawText : "",
+  );
+
   const hasAnyContent =
-    messageParts.length > 0 ||
+    hasContent ||
     isGeneratingImage ||
     showToolProgress ||
     showThinkingCard ||
@@ -341,92 +522,22 @@ export function ChatMessage({
         ) : null}
 
         {/* Main message content — full width, no avatar (mobile space constraint) */}
-        {message.imageData || isGeneratingImage ? (
-          <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
-            <ImageBubble
-              imageData={message.imageData ?? { url: "", prompt: "" }}
-              isGenerating={isGeneratingImage}
-              caption={
-                messageParts.length > 0 ? messageParts.join(" ") : undefined
-              }
-            />
-          </View>
-        ) : showToolProgress ? (
-          <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
-            <ToolProgressCard
-              toolName={progressToolName}
-              progressMessage={progressMessage}
-            />
-          </View>
-        ) : showThinkingCard ? (
-          <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
-            <ThinkingCard
-              message={
-                loadingMessage !== "Thinking..." ? loadingMessage : undefined
-              }
-            />
-          </View>
-        ) : showLoadingState ? (
-          <LoadingIndicator
-            progress={
-              loadingMessage !== "Thinking..." ? loadingMessage : undefined
-            }
-          />
-        ) : messageParts.length > 0 ? (
-          messageParts.map((part, partIndex) => {
-            const segments = parseOpenUISegments(part, !!isLoading);
-            const grouped =
-              messageParts.length === 1
-                ? "none"
-                : partIndex === 0
-                  ? "first"
-                  : partIndex === messageParts.length - 1
-                    ? "last"
-                    : "middle";
-
-            const totalSegments = segments.length;
-            return segments.map((segment, segIndex) => {
-              const key = `${message.id}-${partIndex}-${segIndex}`;
-              const isLastSegmentOfLastPart =
-                partIndex === messageParts.length - 1 &&
-                segIndex === totalSegments - 1;
-              const showCursor =
-                isLoading && isLastMessage && isLastSegmentOfLastPart;
-
-              if (segment.type === "openui") {
-                return (
-                  <View
-                    key={key}
-                    style={{
-                      paddingHorizontal: spacing.md,
-                      width: "100%",
-                    }}
-                  >
-                    <OpenUIRenderer
-                      code={segment.content}
-                      isStreaming={!segment.isComplete}
-                    />
-                  </View>
-                );
-              }
-              return (
-                <MessageBubble
-                  key={key}
-                  message={segment.content}
-                  variant="received"
-                  grouped={grouped}
-                  isStreaming={showCursor}
-                />
-              );
-            });
-          })
-        ) : null}
+        <AIMainContent
+          message={message}
+          messageParts={messageParts}
+          isGeneratingImage={isGeneratingImage}
+          showToolProgress={showToolProgress}
+          showThinkingCard={showThinkingCard}
+          showLoadingState={showLoadingState}
+          isLoading={isLoading}
+          isLastMessage={isLastMessage}
+          loadingMessage={loadingMessage}
+          progressToolName={progressToolName}
+          progressMessage={progressMessage}
+        />
 
         {/* Link preview – shown below message content for AI messages */}
-        {!isUser &&
-        !isLoading &&
-        linkPreviewUrls.length > 0 &&
-        linkPreviewData?.length ? (
+        {!isLoading && linkPreviewUrls.length > 0 && linkPreviewData?.length ? (
           <View
             style={{ paddingHorizontal: spacing.md, marginTop: spacing.xs }}
           >
@@ -455,5 +566,45 @@ export function ChatMessage({
         ) : null}
       </PressableFeedback>
     </Animated.View>
+  );
+}
+
+export function ChatMessage({
+  message,
+  onFollowUpAction,
+  onReply,
+  onLongPress,
+  isLoading = false,
+  isLastMessage = false,
+  loadingMessage = "Thinking...",
+  progressToolName = null,
+  progressMessage = null,
+}: ChatMessageProps) {
+  const { parsedContent, messageParts } = useMessageParts(message.text);
+  const handleLongPress = useMessageLongPress(message, onLongPress, onReply);
+
+  if (message.isUser) {
+    return (
+      <UserChatMessage
+        message={message}
+        handleLongPress={handleLongPress}
+        messageParts={messageParts}
+      />
+    );
+  }
+
+  return (
+    <AIChatMessage
+      message={message}
+      handleLongPress={handleLongPress}
+      parsedContent={parsedContent}
+      messageParts={messageParts}
+      isLoading={isLoading}
+      isLastMessage={isLastMessage}
+      loadingMessage={loadingMessage}
+      progressToolName={progressToolName}
+      progressMessage={progressMessage}
+      onFollowUpAction={onFollowUpAction}
+    />
   );
 }

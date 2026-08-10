@@ -15,7 +15,7 @@ repos:
       - id: bandit
         name: Bandit Security Check
         language: system
-        entry: uvx bandit -r app --exclude app/agents/prompts
+        entry: uvx bandit -c pyproject.toml -r app --exclude app/agents/prompts
         types: [python]
         pass_filenames: false
         priority: 0
@@ -32,6 +32,22 @@ repos:
         language: system
         entry: python3 apps/api/scripts/check_outbound_topology_parity.py
         files: ^(apps/api/(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)|libs/shared/ts/src/bots/consumer/topology\.ts)$
+        pass_filenames: false
+        priority: 0
+
+      - id: gaia-python-lints
+        name: GAIA custom Python lints (route contract, service classes, wide events)
+        language: system
+        entry: python3 tools/lints/run.py apps/api/app
+        files: ^(apps/api/app/.*\.py|tools/lints/.*\.py)$
+        pass_filenames: false
+        priority: 0
+
+      - id: gaia-ignore-ratchet
+        name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
+        language: system
+        entry: python3 tools/lints/check_ignore_ratchet.py
+        files: ^(pyproject\.toml|tools/lints/(check_ignore_ratchet\.py|ignore_ratchet_baseline\.txt))$
         pass_filenames: false
         priority: 0
 

@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Steep learning curve for non-technical team members",
     "Automations feel rigid and break when workflows change",
   ],
-  metaTitle: "Best Monday.com Alternative in 2026 | GAIA",
+  metaTitle: "Best Monday.com Alternative in 2026",
   metaDescription:
     "Tired of Monday.com's per-seat pricing and manual setup? GAIA is a proactive AI assistant that automates your tasks, email, and scheduling. Free tier available.",
   keywords: [

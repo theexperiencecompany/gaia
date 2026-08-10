@@ -1,9 +1,9 @@
 """Integration connection service - handles connect/disconnect logic."""
 
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Literal
 
-from mcp_use.exceptions import OAuthAuthenticationError
+from mcp_use.client.exceptions import OAuthAuthenticationError
 import pymongo.errors
 import redis
 
@@ -16,6 +16,7 @@ from app.config.token_repository import token_repository
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url
+from app.models.mcp_config import McpAuthChallenge, McpProbeResult
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationConfigItem,
@@ -33,7 +34,7 @@ from app.services.integrations.user_integrations import (
     remove_user_integration,
 )
 from app.services.integrations_fs import schedule_user_integrations_sync
-from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.mcp_client import MCPClient, get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
@@ -80,11 +81,11 @@ def build_integrations_config() -> IntegrationsConfigResponse:
 
 
 async def _redirect_to_oauth(
-    mcp_client: Any,
+    mcp_client: MCPClient,
     integration_id: str,
     integration_name: str,
     redirect_path: str,
-    challenge_data: dict | None = None,
+    challenge_data: McpAuthChallenge | None = None,
 ) -> ConnectIntegrationResponse:
     """Build the provider OAuth URL and wrap it in a redirect response."""
     auth_url = await mcp_client.build_oauth_auth_url(
@@ -118,8 +119,8 @@ async def _handle_auth_required(
     *,
     is_platform: bool,
     detected_auth_type: str | None,
-    probe_result: dict | None,
-    mcp_client: Any,
+    probe_result: McpProbeResult | None,
+    mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
     """Bearer servers return bearer_required (frontend collects a key); everything
     else gets the OAuth redirect."""
@@ -135,8 +136,16 @@ async def _handle_auth_required(
             message="This integration requires an API key.",
         )
 
+    # The WWW-Authenticate challenge lives under `oauth_challenge`, not at the top
+    # level of the probe result — passing the whole result meant discovery saw none
+    # of the challenge keys, dropped `initial_scope`, and re-fetched the PRM it was
+    # given. Typing both ends surfaced it.
     return await _redirect_to_oauth(
-        mcp_client, integration_id, integration_name, redirect_path, challenge_data=probe_result
+        mcp_client,
+        integration_id,
+        integration_name,
+        redirect_path,
+        challenge_data=probe_result.get("oauth_challenge") if probe_result else None,
     )
 
 
@@ -150,7 +159,12 @@ async def _handle_connect_failure(
     """Surface a connection failure as a structured error, never a 500."""
     if not is_platform:
         await update_user_integration_status(user_id, integration_id, "created")
-    log.warning(f"{LogTag.INTEGRATION} MCP connection failed for {integration_id}: {error}")
+    log.warning(
+        f"{LogTag.INTEGRATION} MCP connection failed for",
+        integration_id=integration_id,
+        error=error,
+        user_id=user_id,
+    )
     log.set(integration={"provider": integration_name, "action": "connect_mcp", "status": "error"})
     return ConnectIntegrationResponse(
         status="error",
@@ -169,7 +183,7 @@ async def connect_mcp_integration(
     redirect_path: str,
     server_url: str | None = None,
     is_platform: bool = False,
-    probe_result: dict | None = None,
+    probe_result: McpProbeResult | None = None,
     bearer_token: str | None = None,
 ) -> ConnectIntegrationResponse:
     """Handle MCP integration connection."""
@@ -252,7 +266,7 @@ async def _connect_with_bearer_token(
     integration_id: str,
     integration_name: str,
     bearer_token: str,
-    mcp_client: Any,
+    mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
     """Store bearer token and attempt connection."""
     token_store = MCPTokenStore(user_id)
@@ -461,7 +475,13 @@ async def initiate_integration_connection(
             )
         return _error(f"Unsupported integration type: {resolved.managed_by}")
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Failed to initiate connection for {integration_id}: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Failed to initiate connection for",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return _error(str(e))
 
 
@@ -530,15 +550,25 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
             metadata_key = f"provider_metadata:{user_id}:{integration.provider}"
             await delete_cache(metadata_key)
             log.info(
-                f"{LogTag.INTEGRATION} Provider metadata cache invalidated for {user_id}:{integration.provider}"
+                f"{LogTag.INTEGRATION} Provider metadata cache invalidated for",
+                user_id=user_id,
+                provider=integration.provider,
             )
         except redis.RedisError as e:
-            log.warning(f"{LogTag.INTEGRATION} Failed to invalidate provider metadata cache: {e}")
+            log.warning(
+                f"{LogTag.INTEGRATION} Failed to invalidate provider metadata cache",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                integration_id=integration_id,
+            )
 
     # Determine whether to delete record or set status to "created"
     if managed_by == "mcp":
         # MCP integrations: record already deleted in main disconnect logic
-        log.info(f"{LogTag.INTEGRATION} MCP integration {integration_id} record removed")
+        log.info(
+            f"{LogTag.INTEGRATION} MCP integration record removed", integration_id=integration_id
+        )
     else:
         # Check if it's a platform integration (defined in oauth_config.py)
         # If get_integration_by_id returns a value, it's a platform integration
@@ -548,19 +578,33 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
             try:
                 await remove_user_integration(user_id, integration_id)
                 log.info(
-                    f"{LogTag.INTEGRATION} Removed platform integration {integration_id} record"
+                    f"{LogTag.INTEGRATION} Removed platform integration record",
+                    integration_id=integration_id,
                 )
             except pymongo.errors.PyMongoError as e:
-                log.warning(f"{LogTag.INTEGRATION} Failed to remove integration record: {e}")
+                log.warning(
+                    f"{LogTag.INTEGRATION} Failed to remove integration record",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                    integration_id=integration_id,
+                )
         else:
             # Custom integrations: preserve in workspace by setting status to "created"
             try:
                 await update_user_integration_status(user_id, integration_id, "created")
                 log.info(
-                    f"{LogTag.INTEGRATION} Updated status to 'created' for custom integration {integration_id}"
+                    f"{LogTag.INTEGRATION} Updated status to 'created' for custom integration",
+                    integration_id=integration_id,
                 )
             except pymongo.errors.PyMongoError as e:
-                log.warning(f"{LogTag.INTEGRATION} Failed to update status: {e}")
+                log.warning(
+                    f"{LogTag.INTEGRATION} Failed to update status",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                    integration_id=integration_id,
+                )
 
     # Bust the full per-user integration cache set AFTER the record mutation above,
     # so a cache hiccup can't leave the record stale. Best-effort (never raises).

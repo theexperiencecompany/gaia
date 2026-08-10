@@ -1,8 +1,9 @@
 """Generate GAIA's first message to a new user after onboarding intelligence."""
 
 import time
+from typing import cast
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.prompts.onboarding_prompts import (
@@ -11,11 +12,28 @@ from app.agents.prompts.onboarding_prompts import (
 )
 from app.constants.log_tags import LogTag
 from app.models.onboarding_models import (
+    ClarifyAnswerRecord,
     InboxTriage,
+    OnboardingTodoSummary,
+    OnboardingWorkflowSummary,
     WritingStyleProfile,
 )
 from app.services.onboarding.clarify_service import format_clarify_context
 from shared.py.wide_events import log
+
+
+def default_first_message(name: str) -> str:
+    """The greeting when generation fails, wherever the failure is caught.
+
+    Both this module's own ``except`` and the pipeline's ``_safe_run`` default
+    resolve here so one failure mode cannot produce two different greetings —
+    the chat opens on whichever fires, and the two had drifted apart.
+    """
+    return (
+        f"Hey {name}, ok, you're all set up.<NEW_MESSAGE_BREAK>"
+        "Lined up a few action items and set up some automations from what I found."
+        "<NEW_MESSAGE_BREAK>Oh, and I made you something."
+    )
 
 
 async def generate_first_message(
@@ -23,25 +41,25 @@ async def generate_first_message(
     name: str,
     profession: str,
     triage: InboxTriage | None,
-    created_todos: list[dict],
-    created_workflows: list[dict],
+    created_todos: list[OnboardingTodoSummary],
+    created_workflows: list[OnboardingWorkflowSummary],
     writing_style: WritingStyleProfile | None,
     has_gmail: bool,
     focus: str = "",
-    executed_todos: list[dict] | None = None,
-    clarify_answers: list[dict] | None = None,
+    executed_todos: list[OnboardingTodoSummary] | None = None,
+    clarify_answers: list[ClarifyAnswerRecord] | None = None,
 ) -> str:
     """Generate GAIA's first message to a new user."""
     t0 = time.monotonic()
     try:
-        executed_ids = {t["id"] for t in (executed_todos or []) if t.get("id")}
-        queued_todos = [t for t in created_todos if t.get("id") not in executed_ids]
-        todos_text = ", ".join(t["title"] for t in queued_todos) if queued_todos else "none"
+        executed_ids = {t.id for t in (executed_todos or []) if t.id}
+        queued_todos = [t for t in created_todos if t.id not in executed_ids]
+        todos_text = ", ".join(t.title for t in queued_todos) if queued_todos else "none"
         workflows_text = (
-            ", ".join(w["title"] for w in created_workflows) if created_workflows else "none"
+            ", ".join(w.title for w in created_workflows) if created_workflows else "none"
         )
         todos_executed_text = (
-            ", ".join(t["title"] for t in executed_todos) if executed_todos else "none"
+            ", ".join(t.title for t in executed_todos) if executed_todos else "none"
         )
 
         if has_gmail:
@@ -90,7 +108,7 @@ async def generate_first_message(
             llm, [HumanMessage(content=prompt)], label="onboarding_first_message"
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
-        message = response.text.strip()
+        message = cast(BaseMessage, response).text.strip()
 
         log.info(
             f"{LogTag.ONBOARDING} first_message generated",
@@ -119,8 +137,4 @@ async def generate_first_message(
             duration_s=round(time.monotonic() - t0, 2),
             exc_info=True,
         )
-        return (
-            f"Hey {name}, ok, you're all set up.<NEW_MESSAGE_BREAK>"
-            "Lined up a few action items and set up some automations from what I found."
-            "<NEW_MESSAGE_BREAK>Oh, and I made you something."
-        )
+        return default_first_message(name)

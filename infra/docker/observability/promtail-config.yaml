@@ -3,8 +3,11 @@ server:
   grpc_listen_port: 0
   log_level: info
 
+# Must live on the promtail_positions named volume (see the compose files) —
+# a container-local path loses read offsets on every container recreation,
+# re-ingesting every retained log file from byte 0.
 positions:
-  filename: /tmp/promtail-positions.yaml
+  filename: /var/lib/promtail/promtail-positions.yaml
 
 clients:
   - url: ${LOKI_PUSH_URL:-http://loki:3100/loki/api/v1/push}
@@ -33,10 +36,54 @@ scrape_configs:
       - targets:
           - localhost
         labels:
-          service: voice-agent
-          service_name: voice-agent
-          container: voice-agent
+          service: voice-agent-worker
+          service_name: voice-agent-worker
+          container: voice-agent-worker
           __path__: /var/log/gaia-voice-agent/structured-*.json
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            logger_name: logger
+      - labels:
+          level:
+          logger_name:
+
+  # File-based scrape for locally-running bots (nx dev bot-discord, ...). The
+  # bots' file sink (libs/shared/ts/src/bots/utils/log-file-sink.ts) writes the
+  # same NDJSON they print on stdout to apps/bots/<platform>/logs. The service
+  # labels are identical to the ones the docker job derives below, so a query
+  # like {service="discord-bot"} works whether the bot ran locally or dockered.
+  - job_name: gaia_bots_local
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          service: discord-bot
+          service_name: discord-bot
+          container: discord-bot
+          __path__: /var/log/gaia-discord-bot/structured-*.json
+      - targets:
+          - localhost
+        labels:
+          service: slack-bot
+          service_name: slack-bot
+          container: slack-bot
+          __path__: /var/log/gaia-slack-bot/structured-*.json
+      - targets:
+          - localhost
+        labels:
+          service: telegram-bot
+          service_name: telegram-bot
+          container: telegram-bot
+          __path__: /var/log/gaia-telegram-bot/structured-*.json
+      - targets:
+          - localhost
+        labels:
+          service: whatsapp-bot
+          service_name: whatsapp-bot
+          container: whatsapp-bot
+          __path__: /var/log/gaia-whatsapp-bot/structured-*.json
     pipeline_stages:
       - json:
           expressions:
@@ -64,7 +111,7 @@ scrape_configs:
         target_label: "__tmp_service"
       # Only keep application containers — drop infra (postgres, redis, loki, etc.)
       - source_labels: ["__tmp_service"]
-        regex: "gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|voice-agent-worker"
+        regex: "gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|voice-agent-worker|embedding-sidecar"
         action: keep
       # Strip the leading slash from container name (e.g. /gaia-backend -> gaia-backend)
       - source_labels: ["__meta_docker_container_name"]

@@ -6,14 +6,13 @@ import pytest
 from app.agents.core.nodes.memory_node import (
     MAX_TOOL_OUTPUT_SIZE,
     _check_worth_learning,
-    _extract_text_content,
     _format_messages_for_user_memory,
     _store_user_memory_background,
     memory_node,
 )
+from app.utils.multimodal import extract_text_content
 
 
-@pytest.mark.unit
 class TestCheckWorthLearning:
     def test_too_few_messages(self):
         """Short user messages (< MIN_USER_CONTENT_CHARS) are not worth learning."""
@@ -68,7 +67,6 @@ class TestCheckWorthLearning:
         assert reason == "OK"
 
 
-@pytest.mark.unit
 class TestFormatMessagesForUserMemory:
     def test_formats_human_messages(self):
         msgs = [HumanMessage(content="hello world")]
@@ -120,26 +118,24 @@ class TestFormatMessagesForUserMemory:
         assert formatted == []
 
 
-@pytest.mark.unit
 class TestExtractTextContent:
     def test_string_content(self):
-        assert _extract_text_content("hello") == "hello"
+        assert extract_text_content("hello") == "hello"
 
     def test_list_content(self):
         blocks = [
             {"type": "text", "text": "part1"},
             {"type": "text", "text": "part2"},
         ]
-        result = _extract_text_content(blocks)
+        result = extract_text_content(blocks)
         assert "part1" in result
         assert "part2" in result
 
     def test_other_content(self):
-        result = _extract_text_content(42)
+        result = extract_text_content(42)
         assert result == "42"
 
 
-@pytest.mark.unit
 class TestMemoryNode:
     def _make_config(self, user_id=None, thread_id="t1", subagent_id=None):
         configurable = {"thread_id": thread_id}
@@ -190,11 +186,11 @@ class TestMemoryNode:
         config = self._make_config()  # no user_id, no subagent_id
         store = MagicMock()
 
-        with patch("app.agents.core.nodes.memory_node.asyncio.create_task") as mock_create:
+        with patch("app.agents.core.nodes.memory_node.spawn_background_task") as mock_spawn:
             result = await memory_node(state, config, store)
 
         assert result is state
-        mock_create.assert_not_called()
+        mock_spawn.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_spawns_background_task(self):
@@ -209,15 +205,13 @@ class TestMemoryNode:
                 new_callable=AsyncMock,
             ) as mock_background,
             patch(
-                "app.agents.core.nodes.memory_node.asyncio.create_task",
-                side_effect=lambda coro, **kw: (
-                    coro.close() or MagicMock(add_done_callback=MagicMock())
-                ),
-            ) as mock_create,
+                "app.agents.core.nodes.memory_node.spawn_background_task",
+                side_effect=lambda coro, **kw: coro.close() or MagicMock(),
+            ) as mock_spawn,
         ):
             result = await memory_node(state, config, store)
 
-        mock_create.assert_called_once()
+        mock_spawn.assert_called_once()
         mock_background.assert_called_once()
 
         call_kwargs = mock_background.call_args.kwargs

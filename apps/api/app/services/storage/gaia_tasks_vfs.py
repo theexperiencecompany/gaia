@@ -50,6 +50,10 @@ from app.services.storage._vfs_common import (
     write_rw_body,
     write_rw_if_changed,
 )
+from app.services.storage.user_todos_vfs import (
+    USER_TODOS_MARKER,
+    USER_TODOS_PER_DOC_MARKER_DIR,
+)
 
 # --- Path constants ---------------------------------------------------------
 
@@ -121,13 +125,28 @@ def cleanup_legacy_todos_dir(user_root: Path) -> bool:
     the marker present, because in the new layout that path belongs to
     the user-todos materializer.
 
+    The marker alone is not enough, though: ``/todos/`` is the SAME path in
+    both layouts. A migrating user can have the legacy marker still on disk
+    *and* a freshly written user-todos projection, because the two syncs are
+    scheduled independently (todo_service / tracked_todo_service) in no fixed
+    order. Removing the tree there deletes live todos. So the shared content
+    dir is only dropped while the new projection has not claimed it; the
+    legacy-only artifacts are unambiguous and always go.
+
     Returns ``True`` if anything was deleted (useful for telemetry).
     Idempotent — subsequent calls return ``False``.
     """
     legacy_marker = user_root / LEGACY_TODOS_MARKER
     if not legacy_marker.exists():
         return False
-    remove_tree(user_root / LEGACY_TODOS_DIRNAME)
+    # Either marker means the new projection owns the dir: the service path
+    # stamps the top-level one, while `materialize_user_todos` on its own only
+    # writes per-doc markers.
+    claimed = (user_root / USER_TODOS_MARKER).exists() or (
+        user_root / USER_TODOS_PER_DOC_MARKER_DIR
+    ).exists()
+    if not claimed:
+        remove_tree(user_root / LEGACY_TODOS_DIRNAME)
     remove_tree(user_root / LEGACY_TODOS_PER_DOC_MARKER_DIR)
     legacy_marker.unlink(missing_ok=True)
     return True

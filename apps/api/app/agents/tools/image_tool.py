@@ -20,7 +20,7 @@ async def generate_image(
         "An enhanced, detailed description for image generation. Expand from the user's request to include style, composition, lighting, mood, and other visual details for optimal results.",
     ],
     config: RunnableConfig,
-) -> dict:
+) -> dict[str, str]:
     try:
         log.set(tool={"name": "generate_image", "action": "generate"})
         writer = get_stream_writer()
@@ -29,7 +29,7 @@ async def generate_image(
         image_result = await api_generate_image(message=prompt, improve_prompt=False)
 
         # Send image data to frontend via writer
-        writer({"image_data": image_result})
+        writer({"image_data": image_result.model_dump()})
 
         # Return simple confirmation message with clear instructions to prevent markdown image rendering
         return {
@@ -39,6 +39,6 @@ async def generate_image(
 
     except Exception as e:
         writer = get_stream_writer()
-        log.error(f"{LogTag.TOOL} Error generating image: {e!s}")
+        log.error(f"{LogTag.TOOL} Error generating image", error_type=type(e).__name__)
         writer({"error": f"Error generating image: {e!s}"})
         return {"status": "error", "message": f"Error generating image: {e!s}"}

@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Airtable combines the flexibility of a spreadsheet with the power of a relational database, letting teams build custom project trackers, content calendars, and CRMs without code. GAIA adds proactive AI that autonomously manages the email, tasks, and workflows that feed those databases — eliminating the manual data entry Airtable requires.",
   metaTitle:
-    "Airtable Alternative with Proactive AI Workflow Management | GAIA vs Airtable",
+    "Airtable Alternative with Proactive AI Workflow Management — GAIA vs Airtable",
   metaDescription:
     "Airtable organizes your data but won't proactively manage your tasks or inbox. GAIA is an open-source alternative with AI task management, email integration, and 50+ tool connections — free tier available.",
   keywords: [

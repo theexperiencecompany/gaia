@@ -26,7 +26,7 @@ class TriggerRegistry:
     def register(self, handler: TriggerHandler) -> None:
         """Register a trigger handler."""
         log.set(
-            service="trigger_registry",
+            component="trigger_registry",
             operation="register",
             handler=type(handler).__name__,
             trigger_names=list(handler.trigger_names),
@@ -38,16 +38,18 @@ class TriggerRegistry:
         # Register by trigger names
         for name in handler.trigger_names:
             if name in self._name_handlers:
-                log.warning(f"{LogTag.TRIGGER} Overwriting handler for trigger: {name}")
+                log.warning(f"{LogTag.TRIGGER} Overwriting handler for trigger", name=name)
             self._name_handlers[name] = handler
-            log.info(f"{LogTag.TRIGGER} Registered handler for trigger: {name}")
+            log.info(f"{LogTag.TRIGGER} Registered handler for trigger", name=name)
 
         # Register by event types
         for event_type in handler.event_types:
             if event_type in self._event_handlers:
-                log.warning(f"{LogTag.TRIGGER} Overwriting handler for event: {event_type}")
+                log.warning(
+                    f"{LogTag.TRIGGER} Overwriting handler for event", event_type=event_type
+                )
             self._event_handlers[event_type] = handler
-            log.info(f"{LogTag.TRIGGER} Registered handler for event: {event_type}")
+            log.info(f"{LogTag.TRIGGER} Registered handler for event", event_type=event_type)
 
     def get_by_trigger_name(self, trigger_name: str) -> TriggerHandler | None:
         """Get handler by trigger name (for registration)."""

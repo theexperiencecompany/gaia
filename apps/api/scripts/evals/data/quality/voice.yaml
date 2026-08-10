@@ -1,0 +1,129 @@
+# Voice mechanics that are DETERMINISTICALLY gradeable.
+#
+# The comms prompt states several rules as absolutes rather than preferences.
+# An absolute rule graded by an LLM rubric gets graded inconsistently and costs
+# a judge call per case, so the ones that can be checked in code are checked in
+# code here. This file is the home for cases whose primary signal is a
+# structural gate rather than a rubric.
+#
+# `emoji_discipline` (suites/quality.py -> _emoji_discipline_check) is the gate
+# these cases are built around. The prompt rule is verbatim: "Emojis EXTREMELY
+# RARE, and NEVER use one before the user has used one first." The check walks
+# the transcript in order, so it permits mirroring once the user has opened
+# with one, and it goes red only on an emoji the user never invited.
+#
+# This is not hypothetical. It was judge-only coverage until a live run
+# (quality-20260808-065346) returned, to a plain-English "add a todo to water
+# the plants": "aight, add kar raha hoon Inbox me 🌱ho gaya nahi abhi". That
+# case passed every structural gate it had, because none could see it.
+#
+# The same run also showed the reply switching into Hinglish for an English-only
+# user, which the TONE MIRRORING primary directive forbids. Romanized Hindi is
+# not reliably detectable in code (unlike Devanagari), so that stays a judge
+# criterion — stated explicitly here so the next author does not assume the
+# gate covers it.
+
+- id: quality-voice-emoji-cold-open
+  ticket: "First message of a conversation — no emoji before the user has used one."
+  tags: [voice, emoji]
+  prompt: "add a todo to water the plants"
+  expected:
+    category: voice
+    communicate: []
+    tool_calls: [{tool: create_todo, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply is in the same language as the user's message — plain English, with no Hindi/Hinglish words such as 'kar raha hoon', 'ho gaya', 'bhi', 'batata hoon'."
+        - "The reply does not claim the todo is saved and confirmed before it can see that result."
+        - "The reply is one short line."
+    score: {gates: [emoji_discipline, tool_call_correctness, tool_card]}
+
+- id: quality-voice-emoji-user-opens
+  ticket: "User opens with an emoji — mirroring one back is correct, not a violation."
+  tags: [voice, emoji]
+  prompt: "😭 my code won't compile"
+  expected:
+    category: voice
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply matches the user's register and stays short."
+        - "The reply does not launch into debugging steps before knowing anything about the error."
+        - "The reply does not narrate the user's emotional state back at them."
+    score: {gates: [emoji_discipline]}
+
+- id: quality-voice-emoji-across-turns
+  ticket: "Three plain-text turns — the emoji rule holds for the whole conversation, not just turn 1."
+  tags: [voice, emoji, multiturn]
+  prompt: |-
+    what's a good name for a golden retriever
+    ---
+    something less common
+    ---
+    ok i like that one
+  expected:
+    category: voice
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "Turn 2 understands 'something less common' refers to dog names without asking."
+        - "Turn 3's reply is a short acknowledgment, not a fresh list of names."
+        - "The three replies are distinct messages, not the same acknowledgment repeated."
+        - "Every reply is in plain English with no Hinglish."
+    score: {gates: [emoji_discipline, bubble_boundary]}
+
+- id: quality-voice-english-only-tool-turn
+  ticket: "Delegated turn stays in the user's language — the live Hinglish regression."
+  tags: [voice, language, tool]
+  prompt: "remind me to submit my expense report on friday at 4pm"
+  expected:
+    category: voice
+    communicate: []
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply is entirely in English. It contains no Hindi or Hinglish words (for example 'kar raha hoon', 'ho gaya', 'abhi', 'thoda', 'daal raha hoon', 'batata hoon')."
+        - "The reply does not claim the reminder is confirmed before it can see that."
+        - "The reply is one short line and does not restate the request back as a receipt."
+    score: {gates: [emoji_discipline, tool_call_correctness, tool_card]}
+
+- id: quality-voice-no-em-dash
+  ticket: "Content creation — the prompt bans em dashes outright, in everything it writes."
+  tags: [voice, writing]
+  prompt: "write me a short thank you note to my landlord for fixing the boiler fast"
+  expected:
+    category: voice
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The note contains NO em dash and NO en dash characters anywhere."
+        - "The note is complete and sendable, not an outline or a description of what to write."
+        - "The note does not end with 'let me know if you want changes' or equivalent boilerplate."
+        - "The note reads like a person wrote it: varied sentence length, no throat-clearing opener."
+    score: {gates: [emoji_discipline]}
+
+- id: quality-voice-banned-phrases
+  ticket: "The prompt names banned chatbot phrases — a wind-down turn is where they leak."
+  tags: [voice]
+  prompt: "cool, that's all i needed"
+  expected:
+    category: voice
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply contains none of the banned phrases: 'How can I help you', 'Let me know if you need anything else', 'Is there anything else', 'No problem at all', 'I apologize for the confusion', 'I'll carry that out right away'."
+        - "The reply is a few words, matching the user's sign-off energy."
+        - "The reply does not offer further help unprompted."
+    score: {gates: [emoji_discipline]}

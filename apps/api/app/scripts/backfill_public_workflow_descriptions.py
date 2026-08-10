@@ -34,7 +34,7 @@ import argparse
 import asyncio
 from datetime import UTC, datetime
 
-from app.db.mongodb.collections import workflows_collection
+from app.db.mongodb.collections import get_async_collection
 from shared.py.wide_events import log
 
 # ---------------------------------------------------------------------------
@@ -306,6 +306,7 @@ async def _apply_plans(
 ) -> None:
     now = datetime.now(UTC)
     confirmed = 0
+    workflows_collection = get_async_collection("workflows")
     for wid, _before, after in plans:
         result = await workflows_collection.update_one(
             {"_id": wid, "is_public": True},
@@ -340,7 +341,7 @@ async def _run(args: argparse.Namespace) -> int:
     if manifest is None:
         return 1
 
-    cursor = workflows_collection.find({"is_public": True})
+    cursor = get_async_collection("workflows").find({"is_public": True})
     docs = {doc["_id"]: doc async for doc in cursor}
 
     print(f"Found {len(docs)} public workflows in Mongo; manifest covers {len(manifest)}.")

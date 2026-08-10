@@ -40,7 +40,7 @@ class DuckDuckGoProvider(SearchProvider):
         # DDG Lite serves an anti-bot page (often HTTP 202) that still parses as
         # HTML; treat it as "no results" rather than scraping a challenge page.
         if response.status_code == 202 or "bots use duckduckgo" in response.text[:2000].lower():
-            log.warning(f"DuckDuckGo served a bot-challenge page for query: {query[:60]}")
+            log.warning("DuckDuckGo served a bot-challenge page", query=query)
             return SearchResponse(provider=self.name)
 
         soup = BeautifulSoup(response.text, "lxml")

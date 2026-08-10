@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-from app.db.mongodb.collections import ai_models_collection
+from app.db.repositories.ai_models import ai_model_repository
 from app.decorators.caching import Cacheable
 from app.models.models_models import ModelConfig
 from shared.py.wide_events import log
@@ -23,17 +23,11 @@ async def get_model_by_id(model_id: str) -> ModelConfig | None:
         Model configuration or None if not found
     """
     try:
-        model_doc = await ai_models_collection.find_one({"model_id": model_id})
-        if not model_doc:
-            return None
-
-        # Remove MongoDB ObjectId for serialization
-        model_doc.pop("_id", None)
-
-        return ModelConfig(**model_doc)
-
+        return await ai_model_repository.get_by_model_id(model_id)
     except Exception as e:
-        log.error(f"Error fetching model {model_id}: {e}")
+        log.error(
+            "Error fetching model", model_id=model_id, error=str(e), error_type=type(e).__name__
+        )
         raise HTTPException(status_code=500, detail="Failed to fetch model")
 
 
@@ -51,18 +45,7 @@ async def get_default_model() -> ModelConfig | None:
         Default model configuration
     """
     try:
-        model_doc = await ai_models_collection.find_one({"is_default": True, "is_active": True})
-
-        if not model_doc:
-            # Fallback to any active model if no default is set
-            model_doc = await ai_models_collection.find_one({"is_active": True})
-
-        if not model_doc:
-            return None
-
-        model_doc.pop("_id", None)
-        return ModelConfig(**model_doc)
-
+        return await ai_model_repository.get_default()
     except Exception as e:
-        log.error(f"Error fetching default model: {e}")
+        log.error("Error fetching default model", error=str(e), error_type=type(e).__name__)
         return None

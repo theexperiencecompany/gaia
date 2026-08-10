@@ -37,7 +37,7 @@ async def _resolve_destination(platform: ConversationSource, user_id: str) -> st
     """Resolve a GAIA ``user_id`` to its platform-native destination id, or None."""
     linked = await PlatformLinkService.get_linked_platforms(user_id)
     info = linked.get(platform.value)
-    return info.get("platformUserId") if info else None
+    return info["platformUserId"] if info else None
 
 
 async def _prepare(
@@ -56,13 +56,17 @@ async def _prepare(
 
     destination_id = await _resolve_destination(platform, user_id)
     if not destination_id:
-        log.warning(f"{log_label}: account not linked", platform=platform.value)
+        log.warning(
+            ": account not linked", log_label=log_label, user_id=user_id, platform=platform.value
+        )
         return OutboundResult.SKIPPED
 
     try:
         publisher = await get_rabbitmq_publisher()
     except RuntimeError:
-        log.warning(f"{log_label}: RabbitMQ unavailable", platform=platform.value)
+        log.warning(
+            ": RabbitMQ unavailable", log_label=log_label, user_id=user_id, platform=platform.value
+        )
         return OutboundResult.FAILED
 
     return queue_name, str(destination_id), publisher

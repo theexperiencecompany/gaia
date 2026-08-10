@@ -6,18 +6,31 @@ All provider-specific trigger handlers must extend this class.
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.models.trigger_config import TriggerOption, TriggerOptionGroup
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import TriggerContext, log
+
+
+class TriggerEventResult(TypedDict):
+    """What dispatching one webhook event reported.
+
+    ``status`` is ``Literal["success"]`` because the dispatch genuinely has no
+    failure return: a workflow that cannot be queued is logged and counted out of
+    ``message``, never surfaced here. The webhook endpoint discards this value
+    (the call is fire-and-forget), so it is an in-process contract, not a wire one.
+    """
+
+    status: Literal["success"]
+    message: str
 
 
 def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
@@ -31,7 +44,7 @@ def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
     if not isinstance(raw, str) or not raw:
         return None
     try:
-        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(raw)
     except ValueError:
         return None
     if parsed.tzinfo is None:
@@ -61,8 +74,8 @@ def _log_event_timing(data: dict[str, Any], now_utc: datetime) -> None:
     )
     if abs(webhook_lag) > 300:
         log.warning(
-            f"{LogTag.TRIGGER} webhook fired far from expected time — "
-            f"lag={webhook_lag}s (positive = late, negative = early)",
+            f"{LogTag.TRIGGER} webhook fired far from expected time — lag=s (positive = late, negative = early)",
+            webhook_lag=webhook_lag,
         )
 
 
@@ -80,7 +93,6 @@ class TriggerHandler(ABC):
 
         These are the values stored in trigger_data.trigger_name.
         """
-        pass
 
     @property
     @abstractmethod
@@ -89,7 +101,6 @@ class TriggerHandler(ABC):
 
         These are the webhook event types from Composio (e.g., 'GOOGLECALENDAR_...')
         """
-        pass
 
     @abstractmethod
     async def register(
@@ -110,7 +121,6 @@ class TriggerHandler(ABC):
         Returns:
             List of Composio trigger IDs that were registered
         """
-        pass
 
     async def unregister(self, user_id: str, trigger_ids: list[str]) -> bool:
         """Unregister triggers when workflow is deleted/deactivated.
@@ -126,7 +136,7 @@ class TriggerHandler(ABC):
             True if all triggers were unregistered successfully
         """
         log.set(
-            service="trigger_handler",
+            component="trigger_handler",
             operation="unregister",
             user_id=user_id,
             trigger_count=len(trigger_ids),
@@ -144,9 +154,15 @@ class TriggerHandler(ABC):
                     composio.composio.triggers.delete,
                     trigger_id=trigger_id,
                 )
-                log.debug(f"{LogTag.TRIGGER} Deleted trigger: {trigger_id}")
+                log.debug(f"{LogTag.TRIGGER} Deleted trigger", trigger_id=trigger_id)
             except Exception as e:
-                log.error(f"{LogTag.TRIGGER} Failed to delete trigger {trigger_id}: {e}")
+                log.error(
+                    f"{LogTag.TRIGGER} Failed to delete trigger",
+                    trigger_id=trigger_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
                 success = False
 
         return success
@@ -214,7 +230,10 @@ class TriggerHandler(ABC):
                     config_description_fn(configs[i]) if config_description_fn else str(configs[i])
                 )
                 log.error(
-                    f"{LogTag.TRIGGER} Trigger registration failed for {config_desc}: {result}"
+                    f"{LogTag.TRIGGER} Trigger registration failed for",
+                    config_desc=config_desc,
+                    result=result,
+                    user_id=user_id,
                 )
             elif result is not None:
                 successful_ids.append(result)
@@ -223,13 +242,16 @@ class TriggerHandler(ABC):
         if has_failure:
             if successful_ids:
                 log.warning(
-                    f"{LogTag.TRIGGER} Rolling back {len(successful_ids)} triggers due to partial failure"
+                    f"{LogTag.TRIGGER} Rolling back triggers due to partial failure",
+                    successful_ids_count=len(successful_ids),
+                    user_id=user_id,
                 )
                 rollback_ok = await self.unregister(user_id, successful_ids)
                 if not rollback_ok:
                     log.error(
-                        f"{LogTag.TRIGGER} Rollback FAILED — orphaned Composio triggers: {successful_ids}. "
-                        "Manual cleanup may be required."
+                        f"{LogTag.TRIGGER} Rollback FAILED — orphaned Composio triggers: . Manual cleanup may be required.",
+                        successful_ids=successful_ids,
+                        user_id=user_id,
                     )
 
             raise TriggerRegistrationError(
@@ -239,25 +261,6 @@ class TriggerHandler(ABC):
             )
 
         return successful_ids
-
-    async def _load_workflows_from_query(
-        self, query: dict[str, Any], log_context: str
-    ) -> list[Workflow]:
-        """Load and validate workflows for a MongoDB query."""
-        workflows: list[Workflow] = []
-        cursor = workflows_collection.find(query)
-        async for workflow_doc in cursor:
-            try:
-                workflow_doc["id"] = workflow_doc.get("_id")
-                if "_id" in workflow_doc:
-                    del workflow_doc["_id"]
-                workflows.append(Workflow(**workflow_doc))
-            except Exception as e:
-                log.error(
-                    f"{LogTag.TRIGGER} Error processing workflow document ({log_context}): {e}"
-                )
-
-        return workflows
 
     @abstractmethod
     async def find_workflows(
@@ -273,7 +276,6 @@ class TriggerHandler(ABC):
         Returns:
             List of workflows to execute
         """
-        pass
 
     async def get_config_options(
         self,
@@ -282,14 +284,18 @@ class TriggerHandler(ABC):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, str]]:
+        **_kwargs: str,
+    ) -> Sequence[TriggerOption | TriggerOptionGroup]:
         """Get dynamic options for a trigger configuration field.
 
         Optional method for handlers to provide dropdown options for
         configuration fields (e.g., list of channels, boards, repos).
 
         Supports cascading dropdowns by accepting parent_ids to filter children.
+
+        ``Sequence`` (not ``list``) because ``list`` is invariant: handlers that
+        only ever produce flat options override this returning
+        ``list[TriggerOption]``.
 
         Args:
             trigger_name: The trigger slug (e.g., 'slack_new_message')
@@ -299,9 +305,8 @@ class TriggerHandler(ABC):
             parent_ids: Parent IDs for cascading options (e.g., workspace IDs)
 
         Returns:
-            List of options as [{"value": "...", "label": "..."}]
-            For grouped options: [{"group": "...", "options": [...]}]
-            Empty list if no dynamic options available
+            Flat options, or ``TriggerOptionGroup``s for cascading dropdowns.
+            Empty when no dynamic options are available.
         """
         return []
 
@@ -311,7 +316,7 @@ class TriggerHandler(ABC):
         trigger_id: str | None,
         user_id: str | None,
         data: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> TriggerEventResult:
         """Process an incoming webhook event and queue matching workflows.
 
         Default implementation:
@@ -336,7 +341,7 @@ class TriggerHandler(ABC):
         if trigger_id:
             trigger_ctx["trigger_id"] = trigger_id
         log.set(
-            service="trigger_handler",
+            component="trigger_handler",
             operation="process_event",
             event_type=event_type,
             trigger_id=trigger_id,
@@ -360,7 +365,7 @@ class TriggerHandler(ABC):
                 event_type=event_type,
                 trigger_id=trigger_id,
             )
-            return {"status": "success", "message": "No matching workflows"}
+            return TriggerEventResult(status="success", message="No matching workflows")
 
         # Queue execution for each matching workflow.
         # Tracked-todo signal context is identical for a given user, so compute
@@ -376,14 +381,11 @@ class TriggerHandler(ABC):
 
         log.set_ns("trigger", fired=queued_count > 0, result_count=queued_count)
 
-        return {
-            "status": "success",
-            "message": f"Queued {queued_count} workflows",
-        }
+        return TriggerEventResult(status="success", message=f"Queued {queued_count} workflows")
 
     async def _queue_one_workflow(
         self,
-        workflow: Any,
+        workflow: Workflow,
         data: dict[str, Any],
         signal_context_by_user: dict[str, str],
         event_type: str,

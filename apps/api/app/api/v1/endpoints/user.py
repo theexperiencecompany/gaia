@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from bson import ObjectId
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -14,12 +13,21 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from workos import WorkOSClient
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.settings import settings
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
-from app.models.user_models import UserUpdateResponse
+from app.db.repositories.users import user_repository
+from app.models.user_models import (
+    AuthenticatedUser,
+    AuthenticatedUserResponse,
+    HoloCardOnboardingFields,
+    PublicHoloCardResponse,
+    UpdateHoloCardColorsResponse,
+    UpdateTimezoneResponse,
+    UserUpdate,
+    UserUpdateResponse,
+)
 from app.services.analytics_service import track_logout
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
@@ -31,11 +39,14 @@ router = APIRouter()
 workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
-@router.get("/me", response_model=dict)
+# exclude_none: the per-auth-path flags (impersonated/bot_authenticated/dev_bypass)
+# and the optional profile fields are only meaningful when set — the response has
+# always omitted them rather than sending nulls, and clients rely on that.
+# evlog-map-disable-next-line audit -- read-only profile lookup, no state change to audit
+@router.get("/me", response_model_exclude_none=True)
 async def get_me(
-    background_tasks: BackgroundTasks,
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUserResponse:
     """
     Returns the current authenticated user's details.
     Uses the dependency injection to fetch user data.
@@ -44,39 +55,31 @@ async def get_me(
     onboarding_status = await get_user_onboarding_status(user["user_id"])
 
     log.set(
-        user={
-            "id": user["user_id"],
-            "email": user.get("email"),
-            "plan": user.get("plan") or user.get("subscription_plan"),
-        },
+        user={"id": user["user_id"], "email": user.get("email")},
         operation="get_me",
     )
 
+    response = AuthenticatedUserResponse.model_validate(
+        {**user, "message": "User retrieved successfully", "onboarding": onboarding_status}
+    )
+
     log.set(outcome="success")
-    return {
-        "message": "User retrieved successfully",
-        **user,
-        "onboarding": onboarding_status,
-    }
+    return response
 
 
 @router.patch("/me", response_model=UserUpdateResponse)
 async def update_me(
     name: str | None = Form(None),
     picture: UploadFile | None = File(None),
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> UserUpdateResponse:
     """
     Update the current user's profile information.
     Supports updating name and profile picture.
     """
     user_id = user.get("user_id")
     log.set(
-        user={
-            "id": user_id,
-            "email": user.get("email"),
-            "plan": user.get("plan") or user.get("subscription_plan"),
-        },
+        user={"id": user_id, "email": user.get("email")},
         operation="update_me",
         has_picture_upload=bool(picture and picture.size and picture.size > 0),
     )
@@ -106,15 +109,21 @@ async def update_me(
     # Update user profile
     updated_user = await update_user_profile(user_id=user_id, name=name, picture_data=picture_data)
 
+    changed_fields = [
+        field
+        for field, changed in (("name", name is not None), ("picture", picture_data is not None))
+        if changed
+    ]
+    log.audit("profile updated", actor=user_id, changed_fields=changed_fields)
     log.set(outcome="success")
-    return UserUpdateResponse(**updated_user)
+    return updated_user
 
 
 @router.patch("/name", response_model=UserUpdateResponse)
 async def update_user_name(
     name: str = Form(...),
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> UserUpdateResponse:
     """
     Update the user's name. This is the consolidated endpoint for name updates.
     """
@@ -126,31 +135,38 @@ async def update_user_name(
             raise HTTPException(status_code=400, detail="Invalid user ID")
 
         updated_user = await update_user_profile(user_id=user_id, name=name)
+        log.audit("profile updated", actor=user_id, changed_fields=["name"])
         log.set(outcome="success")
-        return UserUpdateResponse(**updated_user)
+        return updated_user
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"{LogTag.API} Error updating user name: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update name")
+        log.error(
+            f"{LogTag.API} Error updating user name",
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to update name") from e
 
 
-@router.patch("/timezone", response_model=dict)
+@router.patch("/timezone", response_model=UpdateTimezoneResponse)
 async def update_user_timezone(
     user_timezone: str = Form(
         ...,
         description="User's timezone (e.g., 'America/New_York', 'Asia/Kolkata')",
         alias="timezone",
     ),
-    user: dict = Depends(get_current_user),
-):
+    user_id: str = Depends(get_user_id),
+) -> UpdateTimezoneResponse:
     """
     Update user's timezone setting.
     This updates the root-level timezone field for the user.
     """
     try:
         log.set(
-            user={"id": user["user_id"]},
+            user={"id": user_id},
             operation="update_user_timezone",
             timezone=user_timezone.strip(),
         )
@@ -160,34 +176,35 @@ async def update_user_timezone(
                 detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
             )
 
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user["user_id"])},
-            {
-                "$set": {
-                    "timezone": user_timezone.strip(),
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
+        updated = await user_repository.update(user_id, UserUpdate(timezone=user_timezone.strip()))
 
-        if result.matched_count == 0:
+        if updated is None:
             raise HTTPException(status_code=404, detail="User not found")
 
+        log.audit("profile updated", actor=user_id, changed_fields=["timezone"])
         log.set(outcome="success")
-        return {
-            "success": True,
-            "message": "Timezone updated successfully",
-            "timezone": user_timezone.strip(),
-        }
+        return UpdateTimezoneResponse(
+            success=True,
+            message="Timezone updated successfully",
+            timezone=user_timezone.strip(),
+        )
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"{LogTag.API} Error updating timezone: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update timezone")
+        log.error(
+            f"{LogTag.API} Error updating timezone",
+            user_id=user_id,
+            timezone=user_timezone.strip(),
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to update timezone") from e
 
 
 @router.get("/holo-card/{card_id}")
-async def get_public_holo_card(card_id: str):
+# evlog-map-disable-next-line audit -- read-only public card lookup, no state change to audit
+async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
     """
     Get public holo card data by card ID (user ID).
     This endpoint is public and doesn't require authentication.
@@ -199,26 +216,25 @@ async def get_public_holo_card(card_id: str):
         if not ObjectId.is_valid(card_id):
             raise HTTPException(status_code=400, detail="Invalid card ID")
 
-        user_doc = await users_collection.find_one({"_id": ObjectId(card_id)})
+        user_doc = await user_repository.get(card_id)
 
         if not user_doc:
             raise HTTPException(status_code=404, detail="Card not found")
 
-        onboarding = user_doc.get("onboarding", {})
+        onboarding = HoloCardOnboardingFields.model_validate(user_doc.onboarding or {})
 
         # Check if user has completed onboarding
-        if not onboarding.get("house"):
+        if not onboarding.house:
             raise HTTPException(status_code=404, detail="Card not found")
 
         # Get stored metadata or calculate if not stored (for older users)
-        account_number = onboarding.get("account_number")
-        member_since = onboarding.get("member_since")
+        account_number = onboarding.account_number
+        member_since = onboarding.member_since
 
         if not account_number or not member_since:
-            created_at = user_doc.get("created_at")
+            created_at = user_doc.created_at
             if created_at:
-                count = await users_collection.count_documents({"created_at": {"$lt": created_at}})
-                account_number = count + 1
+                account_number = await user_repository.count_created_before(created_at) + 1
             else:
                 account_number = 1
 
@@ -229,83 +245,90 @@ async def get_public_holo_card(card_id: str):
             )
 
         log.set(outcome="success")
-        return {
-            "house": onboarding.get("house"),
-            "personality_phrase": onboarding.get("personality_phrase"),
-            "user_bio": onboarding.get("user_bio"),
-            "account_number": account_number,
-            "member_since": member_since,
-            "name": user_doc.get("name"),
-            "overlay_color": onboarding.get("overlay_color", "rgba(0,0,0,0)"),
-            "overlay_opacity": onboarding.get("overlay_opacity", 40),
-        }
+        return PublicHoloCardResponse(
+            house=onboarding.house,
+            personality_phrase=onboarding.personality_phrase,
+            user_bio=onboarding.user_bio,
+            account_number=account_number,
+            member_since=member_since,
+            name=user_doc.name,
+            overlay_color=onboarding.overlay_color,
+            overlay_opacity=onboarding.overlay_opacity,
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.API} Error fetching holo card: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to fetch holo card data")
+        log.error(
+            f"{LogTag.API} Error fetching holo card",
+            card_id=card_id,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to fetch holo card data") from e
 
 
 @router.patch("/holo-card/colors")
 async def update_holo_card_colors(
     overlay_color: str = Form(..., description="Overlay color or gradient"),
     overlay_opacity: int = Form(..., description="Overlay opacity (0-100)"),
-    user: dict = Depends(get_current_user),
-):
+    user_id: str = Depends(get_user_id),
+) -> UpdateHoloCardColorsResponse:
     """
     Update holo card overlay color and opacity.
     """
     try:
-        user_id = user.get("user_id")
         log.set(
             user={"id": user_id},
             operation="update_holo_card_colors",
             overlay_color=overlay_color,
             overlay_opacity=overlay_opacity,
         )
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
 
         # Validate opacity range
         if not 0 <= overlay_opacity <= 100:
             raise HTTPException(status_code=400, detail="Opacity must be between 0 and 100")
 
         # Update user's onboarding data
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "onboarding.overlay_color": overlay_color,
-                    "onboarding.overlay_opacity": overlay_opacity,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+        matched = await user_repository.set_holo_card_colors(
+            user_id, overlay_color, overlay_opacity
         )
 
-        if result.matched_count == 0:
+        if not matched:
             raise HTTPException(status_code=404, detail="User not found")
 
+        log.audit(
+            "profile updated",
+            actor=user_id,
+            changed_fields=["overlay_color", "overlay_opacity"],
+        )
         log.set(outcome="success")
-        return {
-            "success": True,
-            "message": "Holo card colors updated successfully",
-            "overlay_color": overlay_color,
-            "overlay_opacity": overlay_opacity,
-        }
+        return UpdateHoloCardColorsResponse(
+            success=True,
+            message="Holo card colors updated successfully",
+            overlay_color=overlay_color,
+            overlay_opacity=overlay_opacity,
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.API} Error updating holo card colors: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update holo card colors")
+        log.error(
+            f"{LogTag.API} Error updating holo card colors",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to update holo card colors") from e
 
 
 @router.post("/logout")
 async def logout(
     request: Request,
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> JSONResponse:
     """
     Logout user and return logout URL for frontend redirection.
     """
@@ -333,10 +356,15 @@ async def logout(
                 track_logout(user_id=user_id or user_email, email=user_email)
             except Exception as analytics_error:
                 log.warning(
-                    f"{LogTag.API} Failed to track logout analytics for {user_email}: {analytics_error}"
+                    f"{LogTag.API} Failed to track logout analytics",
+                    user_email=user_email,
+                    error_type=type(analytics_error).__name__,
+                    error=str(analytics_error),
                 )
 
         logout_url = session.get_logout_url()
+
+        log.audit("logged out", actor=user_id)
 
         # Create response with logout URL
         response = JSONResponse(content={"logout_url": logout_url})
@@ -354,5 +382,10 @@ async def logout(
         return response
 
     except Exception as e:
-        log.error(f"{LogTag.API} Logout error: {e}")
-        raise HTTPException(status_code=500, detail="Logout failed")
+        log.error(
+            f"{LogTag.API} Logout error",
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Logout failed") from e

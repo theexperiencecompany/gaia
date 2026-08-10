@@ -61,7 +61,6 @@ def _skill_record(**overrides: Any) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUserId:
     def test_extracts_user_id(self) -> None:
         from app.agents.tools.skill_tools import _get_user_id
@@ -86,7 +85,6 @@ class TestGetUserId:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestInstallSkillFromGithub:
     @patch(f"{MODULE}.install_from_github", new_callable=AsyncMock)
     async def test_happy_path(self, mock_install: AsyncMock) -> None:
@@ -166,7 +164,6 @@ class TestInstallSkillFromGithub:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateSkill:
     @patch(f"{MODULE}.install_from_inline", new_callable=AsyncMock)
     async def test_happy_path(self, mock_install: AsyncMock) -> None:
@@ -224,7 +221,6 @@ class TestCreateSkill:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListInstalledSkills:
     @patch(f"{MODULE}.list_skills", new_callable=AsyncMock)
     async def test_happy_path(self, mock_list: AsyncMock) -> None:
@@ -294,7 +290,6 @@ class TestListInstalledSkills:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestManageSkill:
     @patch(f"{MODULE}.enable_skill", new_callable=AsyncMock, return_value=True)
     @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock)

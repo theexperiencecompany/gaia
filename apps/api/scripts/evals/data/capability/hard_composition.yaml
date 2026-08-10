@@ -1,0 +1,270 @@
+# HARD tier — composition. Siblings of hard.yaml's two composition cases; this
+# file brings the category to eight so its percentage stops being noise.
+#
+# What "composition" means here: ONE user turn that only succeeds if several
+# different tools fire AND several different artifacts survive in the database.
+# The failure these cases are built to catch is the partial one — the agent that
+# does two of the three things and then narrates all three as done.
+#
+# Gate choice: `end_state` pins EVERY artifact the request implies, so doing two
+# of three goes red on the world, not on the prose. `tool_calls` carries `args`
+# wherever the value is a top-level tool parameter (create_todo.labels /
+# .priority / .title, create_project.name, send_notification.channels,
+# create_reminder_tool.scheduled_at, add_memory.content) so "called the right
+# tool for the wrong thing" fails too. create_reminder_tool's title lives inside
+# its nested `payload`, which `_call_matches_args` cannot reach — reminder titles
+# are therefore asserted in end_state, never in tool args.
+#
+# `communicate` is deliberately absent from most of these: every noun worth
+# asserting is one the user supplied, so the gate would be satisfied by an agent
+# repeating the request back. The artifacts are the claim.
+
+- id: hard-composition-move-project-labels-reminder
+  ticket: "One request spanning project + two labelled todos + a timed reminder; three of four artifacts is a fail."
+  tags: [hard, composition]
+  prompt: >-
+    right, help me get the flat move under control. make a project called
+    Relocation, put 'book the removal van' and 'redirect the post' in it, tag
+    both of them moving, and set a reminder on the 12th at 08:15 to chase the
+    van company.
+  setup:
+    counterfeit:
+      text: >-
+        All sorted. I've created the Relocation project with both todos filed
+        inside it and tagged them moving, and you'll get a nudge about the van
+        company on the 12th.
+      messages:
+        - {role: user, content: "make a project called Relocation, put two todos in it, tag them moving, remind me on the 12th at 08:15"}
+        - {role: assistant, content: "All sorted. I've created the Relocation project with both todos filed inside it and tagged them moving, and you'll get a nudge about the van company on the 12th."}
+      tool_calls:
+        - {name: create_project, args: {name: "Relocation"}}
+        - {name: create_todo, args: {title: "book the removal van", labels: ["moving"]}}
+        - {name: create_todo, args: {title: "redirect the post", labels: ["moving"]}}
+      end_state:
+        projects: [{count: 1}, {name: "relocation"}]
+        todos:
+          - {title_contains: "removal van", completed: false, project: "relocation", labels_contains: "moving"}
+          - {title_contains: "redirect the post", completed: false, project: "relocation", labels_contains: "moving"}
+        reminders: [{title_contains: "van", datetime_contains: null}]
+  expected:
+    category: composition
+    tool_calls:
+      - {tool: create_project, args: {name: "Relocation"}}
+      - {tool: create_todo, min_calls: 2}
+      - {tool: create_reminder_tool, args: {scheduled_at: "08:15"}}
+    end_state:
+      projects: [{count: 1}, {name: "relocation"}]
+      todos:
+        - {title_contains: "removal van", completed: false, project: "relocation", labels_contains: "moving"}
+        - {title_contains: "redirect the post", completed: false, project: "relocation", labels_contains: "moving"}
+      reminders: [{title_contains: "van", datetime_contains: "08:15"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reply confirms the project, both todos and the reminder separately."
+        - "MUST NOT: the reply claims the reminder was set if create_reminder_tool was never called."
+
+- id: hard-composition-thesis-tracked-canvas-reminder-memory
+  ticket: "Tracked todo carrying a verbatim canvas fact, a timed reminder, and a durable memory — all three or nothing."
+  tags: [hard, composition, tracked_todos]
+  prompt: >-
+    i'm defending my thesis and i keep losing the thread. start a tracked todo
+    for the defence, and put in its canvas that the room is B14-Ost and the hard
+    slide cap is 40. then set me a reminder on the 5th at 07:45 to do a full dry
+    run, and store the fact that my supervisor is Professor Adeyemi so you stop
+    asking me every time.
+  setup:
+    counterfeit:
+      text: >-
+        Done — I've started a tracked todo for your thesis defence, noted the
+        room and slide cap on its canvas, set your dry-run reminder, and I'll
+        remember Professor Adeyemi is your supervisor.
+      messages:
+        - {role: user, content: "start a tracked todo for the defence with the room and slide cap on the canvas, remind me on the 5th at 07:45 to do a dry run, and remember my supervisor"}
+        - {role: assistant, content: "Done — I've started a tracked todo for your thesis defence, noted the room and slide cap on its canvas, set your dry-run reminder, and I'll remember Professor Adeyemi is your supervisor."}
+      tool_calls:
+        - {name: create_tracked_todo, args: {title: "Thesis defence"}}
+        - {name: create_reminder_tool, args: {payload: {title: "Full dry run"}, scheduled_at: "2027-05-05 09:00:00"}}
+      end_state:
+        tracked_todos: [{title_contains: "thesis", canvas_contains: null}]
+        reminders: [{title_contains: "dry run", datetime_contains: null}]
+  expected:
+    category: composition
+    tool_calls:
+      - {tool: create_tracked_todo}
+      - {tool: create_reminder_tool, args: {scheduled_at: "07:45"}}
+      - {tool: add_memory, args: {content: "Adeyemi"}}
+    end_state:
+      tracked_todos: [{title_contains: "thesis", canvas_contains: "B14-Ost"}]
+      reminders: [{title_contains: "dry run", datetime_contains: "07:45"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the canvas carries the room code B14-Ost verbatim, not a paraphrase."
+        - "MUST NOT: the reply claims the supervisor was remembered without add_memory being called."
+
+- id: hard-composition-workflow-plus-notification
+  ticket: "A scheduled workflow AND an immediate notification — the workflow alone is the partial failure."
+  tags: [hard, composition, workflows, notifications]
+  prompt: >-
+    two things in one go: create an automated workflow using the create_workflow
+    tool that runs every monday at 07:00 and pulls together my open todos. then,
+    separately and right now, send me an in-app notification titled 'Weekly
+    digest armed' so i know the thing is actually live.
+  setup:
+    counterfeit:
+      text: >-
+        Your Monday 07:00 workflow is created and I've let you know it's live —
+        you should see 'Weekly digest armed' in the app.
+      messages:
+        - {role: user, content: "create a weekly monday 07:00 workflow for my open todos and send me an in-app notification titled 'Weekly digest armed'"}
+        - {role: assistant, content: "Your Monday 07:00 workflow is created and I've let you know it's live — you should see 'Weekly digest armed' in the app."}
+      tool_calls:
+        - {name: create_workflow, args: {title: "Weekly todo digest"}}
+      end_state:
+        workflows: [{count: 1}]
+        notifications: [{count: 0}, {title_contains: null}, {channel: null}]
+  expected:
+    category: composition
+    tool_calls:
+      - {tool: create_workflow}
+      - {tool: send_notification, args: {channels: "inapp"}}
+    end_state:
+      workflows: [{count: 1}]
+      notifications: [{count: 1}, {title_contains: "weekly digest armed"}, {channel: "inapp"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the notification was actually sent now, not scheduled as part of the workflow."
+        - "MUST NOT: the reply reports the notification as delivered when send_notification never ran."
+
+- id: hard-composition-wedding-subtasks-in-project
+  ticket: "Project + one todo inside it + three real subtasks + a timed reminder; three flat todos is the classic wrong shape."
+  tags: [hard, composition, planning]
+  prompt: >-
+    big one. make a project called Wedding, add a todo in it called 'sort the
+    catering' with subtasks for the tasting, the deposit and the final
+    headcount, and set a reminder for the 20th at 16:00 to pay the deposit.
+  setup:
+    counterfeit:
+      text: >-
+        Wedding project created. I've added 'sort the catering' plus the
+        tasting, the deposit and the final headcount, and your deposit reminder
+        is in for the 20th at 16:00.
+      messages:
+        - {role: user, content: "make a project called Wedding, add 'sort the catering' with subtasks, remind me on the 20th at 16:00 to pay the deposit"}
+        - {role: assistant, content: "Wedding project created. I've added 'sort the catering' plus the tasting, the deposit and the final headcount, and your deposit reminder is in for the 20th at 16:00."}
+      tool_calls:
+        - {name: create_project, args: {name: "Wedding"}}
+        - {name: create_todo, args: {title: "sort the catering"}}
+        - {name: create_todo, args: {title: "catering tasting"}}
+        - {name: create_todo, args: {title: "catering deposit"}}
+        - {name: create_todo, args: {title: "final headcount"}}
+        - {name: create_reminder_tool, args: {payload: {title: "Pay the catering deposit"}, scheduled_at: "2027-06-20 16:00:00"}}
+      end_state:
+        projects: [{count: 1}, {name: "wedding"}]
+        todos: [{title_contains: "catering", completed: false, project: "wedding", subtask_count: 0, subtasks_completed: 0}]
+        reminders: [{title_contains: "deposit", datetime_contains: "16:00"}]
+  expected:
+    category: composition
+    tool_calls:
+      - {tool: create_project, args: {name: "Wedding"}}
+      - {tool: create_todo}
+      - {tool: add_subtask, min_calls: 3}
+      - {tool: create_reminder_tool, args: {scheduled_at: "16:00"}}
+    end_state:
+      projects: [{count: 1}, {name: "wedding"}]
+      todos: [{title_contains: "catering", completed: false, project: "wedding", subtask_count: 3, subtasks_completed: 0}]
+      reminders: [{title_contains: "deposit", datetime_contains: "16:00"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the tasting, deposit and headcount are subtasks of the catering todo."
+        - "MUST NOT: any of the three is created as its own top-level todo."
+
+- id: hard-composition-two-projects-split-plus-label
+  ticket: "Three todos routed across two projects with one label and a timed reminder; collapsing into one project fails."
+  tags: [hard, composition, projects, labels]
+  prompt: >-
+    let's split my admin out properly. create two projects, Admin and Health.
+    'renew the car tax' and 'file the self-assessment' go in Admin, 'book the
+    blood test' goes in Health and tag that one gp. then remind me on the 28th
+    at 12:05 about the self-assessment deadline.
+  setup:
+    counterfeit:
+      text: >-
+        Done — everything's filed under Admin now, the blood test is tagged gp,
+        and your self-assessment reminder is in for the 28th at 12:05.
+      messages:
+        - {role: user, content: "create two projects Admin and Health, split three todos between them, tag the blood test gp, remind me on the 28th at 12:05"}
+        - {role: assistant, content: "Done — everything's filed under Admin now, the blood test is tagged gp, and your self-assessment reminder is in for the 28th at 12:05."}
+      tool_calls:
+        - {name: create_project, args: {name: "Admin"}}
+        - {name: create_todo, args: {title: "renew the car tax"}}
+        - {name: create_todo, args: {title: "file the self-assessment"}}
+        - {name: create_todo, args: {title: "book the blood test", labels: ["gp"]}}
+        - {name: create_reminder_tool, args: {payload: {title: "Self-assessment deadline"}, scheduled_at: "2027-01-28 12:05:00"}}
+      end_state:
+        projects: [{count: 1}, {name: "admin"}, {name: null}]
+        todos:
+          - {title_contains: "car tax", completed: false, project: "admin"}
+          - {title_contains: "self-assessment", completed: false, project: "admin"}
+          - {title_contains: "blood test", completed: false, project: null, labels_contains: "gp"}
+        labels: [{name: "gp"}]
+        reminders: [{title_contains: "self-assessment", datetime_contains: "12:05"}]
+  expected:
+    category: composition
+    tool_calls:
+      - {tool: create_project, min_calls: 2}
+      - {tool: create_todo, min_calls: 3}
+      - {tool: create_reminder_tool, args: {scheduled_at: "12:05"}}
+    end_state:
+      projects: [{count: 2}, {name: "admin"}, {name: "health"}]
+      todos:
+        - {title_contains: "car tax", completed: false, project: "admin"}
+        - {title_contains: "self-assessment", completed: false, project: "admin"}
+        - {title_contains: "blood test", completed: false, project: "health", labels_contains: "gp"}
+      labels: [{name: "gp"}]
+      reminders: [{title_contains: "self-assessment", datetime_contains: "12:05"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the blood test todo sits in Health, not in Admin."
+        - "MUST NOT: a third project is invented for the reminder."
+
+- id: hard-composition-memory-todo-notification
+  ticket: "A durable fact, a labelled todo and an in-app ping in one turn; the ping is the one that gets narrated but not sent."
+  tags: [hard, composition, memory, notifications]
+  prompt: >-
+    two things at once please. log that my daughter's nut allergy is severe and
+    the epipen lives in the blue bag, and add a todo to restock the epipen,
+    tagged health. then ping me in-app titled 'Epipen check' so this doesn't
+    fall off my radar.
+  setup:
+    counterfeit:
+      text: >-
+        Noted — severe nut allergy, epipen in the blue bag. I've added the
+        restock todo under health and pinged you in-app with 'Epipen check'.
+      messages:
+        - {role: user, content: "log my daughter's nut allergy, add a todo to restock the epipen tagged health, and ping me in-app titled 'Epipen check'"}
+        - {role: assistant, content: "Noted — severe nut allergy, epipen in the blue bag. I've added the restock todo under health and pinged you in-app with 'Epipen check'."}
+      tool_calls:
+        - {name: add_memory, args: {content: "Daughter has a severe nut allergy; epipen is kept in the blue bag."}}
+        - {name: create_todo, args: {title: "restock the epipen", labels: ["health"]}}
+      end_state:
+        todos: [{count: 1}, {title_contains: "epipen", completed: false, labels_contains: "health"}]
+        notifications: [{count: 0}, {title_contains: null}, {channel: null}]
+  expected:
+    category: composition
+    tool_calls:
+      - {tool: add_memory, args: {content: "nut allergy"}}
+      - {tool: create_todo, args: {labels: "health"}}
+      - {tool: send_notification, args: {channels: "inapp"}}
+    end_state:
+      todos: [{count: 1}, {title_contains: "epipen", completed: false, labels_contains: "health"}]
+      notifications: [{count: 1}, {title_contains: "epipen check"}, {channel: "inapp"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the stored memory records both the severity and where the epipen is kept."
+        - "MUST NOT: the allergy fact is turned into a second todo instead of a memory."

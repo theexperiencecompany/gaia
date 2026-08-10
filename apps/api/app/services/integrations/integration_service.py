@@ -8,13 +8,12 @@ For main functions, import directly from:
 - app.services.integrations.custom_crud
 """
 
-from typing import Any
-
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL
 from app.decorators.caching import Cacheable
 from app.helpers.integration_helpers import generate_integration_slug
 from app.helpers.namespace_utils import derive_integration_namespace
+from app.models.integration_models import IntegrationWithCreator
 from app.schemas.integrations.responses import (
     CommunityIntegrationCreator,
     CommunityIntegrationItem,
@@ -67,97 +66,41 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
     return namespaces
 
 
-def build_creator_lookup_stages() -> list[dict[str, Any]]:
-    """Build aggregation stages to join creator info from users collection."""
-    return [
-        {
-            "$addFields": {
-                "created_by_oid": {
-                    "$cond": {
-                        "if": {
-                            "$and": [
-                                {"$ne": ["$created_by", None]},
-                                {
-                                    "$regexMatch": {
-                                        "input": "$created_by",
-                                        "regex": "^[0-9a-fA-F]{24}$",
-                                    }
-                                },
-                            ]
-                        },
-                        "then": {"$toObjectId": "$created_by"},
-                        "else": None,
-                    }
-                }
-            }
-        },
-        {
-            "$lookup": {
-                "from": "users",
-                "localField": "created_by_oid",
-                "foreignField": "_id",
-                "as": "creator_info",
-            }
-        },
-        {"$unwind": {"path": "$creator_info", "preserveNullAndEmptyArrays": True}},
-        {
-            "$addFields": {
-                "creator": {
-                    "$cond": {
-                        "if": {"$ne": ["$creator_info", None]},
-                        "then": {
-                            "name": "$creator_info.name",
-                            "picture": "$creator_info.picture",
-                        },
-                        "else": None,
-                    }
-                }
-            }
-        },
-        {"$project": {"creator_info": 0, "created_by_oid": 0}},
-    ]
-
-
-def format_community_integrations(docs: list) -> list:
-    """Format MongoDB documents into CommunityIntegrationItem responses."""
+def format_community_integrations(
+    integrations: list[IntegrationWithCreator],
+) -> list[CommunityIntegrationItem]:
+    """Format integrations (with joined creator) into CommunityIntegrationItem responses."""
     result = []
-    for doc in docs:
-        tools = doc.get("tools", [])
+    for integration in integrations:
         tool_items = [
-            IntegrationTool(
-                name=t.get("name", ""),
-                description=t.get("description"),
-            )
-            for t in tools[:10]
+            IntegrationTool(name=t.name, description=t.description) for t in integration.tools[:10]
         ]
 
         creator = None
-        creator_data = doc.get("creator")
-        if creator_data:
+        if integration.creator:
             creator = CommunityIntegrationCreator(
-                name=creator_data.get("name"),
-                picture=creator_data.get("picture"),
+                name=integration.creator.name,
+                picture=integration.creator.picture,
             )
 
         # Prefer stored slug (unique), fall back to generated slug
-        slug = doc.get("slug") or generate_integration_slug(
-            name=doc.get("name", ""),
-            category=doc.get("category", "custom"),
-            integration_id=doc["integration_id"],
+        slug = integration.slug or generate_integration_slug(
+            name=integration.name,
+            category=integration.category,
         )
 
         result.append(
             CommunityIntegrationItem(
-                integration_id=doc["integration_id"],
+                integration_id=integration.integration_id,
                 slug=slug,
-                name=doc["name"],
-                description=doc.get("description", ""),
-                category=doc.get("category", "custom"),
-                icon_url=doc.get("icon_url"),
-                clone_count=doc.get("clone_count", 0),
-                tool_count=len(tools),
+                name=integration.name,
+                description=integration.description,
+                category=integration.category,
+                icon_url=integration.icon_url,
+                clone_count=integration.clone_count,
+                tool_count=len(integration.tools),
                 tools=tool_items,
-                published_at=doc.get("published_at"),
+                published_at=integration.published_at,
                 creator=creator,
             )
         )
@@ -166,6 +109,5 @@ def format_community_integrations(docs: list) -> list:
 
 __all__ = [
     "get_user_available_tool_namespaces",
-    "build_creator_lookup_stages",
     "format_community_integrations",
 ]

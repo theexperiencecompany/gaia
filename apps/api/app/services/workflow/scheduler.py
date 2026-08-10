@@ -8,7 +8,7 @@ from typing import Any
 from arq.connections import RedisSettings
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import UNSET, workflow_repository
 from app.models.scheduler_models import (
     BaseScheduledTask,
     ScheduleConfig,
@@ -61,7 +61,7 @@ class WorkflowScheduler(BaseSchedulerService):
         """Get the ARQ job name for workflow processing."""
         return "execute_workflow_by_id"
 
-    def _build_job_args(self, task_id: str) -> tuple:
+    def _build_job_args(self, task_id: str) -> tuple[str, dict[str, str]]:
         """Mark scheduler-originated fires so the executor re-arms the next
         occurrence; manual "run now" executions pass their own context and so are
         never tagged as scheduled."""
@@ -83,41 +83,22 @@ class WorkflowScheduler(BaseSchedulerService):
         status can wedge it. The re-arm at the end of execution returns the row to
         "scheduled" with its next run time.
         """
-        result = await workflows_collection.find_one_and_update(
-            {
-                "_id": workflow_id,
-                "activated": True,
-                "status": ScheduledTaskStatus.SCHEDULED.value,
-            },
-            {
-                "$set": {
-                    "status": ScheduledTaskStatus.EXECUTING.value,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
-        return result is not None
+        return await workflow_repository.claim_for_execution(workflow_id)
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> Workflow | None:
         """Get a workflow by ID, or None if not found."""
         try:
-            query = {"_id": task_id}
             if user_id:
-                query["user_id"] = user_id
-
-            workflow_doc = await workflows_collection.find_one(query)
-            if not workflow_doc:
-                log.warning(f"{LogTag.WORKFLOW} Workflow {task_id} not found")
-                return None
-
-            # Transform MongoDB document to Workflow object
-            workflow_doc["id"] = workflow_doc.get("_id")
-            if "_id" in workflow_doc:
-                del workflow_doc["_id"]
-
-            return Workflow(**workflow_doc)
+                return await workflow_repository.get_for_user(task_id, user_id)
+            return await workflow_repository.get(task_id)
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error fetching workflow {task_id}: {e}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error fetching workflow",
+                task_id=task_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             return None
 
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
@@ -135,7 +116,7 @@ class WorkflowScheduler(BaseSchedulerService):
             from app.workers.tasks import execute_workflow_as_chat
 
             log.set(workflow={"id": workflow.id, "status": "executing"})
-            log.info(f"{LogTag.WORKFLOW} Executing workflow {workflow.id}")
+            log.info(f"{LogTag.WORKFLOW} Executing workflow", id=workflow.id)
 
             if not workflow.id:
                 raise ValueError("Workflow ID is required for execution")
@@ -149,7 +130,12 @@ class WorkflowScheduler(BaseSchedulerService):
                 message="Workflow executed via scheduler",
             )
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error executing workflow {task.id}: {e}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error executing workflow",
+                id=task.id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return TaskExecutionResult(success=False, message=f"Workflow execution failed: {e!s}")
 
     async def update_task_status(
@@ -168,30 +154,42 @@ class WorkflowScheduler(BaseSchedulerService):
             )
 
         try:
-            update_fields = {
-                "status": status.value,
-                "updated_at": datetime.now(UTC),
-            }
+            # BaseSchedulerService (and the re-arm paths) hand a dict; thread its
+            # known keys through the typed repository method. ``updated_at`` is
+            # auto-stamped by the repository; scheduled_at / trigger_config.next_run
+            # use the UNSET sentinel because None is a meaningful clear (reap).
+            data = update_data or {}
+            matched = await workflow_repository.set_status(
+                task_id,
+                status,
+                user_id=user_id,
+                scheduled_at=data.get("scheduled_at", UNSET),
+                occurrence_count=data.get("occurrence_count"),
+                repeat=data.get("repeat"),
+                next_run=data.get("trigger_config.next_run", UNSET),
+            )
 
-            if update_data:
-                update_fields.update(update_data)
-
-            # Build query with optional user_id filter
-            query = {"_id": task_id}
-            if user_id:
-                query["user_id"] = user_id
-
-            result = await workflows_collection.update_one(query, {"$set": update_fields})
-
-            if result.modified_count > 0:
+            if matched:
                 log.set(workflow={"id": task_id, "status": status.value})
-                log.info(f"{LogTag.WORKFLOW} Updated workflow {task_id} status to {status.value}")
+                log.info(
+                    f"{LogTag.WORKFLOW} Updated workflow status to",
+                    task_id=task_id,
+                    status=status.value,
+                )
                 return True
-            log.warning(f"{LogTag.WORKFLOW} No workflow updated for {task_id}")
+            log.warning(
+                f"{LogTag.WORKFLOW} No workflow updated for", task_id=task_id, user_id=user_id
+            )
             return False
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error updating workflow {task_id}: {e}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error updating workflow",
+                task_id=task_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             return False
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
@@ -203,26 +201,18 @@ class WorkflowScheduler(BaseSchedulerService):
         integration and todo workflows all do). Without ``repeat``, the recovery scan
         would match those non-scheduled workflows and re-run the agent on every pass.
         ``repeat`` (the cron the scheduler actually re-arms on) is the precise,
-        serialization-robust discriminator for "scheduler-managed".
+        serialization-robust discriminator for "scheduler-managed". The
+        ``status="scheduled"`` and ``scheduled_at <= now`` due-filter lives on the
+        repository (``find_pending_before``), sharing the ``$lte`` semantics with the
+        reminder scan.
         """
-        return await self._query_pending_tasks(
-            workflows_collection,
-            current_time,
-            self._doc_to_workflow,
-            extra_filter={"activated": True, "repeat": {"$nin": [None, ""]}},
-        )
-
-    @staticmethod
-    def _doc_to_workflow(doc: dict[str, Any]) -> Workflow:
-        """Transform a MongoDB document into a Workflow (string ``_id`` -> ``id``)."""
-        doc["id"] = doc.get("_id")
-        doc.pop("_id", None)
-        return Workflow(**doc)
+        pending: list[BaseScheduledTask] = []
+        pending.extend(await workflow_repository.find_pending_before(current_time))
+        return pending
 
     async def schedule_workflow_execution(
         self,
         workflow_id: str,
-        user_id: str,
         scheduled_at: datetime,
         repeat: str | None = None,
         max_occurrences: int | None = None,
@@ -247,12 +237,20 @@ class WorkflowScheduler(BaseSchedulerService):
                     + (f" with repeat '{repeat}'" if repeat else "")
                 )
             else:
-                log.error(f"{LogTag.WORKFLOW} Failed to schedule workflow {workflow_id}")
+                log.error(
+                    f"{LogTag.WORKFLOW} Failed to schedule workflow",
+                    workflow_id=workflow_id,
+                )
 
             return success
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error scheduling workflow {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error scheduling workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
     async def reschedule_workflow(
@@ -261,7 +259,7 @@ class WorkflowScheduler(BaseSchedulerService):
         """Reschedule an existing workflow."""
         try:
             # Update the workflow's scheduling fields in database
-            update_data = {
+            update_data: dict[str, Any] = {
                 "scheduled_at": new_scheduled_at,
                 "status": ScheduledTaskStatus.SCHEDULED.value,
             }
@@ -275,7 +273,10 @@ class WorkflowScheduler(BaseSchedulerService):
             )
 
             if not db_success:
-                log.error(f"{LogTag.WORKFLOW} Failed to update workflow {workflow_id} in database")
+                log.error(
+                    f"{LogTag.WORKFLOW} Failed to update workflow in database",
+                    workflow_id=workflow_id,
+                )
                 return False
 
             # Actually reschedule in ARQ queue
@@ -283,17 +284,25 @@ class WorkflowScheduler(BaseSchedulerService):
 
             if arq_success:
                 log.info(
-                    f"{LogTag.WORKFLOW} Rescheduled workflow {workflow_id} for {new_scheduled_at}"
+                    f"{LogTag.WORKFLOW} Rescheduled workflow for",
+                    workflow_id=workflow_id,
+                    new_scheduled_at=new_scheduled_at,
                 )
             else:
                 log.error(
-                    f"{LogTag.WORKFLOW} Failed to reschedule workflow {workflow_id} in ARQ queue"
+                    f"{LogTag.WORKFLOW} Failed to reschedule workflow in ARQ queue",
+                    workflow_id=workflow_id,
                 )
 
             return arq_success
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error rescheduling workflow {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error rescheduling workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
     async def reap_stale_executing(self) -> int:
@@ -310,19 +319,12 @@ class WorkflowScheduler(BaseSchedulerService):
         cutoff = now - STALE_EXECUTING_THRESHOLD
         reaped = 0
 
-        cursor = workflows_collection.find(
-            {
-                "activated": True,
-                "status": ScheduledTaskStatus.EXECUTING.value,
-                "updated_at": {"$lt": cutoff},
-            }
-        )
-        async for doc in cursor:
-            workflow_id = doc["_id"]
-            repeat = doc.get("repeat")
-            timezone = (doc.get("trigger_config") or {}).get("timezone")
+        for workflow in await workflow_repository.find_stale_executing(cutoff):
+            workflow_id = workflow.id
+            repeat = workflow.repeat
+            timezone = workflow.trigger_config.timezone
 
-            updated_at = doc.get("updated_at")
+            updated_at = workflow.updated_at
             if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
                 updated_at = updated_at.replace(tzinfo=UTC)
             stuck_seconds = int((now - updated_at).total_seconds()) if updated_at else -1
@@ -338,8 +340,10 @@ class WorkflowScheduler(BaseSchedulerService):
                 await self.reschedule_task(workflow_id, next_run)
 
             log.warning(
-                f"{LogTag.WORKFLOW} Reaped workflow {workflow_id} stuck in EXECUTING for {stuck_seconds}s; "
-                f"reset to SCHEDULED (next run {next_run})"
+                f"{LogTag.WORKFLOW} Reaped workflow stuck in EXECUTING; reset to SCHEDULED",
+                workflow_id=workflow_id,
+                stuck_seconds=stuck_seconds,
+                next_run=next_run,
             )
             reaped += 1
 

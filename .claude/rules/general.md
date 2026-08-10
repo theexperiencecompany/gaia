@@ -11,6 +11,15 @@ Before writing any utility, type, hook, service, or model, grep the codebase for
 - If you find the same logic in two places while working, consolidate before adding more
 - Duplicated code that diverges silently is worse than no abstraction at all
 
+### Libraries Over Hand-Rolling
+
+Standard problems have standard solutions — never hand-roll what a maintained library already does well.
+
+- Before implementing any well-known algorithm (text chunking, retries/backoff, parsing, date math, rate limiting, diffing), check the dependency tree first: the solution is often already installed or one small add away in an ecosystem we already use (e.g. LangChain, FastAPI, HeroUI)
+- A hand-rolled version starts subtly wrong and stays unmaintained — the library version has had its edge cases fixed by thousands of users
+- If you find hand-rolled logic that a library in our stack covers, replace it with the library call — deletion is the best diff
+- The bar for writing it yourself: the problem is genuinely domain-specific, or the library would be a heavy new dependency for a trivial need
+
 ## Dead Code
 
 After every change, clean up before considering work done.
@@ -58,3 +67,14 @@ No change is done until the surrounding area is clean. "Working" and "complete" 
 - Fix the thing you were asked to fix, and remove any related dead code you encounter in the process
 - Do not leave a file in worse shape than you found it
 - Lint and type-check passes are not optional — run them before considering a task done
+
+## Test Rules
+
+The full conventions doc for API tests is `apps/api/tests/CLAUDE.md`. The rules below apply everywhere tests exist.
+
+- **Quality bar** — a test must be able to fail (delete a line of product code and it goes red), assert behavior not implementation, cover the failure path, be deterministic, never mock the thing under test, and never assert on LLM-generated prose.
+- **Red first** — write the failing test before the fix and watch it fail. A test never observed red proves nothing; it only asserts what the code now happens to do.
+- **DRY applies to tests** — fixtures and factories live in the shared catalog (`tests/conftest.py`, `tests/helpers.py`, `tests/factories.py`). Search it before hand-rolling a fixture in a test file; never copy a fixture across files.
+- **One tier per purpose, one file per subject** — tests live with the code they test in the tier that catches the bug (unit for logic, integration for wiring, real-infra for real DBs, e2e for user journeys, stress for races/retries). No folder-per-test-type sprawl, no duplicate proof of a tier that already covers it.
+- **Bug regressions are named** — a bug's failing-then-passing test goes in the natural file, named `test_<subject>_<issue>.py`.
+- **Deletion over padding** — when a test can't be made to fail, delete or rework it. Padding that cannot fail is theater; a weakened assertion suppresses the bug instead of fixing it.

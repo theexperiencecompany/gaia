@@ -6,6 +6,7 @@ import {
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
+import { useChatStore } from "@/stores/chatStore";
 import {
   hasAnyLiveTurn,
   isConversationStreamingNow,
@@ -220,6 +221,40 @@ const identifyDeletedConversations = (
   return deletedIds;
 };
 
+// DEBUG: surface cases where a sync merge would blank out or shrink an existing
+// bot message's content — the symptom of a known overwrite bug.
+const warnOnMessageContentLoss = (
+  mergedMessages: IMessage[],
+  localMessages: IMessage[],
+  conversationId: string,
+): void => {
+  for (const merged of mergedMessages) {
+    if (merged.role !== "assistant") continue;
+
+    const local = localMessages.find((m) => m.id === merged.id);
+    if (local?.content && !merged.content) {
+      console.warn(
+        `[SyncService] ⚠️ SYNC OVERWRITING bot message ${merged.id} — local has content (${local.content.length} chars), merged is EMPTY. This is the bug!`,
+        {
+          conversationId,
+          localStatus: local.status,
+          mergedStatus: merged.status,
+        },
+      );
+    }
+    if (
+      local?.content &&
+      merged.content &&
+      local.content.length > merged.content.length
+    ) {
+      console.warn(
+        `[SyncService] ⚠️ SYNC SHRINKING bot message ${merged.id} — local: ${local.content.length} chars, merged: ${merged.content.length} chars`,
+        { conversationId },
+      );
+    }
+  }
+};
+
 export const batchSyncConversations = async (): Promise<void> => {
   // CRITICAL: Skip sync while any turn streams to prevent data corruption —
   // per-conversation guards above handle the fine-grained cases, this is the
@@ -273,6 +308,7 @@ export const batchSyncConversations = async (): Promise<void> => {
       freshConversations.map(async (conversation) => {
         const conversationId = conversation.conversation_id;
         const messages = conversation.messages ?? [];
+        const artifacts = conversation.artifacts ?? [];
 
         // Skip syncing if streaming or pending save (e.g., after abort)
         if (shouldBlockSyncForConversation(conversationId)) return;
@@ -287,43 +323,26 @@ export const batchSyncConversations = async (): Promise<void> => {
             conversation.is_onboarding_conversation ?? false,
           systemPurpose: conversation.system_purpose ?? null,
           isUnread: conversation.is_unread ?? false,
+          artifacts,
           createdAt: new Date(conversation.createdAt),
           updatedAt: conversation.updatedAt
             ? new Date(conversation.updatedAt)
             : new Date(conversation.createdAt),
         };
 
+        // Refresh the runtime lookup map from the server-authoritative registry.
+        // Safe from clobbering a live turn: streaming conversations are filtered
+        // out by shouldBlockSync above.
+        useChatStore
+          .getState()
+          .setConversationArtifacts(conversationId, artifacts);
+
         const remoteMessages = mapApiMessagesToStored(messages, conversationId);
         const localMessages =
           await db.getMessagesForConversation(conversationId);
         const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
 
-        // DEBUG: detect sync overwriting bot messages with empty content
-        for (const merged of mergedMessages) {
-          if (merged.role === "assistant") {
-            const local = localMessages.find((m) => m.id === merged.id);
-            if (local?.content && !merged.content) {
-              console.warn(
-                `[SyncService] ⚠️ SYNC OVERWRITING bot message ${merged.id} — local has content (${local.content.length} chars), merged is EMPTY. This is the bug!`,
-                {
-                  conversationId,
-                  localStatus: local.status,
-                  mergedStatus: merged.status,
-                },
-              );
-            }
-            if (
-              local?.content &&
-              merged.content &&
-              local.content.length > merged.content.length
-            ) {
-              console.warn(
-                `[SyncService] ⚠️ SYNC SHRINKING bot message ${merged.id} — local: ${local.content.length} chars, merged: ${merged.content.length} chars`,
-                { conversationId },
-              );
-            }
-          }
-        }
+        warnOnMessageContentLoss(mergedMessages, localMessages, conversationId);
 
         await Promise.allSettled([
           db.putConversation(mappedConversation),
@@ -352,6 +371,7 @@ export const applySyncedConversation = async (
   }
 
   const messages = conversation.messages ?? [];
+  const artifacts = conversation.artifacts ?? [];
 
   // Map conversation to IndexedDB format
   const mappedConversation: IConversation = {
@@ -363,11 +383,16 @@ export const applySyncedConversation = async (
     isOnboardingConversation: conversation.is_onboarding_conversation ?? false,
     systemPurpose: conversation.system_purpose ?? null,
     isUnread: conversation.is_unread ?? false,
+    artifacts,
     createdAt: new Date(conversation.createdAt),
     updatedAt: conversation.updatedAt
       ? new Date(conversation.updatedAt)
       : new Date(conversation.createdAt),
   };
+
+  // Refresh the runtime lookup map from the server-authoritative registry. The
+  // store stamps session_id onto each entry so artifact fetch URLs resolve.
+  useChatStore.getState().setConversationArtifacts(conversationId, artifacts);
 
   // Map messages
   const remoteMessages = mapApiMessagesToStored(messages, conversationId);

@@ -1,4 +1,6 @@
 import type {
+  ApprovalRequestData,
+  RateLimitData as SharedRateLimitData,
   SubagentGroupData as SharedSubagentGroupData,
   ToolCallEntry as SharedToolCallEntry,
 } from "@shared/chat";
@@ -137,16 +139,13 @@ export interface MCPAppData {
 // 3) If you stream or store this tool’s data in messages, no extra typing is required;
 //    the message schema derives from this registry.
 // 4) Optionally, add tests and docs/examples demonstrating the new tool.
-export interface RateLimitData {
-  feature: string;
-  plan_required?: string;
-  reset_time?: string;
-}
 
-// The canonical ToolCallEntry / SubagentGroupData shapes live in @shared/chat
-// (they're what the shared turn accumulator assembles); re-exported here so
-// existing web imports keep one source of truth instead of a drifting copy.
+// The canonical RateLimitData / ToolCallEntry / SubagentGroupData shapes live
+// in @shared/chat (they're what the shared turn accumulator and backend
+// contract define); re-exported here so existing web imports keep one source
+// of truth instead of a drifting copy.
 export {
+  type RateLimitData,
   REASONING_TOOL_NAME,
   type SubagentGroupData,
   type ToolCallEntry,
@@ -184,10 +183,11 @@ export const TOOL_REGISTRY = {
   workflow_created: null as unknown as WorkflowCreatedData,
   mcp_app: null as unknown as MCPAppData,
   todo_progress: null as unknown as TodoProgressData,
-  rate_limit_data: null as unknown as RateLimitData,
+  rate_limit_data: null as unknown as SharedRateLimitData,
   artifact_data: null as unknown as ArtifactData[],
   screenshot_data: null as unknown as ScreenshotData,
   memory_data: null as unknown as MemoryData,
+  approval_request: null as unknown as ApprovalRequestData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
@@ -220,6 +220,7 @@ export const TOOLS_MESSAGE_KEYS = Object.keys(
 // Tools that should merge multiple calls into one component
 // Add any tool name here - its data will be accumulated into an array
 export const GROUPED_TOOLS = new Set<ToolName>([
+  "approval_request",
   "search_results",
   "reddit_data",
   "integration_connection_required",

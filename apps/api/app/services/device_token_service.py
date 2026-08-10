@@ -52,7 +52,7 @@ class DeviceTokenService:
                         "action": "registered",
                     }
                 )
-                log.info(f"Registered new device token for user {user_id}")
+                log.info("Registered new device token for user", user_id=user_id)
             else:
                 log.set(
                     device_token={
@@ -61,12 +61,18 @@ class DeviceTokenService:
                         "action": "updated",
                     }
                 )
-                log.info(f"Updated device token for user {user_id}")
+                log.info("Updated device token for user", user_id=user_id)
 
             return True
 
         except Exception as e:
-            log.error(f"Failed to register device token: {e}")
+            log.error(
+                "Failed to register device token",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                device_id=device_id,
+            )
             return False
 
     async def get_user_device_count(self, user_id: str) -> int:
@@ -74,8 +80,28 @@ class DeviceTokenService:
         try:
             return await self.collection.count_documents({"user_id": user_id})
         except Exception as e:
-            log.error(f"Failed to get device count: {e}")
+            log.error(
+                "Failed to get device count",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             return 0
+
+    async def get_active_tokens(self, user_id: str) -> list[str]:
+        """Every active push token registered for this user."""
+        # {"token": 1} is a MongoDB field projection (include the token field), not a secret.
+        projection = {"token": 1}  # nosec B105
+        cursor = self.collection.find({"user_id": user_id, "is_active": True}, projection)
+        return [doc["token"] async for doc in cursor if doc.get("token")]
+
+    async def deactivate_tokens(self, tokens: list[str]) -> None:
+        """Mark dead tokens inactive so ``get_active_tokens`` stops returning them."""
+        if not tokens:
+            return
+        await self.collection.update_many(
+            {"token": {"$in": tokens}}, {"$set": {"is_active": False}}
+        )
 
     async def verify_token_ownership(self, token: str, user_id: str) -> bool:
         """Verify that a token belongs to the specified user."""
@@ -83,7 +109,12 @@ class DeviceTokenService:
             doc = await self.collection.find_one({"token": token, "user_id": user_id})
             return doc is not None
         except Exception as e:
-            log.error(f"Failed to verify token ownership: {e}")
+            log.error(
+                "Failed to verify token ownership",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             return False
 
     async def unregister_device_token(self, token: str, user_id: str) -> bool:
@@ -92,18 +123,20 @@ class DeviceTokenService:
             # Delete only if token belongs to user
             result = await self.collection.delete_one({"token": token, "user_id": user_id})
 
-            # Mask token for logging (show first 20 and last 4 chars)
-            masked_token = f"{token[:20]}...{token[-4:]}" if len(token) > 24 else "***"
-
             if result.deleted_count > 0:
                 log.set(device_token={"user_id": user_id, "action": "unregistered"})
-                log.info(f"Unregistered device token for user {user_id}: {masked_token}")
+                log.info("Unregistered device token", user_id=user_id)
                 return True
-            log.warning(f"Device token not found or not owned by user {user_id}")
+            log.warning("Device token not found or not owned by user", user_id=user_id)
             return False
 
         except Exception as e:
-            log.error(f"Failed to unregister device token: {e}")
+            log.error(
+                "Failed to unregister device token",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             return False
 
 

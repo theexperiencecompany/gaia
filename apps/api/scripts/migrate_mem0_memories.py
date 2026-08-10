@@ -31,10 +31,12 @@ import httpx  # noqa: E402
 from app.agents.llm.client import register_llm_providers  # noqa: E402
 from app.constants.memory import MemorySourceType  # noqa: E402
 from app.db.chroma.chromadb import init_chroma  # noqa: E402
-from app.db.mongodb.collections import users_collection  # noqa: E402
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.db.postgresql import init_postgresql_engine  # noqa: E402
 from app.memory import pg_store  # noqa: E402
 from app.memory.engine import memory_engine  # noqa: E402
+
+users_collection = get_async_collection("users")
 
 MEM0_API_BASE = "https://api.mem0.ai"
 MEM0_PAGE_SIZE = 100

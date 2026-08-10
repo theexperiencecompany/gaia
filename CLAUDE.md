@@ -22,6 +22,9 @@ This applies to **everything** — coding, debugging, answering questions, decid
 - **State confidence honestly.** If something is unverified, say so and verify it before relying on it. Never present an assumption as a fact. A confident wrong answer is worse than "let me check."
 - **Understand before you change or delete.** Don't modify, refactor, or remove code whose purpose you haven't confirmed (Chesterton's fence) — the weird-looking line is often load-bearing. If you don't know why it's there, find out before touching it.
 - **Don't claim done without proof.** Never say "it works," "tests pass," or "this is fixed" unless you actually ran it and saw the result. Report outcomes faithfully — if a step was skipped or something failed, say so with the output. "Done" means verified, not "should be done."
+- **Name what the test did NOT exercise, as loudly as what it did.** A test of a simulation, translation, or proxy proves only that proxy — a fixture tests the fixture's assumptions, a unit test of extracted output proves the extraction, not the real engine. Before calling something verified, say exactly where the run stops being faithful to reality ("verified against a local webhook sink, not Slack"; "fired with synthetic series, not the real app's metrics"; "passed under `act`, not a real runner"). Then reach the highest-fidelity test that is feasible: run the real component, the real integration, the real delivery — first, not after being asked. Every silent-failure bug in a monitoring/alerting system survives precisely because its test stopped short of the real path.
+- **A green test suite is not proof that the feature works.** Passing tests, lint, and type-check only prove the checks you happened to write did not fail. They do not prove the thing actually works — tests exercise the paths you already thought of, with fakes standing in for the parts most likely to break, in a process that never boots the way production does. Plenty of shipped bugs had a fully green suite. **After the work is done, drive it manually the way a real human user would**: boot the stack, hit the real endpoint, click through the real UI, send the real message, then go look at the real artifact it produced — the response body, the database row, the log file, the queue. Do this *in addition to* the suite, never instead of it, and never treat "all tests pass" as the finish line. If you cannot drive it manually, say so explicitly rather than implying it was verified.
+
 - If after genuine investigation something is still ambiguous, stop and ask — do not paper over the gap with a guess.
 
 ### Maintainability & Tech Debt
@@ -38,6 +41,7 @@ Optimize for the next engineer who has to read, extend, or debug this code six m
 - **Tech debt compounds silently.** Each shortcut makes the next change a little harder, until a feature that should take a day takes a week. Treat "it works but it's ugly/duplicated/hacky" as unfinished, not done. Working and maintainable are different bars — we hold the second one.
 - **Keep diffs minimal and reviewable.** No drive-by reformatting, no reordering imports the formatter didn't ask for, no unrelated "while I'm here" changes. Every line in the diff should trace to the task — noise hides the real change from reviewers and pollutes the history.
 - **When you spot debt adjacent to your change, surface it.** Fix it if it's in scope and cheap; otherwise call it out explicitly so it's a decision, not an accident.
+- **Never defer cleanup to a "separate PR" — that PR never comes.** Scoping dead code, a duplicate implementation, or a known workaround out of the current change so some future PR can handle it is exactly how debt becomes permanent: the follow-up is never prioritized and the mess compounds. If your change touches an area that contains dead code, a duplicated implementation, or a stub, clean it up in the *same* PR — the context is loaded and the cost is never lower than right now. If a cleanup is genuinely too large to fold in, do not bury it in a commit message, a `# TODO`, or a PR description as "out of scope, follow-up later": announce it **loudly and explicitly to the user** and let them make the call out loud. Silent deferral is not a decision, it is how it never happens.
 
 ### Agent Guidelines (Karpathy-inspired)
 
@@ -76,6 +80,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution 
 mise tasks          # List all available tasks with descriptions
 mise run <task>     # Run a task (e.g. mise run lint, mise run dev)
 mise //apps/api:lint  # Run a task in a sub-project from the root
+mise infisical <task>  # Team members: run any task with Infisical secrets injected (e.g. mise infisical dev:full)
 ```
 
 Pre-commit hooks are managed via **prek** (installed by mise). Install once with `mise run pre-commit:install`. Hooks run automatically on `git commit` — to run manually: `mise run pre-commit`.
@@ -132,39 +137,21 @@ nx graph
 
 ## Architecture
 
-### Monorepo Structure
+### Agent System
 
-```
-apps/
-  web/          - Next.js web application
-  desktop/      - Electron desktop app
-  mobile/       - React Native mobile app
-  api/          - FastAPI backend with LangGraph agents
-  voice-agent/  - Voice processing worker
-  bots/
-    discord/    - Discord bot
-    slack/      - Slack bot
-    telegram/   - Telegram bot
-  docs/         - Documentation site
+The full agent architecture — comms → executor → subagents, bots, voice, skills, memory, notifications, workflows, todos, sandbox, MCP — is documented in **[`ARCHITECTURE.md`](./ARCHITECTURE.md)** at the repo root. **Read it before touching any agent code**; it lists every authoritative file path so you don't have to re-derive the system per session.
 
-libs/
-  shared/       - Shared Python utilities (gaia-shared package)
-    py/         - Python shared code
-    ts/         - TypeScript shared code
-```
+Quick map:
+- **Comms agent** (user-facing, no work tools) → `apps/api/app/agents/core/graph_builder/build_graph.py` (`build_comms_*`)
+- **Executor agent** (worker tier, all tools) → same file (`build_executor_*`) + `apps/api/app/agents/tools/executor_tool.py`
+- **Subagents** (per-integration) → `apps/api/app/agents/core/subagents/` + `apps/api/app/config/oauth_config.py`
+- **Bots** → `apps/bots/{telegram,whatsapp,discord,slack}/` + `libs/shared/ts/src/bots/`
+- **Voice** → `apps/voice-agent/src/worker.py`
+- **Skills** → `apps/api/app/agents/skills/`
+- **Memory** → `apps/api/app/memory/` + `apps/api/app/agents/memory/`
+- **Workflows / Notifications / Todos / Sandbox** → `apps/api/app/services/{workflow,notification,*,sandbox}/` + `apps/api/app/agents/tools/`
 
 ### Frontend (Web/Desktop)
-
-**Tech Stack**: Next.js 16, React 19, TypeScript, Zustand, TailwindCSS, Biome
-
-**Key Directories**:
-
-- `src/app/` - Next.js App Router pages (organized by route groups)
-- `src/features/` - Feature modules (chat, todo, calendar, workflows, integrations, etc.)
-- `src/stores/` - Zustand state management stores
-- `src/components/` - Reusable React components
-- `src/lib/` - Utility functions and configurations
-- `src/types/` - TypeScript type definitions
 
 **State Management**: Uses Zustand for global state. Each feature can have its own store in `src/stores/` or `src/features/{feature}/stores/`.
 
@@ -174,27 +161,6 @@ libs/
 
 ### Backend (API)
 
-**Tech Stack**: FastAPI, LangGraph, Python 3.11+, PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ
-
-**Key Directories**:
-
-- `app/main.py` - Application entry point
-- `app/core/` - Core application logic (app factory, middleware, lifespan)
-- `app/api/v1/` - API routes and endpoints
-- `app/agents/` - LangGraph agent system
-  - `core/` - Core agent logic (agent.py, state.py, graph_manager.py, nodes/, subagents/)
-  - `tools/` - Agent tools
-  - `prompts/` - Agent prompts
-  - `memory/` - Agent memory management
-  - `llm/` - LLM integrations
-- `app/models/` - Database models
-- `app/schemas/` - Pydantic schemas
-- `app/services/` - Business logic services
-- `app/db/` - Database clients (postgresql, mongodb, redis, chroma, rabbitmq)
-- `app/workers/` - Background task workers
-- `app/config/` - Configuration and settings
-- `app/utils/` - Utility functions
-
 **Database Setup**: The API depends on PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ. Use Docker Compose for local development.
 
 **Background Tasks**: Uses ARQ (Redis-based task queue) for async job processing. Run with `nx worker api`.
@@ -202,8 +168,6 @@ libs/
 **Dependency Management**: Uses `uv` for Python package management. Run `nx run api:sync` to install dependencies.
 
 ### Mobile App
-
-**Tech Stack**: React Native, Expo, TypeScript
 
 Similar structure to web app with React Native components. Uses React Navigation for routing.
 
@@ -271,6 +235,7 @@ Area-specific rules live in nested `CLAUDE.md` files that load automatically whe
 - **Backend** (Python, FastAPI route contract, services, Pydantic): `apps/api/CLAUDE.md`
 - **Voice agent** (Python, LiveKit worker): `apps/voice-agent/CLAUDE.md`
 - **Bots** (TypeScript): `apps/bots/CLAUDE.md`
+- **Observability** (Prometheus scrape config, Grafana alert rules, Slack/email alerting, runbooks): `infra/docker/observability/CLAUDE.md`
 - **SEO** (marketing pages, metadata, schemas, sitemaps): `apps/web/src/app/[locale]/(landing)/CLAUDE.md`
 - **OpenUI system** (LLM-emitted generic components): `apps/web/src/config/openui/CLAUDE.md`
 - **Chat bubbles & tool cards**: `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`
@@ -313,7 +278,17 @@ When asked to find bugs or issues in the code, **only report problems that a rea
 
 ### Testing
 
-**Do NOT create test cases unless explicitly asked.** Do not add tests when fixing bugs or adding features unless the user specifically requests it.
+Tests are first-class: every new feature/refactor ships a test at the right tier; every bug ships a failing-then-passing test (see `apps/api/tests/CLAUDE.md` for which tier).
+
+**The bug loop — every bug ships a failing-then-passing test, no exceptions.** The moment a real issue is found (by you, by the user, in review, or in production), stop and run this loop before fixing anything:
+
+1. **Ask why the suite missed it.** Name the specific gap — no test covered this path at all, a test covered it but asserted too weakly, the boundary was never exercised, or the test mocked away the very code that broke. That answer determines what to write and often exposes neighbouring blind spots.
+2. **Write the test that reproduces it, and watch it FAIL.** A test written after the fix, never observed red, proves nothing — it only asserts what the code now happens to do. Red first is the whole point.
+3. **Pick the tier that actually catches it** — unit for logic and boundaries, integration for wiring between layers, e2e for user-visible behaviour through the real stack. When a bug spans layers, add one at each tier: the unit test pins the logic, the e2e test proves the user-facing symptom is gone. Prefer more tiers over fewer.
+4. **Fix the root cause**, then confirm the test goes green.
+5. **Never weaken the test to get green.** If it still fails, the fix is wrong or incomplete. Softening an assertion, `skip`ping, or `xfail`ing a real failure suppresses the bug instead of fixing it.
+
+A bug that ships without a failing-then-passing test is a bug that will come back, and the second time nobody will remember why the code looked like that. See the `accurate-testing` skill for the mutation check that proves a test can actually fail.
 
 ### After Major Changes
 
@@ -338,12 +313,15 @@ Each app has its own `.env` file:
 
 Refer to `.env.example` files in each directory for required variables.
 
+## Agent-Driven E2E Testing
+
+To verify a change in the real running app (not just lint/type-check), operate the live stack instead of trusting stdout — use the `driving-gaia` skill (boot the stack, dev-bypass auth, drive API/browser/bots, verify in Mongo), `reading-gaia-logs` to debug a failing run, and `parallel-worktrees` to run branches in parallel.
+
+**On a machine with no Docker daemon** (cloud sandbox, CI runner, dev container), `mise dev` cannot start infra. Use `scripts/dev/sandbox-services.sh` + `scripts/dev/sandbox-env.sh` to run the same backing services natively — see the "No Docker daemon?" section of `driving-gaia`. Never conclude a change works because the test suite passed; boot it and drive it.
+
 ## Docker
 
-Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`:
-
-- `docker-compose.yml` - Development environment
-- `docker-compose.prod.yml` - Production environment
+Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`.
 
 ## Release Management
 
@@ -362,10 +340,6 @@ nx docker:build voice-agent
 
 Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-internal CLI for task tracking and dolt database sync — **never invoke it automatically**. Otherwise, use built-in TodoWrite/TaskCreate tools.
 
-## Implementation Plans
-
-When creating implementation plans, store them in `.agents/plans/` directory. This folder is gitignored and used for planning documents before execution.
-
 ## Markdown Files
 
 **Never create `.md` files** outside of `.agents/plans/` (gitignored) unless explicitly asked. Do not create `REVIEW.md`, `CONSISTENCY_REPORT.md`, `ANALYSIS.md`, spec files, or any other agent-generated documentation in the source tree. Planning and review artifacts belong only in `.agents/plans/` and only when absolutely necessary.
@@ -373,13 +347,13 @@ When creating implementation plans, store them in `.agents/plans/` directory. Th
 ## Git Conventions
 
 - **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.
-- **`develop` is the base branch, not `master`.** All feature branches are created from and merged into `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `develop` as the base — not `master` or `main`.
+- **`master` is the single base branch.** All feature branches are created from and merged into `master`. There is no `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `master` as the base.
 - **NEVER merge pull requests.** Do not run `gh pr merge`, do not call any GitHub API merge endpoint, and do not take any action that merges a PR into any branch. PRs are merged by the team — not by Claude. This is an absolute rule with no exceptions.
 - Work is **not complete until `git push` succeeds.** Always push before ending a session.
-- **Never use `git pull --rebase` or `git rebase` when pulling/merging `origin/develop`.** Always use plain `git merge` — rebase inverts conflict markers (HEAD vs incoming) and causes confusion. Session close sequence (mandatory when code changed):
+- **Never use `git pull --rebase` or `git rebase` when pulling/merging `origin/master`.** Always use plain `git merge` — rebase inverts conflict markers (HEAD vs incoming) and causes confusion. Session close sequence (mandatory when code changed):
   ```bash
   git fetch origin
-  git merge origin/develop  # if syncing with develop; plain merge, no rebase
+  git merge origin/master  # if syncing with master; plain merge, no rebase
   git push
   git status  # must show "up to date with origin"
   ```
@@ -437,32 +411,4 @@ the codebase.** The graph is faster, cheaper (fewer tokens), and gives
 you structural context (callers, dependents, test coverage) that file
 scanning cannot.
 
-### When to use graph tools FIRST
-
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
-
 Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
-
-### Key Tools
-
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.

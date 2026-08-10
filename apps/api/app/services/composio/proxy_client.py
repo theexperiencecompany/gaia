@@ -16,7 +16,9 @@ from __future__ import annotations
 import asyncio
 from threading import Lock
 import time
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict, cast
+
+from composio import Composio
 
 from app.config.oauth_config import get_composio_social_configs
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
@@ -26,13 +28,26 @@ from shared.py.wide_events import log
 
 ProxyMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"]
 
+
+class ProxyResponse(TypedDict):
+    """A proxy call's full result: provider status, payload and headers.
+
+    ``data`` is the provider's parsed JSON body, so it stays ``Any`` — every
+    provider answers a different shape and this is the boundary where it lands.
+    """
+
+    status: int
+    data: Any
+    headers: dict[str, Any]
+
+
 _CONNECTED_ACCOUNT_CACHE_TTL_SECONDS = 600
 
 _connected_account_cache: dict[tuple[str, str], tuple[str, float]] = {}
 _cache_lock = Lock()
 
 
-def _get_composio() -> Any:
+def _get_composio() -> Composio:
     # Lazy import to avoid a circular dependency between proxy_client and
     # the Composio service / custom-tool registry that imports it.
     from app.services.composio.composio_service import get_composio_service
@@ -90,8 +105,11 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
         raise
     except Exception as e:
         log.error(
-            f"{LogTag.COMPOSIO} composio.connected_accounts.list FAILED for user={user_id} "
-            f"toolkit={toolkit}: {type(e).__name__}: {e}"
+            f"{LogTag.COMPOSIO} composio.connected_accounts.list failed",
+            user_id=user_id,
+            toolkit=toolkit,
+            error=str(e),
+            error_type=type(e).__name__,
         )
         raise AppError(
             message=f"Composio connected_accounts.list failed: {e}",
@@ -122,8 +140,11 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             for acc in accounts.items[:5]
         ]
         log.warning(
-            f"{LogTag.COMPOSIO} composio: no ACTIVE account for user={user_id} toolkit={toolkit} "
-            f"(total_accounts={total_accounts}, sample={account_summary})"
+            f"{LogTag.COMPOSIO} composio: no ACTIVE account for this user and toolkit",
+            user_id=user_id,
+            toolkit=toolkit,
+            total_accounts=total_accounts,
+            account_summary=account_summary,
         )
         # 403, not 401: the user's GAIA session is valid — they simply have no
         # active connection for this integration. Returning 401 makes the web
@@ -143,15 +164,18 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
         )
 
     log.info(
-        f"{LogTag.COMPOSIO} composio: resolved connected_account_id for user={user_id} toolkit={toolkit} "
-        f"-> {active.id} (cached for {_CONNECTED_ACCOUNT_CACHE_TTL_SECONDS}s)"
+        f"{LogTag.COMPOSIO} composio: resolved connected_account_id and cached it",
+        user_id=user_id,
+        toolkit=toolkit,
+        id=active.id,
+        _connected_account_cache_ttl_seconds=_CONNECTED_ACCOUNT_CACHE_TTL_SECONDS,
     )
     with _cache_lock:
         _connected_account_cache[cache_key] = (
             active.id,
             now + _CONNECTED_ACCOUNT_CACHE_TTL_SECONDS,
         )
-    return active.id
+    return cast(str, active.id)
 
 
 def _build_parameters(
@@ -179,12 +203,12 @@ def _proxy_call(
     toolkit: str,
     endpoint: str,
     method: ProxyMethod,
-    body: Any | None = None,
+    body: object = None,
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    """Internal: send a proxy request and return data/status/headers as a dict."""
+) -> ProxyResponse:
+    """Internal: send a proxy request and return its status, data and headers."""
     log.set(
         composio_proxy={
             "toolkit": toolkit,
@@ -215,8 +239,13 @@ def _proxy_call(
         raise
     except Exception as e:
         log.error(
-            f"{LogTag.COMPOSIO} composio.tools.proxy raised for user={user_id} toolkit={toolkit} "
-            f"{method} {endpoint}: {type(e).__name__}: {e}"
+            f"{LogTag.COMPOSIO} composio.tools.proxy raised",
+            user_id=user_id,
+            toolkit=toolkit,
+            method=method,
+            endpoint=endpoint,
+            error=str(e),
+            error_type=type(e).__name__,
         )
         raise AppError(
             message=f"Composio tools.proxy failed: {e}",
@@ -262,11 +291,11 @@ def _proxy_call(
     raw_headers = response.headers or {}
     normalized_headers = {str(k).lower(): v for k, v in raw_headers.items()}
 
-    return {
-        "status": status,
-        "data": response.data,
-        "headers": normalized_headers,
-    }
+    return ProxyResponse(
+        status=status,
+        data=response.data,
+        headers=normalized_headers,
+    )
 
 
 def proxy_request_sync(
@@ -275,7 +304,7 @@ def proxy_request_sync(
     toolkit: str,
     endpoint: str,
     method: ProxyMethod,
-    body: Any | None = None,
+    body: object = None,
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
@@ -285,6 +314,18 @@ def proxy_request_sync(
     Returns the parsed `data` field from the proxy response. Raises
     `AppError` on non-2xx provider responses or when the user has no
     active connection for the toolkit.
+
+    The return stays `Any`: one function fronts every provider in the
+    codebase and each answers a different JSON shape, so the concrete type
+    only exists at the call site. Callers validate what they receive into a
+    real model there.
+
+    Measured, don't re-litigate: annotating this and `proxy_request` as
+    `-> object` (the honest type of parsed JSON) produced **47 new mypy errors
+    across 16 files** — 40 of them `"object" has no attribute "get"` in the
+    integration tools (linkedin 11, instagram 9, teams 5, twitter 3, ...), the
+    rest assignment/index errors. Every one would need a per-call-site cast or
+    model, which is the cross-file ripple Type Safety item 14 rules out.
     """
     return _proxy_call(
         user_id=user_id,
@@ -304,11 +345,11 @@ def proxy_request_full_sync(
     toolkit: str,
     endpoint: str,
     method: ProxyMethod,
-    body: Any | None = None,
+    body: object = None,
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> dict[str, Any]:
+) -> ProxyResponse:
     """Like `proxy_request_sync` but returns `{status, data, headers}`.
 
     Use when the caller needs response headers (e.g. LinkedIn's
@@ -332,7 +373,7 @@ async def proxy_request(
     toolkit: str,
     endpoint: str,
     method: ProxyMethod,
-    body: Any | None = None,
+    body: object = None,
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
@@ -376,6 +417,7 @@ def invalidate_connected_account_cache(
 
 __all__ = [
     "ProxyMethod",
+    "ProxyResponse",
     "proxy_request",
     "proxy_request_sync",
     "proxy_request_full_sync",

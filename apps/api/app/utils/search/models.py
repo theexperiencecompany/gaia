@@ -25,3 +25,13 @@ class SearchResponse(BaseModel):
     @property
     def is_empty(self) -> bool:
         return not self.results
+
+
+class WebSearchResult(BaseModel):
+    """The wire shape ``perform_search`` returns: results plus the query echoed back."""
+
+    web: list[SearchResultItem] = Field(default_factory=list)
+    images: list[str] = Field(default_factory=list)
+    answer: str = ""
+    query: str
+    provider: str | None = None

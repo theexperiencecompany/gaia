@@ -67,13 +67,13 @@ jobs:
           nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       - name: Sync Python dependencies (Nx cached)
-        run: npx nx sync api
+        run: pnpm exec nx sync api
         env:
           NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       # Login early so the affected check can query GHCR for missing images.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -83,8 +83,11 @@ jobs:
       - name: Check affected projects
         id: affected
         run: |
+          # Fail loud: a broken nx invocation must fail this job, not silently
+          # yield an empty list (which would skip image builds and deploys).
+          set -euo pipefail
           # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(npx nx show projects --affected 2>/dev/null | tr -d '[]"' | tr ',' '\n' | sed '/^$/d' || true)"
+          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
 
           echo "Affected projects:"
           echo "$AFFECTED"
@@ -144,12 +147,12 @@ jobs:
       # Publish API image tags when API-related scope changed.
       - name: Release apps Docker images
         if: steps.affected.outputs.api == 'true'
-        run: npx nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
+        run: pnpm exec nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Publish bot image tags when bot scope changed.
       - name: Release bots Docker images
         if: steps.affected.outputs.bots == 'true'
-        run: npx nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
+        run: pnpm exec nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Fallback: nx release may skip publishing on first run (no prior version
       # history). Ensure locally-built bot images are pushed to GHCR regardless.
@@ -188,8 +191,13 @@ jobs:
 
     steps:
       # Prepare repository + tooling for affected check and optional image build.
+      # Full history: nx-set-shas resolves NX_BASE to the pre-push master SHA,
+      # which a shallow clone does not contain ("fatal: bad object" in the
+      # affected check). docker-release fetches full history for the same reason.
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set Nx SHAs
         uses: nrwl/nx-set-shas@v4
@@ -203,8 +211,11 @@ jobs:
       - name: Check if web is affected
         id: web-affected
         run: |
+          # Fail loud: a broken nx invocation must fail this job, not silently
+          # yield an empty list (which would skip the web image build).
+          set -euo pipefail
           # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(npx nx show projects --affected 2>/dev/null | tr -d '[]"' | tr ',' '\n' | sed '/^$/d' || true)"
+          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
           if echo "$AFFECTED" | grep -qx "web"; then
             echo "web=true" >> $GITHUB_OUTPUT
           else
@@ -216,7 +227,7 @@ jobs:
       # Registry/buildx setup is only needed when web image should be rebuilt.
       - name: Log in to GHCR
         if: steps.web-affected.outputs.web == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -269,7 +280,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -291,7 +302,7 @@ jobs:
           fi
 
       - name: Build and push Grafana image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: infra/docker/observability/grafana
           file: infra/docker/observability/grafana/Dockerfile

@@ -2,7 +2,6 @@ import type { DemoProject, DemoTodo } from "./todosDemoConstants.types";
 
 export type {
   DemoProject,
-  DemoSubTask,
   DemoTodo,
   DemoWorkflowStep,
 } from "./todosDemoConstants.types";

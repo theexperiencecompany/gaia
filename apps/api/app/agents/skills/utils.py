@@ -154,6 +154,7 @@ def check_tree_truncated(tree_data: dict, owner: str, repo: str) -> None:
     """
     if tree_data.get("truncated"):
         log.warning(
-            f"{LogTag.SKILLS} Repository {owner}/{repo} tree is truncated. "
-            "Some skills may not be discovered."
+            f"{LogTag.SKILLS} Repository tree is truncated; some skills may not be discovered",
+            owner=owner,
+            repo=repo,
         )

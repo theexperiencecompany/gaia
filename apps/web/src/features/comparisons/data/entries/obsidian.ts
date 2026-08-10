@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Sharpen your thinking",
   description:
     "Obsidian is a local-first Markdown note-taking app with a graph view for building a personal knowledge base. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and workflows — acting on your behalf before you ask.",
-  metaTitle: "Obsidian Alternative with AI Email & Calendar | GAIA vs Obsidian",
+  metaTitle: "Obsidian Alternative with AI Email & Calendar — GAIA vs Obsidian",
   metaDescription:
     "Obsidian is a powerful local-first PKM but stays passive and note-only. GAIA is an open-source Obsidian alternative with AI email management, calendar integration, and workflow automation across 50+ tools — acting proactively before you ask.",
   keywords: [

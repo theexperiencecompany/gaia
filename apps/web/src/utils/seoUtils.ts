@@ -103,7 +103,8 @@ export function generateUseCaseMetadata(useCase: UseCase): Metadata {
   const canonicalUrl = `/use-cases/${useCase.slug}`;
   const ogImageUrl = `/api/og/use-case?slug=${useCase.slug}`;
 
-  const title = `${useCase.title} - ${siteConfig.short_name} Use Case`;
+  // The layout title template appends "| GAIA" — never include the brand here.
+  const title = `${useCase.title} — AI Workflow`;
   const keywords = [
     useCase.title,
     ...useCase.categories,

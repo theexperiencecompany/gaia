@@ -8,7 +8,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Slack",
     toolBSlug: "slack",
     tagline: "Bridge Teams and Slack for seamless dual-platform collaboration",
-    metaTitle: "Microsoft Teams + Slack Automation - Unified Team Comms | GAIA",
+    metaTitle: "Microsoft Teams + Slack Automation - Unified Team Comms",
     metaDescription:
       "Connect Microsoft Teams and Slack with GAIA. Mirror messages across platforms, route alerts to the right tool, and keep dual-platform teams aligned automatically.",
     keywords: [
@@ -85,8 +85,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Notion",
     toolBSlug: "notion",
     tagline: "Save Teams meeting notes and decisions to Notion automatically",
-    metaTitle:
-      "Microsoft Teams + Notion Automation - Meeting Notes to Docs | GAIA",
+    metaTitle: "Microsoft Teams + Notion Automation - Meeting Notes to Docs",
     metaDescription:
       "Connect Microsoft Teams and Notion with GAIA. Auto-save meeting summaries, decisions, and action items from Teams to structured Notion pages.",
     keywords: [
@@ -163,8 +162,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "GitHub",
     toolBSlug: "github",
     tagline: "Get GitHub PR and issue notifications directly in Teams channels",
-    metaTitle:
-      "Microsoft Teams + GitHub Automation - Dev Alerts in Teams | GAIA",
+    metaTitle: "Microsoft Teams + GitHub Automation - Dev Alerts in Teams",
     metaDescription:
       "Connect Microsoft Teams and GitHub with GAIA. Post pull request updates, issue alerts, and CI status to Teams channels and keep your engineering team informed.",
     keywords: [
@@ -241,8 +239,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
     tagline: "Keep Teams meetings and Google Calendar in perfect sync",
-    metaTitle:
-      "Microsoft Teams + Google Calendar Sync - Unified Scheduling | GAIA",
+    metaTitle: "Microsoft Teams + Google Calendar Sync - Unified Scheduling",
     metaDescription:
       "Connect Microsoft Teams and Google Calendar with GAIA. Sync meetings bidirectionally, avoid double-bookings, and keep your schedule unified across both platforms.",
     keywords: [
@@ -320,8 +317,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolBSlug: "asana",
     tagline:
       "Bring Asana project updates into Teams and create tasks from chat",
-    metaTitle:
-      "Microsoft Teams + Asana Automation - Tasks Meet Team Chat | GAIA",
+    metaTitle: "Microsoft Teams + Asana Automation - Tasks Meet Team Chat",
     metaDescription:
       "Connect Microsoft Teams and Asana with GAIA. Post Asana project updates to Teams channels and turn Teams messages into Asana tasks without leaving chat.",
     keywords: [
@@ -398,8 +394,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Slack",
     toolBSlug: "slack",
     tagline: "Share Drive files in Slack and auto-save Slack files to Drive",
-    metaTitle:
-      "Google Drive + Slack Automation - File Sharing Made Easy | GAIA",
+    metaTitle: "Google Drive + Slack Automation - File Sharing Made Easy",
     metaDescription:
       "Connect Google Drive and Slack with GAIA. Share Drive files with proper permissions in Slack channels and automatically save important Slack files to Drive folders.",
     keywords: [
@@ -476,8 +471,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Notion",
     toolBSlug: "notion",
     tagline: "Attach Drive files to Notion pages and organize Drive by project",
-    metaTitle:
-      "Google Drive + Notion Automation - Connect Docs and Pages | GAIA",
+    metaTitle: "Google Drive + Notion Automation - Connect Docs and Pages",
     metaDescription:
       "Connect Google Drive and Notion with GAIA. Embed Drive files in Notion pages, organize Drive folders by project, and keep documentation and files in sync.",
     keywords: [
@@ -555,8 +549,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolBSlug: "asana",
     tagline:
       "Attach Drive documents to Asana tasks and keep project files organized",
-    metaTitle:
-      "Google Drive + Asana Automation - Files Meet Task Management | GAIA",
+    metaTitle: "Google Drive + Asana Automation - Files Meet Task Management",
     metaDescription:
       "Connect Google Drive and Asana with GAIA. Attach relevant Drive files to Asana tasks automatically, create Drive folders for new projects, and keep work organized.",
     keywords: [
@@ -635,7 +628,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolBSlug: "trello",
     tagline:
       "Attach Drive files to Trello cards and keep project docs accessible",
-    metaTitle: "Google Drive + Trello Automation - Files on Every Card | GAIA",
+    metaTitle: "Google Drive + Trello Automation - Files on Every Card",
     metaDescription:
       "Connect Google Drive and Trello with GAIA. Automatically attach Drive documents to Trello cards, create Drive folders for boards, and keep project files organized.",
     keywords: [
@@ -713,7 +706,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Slack",
     toolBSlug: "slack",
     tagline: "Get Figma design updates and comment alerts directly in Slack",
-    metaTitle: "Figma + Slack Automation - Design Notifications in Chat | GAIA",
+    metaTitle: "Figma + Slack Automation - Design Notifications in Chat",
     metaDescription:
       "Connect Figma and Slack with GAIA. Post design update notifications, comment alerts, and version changes from Figma to Slack channels automatically.",
     keywords: [
@@ -791,7 +784,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Notion",
     toolBSlug: "notion",
     tagline: "Embed Figma designs in Notion pages and sync design status",
-    metaTitle: "Figma + Notion Automation - Designs Inside Your Docs | GAIA",
+    metaTitle: "Figma + Notion Automation - Designs Inside Your Docs",
     metaDescription:
       "Connect Figma and Notion with GAIA. Embed live Figma frames in Notion project pages, sync design status to databases, and keep documentation and design in sync.",
     keywords: [
@@ -868,8 +861,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Asana",
     toolBSlug: "asana",
     tagline: "Link Figma design deliverables to Asana tasks automatically",
-    metaTitle:
-      "Figma + Asana Automation - Design Handoffs in Task Management | GAIA",
+    metaTitle: "Figma + Asana Automation - Design Handoffs in Task Management",
     metaDescription:
       "Connect Figma and Asana with GAIA. Link Figma design files to Asana tasks, update task status when designs are ready, and streamline design-to-development handoffs.",
     keywords: [
@@ -949,7 +941,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolBSlug: "slack",
     tagline:
       "Get payment alerts, MRR updates, and churn notifications in Slack",
-    metaTitle: "Stripe + Slack Automation - Revenue Alerts in Team Chat | GAIA",
+    metaTitle: "Stripe + Slack Automation - Revenue Alerts in Team Chat",
     metaDescription:
       "Connect Stripe and Slack with GAIA. Post payment notifications, MRR milestones, failed charge alerts, and churn warnings to Slack channels automatically.",
     keywords: [
@@ -1028,7 +1020,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolBSlug: "notion",
     tagline:
       "Build revenue dashboards and track payments inside Notion databases",
-    metaTitle: "Stripe + Notion Automation - Revenue Data in Your Docs | GAIA",
+    metaTitle: "Stripe + Notion Automation - Revenue Data in Your Docs",
     metaDescription:
       "Connect Stripe and Notion with GAIA. Sync Stripe payment data to Notion databases, build revenue dashboards, and track subscriptions alongside your business documentation.",
     keywords: [
@@ -1107,7 +1099,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolBSlug: "slack",
     tagline:
       "Post Airtable record updates to Slack and create records from chat",
-    metaTitle: "Airtable + Slack Automation - Database Meets Team Chat | GAIA",
+    metaTitle: "Airtable + Slack Automation - Database Meets Team Chat",
     metaDescription:
       "Connect Airtable and Slack with GAIA. Get Airtable record update notifications in Slack channels and create new Airtable records directly from Slack messages.",
     keywords: [
@@ -1185,7 +1177,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Notion",
     toolBSlug: "notion",
     tagline: "Sync data between Airtable bases and Notion databases seamlessly",
-    metaTitle: "Airtable + Notion Automation - Sync Your Databases | GAIA",
+    metaTitle: "Airtable + Notion Automation - Sync Your Databases",
     metaDescription:
       "Connect Airtable and Notion with GAIA. Sync records bidirectionally between Airtable bases and Notion databases and keep structured data consistent across both tools.",
     keywords: [
@@ -1264,7 +1256,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolBSlug: "google-calendar",
     tagline:
       "Sync Airtable date fields to Google Calendar events automatically",
-    metaTitle: "Airtable + Google Calendar Sync - Dates Become Events | GAIA",
+    metaTitle: "Airtable + Google Calendar Sync - Dates Become Events",
     metaDescription:
       "Connect Airtable and Google Calendar with GAIA. Turn Airtable date fields into Google Calendar events, keep deadlines visible, and sync changes in real time.",
     keywords: [

@@ -6,9 +6,15 @@ Handles OAuth 2.1 discovery flow per MCP specification:
 - RFC 8414 Authorization Server Metadata discovery
 """
 
+from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
 from app.constants.mcp import COMPOSIO_MCP_HOST
-from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.models.mcp_config import (
+    McpAuthChallenge,
+    MCPConfig,
+    McpProbeResult,
+    OAuthDiscovery,
+)
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.mcp_oauth_utils import (
     OAuthDiscoveryError,
@@ -21,6 +27,7 @@ from app.utils.mcp_oauth_utils import (
     validate_https_url,
     validate_oauth_endpoints,
 )
+from app.utils.url_safety import assert_public_http_url
 from mcp.shared.auth import OAuthMetadata
 from shared.py.wide_events import log
 
@@ -29,7 +36,7 @@ async def discover_oauth_config(
     token_store: MCPTokenStore,
     integration_id: str,
     mcp_config: MCPConfig,
-    challenge_data: dict | None = None,
+    challenge_data: McpAuthChallenge | None = None,
 ) -> OAuthDiscovery:
     """Full MCP OAuth discovery flow per specification."""
     cached = await token_store.get_oauth_discovery(integration_id)
@@ -50,7 +57,12 @@ async def discover_oauth_config(
     try:
         validate_https_url(server_url)
     except OAuthSecurityError as e:
-        log.warning(f"{LogTag.MCP} Server URL security warning for {integration_id}: {e}")
+        log.warning(
+            f"{LogTag.MCP} Server URL security warning for",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     challenge = challenge_data or await extract_auth_challenge(server_url)
     initial_scope = challenge.get("scope")
@@ -88,7 +100,12 @@ async def discover_oauth_config(
         try:
             validate_oauth_endpoints(as_metadata)
         except OAuthSecurityError as e:
-            log.warning(f"{LogTag.MCP} OAuth endpoint security warning: {e}")
+            log.warning(
+                f"{LogTag.MCP} OAuth endpoint security warning",
+                error=str(e),
+                error_type=type(e).__name__,
+                integration_id=integration_id,
+            )
 
         await token_store.store_oauth_discovery(integration_id, discovery)
         return discovery
@@ -107,7 +124,12 @@ async def discover_oauth_config(
         try:
             validate_oauth_endpoints(as_metadata)
         except OAuthSecurityError as e:
-            log.warning(f"{LogTag.MCP} OAuth endpoint security warning: {e}")
+            log.warning(
+                f"{LogTag.MCP} OAuth endpoint security warning",
+                error=str(e),
+                error_type=type(e).__name__,
+                integration_id=integration_id,
+            )
 
         await token_store.store_oauth_discovery(integration_id, discovery)
         return discovery
@@ -120,9 +142,18 @@ async def discover_oauth_config(
         )
 
 
-async def probe_mcp_connection(server_url: str) -> dict:
+async def probe_mcp_connection(server_url: str) -> McpProbeResult:
     """Probe an MCP server to determine auth requirements."""
+    # Device-tunnel servers are reached over the WebSocket, not HTTP: there is no
+    # URL to auth-probe, and the SSRF guard below rightly rejects the device://
+    # scheme. They are always unauthenticated from the cloud's side.
+    if server_url.startswith(f"{DEVICE_TRANSPORT}://"):
+        return {"requires_auth": False, "auth_type": "none"}
     try:
+        # SSRF re-check before the outbound probe (DNS-rebinding defense). A raised
+        # ValueError is caught below and surfaced through the existing error dict.
+        await assert_public_http_url(server_url)
+
         challenge = await extract_auth_challenge(server_url)
 
         # Empty dict => the probe got a non-401 response: no auth required.

@@ -12,6 +12,139 @@ import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkfl
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import type { UseCase } from "@/types/features/workflowTypes";
 
+// Smoothly scroll the given scroll region (or window) back to the top.
+function scrollToTop(
+  scrollContainer: HTMLElement | null,
+  useWindowScroll: boolean,
+): void {
+  if (useWindowScroll) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } else if (scrollContainer) {
+    scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+  }
+}
+
+// Scroll just enough to bring `section` fully into view within its scroll
+// region. No-op for the workflows tab or when the section is already visible.
+function scrollSectionIntoView(
+  section: HTMLElement,
+  scrollContainer: HTMLElement | null,
+  useWindowScroll: boolean,
+  category: string,
+): void {
+  const sectionRect = section.getBoundingClientRect();
+  const containerRect = useWindowScroll
+    ? { top: 0, bottom: window.innerHeight }
+    : scrollContainer
+      ? scrollContainer.getBoundingClientRect()
+      : null;
+  if (!containerRect) return;
+
+  const currentScrollTop = useWindowScroll
+    ? window.scrollY
+    : (scrollContainer?.scrollTop ?? 0);
+
+  const isSectionFullyVisible =
+    sectionRect.top >= containerRect.top &&
+    sectionRect.bottom <= containerRect.bottom;
+
+  // For workflows category, don't scroll at all to prevent the scroll-up issue
+  if (category === "workflows") return;
+
+  // For other categories, only scroll if section is not fully visible
+  if (isSectionFullyVisible) return;
+
+  const top = Math.max(
+    0,
+    currentScrollTop + (sectionRect.bottom - containerRect.bottom) + 100,
+  );
+
+  if (useWindowScroll) {
+    window.scrollTo({ top, behavior: "smooth" });
+  } else if (scrollContainer) {
+    scrollContainer.scrollTo({ top, behavior: "smooth" });
+  }
+}
+
+// Filter the explore workflows down to the selected category (null = featured
+// fallback, "all" = everything).
+function filterUseCases(
+  exploreWorkflows: UseCase[],
+  selectedCategory: string | null,
+): UseCase[] {
+  if (selectedCategory === null) {
+    // Show featured when null (fallback)
+    return exploreWorkflows.filter((useCase) =>
+      useCase.categories?.includes("featured"),
+    );
+  }
+  if (selectedCategory === "all") {
+    return exploreWorkflows;
+  }
+  return exploreWorkflows.filter((useCase) =>
+    useCase.categories?.includes(selectedCategory),
+  );
+}
+
+// Cap the rendered use cases by an explicit slice count or a rows x columns grid.
+function sliceUseCases(
+  useCases: UseCase[],
+  slicePerTab: number | undefined,
+  rows: number | undefined,
+  columns: number,
+): UseCase[] {
+  if (!slicePerTab && !rows) return useCases;
+  return useCases.slice(0, slicePerTab || (rows ? rows * columns : undefined));
+}
+
+// A single animated, selectable category filter chip.
+function CategoryChip({
+  category,
+  index,
+  isSelected,
+  onClick,
+}: {
+  category: string;
+  index: number;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <m.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: 0.3,
+        delay: index * 0.05,
+        ease: "easeOut",
+      }}
+    >
+      <Chip
+        variant={isSelected ? "solid" : "flat"}
+        color={isSelected ? "primary" : "default"}
+        className={`cursor-pointer capitalize ${isSelected ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
+        size="lg"
+        startContent={
+          category === "featured" ? (
+            <StarAward01Icon width={18} height={18} />
+          ) : category === "workflows" ? (
+            <WorkflowCircle03Icon width={18} height={18} />
+          ) : undefined
+        }
+        onClick={onClick}
+      >
+        {category === "all"
+          ? "All"
+          : category === "featured"
+            ? "Featured"
+            : category === "workflows"
+              ? "Your Workflows"
+              : category}
+      </Chip>
+    </m.div>
+  );
+}
+
 export default function UseCaseSection({
   dummySectionRef,
   hideUserWorkflows = false,
@@ -124,16 +257,7 @@ export default function UseCaseSection({
     return null;
   }, [dummySectionRef, scroller]);
 
-  const filteredUseCases =
-    selectedCategory === null
-      ? exploreWorkflows.filter((useCase: UseCase) =>
-          useCase.categories?.includes("featured"),
-        ) // Show featured when null (fallback)
-      : selectedCategory === "all"
-        ? exploreWorkflows
-        : exploreWorkflows.filter((useCase: UseCase) =>
-            useCase.categories?.includes(selectedCategory),
-          );
+  const filteredUseCases = filterUseCases(exploreWorkflows, selectedCategory);
 
   const handleCategoryClick = (category: string) => {
     const wasSelected = selectedCategory === category;
@@ -149,11 +273,7 @@ export default function UseCaseSection({
       } else {
         // For other categories, unselect and go back to featured as default
         setSelectedCategory("featured");
-        if (useWindowScroll) {
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        } else if (scrollContainer) {
-          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
-        }
+        scrollToTop(scrollContainer, useWindowScroll);
       }
     } else {
       // Selecting: only scroll if we need to bring the section into view
@@ -162,44 +282,12 @@ export default function UseCaseSection({
       // Small delay to let state update
       setTimeout(() => {
         if (!dummySectionRef.current) return;
-
-        const sectionRect = dummySectionRef.current.getBoundingClientRect();
-        const containerRect = useWindowScroll
-          ? { top: 0, bottom: window.innerHeight }
-          : scrollContainer
-            ? scrollContainer.getBoundingClientRect()
-            : null;
-        if (!containerRect) return;
-
-        const currentScrollTop = useWindowScroll
-          ? window.scrollY
-          : (scrollContainer?.scrollTop ?? 0);
-
-        // Only scroll if the section is not fully visible or if we need to scroll down
-        const isSectionFullyVisible =
-          sectionRect.top >= containerRect.top &&
-          sectionRect.bottom <= containerRect.bottom;
-
-        // For workflows category, don't scroll at all to prevent the scroll-up issue
-        if (category === "workflows") {
-          return;
-        }
-
-        // For other categories, only scroll if section is not fully visible
-        if (!isSectionFullyVisible) {
-          const top = Math.max(
-            0,
-            currentScrollTop +
-              (sectionRect.bottom - containerRect.bottom) +
-              100,
-          );
-
-          if (useWindowScroll) {
-            window.scrollTo({ top, behavior: "smooth" });
-          } else if (scrollContainer) {
-            scrollContainer.scrollTo({ top, behavior: "smooth" });
-          }
-        }
+        scrollSectionIntoView(
+          dummySectionRef.current,
+          scrollContainer,
+          useWindowScroll,
+          category,
+        );
       }, 50);
     }
   };
@@ -210,39 +298,13 @@ export default function UseCaseSection({
         className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
       >
         {allCategories.map((category, index) => (
-          <m.div
+          <CategoryChip
             key={category as string}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              duration: 0.3,
-              delay: index * 0.05,
-              ease: "easeOut",
-            }}
-          >
-            <Chip
-              variant={selectedCategory === category ? "solid" : "flat"}
-              color={selectedCategory === category ? "primary" : "default"}
-              className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
-              size="lg"
-              startContent={
-                category === "featured" ? (
-                  <StarAward01Icon width={18} height={18} />
-                ) : category === "workflows" ? (
-                  <WorkflowCircle03Icon width={18} height={18} />
-                ) : undefined
-              }
-              onClick={() => handleCategoryClick(category as string)}
-            >
-              {category === "all"
-                ? "All"
-                : category === "featured"
-                  ? "Featured"
-                  : category === "workflows"
-                    ? "Your Workflows"
-                    : (category as string)}
-            </Chip>
-          </m.div>
+            category={category as string}
+            index={index}
+            isSelected={selectedCategory === category}
+            onClick={() => handleCategoryClick(category as string)}
+          />
         ))}
 
         {setShowUseCases && (
@@ -283,46 +345,42 @@ export default function UseCaseSection({
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
             >
-              {(slicePerTab || rows
-                ? filteredUseCases.slice(
-                    0,
-                    slicePerTab || (rows ? rows * columns : undefined),
-                  )
-                : filteredUseCases
-              ).map((useCase: UseCase, index: number) => (
-                <m.div
-                  key={useCase.published_id || index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{
-                    duration: 0.3,
-                    delay: index * 0.05, // Stagger animation
-                    ease: "easeOut",
-                  }}
-                >
-                  <UnifiedWorkflowCard
-                    showDescriptionAsTooltip={showDescriptionAsTooltip}
-                    title={useCase.title || ""}
-                    description={useCase.description || ""}
-                    actionType={useCase.action_type || "prompt"}
-                    prompt={useCase.prompt}
-                    slug={useCase.slug}
-                    href={
-                      useCase.slug ? `/use-cases/${useCase.slug}` : undefined
-                    }
-                    steps={useCase.steps}
-                    totalExecutions={useCase.total_executions || 0}
-                    showExecutions={true}
-                    useBlurEffect={useBlurEffect}
-                    variant="explore"
-                    primaryAction={
-                      useCase.action_type === "prompt"
-                        ? "insert-prompt"
-                        : "create"
-                    }
-                  />
-                </m.div>
-              ))}
+              {sliceUseCases(filteredUseCases, slicePerTab, rows, columns).map(
+                (useCase: UseCase, index: number) => (
+                  <m.div
+                    key={useCase.published_id || index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.3,
+                      delay: index * 0.05, // Stagger animation
+                      ease: "easeOut",
+                    }}
+                  >
+                    <UnifiedWorkflowCard
+                      showDescriptionAsTooltip={showDescriptionAsTooltip}
+                      title={useCase.title || ""}
+                      description={useCase.description || ""}
+                      actionType={useCase.action_type || "prompt"}
+                      prompt={useCase.prompt}
+                      slug={useCase.slug}
+                      href={
+                        useCase.slug ? `/use-cases/${useCase.slug}` : undefined
+                      }
+                      steps={useCase.steps}
+                      totalExecutions={useCase.total_executions || 0}
+                      showExecutions={true}
+                      useBlurEffect={useBlurEffect}
+                      variant="explore"
+                      primaryAction={
+                        useCase.action_type === "prompt"
+                          ? "insert-prompt"
+                          : "create"
+                      }
+                    />
+                  </m.div>
+                ),
+              )}
             </m.div>
           )}
 

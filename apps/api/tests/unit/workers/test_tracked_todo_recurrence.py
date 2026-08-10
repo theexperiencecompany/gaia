@@ -15,8 +15,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
-import pytest
-
 from app.utils.timezone import Timezone
 from app.workers.tasks.tracked_todo_tasks import (
     _compute_next_run,
@@ -29,7 +27,8 @@ KOLKATA = ZoneInfo("Asia/Kolkata")
 # ---------------------------------------------------------------------------
 # _compute_next_run
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestComputeNextRun:
     def test_offset_form_tz_does_not_crash_and_is_correct(self):
         """The regression: a stored ±HH:MM offset must resolve, not fall back.
@@ -93,7 +92,8 @@ class TestComputeNextRun:
 # ---------------------------------------------------------------------------
 # _load_user_with_tz
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestLoadUserWithTz:
     async def test_offset_timezone_resolved(self):
         with patch(

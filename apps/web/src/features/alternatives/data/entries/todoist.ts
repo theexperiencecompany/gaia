@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Pro plan required for reminders, filters, and advanced features",
     "Does not manage your broader workflow beyond task lists",
   ],
-  metaTitle: "Best Todoist Alternative in 2026 | GAIA",
+  metaTitle: "Best Todoist Alternative in 2026",
   metaDescription:
     "Todoist requires manual task entry. GAIA is a proactive AI assistant that creates tasks from email, manages your calendar, and automates workflows. Free tier available.",
   keywords: [

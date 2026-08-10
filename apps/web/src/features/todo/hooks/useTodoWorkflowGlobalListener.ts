@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 
 import { todoApi } from "@/features/todo/api/todoApi";
+import { subscribeToTodoCreated } from "@/features/todo/utils/todoCreatedSignal";
 import { useRouter } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
@@ -82,7 +83,7 @@ const POLL_DELAYS = [3000, 6000, 12000, 20000];
  * Stops early if the WebSocket delivers first (pendingPolls check)
  * or if the workflow is found.
  */
-export function startWorkflowPolling(todoId: string) {
+function startWorkflowPolling(todoId: string) {
   if (pendingPolls.has(todoId)) return;
   pendingPolls.add(todoId);
 
@@ -171,4 +172,8 @@ export function useTodoWorkflowGlobalListener() {
       wsManager.off("workflow.generation_failed", handleFailed);
     };
   }, [handleGenerated, handleFailed]);
+
+  // The store signals todo creation rather than calling the poller directly, so
+  // that it does not import this module (which writes back through the store).
+  useEffect(() => subscribeToTodoCreated(startWorkflowPolling), []);
 }

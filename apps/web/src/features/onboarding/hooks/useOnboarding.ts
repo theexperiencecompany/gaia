@@ -21,6 +21,7 @@ import { resetOnboarding } from "../api/onboardingApi";
 import { questions } from "../constants";
 import { useBackendSync } from "../effects/useBackendSync";
 import { useGmailAutoAdvance } from "../effects/useGmailAutoAdvance";
+import { useIntegrationsSubmission } from "../effects/useIntegrationsSubmission";
 import { useOAuthCallback } from "../effects/useOAuthCallback";
 import { useOnboardingAnalytics } from "../effects/useOnboardingAnalytics";
 import { useOnboardingPersistence } from "../effects/useOnboardingPersistence";
@@ -80,6 +81,8 @@ export function useOnboarding({
     [setUser],
   );
   useOnboardingSubmission(state, handleSubmissionSuccess);
+
+  useIntegrationsSubmission(state);
 
   useClarifyQuestions(state, dispatch);
 

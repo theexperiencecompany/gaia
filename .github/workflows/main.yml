@@ -1,10 +1,9 @@
 name: Quality Checks
 
-# Primary CI gate: validates code quality and enforces branch promotion policy.
+# Primary CI gate: validates code quality on every PR to master.
 on:
   pull_request:
     branches:
-      - develop
       - master
   push:
     branches:
@@ -16,7 +15,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DAGGER_VERSION: "0.20.3"
   NX_NO_CLOUD: "true"
 
 jobs:
@@ -27,6 +25,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # nx-set-shas queries the Actions API for the last successful master
+      # run; without this it silently falls back to HEAD~1 on every push —
+      # correct today only because the ruleset forces merge commits.
+      actions: read
     outputs:
       has_python: ${{ steps.affected.outputs.has_python }}
       has_typescript: ${{ steps.affected.outputs.has_typescript }}
@@ -36,32 +38,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Enforce master promotion policy
-        if: github.event_name == 'pull_request' && github.base_ref == 'master'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            // hotfix/* is the escape hatch for production defects that cannot
-            // wait for the develop backlog to be release-ready. It still gets
-            // the full quality gate — it only skips the promotion ordering.
-            // Every hotfix must be landed on develop too, or the next
-            // develop -> master merge ships a regression.
-            const isAllowed = (ref) =>
-              ref === "develop" ||
-              ref.startsWith("release-please--") ||
-              ref.startsWith("hotfix/");
-            const pr = context.payload.pull_request;
-            if (pr.base.ref === "master" && !isAllowed(pr.head.ref)) {
-              core.setFailed(
-                `PRs to master must come from develop, release-please, or hotfix/*. Got '${pr.head.ref}'.`
-              );
-            }
+          # Jobs below run PR-controlled code; none of them push/fetch after
+          # checkout, so never leave the token in git config (zizmor artipacked).
+          persist-credentials: false
 
       - uses: nrwl/nx-set-shas@v4
         with:
-          main-branch-name: develop
+          main-branch-name: master
 
       - uses: ./.github/actions/setup-node-pnpm
 
@@ -71,16 +54,19 @@ jobs:
       - name: Detect affected projects
         id: affected
         run: |
-          # nx show projects may output JSON arrays or one-per-line depending on version/env.
-          # Normalize both formats to comma-separated values.
+          # Fail loud: an nx error must fail this job, not yield an empty
+          # affected list that green-lights an unchecked PR.
+          set -euo pipefail
+
+          # nx may print JSON arrays or one-per-line; normalize to CSV.
           normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            PY=$(npx nx show projects --projects 'tag:scope:python' 2>/dev/null | normalize || echo "")
-            TS=$(npx nx show projects --projects 'tag:scope:typescript' 2>/dev/null | normalize || echo "")
+            PY=$(pnpm exec nx show projects --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --projects 'tag:scope:typescript' | normalize)
           else
-            PY=$(npx nx show projects --affected --projects 'tag:scope:python' 2>/dev/null | normalize || echo "")
-            TS=$(npx nx show projects --affected --projects 'tag:scope:typescript' 2>/dev/null | normalize || echo "")
+            PY=$(pnpm exec nx show projects --affected --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --affected --projects 'tag:scope:typescript' | normalize)
           fi
 
           echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
@@ -91,44 +77,8 @@ jobs:
           echo "Affected Python:     $PY"
           echo "Affected TypeScript: $TS"
 
-  # --- Static checks: Python (runner-native) ------------------------------
-  static-python:
-    needs: [detect]
-    if: needs.detect.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node-pnpm
-      - run: pip install --break-system-packages uv
-      - name: Sync Python deps
-        run: uv sync --frozen --package gaia --group backend --group dev
-      - name: Restore mypy cache
-        uses: actions/cache@v4
-        with:
-          path: apps/api/.mypy_cache
-          key: mypy-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}-${{ hashFiles('apps/api/app/**/*.py') }}
-          restore-keys: |
-            mypy-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}-
-            mypy-${{ runner.os }}-
-      - name: Ruff lint
-        run: npx nx run-many -t lint -p ${{ needs.detect.outputs.python_projects }} --parallel=3
-      - name: mypy
-        run: npx nx run-many -t type-check -p ${{ needs.detect.outputs.python_projects }} --parallel=3
-
-  # --- Static checks: TypeScript (runner-native) --------------------------
-  static-typescript:
-    needs: [detect]
-    if: needs.detect.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node-pnpm
-      - name: Biome lint
-        run: npx nx run-many -t lint -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
-      - name: TypeScript type-check
-        run: npx nx run-many -t type-check -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
+  # Static checks and dead code live in code-quality.yml (enforced lanes on
+  # the same events) — never duplicate them here.
 
   # --- Build (runner-native, typescript only) -----------------------------
   build:
@@ -138,13 +88,28 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      # Without a warm compiler cache every PR pays a full cold `next build`
+      # (~4 min, the job's critical path).
+      - uses: ./.github/actions/restore-nextjs-cache
       - name: Build
-        run: npx nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
+          # Through env, not inline ${{ }}: project names come from PR-controlled
+          # project.json files and must never expand inside the script itself.
+          AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
+        run: |
+          echo "::group::nx build output"
+          pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel=3
+          echo "::endgroup::"
+          echo "Build: OK ($AFFECTED_TS_PROJECTS)"
 
-  # --- Test: Python (Dagger -- needs service containers) ------------------
+  # --- Test: Python (runner-native + live service containers) -------------
+  # Same service topology as `dagger call test-python` (the local harness),
+  # run directly on the runner — rebuilding the Dagger env cold cost ~5 min
+  # per run for a ~2.5 min suite.
   test-python:
     needs: [detect]
     if: needs.detect.outputs.has_python == 'true'
@@ -153,46 +118,107 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: docker/setup-buildx-action@v3
-      - name: Install Dagger CLI
-        run: |
-          curl -fsSL https://dl.dagger.io/dagger/install.sh \
-            | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
-          sudo mv ./bin/dagger /usr/local/bin/dagger
-          dagger version
-      - name: Pre-pull Dagger engine
-        # The engine image pull off the public registry is intermittently flaky
-        # ('start engine: failed to pull image' -> exit 254 before tests run).
-        # Pre-pull with bounded retries so a transient blip doesn't redden CI.
-        run: |
-          for attempt in 1 2 3; do
-            docker pull "registry.dagger.io/engine:v${{ env.DAGGER_VERSION }}" && exit 0
-            echo "engine pull attempt ${attempt} failed; retrying in $((attempt * 10))s"
-            sleep $((attempt * 10))
-          done
-          echo "::error::Dagger engine image pull failed after 3 attempts"
-          exit 1
+      # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
+      - uses: ./.github/actions/setup-python-test-env
       - name: Run Python tests
-        timeout-minutes: 18
-        env:
-          DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        working-directory: apps/api
+        # No ::group:: — failure tracebacks must be visible without un-collapsing.
+        # Coverage is measured in this same run (not a separate job) so the
+        # full suite isn't paid for twice per PR; --cov-fail-under makes the
+        # coverage floor a real gate, not an informational number.
         run: |
-          set +e
-          dagger --silent call test-python 2>&1 | tee /tmp/dagger-test.log
-          # PIPESTATUS[0] is dagger's exit; $? would be tee's (always 0) and mask failures.
-          CODE=${PIPESTATUS[0]}
-          if [ "$CODE" -ne 0 ]; then
-            # pytest emits its real exit code as `GAIA_PYTEST_EXIT=0` (final line)
-            # only when it actually passed. A non-zero CLI exit is safe to ignore
-            # ONLY then — that's a Dagger session-cleanup timeout after success.
-            # Test failures, worker crashes, and interrupted runs lack the marker.
-            if grep -q "GAIA_PYTEST_EXIT=0" /tmp/dagger-test.log; then
-              echo "pytest passed (exit 0); ignoring Dagger session-cleanup non-zero exit."
-              exit 0
-            fi
-            exit "$CODE"
-          fi
+          # Flake gate: a test that passes only on rerun fails the build
+          # (CPython's --fail-rerun lesson) — flakiness is a defect, not a shrug.
+          # The gate strips coverage/junit from the rerun so they never gate a
+          # 2-test subset. --timeout is restored explicitly because
+          # --override-ini=addopts drops pytest.ini's `--timeout=300`.
+          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
+            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
+            --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80 \
+            --junitxml=test-results/pytest.xml --durations=50
+          echo "Python tests: OK (full suite vs live services)"
+      - name: Schemathesis contract fuzz (isolated live-server run)
+        # Boots a real uvicorn server; must NOT share the parallel load that
+        # starves it. Runs serially after the main suite, excluded from it via
+        # the `schemathesis` marker.
+        #
+        # --override-ini is what actually makes it serial: pytest.ini's addopts
+        # carry `-n 4`, so without this the "isolated" run spun up four xdist
+        # workers that each paid the ~10s app import while one of them tried to
+        # boot uvicorn on the same two cores. The timeout is restored explicitly
+        # because overriding addopts drops pytest.ini's `--timeout=300`, which
+        # is now shorter than the server's own boot budget.
+        if: always()
+        working-directory: apps/api
+        run: |
+          USE_REAL_SERVICES=1 bash ../../scripts/ci/run-tests-flake-gate.sh \
+            uv run pytest tests/integration/real/test_schemathesis.py -q --tb=short -m schemathesis \
+            --override-ini=addopts=--strict-markers --timeout=600
+          echo "Schemathesis: OK"
+      - name: Summary of failed tests
+        if: always()
+        working-directory: apps/api
+        # PEP 723 script (defusedxml pinned inline) — uv builds its own env, so
+        # --no-project keeps it off the apps/api venv it happens to run inside.
+        run: uv run --no-project ../../scripts/ci/junit_failures.py test-results/pytest.xml || true
+      - name: Upload pytest artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-results
+          path: apps/api/test-results/
+          retention-days: 7
+      - name: Diff coverage gate (changed lines must be covered)
+        if: github.event_name == 'pull_request'
+        working-directory: apps/api
+        run: |
+          uv tool run diff-cover coverage.xml --compare-branch=origin/master --fail-under=90
+          echo "diff-cover: OK"
+      - name: Run gaia-shared tests
+        working-directory: apps/api
+        # Separate step, not folded into the run above: these live outside
+        # apps/api and would otherwise be measured against --cov=app. Nothing ran
+        # them at all until now, which is how 24 red slugify tests sat unnoticed
+        # while the bug they caught shipped in public workflow slugs.
+        run: |
+          uv run --frozen pytest ../../libs/shared/py/tests \
+            --tb=short -q --override-ini=addopts=--strict-markers
+          echo "gaia-shared tests: OK"
+
+  # --- Test: Python fast lane (hermetic, no containers) -------------------
+  # The fast-suite invariant, enforced: the hermetic default selection (what
+  # `nx test api` runs locally) must finish inside the budget with NO service
+  # containers — real-infra tiers skip at collection when USE_REAL_SERVICES
+  # is unset. A regression that slows the default run fails this lane instead
+  # of silently degrading every contributor's feedback loop.
+  test-fast:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      - name: Sync Python dependencies
+        shell: bash
+        run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Run hermetic fast suite (budget-capped)
+        working-directory: apps/api
+        # No containers, no service env: USE_REAL_SERVICES is unset, so every
+        # real-infra tier skips at collection. The `timeout` cap IS the
+        # fast-suite budget — a slower suite is a failed build.
+        run: |
+          timeout ${FAST_SUITE_BUDGET_SECONDS:-300} bash ../../scripts/ci/run-tests-flake-gate.sh \
+            uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
+            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300
+          echo "Hermetic fast suite: OK (under budget)"
 
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
@@ -202,27 +228,40 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Run TypeScript tests
-        run: npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
           ENV: test
+          AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
+        run: |
+          echo "::group::vitest output"
+          pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=3
+          echo "::endgroup::"
+          echo "TypeScript tests: OK (projects with a test target among: $AFFECTED_TS_PROJECTS)"
 
-  # --- Dead code analysis (runner-native) ---------------------------------
-  dead-code:
+  # --- Test: harness tooling (runner-native, always) ----------------------
+  # Deliberately ungated. `tools/` belongs to no Nx project, so a PR touching
+  # only it leaves `has_python` false and every gated lane skips; `test-python`
+  # cannot cover it either, since it runs pytest from apps/api. Without this the
+  # custom lint rules and the sim stack's directive parser have no test gate at
+  # all. The suite is ~0.1s, so always-on costs nothing.
+  test-harness-tools:
     needs: [detect]
-    if: needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node-pnpm
-      - run: pip install --break-system-packages vulture
-      - name: Dead code check
-        shell: bash
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - name: Run harness tooling tests
         run: |
-          export PATH="/home/runner/.local/bin:$PATH"
-          bash scripts/dead-code-check.sh
+          echo "::group::pytest output"
+          uv run --no-project --with pytest pytest tools/lints tools/llm-stub -q
+          echo "::endgroup::"
+          echo "Harness tooling tests: OK (tools/lints + tools/llm-stub)"
 
   # --- Changelog sync check (always) --------------------------------------
   changelog-sync:
@@ -234,7 +273,7 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22.15.1"
       - name: Regenerate changelog sub-pages
@@ -275,6 +314,12 @@ jobs:
           exit 1
 
   # --- Trivy scan (non-blocking) ------------------------------------------
+  # Kept advisory: a scan of a clean checkout (matching what this job actually
+  # sees) currently reports 12 known HIGH-severity vulnerabilities in
+  # pnpm-lock.yaml (axios, brace-expansion, fast-uri, next x4 CVEs, postcss,
+  # sharp — 0 CRITICAL). Flipping this to blocking today would red every PR
+  # for pre-existing findings, not new ones the PR caused. Upgrade the
+  # flagged packages, re-scan, then remove continue-on-error.
   trivy-scan:
     needs: [detect]
     runs-on: ubuntu-latest
@@ -282,6 +327,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: "fs"
@@ -289,70 +336,47 @@ jobs:
           format: "table"
           scan-ref: "."
 
-  # --- Coverage (master only, non-blocking) -------------------------------
-  coverage:
+  # --- Regression-proof: changed tests must FAIL on base -------------------
+  # FastAPI's lesson: run the PR's changed test files against origin/master
+  # and report any that PASS there (the fix may no longer be needed).
+  # ENFORCED. It was informational because it checked EVERY changed test file,
+  # and gap-fill/restructure branches legitimately add tests for behavior the
+  # base already gets right — a guaranteed false positive. It is now scoped to
+  # tests that opt in with `@pytest.mark.regression`, which only a test claiming
+  # to pin a bug carries, so there is nothing left to false-positive on: a diff
+  # with no such tests passes trivially, and one that has them must prove them.
+  regression-proof:
     needs: [detect]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.detect.outputs.has_python == 'true'
+    if: needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    continue-on-error: true
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: docker/setup-buildx-action@v3
-      - name: Install Dagger CLI
-        run: |
-          curl -fsSL https://dl.dagger.io/dagger/install.sh \
-            | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
-          sudo mv ./bin/dagger /usr/local/bin/dagger
-          dagger version
-      - name: Pre-pull Dagger engine
-        # The engine image pull off the public registry is intermittently flaky
-        # ('start engine: failed to pull image' -> exit 254 before tests run).
-        # Pre-pull with bounded retries so a transient blip doesn't redden CI.
-        run: |
-          for attempt in 1 2 3; do
-            docker pull "registry.dagger.io/engine:v${{ env.DAGGER_VERSION }}" && exit 0
-            echo "engine pull attempt ${attempt} failed; retrying in $((attempt * 10))s"
-            sleep $((attempt * 10))
-          done
-          echo "::error::Dagger engine image pull failed after 3 attempts"
-          exit 1
-      - name: Run coverage
-        timeout-minutes: 28
-        env:
-          DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        run: |
-          set +e
-          dagger --silent call test-python-coverage 2>&1 | tee /tmp/dagger-coverage.log
-          # PIPESTATUS[0] is dagger's exit; $? would be tee's (always 0) and mask failures.
-          CODE=${PIPESTATUS[0]}
-          if [ "$CODE" -ne 0 ]; then
-            # Same contract as test-python: ignore a non-zero CLI exit only when
-            # pytest itself passed (GAIA_PYTEST_EXIT=0). A coverage shortfall makes
-            # pytest exit non-zero, so the marker is absent and the job fails.
-            if grep -q "GAIA_PYTEST_EXIT=0" /tmp/dagger-coverage.log; then
-              echo "pytest passed (exit 0); ignoring Dagger session-cleanup non-zero exit."
-              exit 0
-            fi
-            exit "$CODE"
-          fi
+      - uses: ./.github/actions/setup-python-test-env
+      - name: Changed test files must fail on base
+        working-directory: apps/api
+        run: bash ../../scripts/ci/regression-proof.sh origin/master
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
+    name: quality-gate
     if: always()
     needs:
       - detect
-      - static-python
-      - static-typescript
       - build
       - test-python
       - test-typescript
-      - dead-code
+      - test-fast
+      - test-harness-tools
+      - regression-proof
+      # static checks + dead-code live in code-quality.yml (its own gate)
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
-      # trivy-scan deliberately excluded (non-blocking)
-      # coverage deliberately excluded (master-only, non-blocking)
+      # trivy-scan deliberately excluded (non-blocking, pre-existing findings)
+      # coverage is measured inside test-python itself (--cov-fail-under=80),
+      # not a separate job -- a second job would re-run the whole suite
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -360,21 +384,21 @@ jobs:
         run: |
           echo "Job results:"
           echo "  detect:             ${{ needs.detect.result }}"
-          echo "  static-python:      ${{ needs.static-python.result }}"
-          echo "  static-typescript:  ${{ needs.static-typescript.result }}"
           echo "  build:              ${{ needs.build.result }}"
           echo "  test-python:        ${{ needs.test-python.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
-          echo "  dead-code:          ${{ needs.dead-code.result }}"
+          echo "  test-fast:          ${{ needs.test-fast.result }}"
+          echo "  test-harness-tools: ${{ needs.test-harness-tools.result }}"
+          echo "  regression-proof:   ${{ needs.regression-proof.result }}"
 
           for r in \
             "${{ needs.detect.result }}" \
-            "${{ needs.static-python.result }}" \
-            "${{ needs.static-typescript.result }}" \
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.test-typescript.result }}" \
-            "${{ needs.dead-code.result }}"; do
+            "${{ needs.test-fast.result }}" \
+            "${{ needs.test-harness-tools.result }}" \
+            "${{ needs.regression-proof.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job result: $r"
               exit 1
@@ -385,8 +409,8 @@ jobs:
   # --- Trigger Docker build (master only) ---------------------------------
   # always() is required to suppress the implicit success() check, which walks
   # the transitive needs graph and returns false when any ancestor lane
-  # (e.g. static-typescript / build / test-typescript on a Python-only change)
-  # was skipped — even though quality-gate itself succeeded.
+  # (e.g. build / test-typescript on a Python-only change) was skipped —
+  # even though quality-gate itself succeeded.
   trigger-build:
     needs: [quality-gate]
     if: ${{ always() && needs.quality-gate.result == 'success' && github.ref == 'refs/heads/master' }}

@@ -1,0 +1,24 @@
+{
+  "suite": "smoke",
+  "run_id": "smoke-20260808-091758-af0cdd",
+  "app_version": "",
+  "baseline_accuracy": 1.0,
+  "graded": 3,
+  "errored": 0,
+  "per_category": {
+    "ROTATION": [
+      1,
+      1
+    ],
+    "SINGLE_HOP": [
+      1,
+      1
+    ],
+    "TOOL_USE": [
+      1,
+      1
+    ]
+  },
+  "provisional": "recorded against a native API with NO JuiceFS mount, so the agent had no file ops, sandbox or artifact streaming; from journals whose per-case token accounting predates the per-case meter; and before infrastructure faults were separated from wrong answers. Re-record from a run on a fully provisioned stack before trusting any comparison.",
+  "captured_at": "2026-08-08"
+}

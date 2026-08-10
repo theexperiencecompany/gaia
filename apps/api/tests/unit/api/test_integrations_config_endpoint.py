@@ -8,7 +8,8 @@ only HTTP status codes, response shapes, and error handling are verified.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
+
+from app.models.user_models import UserDocument
 
 API = "/api/v1/integrations"
 
@@ -76,7 +77,6 @@ def _resolved(
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestGetIntegrationsConfig:
     async def test_config_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import IntegrationsConfigResponse
@@ -111,7 +111,6 @@ class TestGetIntegrationsConfig:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestDisconnectIntegration:
     async def test_disconnect_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import IntegrationSuccessResponse
@@ -166,7 +165,6 @@ class TestDisconnectIntegration:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestConnectIntegration:
     async def test_connect_mcp_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import ConnectIntegrationResponse
@@ -363,21 +361,22 @@ _MODULE = "app.api.v1.endpoints.integrations.config"
 _VALID_UID = "507f1f77bcf86cd799439011"
 
 
-@pytest.mark.unit
 class TestConnectLinkEndpoint:
     """The login-free connect link: self-authenticating, redirects into OAuth."""
 
     async def test_valid_token_redirects_to_oauth(self, client: AsyncClient) -> None:
         result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)
-        users = MagicMock()
-        users.find_one = AsyncMock(return_value={"email": "a@b.com"})
         with (
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
                 return_value=(_VALID_UID, "notion"),
             ),
-            patch(f"{_MODULE}.users_collection", users),
+            patch(
+                f"{_MODULE}.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="a@b.com"),
+            ),
             patch(
                 f"{_MODULE}.initiate_integration_connection",
                 new_callable=AsyncMock,
@@ -402,15 +401,17 @@ class TestConnectLinkEndpoint:
         """The whole point: a logged-out user reaches it (not 401) and is sent
         into OAuth — identity comes from the single-use code, not a session."""
         result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)
-        users = MagicMock()
-        users.find_one = AsyncMock(return_value={"email": "a@b.com"})
         with (
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
                 return_value=(_VALID_UID, "notion"),
             ),
-            patch(f"{_MODULE}.users_collection", users),
+            patch(
+                f"{_MODULE}.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="a@b.com"),
+            ),
             patch(
                 f"{_MODULE}.initiate_integration_connection",
                 new_callable=AsyncMock,

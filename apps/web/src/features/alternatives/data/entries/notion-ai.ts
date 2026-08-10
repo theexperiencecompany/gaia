@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Every AI action still starts with you — nothing happens automatically",
     "No task automation, scheduling, or workflow execution across apps",
   ],
-  metaTitle: "Best Notion AI Alternative in 2026 | GAIA",
+  metaTitle: "Best Notion AI Alternative in 2026",
   metaDescription:
     "Notion AI only helps inside Notion. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ tools automatically. Free tier + self-hosting.",
   keywords: [

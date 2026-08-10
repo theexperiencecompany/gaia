@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Simple to-do list for you and your team",
   description:
     "Any.do is a polished task and list manager with calendar syncing, WhatsApp reminders, and a ChatGPT-powered assistant. GAIA goes far beyond list management to proactively orchestrate your entire digital workflow with a deeply contextual AI agent.",
-  metaTitle: "Any.do Alternative with AI Email & Workflows | GAIA vs Any.do",
+  metaTitle: "Any.do Alternative with AI Email & Workflows — GAIA vs Any.do",
   metaDescription:
     "Any.do is a polished task manager but requires manual entry and lacks email automation. GAIA is an open-source Any.do alternative with AI email integration, multi-step workflow automation, and 50+ tool integrations — with a free tier.",
   keywords: [

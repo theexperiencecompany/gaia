@@ -138,7 +138,7 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     const isProduction =
-      process.env.NODE_ENV === "production" || app.isPackaged;
+      process.env["NODE_ENV"] === "production" || app.isPackaged;
 
     electronApp.setAppUserModelId("io.heygaia.desktop");
 

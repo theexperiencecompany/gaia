@@ -87,7 +87,6 @@ def _mock_httpx_response(json_data: Any, status_code: int = 200) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessForecastData:
     """Tests for the synchronous process_forecast_data helper."""
 
@@ -238,7 +237,6 @@ class TestProcessForecastData:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestGeocodeLocation:
     """Tests for geocode_location (async, hits Nominatim API)."""
@@ -331,7 +329,6 @@ class TestGeocodeLocation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestGetLocationData:
     """Tests for get_location_data (location_name vs ip_address paths)."""
@@ -472,7 +469,6 @@ class TestGetLocationData:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestFetchWeatherData:
     """Tests for fetch_weather_data (parallel HTTP requests)."""
@@ -537,7 +533,6 @@ class TestFetchWeatherData:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestPrepareWeatherData:
     """Tests for prepare_weather_data (assembles the final weather dict)."""
@@ -645,7 +640,6 @@ class TestPrepareWeatherData:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestUserWeather:
     """Tests for the top-level user_weather orchestrator."""
@@ -654,7 +648,6 @@ class TestUserWeather:
     def _patch_log(self) -> None:
         """Suppress structured logging in tests."""
         # log.set / log.debug / log.error are called; just let them pass
-        pass
 
     async def test_missing_api_key_returns_error(self) -> None:
         mock_settings = MagicMock()

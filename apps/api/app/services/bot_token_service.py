@@ -52,7 +52,8 @@ def create_bot_session_token(
         "iat": datetime.now(UTC),
     }
 
-    return jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
+    token: str = jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
+    return token
 
 
 def verify_bot_session_token(token: str) -> dict:
@@ -104,7 +105,7 @@ def _get_bot_session_secret() -> str:
     Raises:
         ValueError: If BOT_SESSION_TOKEN_SECRET is not configured or too short
     """
-    secret = getattr(settings, "BOT_SESSION_TOKEN_SECRET", None)
+    secret: str | None = getattr(settings, "BOT_SESSION_TOKEN_SECRET", None)
 
     if not secret:
         raise ValueError(

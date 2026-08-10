@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+from posthog import Posthog
+
 from app.constants.auth import LOGIN_METHOD_WORKOS
 from app.core.lazy_loader import providers
 from app.models.payment_models import PlanType, SubscriptionStatus
@@ -22,6 +24,9 @@ class AnalyticsEvents(StrEnum):
     USER_LOGGED_IN = "user:logged_in"
     USER_LOGGED_OUT = "user:logged_out"
 
+    # Lifecycle email
+    NURTURE_EMAIL_SENT = "nurture:email_sent"
+
     # Payments (used by payment webhook processing)
     PAYMENT_SUCCEEDED = "payment:succeeded"
     PAYMENT_FAILED = "payment:failed"
@@ -35,9 +40,10 @@ class AnalyticsEvents(StrEnum):
     SUBSCRIPTION_FAILED = "subscription:failed"
 
 
-def _get_posthog_client():
+def _get_posthog_client() -> Posthog | None:
     """Get the PostHog client from providers."""
-    return providers.get("posthog")
+    client: Posthog | None = providers.get("posthog")
+    return client
 
 
 def identify_user(
@@ -65,7 +71,12 @@ def identify_user(
             properties={"first_seen": datetime.now(UTC).isoformat()},
         )
     except Exception as e:
-        log.error(f"Failed to identify user in PostHog: {e}")
+        log.error(
+            "Failed to identify user in PostHog",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 def capture_event(
@@ -83,7 +94,7 @@ def capture_event(
     """
     client = _get_posthog_client()
     if client is None:
-        log.debug(f"PostHog client not available, skipping event: {event}")
+        log.debug("PostHog client not available, skipping event", event=event)
         return
 
     log.set(analytics={"user_id": user_id, "event": event})
@@ -98,7 +109,13 @@ def capture_event(
             properties=event_properties,
         )
     except Exception as e:
-        log.error(f"Failed to capture event {event} in PostHog: {e}")
+        log.error(
+            "Failed to capture event in PostHog",
+            event=event,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 def track_signup(
@@ -285,7 +302,12 @@ def track_subscription_event(
     try:
         client.set(distinct_id=user_id, properties=metadata)
     except Exception as e:
-        log.error(f"Failed to update user subscription properties: {e}")
+        log.error(
+            "Failed to update user subscription properties",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 def track_payment_event(

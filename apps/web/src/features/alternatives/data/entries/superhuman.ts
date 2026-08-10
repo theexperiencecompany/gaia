@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "Does not take action on your behalf — only helps you process email faster",
     "Value proposition is speed, not intelligence or automation",
   ],
-  metaTitle: "Best Superhuman Alternative in 2026 | GAIA",
+  metaTitle: "Best Superhuman Alternative in 2026",
   metaDescription:
     "Superhuman costs $30/month and only handles email. GAIA is a proactive AI assistant that manages email, calendar, and tasks together. Free tier + self-hosting.",
   keywords: [

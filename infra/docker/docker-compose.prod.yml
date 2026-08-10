@@ -5,8 +5,15 @@
 # scripts/swarm/lab-rehearsal.sh.
 
 secrets:
-  gaia_infisical_token:
-    external: true
+  # One Infisical machine identity (Universal Auth), shared by every service.
+  # scripts/docker-entrypoint.sh reads these paths directly, so services attach
+  # them with the short secret syntax and need no per-service mapping.
+  #
+  # To scope access per service later, declare a secret per service here and
+  # attach it with the long syntax that maps onto these same canonical names —
+  # the entrypoint and app code stay identical:
+  #   - source: gaia_api_infisical_client_id
+  #     target: gaia_infisical_machine_identity_client_id
   gaia_infisical_machine_identity_client_id:
     external: true
   gaia_infisical_machine_identity_client_secret:
@@ -39,6 +46,17 @@ secrets:
   gaia_jfs_redis_password:
     external: true
     name: gaia_jfs_redis_password_v1
+  # Same password, JSON-encoded for redis_exporter: v1.66+ requires
+  # REDIS_PASSWORD_FILE to be a JSON {addr: password} map, while jfs-meta-redis
+  # and the JuiceFS volume metaurl need the shared secret as plaintext.
+  # Create once on the box:
+  #   docker exec $(docker ps -q --filter name=jfs-meta-redis) \
+  #     cat /run/secrets/gaia_jfs_redis_password \
+  #     | awk '{print "{\"rediss://jfs-meta-redis:6379\":\"" $0 "\"}"}' \
+  #     | docker secret create gaia_jfs_redis_exporter_pass_v1 -
+  gaia_jfs_redis_exporter_pass:
+    external: true
+    name: gaia_jfs_redis_exporter_pass_v1
 
 services:
   # ---------------------------------------------------------------------------
@@ -68,13 +86,11 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
       # Use the shared embedding sidecar instead of loading models in-process.
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
     secrets:
-      - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
@@ -130,7 +146,7 @@ services:
   arq_worker:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
-    command: python -m arq app.worker.WorkerSettings
+    command: python -m arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG
     volumes:
       # JuiceFS via the official juicedata/juicefs volume plugin (Swarm-native).
       # The plugin holds the FUSE privilege; this container stays unprivileged
@@ -147,14 +163,12 @@ services:
       LOG_COLORIZE: "false"
       ARQ_METRICS_PORT: "9100"
       ENV: production
-      INFISICAL_ENV: prod
       # Use the shared embedding sidecar — the worker's 2G limit can't hold the
       # ~1.85GB models in-process, so it must offload embed/rerank to the sidecar.
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
     secrets:
-      - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
@@ -167,7 +181,7 @@ services:
       # Reads arq's own liveness key (arq:health — refreshed from the poll loop
       # with a ~31s TTL, so it's gone within ~31s if the loop wedges). This is
       # what `arq --check` asserts internally, but without importing the app:
-      # a healthcheck runs outside the entrypoint, so it has no INFISICAL_TOKEN
+      # a healthcheck runs outside the entrypoint, so it has no Infisical creds
       # and a full app import dies in settings bootstrap — which silently rolled
       # the worker back on every deploy. The probe touches only Redis.
       test: ["CMD", "python", "scripts/arq_healthcheck.py"]
@@ -222,7 +236,6 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
       # Persist the ~1.85GB fastembed weights so they download ONCE, not on every
       # restart/redeploy (measured ~148s cold-load). Mounted volume below.
       MEMORY_MODEL_CACHE_DIR: /models
@@ -231,7 +244,6 @@ services:
       # MEMORY_EMBEDDING_SIDECAR_URL MUST stay unset here so the sidecar serves
       # from its own local models rather than calling itself.
     secrets:
-      - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
@@ -285,9 +297,7 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
     secrets:
-      - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
@@ -331,9 +341,7 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
     secrets:
-      - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
@@ -377,9 +385,7 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
     secrets:
-      - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
@@ -423,9 +429,7 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
     secrets:
-      - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
@@ -716,9 +720,9 @@ services:
       # api.heygaia.io and can't match the alias, hence skip-verify.
       REDIS_ADDR: "rediss://jfs-meta-redis:6379"
       REDIS_EXPORTER_SKIP_TLS_VERIFICATION: "true"
-      REDIS_PASSWORD_FILE: /run/secrets/gaia_jfs_redis_password
+      REDIS_PASSWORD_FILE: /run/secrets/gaia_jfs_redis_exporter_pass
     secrets:
-      - gaia_jfs_redis_password
+      - gaia_jfs_redis_exporter_pass
     networks:
       - gaia-prod-shared
     deploy:
@@ -886,7 +890,10 @@ services:
     user: root
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - promtail_positions:/tmp
+      # Positions file lives at /var/lib/promtail/promtail-positions.yaml (see
+      # promtail-config.yaml). Same basename as the old /tmp mount, so existing
+      # volumes carry their offsets over without re-ingesting retained logs.
+      - promtail_positions:/var/lib/promtail
     configs:
       - source: promtail_config
         target: /etc/promtail/config.yaml
@@ -1008,7 +1015,6 @@ services:
       # SSE endpoint the agent's CustomLLM talks to).
       GAIA_BACKEND_URL: http://gaia-backend:80
     secrets:
-      - gaia_infisical_token
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id

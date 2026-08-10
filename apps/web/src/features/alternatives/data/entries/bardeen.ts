@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Limited to what is visible in the browser — no deep system integration",
     "Pricing escalates for advanced AI automation features",
   ],
-  metaTitle: "Best Bardeen Alternative in 2026 | GAIA",
+  metaTitle: "Best Bardeen Alternative in 2026",
   metaDescription:
     "Bardeen is browser-only. GAIA is a proactive AI assistant that manages email, calendar, tasks, and workflows across your entire digital life. Free tier available.",
   keywords: [

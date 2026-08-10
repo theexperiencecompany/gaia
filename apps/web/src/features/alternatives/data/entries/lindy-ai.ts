@@ -15,7 +15,7 @@ export const entry: AlternativeData = {
     "No open-source community, no public roadmap transparency, and no ability to audit or extend the core platform",
   ],
   metaTitle:
-    "Lindy AI Alternative | GAIA — Open-Source AI Assistant with Email & Calendar Depth",
+    "Lindy AI Alternative — GAIA — Open-Source AI Assistant with Email & Calendar Depth",
   metaDescription:
     "Looking for an open-source Lindy AI alternative you can self-host? GAIA is a proactive AI productivity assistant with deep email, calendar, and task integration — flat $20/month or free to self-host.",
   keywords: [

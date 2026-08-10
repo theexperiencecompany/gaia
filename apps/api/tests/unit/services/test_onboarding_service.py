@@ -1,6 +1,5 @@
 """Unit tests for onboarding service and post-onboarding service."""
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
@@ -12,6 +11,7 @@ from app.models.user_models import (
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
+    UserDocument,
 )
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
@@ -23,34 +23,24 @@ from app.services.onboarding.post_onboarding_service import (
     seed_initial_user_data,
 )
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mock_repo():
+    with patch("app.services.onboarding.onboarding_service.user_repository") as repo:
+        repo.complete_onboarding = AsyncMock()
+        repo.get = AsyncMock()
+        repo.clear_onboarding = AsyncMock()
+        repo.update_onboarding_preferences = AsyncMock()
+        yield repo
 
 
 @pytest.fixture
-def mock_users_collection():
-    with patch("app.services.onboarding.onboarding_service.users_collection") as mock_col:
-        yield mock_col
-
-
-@pytest.fixture
-def mock_post_users_collection():
-    with patch("app.services.onboarding.post_onboarding_service.users_collection") as mock_col:
-        yield mock_col
-
-
-@pytest.fixture
-def mock_workflows_collection():
-    with patch("app.services.onboarding.post_onboarding_service.workflows_collection") as mock_col:
-        yield mock_col
-
-
-@pytest.fixture
-def mock_websocket_manager():
-    with patch("app.services.onboarding.post_onboarding_service.websocket_manager") as mock_ws:
-        mock_ws.broadcast_to_user = AsyncMock()
-        yield mock_ws
+def mock_save_personalization():
+    with patch(
+        "app.services.onboarding.post_onboarding_service.user_repository.save_personalization",
+        new_callable=AsyncMock,
+    ) as mock_save:
+        yield mock_save
 
 
 @pytest.fixture
@@ -60,11 +50,7 @@ def sample_user_id():
 
 @pytest.fixture
 def sample_onboarding_request():
-    return OnboardingRequest(
-        name="Alice",
-        profession="Engineer",
-        timezone="UTC",
-    )
+    return OnboardingRequest(name="Alice", profession="Engineer", timezone="UTC")
 
 
 @pytest.fixture
@@ -74,8 +60,6 @@ def sample_background_tasks():
 
 @pytest.fixture
 def mock_enqueue_intelligence_job():
-    """complete_onboarding enqueues the intelligence pipeline on success; mock it
-    so success-path tests don't touch the real job queue / database."""
     with patch(
         "app.services.onboarding.onboarding_service.enqueue_intelligence_job",
         new_callable=AsyncMock,
@@ -84,45 +68,34 @@ def mock_enqueue_intelligence_job():
 
 
 @pytest.fixture
-def sample_updated_user(sample_user_id):
-    oid = ObjectId(sample_user_id)
-    return {
-        "_id": oid,
-        "name": "Alice",
-        "onboarding": {
-            "completed": True,
-            "completed_at": datetime.now(UTC),
-            "phase": OnboardingPhase.PERSONALIZATION_PENDING,
-            "preferences": {
-                "profession": "Engineer",
-                "response_style": "casual",
+def sample_user(sample_user_id):
+    return UserDocument.model_validate(
+        {
+            "id": sample_user_id,
+            "name": "Alice",
+            "onboarding": {
+                "completed": True,
+                "phase": OnboardingPhase.PERSONALIZATION_PENDING,
+                "preferences": {"profession": "Engineer", "response_style": "casual"},
             },
-        },
-    }
+        }
+    )
 
 
-# ---------------------------------------------------------------------------
-# complete_onboarding
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
 class TestCompleteOnboarding:
     async def test_successful_onboarding(
         self,
-        mock_users_collection,
+        mock_repo,
         mock_enqueue_intelligence_job,
         sample_user_id,
         sample_onboarding_request,
         sample_background_tasks,
-        sample_updated_user,
+        sample_user,
     ):
-        mock_users_collection.find_one_and_update = AsyncMock(return_value=sample_updated_user)
+        mock_repo.complete_onboarding.return_value = sample_user
 
         result = await complete_onboarding(
-            sample_user_id,
-            sample_onboarding_request,
-            sample_background_tasks,
+            sample_user_id, sample_onboarding_request, sample_background_tasks
         )
 
         assert result["_id"] == sample_user_id
@@ -131,45 +104,32 @@ class TestCompleteOnboarding:
         sample_background_tasks.add_task.assert_called_once()
 
     async def test_user_not_found(
-        self,
-        mock_users_collection,
-        sample_user_id,
-        sample_onboarding_request,
-        sample_background_tasks,
+        self, mock_repo, sample_user_id, sample_onboarding_request, sample_background_tasks
     ):
-        mock_users_collection.find_one_and_update = AsyncMock(return_value=None)
-        mock_users_collection.find_one = AsyncMock(return_value=None)
+        mock_repo.complete_onboarding.return_value = None
+        mock_repo.get.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
             await complete_onboarding(
-                sample_user_id,
-                sample_onboarding_request,
-                sample_background_tasks,
+                sample_user_id, sample_onboarding_request, sample_background_tasks
             )
-
         assert exc_info.value.status_code == 404
 
     async def test_already_onboarded_replays_idempotently(
         self,
-        mock_users_collection,
+        mock_repo,
+        sample_user,
         sample_user_id,
         sample_onboarding_request,
         sample_background_tasks,
     ):
-        # The atomic `onboarding: {$exists: false}` gate makes a repeat submission
-        # a no-op: find_one_and_update returns None and the existing user is
-        # returned unchanged (idempotent replay), not an error.
-        existing = {
-            "_id": ObjectId(sample_user_id),
-            "onboarding": {"completed": True, "phase": OnboardingPhase.PERSONALIZATION_PENDING},
-        }
-        mock_users_collection.find_one_and_update = AsyncMock(return_value=None)
-        mock_users_collection.find_one = AsyncMock(return_value=existing)
+        # The atomic gate makes a repeat submission a no-op: complete_onboarding
+        # returns None and the existing user is returned unchanged.
+        mock_repo.complete_onboarding.return_value = None
+        mock_repo.get.return_value = sample_user
 
         result = await complete_onboarding(
-            sample_user_id,
-            sample_onboarding_request,
-            sample_background_tasks,
+            sample_user_id, sample_onboarding_request, sample_background_tasks
         )
 
         assert result["_id"] == sample_user_id
@@ -177,16 +137,13 @@ class TestCompleteOnboarding:
 
     async def test_enqueue_failure_rolls_back_and_raises_503(
         self,
-        mock_users_collection,
+        mock_repo,
+        sample_user,
         sample_user_id,
         sample_onboarding_request,
         sample_background_tasks,
-        sample_updated_user,
     ):
-        # If enqueuing the intelligence pipeline fails, the onboarding subdoc is
-        # rolled back and the caller gets a 503 to retry.
-        mock_users_collection.find_one_and_update = AsyncMock(return_value=sample_updated_user)
-        mock_users_collection.update_one = AsyncMock()
+        mock_repo.complete_onboarding.return_value = sample_user
 
         with patch(
             "app.services.onboarding.onboarding_service.enqueue_intelligence_job",
@@ -195,68 +152,47 @@ class TestCompleteOnboarding:
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await complete_onboarding(
-                    sample_user_id,
-                    sample_onboarding_request,
-                    sample_background_tasks,
+                    sample_user_id, sample_onboarding_request, sample_background_tasks
                 )
 
         assert exc_info.value.status_code == 503
-        mock_users_collection.update_one.assert_awaited_once()
+        mock_repo.clear_onboarding.assert_awaited_once_with(sample_user_id)
         sample_background_tasks.add_task.assert_not_called()
 
     async def test_sets_timezone(
         self,
-        mock_users_collection,
+        mock_repo,
         mock_enqueue_intelligence_job,
         sample_user_id,
         sample_background_tasks,
-        sample_updated_user,
+        sample_user,
     ):
         request = OnboardingRequest(
-            name="Alice",
-            profession="Engineer",
-            timezone="America/New_York",
+            name="Alice", profession="Engineer", timezone="America/New_York"
         )
-        mock_users_collection.find_one_and_update = AsyncMock(return_value=sample_updated_user)
+        mock_repo.complete_onboarding.return_value = sample_user
 
         await complete_onboarding(sample_user_id, request, sample_background_tasks)
 
-        call_args = mock_users_collection.find_one_and_update.call_args
-        update_fields = call_args[0][1]["$set"]
-        assert update_fields["timezone"] == "America/New_York"
+        assert mock_repo.complete_onboarding.call_args.kwargs["timezone"] == "America/New_York"
 
     async def test_generic_exception_returns_500(
-        self,
-        mock_users_collection,
-        sample_user_id,
-        sample_onboarding_request,
-        sample_background_tasks,
+        self, mock_repo, sample_user_id, sample_onboarding_request, sample_background_tasks
     ):
-        mock_users_collection.find_one_and_update = AsyncMock(
-            side_effect=RuntimeError("Unexpected")
-        )
+        mock_repo.complete_onboarding.side_effect = RuntimeError("Unexpected")
 
         with pytest.raises(HTTPException) as exc_info:
             await complete_onboarding(
-                sample_user_id,
-                sample_onboarding_request,
-                sample_background_tasks,
+                sample_user_id, sample_onboarding_request, sample_background_tasks
             )
-
         assert exc_info.value.status_code == 500
 
 
-# ---------------------------------------------------------------------------
-# get_user_onboarding_status
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
 class TestGetUserOnboardingStatus:
-    async def test_returns_status(self, mock_users_collection, sample_user_id):
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId(sample_user_id),
+    async def test_returns_status(self, mock_repo, sample_user_id):
+        mock_repo.get.return_value = UserDocument.model_validate(
+            {
+                "id": sample_user_id,
                 "onboarding": {
                     "completed": True,
                     "completed_at": "2024-01-01T00:00:00Z",
@@ -267,114 +203,80 @@ class TestGetUserOnboardingStatus:
 
         result = await get_user_onboarding_status(sample_user_id)
 
-        assert result["completed"] is True
-        assert result["preferences"]["profession"] == "Engineer"
+        assert result.completed is True
+        assert result.preferences.profession == "Engineer"
 
-    async def test_user_not_found_raises_404(self, mock_users_collection, sample_user_id):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
+    async def test_user_not_found_raises_404(self, mock_repo, sample_user_id):
+        mock_repo.get.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
             await get_user_onboarding_status(sample_user_id)
-
         assert exc_info.value.status_code == 404
         assert "User not found" in exc_info.value.detail
 
-    async def test_no_onboarding_data(self, mock_users_collection, sample_user_id):
-        mock_users_collection.find_one = AsyncMock(return_value={"_id": ObjectId(sample_user_id)})
+    async def test_no_onboarding_data(self, mock_repo, sample_user_id):
+        mock_repo.get.return_value = UserDocument.model_validate({"id": sample_user_id})
 
         result = await get_user_onboarding_status(sample_user_id)
 
-        assert result["completed"] is False
-        assert result["preferences"] == {}
+        assert result.completed is False
+        assert result.preferences.profession is None
 
-    async def test_exception_raises_500(self, mock_users_collection):
-        mock_users_collection.find_one = AsyncMock(side_effect=Exception("DB error"))
+    async def test_exception_raises_500(self, mock_repo):
+        mock_repo.get.side_effect = Exception("DB error")
 
         with pytest.raises(HTTPException) as exc_info:
             await get_user_onboarding_status("invalid")
-
         assert exc_info.value.status_code == 500
 
 
-# ---------------------------------------------------------------------------
-# update_onboarding_preferences
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
 class TestUpdateOnboardingPreferences:
-    async def test_updates_preferences(self, mock_users_collection, sample_user_id):
-        updated_doc = {
-            "_id": ObjectId(sample_user_id),
-            "onboarding": {
-                "preferences": {"profession": "Designer"},
-            },
-        }
-        mock_users_collection.find_one_and_update = AsyncMock(return_value=updated_doc)
-
-        prefs = OnboardingPreferences(
-            profession="Designer",
-            response_style="brief",
+    async def test_updates_preferences(self, mock_repo, sample_user_id):
+        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
+            {"id": sample_user_id, "onboarding": {"preferences": {"profession": "Designer"}}}
         )
+
+        prefs = OnboardingPreferences(profession="Designer", response_style="brief")
         result = await update_onboarding_preferences(sample_user_id, prefs)
 
         assert result["_id"] == sample_user_id
         assert result["user_id"] == sample_user_id
 
-    async def test_user_not_found(self, mock_users_collection, sample_user_id):
-        mock_users_collection.find_one_and_update = AsyncMock(return_value=None)
-
-        prefs = OnboardingPreferences(profession="Designer")
+    async def test_user_not_found(self, mock_repo, sample_user_id):
+        mock_repo.update_onboarding_preferences.return_value = None
 
         with pytest.raises(HTTPException) as exc_info:
-            await update_onboarding_preferences(sample_user_id, prefs)
-
+            await update_onboarding_preferences(
+                sample_user_id, OnboardingPreferences(profession="Designer")
+            )
         assert exc_info.value.status_code == 404
 
-    async def test_partial_patch_merges_only_sent_fields(
-        self, mock_users_collection, sample_user_id
-    ):
-        updated_doc = {
-            "_id": ObjectId(sample_user_id),
-            "onboarding": {"preferences": {}},
-        }
-        mock_users_collection.find_one_and_update = AsyncMock(return_value=updated_doc)
+    async def test_partial_patch_merges_only_sent_fields(self, mock_repo, sample_user_id):
+        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
+            {"id": sample_user_id, "onboarding": {"preferences": {}}}
+        )
 
-        # Only custom_instructions is provided — a partial save from the Custom
-        # Instructions surface must not touch profession/response_style.
+        # Only custom_instructions is provided — the patch must carry only that key.
         prefs = OnboardingPreferences(custom_instructions="Focus on email")
         await update_onboarding_preferences(sample_user_id, prefs)
 
-        set_data = mock_users_collection.find_one_and_update.call_args[0][1]["$set"]
-        # Field-level dotted paths, never a full-object replace, so concurrent
-        # edits from different surfaces can't clobber each other.
-        assert set_data["onboarding.preferences.custom_instructions"] == "Focus on email"
-        assert "onboarding.preferences.profession" not in set_data
-        assert "onboarding.preferences.response_style" not in set_data
-        assert "onboarding.preferences" not in set_data
+        # The repository writes model_dump(exclude_unset=True) as the $set, so the
+        # unsent fields must be absent from the model's set-fields, not merely None.
+        patch_arg = mock_repo.update_onboarding_preferences.call_args[0][1]
+        assert patch_arg.model_dump(exclude_unset=True) == {"custom_instructions": "Focus on email"}
 
-    async def test_generic_exception_returns_500(self, mock_users_collection, sample_user_id):
-        mock_users_collection.find_one_and_update = AsyncMock(
-            side_effect=RuntimeError("Unexpected")
-        )
-        prefs = OnboardingPreferences(profession="Engineer")
+    async def test_generic_exception_returns_500(self, mock_repo, sample_user_id):
+        mock_repo.update_onboarding_preferences.side_effect = RuntimeError("Unexpected")
 
         with pytest.raises(HTTPException) as exc_info:
-            await update_onboarding_preferences(sample_user_id, prefs)
-
+            await update_onboarding_preferences(
+                sample_user_id, OnboardingPreferences(profession="Engineer")
+            )
         assert exc_info.value.status_code == 500
 
 
-# ---------------------------------------------------------------------------
-# save_personalization_data (post_onboarding_service)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
 class TestSavePersonalizationData:
-    async def test_saves_data(self, mock_post_users_collection, sample_user_id):
-        mock_post_users_collection.update_one = AsyncMock()
-
+    async def test_saves_data(self, mock_save_personalization, sample_user_id):
         await save_personalization_data(
             sample_user_id,
             house="explorer",
@@ -388,23 +290,20 @@ class TestSavePersonalizationData:
             overlay_opacity=80,
         )
 
-        mock_post_users_collection.update_one.assert_awaited_once()
-        call_args = mock_post_users_collection.update_one.call_args
-        set_data = call_args[0][1]["$set"]
-        assert set_data["onboarding.house"] == "explorer"
-        assert set_data["onboarding.personality_phrase"] == "Creative thinker"
-        assert set_data["onboarding.user_bio"] == "A passionate engineer."
-        assert set_data["onboarding.bio_status"] == BioStatus.COMPLETED
-        assert set_data["onboarding.suggested_workflows"] == ["wf1", "wf2"]
-        assert set_data["onboarding.account_number"] == 42
-        assert set_data["onboarding.overlay_color"] == "#ff0000"
-        assert set_data["onboarding.overlay_opacity"] == 80
-        assert set_data["onboarding.phase"] == OnboardingPhase.PERSONALIZATION_COMPLETE
+        mock_save_personalization.assert_awaited_once()
+        kwargs = mock_save_personalization.call_args.kwargs
+        assert kwargs["house"] == "explorer"
+        assert kwargs["personality_phrase"] == "Creative thinker"
+        assert kwargs["user_bio"] == "A passionate engineer."
+        assert kwargs["bio_status"] == BioStatus.COMPLETED
+        assert kwargs["workflow_ids"] == ["wf1", "wf2"]
+        assert kwargs["account_number"] == 42
+        assert kwargs["overlay_color"] == "#ff0000"
+        assert kwargs["overlay_opacity"] == 80
 
-    async def test_handles_exception(self, mock_post_users_collection, sample_user_id):
-        mock_post_users_collection.update_one = AsyncMock(side_effect=Exception("DB error"))
+    async def test_handles_exception(self, mock_save_personalization, sample_user_id):
+        mock_save_personalization.side_effect = Exception("DB error")
 
-        # Should not raise
         await save_personalization_data(
             sample_user_id,
             house="explorer",
@@ -419,22 +318,13 @@ class TestSavePersonalizationData:
         )
 
 
-# ---------------------------------------------------------------------------
-# seed_initial_user_data (post_onboarding_service)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
 class TestSeedInitialUserData:
     async def test_seeds_onboarding_todo(self):
-        # The welcome conversation is seeded by the intelligence pipeline now;
-        # seed_initial_user_data only seeds the onboarding todo.
         with patch(
             "app.services.onboarding.post_onboarding_service.seed_onboarding_todo",
             new_callable=AsyncMock,
         ) as mock_todo:
             await seed_initial_user_data("user1")
-
             mock_todo.assert_awaited_once_with("user1")
 
     async def test_handles_exception(self):
@@ -443,5 +333,4 @@ class TestSeedInitialUserData:
             new_callable=AsyncMock,
             side_effect=Exception("seed error"),
         ):
-            # Should not raise
             await seed_initial_user_data("user1")

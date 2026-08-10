@@ -33,7 +33,7 @@ class TokenRepository:
     It does NOT handle WorkOS authentication tokens, which are managed by WorkOSAuthMiddleware.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the token repository."""
 
         self.oauth = OAuth()
@@ -45,7 +45,7 @@ class TokenRepository:
             f"{LogTag.STARTUP} Token repository initialized for managing API tokens (Google, etc.)"
         )
 
-    def _init_oauth_clients(self):
+    def _init_oauth_clients(self) -> None:
         """Initialize OAuth clients for all supported providers."""
         # Google OAuth client
         if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:
@@ -65,7 +65,7 @@ class TokenRepository:
                 f"{LogTag.STARTUP} Google OAuth credentials not found, client not registered"
             )
 
-    def _get_token_expiration(self, token_data: dict) -> datetime:
+    def _get_token_expiration(self, token_data: dict[str, Any]) -> datetime:
         """Get token expiration time with fallback logic."""
 
         # Try expires_at first (epoch seconds are UTC).
@@ -74,7 +74,7 @@ class TokenRepository:
             try:
                 return datetime.fromtimestamp(float(expires_at), UTC)
             except (ValueError, TypeError, OverflowError):
-                log.warning(f"{LogTag.STARTUP} Invalid expires_at: {expires_at}")
+                log.warning(f"{LogTag.STARTUP} Invalid expires_at", expires_at=expires_at)
 
         # Fall back to expires_in
         expires_in = token_data.get("expires_in", 3500)  # Default about 1 hour
@@ -82,7 +82,9 @@ class TokenRepository:
             expires_in = float(expires_in)
             return datetime.now(UTC) + timedelta(seconds=expires_in)
         except (ValueError, TypeError):
-            log.warning(f"{LogTag.STARTUP} Invalid expires_in: {expires_in}, using default")
+            log.warning(
+                f"{LogTag.STARTUP} Invalid expires_in, using default", expires_in=expires_in
+            )
             return datetime.now(UTC) + timedelta(seconds=3600)
 
     async def store_token(
@@ -258,7 +260,7 @@ class TokenRepository:
                 )
 
             if response.status_code != 200:
-                log.error(f"{LogTag.STARTUP} Failed to refresh token: {response.text}")
+                log.error(f"{LogTag.STARTUP} Failed to refresh token", text=response.text)
                 return None
 
             token_data = response.json()
@@ -270,7 +272,11 @@ class TokenRepository:
             # Create OAuth2Token from response
             return OAuth2Token(token_data)
         except Exception as e:
-            log.error(f"{LogTag.STARTUP} Error refreshing Google token: {e!s}")
+            log.error(
+                f"{LogTag.STARTUP} Error refreshing Google token",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return None
 
     async def _refresh_provider_token(
@@ -289,7 +295,7 @@ class TokenRepository:
         if provider == "google":
             return await self._refresh_google_token(refresh_token)
         # Add more providers as needed
-        log.error(f"{LogTag.STARTUP} Provider {provider} not supported for token refresh")
+        log.error(f"{LogTag.STARTUP} Provider not supported for token refresh", provider=provider)
         return None
 
     async def refresh_token(self, user_id: str, provider: str) -> OAuth2Token | None:
@@ -313,7 +319,9 @@ class TokenRepository:
 
             if not token_record:
                 log.warning(
-                    f"{LogTag.STARTUP} Cannot refresh token: No {provider} token found for user {user_id}"
+                    f"{LogTag.STARTUP} Cannot refresh token: No token found for user",
+                    provider=provider,
+                    user_id=user_id,
                 )
                 return None
 
@@ -321,18 +329,26 @@ class TokenRepository:
             refresh_token = token_record.refresh_token
             if not refresh_token:
                 log.warning(
-                    f"{LogTag.STARTUP} Cannot refresh token: No refresh token for user {user_id} and provider {provider}"
+                    f"{LogTag.STARTUP} Cannot refresh token: No refresh token for user and provider",
+                    user_id=user_id,
+                    provider=provider,
                 )
                 return None
 
             # Refresh the token using the appropriate provider handler
             try:
-                log.info(f"{LogTag.STARTUP} Refreshing {provider} token for user {user_id}")
+                log.info(
+                    f"{LogTag.STARTUP} Refreshing token for user",
+                    provider=provider,
+                    user_id=user_id,
+                )
                 token = await self._refresh_provider_token(provider, refresh_token)
 
                 if not token:
                     log.error(
-                        f"{LogTag.STARTUP} Failed to refresh {provider} token for user {user_id}"
+                        f"{LogTag.STARTUP} Failed to refresh token for user",
+                        provider=provider,
+                        user_id=user_id,
                     )
                     return None
 
@@ -356,12 +372,20 @@ class TokenRepository:
                 refreshed_token = await self.store_token(user_id, provider, token_dict)
 
                 log.info(
-                    f"{LogTag.STARTUP} Successfully refreshed {provider} token for user {user_id}"
+                    f"{LogTag.STARTUP} Successfully refreshed token for user",
+                    provider=provider,
+                    user_id=user_id,
                 )
 
                 return refreshed_token
             except Exception as e:
-                log.error(f"{LogTag.STARTUP} Error refreshing {provider} token: {e!s}")
+                log.error(
+                    f"{LogTag.STARTUP} Error refreshing token",
+                    provider=provider,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
                 return None
 
     async def revoke_token(self, user_id: str, provider: str) -> bool:
@@ -386,7 +410,9 @@ class TokenRepository:
 
             if not token_record:
                 log.warning(
-                    f"{LogTag.STARTUP} Cannot revoke token: No {provider} token found for user {user_id}"
+                    f"{LogTag.STARTUP} Cannot revoke token: No token found for user",
+                    provider=provider,
+                    user_id=user_id,
                 )
                 return False
 
@@ -395,66 +421,20 @@ class TokenRepository:
                 await session.delete(token_record)
                 await session.commit()
                 log.info(
-                    f"{LogTag.STARTUP} Successfully revoked {provider} token for user {user_id}"
+                    f"{LogTag.STARTUP} Successfully revoked token for user",
+                    provider=provider,
+                    user_id=user_id,
                 )
                 return True
             except Exception as e:
-                log.error(f"{LogTag.STARTUP} Error revoking token: {e!s}")
+                log.error(
+                    f"{LogTag.STARTUP} Error revoking token",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
                 await session.rollback()
                 return False
-
-    async def get_token_by_auth_token(
-        self, access_token: str, renew_if_expired: bool = False
-    ) -> OAuth2Token | None:
-        """
-        Retrieve a token using the access token.
-
-        Args:
-            access_token: The access token to search for
-
-        Returns:
-            OAuth2Token if found, None otherwise
-        """
-        async with get_db_session() as session:
-            stmt = select(OAuthToken).where(OAuthToken.access_token == access_token)
-            result = await session.execute(stmt)
-            token_record = result.scalar_one_or_none()
-
-            if not token_record:
-                return None
-
-            # Create OAuth2Token from the record
-            oauth_token = OAuth2Token(
-                params={
-                    "access_token": token_record.access_token,
-                    "refresh_token": token_record.refresh_token,
-                    "token_type": "Bearer",  # nosec B105 - OAuth2 token type, not a password
-                    "expires_at": int(token_record.expires_at.timestamp())
-                    if token_record.expires_at
-                    else None,
-                    "scope": token_record.scopes,
-                }
-            )
-
-            # Log token status for debugging
-            log.debug(
-                f"{LogTag.STARTUP} Token expiry status - is_expired: {oauth_token.is_expired()}, will_renew: {renew_if_expired}"
-            )
-
-            # Check if token is expired
-            if renew_if_expired and oauth_token.is_expired():
-                # Token is expired, attempt to refresh it
-                refreshed_token = await self.refresh_token(
-                    token_record.user_id, token_record.provider
-                )
-                if not refreshed_token:
-                    raise HTTPException(
-                        status_code=401,
-                        detail=f"Failed to refresh {token_record.provider} token",
-                    )
-                return refreshed_token
-
-            return oauth_token
 
 
 # Singleton instance

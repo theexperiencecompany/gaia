@@ -172,7 +172,12 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       }
 
       // Fallback
-      return { ...config, onSelect: () => {} };
+      return {
+        ...config,
+        onSelect: () => {
+          /* fallback: item without a handler is inert */
+        },
+      };
     },
     [handleNewChat, router, onOpenChange],
   );
