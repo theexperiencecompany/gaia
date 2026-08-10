@@ -20,6 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, call, patc
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import Runnable
+from langchain_core.runnables.utils import ConfigurableField
+from pydantic import BaseModel, SecretStr
 import pytest
 
 from app.agents.llm.chatbot import chatbot
@@ -27,29 +29,44 @@ from app.agents.llm.client import (
     LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
+    SILENT_LLM_CONFIG,
     _build_default_llm,
+    _build_vision_llm,
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
+    _openrouter_wire_configurables,
     _record_auxiliary_usage,
     _resolve_fallback,
+    _sim_llm,
     _stamp_fallback,
     _with_usage_handler,
     ainvoke_llm,
+    ainvoke_structured,
     get_default_llm,
+    get_vision_llm,
     init_llm,
+    invoke_llm,
+    is_default_model_config,
+    metered_config,
     register_llm_providers,
+    silent_metered_config,
     with_llm_retry,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
+    DEFAULT_LLM_PROVIDER,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
     OPENROUTER_MAX_OUTPUT_TOKENS,
+    SIM_STUB_API_KEY,
+    SIM_STUB_BASE_URL,
+    SIM_STUB_MODEL_NAME,
+    VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 
@@ -1296,6 +1313,384 @@ class TestRecordAuxiliaryUsage:
             cached_tokens=0,
             charge_to_budget=False,
         )
+
+
+# ---------------------------------------------------------------------------
+# invoke_llm — the sync twin of ainvoke_llm
+# ---------------------------------------------------------------------------
+
+
+class TestInvokeLlm:
+    @staticmethod
+    def _runnable(side_effect: Any = None, result: Any = None) -> NonCallableMagicMock:
+        # with_llm_retry calls runnable.with_retry(...) -> returns the runnable so
+        # the mock .invoke is what actually runs (same seam as TestAinvokeLlm).
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.invoke = MagicMock(side_effect=side_effect, return_value=result)
+        return runnable
+
+    def test_primary_success_forwards_config(self) -> None:
+        primary = self._runnable(result=AIMessage(content="ok"))
+        config = {"configurable": {"user_id": "u1"}}
+
+        result = invoke_llm(primary, [HumanMessage(content="hi")], config=config)
+
+        assert result.content == "ok"
+        primary.invoke.assert_called_once_with([HumanMessage(content="hi")], config=config)
+
+    @patch("app.agents.llm.client.log")
+    def test_falls_back_and_stamps(self, mock_log: MagicMock) -> None:
+        primary = self._runnable(side_effect=ConnectionError("provider down"))
+        fallback = self._runnable(result=AIMessage(content="fallback-ok"))
+        config = {"configurable": {"user_id": "u1"}}
+
+        result = invoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            fallback=fallback,
+            config=config,
+            label="sync-label",
+        )
+
+        assert result.content == "fallback-ok"
+        # Downstream layers surface the downgrade via the same stamp as the
+        # async twin.
+        assert result.response_metadata == {
+            "gaia_fell_back": True,
+            "gaia_fallback_model": DEFAULT_MODEL_NAME,
+        }
+        # The fallback attempt gets the SAME messages and config as the primary
+        # — a dropped/None config would lose the caller's run context.
+        fallback.invoke.assert_called_once_with([HumanMessage(content="hi")], config=config)
+        # The downgrade event must carry the CALLER's label — a hardcoded None
+        # would make sync-helper spend un-attributable in the logs.
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.AGENT} llm call failed; falling back to the default model",
+            llm={"label": "sync-label", "error_type": "ConnectionError", "fell_back": True},
+            error="provider down",
+        )
+        # The fallback path is retry-wrapped too.
+        fallback.with_retry.assert_called_once()
+
+    @patch("app.agents.llm.client.log")
+    def test_fallback_with_default_label(self, mock_log: MagicMock) -> None:
+        # The default label literal ("model") is what lands in the downgrade log
+        # when the caller did not pass one — it must survive, not a mangled or
+        # uppercased variant.
+        primary = self._runnable(side_effect=ConnectionError("provider down"))
+        fallback = self._runnable(result=AIMessage(content="fallback-ok"))
+
+        invoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.AGENT} llm call failed; falling back to the default model",
+            llm={"label": "model", "error_type": "ConnectionError", "fell_back": True},
+            error="provider down",
+        )
+
+    def test_no_fallback_reraises(self) -> None:
+        primary = self._runnable(side_effect=ConnectionError("provider down"))
+
+        with pytest.raises(ConnectionError):
+            invoke_llm(primary, [HumanMessage(content="hi")])
+
+    def test_programming_error_propagates_not_downgraded(self) -> None:
+        primary = self._runnable(side_effect=ValueError("a real bug"))
+        fallback = self._runnable(result=AIMessage(content="must-not-be-used"))
+
+        with pytest.raises(ValueError):
+            invoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+        fallback.invoke.assert_not_called()
+
+    def test_max_attempts_forwarded_to_retry_wrapper(self) -> None:
+        primary = self._runnable(result=AIMessage(content="ok"))
+
+        invoke_llm(primary, [HumanMessage(content="hi")], max_attempts=2)
+
+        primary.with_retry.assert_called_once_with(
+            retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS,
+            stop_after_attempt=2,
+            wait_exponential_jitter=True,
+        )
+
+
+# ---------------------------------------------------------------------------
+# ainvoke_structured — the canonical one-shot structured call
+# ---------------------------------------------------------------------------
+
+
+class TestAinvokeStructured:
+    class _Parsed(BaseModel):
+        value: int
+
+    @patch("app.agents.llm.client.ainvoke_llm")
+    @patch("app.agents.llm.client.get_default_llm")
+    async def test_delegates_structured_call_with_defaults(
+        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
+    ) -> None:
+        model = MagicMock()
+        structured = MagicMock()
+        model.with_structured_output.return_value = structured
+        mock_get_default.return_value = model
+        parsed = self._Parsed(value=7)
+        mock_ainvoke.return_value = parsed
+
+        result = await ainvoke_structured(self._Parsed, "parse this", label="my-label")
+
+        assert result is parsed
+        mock_get_default.assert_called_once_with(temperature=DEFAULT_LLM_TEMPERATURE)
+        model.with_structured_output.assert_called_once_with(self._Parsed)
+        # Metering lives in ainvoke_llm — the structured wrapper must forward
+        # the label and timeout untouched, not double-meter.
+        mock_ainvoke.assert_awaited_once_with(
+            structured,
+            "parse this",
+            config=None,
+            label="my-label",
+            timeout=LLM_INVOKE_TIMEOUT_SECONDS,
+        )
+
+    @patch("app.agents.llm.client.ainvoke_llm")
+    @patch("app.agents.llm.client.get_default_llm")
+    async def test_passes_temperature_config_and_timeout_through(
+        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
+    ) -> None:
+        model = MagicMock()
+        structured = MagicMock()
+        model.with_structured_output.return_value = structured
+        mock_get_default.return_value = model
+        mock_ainvoke.return_value = self._Parsed(value=1)
+        config = {"configurable": {"user_id": "u1"}}
+
+        await ainvoke_structured(
+            self._Parsed, "x", label="l", temperature=0.7, config=config, timeout=9.0
+        )
+
+        mock_get_default.assert_called_once_with(temperature=0.7)
+        mock_ainvoke.assert_awaited_once_with(
+            structured, "x", config=config, label="l", timeout=9.0
+        )
+
+
+# ---------------------------------------------------------------------------
+# _sim_llm — the scripted-stub client used for EVERYTHING under GAIA_SIM_MODE
+# ---------------------------------------------------------------------------
+
+
+class TestSimLlm:
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self):
+        _sim_llm.cache_clear()
+        yield
+        _sim_llm.cache_clear()
+
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_exact_stub_construction_with_fallback_key_and_url(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        # Empty real settings -> the stub's own key and base URL take over, so
+        # sim mode never depends on real credentials being present.
+        mock_settings.OPENROUTER_API_KEY = ""
+        mock_settings.OPENROUTER_BASE_URL = ""
+        llm = MagicMock()
+        mock_chat_openrouter.return_value = llm
+
+        assert _sim_llm() is llm
+
+        mock_chat_openrouter.assert_called_once_with(
+            model=SIM_STUB_MODEL_NAME,
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            api_key=SecretStr(SIM_STUB_API_KEY),
+            base_url=SIM_STUB_BASE_URL,
+        )
+        # Fractional-window middleware reads the profile at graph-build time.
+        assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_uses_configured_key_and_base_url_when_present(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        mock_settings.OPENROUTER_BASE_URL = "https://or.example"
+        mock_chat_openrouter.return_value = MagicMock()
+
+        _sim_llm(0.7)
+
+        kwargs = mock_chat_openrouter.call_args.kwargs
+        assert kwargs["api_key"] == SecretStr("or-key")
+        assert kwargs["base_url"] == "https://or.example"
+        assert kwargs["temperature"] == 0.7
+
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_cached_per_temperature(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        mock_settings.OPENROUTER_API_KEY = ""
+        mock_settings.OPENROUTER_BASE_URL = ""
+        mock_chat_openrouter.side_effect = lambda **_: MagicMock()
+
+        assert _sim_llm() is _sim_llm()
+        assert _sim_llm() is not _sim_llm(0.7)
+        assert mock_chat_openrouter.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# get_vision_llm / _build_vision_llm — the image -> text factories
+# ---------------------------------------------------------------------------
+
+
+class TestGetVisionLlm:
+    @patch("app.agents.llm.client._sim_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_sim_mode_returns_stub(self, mock_settings: MagicMock, mock_sim_llm: MagicMock) -> None:
+        mock_settings.GAIA_SIM_MODE = True
+
+        assert get_vision_llm() is mock_sim_llm.return_value
+        mock_sim_llm.assert_called_once_with(DEFAULT_LLM_TEMPERATURE)
+
+    @patch("app.agents.llm.client.settings")
+    def test_no_google_key_raises(self, mock_settings: MagicMock) -> None:
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.GOOGLE_API_KEY = None
+
+        with pytest.raises(
+            LLMNotConfiguredError, match=r"Vision model not configured\. Set GOOGLE_API_KEY\.$"
+        ):
+            get_vision_llm()
+
+    @patch("app.agents.llm.client._build_vision_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_builds_vision_llm_with_temperature(
+        self, mock_settings: MagicMock, mock_build: MagicMock
+    ) -> None:
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.GOOGLE_API_KEY = "g-key"  # pragma: allowlist secret
+
+        assert get_vision_llm(temperature=0.3) is mock_build.return_value
+        mock_build.assert_called_once_with(0.3)
+
+
+class TestBuildVisionLlm:
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self):
+        _build_vision_llm.cache_clear()
+        yield
+        _build_vision_llm.cache_clear()
+
+    @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
+    def test_exact_construction_and_profile(self, mock_chat: MagicMock) -> None:
+        llm = MagicMock()
+        mock_chat.return_value = llm
+
+        assert _build_vision_llm(0.2) is llm
+
+        mock_chat.assert_called_once_with(model=VISION_MODEL_NAME, temperature=0.2)
+        # Same fractional-window profile as the default model.
+        assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+    @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
+    def test_cached_per_temperature(self, mock_chat: MagicMock) -> None:
+        mock_chat.side_effect = lambda **_: MagicMock()
+
+        assert _build_vision_llm(0.2) is _build_vision_llm(0.2)
+        assert _build_vision_llm(0.2) is not _build_vision_llm(0.5)
+        assert mock_chat.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# _openrouter_wire_configurables — the shared per-request field namespace
+# ---------------------------------------------------------------------------
+
+
+class TestOpenrouterWireConfigurables:
+    def test_attaches_shared_configurable_field_ids(self) -> None:
+        llm = MagicMock()
+
+        result = _openrouter_wire_configurables(llm)
+
+        assert result is llm.configurable_fields.return_value
+        llm.configurable_fields.assert_called_once()
+        kwargs = llm.configurable_fields.call_args.kwargs
+        # Every OpenRouter-wire client (real + custom dev endpoint) must expose
+        # the SAME field ids — one namespace across provider alternatives.
+        assert set(kwargs) == {"model_name", "reasoning", "model_kwargs"}
+        expected = {
+            "model_name": ("model", "Model", "Which model to use"),
+            "reasoning": ("reasoning", "Reasoning", "Reasoning effort (per-agent thinking budget)"),
+            "model_kwargs": (
+                "model_kwargs",
+                "Model kwargs",
+                "Extra request params (e.g. provider routing pin)",
+            ),
+        }
+        for key, (field_id, name, description) in expected.items():
+            field = kwargs[key]
+            assert isinstance(field, ConfigurableField)
+            assert (field.id, field.name, field.description) == (field_id, name, description)
+
+
+# ---------------------------------------------------------------------------
+# metered_config / silent_metered_config / SILENT_LLM_CONFIG
+# ---------------------------------------------------------------------------
+
+
+class TestMeteredConfig:
+    def test_metered_config_exact_shape(self) -> None:
+        assert metered_config("user-7") == {"configurable": {"user_id": "user-7"}}
+
+    def test_silent_llm_config_exact_shape(self) -> None:
+        # The silent flags must NOT carry spend attribution on their own.
+        assert SILENT_LLM_CONFIG == {"silent": True, "metadata": {"silent": True}}
+        assert "configurable" not in SILENT_LLM_CONFIG
+
+    def test_silent_metered_config_merges_both_halves(self) -> None:
+        # Both halves are needed and each is easy to forget alone: without the
+        # silent flags the structured output leaks into the chat as a bot
+        # message; without user_id the real COGS lands on nobody.
+        assert silent_metered_config("user-7") == {
+            "silent": True,
+            "metadata": {"silent": True},
+            "configurable": {"user_id": "user-7"},
+        }
+        # A fresh dict each call — callers pass these into run configs and must
+        # not share mutable state across concurrent graphs.
+        first = silent_metered_config("user-7")
+        second = silent_metered_config("user-8")
+        assert first is not second
+        assert first["configurable"] == {"user_id": "user-7"}
+
+
+# ---------------------------------------------------------------------------
+# is_default_model_config — skip-the-fallback guard
+# ---------------------------------------------------------------------------
+
+
+class TestIsDefaultModelConfig:
+    def test_true_for_default_provider_and_model(self) -> None:
+        assert is_default_model_config(
+            {"provider": DEFAULT_LLM_PROVIDER, "model_name": DEFAULT_MODEL_NAME}
+        )
+
+    def test_false_when_provider_differs(self) -> None:
+        assert not is_default_model_config(
+            {"provider": "gemini", "model_name": DEFAULT_MODEL_NAME}
+        )
+
+    def test_false_when_model_differs(self) -> None:
+        assert not is_default_model_config(
+            {"provider": DEFAULT_LLM_PROVIDER, "model_name": "other/model"}
+        )
+
+    def test_false_for_missing_keys(self) -> None:
+        assert not is_default_model_config({})
+        assert not is_default_model_config({"provider": DEFAULT_LLM_PROVIDER})
+        assert not is_default_model_config({"model_name": DEFAULT_MODEL_NAME})
 
 
 # ---------------------------------------------------------------------------
