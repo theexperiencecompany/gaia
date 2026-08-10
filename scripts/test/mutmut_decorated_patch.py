@@ -113,10 +113,23 @@ MutationVisitor._skip_node_and_children = _skip_node_and_children
 # closure (so the trampoline's dict picks up the wrong orig), and
 # @lru_cache creates a second cache layer the tests cannot clear. The
 # trampoline is the only entry point that should wear the decorators.
+#
+# Exception: @classmethod and @staticmethod MUST stay on the copies.
+# mutmut's own trampoline handles them specially (is_classmethod=True:
+# getattr(cls, mangled_orig) must return the class-BOUND method, and the
+# trampoline slices args[1:] because cls arrives bound). Stripping the
+# decorator leaves a plain function in the class dict, getattr returns it
+# UNBOUND, and every call through the trampoline dies with "missing
+# positional argument" (observed on composio_schemas.github_tools). They
+# are also harmless to re-execute — which is why mutmut's original skip
+# logic (`len(decorators) == 1 and name in ("staticmethod", "classmethod")`)
+# allows them as mutation targets in the first place.
 import libcst as _cst
 from mutmut.mutation import file_mutation as _file_mutation
 
 _orig_arrange = _file_mutation.function_trampoline_arrangement
+
+_REEXECUTE_SAFE_DECORATORS = ("classmethod", "staticmethod")
 
 
 def _patched_arrange(function, mutants, class_name):
@@ -124,7 +137,15 @@ def _patched_arrange(function, mutants, class_name):
     fixed = [method_nodes[0]]
     for node in method_nodes[1:]:
         if isinstance(node, _cst.FunctionDef):
-            node = node.with_changes(decorators=[])
+            keep = []
+            if len(node.decorators) == 1:
+                decorator = node.decorators[0].decorator
+                if (
+                    isinstance(decorator, _cst.Name)
+                    and decorator.value in _REEXECUTE_SAFE_DECORATORS
+                ):
+                    keep = list(node.decorators)
+            node = node.with_changes(decorators=keep)
         fixed.append(node)
     return decls, fixed, assignments, names
 

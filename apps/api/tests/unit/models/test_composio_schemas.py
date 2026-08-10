@@ -1,8 +1,9 @@
 """Unit tests for Composio schema models.
 
-Covers every model in `app/models/composio_schemas/` (base, github,
-github_tools, google_calendar, google_docs, google_sheets, linear,
-linear_tools, notion, notion_tools, sheets_tools, slack, slack_tools).
+Covers the shared schema families in `app/models/composio_schemas/` (base,
+github, google_calendar, google_docs, google_sheets, linear, notion,
+notion_tools, sheets_tools, slack). The *_tools modules have their own
+mirror-path test files in `tests/unit/models/composio_schemas/`.
 """
 
 from typing import ClassVar
@@ -14,10 +15,7 @@ from app.models.composio_schemas import (
     ComposioResponse,
     GitHubCommitEventPayload,
     GitHubIssueAddedEventPayload,
-    GitHubListRepositoriesData,
-    GitHubListRepositoriesInput,
     GitHubPullRequestEventPayload,
-    GitHubRepository,
     GitHubStarAddedEventPayload,
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
@@ -30,21 +28,14 @@ from app.models.composio_schemas import (
     GoogleSheetsSearchSpreadsheetsInput,
     GoogleSheetsSpreadsheet,
     LinearCommentAddedPayload,
-    LinearGetAllTeamsData,
-    LinearGetAllTeamsInput,
     LinearIssueCreatedPayload,
-    LinearMember,
-    LinearTeam,
     NotionAllPageEventsPayload,
     NotionFetchDataData,
     NotionFetchDataInput,
     NotionItem,
     NotionPageAddedPayload,
     NotionPageUpdatedPayload,
-    SlackChannel,
     SlackChannelCreatedPayload,
-    SlackListAllChannelsData,
-    SlackListAllChannelsInput,
     SlackReceiveMessagePayload,
 )
 
@@ -189,145 +180,6 @@ class TestGitHubIssueAddedEventPayload:
     def test_wrong_type_issue_id(self):
         with pytest.raises(ValidationError):
             GitHubIssueAddedEventPayload(issue_id="not-a-number")
-
-
-# ---------------------------------------------------------------------------
-# github_tools
-# ---------------------------------------------------------------------------
-
-
-class TestGitHubListRepositoriesInput:
-    def test_defaults(self):
-        m = GitHubListRepositoriesInput()
-        assert m.page == 1
-        assert m.per_page == 30
-        assert m.raw_response is False
-        assert m.direction is None
-        assert m.sort is None
-        assert m.type is None
-        assert m.visibility is None
-
-    def test_valid_full(self):
-        m = GitHubListRepositoriesInput(
-            before="2024-01-01",
-            direction="asc",
-            page=2,
-            per_page=50,
-            raw_response=True,
-            since="2023-01-01",
-            sort="pushed",
-            type="owner",
-            visibility="public",
-        )
-        assert m.direction == "asc"
-        assert m.sort == "pushed"
-        assert m.type == "owner"
-        assert m.visibility == "public"
-
-    @pytest.mark.parametrize("direction", ["up", "ASC", "sideways"])
-    def test_invalid_direction_literal(self, direction):
-        with pytest.raises(ValidationError):
-            GitHubListRepositoriesInput(direction=direction)
-
-    @pytest.mark.parametrize("sort", ["stars", "name", ""])
-    def test_invalid_sort_literal(self, sort):
-        with pytest.raises(ValidationError):
-            GitHubListRepositoriesInput(sort=sort)
-
-    @pytest.mark.parametrize("type", ["starred", "forked", ""])
-    def test_invalid_type_literal(self, type):
-        with pytest.raises(ValidationError):
-            GitHubListRepositoriesInput(type=type)
-
-    @pytest.mark.parametrize("visibility", ["internal", ""])
-    def test_invalid_visibility_literal(self, visibility):
-        with pytest.raises(ValidationError):
-            GitHubListRepositoriesInput(visibility=visibility)
-
-    def test_page_has_no_ge_constraint(self):
-        # The schema declares no minimum for `page`, so 0 and -1 are accepted
-        # and "1" coerces to int 1 (pydantic lax mode).
-        m = GitHubListRepositoriesInput(page=0)
-        assert m.page == 0
-        m = GitHubListRepositoriesInput(page=-1)
-        assert m.page == -1
-        m = GitHubListRepositoriesInput(page="1")
-        assert m.page == 1
-
-    def test_invalid_page_type(self):
-        with pytest.raises(ValidationError):
-            GitHubListRepositoriesInput(page="not-a-number")
-
-
-class TestGitHubRepository:
-    def test_valid_full(self):
-        m = GitHubRepository(
-            id=1,
-            name="gaia",
-            full_name="org/gaia",
-            private=True,
-            owner={"login": "octocat"},
-            html_url="https://github.com/org/gaia",
-            description="AI",
-            fork=False,
-            url="https://github.com/org/gaia",
-            created_at="2024-01-01T00:00:00Z",
-            updated_at="2024-06-01T00:00:00Z",
-            pushed_at="2024-07-01T00:00:00Z",
-            default_branch="develop",
-        )
-        assert m.id == 1
-        assert m.full_name == "org/gaia"
-        assert m.default_branch == "develop"
-
-    def test_extra_fields_ignored(self):
-        m = GitHubRepository(id=1, unknown_field="dropped")
-        assert not hasattr(m, "unknown_field")
-
-    def test_valid_from_attributes(self):
-        class Fake:
-            id = 9
-            name = "repo"
-
-        m = GitHubRepository.model_validate(Fake())
-        assert m.id == 9
-        assert m.name == "repo"
-
-    def test_wrong_type_id(self):
-        with pytest.raises(ValidationError):
-            GitHubRepository(id="not-an-int")
-
-
-class TestGitHubListRepositoriesData:
-    def test_from_direct_list(self):
-        repos = GitHubListRepositoriesData.from_response_data(
-            [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
-        )
-        assert len(repos) == 2
-        assert repos[0].name == "a"
-        assert repos[1].id == 2
-
-    def test_from_repositories_key(self):
-        repos = GitHubListRepositoriesData.from_response_data(
-            {"repositories": [{"id": 1, "name": "a"}]}
-        )
-        assert [r.id for r in repos] == [1]
-
-    def test_from_data_key(self):
-        repos = GitHubListRepositoriesData.from_response_data({"data": [{"id": 1, "name": "a"}]})
-        assert [r.id for r in repos] == [1]
-
-    def test_from_empty_dict(self):
-        repos = GitHubListRepositoriesData.from_response_data({})
-        assert repos == []
-
-    def test_repositories_key_not_a_list(self):
-        repos = GitHubListRepositoriesData.from_response_data({"repositories": {"not": "a list"}})
-        assert repos == []
-
-    def test_missing_repo_fields_tolerated(self):
-        repos = GitHubListRepositoriesData.from_response_data([{"id": 1}])
-        assert repos[0].name is None
 
 
 # ---------------------------------------------------------------------------
@@ -526,117 +378,6 @@ class TestLinearCommentAddedPayload:
         m = LinearCommentAddedPayload()
         assert m.action is None
         assert m.url is None
-
-
-# ---------------------------------------------------------------------------
-# linear_tools
-# ---------------------------------------------------------------------------
-
-
-class TestLinearGetAllTeamsInput:
-    def test_valid_empty(self):
-        m = LinearGetAllTeamsInput()
-        assert m.model_dump() == {}
-
-
-class TestLinearMember:
-    def test_valid_minimal(self):
-        m = LinearMember(id="mem1")
-        assert m.id == "mem1"
-        assert m.name == ""
-        assert m.email == ""
-
-    def test_valid_full(self):
-        m = LinearMember(id="mem1", name="Alice", email="a@b.com")
-        assert m.name == "Alice"
-        assert m.email == "a@b.com"
-
-    def test_extra_fields_ignored(self):
-        m = LinearMember(id="mem1", displayName="ignored")
-        assert not hasattr(m, "displayName")
-
-    def test_missing_id(self):
-        with pytest.raises(ValidationError):
-            LinearMember()
-
-    def test_wrong_type_email(self):
-        with pytest.raises(ValidationError):
-            LinearMember(id="mem1", email=123)
-
-
-class TestLinearTeam:
-    def test_valid_minimal(self):
-        m = LinearTeam(id="team1")
-        assert m.id == "team1"
-        assert m.key == ""
-        assert m.name == ""
-        assert m.members == []
-
-    def test_valid_full(self):
-        m = LinearTeam(
-            id="team1",
-            key="ENG",
-            name="Engineering",
-            members=[LinearMember(id="mem1", name="Alice")],
-        )
-        assert m.key == "ENG"
-        assert m.members[0].name == "Alice"
-
-    def test_members_from_dicts(self):
-        m = LinearTeam.model_validate({"id": "team1", "members": [{"id": "mem1", "name": "Alice"}]})
-        assert m.members[0].name == "Alice"
-
-    def test_extra_fields_ignored(self):
-        m = LinearTeam(id="team1", icon="ignored")
-        assert not hasattr(m, "icon")
-
-    def test_missing_id(self):
-        with pytest.raises(ValidationError):
-            LinearTeam()
-
-    def test_wrong_type_members(self):
-        with pytest.raises(ValidationError):
-            LinearTeam(id="team1", members=["not-a-member"])
-
-
-class TestLinearGetAllTeamsData:
-    def test_defaults(self):
-        m = LinearGetAllTeamsData()
-        assert m.items == []
-        assert m.teams == []
-        assert m.get_teams() == []
-
-    def test_get_teams_prefers_items(self):
-        m = LinearGetAllTeamsData(
-            items=[{"id": "t1", "name": "ItemTeam"}],
-            teams=[{"id": "t2", "name": "TeamTeam"}],
-        )
-        teams = m.get_teams()
-        assert [t.id for t in teams] == ["t1"]
-
-    def test_get_teams_falls_back_to_teams(self):
-        m = LinearGetAllTeamsData(
-            items=[],
-            teams=[{"id": "t2", "name": "TeamTeam"}],
-        )
-        teams = m.get_teams()
-        assert [t.id for t in teams] == ["t2"]
-
-    def test_get_teams_skips_non_dicts(self):
-        # `items` is list[dict], so non-dicts can only exist via model_construct
-        # (bypasses validation); get_teams must still filter them out.
-        m = LinearGetAllTeamsData.model_construct(items=[{"id": "t1"}, "junk", 42, None])
-        teams = m.get_teams()
-        assert [t.id for t in teams] == ["t1"]
-
-    def test_get_teams_skips_missing_id(self):
-        m = LinearGetAllTeamsData(items=[{"name": "no-id"}])
-        with pytest.raises(ValidationError):
-            m.get_teams()
-
-    def test_extra_fields_ignored(self):
-        m = LinearGetAllTeamsData(items=[], extra="dropped")
-        assert not hasattr(m, "extra")
 
 
 # ---------------------------------------------------------------------------
@@ -973,110 +714,3 @@ class TestSlackChannelCreatedPayload:
 
 
 # ---------------------------------------------------------------------------
-# slack_tools
-# ---------------------------------------------------------------------------
-
-
-class TestSlackListAllChannelsInput:
-    def test_defaults(self):
-        m = SlackListAllChannelsInput()
-        assert m.limit == 1
-        assert m.channel_name is None
-        assert m.cursor is None
-        assert m.exclude_archived is None
-        assert m.types is None
-
-    def test_valid_full(self):
-        m = SlackListAllChannelsInput(
-            channel_name="general",
-            cursor="xyz",
-            exclude_archived=True,
-            limit=100,
-            types="public_channel",
-        )
-        assert m.limit == 100
-        assert m.types == "public_channel"
-
-    def test_wrong_type_limit(self):
-        with pytest.raises(ValidationError):
-            SlackListAllChannelsInput(limit="one")
-
-
-class TestSlackChannel:
-    def test_valid_minimal(self):
-        m = SlackChannel()
-        assert m.id is None
-        assert m.name is None
-
-    def test_valid_full(self):
-        m = SlackChannel(
-            id="C123",
-            name="general",
-            created=1234567890,
-            creator="U123",
-            is_archived=False,
-            is_channel=True,
-            is_general=True,
-            is_private=False,
-            is_im=False,
-            is_mpim=False,
-            num_members=42,
-        )
-        assert m.name == "general"
-        assert m.is_general is True
-        assert m.num_members == 42
-
-    def test_extra_fields_ignored(self):
-        m = SlackChannel(id="C123", topic="ignored")
-        assert not hasattr(m, "topic")
-
-    def test_wrong_type_created(self):
-        with pytest.raises(ValidationError):
-            SlackChannel(created="not-a-timestamp")
-
-
-class TestSlackListAllChannelsData:
-    def test_defaults(self):
-        m = SlackListAllChannelsData()
-        assert m.channels == []
-        assert m.response_metadata is None
-        assert m.get_channels() == []
-        assert m.next_cursor is None
-
-    def test_get_channels_returns_typed_models(self):
-        m = SlackListAllChannelsData(channels=[{"id": "C1"}, {"id": "C2"}])
-        channels = m.get_channels()
-        assert isinstance(channels[0], SlackChannel)
-        assert [c.id for c in channels] == ["C1", "C2"]
-
-    def test_get_channels_skips_non_dicts(self):
-        # `channels` is list[dict], so non-dicts can only exist via
-        # model_construct (bypasses validation); get_channels must still
-        # filter them out.
-        m = SlackListAllChannelsData.model_construct(channels=[{"id": "C1"}, "junk", None])
-        channels = m.get_channels()
-        assert [c.id for c in channels] == ["C1"]
-
-    def test_extra_fields_ignored(self):
-        m = SlackListAllChannelsData(channels=[], extra="dropped")
-        assert not hasattr(m, "extra")
-
-    def test_next_cursor_present(self):
-        m = SlackListAllChannelsData(response_metadata={"next_cursor": "cursor-123"})
-        assert m.next_cursor == "cursor-123"
-
-    def test_next_cursor_absent(self):
-        m = SlackListAllChannelsData(response_metadata={"no_cursor": "x"})
-        assert m.next_cursor is None
-
-    def test_next_cursor_empty_string(self):
-        m = SlackListAllChannelsData(response_metadata={"next_cursor": ""})
-        assert m.next_cursor == ""
-
-    def test_next_cursor_non_string(self):
-        m = SlackListAllChannelsData(response_metadata={"next_cursor": 123})
-        assert m.next_cursor is None
-
-    def test_next_cursor_no_metadata(self):
-        m = SlackListAllChannelsData()
-        assert m.next_cursor is None
