@@ -2,7 +2,9 @@ import base64
 from datetime import datetime
 from pathlib import Path
 import tomllib
-from typing import Any, TypedDict
+from typing import TypedDict
+
+from app.utils.json_helpers import dict_bag, list_bag, text_bag
 
 ELLIPSIS = "…"
 
@@ -50,35 +52,38 @@ def get_context_window(text: str, query: str, chars_before: int = 15, chars_afte
     return context
 
 
-def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
+def transform_gmail_message(msg: dict[str, object]) -> dict[str, object]:
     """Transform a Gmail API or Composio message into the frontend-friendly format,
     keeping every raw key alongside the derived ones."""
     from dateutil.parser import parse as parse_date
 
-    def get_sender(m: dict[str, Any]) -> str:
-        return m.get("from") or m.get("sender") or ""
+    def get_sender(m: dict[str, object]) -> str:
+        return text_bag(m, "from") or text_bag(m, "sender")
 
-    def get_time(m: dict[str, Any]) -> str:
+    def get_time(m: dict[str, object]) -> str:
         # Prefer 'date', then 'messageTimestamp', then fallback
         if m.get("date"):
             return str(m["date"])
-        ts = m.get("messageTimestamp")
+        ts = text_bag(m, "messageTimestamp")
         if ts:
             try:
                 return parse_date(ts).strftime("%Y-%m-%d %H:%M")
             except Exception:
                 return str(ts)
-        # Gmail API fallback
-        if m.get("internalDate"):
-            try:
-                timestamp = int(m["internalDate"]) / 1000
-                return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
-            except Exception:
-                return str(m["internalDate"])
+        # Gmail API fallback — internalDate is string-millis, not an int.
+        raw_internal = m.get("internalDate")
+        if raw_internal:
+            if isinstance(raw_internal, (int, str)):
+                try:
+                    timestamp = int(raw_internal) / 1000
+                    return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+                except (TypeError, ValueError):
+                    pass
+            return str(raw_internal)
         return ""
 
-    def transform_composio(m: dict[str, Any]) -> dict[str, Any]:
-        labels = m.get("labelIds", [])
+    def transform_composio(m: dict[str, object]) -> dict[str, object]:
+        labels = [label for label in list_bag(m, "labelIds") if isinstance(label, str)]
         return {
             **m,
             "id": m.get("messageId", ""),
@@ -91,13 +96,17 @@ def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
             "time": get_time(m),
             "snippet": m.get("snippet", m.get("messageText", "")),
             "body": m.get("body", m.get("messageText", "")),
-            "isThread": bool(m.get("threadId") and len(labels) > 0),
+            "isThread": bool(text_bag(m, "threadId") and len(labels) > 0),
             "is_unread": "UNREAD" in labels,
         }
 
-    def transform_gmail_api(m: dict[str, Any]) -> dict[str, Any]:
-        headers = {h["name"]: h["value"] for h in m.get("payload", {}).get("headers", [])}
-        labels = m.get("labelIds", [])
+    def transform_gmail_api(m: dict[str, object]) -> dict[str, object]:
+        labels = [label for label in list_bag(m, "labelIds") if isinstance(label, str)]
+        headers = {
+            h["name"]: h["value"]
+            for h in list_bag(dict_bag(m, "payload"), "headers")
+            if isinstance(h, dict)
+        }
         return {
             **m,
             "id": m.get("id", ""),
@@ -110,7 +119,7 @@ def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
             "time": get_time(m),
             "snippet": m.get("snippet", ""),
             "body": decode_message_body(m),
-            "isThread": bool(m.get("threadId") and len(labels) > 0),
+            "isThread": bool(text_bag(m, "threadId") and len(labels) > 0),
             "is_unread": "UNREAD" in labels,
         }
 
@@ -120,14 +129,14 @@ def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
     return transform_gmail_api(msg)
 
 
-def decode_message_body(msg: dict[str, Any]) -> str | None:
+def decode_message_body(msg: dict[str, object]) -> str | None:
     """Decode the message body from a Gmail API message."""
-    payload = msg.get("payload", {})
-    parts = payload.get("parts", [])
+    payload = dict_bag(msg, "payload")
+    parts = list_bag(payload, "parts")
 
     # Handle single-part messages
     if not parts:
-        body_data = payload.get("body", {}).get("data", "")
+        body_data = text_bag(dict_bag(payload, "body"), "data")
         if body_data:
             return base64.urlsafe_b64decode(body_data.replace("-", "+").replace("_", "/")).decode(
                 "utf-8", errors="ignore"
@@ -139,8 +148,10 @@ def decode_message_body(msg: dict[str, Any]) -> str | None:
     plain_body = None
 
     for part in parts:
-        part_mime_type = part.get("mimeType", "")
-        body_data = part.get("body", {}).get("data", "")
+        if not isinstance(part, dict):
+            continue
+        part_mime_type = text_bag(part, "mimeType")
+        body_data = text_bag(dict_bag(part, "body"), "data")
 
         if body_data:
             decoded_content = base64.urlsafe_b64decode(

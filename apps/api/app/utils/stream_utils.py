@@ -8,7 +8,7 @@ is closed and is what reaches MongoDB, so an emitted key it does not declare is
 dropped on persist (see the type's own docstring).
 
 The accumulator ENVELOPE around it (``{"tool_data": [...], "subagent_starts":
-{...}, "subagent_ends": {...}}``) stays ``dict[str, Any]`` deliberately: the
+{...}, "subagent_ends": {...}}``) stays ``dict[str, object]`` deliberately: the
 chat and silent paths also merge whatever non-``tool_data`` keys a custom event
 produced (``follow_up_actions``, …) into the same dict, and
 ``services/chat/persistence`` then ``setattr``s each of them onto the message.
@@ -21,6 +21,7 @@ from typing import Any, TypedDict, cast
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import ToolDataEntry
 from app.utils.agent_utils import IntegrationMetadata, format_tool_call_entry
+from app.utils.json_helpers import int_opt_bag, text_bag, text_opt_bag
 
 
 class SubagentGroup(TypedDict):
@@ -117,8 +118,8 @@ def _append_or_upsert_tool_data(entries: list[ToolDataEntry], entry: ToolDataEnt
 
 
 def absorb_collector_event(
-    evt: dict[str, Any],
-    accumulated: dict[str, Any],
+    evt: dict[str, object],
+    accumulated: dict[str, object],
     tool_outputs: dict[str, str],
 ) -> None:
     """Route a single tool-event-collector event into the right bucket.
@@ -128,23 +129,44 @@ def absorb_collector_event(
     list with associated outputs and subagent start/end pairs.
     """
     if "tool_data" in evt:
-        _append_or_upsert_tool_data(accumulated["tool_data"], evt["tool_data"])
+        # Our own SSE emitter guarantees these shapes; bridged, not assumed.
+        _append_or_upsert_tool_data(
+            cast(list[ToolDataEntry], accumulated["tool_data"]),
+            cast(ToolDataEntry, evt["tool_data"]),
+        )
     if "tool_output" in evt:
         out = evt["tool_output"]
-        tid, val = out.get("tool_call_id"), out.get("output")
-        if tid and val:
-            tool_outputs[tid] = val
+        if isinstance(out, dict):
+            tid = text_opt_bag(out, "tool_call_id")
+            val = text_opt_bag(out, "output")
+            if tid and val:
+                tool_outputs[tid] = val
     if "reasoning" in evt:
-        _absorb_reasoning(evt["reasoning"], accumulated["tool_data"])
+        reasoning = evt["reasoning"]
+        acc_td = accumulated["tool_data"]
+        if isinstance(reasoning, dict) and isinstance(acc_td, list):
+            _absorb_reasoning(reasoning, cast(list[ToolDataEntry], acc_td))
     if "subagent_start" in evt:
-        sid = evt["subagent_start"]["subagent_id"]
-        accumulated.setdefault("subagent_starts", {})[sid] = evt["subagent_start"]
+        start = evt["subagent_start"]
+        if isinstance(start, dict):
+            sid = text_bag(start, "subagent_id")
+            starts = accumulated.get("subagent_starts")
+            if not isinstance(starts, dict):
+                starts = {}
+                accumulated["subagent_starts"] = starts
+            starts[sid] = start
     if "subagent_end" in evt:
-        sid = evt["subagent_end"]["subagent_id"]
-        accumulated.setdefault("subagent_ends", {})[sid] = evt["subagent_end"]
+        end = evt["subagent_end"]
+        if isinstance(end, dict):
+            sid = text_bag(end, "subagent_id")
+            ends = accumulated.get("subagent_ends")
+            if not isinstance(ends, dict):
+                ends = {}
+                accumulated["subagent_ends"] = ends
+            ends[sid] = end
 
 
-def _absorb_reasoning(reasoning: dict[str, Any], tool_data: list[ToolDataEntry]) -> None:
+def _absorb_reasoning(reasoning: dict[str, object], tool_data: list[ToolDataEntry]) -> None:
     """Persist a streamed thinking delta into tool_data as a reasoning step.
 
     Mirrors the frontend (streamHandlers.handleReasoning): a reasoning step rides a
@@ -154,9 +176,9 @@ def _absorb_reasoning(reasoning: dict[str, Any], tool_data: list[ToolDataEntry])
     tool call (so thinking shows per-step, not as hundreds of fragments).
     """
     content = reasoning.get("content")
-    if not content:
+    if not isinstance(content, str) or not content:
         return
-    subagent_id = reasoning.get("subagent_id")
+    subagent_id = text_opt_bag(reasoning, "subagent_id")
     # `data` is a SINGLE step dict (not a list): reconstruct_subagent_groups appends
     # a subagent entry's `data` straight into tool_calls, and bucketToolData wraps a
     # single dict on the frontend — a list here would nest a tool_call with no
@@ -170,7 +192,8 @@ def _absorb_reasoning(reasoning: dict[str, Any], tool_data: list[ToolDataEntry])
         and isinstance(last_data, dict)
         and last_data.get("reasoning") is not None
     ):
-        last_data["reasoning"] += content
+        raw_reasoning = last_data.get("reasoning")
+        last_data["reasoning"] = (raw_reasoning if isinstance(raw_reasoning, str) else "") + content
         return
     entry: ToolDataEntry = {
         "tool_name": "tool_calls_data",
@@ -210,14 +233,16 @@ def apply_outputs_to_tool_data(
             data["output"] = tool_outputs[tc_id]
 
 
-def reconstruct_subagent_groups(accumulated: dict[str, Any]) -> None:
+def reconstruct_subagent_groups(accumulated: dict[str, object]) -> None:
     """Group flat tool_data entries tagged with subagent_id into subagent_group
     entries for MongoDB persistence. Mutates the accumulator in place.
 
     Uses subagent_starts/subagent_ends accumulated by process_data_chunk.
     """
-    subagent_starts: dict[str, Any] = accumulated.pop("subagent_starts", {})
-    subagent_ends: dict[str, Any] = accumulated.pop("subagent_ends", {})
+    raw_starts = accumulated.pop("subagent_starts", {})
+    raw_ends = accumulated.pop("subagent_ends", {})
+    subagent_starts = raw_starts if isinstance(raw_starts, dict) else {}
+    subagent_ends = raw_ends if isinstance(raw_ends, dict) else {}
 
     if not subagent_starts:
         return
@@ -230,24 +255,25 @@ def reconstruct_subagent_groups(accumulated: dict[str, Any]) -> None:
         end = subagent_ends.get(subagent_id, {})
         groups[subagent_id] = SubagentGroup(
             subagent_id=subagent_id,
-            subagent_name=start.get("subagent_name", ""),
-            agent_type=start.get("agent_type", "spawned"),
+            subagent_name=text_bag(start, "subagent_name"),
+            agent_type=text_bag(start, "agent_type", "spawned"),
             tool_calls=[],
-            duration_ms=end.get("duration_ms"),
-            token_count=end.get("token_count"),
-            started_at=start.get("started_at", now),
+            duration_ms=int_opt_bag(end, "duration_ms"),
+            token_count=int_opt_bag(end, "token_count"),
+            started_at=text_bag(start, "started_at", now),
             # Always set — this runs only at turn finalization, so a subagent
             # without an end event was cut short (cancelled / errored / timed
             # out), not still running. Leaving it null persists a "forever
             # spinning" card (the frontend keys its spinner on completed_at).
             completed_at=now,
-            icon_url=start.get("icon_url"),
-            tool_category=start.get("tool_category"),
+            icon_url=text_opt_bag(start, "icon_url"),
+            tool_category=text_opt_bag(start, "tool_category"),
             nested_subagents=[],
         )
 
     # Route subagent-tagged entries into their group
-    flat_entries: list[ToolDataEntry] = accumulated.get("tool_data", [])
+    raw_flat = accumulated.get("tool_data", [])
+    flat_entries = cast(list[ToolDataEntry], raw_flat) if isinstance(raw_flat, list) else []
     top_level: list[ToolDataEntry] = []
     for entry in flat_entries:
         target_id: str | None = entry.get("subagent_id")
@@ -259,7 +285,12 @@ def reconstruct_subagent_groups(accumulated: dict[str, Any]) -> None:
     # Nest child groups inside their parent
     root_groups: list[SubagentGroup] = []
     for subagent_id, group in groups.items():
-        parent_id: str | None = subagent_starts[subagent_id].get("parent_subagent_id")
+        parent_start = subagent_starts[subagent_id]
+        parent_id = (
+            text_opt_bag(parent_start, "parent_subagent_id")
+            if isinstance(parent_start, dict)
+            else None
+        )
         if parent_id and parent_id in groups:
             groups[parent_id]["nested_subagents"].append(group)
         else:
@@ -269,7 +300,7 @@ def reconstruct_subagent_groups(accumulated: dict[str, Any]) -> None:
     group_entries: list[ToolDataEntry] = [
         {
             "tool_name": "subagent_group",
-            "data": cast(dict[str, Any], group),
+            "data": cast(dict[str, object], group),
             "timestamp": group["started_at"],
         }
         for group in root_groups

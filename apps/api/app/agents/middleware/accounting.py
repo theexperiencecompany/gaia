@@ -158,7 +158,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         self,
         state: AgentState[Any],
         runtime: Runtime[Any],
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, object] | None:
         """Pre-call hook: stamp the model-call start time for latency deltas.
 
         Budget GATING does not live here — a before_model return can only
@@ -235,7 +235,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         self,
         state: AgentState[Any],
         runtime: Runtime[Any],
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, object] | None:
         """Emit ``llm_call`` wide event after the model produces a response."""
         del runtime  # unused — config is fetched from the graph context var
         messages = (
@@ -349,13 +349,17 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
 
     # Synchronous fallbacks (LangChain middleware dispatch to the sync path
     # when the graph is compiled without an async runtime).
-    def before_model(self, state: AgentState[Any], runtime: Runtime[Any]) -> dict[str, Any] | None:
+    def before_model(
+        self, state: AgentState[Any], runtime: Runtime[Any]
+    ) -> dict[str, object] | None:
         del state, runtime
         thread_id = self._thread_id(_current_config())
         self._start_ts[thread_id] = time.monotonic()
         return None
 
-    def after_model(self, state: AgentState[Any], runtime: Runtime[Any]) -> dict[str, Any] | None:
+    def after_model(
+        self, state: AgentState[Any], runtime: Runtime[Any]
+    ) -> dict[str, object] | None:
         del state, runtime
         # Cost calc is async-only; in sync mode we still want the HWM signal.
         thread_id = self._thread_id(_current_config())

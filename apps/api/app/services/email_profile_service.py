@@ -19,7 +19,6 @@ user-specific, so they must never share the global URL-metadata cache.
 import asyncio
 from collections.abc import Sequence
 import hashlib
-from typing import Any
 
 import httpx
 from pydantic import BaseModel
@@ -45,6 +44,7 @@ from app.db.redis import get_cache, set_cache
 from app.models.search_models import URLResponse
 from app.services.composio.proxy_client import proxy_request
 from app.utils.email_utils import normalize_email
+from app.utils.json_helpers import dict_bag, list_bag, text_bag
 from shared.py.wide_events import log
 
 _GMAIL_TOOLKIT = "GMAIL"
@@ -67,12 +67,12 @@ class _ProfileFields(BaseModel):
     website_name: str | None = None
 
 
-def _first_value(entries: list[dict[str, Any]], key: str) -> str | None:
+def _first_value(entries: list[dict[str, object]], key: str) -> str | None:
     """First non-empty ``key`` across a People API field's entries."""
     return next((str(entry[key]) for entry in entries if entry.get(key)), None)
 
 
-def _pick_photo(photos: list[dict[str, Any]]) -> str | None:
+def _pick_photo(photos: list[dict[str, object]]) -> str | None:
     """Best real photo: prefer the Google account (PROFILE) photo, skip monograms.
 
     ``default=true`` marks Google's generated letter avatars — returning None
@@ -80,23 +80,31 @@ def _pick_photo(photos: list[dict[str, Any]]) -> str | None:
     """
     real = [photo for photo in photos if photo.get("url") and not photo.get("default")]
     for photo in real:
-        if photo.get("metadata", {}).get("source", {}).get("type") == "PROFILE":
+        if text_bag(dict_bag(dict_bag(photo, "metadata"), "source"), "type") == "PROFILE":
             return str(photo["url"])
     return str(real[0]["url"]) if real else None
 
 
-def _person_to_profile(person: dict[str, Any], email: str) -> _ProfileFields | None:
+def _person_to_profile(person: dict[str, object], email: str) -> _ProfileFields | None:
     """Map a People API person to profile fields, if it matches the email."""
-    emails = {entry.get("value", "").strip().lower() for entry in person.get("emailAddresses", [])}
+    emails = {
+        text_bag(entry, "value").strip().lower()
+        for entry in list_bag(person, "emailAddresses")
+        if isinstance(entry, dict)
+    }
     if email not in emails:
         return None
-    name = _first_value(person.get("names", []), "displayName")
-    photo = _pick_photo(person.get("photos", []))
+    name = _first_value(
+        [e for e in list_bag(person, "names") if isinstance(e, dict)], "displayName"
+    )
+    photo = _pick_photo([p for p in list_bag(person, "photos") if isinstance(p, dict)])
     if not name and not photo:
         return None
     return _ProfileFields(
         title=name,
-        description=_first_value(person.get("biographies", []), "value"),
+        description=_first_value(
+            [e for e in list_bag(person, "biographies") if isinstance(e, dict)], "value"
+        ),
         favicon=photo,
         website_name=GOOGLE_CONTACTS_SOURCE_NAME,
     )
@@ -104,14 +112,14 @@ def _person_to_profile(person: dict[str, Any], email: str) -> _ProfileFields | N
 
 async def _people_search(
     user_id: str, endpoint: str, query: str, read_mask: str
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """One People API search call via the Composio Gmail proxy, or None.
 
     Any failure (Gmail not connected, missing scope, provider error) degrades
     silently to the next source — previews must never surface errors.
     """
     try:
-        result: dict[str, Any] | None = await proxy_request(
+        result: dict[str, object] | None = await proxy_request(
             user_id=user_id,
             toolkit=_GMAIL_TOOLKIT,
             method="GET",
@@ -145,8 +153,10 @@ async def _search_google_people(
         await asyncio.sleep(PEOPLE_SEARCH_WARMUP_DELAY_SECONDS)
         data = await _people_search(user_id, endpoint, email, read_mask) or {}
 
-    for result in data.get("results", []):
-        person = result.get("person", {})
+    for result in list_bag(data, "results"):
+        if not isinstance(result, dict):
+            continue
+        person = dict_bag(result, "person")
         profile = _person_to_profile(person, email)
         if profile is not None:
             profile.favicon = await _fetch_profile_photo(user_id, person) or profile.favicon
@@ -154,7 +164,7 @@ async def _search_google_people(
     return None
 
 
-async def _fetch_profile_photo(user_id: str, person: dict[str, Any]) -> str | None:
+async def _fetch_profile_photo(user_id: str, person: dict[str, object]) -> str | None:
     """Fetch a saved contact's full photo list and pick the real one.
 
     searchContacts only returns the contact-card photo, which for contacts
@@ -163,7 +173,7 @@ async def _fetch_profile_photo(user_id: str, person: dict[str, Any]) -> str | No
     PROFILE-source photos — the person's actual Google account picture —
     which _pick_photo prefers.
     """
-    resource_name = person.get("resourceName") or ""
+    resource_name = text_bag(person, "resourceName")
     if not resource_name.startswith("people/"):
         return None
     try:
@@ -251,7 +261,7 @@ async def fetch_email_profile(user_id: str, raw_value: str) -> URLResponse:
     cache_key = EMAIL_PROFILE_CACHE_KEY_TEMPLATE.format(user_id=user_id, email=email)
     # get_cache is typed Any (generic cache wrapper); this key only ever stores
     # what the write below puts there — a URLResponse minus its `url`.
-    cached: dict[str, Any] | None = await get_cache(cache_key)
+    cached: dict[str, object] | None = await get_cache(cache_key)
     if cached:
         return URLResponse.model_validate({**cached, "url": raw_value})
 

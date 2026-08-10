@@ -2,7 +2,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 import json
 import re
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
 from langchain_core.messages import ToolCall
 
@@ -26,7 +26,7 @@ from app.services.chat.chunks import extract_tool_data
 from shared.py.wide_events import log
 
 # Type for the stream_writer callable used across agent execution paths.
-StreamWriterCallable = Callable[[dict[str, Any]], None]
+StreamWriterCallable = Callable[[dict[str, object]], None]
 
 
 def strip_internal_agent_markers(text: str) -> str:
@@ -108,7 +108,7 @@ def format_subagent_start_event(
     icon_url: str | None = None,
     tool_category: str | None = None,
     parent_subagent_id: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Format a subagent_start SSE payload."""
     return SubagentStartPayload(
         subagent_id=subagent_id,
@@ -125,7 +125,7 @@ def format_subagent_end_event(
     subagent_id: str,
     duration_ms: int,
     token_count: int | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Format a subagent_end SSE payload."""
     return SubagentEndPayload(
         subagent_id=subagent_id,
@@ -231,7 +231,7 @@ async def format_tool_call_entry(
 
     # Look up mcp_ui metadata. Try the global registry first (covers platform
     # tools); fall back to MCPClient._tools for per-user MCP tools.
-    mcp_ui: dict[str, Any] | None = None
+    mcp_ui: dict[str, object] | None = None
     mcp_server_url: str | None = None
     try:
         registry_tools = tool_registry.get_all_tools_for_search()
@@ -313,7 +313,7 @@ async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | Non
 
 async def _resolve_mcp_ui_metadata(
     tool_name: str, user_id: str
-) -> tuple[dict[str, Any] | None, str | None]:
+) -> tuple[dict[str, object] | None, str | None]:
     """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
     from app.services.mcp.mcp_client import get_mcp_client  # noqa: PLC0415
 
@@ -377,12 +377,12 @@ def format_sse_response(content: str) -> str:
     return f"data: {json.dumps(ResponseFrame(response=content).model_dump())}\n\n"
 
 
-def format_sse_data(data: dict[str, Any]) -> str:
+def format_sse_data(data: dict[str, object]) -> str:
     """Wrap a dict as a JSON-encoded SSE ``data:`` line."""
     return f"data: {json.dumps(data)}\n\n"
 
 
-def process_custom_event_for_tools(payload: dict[str, Any]) -> dict[str, Any]:
+def process_custom_event_for_tools(payload: dict[str, object]) -> dict[str, object]:
     """Extract tool execution data from a custom LangGraph event payload.
 
     Returns the extracted tool data, or an empty dict on failure / no data.

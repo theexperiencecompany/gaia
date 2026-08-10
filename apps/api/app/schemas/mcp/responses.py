@@ -1,6 +1,6 @@
 """MCP proxy response schemas.
 
-The proxied payloads stay ``list[dict[str, Any]]``: each element is an MCP
+The proxied payloads stay ``list[dict[str, object]]``: each element is an MCP
 content block / resource / prompt serialized by the MCP SDK, and the block union
 is open-ended by spec (text, image, audio, resource link, embedded resource,
 plus server extensions). These bodies are forwarded verbatim to the MCP App
@@ -10,7 +10,7 @@ external consumer already depends on (Type Safety item 14).
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -32,32 +32,32 @@ class MCPConnectionTestResponse(BaseModel):
 class MCPProxyToolCallResponse(BaseModel):
     """Response for a proxied tools/call."""
 
-    content: list[dict[str, Any]]
+    content: list[dict[str, object]]
     is_error: bool = False
 
 
 class MCPProxyResourcesListResponse(BaseModel):
     """Response for a proxied resources/list."""
 
-    resources: list[dict[str, Any]]
+    resources: list[dict[str, object]]
     next_cursor: str | None = None
 
 
 class MCPProxyResourceTemplatesListResponse(BaseModel):
     """Response for a proxied resources/templates/list."""
 
-    resource_templates: list[dict[str, Any]]
+    resource_templates: list[dict[str, object]]
     next_cursor: str | None = None
 
 
 class MCPProxyResourceReadResponse(BaseModel):
     """Response for a proxied resources/read."""
 
-    contents: list[dict[str, Any]]
+    contents: list[dict[str, object]]
 
 
 class MCPProxyPromptsListResponse(BaseModel):
     """Response for a proxied prompts/list."""
 
-    prompts: list[dict[str, Any]]
+    prompts: list[dict[str, object]]
     next_cursor: str | None = None

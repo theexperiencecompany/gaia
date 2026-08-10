@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import re
 import time
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from app.agents.memory.profile_crawler import crawl_profile_url
 from app.agents.memory.profile_extractor import (
@@ -136,7 +136,7 @@ class _StepTimer:
         return "\n".join(lines)
 
 
-async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict[str, Any]]]:
+async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict[str, object]]]:
     """
     Search Gmail API in parallel for emails from all platform domains.
 
@@ -168,7 +168,7 @@ async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict[
     results = await asyncio.gather(*[task for _, task in search_tasks], return_exceptions=True)
 
     # Build platform -> emails mapping
-    platform_emails: dict[str, list[dict[str, Any]]] = {}
+    platform_emails: dict[str, list[dict[str, object]]] = {}
     for (platform, _), result in zip(search_tasks, results):
         if isinstance(result, Exception):
             log.error(
@@ -199,7 +199,7 @@ async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict[
 
 async def _search_platform_emails(
     user_id: str, platform: str, query: str, max_results: int = 10
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """
     Search Gmail for emails from a specific platform.
 
@@ -248,9 +248,9 @@ async def fetch_emails_for_onboarding(
     max_total: int = ONBOARDING_EMAIL_SCAN_LIMIT,
     on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
     fmt: str = "metadata",
-    into: list[dict[str, Any]] | None = None,
+    into: list[dict[str, object]] | None = None,
     include_sent: bool = False,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Fetch the last `months` months of emails for onboarding.
 
     Uses Gmail metadata format by default (no body) so batches can be 100 wide.
@@ -265,7 +265,7 @@ async def fetch_emails_for_onboarding(
     """
     scope = INBOX_OR_SENT_EMAIL_QUERY if include_sent else EMAIL_QUERY
     query = f"{scope} newer_than:{months * 30}d"
-    all_emails: list[dict[str, Any]] = into if into is not None else []
+    all_emails: list[dict[str, object]] = into if into is not None else []
     page_token: str | None = None
     metadata_mode = fmt == "metadata"
 
@@ -721,7 +721,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtra
 async def _process_single_platform(
     user_id: str,
     platform: str,
-    emails: list[dict[str, Any]],
+    emails: list[dict[str, object]],
     semaphore: asyncio.Semaphore,
     user_name: str | None = None,
     crawled_urls: set[str] | None = None,

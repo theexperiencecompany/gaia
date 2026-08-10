@@ -76,7 +76,7 @@ async def query_json(
         # An LLM-supplied filter bag, so the condition shape stays an unnamed dict:
         # naming it would publish a per-property JSON schema to the model and change
         # the tool contract. `op` is validated against _OPS below.
-        list[dict[str, Any]] | None,
+        list[dict[str, object]] | None,
         "Filters: [{field, op, value}]; op in contains|equals|not_equals|is_true|is_false|exists|gt|lt|in",
     ] = None,
     match: Annotated[str, "Combine filters with 'all' (AND) or 'any' (OR)"] = "all",
@@ -178,7 +178,7 @@ def _load_records(target: Path) -> tuple[list[JSONRecord], int, bool]:
     return records, dropped, truncated
 
 
-def _match_condition(record: JSONRecord, cond: dict[str, Any]) -> bool:
+def _match_condition(record: JSONRecord, cond: dict[str, object]) -> bool:
     field = cond.get("field")
     op = cond.get("op")
     value = cond.get("value")
@@ -210,7 +210,7 @@ def _match_condition(record: JSONRecord, cond: dict[str, Any]) -> bool:
     return False
 
 
-def _match_record(record: JSONRecord, where: list[dict[str, Any]], match: str) -> bool:
+def _match_record(record: JSONRecord, where: list[dict[str, object]], match: str) -> bool:
     if not where:
         return True
     results = (_match_condition(record, c) for c in where)
@@ -220,7 +220,7 @@ def _match_record(record: JSONRecord, where: list[dict[str, Any]], match: str) -
 def _apply_query(
     records: list[JSONRecord],
     *,
-    where: list[dict[str, Any]],
+    where: list[dict[str, object]],
     match: str,
     fields: list[str] | None,
     sort_by: str | None,

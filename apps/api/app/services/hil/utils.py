@@ -33,7 +33,7 @@ class GatedCall:
 
     name: str
     id: str
-    args: dict[str, Any]
+    args: dict[str, object]
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ class PriorCall:
     """A tool call this run already made — an action, never a narration."""
 
     name: str
-    args: dict[str, Any]
+    args: dict[str, object]
 
 
 # --- reading the request ---------------------------------------------------------------
@@ -83,7 +83,7 @@ def configurable_of(request: ToolCallRequest) -> AgentConfigurable:
 # --- reading the graph state -----------------------------------------------------------
 
 
-def current_tool_calls(state: object) -> list[dict[str, Any]]:
+def current_tool_calls(state: object) -> list[dict[str, object]]:
     """The tool calls of the AI message this node is executing (its last one).
 
     These are the pending call's *siblings* — what else the model asked for in the same
@@ -132,7 +132,7 @@ def _state_get(state: object, key: str) -> object:
 # --- rendering untrusted content for the judge -----------------------------------------
 
 
-def args_preview(args: dict[str, Any]) -> str:
+def args_preview(args: dict[str, object]) -> str:
     """The pending call's arguments, JSON-encoded so a quote or newline inside a value
     cannot break out of the payload and read as prompt text."""
     return clip_text(json.dumps(args or {}, default=str), HIL_JUDGE_MAX_ARGS_CHARS)

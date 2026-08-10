@@ -1,7 +1,7 @@
 """Workflow utility functions for GAIA workflow system."""
 
 import asyncio
-from typing import Any, TypedDict, cast
+from typing import TypedDict
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
@@ -82,26 +82,28 @@ async def handle_workflow_error(
         )
 
 
-def ensure_trigger_config_object(trigger_config: TriggerConfig | dict[str, Any]) -> TriggerConfig:
+def ensure_trigger_config_object(
+    trigger_config: TriggerConfig | dict[str, object],
+) -> TriggerConfig:
     """Convert dict to TriggerConfig object if needed."""
     if isinstance(trigger_config, dict):
-        return TriggerConfig(**trigger_config)
+        return TriggerConfig.model_validate(trigger_config)
     return trigger_config
 
 
-# The two envelopes below stay `dict[str, Any]` rather than becoming a pair of
+# The two envelopes below stay `dict[str, object]` rather than becoming a pair of
 # TypedDicts: every workflow tool returns them straight out of a `-> dict`
 # handler in agents/tools/workflow_shared_tools.py, and mypy does not accept a
 # TypedDict where a plain `dict` is declared — naming the shape means retyping
 # that module's tools in the same pass (Type Safety item 14).
-def error_response(error_code: str, message: str) -> dict[str, Any]:
+def error_response(error_code: str, message: str) -> dict[str, object]:
     """Return a standardized error response."""
     return {"success": False, "error": error_code, "message": message}
 
 
-def success_response(data: object, message: str | None = None) -> dict[str, Any]:
+def success_response(data: object, message: str | None = None) -> dict[str, object]:
     """Return a standardized success response."""
-    response: dict[str, Any] = {"success": True, "data": data}
+    response: dict[str, object] = {"success": True, "data": data}
     if message:
         response["message"] = message
     return response
@@ -185,7 +187,7 @@ async def create_workflow_directly(
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """
     Create a workflow directly from a finalized draft.
 
@@ -319,7 +321,7 @@ async def apply_workflow_edit(
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Apply a finalized edit draft to an existing workflow via WorkflowService.update_workflow.
 
     Applies title/description/prompt and manual/scheduled trigger changes directly.
@@ -396,7 +398,7 @@ async def apply_workflow_edit(
     # guards the writes.
     updated = await WorkflowService.update_workflow(
         workflow.id or "",
-        UpdateWorkflowRequest(**cast(dict[str, Any], update_fields)),
+        UpdateWorkflowRequest.model_validate(update_fields),
         user_id,
         user_timezone=user_timezone,
     )

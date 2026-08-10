@@ -18,6 +18,7 @@ from typing import Any, NamedTuple
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry
+from app.utils.json_helpers import text_bag
 from app.utils.stream_utils import apply_outputs_to_tool_data
 from shared.py.wide_events import log
 
@@ -73,7 +74,7 @@ async def recover_stream_state(
     if not progress:
         return complete_message, tool_data
 
-    complete_message = progress.get("complete_message", "")
+    complete_message = text_bag(progress, "complete_message")
     progress_tool_data = progress.get("tool_data")
     if (
         isinstance(progress_tool_data, dict)

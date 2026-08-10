@@ -1,5 +1,7 @@
 """Custom MCP integration routes."""
 
+from typing import Literal, cast
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
@@ -30,6 +32,7 @@ from app.services.integrations.publish_service import (
     unpublish_custom_integration,
 )
 from app.services.mcp.mcp_client import get_mcp_client
+from app.utils.json_helpers import int_opt_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -69,10 +72,18 @@ async def create_custom_mcp_integration(
             integration_id=integration.integration_id,
             name=integration.name,
             connection=CustomIntegrationConnectionResult(
-                status=conn_result["status"],
-                tools_count=conn_result.get("tools_count"),
-                oauth_url=conn_result.get("oauth_url"),
-                error=conn_result.get("error"),
+                status=(
+                    cast(
+                        Literal["created", "connected", "requires_oauth", "failed"],
+                        text_bag(conn_result, "status"),
+                    )
+                    if text_bag(conn_result, "status")
+                    in ("created", "connected", "requires_oauth", "failed")
+                    else "failed"
+                ),
+                tools_count=int_opt_bag(conn_result, "tools_count"),
+                oauth_url=text_opt_bag(conn_result, "oauth_url"),
+                error=text_opt_bag(conn_result, "error"),
             ),
         )
     except ValueError as e:

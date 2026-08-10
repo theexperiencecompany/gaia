@@ -4,7 +4,7 @@ Contains all workflow-related background tasks and execution logic.
 """
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 from uuid import uuid4
 
 from app.agents.prompts.workflow_prompts import (
@@ -54,6 +54,7 @@ from app.services.workflow.execution_service import complete_execution, create_e
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import create_error
+from app.utils.json_helpers import text_bag
 from app.utils.timezone import Timezone, format_local_time
 from shared.py.wide_events import WorkflowContext, log
 
@@ -62,7 +63,7 @@ _DRIFT_WARN_SECONDS = 300
 
 
 async def process_workflow_generation_task(
-    ctx: dict[str, Any], todo_id: str, user_id: str, title: str, description: str = ""
+    ctx: dict[str, object], todo_id: str, user_id: str, title: str, description: str = ""
 ) -> str:
     """
     Process workflow generation task for todos.
@@ -232,7 +233,7 @@ async def process_workflow_generation_task(
 
 
 async def _rearm_if_scheduled(
-    scheduler: WorkflowScheduler, workflow: Workflow | None, context: dict[str, Any] | None
+    scheduler: WorkflowScheduler, workflow: Workflow | None, context: dict[str, object] | None
 ) -> None:
     """Arm the next occurrence for cron-scheduled recurring workflows.
 
@@ -252,7 +253,7 @@ async def _rearm_if_scheduled(
 async def _rearm_quietly(
     scheduler: WorkflowScheduler,
     workflow: Workflow | None,
-    context: dict[str, Any] | None,
+    context: dict[str, object] | None,
     workflow_id: str,
 ) -> None:
     """Arm the next occurrence. A re-arm failure must not change the outcome the
@@ -438,7 +439,7 @@ async def _record_execution_failure(
 
 
 async def execute_workflow_by_id(
-    ctx: dict[str, Any], workflow_id: str, context: dict[str, Any] | None = None
+    ctx: dict[str, object], workflow_id: str, context: dict[str, object] | None = None
 ) -> str:
     """
     Execute a workflow by ID with proper execution count tracking.
@@ -463,7 +464,7 @@ async def execute_workflow_by_id(
             return f"Workflow {workflow_id} not found"
 
         # Determine trigger type from context
-        trigger_type = context.get("trigger_type", "manual") if context else "manual"
+        trigger_type = text_bag(context, "trigger_type", "manual") if context else "manual"
         log.set(
             workflow=WorkflowContext(
                 id=workflow_id,
@@ -562,7 +563,7 @@ async def execute_workflow_by_id(
 
 @tiered_rate_limit("trigger_workflow_executions")
 async def execute_workflow_as_chat(
-    workflow: Workflow, user: AuthenticatedUser, context: dict[str, Any]
+    workflow: Workflow, user: AuthenticatedUser, context: dict[str, object]
 ) -> str:
     """Run a workflow as a silent chat turn and return its conversation id.
 
@@ -712,7 +713,7 @@ async def execute_workflow_as_chat(
 
 
 async def regenerate_workflow_steps(
-    ctx: dict[str, Any],
+    ctx: dict[str, object],
     workflow_id: str,
     user_id: str,
     regeneration_reason: str,
@@ -754,7 +755,7 @@ async def regenerate_workflow_steps(
     return f"Successfully regenerated steps for workflow {workflow_id}"
 
 
-async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id: str) -> str:
+async def generate_workflow_steps(ctx: dict[str, object], workflow_id: str, user_id: str) -> str:
     """
     Generate workflow steps for a workflow.
     Broadcasts WebSocket event when complete if it's a todo workflow.

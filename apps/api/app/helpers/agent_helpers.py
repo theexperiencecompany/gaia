@@ -52,6 +52,7 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
 )
 from app.utils.general_utils import clip_text
+from app.utils.json_helpers import list_bag
 from app.utils.multimodal import extract_text_content, has_media_blocks
 from shared.py.wide_events import log
 
@@ -565,7 +566,9 @@ async def execute_graph_silent(
             if new_data:
                 # Merge custom event tool_data into our array
                 if "tool_data" in new_data:
-                    for entry in new_data["tool_data"]:
+                    for entry in list_bag(new_data, "tool_data"):
+                        if not isinstance(entry, dict):
+                            continue
                         tool_data["tool_data"].append(entry)
                 # Always merge non-tool_data keys (follow_up_actions, etc.)
                 for key, value in new_data.items():

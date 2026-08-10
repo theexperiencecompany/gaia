@@ -42,7 +42,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 import json
-from typing import Any, cast
+from typing import cast
 
 from app.constants.cache import (
     STREAM_ACTIVE_PREFIX,
@@ -73,7 +73,7 @@ class StreamProgress:
     conversation_id: str
     user_id: str
     complete_message: str = ""
-    tool_data: dict[str, Any] = field(default_factory=dict)
+    tool_data: dict[str, object] = field(default_factory=dict)
     started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     is_cancelled: bool = False
     is_complete: bool = False
@@ -181,7 +181,7 @@ class StreamManager:
         log.debug(f"{LogTag.STARTUP} Stream cleaned up", stream_id=stream_id)
 
     @classmethod
-    async def _clear_active_index(cls, progress_data: dict[str, Any]) -> None:
+    async def _clear_active_index(cls, progress_data: dict[str, object]) -> None:
         """Drop the conversation -> stream reverse index for a finished stream."""
         user_id = progress_data.get("user_id")
         conversation_id = progress_data.get("conversation_id")
@@ -189,7 +189,7 @@ class StreamManager:
             await redis_cache.delete(f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}")
 
     @classmethod
-    async def _refresh_active_index(cls, progress_data: dict[str, Any]) -> None:
+    async def _refresh_active_index(cls, progress_data: dict[str, object]) -> None:
         """Extend the reverse index's TTL for a turn that is still streaming.
 
         Without this the index is written once at start_stream and expires after
@@ -422,7 +422,7 @@ class StreamManager:
         cls,
         stream_id: str,
         message_chunk: str = "",
-        tool_data: dict[str, Any] | None = None,
+        tool_data: dict[str, object] | None = None,
     ) -> None:
         """
         Update streaming progress in Redis.
@@ -462,7 +462,7 @@ class StreamManager:
         await cls._refresh_active_index(progress_data)
 
     @classmethod
-    async def get_progress(cls, stream_id: str) -> dict[str, Any] | None:
+    async def get_progress(cls, stream_id: str) -> dict[str, object] | None:
         """
         Get current stream progress.
 
@@ -470,7 +470,8 @@ class StreamManager:
             Progress data dict or None if not found
         """
         return cast(
-            "dict[str, Any] | None", await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
+            "dict[str, object] | None",
+            await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}"),
         )
 
     @classmethod

@@ -150,7 +150,7 @@ async def _spill_to_workspace(
     conversation_id: str,
     reason: str,
     status: str,
-    existing_additional_kwargs: dict[str, Any],
+    existing_additional_kwargs: dict[str, object],
 ) -> ToolMessage:
     """Write the RAW output to the workspace and return a compacted, offload-marked ToolMessage.
 
@@ -230,7 +230,7 @@ def _truncate_in_context(
     tool_call_id: str,
     reason: str,
     status: str,
-    existing_additional_kwargs: dict[str, Any],
+    existing_additional_kwargs: dict[str, object],
 ) -> ToolMessage | None:
     """Compact ``content_str`` in place, keeping its head and tail plus a loud marker.
 
@@ -296,7 +296,7 @@ async def compact_tool_output(
     status: str = "success",
     always_persist: bool = False,
     excluded: bool = False,
-    existing_additional_kwargs: dict[str, Any] | None = None,
+    existing_additional_kwargs: dict[str, object] | None = None,
 ) -> ToolMessage | None:
     """Decide-and-spill a tool output. The one canonical compaction path.
 

@@ -5,7 +5,6 @@ Provides type-safe event tracking with consistent naming conventions.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
 
 from posthog import Posthog
 
@@ -48,7 +47,7 @@ def _get_posthog_client() -> Posthog | None:
 
 def identify_user(
     user_id: str,
-    properties: dict[str, Any] | None = None,
+    properties: dict[str, object] | None = None,
 ) -> None:
     """
     Identify a user in PostHog with their properties.
@@ -82,7 +81,7 @@ def identify_user(
 def capture_event(
     user_id: str,
     event: str,
-    properties: dict[str, Any] | None = None,
+    properties: dict[str, object] | None = None,
 ) -> None:
     """
     Capture an analytics event in PostHog.
@@ -123,7 +122,7 @@ def track_signup(
     email: str,
     name: str | None = None,
     signup_method: str = LOGIN_METHOD_WORKOS,
-    properties: dict[str, Any] | None = None,
+    properties: dict[str, object] | None = None,
 ) -> None:
     """
     Track a user signup event.
@@ -166,7 +165,7 @@ def track_login(
     email: str,
     name: str | None = None,
     login_method: str = LOGIN_METHOD_WORKOS,
-    properties: dict[str, Any] | None = None,
+    properties: dict[str, object] | None = None,
 ) -> None:
     """
     Track a user login event.
@@ -205,7 +204,7 @@ def track_login(
 def track_logout(
     user_id: str,
     email: str,
-    properties: dict[str, Any] | None = None,
+    properties: dict[str, object] | None = None,
 ) -> None:
     """
     Track a user logout event.
@@ -233,7 +232,7 @@ def track_subscription_event(
     plan_name: str | None = None,
     amount: float | None = None,
     currency: str | None = None,
-    properties: dict[str, Any] | None = None,
+    properties: dict[str, object] | None = None,
 ) -> None:
     """
     Track subscription-related events.
@@ -316,7 +315,7 @@ def track_payment_event(
     payment_id: str | None = None,
     amount: float | None = None,
     currency: str | None = None,
-    properties: dict[str, Any] | None = None,
+    properties: dict[str, object] | None = None,
 ) -> None:
     """
     Track payment-related events.

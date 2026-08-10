@@ -20,6 +20,7 @@ from app.services.composio.composio_service import (
     get_composio_service,
 )
 from app.utils.general_utils import transform_gmail_message
+from app.utils.json_helpers import int_str_bag
 from shared.py.wide_events import MailContext, log
 
 
@@ -346,7 +347,7 @@ async def fetch_thread(user_id: str, thread_id: str) -> GmailToolResult:
                 messages = [transform_gmail_message(msg) for msg in result.messages]
 
                 # Sort messages by date (oldest first)
-                messages.sort(key=lambda msg: int(msg.get("internalDate", 0)))
+                messages.sort(key=lambda msg: int_str_bag(msg, "internalDate"))
                 result.messages = messages
 
             log.set_ns("mail", message_count=len(result.messages or []), success=True)

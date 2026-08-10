@@ -30,11 +30,12 @@ from app.models.user_models import AuthenticatedUser
 from app.services.cost_budget import get_cost, is_daily_budget_exhausted
 from app.services.limit_upsell import schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
+from app.utils.json_helpers import dict_bag, text_bag
 from shared.py.wide_events import log
 
 # Context variables to avoid parameter pollution
-user_context: ContextVar[dict[str, Any] | None] = ContextVar("user_context", default=None)
-rate_limit_context: ContextVar[dict[str, Any] | None] = ContextVar(
+user_context: ContextVar[dict[str, object] | None] = ContextVar("user_context", default=None)
+rate_limit_context: ContextVar[dict[str, object] | None] = ContextVar(
     "rate_limit_context", default=None
 )
 
@@ -88,7 +89,7 @@ def with_rate_limiting(
                 }
 
             if context and context.get("user_id"):
-                user_id = context["user_id"]
+                user_id = text_bag(context, "user_id")
                 initiator = context.get("initiator", "frontend")
 
                 # Skip rate limiting for system operations if configured
@@ -213,13 +214,16 @@ def with_rate_limiting(
                 rl_context = rate_limit_context.get()
                 if rl_context:
                     # Convert UsageInfo objects to dicts for JSON serialization
-                    usage_info_dict = {}
-                    for period, usage_info in rl_context["usage_info"].items():
+                    usage_info_dict: dict[str, object] = {}
+                    usage_info_bag = dict_bag(rl_context, "usage_info")
+                    for period, period_usage in usage_info_bag.items():
+                        if not isinstance(period_usage, UsageInfo):
+                            continue
                         usage_info_dict[period] = {
-                            "used": usage_info.used,
-                            "limit": usage_info.limit,
-                            "reset_time": usage_info.reset_time.isoformat()
-                            if usage_info.reset_time
+                            "used": period_usage.used,
+                            "limit": period_usage.limit,
+                            "reset_time": period_usage.reset_time.isoformat()
+                            if period_usage.reset_time
                             else None,
                         }
 
@@ -372,7 +376,9 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
         )
 
 
-def set_user_context(user_id: str, initiator: str = "frontend", **kwargs: object) -> dict[str, Any]:
+def set_user_context(
+    user_id: str, initiator: str = "frontend", **kwargs: object
+) -> dict[str, object]:
     """Set user context to avoid parameter pollution."""
     context = {"user_id": user_id, "initiator": initiator, **kwargs}
     user_context.set(context)
@@ -389,6 +395,6 @@ def clear_user_context() -> None:
     log.debug(f"{LogTag.API} Cleared user context")
 
 
-def get_current_rate_limit_info() -> dict[str, Any] | None:
+def get_current_rate_limit_info() -> dict[str, object] | None:
     """Get current rate limit information for the request."""
     return rate_limit_context.get()

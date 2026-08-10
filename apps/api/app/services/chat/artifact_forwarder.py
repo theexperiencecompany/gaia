@@ -12,7 +12,7 @@ truth) plus a lightweight ``{session_id, path, event}`` reference on the bot
 message so the card re-renders on reload. A per-turn ``mtime`` map, loaded once,
 makes whole-dir re-emits idempotent: an unchanged file is skipped entirely.
 
-The event payload itself stays ``dict[str, Any]`` here on purpose (Type Safety
+The event payload itself stays ``dict[str, object]`` here on purpose (Type Safety
 item 14): its wire contract is owned by :mod:`app.services.artifact_events`
 (the ``upsert``/``remove``/``upload`` builders) and consumed by
 ``app.utils.artifact_utils``, which both declare it as a plain dict — naming
@@ -25,7 +25,7 @@ import contextlib
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
 from redis.asyncio.client import PubSub
 
@@ -56,6 +56,7 @@ from app.utils.artifact_utils import (
     build_artifact_ref_entry,
 )
 from app.utils.background_tasks import spawn_background_task
+from app.utils.json_helpers import float_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 _warm_semaphore = asyncio.Semaphore(ARTIFACT_WARM_MAX_CONCURRENCY)
@@ -185,7 +186,11 @@ class ArtifactForwarder:
         registry: list[ArtifactRegistryEntry] = await get_conversation_artifacts(
             self.user_id, self.conversation_id
         )
-        self.registry_mtimes = {artifact["path"]: artifact.get("mtime") for artifact in registry}
+        self.registry_mtimes = {
+            text_bag(artifact, "path"): float_bag(artifact, "mtime")
+            for artifact in registry
+            if isinstance(artifact, dict)
+        }
 
     async def _consume(self, pubsub: PubSub) -> None:
         """Forward each artifact event; one bad event is logged, never fatal."""
@@ -208,10 +213,10 @@ class ArtifactForwarder:
 
     # ── Per-event routing ──────────────────────────────────────────────────
 
-    async def _handle_event(self, payload: dict[str, Any]) -> None:
+    async def _handle_event(self, payload: dict[str, object]) -> None:
         """Route one event: remove → drop, unchanged → skip, else → publish."""
-        path = payload.get("path")
-        event = payload.get("event")
+        path = text_opt_bag(payload, "path")
+        event = text_opt_bag(payload, "event")
         if event == "remove":
             await self._apply_remove(path)
         elif self._is_unchanged(path, payload):
@@ -220,18 +225,18 @@ class ArtifactForwarder:
         else:
             await self._apply_upsert(payload, path, event)
 
-    def _is_unchanged(self, path: str | None, payload: dict[str, Any]) -> bool:
+    def _is_unchanged(self, path: str | None, payload: dict[str, object]) -> bool:
         return path is not None and self.registry_mtimes.get(path) == payload.get("mtime")
 
     async def _apply_upsert(
-        self, payload: dict[str, Any], path: str | None, event: str | None
+        self, payload: dict[str, object], path: str | None, event: str | None
     ) -> None:
         """A new or changed file — the main pipeline."""
         if not path:
             return
         # Optimistic dedup: the live card is the user-facing truth; the Mongo
         # writes below are reload durability and must not gate it.
-        self.registry_mtimes[path] = payload.get("mtime")
+        self.registry_mtimes[path] = float_bag(payload, "mtime")
         self.stats.upserts += 1
 
         await self._stream_entry(build_artifact_full_entry(payload))  # 1. show live (full data)
@@ -297,7 +302,9 @@ class ArtifactForwarder:
                 error_type=type(e).__name__,
             )
 
-    def _maybe_deliver_to_bot(self, payload: dict[str, Any], path: str, event: str | None) -> None:
+    def _maybe_deliver_to_bot(
+        self, payload: dict[str, object], path: str, event: str | None
+    ) -> None:
         """Push an agent-generated artifact to a bot user's outbound queue, once.
 
         User uploads (``event == "upload"``) are skipped — the user already has
@@ -316,11 +323,11 @@ class ArtifactForwarder:
                 conversation_id=self.conversation_id,
                 path=path,
                 filename=path.rsplit("/", 1)[-1],
-                content_type=payload.get("content_type"),
+                content_type=text_opt_bag(payload, "content_type"),
             )
         )
 
-    def _maybe_warm_cache(self, payload: dict[str, Any], path: str, event: str | None) -> None:
+    def _maybe_warm_cache(self, payload: dict[str, object], path: str, event: str | None) -> None:
         """Warm the JuiceFS cache for follow-up-fetch files (those with no inline
         body); inlined files carry their body and never hit the file endpoint."""
         if event != "upsert" or payload.get("body"):
@@ -374,7 +381,9 @@ def _bot_source(source: str | None) -> ConversationSource | None:
     return cs if cs in OUTBOUND_QUEUES else None
 
 
-def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> dict[str, Any] | None:
+def _parse_artifact_message(
+    message: dict[str, object], conversation_id: str
+) -> dict[str, object] | None:
     """Decode a pub/sub message into an artifact payload for this conversation.
 
     Returns ``None`` when the message isn't a data frame, can't be parsed, or
@@ -383,12 +392,12 @@ def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> di
     if message.get("type") != "message":
         return None
     try:
-        payload = json.loads(message["data"])
+        payload = json.loads(text_bag(message, "data"))
     except (ValueError, TypeError):
         return None
     if payload.get("session_id") != conversation_id:
         return None
-    return cast(dict[str, Any], payload)
+    return cast(dict[str, object], payload)
 
 
 async def _close_pubsub(pubsub: PubSub, channel: str) -> None:

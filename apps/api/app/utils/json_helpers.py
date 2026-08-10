@@ -14,7 +14,16 @@ are the checked bridge from it to the typed slots the caller needs.
 
 from collections.abc import Mapping
 
-__all__ = ["dict_bag", "list_bag", "text_bag", "text_opt_bag", "int_bag", "float_bag", "bool_bag"]
+__all__ = [
+    "dict_bag",
+    "list_bag",
+    "text_bag",
+    "text_opt_bag",
+    "int_bag",
+    "int_opt_bag",
+    "float_bag",
+    "bool_bag",
+]
 
 
 def dict_bag(bag: Mapping[str, object], key: str) -> dict[str, object]:
@@ -43,6 +52,30 @@ def text_opt_bag(bag: Mapping[str, object], key: str) -> str | None:
     """
     value = bag.get(key)
     return value if isinstance(value, str) else None
+
+
+def int_str_bag(bag: Mapping[str, object], key: str, default: int = 0) -> int:
+    """The int under ``key``, accepting numeric strings (gmail millis pattern).
+
+    Some payloads (gmail ``internalDate``) serialize integers as strings; this
+    converts them like ``int(value)`` would, falling back to ``default`` when
+    the value is absent, not numeric, or not convertible.
+    """
+    value = bag.get(key)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def int_opt_bag(bag: Mapping[str, object], key: str) -> int | None:
+    """The int under ``key``, or None when absent or not an int."""
+    value = bag.get(key)
+    return value if isinstance(value, int) else None
 
 
 def float_bag(bag: Mapping[str, object], key: str, default: float = 0.0) -> float:
