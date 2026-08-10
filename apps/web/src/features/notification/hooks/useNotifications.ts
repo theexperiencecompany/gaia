@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NOTIFICATION_PAGE_SIZE } from "@/features/notification/constants";
 import { toast } from "@/lib/toast";
 
 import { NotificationsAPI } from "@/services/api/notifications";
@@ -23,8 +24,13 @@ interface UseNotificationsReturn {
   updateNotification: (notification: NotificationRecord) => void;
 }
 
+// `offset` is deliberately not accepted: the store is a single unkeyed entry
+// shared by every mount, so it cannot represent a page other than the first.
+// Excluding it makes that a compile error instead of a silent wrong page.
+type UseNotificationsHookOptions = Omit<UseNotificationsOptions, "offset">;
+
 export function useNotifications(
-  options: UseNotificationsOptions = {},
+  options: UseNotificationsHookOptions = {},
 ): UseNotificationsReturn {
   const {
     notifications: allNotifications,
@@ -37,12 +43,14 @@ export function useNotifications(
   const [loading, setLoading] = useState(!isLoaded);
   const [error, setError] = useState<string | null>(null);
 
-  const { limit, offset, channel_type } = options;
+  const { limit, channel_type } = options;
   // setFetching accessed via store.getState() inside fetchNotifications
 
-  // Always fetch the unfiltered dataset so every mount of this hook shares one
-  // store entry (and one request). Status/channel/limit narrowing is applied
-  // client-side via the memoized `notifications` below.
+  // One canonical request for the whole app: the first unfiltered page, at the
+  // API's maximum size. Caller options never reach the wire — status, channel
+  // and limit are view-level and applied client-side in the memo below. Sending
+  // a caller's `limit` here would both fetch a page that doesn't match what the
+  // other mounts expect and 422 for any value above the API's ceiling.
   const fetchNotifications = useCallback(
     async (force = false) => {
       const state = useNotificationStore.getState();
@@ -55,8 +63,7 @@ export function useNotifications(
         setLoading(true);
         setError(null);
         const response = await NotificationsAPI.getNotifications({
-          limit: Math.max(limit ?? 0, 100),
-          offset,
+          limit: NOTIFICATION_PAGE_SIZE,
         });
         setNotifications(response.notifications ?? []);
       } catch (err) {
@@ -69,7 +76,7 @@ export function useNotifications(
         setLoading(false);
       }
     },
-    [limit, offset, setNotifications],
+    [setNotifications],
   );
 
   const refetch = useCallback(

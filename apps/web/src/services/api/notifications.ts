@@ -11,7 +11,18 @@ import {
 /** Shape-only description of an unexpected payload — never its contents. */
 function describePayload(payload: unknown): string {
   if (typeof payload === "string") {
-    return `a ${payload.length}-char string starting "${payload.slice(0, 40)}"`;
+    // Classify by the first non-whitespace character rather than quoting the
+    // body. This still separates the cases that matter — an edge/proxy HTML
+    // page from truncated JSON from an empty body — without putting any of the
+    // response's bytes into the error, which could carry a token or user text.
+    const firstChar = payload.trimStart()[0];
+    const kind =
+      firstChar === "<"
+        ? " that looks like markup"
+        : firstChar === "{" || firstChar === "["
+          ? " that looks like truncated JSON"
+          : "";
+    return `a ${payload.length}-char string${kind}`;
   }
   if (payload === null || payload === undefined) return String(payload);
   if (Array.isArray(payload)) return `an array of ${payload.length}`;
