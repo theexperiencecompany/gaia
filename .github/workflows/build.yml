@@ -191,8 +191,13 @@ jobs:
 
     steps:
       # Prepare repository + tooling for affected check and optional image build.
+      # Full history: nx-set-shas resolves NX_BASE to the pre-push master SHA,
+      # which a shallow clone does not contain ("fatal: bad object" in the
+      # affected check). docker-release fetches full history for the same reason.
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set Nx SHAs
         uses: nrwl/nx-set-shas@v4
@@ -297,7 +302,7 @@ jobs:
           fi
 
       - name: Build and push Grafana image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: infra/docker/observability/grafana
           file: infra/docker/observability/grafana/Dockerfile

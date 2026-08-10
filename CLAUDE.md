@@ -347,13 +347,13 @@ Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-in
 ## Git Conventions
 
 - **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.
-- **`develop` is the base branch, not `master`.** All feature branches are created from and merged into `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `develop` as the base — not `master` or `main`.
+- **`master` is the single base branch.** All feature branches are created from and merged into `master`. There is no `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `master` as the base.
 - **NEVER merge pull requests.** Do not run `gh pr merge`, do not call any GitHub API merge endpoint, and do not take any action that merges a PR into any branch. PRs are merged by the team — not by Claude. This is an absolute rule with no exceptions.
 - Work is **not complete until `git push` succeeds.** Always push before ending a session.
-- **Never use `git pull --rebase` or `git rebase` when pulling/merging `origin/develop`.** Always use plain `git merge` — rebase inverts conflict markers (HEAD vs incoming) and causes confusion. Session close sequence (mandatory when code changed):
+- **Never use `git pull --rebase` or `git rebase` when pulling/merging `origin/master`.** Always use plain `git merge` — rebase inverts conflict markers (HEAD vs incoming) and causes confusion. Session close sequence (mandatory when code changed):
   ```bash
   git fetch origin
-  git merge origin/develop  # if syncing with develop; plain merge, no rebase
+  git merge origin/master  # if syncing with master; plain merge, no rebase
   git push
   git status  # must show "up to date with origin"
   ```

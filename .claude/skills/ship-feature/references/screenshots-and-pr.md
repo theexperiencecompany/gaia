@@ -24,7 +24,7 @@ the code cannot reach.
 The repo is public, so SHA-pinned raw URLs render in PR bodies. Screenshots
 travel on a dedicated branch so they never touch the PR diff:
 
-1. Create branch `screenshots/<feature-branch-name>` from `develop` (GitHub
+1. Create branch `screenshots/<feature-branch-name>` from `master` (GitHub
    MCP `create_branch`). Nothing triggers CI on `screenshots/*`.
 2. Upload each PNG with `create_or_update_file` (base64 content) under
    `<feature-branch-name>/`.
@@ -38,7 +38,7 @@ travel on a dedicated branch so they never touch the PR diff:
 
 Title: `<type>(<optional scope>): <description>` — a CI check validates the
 type against the allowed list in `pr-naming-conventions.yml` (read the list
-there; it drifts). Base: `develop`. If a repo PR template exists, fill it in
+there; it drifts). Base: `master`. If a repo PR template exists, fill it in
 — but the `## Before / After`, `## Verification`, and `## Not verified`
 sections below are mandatory evidence and always appear, template or not.
 With no template, use this body structure:

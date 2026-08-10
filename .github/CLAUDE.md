@@ -41,7 +41,7 @@ times on this repo: when the PR's `mergeable` state is `CONFLICTING`,
 `pull_request`-triggered runs are not created — silently, with no error,
 no queued entry, nothing. If CI "stopped" with no new runs, the first thing
 to check is `gh pr view --json mergeable`. Keep the branch merged with
-`develop`; re-merge and resolve before pushing further.
+`master`; re-merge and resolve before pushing further.
 
 ## Skipping work that isn't needed
 
@@ -52,7 +52,7 @@ Three layers, from cheap to precise:
    versa). Lanes skipped this way count as PASSING in the gate; a failed
    `changes` job fails the gate.
 2. **`main.yml` `detect` job** — `nx show projects --affected` (via
-   `nrwl/nx-set-shas`, base `develop`) computes the affected project lists
+   `nrwl/nx-set-shas`, base `master`) computes the affected project lists
    that gate build/test jobs and scope their `-p` arguments.
 3. **`scripts/ci/changed-files.sh` inside lanes** — scopes each tool to the
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
@@ -127,7 +127,7 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   re-enable). There is NO remote nx cache: each CI job recomputes everything.
   The Next.js compiler cache IS persisted (`actions/cache` on
   `apps/web/.next/cache` in main.yml build + desktop-pr-build prepare).
-- `nx.json` `defaultBase` is `develop` (the integration branch). CI passes
+- `nx.json` `defaultBase` is `master` (the single base branch). CI passes
   explicit bases; `defaultBase` matters for local `nx affected` / mise tasks.
 - Versions are pinned where a trusted SHA/number was resolvable (nx 22.7.7 in
   nx.json `installation`, uv 0.8.17, `uvx ruff@<uv.lock version>` in the ruff

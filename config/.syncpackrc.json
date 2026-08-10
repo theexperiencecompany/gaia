@@ -55,6 +55,12 @@
       "pinVersion": "workspace:*"
     },
     {
+      "label": "TS 7 has no compiler API; root aliases typescript@6 for nx release / @swc-node, apps keep 7 for tsc (https://nx.dev/docs/kb/typescript-7)",
+      "dependencies": ["typescript"],
+      "packages": ["gaia"],
+      "isIgnored": true
+    },
+    {
       "label": "All deps must agree across packages",
       "dependencies": ["**"]
     }

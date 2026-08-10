@@ -1,6 +1,6 @@
 name: Code Quality
 
-# Tech-debt prevention gates that run on every PR to develop or master.
+# Tech-debt prevention gates that run on every PR to master.
 # Each lane is independent so failures are isolated and parallelised. The
 # `quality-gate` job at the bottom is the single required check.
 #
@@ -16,11 +16,9 @@ name: Code Quality
 on:
   pull_request:
     branches:
-      - develop
       - master
   push:
     branches:
-      - develop
       - master
   workflow_dispatch:
 
@@ -165,6 +163,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - name: Per-file line count (default 400, relaxed 700, hard cap 1200)
         run: |
+          trap 'echo "::error::repro: pnpm run quality:size"' ERR
           echo "::group::File size scan"
           FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs)
           if [ "$FILES" = "__FULL__" ]; then
@@ -191,6 +190,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - name: Type / interface / enum location enforcer
         run: |
+          trap 'echo "::error::repro: node scripts/ci/check-types-location.mjs --enforce"' ERR
           echo "::group::types-location check"
           FILES=$(scripts/ci/changed-files.sh ts tsx)
           if [ "$FILES" = "__FULL__" ]; then
@@ -217,6 +217,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - name: Components-per-file enforcer
         run: |
+          trap 'echo "::error::repro: pnpm run quality:components"' ERR
           echo "::group::components-per-file check"
           FILES=$(scripts/ci/changed-files.sh tsx)
           if [ "$FILES" = "__FULL__" ]; then
@@ -243,6 +244,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - name: Copy-paste detection (jscpd, fails over 3% on changed lines)
         run: |
+          trap 'echo "::error::repro: pnpm run quality:dupe"' ERR
           echo "::group::jscpd"
           # Timeout + low-speed guard: a stalled HTTPS fetch dies in <=60s rather
           # than hanging until the job's timeout-minutes cap (a `cancelled` lane
@@ -608,6 +610,7 @@ jobs:
       - name: Full observability score — API + voice-agent + bots (details in job summary)
         run: |
           set -euo pipefail
+          trap 'echo "::error::repro: python3 tools/evlog_map --min-score 100  /  node scripts/ci/evlog-map-bots.mjs --min-score 100"' ERR
           echo "evlog map — python surface (apps/api + apps/voice-agent)"
           python3 tools/evlog_map --github-summary --no-write --min-score 100
           echo "evlog map — bots surface (apps/bots + libs/shared/ts)"
@@ -792,16 +795,7 @@ jobs:
   suppression-ratchet:
     name: "Suppression ratchet (no new # noqa / # type: ignore / biome-ignore)"
     needs: [changes]
-    # The develop -> master promotion PR is exempt. Its diff is every commit
-    # since the last release, and each of those was already ratcheted against
-    # develop on the way in — re-measuring the whole range against master
-    # reports ~27 files of grandfathered suppressions as new, failing the
-    # release for work that was reviewed weeks ago. head_ref/base_ref are set
-    # only on pull_request, so pushes to develop/master stay ratcheted, as do
-    # all feature PRs into develop.
-    if: >-
-      (needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true')
-      && !(github.base_ref == 'master' && github.head_ref == 'develop')
+    if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -811,7 +805,9 @@ jobs:
       - name: Diff vs base for newly introduced inline suppression comments
         env:
           # Push events have no PR base ref; diff against the pre-push SHA
-          # instead so a direct push to develop/master is ratcheted too.
+          # instead so a direct push to master is ratcheted too. Every commit
+          # in that range arrived via a PR that was itself ratcheted, so no
+          # promotion-range exemption is needed under master-only flow.
           # Through env, not inline ${{ }}, per this file's injection-safety
           # convention (see the type-check / build.yml AFFECTED_* comments).
           EVENT_BEFORE: ${{ github.event.before }}
@@ -840,6 +836,12 @@ jobs:
   gitleaks:
     name: Secret scanning (gitleaks)
     needs: [changes]
+    # Dependabot-triggered runs get Dependabot secrets, not repo secrets, so
+    # GITLEAKS_LICENSE is empty and the action hard-fails before scanning.
+    # Skip (gate counts skipped as passing): its PRs are machine-generated
+    # manifest/lockfile bumps, and every human commit stays scanned. To scan
+    # them too, mirror GITLEAKS_LICENSE into Dependabot secrets and drop this.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

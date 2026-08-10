@@ -14,7 +14,7 @@ runs:
       uses: ./.github/actions/setup-node-pnpm
 
     - name: Setup uv
-      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       with:
         version: "0.8.17"
         enable-cache: true
@@ -59,7 +59,7 @@ runs:
     # happens once per key rather than on every run.
     - name: Restore embedding models
       id: model-cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v6
       with:
         path: /tmp/fastembed_cache
         key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}
@@ -97,7 +97,7 @@ runs:
     # download is never what gets cached for every later run.
     - name: Save embedding models
       if: steps.model-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v6
       with:
         path: /tmp/fastembed_cache
         key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}
