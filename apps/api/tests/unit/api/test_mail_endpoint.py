@@ -22,19 +22,25 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
+from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
 from app.api.v1.endpoints.mail import (
     get_bulk_email_importance_summaries,
     get_email_importance_summaries,
     get_single_email_importance_summary,
     list_drafts_route,
     list_messages,
+    process_email,
+    search_emails,
+    send_email_route,
 )
 from app.constants.log_tags import LogTag
 from app.models.mail_models import (
     BulkEmailImportanceSummariesResponse,
+    ComposedEmailOutput,
     EmailActionRequest,
     EmailImportanceSummariesResponse,
     EmailImportanceSummaryResponse,
+    EmailRequest,
     GmailDraftsResponse,
     GmailEmailResult,
     GmailLabelsResult,
@@ -446,6 +452,23 @@ class TestSearchEmails:
         "app.api.v1.endpoints.mail.search_messages",
         new_callable=AsyncMock,
     )
+    async def test_search_emails_default_max_results_is_20(
+        self, mock_search: AsyncMock
+    ) -> None:
+        # Direct call: FastAPI reflects the route signature at decoration time,
+        # so an HTTP request can never see the function's own defaults. This
+        # pins the function contract for non-route callers.
+        mock_search.return_value = GmailMessagesResponse(messages=[])
+        await search_emails(user_id=USER_ID)
+
+        mock_search.assert_awaited_once_with(
+            user_id=USER_ID, query="", max_results=20, page_token=None
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.search_messages",
+        new_callable=AsyncMock,
+    )
     async def test_search_emails_service_error_returns_500(
         self, mock_search: AsyncMock, client: AsyncClient
     ):
@@ -454,6 +477,196 @@ class TestSearchEmails:
 
         assert response.status_code == 500
         assert response.json() == {"detail": "Gmail API error"}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/gmail/send (multipart form)
+# ---------------------------------------------------------------------------
+
+
+class TestSendEmailRoute:
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_route_returns_200_with_attachments(
+        self, mock_send: AsyncMock, mock_mail_log: MagicMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-001"}, "error": None, "successful": True}
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={
+                "to": "a@test.com, b@test.com",
+                "subject": "Subject",
+                "body": "Body",
+                "thread_id": "thread-1",
+                "cc": "cc1@test.com, cc2@test.com",
+                "bcc": "bcc1@test.com, bcc2@test.com",
+            },
+            files=[
+                ("attachments", ("a.txt", b"data-a", "text/plain")),
+                ("attachments", ("b.txt", b"data-b", "text/plain")),
+            ],
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "message_id": "sent-001",
+            "status": "Email sent successfully",
+            "attachments_count": 2,
+        }
+        mock_send.assert_awaited_once()
+        call_kwargs = mock_send.await_args.kwargs
+        assert call_kwargs["user_id"] == USER_ID
+        assert call_kwargs["to"] == "a@test.com"
+        assert call_kwargs["extra_recipients"] == ["b@test.com"]
+        assert call_kwargs["subject"] == "Subject"
+        assert call_kwargs["body"] == "Body"
+        assert call_kwargs["cc_list"] == ["cc1@test.com", "cc2@test.com"]
+        assert call_kwargs["bcc_list"] == ["bcc1@test.com", "bcc2@test.com"]
+        assert call_kwargs["thread_id"] == "thread-1"
+        attachments = call_kwargs["attachments"]
+        assert [attachment.filename for attachment in attachments] == ["a.txt", "b.txt"]
+        mock_mail_log.set.assert_any_call(
+            operation="send_email",
+            thread_id="thread-1",
+            has_attachment=True,
+            attachments_count=2,
+            outcome="success",
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_route_single_recipient_uses_defaults(
+        self, mock_send: AsyncMock, mock_mail_log: MagicMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-002"}, "error": None, "successful": True}
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={"to": "a@test.com", "subject": "Subject", "body": "Body"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "message_id": "sent-002",
+            "status": "Email sent successfully",
+            "attachments_count": 0,
+        }
+        mock_send.assert_awaited_once_with(
+            user_id=USER_ID,
+            to="a@test.com",
+            extra_recipients=[],
+            subject="Subject",
+            body="Body",
+            cc_list=None,
+            bcc_list=None,
+            attachments=None,
+            thread_id=None,
+        )
+        mock_mail_log.set.assert_any_call(
+            operation="send_email",
+            thread_id=None,
+            has_attachment=False,
+            attachments_count=0,
+            outcome="success",
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_route_strips_whitespace_and_empty_segments(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-003"}, "error": None, "successful": True}
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={
+                "to": "a@test.com, , b@test.com ,",
+                "subject": "Subject",
+                "body": "Body",
+            },
+        )
+
+        assert response.status_code == 200
+        mock_send.assert_awaited_once_with(
+            user_id=USER_ID,
+            to="a@test.com",
+            extra_recipients=["b@test.com"],
+            subject="Subject",
+            body="Body",
+            cc_list=None,
+            bcc_list=None,
+            attachments=None,
+            thread_id=None,
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_route_service_failure_returns_500(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": None, "error": "Gmail rejected", "successful": False}
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={"to": "a@test.com", "subject": "Subject", "body": "Body"},
+        )
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Gmail rejected"}
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_route_failure_without_error_uses_default_detail(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": None, "error": None, "successful": False}
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={"to": "a@test.com", "subject": "Subject", "body": "Body"},
+        )
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Failed to send email"}
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_route_service_error_returns_500(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.side_effect = Exception("SMTP down")
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={"to": "a@test.com", "subject": "Subject", "body": "Body"},
+        )
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Failed to send email: SMTP down"}
+
+    async def test_send_route_missing_to_returns_422(self, client: AsyncClient):
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={"subject": "Subject", "body": "Body"},
+        )
+        assert response.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -573,6 +786,304 @@ class TestSendEmailJson:
             f"{MAIL_BASE}/gmail/send-json",
             json={"to": ["a@test.com"], "subject": "Test"},
         )
+        assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/mail/ai/compose
+# ---------------------------------------------------------------------------
+
+
+class TestProcessEmail:
+    @patch(
+        "app.api.v1.endpoints.mail.search_notes_by_similarity",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.mail.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_compose_returns_200_with_full_prompt(
+        self,
+        mock_invoke: AsyncMock,
+        mock_notes: AsyncMock,
+        mock_mail_log: MagicMock,
+        client: AsyncClient,
+    ):
+        mock_notes.return_value = []
+        mock_invoke.return_value = ComposedEmailOutput(
+            subject="Re: invoice", body="Here is the email body"
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/mail/ai/compose",
+            json={
+                "prompt": "Write an email about invoices",
+                "subject": "Old subject",
+                "body": "Old body",
+                "writingStyle": "Friendly",
+                "contentLength": "Shorten",
+                "clarityOption": "Simplify",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"subject": "Re: invoice", "body": "Here is the email body"}
+        mock_notes.assert_awaited_once_with(
+            input_text="Write an email about invoices", user_id=USER_ID
+        )
+        # FAKE_USER carries no onboarding block, so the learned-style slot is
+        # empty; the exact prompt pins every value the endpoint formats in.
+        expected_prompt = EMAIL_COMPOSER.format(
+            sender_name="Test User",
+            subject="Old subject",
+            body="Old body",
+            writing_style="Friendly",
+            content_length="Shorten",
+            clarity_option="Simplify",
+            notes="No relevant notes found.",
+            prompt="Write an email about invoices",
+            learned_writing_style="",
+        )
+        mock_invoke.assert_awaited_once_with(
+            ComposedEmailOutput,
+            expected_prompt,
+            label="mail_compose",
+            config={"configurable": {"user_id": USER_ID}},
+        )
+        mock_mail_log.set.assert_any_call(mail={"operation": "compose"})
+        mock_mail_log.set.assert_any_call(user={"id": USER_ID})
+
+    @patch(
+        "app.api.v1.endpoints.mail.search_notes_by_similarity",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.mail.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_compose_uses_defaults_for_missing_fields(
+        self,
+        mock_invoke: AsyncMock,
+        mock_notes: AsyncMock,
+        client: AsyncClient,
+    ):
+        mock_notes.return_value = []
+        mock_invoke.return_value = ComposedEmailOutput(subject="S", body="B")
+        response = await client.post(
+            f"{MAIL_BASE}/mail/ai/compose", json={"prompt": "Write an email"}
+        )
+
+        assert response.status_code == 200
+        expected_prompt = EMAIL_COMPOSER.format(
+            sender_name="Test User",
+            subject="empty",
+            body="empty",
+            writing_style="Professional",
+            content_length="None",
+            clarity_option="None",
+            notes="No relevant notes found.",
+            prompt="Write an email",
+            learned_writing_style="",
+        )
+        mock_invoke.assert_awaited_once_with(
+            ComposedEmailOutput,
+            expected_prompt,
+            label="mail_compose",
+            config={"configurable": {"user_id": USER_ID}},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.search_notes_by_similarity",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.mail.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_compose_joins_notes_into_prompt(
+        self,
+        mock_invoke: AsyncMock,
+        mock_notes: AsyncMock,
+        client: AsyncClient,
+    ):
+        # The second note has no "content" key: the endpoint must fall back to
+        # the empty string rather than crashing the join.
+        mock_notes.return_value = [{"content": "note one"}, {"title": "no content"}]
+        mock_invoke.return_value = ComposedEmailOutput(subject="S", body="B")
+        response = await client.post(
+            f"{MAIL_BASE}/mail/ai/compose", json={"prompt": "Write an email"}
+        )
+
+        assert response.status_code == 200
+        expected_prompt = EMAIL_COMPOSER.format(
+            sender_name="Test User",
+            subject="empty",
+            body="empty",
+            writing_style="Professional",
+            content_length="None",
+            clarity_option="None",
+            notes="note one- ",
+            prompt="Write an email",
+            learned_writing_style="",
+        )
+        mock_invoke.assert_awaited_once_with(
+            ComposedEmailOutput,
+            expected_prompt,
+            label="mail_compose",
+            config={"configurable": {"user_id": USER_ID}},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.search_notes_by_similarity",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.mail.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_compose_formats_learned_writing_style_block(
+        self,
+        mock_invoke: AsyncMock,
+        mock_notes: AsyncMock,
+        client: AsyncClient,
+    ):
+        mock_notes.return_value = []
+        mock_invoke.return_value = ComposedEmailOutput(subject="S", body="B")
+        # Real format_writing_style_for_prompt: the exact block below is what it
+        # renders for this onboarding payload, and the exact prompt pins that
+        # the endpoint feeds the onboarding writing style through it.
+        learned_block = (
+            "Learned Writing Style (match this tone and voice when composing the email):\n"
+            "  Style: Concise and direct\n"
+            '  Example email in their voice:\n    "Hi\n\nShort paras.\n\nBest\nAda"'
+        )
+
+        result = await process_email(
+            EmailRequest(prompt="Write an email"),
+            current_user={
+                "user_id": USER_ID,
+                "name": "Ada",
+                "onboarding": {
+                    "writing_style": {
+                        "user_edited_summary": "Concise and direct",
+                        "example": {
+                            "greeting": "Hi",
+                            "body": ["Short paras."],
+                            "signoff": "Best",
+                            "name": "Ada",
+                        },
+                    }
+                },
+            },
+        )
+
+        assert result == ComposedEmailOutput(subject="S", body="B")
+        expected_prompt = EMAIL_COMPOSER.format(
+            sender_name="Ada",
+            subject="empty",
+            body="empty",
+            writing_style="Professional",
+            content_length="None",
+            clarity_option="None",
+            notes="No relevant notes found.",
+            prompt="Write an email",
+            learned_writing_style=learned_block,
+        )
+        mock_invoke.assert_awaited_once_with(
+            ComposedEmailOutput,
+            expected_prompt,
+            label="mail_compose",
+            config={"configurable": {"user_id": USER_ID}},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.search_notes_by_similarity",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.mail.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_compose_uses_none_sender_name_when_missing(
+        self,
+        mock_invoke: AsyncMock,
+        mock_notes: AsyncMock,
+    ) -> None:
+        # No "name" key in the auth context: the endpoint must fall back to
+        # the literal "none" in the prompt (the wire contract the composer
+        # reads), not crash or substitute something else.
+        mock_notes.return_value = []
+        mock_invoke.return_value = ComposedEmailOutput(subject="S", body="B")
+
+        result = await process_email(
+            EmailRequest(prompt="Write an email"),
+            current_user={"user_id": USER_ID},
+        )
+
+        assert result == ComposedEmailOutput(subject="S", body="B")
+        expected_prompt = EMAIL_COMPOSER.format(
+            sender_name="none",
+            subject="empty",
+            body="empty",
+            writing_style="Professional",
+            content_length="None",
+            clarity_option="None",
+            notes="No relevant notes found.",
+            prompt="Write an email",
+            learned_writing_style="",
+        )
+        mock_invoke.assert_awaited_once_with(
+            ComposedEmailOutput,
+            expected_prompt,
+            label="mail_compose",
+            config={"configurable": {"user_id": USER_ID}},
+        )
+
+    @patch(
+        "app.api.v1.endpoints.mail.search_notes_by_similarity",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.mail.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_compose_missing_user_id_is_wrapped_in_500(
+        self, mock_invoke: AsyncMock, mock_notes: AsyncMock
+    ) -> None:
+        mock_notes.return_value = []
+        mock_invoke.return_value = ComposedEmailOutput(subject="S", body="B")
+        # Direct call: require_integration rejects a user without an id before
+        # the handler runs over HTTP. The handler's own 401 guard sits inside
+        # the try, and this route has no ``except HTTPException`` re-raise, so
+        # the catch-all wraps it: str(HTTPException(401, ...)) is
+        # "401: User ID is required" under a 500.
+        with pytest.raises(HTTPException) as exc_info:
+            await process_email(EmailRequest(prompt="Write an email"), current_user={})
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "401: User ID is required"
+
+    @patch(
+        "app.api.v1.endpoints.mail.search_notes_by_similarity",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.mail.ainvoke_structured",
+        new_callable=AsyncMock,
+    )
+    async def test_compose_llm_error_returns_500(
+        self, mock_invoke: AsyncMock, mock_notes: AsyncMock, client: AsyncClient
+    ):
+        mock_notes.return_value = []
+        mock_invoke.side_effect = Exception("LLM down")
+        response = await client.post(
+            f"{MAIL_BASE}/mail/ai/compose", json={"prompt": "Write an email"}
+        )
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "LLM down"}
+
+    async def test_compose_missing_prompt_returns_422(self, client: AsyncClient):
+        response = await client.post(f"{MAIL_BASE}/mail/ai/compose", json={})
         assert response.status_code == 422
 
 
