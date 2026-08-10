@@ -222,10 +222,14 @@ class TestAddTabSpace:
             ("line1\nline2", 1, "\tline1\n\tline2"),
             ("line1\nline2\nline3", 2, "\t\tline1\n\t\tline2\n\t\tline3"),
             ("single", 3, "\t\t\tsingle"),
+            ("a  b\nc", 1, "\ta  b\n\tc"),
         ],
     )
     def test_add_tab_space(self, text: str, n: int, expected: str) -> None:
         assert _add_tab_space(text, n) == expected
+
+    def test_default_tab_count_is_zero(self) -> None:
+        assert _add_tab_space("hello") == "hello"
 
 
 class TestDivider:
@@ -292,6 +296,23 @@ class TestCallout:
         result = _callout("## Heading", icon)
         # emoji is "" so formatted_emoji is "", heading match fires
         assert result == "> ## Heading"
+
+    def test_heading_embedded_in_text_not_matched(self) -> None:
+        """Heading regex is anchored — '#' appearing mid-text is not a heading."""
+        assert _callout("Text with # NotHeading", None) == "> Text with # NotHeading"
+
+    def test_heading_requires_space_after_hashes(self) -> None:
+        assert _callout("#Title", None) == "> #Title"
+
+    def test_six_hash_heading_boundary_with_emoji(self) -> None:
+        """Six hashes is the max heading level; emoji moves after the hashes."""
+        icon = {"type": "emoji", "emoji": "💡"}
+        assert _callout("###### Six", icon) == "> ###### 💡 Six"
+
+    def test_seven_hash_heading_exceeds_max_level(self) -> None:
+        """Seven hashes is not a heading — emoji stays at the start of the line."""
+        icon = {"type": "emoji", "emoji": "💡"}
+        assert _callout("####### Seven", icon) == "> 💡 ####### Seven"
 
 
 class TestImage:
@@ -394,6 +415,24 @@ class TestRichTextToMarkdown:
     def test_equation_missing_expression(self) -> None:
         rich_text = [{"type": "equation", "equation": {}}]
         assert rich_text_to_markdown(rich_text) == "$$"
+
+    def test_equation_item_without_equation_key(self) -> None:
+        """A missing equation payload defaults to an empty expression."""
+        rich_text = [{"type": "equation"}]
+        assert rich_text_to_markdown(rich_text) == "$$"
+
+    def test_equation_item_skips_annotation_and_link_handling(self) -> None:
+        """Equation items return immediately — plain_text/href are ignored."""
+        rich_text = [
+            {
+                "type": "equation",
+                "equation": {"expression": "x"},
+                "plain_text": "ignored",
+                "href": "https://example.com",
+            },
+            {"type": "text", "plain_text": "after", "annotations": {}},
+        ]
+        assert rich_text_to_markdown(rich_text) == "$x$after"
 
     def test_text_with_bold_annotation(self) -> None:
         rich_text = [
@@ -520,6 +559,22 @@ class TestBlockToMarkdown:
         }
         assert block_to_markdown(block) == "```python\nprint('hi')\n```"
 
+    def test_code_block_plain_text_language_normalized(self) -> None:
+        block = {
+            "type": "code",
+            "code": {
+                "language": "plain text",
+                "rich_text": [
+                    {
+                        "type": "text",
+                        "plain_text": "some text",
+                        "annotations": {},
+                    }
+                ],
+            },
+        }
+        assert block_to_markdown(block) == "```text\nsome text\n```"
+
     def test_quote(self) -> None:
         block = {
             "type": "quote",
@@ -603,6 +658,15 @@ class TestBlockToMarkdown:
         }
         assert block_to_markdown(block) == "- [ ] Pending"
 
+    def test_to_do_missing_checked_defaults_unchecked(self) -> None:
+        block = {
+            "type": "to_do",
+            "to_do": {
+                "rich_text": [{"type": "text", "plain_text": "Pending", "annotations": {}}],
+            },
+        }
+        assert block_to_markdown(block) == "- [ ] Pending"
+
     def test_toggle(self) -> None:
         block = {
             "type": "toggle",
@@ -611,7 +675,7 @@ class TestBlockToMarkdown:
             },
         }
         result = block_to_markdown(block)
-        assert "<details><summary>Toggle text</summary>" in result
+        assert result == "<details><summary>Toggle text</summary></details>"
 
     def test_image_external(self) -> None:
         block = {
@@ -623,6 +687,99 @@ class TestBlockToMarkdown:
             },
         }
         assert block_to_markdown(block) == "![img.png](https://example.com/img.png)"
+
+    def test_image_external_no_url(self) -> None:
+        block = {
+            "type": "image",
+            "image": {
+                "type": "external",
+                "external": {},
+                "caption": [],
+            },
+        }
+        assert block_to_markdown(block) == "![image]()"
+
+    def test_image_url_without_slash(self) -> None:
+        """A URL with no '/' can't produce a filename — title stays 'image'."""
+        block = {
+            "type": "image",
+            "image": {
+                "type": "external",
+                "external": {"url": "photo.jpg"},
+                "caption": [],
+            },
+        }
+        assert block_to_markdown(block) == "![image](photo.jpg)"
+
+    def test_image_caption_item_missing_plain_text(self) -> None:
+        block = {
+            "type": "image",
+            "image": {
+                "type": "external",
+                "external": {"url": "https://example.com/img.png"},
+                "caption": [{"type": "text"}],
+            },
+        }
+        assert block_to_markdown(block) == "![img.png](https://example.com/img.png)"
+
+    def test_image_caption_whitespace_only_falls_back_to_filename(self) -> None:
+        block = {
+            "type": "image",
+            "image": {
+                "type": "external",
+                "external": {"url": "https://example.com/img.png"},
+                "caption": [{"plain_text": "   "}],
+            },
+        }
+        assert block_to_markdown(block) == "![img.png](https://example.com/img.png)"
+
+    def test_image_caption_preserves_non_whitespace(self) -> None:
+        block = {
+            "type": "image",
+            "image": {
+                "type": "external",
+                "external": {"url": "https://example.com/img.png"},
+                "caption": [{"plain_text": "  My caption  "}],
+            },
+        }
+        assert block_to_markdown(block) == "![My caption](https://example.com/img.png)"
+
+    def test_image_block_without_image_data(self) -> None:
+        block = {"type": "image"}
+        assert block_to_markdown(block) == "![image]()"
+
+    def test_image_data_without_caption_key(self) -> None:
+        block = {
+            "type": "image",
+            "image": {
+                "type": "external",
+                "external": {"url": "https://example.com/img.png"},
+            },
+        }
+        assert block_to_markdown(block) == "![img.png](https://example.com/img.png)"
+
+    def test_image_caption_multiple_items_concatenated(self) -> None:
+        block = {
+            "type": "image",
+            "image": {
+                "type": "external",
+                "external": {"url": "https://example.com/img.png"},
+                "caption": [{"plain_text": "A"}, {"plain_text": "B"}],
+            },
+        }
+        assert block_to_markdown(block) == "![AB](https://example.com/img.png)"
+
+    def test_image_external_without_external_key(self) -> None:
+        block = {"type": "image", "image": {"type": "external"}}
+        assert block_to_markdown(block) == "![image]()"
+
+    def test_image_file_without_file_key(self) -> None:
+        block = {"type": "image", "image": {"type": "file"}}
+        assert block_to_markdown(block) == "![image]()"
+
+    def test_image_file_without_url(self) -> None:
+        block = {"type": "image", "image": {"type": "file", "file": {}}}
+        assert block_to_markdown(block) == "![image]()"
 
     def test_image_file(self) -> None:
         block = {
@@ -658,6 +815,10 @@ class TestBlockToMarkdown:
         }
         assert block_to_markdown(block) == "$$\na^2 + b^2 = c^2\n$$"
 
+    def test_equation_block_missing_expression(self) -> None:
+        block = {"type": "equation", "equation": {}}
+        assert block_to_markdown(block) == "$$\n\n$$"
+
     def test_table_row(self) -> None:
         block = {
             "type": "table_row",
@@ -669,6 +830,10 @@ class TestBlockToMarkdown:
             },
         }
         assert block_to_markdown(block) == "| A | B |"
+
+    def test_table_row_empty_cells(self) -> None:
+        block = {"type": "table_row", "table_row": {"cells": []}}
+        assert block_to_markdown(block) == "|  |"
 
     def test_table_type_returns_placeholder(self) -> None:
         block = {"type": "table", "table": {}}
@@ -697,6 +862,94 @@ class TestBlockToMarkdown:
         }
         assert block_to_markdown(block) == "[My Video](https://youtube.com/v)"
 
+    def test_video_caption_whitespace_only_falls_back_to_filename(self) -> None:
+        block = {
+            "type": "video",
+            "video": {
+                "type": "external",
+                "external": {"url": "https://youtube.com/watch?v=abc"},
+                "caption": [{"plain_text": "   "}],
+            },
+        }
+        assert block_to_markdown(block) == "[watch?v=abc](https://youtube.com/watch?v=abc)"
+
+    def test_video_caption_item_missing_plain_text(self) -> None:
+        block = {
+            "type": "video",
+            "video": {
+                "type": "external",
+                "external": {"url": "https://youtube.com/watch?v=abc"},
+                "caption": [{"type": "text"}],
+            },
+        }
+        assert block_to_markdown(block) == "[watch?v=abc](https://youtube.com/watch?v=abc)"
+
+    def test_video_url_without_slash(self) -> None:
+        block = {
+            "type": "video",
+            "video": {
+                "type": "external",
+                "external": {"url": "video.mp4"},
+                "caption": [],
+            },
+        }
+        assert block_to_markdown(block) == "[video](video.mp4)"
+
+    def test_video_external_no_url(self) -> None:
+        block = {
+            "type": "video",
+            "video": {
+                "type": "external",
+                "external": {},
+                "caption": [],
+            },
+        }
+        assert block_to_markdown(block) == "[video]()"
+
+    def test_video_data_without_caption_key(self) -> None:
+        block = {
+            "type": "video",
+            "video": {
+                "type": "external",
+                "external": {"url": "https://youtube.com/watch?v=abc"},
+            },
+        }
+        assert block_to_markdown(block) == "[watch?v=abc](https://youtube.com/watch?v=abc)"
+
+    def test_video_caption_multiple_items_concatenated(self) -> None:
+        block = {
+            "type": "video",
+            "video": {
+                "type": "external",
+                "external": {"url": "https://youtube.com/watch?v=abc"},
+                "caption": [{"plain_text": "A"}, {"plain_text": "B"}],
+            },
+        }
+        assert block_to_markdown(block) == "[AB](https://youtube.com/watch?v=abc)"
+
+    def test_video_external_without_external_key(self) -> None:
+        block = {"type": "video", "video": {"type": "external"}}
+        assert block_to_markdown(block) == "[video]()"
+
+    def test_video_file_without_file_key(self) -> None:
+        block = {"type": "video", "video": {"type": "file"}}
+        assert block_to_markdown(block) == "[video]()"
+
+    def test_video_file_without_url(self) -> None:
+        block = {"type": "video", "video": {"type": "file", "file": {}}}
+        assert block_to_markdown(block) == "[video]()"
+
+    def test_file_block_with_url(self) -> None:
+        block = {
+            "type": "file",
+            "file": {
+                "type": "external",
+                "external": {"url": "https://example.com/doc.txt"},
+                "caption": [],
+            },
+        }
+        assert block_to_markdown(block) == "[doc.txt](https://example.com/doc.txt)"
+
     def test_file_block_empty_content(self) -> None:
         block = {"type": "file", "file": {}}
         assert block_to_markdown(block) == ""
@@ -718,6 +971,10 @@ class TestBlockToMarkdown:
             "bookmark": {"url": "https://example.com"},
         }
         assert block_to_markdown(block) == "[bookmark](https://example.com)"
+
+    def test_bookmark_missing_url(self) -> None:
+        block = {"type": "bookmark", "bookmark": {}}
+        assert block_to_markdown(block) == "[bookmark]()"
 
     def test_embed(self) -> None:
         block = {
@@ -754,12 +1011,30 @@ class TestBlockToMarkdown:
         }
         assert block_to_markdown(block) == "[link_to_page]()"
 
+    def test_link_to_page_missing_page_id(self) -> None:
+        block = {
+            "type": "link_to_page",
+            "link_to_page": {"type": "page_id"},
+        }
+        assert block_to_markdown(block) == "[link_to_page](https://www.notion.so/)"
+
+    def test_link_to_page_missing_database_id(self) -> None:
+        block = {
+            "type": "link_to_page",
+            "link_to_page": {"type": "database_id"},
+        }
+        assert block_to_markdown(block) == "[link_to_page](https://www.notion.so/)"
+
     def test_child_page(self) -> None:
         block = {
             "type": "child_page",
             "child_page": {"title": "My Page"},
         }
         assert block_to_markdown(block) == "## My Page"
+
+    def test_child_page_no_title(self) -> None:
+        block = {"type": "child_page", "child_page": {}}
+        assert block_to_markdown(block) == "## "
 
     def test_child_database(self) -> None:
         block = {
@@ -788,6 +1063,37 @@ class TestBlockToMarkdown:
     def test_unknown_block_type_no_rich_text(self) -> None:
         block = {"type": "column_list", "column_list": {}}
         assert block_to_markdown(block) == ""
+
+    def test_block_type_without_data_key(self) -> None:
+        """A type with no matching data key degrades to empty values."""
+        assert block_to_markdown({"type": "paragraph"}) == ""
+        assert block_to_markdown({"type": "code"}) == "```\n\n```"
+        assert block_to_markdown({"type": "callout"}) == "> "
+        assert block_to_markdown({"type": "numbered_list_item"}) == "- "
+        assert block_to_markdown({"type": "to_do"}) == "- [ ] "
+        assert block_to_markdown({"type": "child_page"}) == "## "
+        assert block_to_markdown({"type": "child_database"}) == "## child_database"
+        assert block_to_markdown({"type": "bookmark"}) == "[bookmark]()"
+        assert block_to_markdown({"type": "link_to_page"}) == "[link_to_page]()"
+        assert block_to_markdown({"type": "table_row"}) == "|  |"
+        assert block_to_markdown({"type": "video"}) == ""
+        assert block_to_markdown({"type": "file"}) == ""
+        assert block_to_markdown({"type": "equation"}) == "$$\n\n$$"
+
+    def test_text_key_fallback(self) -> None:
+        """Some blocks use 'text' instead of 'rich_text'."""
+        block = {
+            "type": "custom",
+            "custom": {"text": [{"plain_text": "T", "annotations": {}}]},
+        }
+        assert block_to_markdown(block) == "T"
+
+    def test_code_block_without_language_key(self) -> None:
+        block = {
+            "type": "code",
+            "code": {"rich_text": [{"type": "text", "plain_text": "x = 1", "annotations": {}}]},
+        }
+        assert block_to_markdown(block) == "```\nx = 1\n```"
 
 
 # =============================================================================
@@ -855,6 +1161,62 @@ class TestBlocksToMarkdown:
             },
         ]
         assert blocks_to_markdown(blocks) == "Visible"  # type: ignore[arg-type]
+
+    def test_unsupported_block_children_skipped_too(self) -> None:
+        """The continue skips the block AND its children."""
+        blocks = [
+            {
+                "type": "unsupported",
+                "children": [
+                    {
+                        "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": [
+                                {"type": "text", "plain_text": "Hidden", "annotations": {}}
+                            ]
+                        },
+                    }
+                ],
+            }
+        ]
+        assert blocks_to_markdown(blocks) == ""
+
+    def test_empty_block_content_followed_by_content(self) -> None:
+        """Empty markdown is dropped without leaving a leading newline."""
+        blocks = [
+            {"type": "paragraph", "paragraph": {"rich_text": []}},
+            {
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "plain_text": "Hello", "annotations": {}}]
+                },
+            },
+        ]
+        assert blocks_to_markdown(blocks) == "Hello"
+
+    def test_children_producing_empty_markdown_not_appended(self) -> None:
+        blocks = [
+            {
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {
+                    "rich_text": [{"type": "text", "plain_text": "Parent", "annotations": {}}]
+                },
+                "children": [{"type": "paragraph", "paragraph": {"rich_text": []}}],
+            }
+        ]
+        assert blocks_to_markdown(blocks) == "- Parent"
+
+    def test_include_block_ids_false_ignores_ids(self) -> None:
+        blocks = [
+            {
+                "id": "block-123",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "plain_text": "Text", "annotations": {}}]
+                },
+            }
+        ]
+        assert blocks_to_markdown(blocks) == "Text"
 
     def test_nesting(self) -> None:
         blocks = [
@@ -1007,6 +1369,16 @@ class TestSimplifyBlock:
         result = simplify_block(block)
         assert result["title"] == "My Page"
 
+    def test_child_page_no_title(self) -> None:
+        block = {"id": "p1", "type": "child_page", "child_page": {}}
+        result = simplify_block(block)
+        assert result["title"] == ""
+
+    def test_child_database_no_title(self) -> None:
+        block = {"id": "d1", "type": "child_database", "child_database": {}}
+        result = simplify_block(block)
+        assert result["title"] == ""
+
     def test_child_database(self) -> None:
         block = {
             "id": "d1",
@@ -1028,6 +1400,17 @@ class TestSimplifyBlock:
         result = simplify_block(block)
         assert result["checked"] is True
         assert result["text"] == "Task"
+
+    def test_to_do_missing_checked_defaults_false(self) -> None:
+        block = {
+            "id": "t1",
+            "type": "to_do",
+            "to_do": {
+                "rich_text": [{"plain_text": "Task"}],
+            },
+        }
+        result = simplify_block(block)
+        assert result["checked"] is False
 
     def test_code(self) -> None:
         block = {
@@ -1070,6 +1453,25 @@ class TestSimplifyBlock:
         assert result["url"] == "https://s3.example.com/img.png"
         assert result["caption"] == ""
 
+    def test_image_missing_url_and_caption(self) -> None:
+        block = {"id": "i3", "type": "image", "image": {}}
+        result = simplify_block(block)
+        assert result["url"] == ""
+        assert result["caption"] == ""
+
+    def test_image_caption_item_missing_plain_text(self) -> None:
+        block = {
+            "id": "i4",
+            "type": "image",
+            "image": {
+                "type": "external",
+                "external": {"url": "https://example.com/img.png"},
+                "caption": [{"type": "text"}],
+            },
+        }
+        result = simplify_block(block)
+        assert result["caption"] == ""
+
     def test_video(self) -> None:
         block = {
             "id": "v1",
@@ -1091,6 +1493,138 @@ class TestSimplifyBlock:
         }
         result = simplify_block(block)
         assert result["url"] == "https://example.com"
+
+    def test_bookmark_missing_url(self) -> None:
+        block = {"id": "b1", "type": "bookmark", "bookmark": {}}
+        result = simplify_block(block)
+        assert result["url"] == ""
+
+    def test_block_type_without_data_key(self) -> None:
+        """A block with a type but no matching data key has no text."""
+        block = {"id": "x", "type": "paragraph"}
+        result = simplify_block(block)
+        assert "text" not in result
+
+    def test_missing_id_defaults_empty(self) -> None:
+        block = {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "Hi"}]}}
+        result = simplify_block(block)
+        assert result["id"] == ""
+
+    def test_rich_text_item_missing_plain_text(self) -> None:
+        block = {
+            "id": "t1",
+            "type": "paragraph",
+            "paragraph": {"rich_text": [{"type": "text"}]},
+        }
+        result = simplify_block(block)
+        assert result["text"] == ""
+
+    def test_child_page_without_data_key(self) -> None:
+        block = {"id": "p1", "type": "child_page"}
+        result = simplify_block(block)
+        assert result["title"] == ""
+
+    def test_child_database_without_data_key(self) -> None:
+        block = {"id": "d1", "type": "child_database"}
+        result = simplify_block(block)
+        assert result["title"] == ""
+
+    def test_to_do_without_data_key(self) -> None:
+        block = {"id": "t1", "type": "to_do"}
+        result = simplify_block(block)
+        assert result["checked"] is False
+
+    def test_code_without_language_key(self) -> None:
+        block = {
+            "id": "c1",
+            "type": "code",
+            "code": {"rich_text": [{"plain_text": "x = 1"}]},
+        }
+        result = simplify_block(block)
+        assert result["language"] == ""
+
+    def test_code_without_data_key(self) -> None:
+        block = {"id": "c1", "type": "code"}
+        result = simplify_block(block)
+        assert result["language"] == ""
+
+    def test_file_block(self) -> None:
+        block = {
+            "id": "f1",
+            "type": "file",
+            "file": {
+                "type": "external",
+                "external": {"url": "https://example.com/doc.txt"},
+                "caption": [{"plain_text": "Doc"}],
+            },
+        }
+        result = simplify_block(block)
+        assert result["url"] == "https://example.com/doc.txt"
+        assert result["caption"] == "Doc"
+
+    def test_pdf_block(self) -> None:
+        block = {
+            "id": "pdf1",
+            "type": "pdf",
+            "pdf": {
+                "type": "file",
+                "file": {"url": "https://s3.example.com/report.pdf"},
+                "caption": [],
+            },
+        }
+        result = simplify_block(block)
+        assert result["url"] == "https://s3.example.com/report.pdf"
+
+    def test_image_without_data_key(self) -> None:
+        block = {"id": "i5", "type": "image"}
+        result = simplify_block(block)
+        assert result["url"] == ""
+        assert result["caption"] == ""
+
+    def test_external_image_without_url(self) -> None:
+        block = {
+            "id": "i6",
+            "type": "image",
+            "image": {"type": "external", "external": {}, "caption": []},
+        }
+        result = simplify_block(block)
+        assert result["url"] == ""
+
+    def test_external_image_without_external_key(self) -> None:
+        block = {
+            "id": "i7",
+            "type": "image",
+            "image": {"type": "external", "caption": []},
+        }
+        result = simplify_block(block)
+        assert result["url"] == ""
+
+    def test_caption_multiple_items_concatenated(self) -> None:
+        block = {
+            "id": "i8",
+            "type": "image",
+            "image": {
+                "type": "external",
+                "external": {"url": "https://example.com/img.png"},
+                "caption": [{"plain_text": "A"}, {"plain_text": "B"}],
+            },
+        }
+        result = simplify_block(block)
+        assert result["caption"] == "AB"
+
+    def test_link_preview(self) -> None:
+        block = {
+            "id": "lp1",
+            "type": "link_preview",
+            "link_preview": {"url": "https://example.com/preview"},
+        }
+        result = simplify_block(block)
+        assert result["url"] == "https://example.com/preview"
+
+    def test_bookmark_without_data_key(self) -> None:
+        block = {"id": "b2", "type": "bookmark"}
+        result = simplify_block(block)
+        assert result["url"] == ""
 
     def test_embed(self) -> None:
         block = {
@@ -1223,6 +1757,49 @@ class TestExtractPlainText:
         ]
         assert extract_plain_text(blocks) == "After divider"
 
+    def test_block_type_without_data_key(self) -> None:
+        blocks = [{"type": "paragraph"}]
+        assert extract_plain_text(blocks) == ""
+
+    def test_rich_text_item_missing_plain_text(self) -> None:
+        blocks = [
+            {
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"type": "text"}]},
+            }
+        ]
+        assert extract_plain_text(blocks) == ""
+
+    def test_empty_text_then_content(self) -> None:
+        """Blocks whose text is empty must not leave a leading newline."""
+        blocks = [
+            {"type": "paragraph", "paragraph": {"rich_text": [{"plain_text": ""}]}},
+            {
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"plain_text": "Hi"}]},
+            },
+        ]
+        assert extract_plain_text(blocks) == "Hi"
+
+    def test_child_producing_no_text_not_appended(self) -> None:
+        blocks = [
+            {
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {"rich_text": [{"plain_text": "Parent"}]},
+                "children": [{"type": "divider", "divider": {}}],
+            }
+        ]
+        assert extract_plain_text(blocks) == "Parent"
+
+    def test_multiple_rich_text_items_concatenated(self) -> None:
+        blocks = [
+            {
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"plain_text": "a"}, {"plain_text": "b"}]},
+            }
+        ]
+        assert extract_plain_text(blocks) == "ab"
+
     def test_text_key_fallback(self) -> None:
         blocks = [
             {
@@ -1273,9 +1850,13 @@ class TestMarkdownToNotionBlocks:
         md = "```python\nprint('hi')\n```"
         result = markdown_to_notion_blocks(md)
         assert len(result) == 1
-        assert result[0]["type"] == "code"
-        assert result[0]["code"]["language"] == "python"
-        assert result[0]["code"]["rich_text"][0]["text"]["content"] == "print('hi')"
+        assert result[0] == {
+            "type": "code",
+            "code": {
+                "language": "python",
+                "rich_text": [{"type": "text", "text": {"content": "print('hi')"}}],
+            },
+        }
 
     def test_code_block_without_language(self) -> None:
         md = "```\nsome code\n```"
@@ -1328,6 +1909,45 @@ class TestMarkdownToNotionBlocks:
             "content": "Second",
         }
 
+    def test_numbered_list_multi_digit(self) -> None:
+        result = markdown_to_notion_blocks("10. Tenth item")
+        assert result[0] == {
+            "block_property": "numbered_list_item",
+            "content": "Tenth item",
+        }
+
+    def test_numbered_list_without_content_is_paragraph(self) -> None:
+        result = markdown_to_notion_blocks("1.")
+        assert result[0] == {"block_property": "paragraph", "content": "1."}
+
+    def test_todo_without_content_is_bullet(self) -> None:
+        """- [ ] with nothing after it doesn't match the todo regex (.+)."""
+        result = markdown_to_notion_blocks("- [ ]")
+        assert result[0] == {
+            "block_property": "bulleted_list_item",
+            "content": "[ ]",
+        }
+
+    def test_heading_without_space_is_paragraph(self) -> None:
+        result = markdown_to_notion_blocks("#Title")
+        assert result[0] == {"block_property": "paragraph", "content": "#Title"}
+
+    def test_heading_without_content(self) -> None:
+        """Trailing-space-only headings get stripped, then don't match '### '."""
+        result = markdown_to_notion_blocks("### ")
+        assert result[0] == {"block_property": "paragraph", "content": "###"}
+
+    def test_quote_without_content(self) -> None:
+        """'>' alone is stripped and doesn't match the '> ' quote rule."""
+        result = markdown_to_notion_blocks("> ")
+        assert result[0] == {"block_property": "paragraph", "content": ">"}
+
+    def test_heading_marker_without_space_is_paragraph(self) -> None:
+        """The heading rules require a space after the hashes."""
+        for md in ["###x", "##x", "#x"]:
+            result = markdown_to_notion_blocks(md)
+            assert result[0] == {"block_property": "paragraph", "content": md}
+
     @pytest.mark.parametrize(
         "divider_md",
         ["---", "***", "___"],
@@ -1369,7 +1989,7 @@ class TestMarkdownToNotionBlocks:
         data_row_cells = table["rows"][1]["cells"]
         assert len(data_row_cells) == 3
         # Third cell should be padded empty
-        assert data_row_cells[2][0]["text"]["content"] == ""
+        assert data_row_cells[2] == [{"type": "text", "text": {"content": ""}}]
 
     def test_table_rows_trimmed_to_header_width(self) -> None:
         md = "| A | B |\n| --- | --- |\n| 1 | 2 | 3 | 4 |"
@@ -1377,6 +1997,32 @@ class TestMarkdownToNotionBlocks:
         table = result[0]
         data_row_cells = table["rows"][1]["cells"]
         assert len(data_row_cells) == 2
+
+    def test_table_aligned_separator_rows(self) -> None:
+        """Alignment-marked separators (:---:, :--:) are filtered like plain ones."""
+        md = "| A | B |\n| :--- | :---: |\n| 1 | 2 |"
+        result = markdown_to_notion_blocks(md)
+        assert len(result) == 1
+        table = result[0]
+        assert table["table_width"] == 2
+        assert len(table["rows"]) == 2
+
+    def test_table_cell_whitespace_stripped(self) -> None:
+        md = "|  A  |  B  |\n| --- | --- |\n|  1  |  2  |"
+        result = markdown_to_notion_blocks(md)
+        table = result[0]
+        header_cells = table["rows"][0]["cells"]
+        assert header_cells[0][0]["text"]["content"] == "A"
+        data_cells = table["rows"][1]["cells"]
+        assert data_cells[1][0]["text"]["content"] == "2"
+
+    def test_table_line_not_ending_in_pipe_is_paragraph(self) -> None:
+        """Both |...| boundaries are required for table detection."""
+        result = markdown_to_notion_blocks("| not a table")
+        assert result[0] == {
+            "block_property": "paragraph",
+            "content": "| not a table",
+        }
 
     def test_mixed_content(self) -> None:
         md = "# Title\n\nSome text\n\n- bullet\n\n1. numbered"
@@ -1405,6 +2051,97 @@ class TestMarkdownToNotionBlocks:
         result = markdown_to_notion_blocks(md)
         assert result[0]["type"] == "code"
         assert result[0]["code"]["rich_text"][0]["text"]["content"] == "line1\nline2"
+
+    def test_code_block_not_first_line(self) -> None:
+        md = "para\n```py\nc\n```"
+        result = markdown_to_notion_blocks(md)
+        assert result[0] == {"block_property": "paragraph", "content": "para"}
+        assert result[1] == {
+            "type": "code",
+            "code": {
+                "language": "py",
+                "rich_text": [{"type": "text", "text": {"content": "c"}}],
+            },
+        }
+
+    def test_code_block_followed_by_paragraph(self) -> None:
+        md = "```py\nc\n```\npara"
+        result = markdown_to_notion_blocks(md)
+        assert result[0]["type"] == "code"
+        assert result[1] == {"block_property": "paragraph", "content": "para"}
+
+    def test_heading_1_followed_by_paragraph(self) -> None:
+        result = markdown_to_notion_blocks("# H1\npara")
+        assert result[0]["block_property"] == "heading_1"
+        assert result[1] == {"block_property": "paragraph", "content": "para"}
+
+    def test_heading_3_followed_by_paragraph(self) -> None:
+        result = markdown_to_notion_blocks("### H3\npara")
+        assert result[0]["block_property"] == "heading_3"
+        assert result[1] == {"block_property": "paragraph", "content": "para"}
+
+    def test_quote_followed_by_paragraph(self) -> None:
+        result = markdown_to_notion_blocks("> q\npara")
+        assert result[0]["block_property"] == "quote"
+        assert result[1] == {"block_property": "paragraph", "content": "para"}
+
+    def test_bullet_followed_by_paragraph(self) -> None:
+        result = markdown_to_notion_blocks("- b\npara")
+        assert result[0]["block_property"] == "bulleted_list_item"
+        assert result[1] == {"block_property": "paragraph", "content": "para"}
+
+    def test_divider_not_first_line(self) -> None:
+        result = markdown_to_notion_blocks("para\n---")
+        assert result[0] == {"block_property": "paragraph", "content": "para"}
+        assert result[1] == {"block_property": "paragraph", "content": "───"}
+
+    def test_divider_followed_by_paragraph(self) -> None:
+        result = markdown_to_notion_blocks("---\npara")
+        assert result[0] == {"block_property": "paragraph", "content": "───"}
+        assert result[1] == {"block_property": "paragraph", "content": "para"}
+
+    def test_heading_2_not_first_line(self) -> None:
+        result = markdown_to_notion_blocks("para\n## H2")
+        assert result[0] == {"block_property": "paragraph", "content": "para"}
+        assert result[1] == {"block_property": "heading_2", "content": "H2"}
+
+    def test_heading_3_not_first_line(self) -> None:
+        result = markdown_to_notion_blocks("para\n### H3")
+        assert result[0] == {"block_property": "paragraph", "content": "para"}
+        assert result[1] == {"block_property": "heading_3", "content": "H3"}
+
+    def test_quote_not_first_line(self) -> None:
+        result = markdown_to_notion_blocks("para\n> q")
+        assert result[0] == {"block_property": "paragraph", "content": "para"}
+        assert result[1] == {"block_property": "quote", "content": "q"}
+
+    def test_todo_not_first_line(self) -> None:
+        result = markdown_to_notion_blocks("para\n- [x] task")
+        assert result[0] == {"block_property": "paragraph", "content": "para"}
+        assert result[1] == {"block_property": "to_do", "content": "task"}
+
+    def test_consecutive_paragraphs(self) -> None:
+        result = markdown_to_notion_blocks("Hello\nWorld")
+        assert result[0] == {"block_property": "paragraph", "content": "Hello"}
+        assert result[1] == {"block_property": "paragraph", "content": "World"}
+
+    def test_separators_only_table_followed_by_paragraph(self) -> None:
+        md = "| --- | --- |\npara"
+        result = markdown_to_notion_blocks(md)
+        assert result == [{"block_property": "paragraph", "content": "para"}]
+
+    def test_table_followed_by_paragraph(self) -> None:
+        md = "| A |\n| --- |\n| 1 |\npara"
+        result = markdown_to_notion_blocks(md)
+        assert result[0]["type"] == "table"
+        assert result[1] == {"block_property": "paragraph", "content": "para"}
+
+    def test_table_three_data_rows_all_preserved(self) -> None:
+        md = "| A |\n| --- |\n| 1 |\n| 2 |\n| 3 |"
+        result = markdown_to_notion_blocks(md)
+        table = result[0]
+        assert len(table["rows"]) == 4
+        assert table["rows"][3]["cells"][0][0]["text"]["content"] == "3"
 
     def test_todo_before_bullet(self) -> None:
         """Todo pattern (- [ ]) must be matched before plain bullet (- )."""
