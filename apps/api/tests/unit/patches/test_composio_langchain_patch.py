@@ -19,7 +19,7 @@ from composio.utils import shared
 from langchain_core.tools import base as lc_base
 
 # Importing the patch module triggers both monkey-patches at import time.
-import app.patches.composio_langchain_patch as patch_module  # noqa: F401
+import app.patches.composio_langchain_patch as patch_module  # noqa: F401  # ratchet-allow -- import for the apply() side effect
 
 
 class TestAnyOfFlattening:

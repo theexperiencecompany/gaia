@@ -15,7 +15,7 @@ from langchain_core.messages import ToolMessage
 from langchain_openrouter import chat_models
 
 # Importing the patch module rebinds _convert_message_to_dict at import time.
-import app.patches.openrouter_tool_multimodal_patch as patch_module  # noqa: F401
+import app.patches.openrouter_tool_multimodal_patch as patch_module
 
 _IMAGE_BLOCK = {"type": "image", "base64": "QUJD", "mime_type": "image/png"}
 _EXPECTED_IMAGE_URL_BLOCK = {

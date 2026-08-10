@@ -15,7 +15,7 @@ import jsonref
 import pytest
 
 # Importing the patch module triggers the monkey-patch at import time.
-import app.patches.composio_custom_tool_schema_patch as patch_module  # noqa: F401
+import app.patches.composio_custom_tool_schema_patch as patch_module
 
 _PRIVATE_PARSE_INFO = "_CustomTool__parse_info"
 
