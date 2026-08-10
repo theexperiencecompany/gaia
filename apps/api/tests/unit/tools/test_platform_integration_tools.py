@@ -289,20 +289,41 @@ TEAMS_MODULE = "app.agents.tools.integrations.microsoft_teams_tool"
 
 
 class TestMicrosoftTeamsGatherContext:
-    def _register(self) -> dict[str, Callable[..., Any]]:
+    def _register(self) -> tuple[MagicMock, dict[str, Callable[..., Any]]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.microsoft_teams_tool import (
             register_microsoft_teams_custom_tools,
         )
 
         names = register_microsoft_teams_custom_tools(composio)
-        assert "MICROSOFT_TEAMS_CUSTOM_GATHER_CONTEXT" in names
-        return captured
+        assert names == ["MICROSOFT_TEAMS_CUSTOM_GATHER_CONTEXT"]
+        return composio, captured
+
+    def _assert_proxy_call(
+        self, mock_proxy: MagicMock, index: int, *, endpoint: str, query: dict[str, Any]
+    ) -> None:
+        assert mock_proxy.call_args_list[index].kwargs == {
+            "user_id": FAKE_USER_ID,
+            "toolkit": "MICROSOFT_TEAMS",
+            "endpoint": endpoint,
+            "method": "GET",
+            "query": query,
+        }
+
+    def test_registers_custom_tool_with_teams_toolkit(self) -> None:
+        composio, _ = self._register()
+        assert composio.tool_kwargs == [{"toolkit": "MICROSOFT_TEAMS"}]
 
     @patch(f"{TEAMS_MODULE}.proxy_request_sync")
-    def test_basic_success(self, mock_proxy: MagicMock) -> None:
+    @patch(f"{TEAMS_MODULE}.log")
+    def test_basic_success(self, mock_log: MagicMock, mock_proxy: MagicMock) -> None:
         mock_proxy.side_effect = [
-            {"id": "me1", "displayName": "Ada", "mail": "ada@x.com"},
+            {
+                "id": "me1",
+                "displayName": "Ada",
+                "mail": "ada@x.com",
+                "userPrincipalName": "upn@x.com",
+            },
             {"value": [{"id": "t1", "displayName": "Eng", "description": "team"}]},
             {
                 "value": [
@@ -310,57 +331,333 @@ class TestMicrosoftTeamsGatherContext:
                         "id": "c1",
                         "topic": "Design",
                         "chatType": "group",
-                        "lastMessagePreview": {"body": {"content": "hi all"}, "isRead": False},
+                        "lastMessagePreview": {
+                            "body": {"content": "hi all"},
+                            "isRead": False,
+                        },
                     },
                     {
                         "id": "c2",
                         "topic": "Read chat",
                         "chatType": "oneOnOne",
-                        "lastMessagePreview": {"body": {"content": "old"}, "isRead": True},
+                        "lastMessagePreview": {
+                            "body": {"content": "old"},
+                            "isRead": True,
+                        },
                     },
                     {"id": "c3", "topic": "No preview", "chatType": "group"},
                 ]
             },
         ]
 
-        captured = self._register()
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert mock_proxy.call_count == 3
+        self._assert_proxy_call(
+            mock_proxy,
+            0,
+            endpoint="https://graph.microsoft.com/v1.0/me",
+            query={"$select": "id,displayName,mail,userPrincipalName"},
+        )
+        self._assert_proxy_call(
+            mock_proxy,
+            1,
+            endpoint="https://graph.microsoft.com/v1.0/me/joinedTeams",
+            query={"$select": "id,displayName,description"},
+        )
+        self._assert_proxy_call(
+            mock_proxy,
+            2,
+            endpoint="https://graph.microsoft.com/v1.0/me/chats",
+            query={"$expand": "lastMessagePreview", "$top": 10},
+        )
+        assert result == {
+            "user": {"id": "me1", "display_name": "Ada", "email": "ada@x.com"},
+            "teams": [{"id": "t1", "name": "Eng", "description": "team"}],
+            "recent_chats": [
+                {
+                    "id": "c1",
+                    "topic": "Design",
+                    "chat_type": "group",
+                    "last_message_preview": "hi all",
+                    "is_read": False,
+                },
+                {
+                    "id": "c2",
+                    "topic": "Read chat",
+                    "chat_type": "oneOnOne",
+                    "last_message_preview": "old",
+                    "is_read": True,
+                },
+                {
+                    "id": "c3",
+                    "topic": "No preview",
+                    "chat_type": "group",
+                    "last_message_preview": None,
+                    "is_read": True,
+                },
+            ],
+            "team_count": 1,
+            "chat_count": 3,
+            "unread_chat_count": 1,
+        }
+        mock_log.set.assert_called_once_with(
+            tool={"integration": "microsoft_teams", "action": "gather_context"}
+        )
+        mock_log.debug.assert_not_called()
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    def test_email_uses_mail_when_present(self, mock_proxy: MagicMock) -> None:
+        mock_proxy.side_effect = [
+            {"id": "me1", "mail": "ada@x.com", "userPrincipalName": "upn@x.com"},
+            {},
+            {},
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["user"]["email"] == "ada@x.com"
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    def test_email_falls_back_to_upn_when_mail_missing(self, mock_proxy: MagicMock) -> None:
+        mock_proxy.side_effect = [
+            {"id": "me1", "userPrincipalName": "ada@corp.com"},
+            {},
+            {},
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["user"]["email"] == "ada@corp.com"
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    def test_email_falls_back_to_upn_when_mail_empty(self, mock_proxy: MagicMock) -> None:
+        mock_proxy.side_effect = [
+            {"id": "me1", "mail": "", "userPrincipalName": "ada@corp.com"},
+            {},
+            {},
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["user"]["email"] == "ada@corp.com"
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    def test_missing_user_id_raises_value_error(self, mock_proxy: MagicMock) -> None:
+        _, captured = self._register()
+        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+            captured["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, {})
+        mock_proxy.assert_not_called()
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    def test_empty_user_id_raises_value_error(self, mock_proxy: MagicMock) -> None:
+        _, captured = self._register()
+        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+            captured["CUSTOM_GATHER_CONTEXT"](
+                GatherContextInput(), EXECUTE_REQUEST, {"user_id": ""}
+            )
+        mock_proxy.assert_not_called()
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    @patch(f"{TEAMS_MODULE}.log")
+    def test_none_responses_yield_defaults_without_failure_logs(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [None, None, None]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result == {
+            "user": {"id": None, "display_name": None, "email": None},
+            "teams": [],
+            "recent_chats": [],
+            "team_count": 0,
+            "chat_count": 0,
+            "unread_chat_count": 0,
+        }
+        mock_log.debug.assert_not_called()
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    @patch(f"{TEAMS_MODULE}.log")
+    def test_empty_payloads_yield_defaults_without_failure_logs(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [{}, {}, {}]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result == {
+            "user": {"id": None, "display_name": None, "email": None},
+            "teams": [],
+            "recent_chats": [],
+            "team_count": 0,
+            "chat_count": 0,
+            "unread_chat_count": 0,
+        }
+        mock_log.debug.assert_not_called()
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    def test_unread_counting_and_is_read_boundaries(self, mock_proxy: MagicMock) -> None:
+        mock_proxy.side_effect = [
+            {},
+            {},
+            {
+                "value": [
+                    {
+                        "id": "unread",
+                        "lastMessagePreview": {"body": {"content": "x"}, "isRead": False},
+                    },
+                    {
+                        "id": "read",
+                        "lastMessagePreview": {"body": {"content": "x"}, "isRead": True},
+                    },
+                    {"id": "no-isread", "lastMessagePreview": {"body": {"content": "x"}}},
+                    {"id": "empty-preview", "lastMessagePreview": {}},
+                    {"id": "no-preview"},
+                ]
+            },
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["unread_chat_count"] == 1
+        by_id = {c["id"]: c for c in result["recent_chats"]}
+        assert by_id["unread"]["is_read"] is False
+        assert by_id["read"]["is_read"] is True
+        assert by_id["no-isread"]["is_read"] is True
+        assert by_id["empty-preview"]["is_read"] is True
+        assert by_id["no-preview"]["is_read"] is True
+        assert by_id["no-isread"]["last_message_preview"] == "x"
+        assert by_id["empty-preview"]["last_message_preview"] is None
+        assert by_id["no-preview"]["last_message_preview"] is None
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    def test_last_message_preview_truncated_to_100_chars(self, mock_proxy: MagicMock) -> None:
+        long_content = "m" * 250
+        mock_proxy.side_effect = [
+            {},
+            {},
+            {"value": [{"id": "c1", "lastMessagePreview": {"body": {"content": long_content}}}]},
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["recent_chats"][0]["last_message_preview"] == "m" * 100
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    def test_preview_without_body_yields_empty_preview(self, mock_proxy: MagicMock) -> None:
+        mock_proxy.side_effect = [
+            {},
+            {},
+            {"value": [{"id": "c1", "lastMessagePreview": {"isRead": True}}]},
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["recent_chats"][0]["last_message_preview"] == ""
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    @patch(f"{TEAMS_MODULE}.log")
+    def test_me_failure_keeps_other_sections(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [
+            RuntimeError("me down"),
+            {"value": [{"id": "t1", "displayName": "Eng"}]},
+            {"value": [{"id": "c1", "topic": "Design", "chatType": "group"}]},
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert mock_proxy.call_count == 3
+        assert result["user"] == {}
+        assert result["team_count"] == 1
+        assert result["chat_count"] == 1
+        mock_log.set.assert_called_once_with(
+            tool={"integration": "microsoft_teams", "action": "gather_context"}
+        )
+        mock_log.debug.assert_called_once_with(
+            "[TOOL] Teams /me fetch failed", error_type="RuntimeError"
+        )
+
+    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
+    @patch(f"{TEAMS_MODULE}.log")
+    def test_teams_failure_keeps_other_sections(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [
+            {"id": "me1", "displayName": "Ada"},
+            RuntimeError("teams down"),
+            {"value": [{"id": "c1", "topic": "Design", "chatType": "group"}]},
+        ]
+
+        _, captured = self._register()
         result = captured["CUSTOM_GATHER_CONTEXT"](
             GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
         )
 
         assert result["user"]["display_name"] == "Ada"
-        assert result["user"]["email"] == "ada@x.com"
-        assert result["team_count"] == 1
-        assert result["teams"][0]["name"] == "Eng"
-        assert result["chat_count"] == 3
-        assert result["unread_chat_count"] == 1
-        unread_chat = next(c for c in result["recent_chats"] if c["id"] == "c1")
-        assert unread_chat["is_read"] is False
-        assert unread_chat["last_message_preview"] == "hi all"
+        assert result["teams"] == []
+        assert result["team_count"] == 0
+        assert result["chat_count"] == 1
+        mock_log.debug.assert_called_once_with(
+            "[TOOL] Teams joinedTeams fetch failed", error_type="RuntimeError"
+        )
 
     @patch(f"{TEAMS_MODULE}.proxy_request_sync")
-    def test_partial_failures_degrade_gracefully(self, mock_proxy: MagicMock) -> None:
+    @patch(f"{TEAMS_MODULE}.log")
+    def test_chats_failure_keeps_other_sections(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
         mock_proxy.side_effect = [
-            RuntimeError("me down"),
+            {"id": "me1", "displayName": "Ada"},
             {"value": [{"id": "t1", "displayName": "Eng"}]},
             RuntimeError("chats down"),
         ]
 
-        captured = self._register()
+        _, captured = self._register()
         result = captured["CUSTOM_GATHER_CONTEXT"](
             GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
         )
 
-        assert result["user"] == {}
+        assert result["user"]["display_name"] == "Ada"
         assert result["team_count"] == 1
+        assert result["recent_chats"] == []
         assert result["chat_count"] == 0
         assert result["unread_chat_count"] == 0
-
-    @patch(f"{TEAMS_MODULE}.proxy_request_sync")
-    def test_missing_user_id_raises_value_error(self, mock_proxy: MagicMock) -> None:
-        captured = self._register()
-        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
-            captured["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, {})
+        mock_log.debug.assert_called_once_with(
+            "[TOOL] Teams chats fetch failed", error_type="RuntimeError"
+        )
 
 
 # =============================================================================

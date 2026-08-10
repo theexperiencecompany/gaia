@@ -15,6 +15,7 @@ thread supervision — is the real production code running against a real
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 import errno
 from pathlib import Path
@@ -25,6 +26,7 @@ from typing import Any, cast
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.services.storage import bootstrap
 from app.services.storage.bootstrap import (
     _bootstrap_loop,
@@ -70,6 +72,7 @@ class RunRecorder:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
         self.envs: list[dict[str, str] | None] = []
+        self.timeouts: list[int | None] = []
         self.replies: dict[str, subprocess.CompletedProcess[str]] = {}
 
     def __call__(
@@ -81,6 +84,7 @@ class RunRecorder:
     ) -> subprocess.CompletedProcess[str]:
         self.calls.append(list(cmd))
         self.envs.append(env)
+        self.timeouts.append(timeout)
         return self.replies.get(" ".join(cmd[:2]), completed())
 
     def argv(self, key: str) -> list[str]:
@@ -108,6 +112,51 @@ class Clock:
     def sleep(self, seconds: float) -> None:
         self.slept.append(seconds)
         self.now += seconds
+
+
+class SeqClock(Clock):
+    """Clock whose monotonic() follows a scripted sequence.
+
+    The plain Clock never advances between two reads in the same second, so
+    `-`/`/`/`*1001` duration mutations all compute 0.0 and are
+    indistinguishable; a scripted sequence makes the two reads differ.
+    """
+
+    def __init__(self, sequence: list[float]) -> None:
+        super().__init__()
+        self._sequence = list(sequence)
+
+    def monotonic(self) -> float:
+        return self._sequence.pop(0) if self._sequence else self.now
+
+
+class LogRecorder:
+    """Record every log.info / log.warning call exactly as made.
+
+    The bootstrap module binds contextual fields onto every line; a mutant
+    that corrupts the message or one of those fields changes what operators
+    see in prod but never changes the function's return value.
+    """
+
+    def __init__(self) -> None:
+        self.info_calls: list[tuple[str, dict[str, Any]]] = []
+        self.warning_calls: list[tuple[str, dict[str, Any]]] = []
+
+    def info(self, message: str, **kwargs: Any) -> None:
+        self.info_calls.append((message, dict(kwargs)))
+
+    def warning(self, message: str, **kwargs: Any) -> None:
+        self.warning_calls.append((message, dict(kwargs)))
+
+
+class OpRecorder:
+    """Record record_fs_op calls so duration maths and outcome strings are pinned."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def __call__(self, op: str, **kwargs: Any) -> None:
+        self.calls.append((op, dict(kwargs)))
 
 
 def mounted_after(n: int) -> Any:
@@ -152,6 +201,20 @@ def clock(monkeypatch: pytest.MonkeyPatch) -> Clock:
 def runs(monkeypatch: pytest.MonkeyPatch) -> RunRecorder:
     recorder = RunRecorder()
     monkeypatch.setattr(bootstrap, "_run", recorder)
+    return recorder
+
+
+@pytest.fixture
+def logs(monkeypatch: pytest.MonkeyPatch) -> LogRecorder:
+    recorder = LogRecorder()
+    monkeypatch.setattr(bootstrap, "log", recorder)
+    return recorder
+
+
+@pytest.fixture
+def ops(monkeypatch: pytest.MonkeyPatch) -> OpRecorder:
+    recorder = OpRecorder()
+    monkeypatch.setattr(bootstrap, "record_fs_op", recorder)
     return recorder
 
 
@@ -250,7 +313,21 @@ def test_the_error_tail_keeps_continuation_lines_below_the_fatal_header() -> Non
     # pgx wraps the real cause on the line *after* "<FATAL>:"; a single-line grab
     # clips the message at the trailing colon and reports nothing actionable.
     stderr = "<FATAL>: meta connect failed:\n  too many connections for role gaia"
-    assert "too many connections for role gaia" in _meta_err_tail(stderr)
+    assert _meta_err_tail(stderr) == stderr
+
+
+def test_the_error_tail_pins_an_error_only_marker_line() -> None:
+    # <ERROR> lines (no <FATAL>) must still anchor the tail; a mutated marker
+    # literal falls through to the last-500 fallback and loses the cause.
+    stderr = "x" * 600 + "\n<ERROR>: giving up: connection refused"
+    assert _meta_err_tail(stderr) == "<ERROR>: giving up: connection refused"
+
+
+def test_the_error_tail_truncates_a_long_fatal_section_to_exactly_500() -> None:
+    stderr = "<FATAL>: " + "x" * 600
+    tail = _meta_err_tail(stderr)
+    assert len(tail) == 500
+    assert tail == stderr[-500:]
 
 
 def test_the_error_tail_starts_at_the_last_failure_marker_not_the_first() -> None:
@@ -260,11 +337,13 @@ def test_the_error_tail_starts_at_the_last_failure_marker_not_the_first() -> Non
     assert "retrying format" not in tail
 
 
-def test_stderr_with_no_failure_marker_falls_back_to_its_tail_not_its_head() -> None:
-    stderr = "banner\n" + "x" * 600 + "\nthe actual cause"
+def test_stderr_with_no_failure_marker_falls_back_to_its_exact_tail() -> None:
+    # The fallback must be the LAST 500 characters of the whole stream — a
+    # 500-char window from the start (or only the last line) drops the cause.
+    stderr = "banner\n" + "x" * 1200 + "\nthe actual cause"
     tail = _meta_err_tail(stderr)
-    assert tail.endswith("the actual cause")
-    assert len(tail) <= 500
+    assert tail == stderr[-500:]
+    assert len(tail) == 500
 
 
 @pytest.mark.parametrize("stderr", ["", "   \n  "])
@@ -287,6 +366,23 @@ def test_a_blank_credential_counts_as_missing_rather_than_configured(
 
 def test_a_fully_configured_environment_reports_nothing_missing(cfg: Path) -> None:
     assert _missing_settings() == []
+
+
+@pytest.mark.parametrize(
+    ("attr", "expected"),
+    [
+        ("R2_ACCOUNT_ID", ["R2_ACCOUNT_ID"]),
+        ("R2_BUCKET", ["R2_BUCKET"]),
+        ("R2_ACCESS_KEY", ["R2_ACCESS_KEY"]),
+    ],
+)
+def test_each_blank_credential_is_reported_by_its_exact_name(
+    cfg: Path, monkeypatch: pytest.MonkeyPatch, attr: str, expected: list[str]
+) -> None:
+    # The names are the settings' env var names — operators grep logs for
+    # exactly those strings when diagnosing a skipped bootstrap.
+    monkeypatch.setattr(bootstrap.settings, attr, "")
+    assert _missing_settings() == expected
 
 
 def test_the_shard_placeholder_is_substituted_into_the_meta_url(
@@ -319,6 +415,15 @@ def test_the_scheme_rewrite_only_applies_to_the_prefix(
     assert _meta_url() == "postgres://u:p@h/postgresql_meta"
 
 
+def test_an_unset_meta_template_yields_an_empty_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A placeholder fallback string ("XXXX") would be handed to `juicefs status`
+    # as a live (and invalid) meta address instead of a missing one.
+    monkeypatch.setattr(bootstrap.settings, "JUICEFS_META_URL_TEMPLATE", None)
+    assert _meta_url() == ""
+
+
 def test_the_masked_meta_url_never_carries_the_password_into_logs(cfg: Path) -> None:
     # This string is logged on every transient failure; the raw URL contains the
     # production Postgres password.
@@ -332,6 +437,17 @@ def test_the_masked_meta_url_drops_query_parameters() -> None:
     # Connection strings smuggle credentials in the query string too
     # (`?password=`, `?sslkey=`).
     assert _mask_meta("postgres://u:p@h/db?password=hunter2") == "h/db"
+
+
+def test_a_url_with_two_at_signs_keeps_only_the_slice_after_the_first() -> None:
+    # Passwords can contain "@"; splitting on every one (or from the right)
+    # exposes the userinfo section in the logs.
+    assert _mask_meta("postgres://u:p@h1@h2/db") == "h1@h2/db"
+
+
+def test_the_query_split_happens_at_the_first_question_mark() -> None:
+    # A query value containing "?" must not survive into the masked URL.
+    assert _mask_meta("postgres://u:p@h/db?a=b?c=d") == "h/db"
 
 
 # ── _mount_state: what a stat on the mountpoint means ────────────────
@@ -352,11 +468,20 @@ def test_an_existing_directory_is_present(tmp_path: Path) -> None:
     assert _mount_state(tmp_path) == "present"
 
 
-def test_a_disconnected_fuse_endpoint_is_broken_rather_than_absent() -> None:
+def test_a_disconnected_fuse_endpoint_is_broken_rather_than_absent(
+    logs: LogRecorder,
+) -> None:
     # "Transport endpoint is not connected" raises ENOTCONN, which Path.exists()
     # does not swallow. Misreading it as "absent" skips the lazy-unmount and the
     # remount fights a stale endpoint forever.
+    err = OSError(errno.ENOTCONN, "boom")
     assert _mount_state(cast(Path, StatRaiser(errno.ENOTCONN))) == "broken"
+    assert logs.warning_calls == [
+        (
+            f"{LogTag.STORAGE} broken FUSE mountpoint detected",
+            {"path": "/mnt/jfs", "errno": err.errno, "detail": str(err)},
+        )
+    ]
 
 
 def test_an_unexpected_stat_error_propagates_instead_of_reading_as_not_mounted() -> None:
@@ -423,6 +548,41 @@ def test_the_fallback_reports_a_plain_directory_as_not_mounted(
     assert _is_mounted(tmp_path) is False
 
 
+def test_the_mountpoint_probe_runs_with_the_exact_argv_and_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The probe must stay a fixed argv, no-shell call with a hard 5s cap — a
+    # mutated binary name, quiet flag, or an unset timeout is invisible to the
+    # boolean return value but breaks (or hangs) every boot.
+    calls: list[tuple[Any, Any, Any]] = []
+
+    def probe(
+        argv: Any, *, check: Any, timeout: Any, **rest: Any
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((argv, check, timeout))
+        return completed(returncode=0)
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", probe)
+    assert _is_mounted(tmp_path) is True
+    assert calls == [(["mountpoint", "-q", str(tmp_path)], False, 5)]
+
+
+def test_the_fallback_reports_not_mounted_when_the_mountpoint_check_itself_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An is_mount() that errors (kernel refusing the stat) must still read as
+    # "not mounted" — flipping that to True remounts over a live mount.
+    def boom(*_a: Any, **_k: Any) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("no mountpoint")
+
+    def broken_is_mount(_self: Any) -> bool:
+        raise OSError("stat failed")
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", boom)
+    monkeypatch.setattr(bootstrap.Path, "is_mount", broken_is_mount)
+    assert _is_mounted(tmp_path) is False
+
+
 # ── _materialize_encryption_key ──────────────────────────────────────
 
 
@@ -445,6 +605,7 @@ def test_the_key_file_is_written_newline_terminated_and_owner_only(
     monkeypatch.setattr(bootstrap.settings, "JFS_ENCRYPTION_KEY", "-----BEGIN KEY-----\nabc")
     path = _materialize_encryption_key()
     assert path is not None
+    assert path == bootstrap._ENCRYPTION_KEY_FILE
     assert path.read_text() == "-----BEGIN KEY-----\nabc\n"
     assert path.stat().st_mode & 0o777 == 0o600
 
@@ -478,6 +639,54 @@ def test_an_unwritable_key_directory_falls_back_to_a_locked_down_temp_file(
     assert path.read_text() == "KEYDATA\n"
     assert path.stat().st_mode & 0o777 == 0o600
     path.unlink()
+
+
+def test_a_non_directory_key_parent_still_falls_back_to_a_temp_file(
+    cfg: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The explicit is_dir() guard raises PermissionError — which is an OSError
+    # subclass — so the same except clause swallows it and the fallback runs.
+    monkeypatch.setattr(bootstrap.settings, "JFS_ENCRYPTION_KEY", "KEYDATA")
+    monkeypatch.setattr(bootstrap.Path, "is_dir", lambda _self: False)
+    path = _materialize_encryption_key()
+    assert path is not None
+    assert path.read_text() == "KEYDATA\n"
+
+
+def test_the_fallback_key_file_uses_the_exact_mkstemp_template(
+    cfg: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The fallback path must stay namespaced (jfs-master-*.pem) so a stray key
+    # file is recognizable and traceable to this bootstrap.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory")
+    monkeypatch.setattr(bootstrap, "_ENCRYPTION_KEY_FILE", blocker / "gaia" / "jfs.pem")
+    monkeypatch.setattr(bootstrap.settings, "JFS_ENCRYPTION_KEY", "KEYDATA")
+    seen: list[dict[str, str]] = []
+    fallback = tmp_path / "fallback.pem"
+
+    def fake_mkstemp(**kwargs: Any) -> tuple[int, str]:
+        seen.append(dict(kwargs))
+        return 7, str(fallback)
+
+    monkeypatch.setattr(bootstrap.tempfile, "mkstemp", fake_mkstemp)
+    monkeypatch.setattr(bootstrap.os, "close", lambda _fd: None)
+    path = _materialize_encryption_key()
+    assert path == fallback
+    assert path is not None
+    assert path.read_text() == "KEYDATA\n"
+    assert seen == [{"prefix": "jfs-master-", "suffix": ".pem"}]
+
+
+def test_a_key_that_already_ends_in_a_newline_is_not_doubled(
+    cfg: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PEM files end with a newline; appending another on a retry pass grows
+    # the file until juicefs cannot parse it.
+    monkeypatch.setattr(bootstrap.settings, "JFS_ENCRYPTION_KEY", "KEYDATA\n")
+    path = _materialize_encryption_key()
+    assert path is not None
+    assert path.read_text() == "KEYDATA\n"
 
 
 # ── _format_if_needed: the destructive path ──────────────────────────
@@ -594,6 +803,176 @@ def test_the_encryption_key_flag_precedes_the_positional_arguments(
     assert argv.index("--encrypt-rsa-key") < argv.index(META)
 
 
+def test_the_status_probe_uses_the_exact_timeout_and_records_the_op(
+    cfg: Path, clock: Clock, runs: RunRecorder, ops: OpRecorder
+) -> None:
+    runs.replies["juicefs status"] = completed(returncode=0)
+    assert _format_if_needed(META, None) == "ok"
+    assert runs.timeouts == [20]
+    assert runs.envs == [None]
+    assert ops.calls == [("juicefs_status", {"duration_ms": 0.0, "outcome": "ok"})]
+
+
+def test_a_failed_status_probe_records_a_miss_outcome(
+    cfg: Path, clock: Clock, runs: RunRecorder, ops: OpRecorder
+) -> None:
+    runs.replies["juicefs status"] = completed(1, "not formatted")
+    runs.replies["juicefs format"] = completed(returncode=0)
+    assert _format_if_needed(META, None) == "ok"
+    assert ops.calls == [
+        ("juicefs_status", {"duration_ms": 0.0, "outcome": "miss"}),
+        ("juicefs_format", {"duration_ms": 0.0, "outcome": "ok"}),
+    ]
+
+
+def test_the_op_durations_are_computed_in_milliseconds(
+    cfg: Path, runs: RunRecorder, ops: OpRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seq = SeqClock([1000.0, 1002.0, 1004.0, 1006.0])
+    monkeypatch.setattr(bootstrap, "time", seq)
+    runs.replies["juicefs status"] = completed(1, "not formatted")
+    runs.replies["juicefs format"] = completed(returncode=0)
+    assert _format_if_needed(META, None) == "ok"
+    assert ops.calls == [
+        ("juicefs_status", {"duration_ms": 2000.0, "outcome": "miss"}),
+        ("juicefs_format", {"duration_ms": 2000.0, "outcome": "ok"}),
+    ]
+
+
+def test_the_key_directory_is_created_recursively(
+    cfg: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The key lives several levels deep (/etc/gaia/jfs-master.pem); a mkdir
+    # without parents=True falls back to a temp file and the mount command
+    # never reads the key that was written.
+    deep = tmp_path / "a" / "b" / "c"
+    monkeypatch.setattr(bootstrap, "_ENCRYPTION_KEY_FILE", deep / "jfs-master.pem")
+    monkeypatch.setattr(bootstrap.settings, "JFS_ENCRYPTION_KEY", "KEYDATA")
+    path = _materialize_encryption_key()
+    assert path == bootstrap._ENCRYPTION_KEY_FILE
+    assert path is not None
+    assert path.read_text() == "KEYDATA\n"
+
+
+def test_the_format_command_runs_with_the_exact_timeout_and_env(
+    cfg: Path, clock: Clock, runs: RunRecorder
+) -> None:
+    # R2 credentials ride in the (empty, merged) env, never argv; the format
+    # timeout must stay 120s so a slow cold meta does not die mid-format.
+    runs.replies["juicefs status"] = completed(1, "not formatted")
+    runs.replies["juicefs format"] = completed(returncode=0)
+    _format_if_needed(META, None)
+    assert runs.timeouts == [20, 120]
+    assert runs.envs == [None, {}]
+
+
+def test_a_blank_access_key_is_passed_as_an_empty_flag_not_a_placeholder(
+    cfg: Path, clock: Clock, runs: RunRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(bootstrap.settings, "R2_ACCESS_KEY", "")
+    monkeypatch.setattr(bootstrap.settings, "R2_SECRET_KEY", "")
+    runs.replies["juicefs status"] = completed(1, "not formatted")
+    _format_if_needed(META, None)
+    argv = runs.argv("juicefs format")
+    assert flag_value(argv, "--access-key") == ""
+    assert flag_value(argv, "--secret-key") == ""
+
+
+def test_an_already_formatted_volume_logs_the_confirmation(
+    cfg: Path, clock: Clock, runs: RunRecorder, logs: LogRecorder
+) -> None:
+    runs.replies["juicefs status"] = completed(returncode=0)
+    _format_if_needed(META, None)
+    assert logs.info_calls == [(f"{LogTag.STORAGE} filesystem already formatted", {})]
+
+
+def test_the_format_attempt_logs_the_bucket_url(
+    cfg: Path, clock: Clock, runs: RunRecorder, logs: LogRecorder
+) -> None:
+    runs.replies["juicefs status"] = completed(1, "not formatted")
+    runs.replies["juicefs format"] = completed(returncode=0)
+    _format_if_needed(META, None)
+    assert logs.info_calls == [
+        (
+            f"{LogTag.STORAGE} formatting filesystem",
+            {"bucket_url": "https://acct123.r2.cloudflarestorage.com/gaia-workspaces"},
+        )
+    ]
+
+
+def test_the_peer_formatted_volume_logs_the_init_confirmation(
+    cfg: Path, clock: Clock, runs: RunRecorder, logs: LogRecorder
+) -> None:
+    runs.replies["juicefs status"] = completed(1, "not formatted")
+    runs.replies["juicefs format"] = completed(1, "the volume is not empty")
+    assert _format_if_needed(META, None) == "ok"
+    assert logs.info_calls[-1] == (
+        f"{LogTag.STORAGE} volume already initialized; proceeding to mount",
+        {},
+    )
+
+
+def test_the_permanent_status_failure_logs_the_masked_meta_and_diagnostic_tail(
+    cfg: Path, clock: Clock, runs: RunRecorder, logs: LogRecorder
+) -> None:
+    runs.replies["juicefs status"] = completed(
+        1, "FATAL: password authentication failed for user gaia"
+    )
+    assert _format_if_needed(META, None) == "fatal"
+    assert logs.warning_calls == [
+        (
+            f"{LogTag.STORAGE} permanent error during status",
+            {
+                "meta": "meta.example.com:5432/jfs",
+                "detail": "FATAL: password authentication failed for user gaia",
+            },
+        )
+    ]
+
+
+def test_the_permanent_format_failure_logs_the_masked_meta_and_tail(
+    cfg: Path, clock: Clock, runs: RunRecorder, logs: LogRecorder
+) -> None:
+    runs.replies["juicefs status"] = completed(1, "not formatted")
+    runs.replies["juicefs format"] = completed(1, "AccessDenied: invalid access key id")
+    assert _format_if_needed(META, None) == "fatal"
+    assert logs.warning_calls == [
+        (
+            f"{LogTag.STORAGE} permanent error during format",
+            {
+                "meta": "meta.example.com:5432/jfs",
+                "detail": "AccessDenied: invalid access key id",
+            },
+        )
+    ]
+
+
+def test_the_transient_format_failure_logs_the_masked_meta_and_tail(
+    cfg: Path, clock: Clock, runs: RunRecorder, logs: LogRecorder
+) -> None:
+    runs.replies["juicefs status"] = completed(1, "not formatted")
+    runs.replies["juicefs format"] = completed(1, "dial tcp: i/o timeout")
+    assert _format_if_needed(META, None) == "transient"
+    assert logs.warning_calls == [
+        (
+            f"{LogTag.STORAGE} format failed (transient; will retry)",
+            {
+                "meta": "meta.example.com:5432/jfs",
+                "detail": "dial tcp: i/o timeout",
+            },
+        )
+    ]
+
+
+def test_a_failed_format_records_a_fail_outcome(
+    cfg: Path, clock: Clock, runs: RunRecorder, ops: OpRecorder
+) -> None:
+    runs.replies["juicefs status"] = completed(1, "not formatted")
+    runs.replies["juicefs format"] = completed(1, "dial tcp: i/o timeout")
+    assert _format_if_needed(META, None) == "transient"
+    assert ops.calls[1] == ("juicefs_format", {"duration_ms": 0.0, "outcome": "fail"})
+
+
 # ── _mount: the other destructive path ───────────────────────────────
 
 
@@ -626,6 +1005,7 @@ def test_a_stale_mountpoint_directory_is_lazily_unmounted_before_remounting(
     monkeypatch.setattr(bootstrap, "_is_mounted", mounted_after(1))
     assert _mount(META, cfg) == "ok"
     assert runs.argv("fusermount -u") == ["fusermount", "-u", "-z", str(cfg)]
+    assert runs.timeouts == [5, 40]
 
 
 def test_mounting_creates_the_mountpoint_and_the_cache_directory(
@@ -701,6 +1081,120 @@ def test_a_mount_that_never_appears_with_an_opaque_error_is_retried(
     assert _mount(META, cfg) == "transient"
 
 
+def test_an_already_mounted_path_logs_the_mount_path(
+    cfg: Path, clock: Clock, logs: LogRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(bootstrap, "_is_mounted", lambda _p: True)
+    assert _mount(META, cfg) == "ok"
+    assert logs.info_calls == [
+        (
+            f"{LogTag.STORAGE} already mounted at",
+            {"mount_path": cfg},
+        )
+    ]
+
+
+def test_the_mount_command_carries_the_full_flag_set(
+    cfg: Path, clock: Clock, runs: RunRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The cache/upload/buffer tuning is what keeps the FUSE mount stable at
+    # startup; a mutated flag (or a missing one) silently runs with defaults.
+    monkeypatch.setattr(bootstrap, "_is_mounted", mounted_after(1))
+    _mount(META, cfg)
+    assert runs.argv("juicefs mount") == [
+        "juicefs",
+        "mount",
+        "--background",
+        "--backup-meta=0",
+        f"--cache-dir={bootstrap._CACHE_DIR}",
+        "--cache-size=4096",
+        "--max-uploads=20",
+        "--buffer-size=600",
+        META,
+        str(cfg),
+    ]
+
+
+def test_mounting_twice_tolerates_the_existing_cache_directory(
+    cfg: Path, clock: Clock, runs: RunRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Every retry re-runs _mount; exist_ok must survive the second pass or a
+    # converged mount keeps throwing FileExistsError instead of mounting.
+    cfg.mkdir(parents=True)
+    monkeypatch.setattr(bootstrap, "_is_mounted", mounted_after(1))
+    assert _mount(META, cfg) == "ok"
+    monkeypatch.setattr(bootstrap, "_is_mounted", mounted_after(1))
+    assert _mount(META, cfg) == "ok"
+
+
+def test_the_mount_supervisor_records_the_ok_op_with_exact_fields(
+    cfg: Path,
+    clock: Clock,
+    runs: RunRecorder,
+    ops: OpRecorder,
+    logs: LogRecorder,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The poll runs for 99 virtual seconds so a `/1001`-style scale bug in the
+    # elapsed computation no longer rounds to the same value.
+    monkeypatch.setattr(bootstrap.settings, "JUICEFS_MOUNT_READY_TIMEOUT", 120)
+    runs.replies["juicefs mount"] = completed(returncode=1, stderr="mountpoint not ready in 10s")
+    monkeypatch.setattr(bootstrap, "_is_mounted", mounted_after(100))
+    assert _mount(META, cfg) == "ok"
+    assert ops.calls == [("juicefs_mount", {"duration_ms": 99000.0, "outcome": "ok"})]
+    assert logs.info_calls == [
+        (
+            f"{LogTag.STORAGE} mounted",
+            {"mount": str(cfg), "elapsed_s": 99.0},
+        )
+    ]
+    assert isinstance(logs.info_calls[0][1]["elapsed_s"], float)
+
+
+def test_the_failed_mount_records_the_op_and_logs_the_exact_fields(
+    cfg: Path,
+    clock: Clock,
+    runs: RunRecorder,
+    ops: OpRecorder,
+    logs: LogRecorder,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runs.replies["juicefs mount"] = completed(1, "SIGSEGV: segmentation violation")
+    seen: list[Path] = []
+
+    def never(path: Path) -> bool:
+        seen.append(path)
+        return False
+
+    monkeypatch.setattr(bootstrap, "_is_mounted", never)
+    assert _mount(META, cfg) == "transient"
+    assert seen == [cfg] * 16
+    assert ops.calls == [("juicefs_mount", {"duration_ms": 15000.0, "outcome": "transient"})]
+    assert logs.warning_calls == [
+        (
+            f"{LogTag.STORAGE} mount not ready within s",
+            {
+                "timeout": 15,
+                "kind": "transient",
+                "meta": "meta.example.com:5432/jfs",
+                "detail": "SIGSEGV: segmentation violation",
+            },
+        )
+    ]
+
+
+def test_the_failure_classification_uses_exactly_the_last_4000_characters_of_stderr(
+    cfg: Path, clock: Clock, runs: RunRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A permanent marker sitting exactly one char before the 4000-char window
+    # must be cut off — the classification window is a policy boundary.
+    stderr = "permission denied" + "x" * (4001 - len("permission denied"))
+    assert len(stderr) == 4001
+    runs.replies["juicefs mount"] = completed(1, stderr)
+    monkeypatch.setattr(bootstrap, "_is_mounted", lambda _p: False)
+    assert _mount(META, cfg) == "transient"
+
+
 # ── _bootstrap_once: sequencing ──────────────────────────────────────
 
 
@@ -748,6 +1242,59 @@ def test_a_full_cold_start_formats_then_mounts(
         "juicefs format",
         "juicefs mount",
     ]
+
+
+def test_a_healthy_mount_logs_the_mount_path(
+    cfg: Path, clock: Clock, logs: LogRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[Path] = []
+
+    def mounted(path: Path) -> bool:
+        seen.append(path)
+        return True
+
+    monkeypatch.setattr(bootstrap, "_is_mounted", mounted)
+    assert _bootstrap_once() == "ok"
+    assert seen == [cfg]
+    assert logs.info_calls == [
+        (
+            f"{LogTag.STORAGE} mount already healthy at",
+            {"mount_path": cfg},
+        )
+    ]
+
+
+def test_bootstrap_once_passes_the_materialized_key_and_resolved_meta_url_down(
+    cfg: Path, clock: Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The encrypt key (never re-read from settings by the format path) and the
+    # resolved shard URL are the two values the caller hands down; dropping
+    # either silently formats an unencrypted volume or the wrong shard.
+    seen: list[Path] = []
+    key = cfg.parent / "key.pem"
+    fmt_args: list[tuple[str, Path | None]] = []
+    mount_args: list[tuple[str, Path]] = []
+
+    def unmounted(path: Path) -> bool:
+        seen.append(path)
+        return False
+
+    def fake_format(meta_url: str, encrypt_key: Path | None) -> str:
+        fmt_args.append((meta_url, encrypt_key))
+        return "ok"
+
+    def fake_mount(meta_url: str, mount_path: Path) -> str:
+        mount_args.append((meta_url, mount_path))
+        return "ok"
+
+    monkeypatch.setattr(bootstrap, "_is_mounted", unmounted)
+    monkeypatch.setattr(bootstrap, "_materialize_encryption_key", lambda: key)
+    monkeypatch.setattr(bootstrap, "_format_if_needed", fake_format)
+    monkeypatch.setattr(bootstrap, "_mount", fake_mount)
+    assert _bootstrap_once() == "ok"
+    assert seen == [cfg]
+    assert fmt_args == [(META, key)]
+    assert mount_args == [(META, cfg)]
 
 
 # ── _bootstrap_loop: retry supervision ───────────────────────────────
@@ -861,6 +1408,69 @@ def test_a_regular_file_squatting_the_mountpoint_does_not_kill_the_supervisor(
     assert clock.slept == [1]
 
 
+def test_the_supervisor_logs_the_exact_error_fields_when_an_attempt_errors(
+    cfg: Path, clock: Clock, logs: LogRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(bootstrap.settings, "JUICEFS_BOOTSTRAP_MAX_ATTEMPTS", 2)
+
+    def once() -> str:
+        raise OSError("meta socket closed")
+
+    monkeypatch.setattr(bootstrap, "_bootstrap_once", once)
+    _bootstrap_loop()
+    assert logs.warning_calls == [
+        (
+            f"{LogTag.STORAGE} bootstrap attempt errored",
+            {"error": "meta socket closed", "error_type": "OSError"},
+        ),
+        (
+            f"{LogTag.STORAGE} bootstrap attempt errored",
+            {"error": "meta socket closed", "error_type": "OSError"},
+        ),
+        (
+            f"{LogTag.STORAGE} mount still unavailable after attempts; "
+            "storage helpers will soft-fail (next app start retries)",
+            {"attempts": 2},
+        ),
+    ]
+
+
+def test_a_fatal_result_logs_the_exact_give_up_message(
+    cfg: Path, clock: Clock, logs: LogRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The give-up line is what operators grep for when storage is down — a
+    # mutated condition (result != "fatal") suppresses it entirely.
+    monkeypatch.setattr(bootstrap.settings, "JUICEFS_BOOTSTRAP_MAX_ATTEMPTS", 5)
+    monkeypatch.setattr(bootstrap, "_bootstrap_once", lambda: "fatal")
+    _bootstrap_loop()
+    assert logs.warning_calls == [
+        (
+            f"{LogTag.STORAGE} bootstrap gave up (non-transient failure); "
+            "storage helpers will soft-fail until reconfigured",
+            {},
+        )
+    ]
+
+
+def test_transient_backoff_logs_the_attempt_and_delay_fields(
+    cfg: Path, clock: Clock, logs: LogRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(bootstrap.settings, "JUICEFS_BOOTSTRAP_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(bootstrap.settings, "JUICEFS_BOOTSTRAP_RETRY_BACKOFF", 2)
+    monkeypatch.setattr(bootstrap, "_bootstrap_once", lambda: "transient")
+    _bootstrap_loop()
+    assert logs.info_calls == [
+        (
+            f"{LogTag.STORAGE} transient mount failure; backing off",
+            {"attempt": 1, "of": 3, "retry_in_s": 2},
+        ),
+        (
+            f"{LogTag.STORAGE} transient mount failure; backing off",
+            {"attempt": 2, "of": 3, "retry_in_s": 4},
+        ),
+    ]
+
+
 # ── init_juicefs_mount: the provider entry point ─────────────────────
 
 
@@ -968,6 +1578,137 @@ async def test_bootstrap_restarts_once_the_previous_supervisor_has_finished(
     first.join(timeout=5)
     await init()
     assert bootstrap._bootstrap_thread is not first
+
+
+async def test_the_probe_requests_the_exact_binary_name_and_logs_its_absence(
+    cfg: Path, logs: LogRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A mutated probe name ("JUICEFS", "juicefsx") silently finds nothing and
+    # the mount never starts, with no error anywhere.
+    requested: list[str] = []
+
+    def no_binary(name: str) -> None:
+        requested.append(name)
+
+    monkeypatch.setattr(bootstrap.shutil, "which", no_binary)
+    assert await _init_juicefs_mount()() == str(cfg)
+    assert requested == ["juicefs"]
+    assert logs.warning_calls == [
+        (
+            f"{LogTag.STORAGE} CLI not found on PATH — skipping bootstrap",
+            {},
+        )
+    ]
+
+
+async def test_missing_settings_logs_the_exact_missing_names(
+    cfg: Path, logs: LogRecorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Operators grep the skip line for the env var names to fix; the names
+    # must be joined with ", " so the list is greppable as written.
+    monkeypatch.setattr(bootstrap.shutil, "which", lambda _n: "/usr/local/bin/juicefs")
+    monkeypatch.setattr(bootstrap.settings, "R2_BUCKET", None)
+    monkeypatch.setattr(bootstrap.settings, "R2_ACCESS_KEY", None)
+    assert await _init_juicefs_mount()() == str(cfg)
+    assert logs.info_calls == [
+        (
+            f"{LogTag.STORAGE} skipping bootstrap; missing settings: R2_BUCKET, R2_ACCESS_KEY",
+            {},
+        )
+    ]
+
+
+async def test_a_healthy_probe_logs_the_skip_with_the_exact_message(
+    cfg: Path,
+    logs: LogRecorder,
+    juicefs_on_path: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bootstrap, "_is_mounted", lambda _p: True)
+    assert await _init_juicefs_mount()() == str(cfg)
+    assert logs.info_calls == [(f"{LogTag.STORAGE} mount already healthy", {})]
+
+
+async def test_the_probe_runs_off_the_event_loop_with_the_exact_mount_path(
+    cfg: Path,
+    juicefs_on_path: None,
+    monkeypatch: pytest.MonkeyPatch,
+    spawned: list[threading.Event],
+) -> None:
+    # The probe must pass the ACTUAL mount path off the loop — a mutated
+    # argument probes /mnt/jfs while the configured path is somewhere else.
+    calls: list[tuple[Any, tuple[Path, ...]]] = []
+
+    async def fake_to_thread(func: Any, *args: Any) -> Any:
+        calls.append((func, args))
+        return func(*args)
+
+    monkeypatch.setattr(bootstrap.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(bootstrap, "_is_mounted", lambda _p: False)
+    await _init_juicefs_mount()()
+    assert calls[0][1] == (cfg,)
+
+
+async def test_the_provider_probes_with_the_configured_mount_path(
+    cfg: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A mutated probe argument (None) would check /mnt/jfs while the
+    # configured path is elsewhere and the bootstrap never runs.
+    args: list[Any] = []
+
+    async def fake_needed(mount_path: Any) -> bool:
+        args.append(mount_path)
+        return False
+
+    monkeypatch.setattr(bootstrap, "_bootstrap_needed", fake_needed)
+    assert await _init_juicefs_mount()() == str(cfg)
+    assert args == [cfg]
+    assert bootstrap._bootstrap_thread is None
+
+
+async def test_the_provider_yields_control_with_a_zero_sleep(
+    cfg: Path,
+    juicefs_on_path: None,
+    monkeypatch: pytest.MonkeyPatch,
+    spawned: list[threading.Event],
+) -> None:
+    # The sleep is a pure yield point so startup is never blocked; a nonzero
+    # sleep parks the provider (and the startup path awaiting it) for real time.
+    slept: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr(bootstrap.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(bootstrap, "_is_mounted", lambda _p: False)
+    await _init_juicefs_mount()()
+    assert slept == [0.0]
+    assert bootstrap._bootstrap_thread is not None
+
+
+async def test_a_wedged_probe_logs_the_timeout_fields_and_still_starts_the_bootstrap(
+    cfg: Path,
+    logs: LogRecorder,
+    juicefs_on_path: None,
+    monkeypatch: pytest.MonkeyPatch,
+    spawned: list[threading.Event],
+) -> None:
+    # A wedged FUSE stat must time out loudly (with the exact window in the
+    # event) and still fall through to a remount, never hang startup.
+    monkeypatch.setattr(bootstrap, "_MOUNT_PROBE_TIMEOUT_SECONDS", 0.05)
+
+    async def forever(*_args: Any) -> None:
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(bootstrap.asyncio, "to_thread", forever)
+    assert await _init_juicefs_mount()() == str(cfg)
+    assert logs.warning_calls == [
+        (
+            f"{LogTag.STORAGE} mount probe timed out — mount likely unresponsive; (re)starting bootstrap",
+            {"_mount_probe_timeout_seconds": 0.05},
+        )
+    ]
+    assert bootstrap._bootstrap_thread is not None
 
 
 @pytest.mark.slow
