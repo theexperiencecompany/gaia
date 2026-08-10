@@ -1089,6 +1089,26 @@ class TestConnectLinkEndpoint:
             reason="unknown_or_consumed_code",
         )
 
+    async def test_error_url_strips_only_trailing_slashes(self, client: AsyncClient) -> None:
+        """The connect-error URL strips trailing slashes from FRONTEND_URL and
+        nothing else — a URL whose last path char is not a slash survives."""
+        with (
+            patch(
+                f"{MODULE}.resolve_and_consume_connect_code",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(f"{MODULE}.settings.FRONTEND_URL", "https://app.example.comX/"),
+            patch(f"{MODULE}.log", new=MagicMock()) as mock_log,
+        ):
+            resp = await client.get(f"{API}/connect-link?code=bad", follow_redirects=False)
+
+        assert resp.status_code == 307
+        assert resp.headers["location"] == (
+            "https://app.example.comX/integrations?connect_error=invalid_or_expired_link"
+        )
+        mock_log.set.assert_has_calls([call(operation="connect_link"), call(outcome="rejected")])
+
     async def test_malformed_user_id_redirects_to_error(self, client: AsyncClient) -> None:
         """A corrupt binding (user_id that is not a valid ObjectId) is bounced
         like any other bad code, with a distinct telemetry failure."""
