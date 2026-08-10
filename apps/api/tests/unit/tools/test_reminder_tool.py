@@ -170,6 +170,28 @@ class TestCreateReminderTool:
 
     @patch(f"{MODULE}.log")
     @patch(f"{MODULE}.reminder_scheduler")
+    async def test_invalid_agent_rejected(
+        self, mock_scheduler: MagicMock, mock_log: MagicMock
+    ) -> None:
+        """An out-of-contract agent value is rejected by the request model, not
+        silently defaulted — the tool passes the caller's agent through to the
+        constructor instead of dropping it."""
+        mock_scheduler.create_reminder = AsyncMock()
+
+        from app.agents.tools.reminder_tool import create_reminder_tool
+
+        payload = StaticReminderPayload(title="Test", body="Body")
+        result = await create_reminder_tool.coroutine(  # type: ignore[attr-defined]
+            config=_cfg(), payload=payload, agent=None
+        )
+        assert "agent" in result["error"]
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.TOOL} Validation error", error_type="ValidationError"
+        )
+        mock_scheduler.create_reminder.assert_not_called()
+
+    @patch(f"{MODULE}.log")
+    @patch(f"{MODULE}.reminder_scheduler")
     async def test_service_error(self, mock_scheduler: MagicMock, mock_log: MagicMock) -> None:
         mock_scheduler.create_reminder = AsyncMock(side_effect=RuntimeError("DB down"))
 
