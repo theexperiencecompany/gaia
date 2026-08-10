@@ -353,6 +353,12 @@ async def _finalize_paused_run(run: ExecutorRun) -> None:
             conversation_id=run.conversation_id,
             stream_id=run.stream_id,
         )
+    if run.executor_owns_tool_data:
+        # A resumed (queued) run's streamed cards — the settled decision and any
+        # newly parked card — must not vanish when it parks again: persist them
+        # cards-only, exactly like the cancelled path. Live runs defer to the
+        # comms drain (persisting here too would duplicate cards).
+        await persist_cancelled_run(run)
     signal_executor_done(run.stream_id)
     await _close_queued_stream(run, was_cancelled=False)
     log.info(
