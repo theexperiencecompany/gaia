@@ -8,12 +8,14 @@ and the ProjectService guards.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, call, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkUpdateRequest,
@@ -26,6 +28,7 @@ from app.models.todo_models import (
     TodoResponse,
     TodoSearchParams,
     TodoStats,
+    TodoUpdate,
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
@@ -536,64 +539,290 @@ def mock_bulk_repos():
         patch("app.services.todos.todo_bulk_service.todo_repository") as todo_repo,
         patch("app.services.todos.todo_bulk_service.project_repository") as project_repo,
         patch(
-            "app.services.todos.todo_bulk_service.delete_canvas_embedding", new_callable=AsyncMock
-        ),
+            "app.services.todos.todo_bulk_service.delete_canvas_embedding",
+            new_callable=AsyncMock,
+        ) as delete_canvas,
+        patch(
+            "app.services.todos.todo_bulk_service.tracked_todo_service.complete_tracked_todo",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as complete_tracked,
+        patch("app.services.todos.todo_bulk_service.log") as mock_log,
     ):
         todo_repo.find_by_ids = AsyncMock(return_value=[])
         todo_repo.bulk_update = AsyncMock(return_value=0)
         todo_repo.bulk_delete = AsyncMock(return_value=0)
         project_repo.get = AsyncMock(return_value=None)
-        yield todo_repo, project_repo
+        yield SimpleNamespace(
+            todo_repo=todo_repo,
+            project_repo=project_repo,
+            delete_canvas=delete_canvas,
+            complete_tracked=complete_tracked,
+            log=mock_log,
+        )
 
 
 class TestBulkServiceComplete:
     async def test_completes_plain_todos(self, mock_bulk_repos):
-        todo_repo, _ = mock_bulk_repos
         ids = ["a", "b"]
-        todo_repo.find_by_ids = AsyncMock(
-            return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
-        )
-        todo_repo.bulk_update = AsyncMock(return_value=2)
+        docs = [_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
+        completed_docs = [
+            _make_todo_doc(todo_id="a", completed=True),
+            _make_todo_doc(todo_id="b", completed=True),
+        ]
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(side_effect=[docs, completed_docs])
+        mock_bulk_repos.todo_repo.bulk_update = AsyncMock(return_value=2)
         result = await bulk_complete_todos(ids, FAKE_USER_ID)
+        assert result == [TodoResponse.from_document(doc) for doc in completed_docs]
+        assert result[0].completed is True
+        assert mock_bulk_repos.todo_repo.find_by_ids.await_count == 2
+        assert mock_bulk_repos.todo_repo.find_by_ids.await_args_list == [
+            call(FAKE_USER_ID, ids),
+            call(FAKE_USER_ID, ids),
+        ]
+        mock_bulk_repos.todo_repo.bulk_update.assert_awaited_once_with(
+            FAKE_USER_ID, ids, TodoUpdate(completed=True)
+        )
+        mock_bulk_repos.complete_tracked.assert_not_awaited()
+        mock_bulk_repos.log.set.assert_called_once_with(
+            component="todo_bulk_service",
+            operation="bulk_complete_todos",
+            user_id=FAKE_USER_ID,
+            todo_count=2,
+        )
+        mock_bulk_repos.log.info.assert_called_once_with(
+            f"{LogTag.TODO} Bulk completed todos", todo_count=2, user_id=FAKE_USER_ID
+        )
+
+    async def test_completes_single_plain_todo(self, mock_bulk_repos):
+        docs = [_make_todo_doc(todo_id="a")]
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(return_value=docs)
+        mock_bulk_repos.todo_repo.bulk_update = AsyncMock(return_value=1)
+        result = await bulk_complete_todos(["a"], FAKE_USER_ID)
+        assert len(result) == 1
+        mock_bulk_repos.log.info.assert_called_once_with(
+            f"{LogTag.TODO} Bulk completed todos", todo_count=1, user_id=FAKE_USER_ID
+        )
+
+    async def test_completes_tracked_through_lifecycle_and_plain_via_bulk(
+        self, mock_bulk_repos
+    ):
+        tracked = _make_todo_doc(todo_id="t1", vfs_path="/users/u/todos/t")
+        plain = _make_todo_doc(todo_id="p1")
+        updated_docs = [tracked, _make_todo_doc(todo_id="p1", completed=True)]
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(side_effect=[[tracked, plain], updated_docs])
+        mock_bulk_repos.todo_repo.bulk_update = AsyncMock(return_value=1)
+        result = await bulk_complete_todos(["t1", "p1"], FAKE_USER_ID)
         assert len(result) == 2
+        mock_bulk_repos.complete_tracked.assert_awaited_once_with(
+            "t1", FAKE_USER_ID, "Completed via bulk operation"
+        )
+        mock_bulk_repos.todo_repo.bulk_update.assert_awaited_once_with(
+            FAKE_USER_ID, ["p1"], TodoUpdate(completed=True)
+        )
+        mock_bulk_repos.log.info.assert_called_once_with(
+            f"{LogTag.TODO} Bulk completed todos", todo_count=2, user_id=FAKE_USER_ID
+        )
+
+    async def test_complete_all_tracked_skips_bulk_update(self, mock_bulk_repos):
+        tracked_a = _make_todo_doc(todo_id="t1", vfs_path="/users/u/todos/t")
+        tracked_b = _make_todo_doc(todo_id="t2", vfs_path="/users/u/todos/t2")
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(
+            return_value=[tracked_a, tracked_b]
+        )
+        result = await bulk_complete_todos(["t1", "t2"], FAKE_USER_ID)
+        assert len(result) == 2
+        assert mock_bulk_repos.complete_tracked.await_args_list == [
+            call("t1", FAKE_USER_ID, "Completed via bulk operation"),
+            call("t2", FAKE_USER_ID, "Completed via bulk operation"),
+        ]
+        mock_bulk_repos.todo_repo.bulk_update.assert_not_awaited()
+        mock_bulk_repos.log.info.assert_called_once_with(
+            f"{LogTag.TODO} Bulk completed todos", todo_count=2, user_id=FAKE_USER_ID
+        )
+
+    async def test_complete_tracked_failure_is_swallowed(self, mock_bulk_repos):
+        tracked = _make_todo_doc(todo_id="t1", vfs_path="/users/u/todos/t")
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(return_value=[tracked])
+        mock_bulk_repos.complete_tracked.side_effect = RuntimeError("boom")
+        result = await bulk_complete_todos(["t1"], FAKE_USER_ID)
+        assert len(result) == 1
+        mock_bulk_repos.log.warning.assert_called_once_with(
+            "tracked_todo.bulk_complete_failed", todo_id="t1", error="boom"
+        )
+        mock_bulk_repos.todo_repo.bulk_update.assert_not_awaited()
 
     async def test_no_todos_raises_404(self, mock_bulk_repos):
-        todo_repo, _ = mock_bulk_repos
-        todo_repo.find_by_ids = AsyncMock(return_value=[])
         with pytest.raises(HTTPException) as exc:
             await bulk_complete_todos(["a"], FAKE_USER_ID)
         assert exc.value.status_code == 404
+        assert exc.value.detail == "No todos found or already completed"
+        mock_bulk_repos.log.info.assert_not_called()
+
+    async def test_already_completed_todos_raise_404(self, mock_bulk_repos):
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
+        )
+        mock_bulk_repos.todo_repo.bulk_update = AsyncMock(return_value=0)
+        with pytest.raises(HTTPException) as exc:
+            await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
+        assert exc.value.status_code == 404
+        assert exc.value.detail == "No todos found or already completed"
+
+    async def test_error_wraps_500(self, mock_bulk_repos):
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+        with pytest.raises(HTTPException) as exc:
+            await bulk_complete_todos(["a"], FAKE_USER_ID)
+        assert exc.value.status_code == 500
+        assert exc.value.detail == "Failed to bulk complete todos: boom"
+        mock_bulk_repos.log.error.assert_called_once_with(
+            f"{LogTag.TODO} Error bulk completing todos",
+            error="boom",
+            error_type="RuntimeError",
+            user_id=FAKE_USER_ID,
+        )
 
 
 class TestBulkServiceMove:
+    async def test_moves(self, mock_bulk_repos):
+        moved_docs = [_make_todo_doc(todo_id="a", project_id=FAKE_PROJECT_ID)]
+        mock_bulk_repos.project_repo.get = AsyncMock(
+            return_value=_make_project_doc(project_id=FAKE_PROJECT_ID)
+        )
+        mock_bulk_repos.todo_repo.bulk_update = AsyncMock(return_value=1)
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(return_value=moved_docs)
+        result = await bulk_service_move_todos(["a"], FAKE_PROJECT_ID, FAKE_USER_ID)
+        assert result == [TodoResponse.from_document(moved_docs[0])]
+        assert result[0].project_id == FAKE_PROJECT_ID
+        mock_bulk_repos.project_repo.get.assert_awaited_once_with(
+            FAKE_PROJECT_ID, user_id=FAKE_USER_ID
+        )
+        mock_bulk_repos.todo_repo.bulk_update.assert_awaited_once_with(
+            FAKE_USER_ID, ["a"], TodoUpdate(project_id=FAKE_PROJECT_ID)
+        )
+        mock_bulk_repos.todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, ["a"])
+        mock_bulk_repos.log.set.assert_called_once_with(
+            component="todo_bulk_service",
+            operation="bulk_move_todos",
+            user_id=FAKE_USER_ID,
+            target_project_id=FAKE_PROJECT_ID,
+            todo_count=1,
+        )
+        mock_bulk_repos.log.info.assert_called_once_with(
+            f"{LogTag.TODO} Bulk moved todos to project for user",
+            modified=1,
+            project_id=FAKE_PROJECT_ID,
+            user_id=FAKE_USER_ID,
+        )
+
     async def test_missing_project_raises_404(self, mock_bulk_repos):
-        _, project_repo = mock_bulk_repos
-        project_repo.get = AsyncMock(return_value=None)
         with pytest.raises(HTTPException) as exc:
             await bulk_service_move_todos(["a"], FAKE_PROJECT_ID, FAKE_USER_ID)
         assert exc.value.status_code == 404
+        assert exc.value.detail == f"Project with id {FAKE_PROJECT_ID} not found"
+        mock_bulk_repos.todo_repo.bulk_update.assert_not_awaited()
 
-    async def test_moves(self, mock_bulk_repos):
-        todo_repo, project_repo = mock_bulk_repos
-        project_repo.get = AsyncMock(return_value=_make_project_doc(project_id=FAKE_PROJECT_ID))
-        todo_repo.bulk_update = AsyncMock(return_value=1)
-        todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id="a")])
-        result = await bulk_service_move_todos(["a"], FAKE_PROJECT_ID, FAKE_USER_ID)
-        assert len(result) == 1
+    async def test_no_todos_found_raises_404(self, mock_bulk_repos):
+        mock_bulk_repos.project_repo.get = AsyncMock(
+            return_value=_make_project_doc(project_id=FAKE_PROJECT_ID)
+        )
+        mock_bulk_repos.todo_repo.bulk_update = AsyncMock(return_value=0)
+        with pytest.raises(HTTPException) as exc:
+            await bulk_service_move_todos(["a"], FAKE_PROJECT_ID, FAKE_USER_ID)
+        assert exc.value.status_code == 404
+        assert exc.value.detail == "No todos found to move"
+
+    async def test_error_wraps_500(self, mock_bulk_repos):
+        mock_bulk_repos.project_repo.get = AsyncMock(
+            return_value=_make_project_doc(project_id=FAKE_PROJECT_ID)
+        )
+        mock_bulk_repos.todo_repo.bulk_update = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+        with pytest.raises(HTTPException) as exc:
+            await bulk_service_move_todos(["a"], FAKE_PROJECT_ID, FAKE_USER_ID)
+        assert exc.value.status_code == 500
+        assert exc.value.detail == "Failed to bulk move todos: boom"
+        mock_bulk_repos.log.error.assert_called_once_with(
+            f"{LogTag.TODO} Error bulk moving todos",
+            error="boom",
+            error_type="RuntimeError",
+            user_id=FAKE_USER_ID,
+        )
 
 
 class TestBulkServiceDelete:
-    async def test_deletes(self, mock_bulk_repos):
-        todo_repo, _ = mock_bulk_repos
-        todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id="a")])
-        todo_repo.bulk_delete = AsyncMock(return_value=1)
-        await bulk_service_delete_todos(["a"], FAKE_USER_ID)
-        todo_repo.bulk_delete.assert_awaited_once()
+    async def test_deletes_plain_todos(self, mock_bulk_repos):
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="a")]
+        )
+        mock_bulk_repos.todo_repo.bulk_delete = AsyncMock(return_value=1)
+        result = await bulk_service_delete_todos(["a"], FAKE_USER_ID)
+        assert result is None
+        mock_bulk_repos.delete_canvas.assert_not_awaited()
+        mock_bulk_repos.todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, ["a"])
+        mock_bulk_repos.todo_repo.bulk_delete.assert_awaited_once_with(FAKE_USER_ID, ["a"])
+        mock_bulk_repos.log.set.assert_called_once_with(
+            component="todo_bulk_service",
+            operation="bulk_delete_todos",
+            user_id=FAKE_USER_ID,
+            todo_count=1,
+        )
+        mock_bulk_repos.log.info.assert_called_once_with(
+            f"{LogTag.TODO} Bulk deleted todos for user", deleted=1, user_id=FAKE_USER_ID
+        )
+
+    async def test_deletes_tracked_cleans_embeddings(self, mock_bulk_repos):
+        tracked = _make_todo_doc(todo_id="t1", vfs_path="/users/u/todos/t")
+        # Plain doc first: a `continue`->`break` slip in the guard loop would
+        # abort before reaching the tracked todo.
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="p1"), tracked]
+        )
+        mock_bulk_repos.todo_repo.bulk_delete = AsyncMock(return_value=2)
+        result = await bulk_service_delete_todos(["p1", "t1"], FAKE_USER_ID)
+        assert result is None
+        mock_bulk_repos.todo_repo.find_by_ids.assert_awaited_once_with(
+            FAKE_USER_ID, ["p1", "t1"]
+        )
+        mock_bulk_repos.delete_canvas.assert_awaited_once_with("t1")
+        mock_bulk_repos.todo_repo.bulk_delete.assert_awaited_once_with(
+            FAKE_USER_ID, ["p1", "t1"]
+        )
+
+    async def test_delete_embedding_failure_is_swallowed(self, mock_bulk_repos):
+        tracked = _make_todo_doc(todo_id="t1", vfs_path="/users/u/todos/t")
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(return_value=[tracked])
+        mock_bulk_repos.todo_repo.bulk_delete = AsyncMock(return_value=1)
+        mock_bulk_repos.delete_canvas.side_effect = RuntimeError("boom")
+        result = await bulk_service_delete_todos(["t1"], FAKE_USER_ID)
+        assert result is None
+        mock_bulk_repos.log.warning.assert_called_once_with(
+            "tracked_todo.bulk_delete_embedding_failed", todo_id="t1", error="boom"
+        )
+        mock_bulk_repos.todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, ["t1"])
+        mock_bulk_repos.todo_repo.bulk_delete.assert_awaited_once_with(FAKE_USER_ID, ["t1"])
 
     async def test_no_todos_raises_404(self, mock_bulk_repos):
-        todo_repo, _ = mock_bulk_repos
-        todo_repo.find_by_ids = AsyncMock(return_value=[])
-        todo_repo.bulk_delete = AsyncMock(return_value=0)
         with pytest.raises(HTTPException) as exc:
             await bulk_service_delete_todos(["a"], FAKE_USER_ID)
         assert exc.value.status_code == 404
+        assert exc.value.detail == "No todos found to delete"
+        mock_bulk_repos.log.info.assert_not_called()
+
+    async def test_error_wraps_500(self, mock_bulk_repos):
+        mock_bulk_repos.todo_repo.find_by_ids = AsyncMock(
+            side_effect=RuntimeError("boom")
+        )
+        with pytest.raises(HTTPException) as exc:
+            await bulk_service_delete_todos(["a"], FAKE_USER_ID)
+        assert exc.value.status_code == 500
+        assert exc.value.detail == "Failed to bulk delete todos: boom"
+        mock_bulk_repos.log.error.assert_called_once_with(
+            f"{LogTag.TODO} Error bulk deleting todos",
+            error="boom",
+            error_type="RuntimeError",
+            user_id=FAKE_USER_ID,
+        )

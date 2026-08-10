@@ -113,19 +113,53 @@ class TestGoogleMapsGatherContext:
 # =============================================================================
 
 HUBSPOT_MODULE = "app.agents.tools.integrations.hubspot_tool"
+HUBSPOT_CONTACTS_ENDPOINT = "https://api.hubapi.com/crm/v3/objects/contacts"
+HUBSPOT_DEALS_ENDPOINT = "https://api.hubapi.com/crm/v3/objects/deals"
+HUBSPOT_CONTACTS_QUERY: dict[str, Any] = {
+    "limit": 10,
+    "properties": "firstname,lastname,email,hs_lead_status",
+    "sort": "-createdate",
+}
+HUBSPOT_DEALS_QUERY: dict[str, Any] = {
+    "limit": 10,
+    "properties": "dealname,amount,dealstage,closedate",
+    "sort": "-createdate",
+}
+HUBSPOT_EMPTY_RESULT: dict[str, Any] = {
+    "recent_contacts": [],
+    "recent_deals": [],
+    "contact_count": 0,
+    "deal_count": 0,
+}
 
 
 class TestHubSpotGatherContext:
-    def _register(self) -> dict[str, Callable[..., Any]]:
+    def _register(self) -> tuple[MagicMock, dict[str, Callable[..., Any]]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.hubspot_tool import register_hubspot_custom_tools
 
         names = register_hubspot_custom_tools(composio)
-        assert "HUBSPOT_CUSTOM_GATHER_CONTEXT" in names
-        return captured
+        assert names == ["HUBSPOT_CUSTOM_GATHER_CONTEXT"]
+        return composio, captured
+
+    def _assert_proxy_call(
+        self, mock_proxy: MagicMock, index: int, *, endpoint: str, query: dict[str, Any]
+    ) -> None:
+        assert mock_proxy.call_args_list[index].kwargs == {
+            "user_id": FAKE_USER_ID,
+            "toolkit": "HUBSPOT",
+            "endpoint": endpoint,
+            "method": "GET",
+            "query": query,
+        }
+
+    def test_registers_custom_tool_with_hubspot_toolkit(self) -> None:
+        composio, _ = self._register()
+        assert composio.tool_kwargs == [{"toolkit": "HUBSPOT"}]
 
     @patch(f"{HUBSPOT_MODULE}.proxy_request_sync")
-    def test_basic_success(self, mock_proxy: MagicMock) -> None:
+    @patch(f"{HUBSPOT_MODULE}.log")
+    def test_basic_success(self, mock_log: MagicMock, mock_proxy: MagicMock) -> None:
         mock_proxy.side_effect = [
             {
                 "results": [
@@ -155,38 +189,245 @@ class TestHubSpotGatherContext:
             },
         ]
 
-        captured = self._register()
+        _, captured = self._register()
         result = captured["CUSTOM_GATHER_CONTEXT"](
             GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
         )
 
-        assert result["contact_count"] == 1
-        assert result["recent_contacts"][0]["email"] == "ada@x.com"
-        assert result["recent_contacts"][0]["lead_status"] == "OPEN"
-        assert result["deal_count"] == 1
-        assert result["recent_deals"][0]["dealname"] == "Big deal"
+        assert mock_proxy.call_count == 2
+        self._assert_proxy_call(mock_proxy, 0, endpoint=HUBSPOT_CONTACTS_ENDPOINT, query=HUBSPOT_CONTACTS_QUERY)
+        self._assert_proxy_call(mock_proxy, 1, endpoint=HUBSPOT_DEALS_ENDPOINT, query=HUBSPOT_DEALS_QUERY)
+        assert result == {
+            "recent_contacts": [
+                {
+                    "id": "c1",
+                    "firstname": "Ada",
+                    "lastname": "L",
+                    "email": "ada@x.com",
+                    "lead_status": "OPEN",
+                }
+            ],
+            "recent_deals": [
+                {
+                    "id": "d1",
+                    "dealname": "Big deal",
+                    "amount": "1000",
+                    "dealstage": "closedwon",
+                    "closedate": "2026-01-01",
+                }
+            ],
+            "contact_count": 1,
+            "deal_count": 1,
+        }
+        mock_log.set.assert_called_once_with(
+            tool={"integration": "hubspot", "action": "gather_context"}
+        )
+        mock_log.debug.assert_not_called()
 
     @patch(f"{HUBSPOT_MODULE}.proxy_request_sync")
-    def test_deals_fetch_failure_keeps_contacts(self, mock_proxy: MagicMock) -> None:
+    @patch(f"{HUBSPOT_MODULE}.log")
+    def test_contacts_fetch_failure_keeps_deals(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [
+            RuntimeError("hubspot down"),
+            {"results": [{"id": "d1", "properties": {}}]},
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert mock_proxy.call_count == 2
+        assert result == {
+            "recent_contacts": [],
+            "recent_deals": [
+                {"id": "d1", "dealname": None, "amount": None, "dealstage": None, "closedate": None}
+            ],
+            "contact_count": 0,
+            "deal_count": 1,
+        }
+        mock_log.set.assert_called_once_with(
+            tool={"integration": "hubspot", "action": "gather_context"}
+        )
+        mock_log.debug.assert_called_once_with(
+            "[TOOL] HubSpot contacts fetch failed", error_type="RuntimeError"
+        )
+
+    @patch(f"{HUBSPOT_MODULE}.proxy_request_sync")
+    @patch(f"{HUBSPOT_MODULE}.log")
+    def test_deals_fetch_failure_keeps_contacts(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
         mock_proxy.side_effect = [
             {"results": [{"id": "c1", "properties": {}}]},
             RuntimeError("hubspot down"),
         ]
 
-        captured = self._register()
+        _, captured = self._register()
         result = captured["CUSTOM_GATHER_CONTEXT"](
             GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
         )
 
-        assert result["contact_count"] == 1
-        assert result["recent_deals"] == []
-        assert result["deal_count"] == 0
+        assert mock_proxy.call_count == 2
+        assert result == {
+            "recent_contacts": [
+                {"id": "c1", "firstname": None, "lastname": None, "email": None, "lead_status": None}
+            ],
+            "recent_deals": [],
+            "contact_count": 1,
+            "deal_count": 0,
+        }
+        mock_log.set.assert_called_once_with(
+            tool={"integration": "hubspot", "action": "gather_context"}
+        )
+        mock_log.debug.assert_called_once_with(
+            "[TOOL] HubSpot deals fetch failed", error_type="RuntimeError"
+        )
+
+    @patch(f"{HUBSPOT_MODULE}.proxy_request_sync")
+    @patch(f"{HUBSPOT_MODULE}.log")
+    def test_none_responses_yield_empty_sections_without_failure_logs(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [None, None]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result == HUBSPOT_EMPTY_RESULT
+        mock_log.debug.assert_not_called()
+
+    @patch(f"{HUBSPOT_MODULE}.proxy_request_sync")
+    @patch(f"{HUBSPOT_MODULE}.log")
+    def test_empty_payloads_yield_empty_sections_without_failure_logs(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [{}, {}]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result == HUBSPOT_EMPTY_RESULT
+        mock_log.debug.assert_not_called()
+
+    @patch(f"{HUBSPOT_MODULE}.proxy_request_sync")
+    @patch(f"{HUBSPOT_MODULE}.log")
+    def test_missing_results_key_is_not_an_error(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [{"unexpected": 1}, {"unexpected": 2}]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result == HUBSPOT_EMPTY_RESULT
+        mock_log.debug.assert_not_called()
+
+    @patch(f"{HUBSPOT_MODULE}.proxy_request_sync")
+    def test_missing_properties_fields_become_none(self, mock_proxy: MagicMock) -> None:
+        mock_proxy.side_effect = [
+            {
+                "results": [
+                    {"id": "bare"},
+                    {"id": "partial", "properties": {"firstname": "Only"}},
+                ]
+            },
+            {
+                "results": [
+                    {"id": "d-bare"},
+                    {"id": "d-partial", "properties": {"dealname": "Only"}},
+                ]
+            },
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result["recent_contacts"] == [
+            {
+                "id": "bare",
+                "firstname": None,
+                "lastname": None,
+                "email": None,
+                "lead_status": None,
+            },
+            {
+                "id": "partial",
+                "firstname": "Only",
+                "lastname": None,
+                "email": None,
+                "lead_status": None,
+            },
+        ]
+        assert result["recent_deals"] == [
+            {
+                "id": "d-bare",
+                "dealname": None,
+                "amount": None,
+                "dealstage": None,
+                "closedate": None,
+            },
+            {
+                "id": "d-partial",
+                "dealname": "Only",
+                "amount": None,
+                "dealstage": None,
+                "closedate": None,
+            },
+        ]
+        assert result["contact_count"] == 2
+        assert result["deal_count"] == 2
+
+    @patch(f"{HUBSPOT_MODULE}.proxy_request_sync")
+    def test_multiple_items_preserve_order_and_count(self, mock_proxy: MagicMock) -> None:
+        mock_proxy.side_effect = [
+            {"results": [{"id": "c1", "properties": {}}, {"id": "c2", "properties": {}}]},
+            {
+                "results": [
+                    {"id": "d1", "properties": {}},
+                    {"id": "d2", "properties": {}},
+                    {"id": "d3", "properties": {}},
+                ]
+            },
+        ]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert [c["id"] for c in result["recent_contacts"]] == ["c1", "c2"]
+        assert [d["id"] for d in result["recent_deals"]] == ["d1", "d2", "d3"]
+        assert result["contact_count"] == 2
+        assert result["deal_count"] == 3
 
     @patch(f"{HUBSPOT_MODULE}.proxy_request_sync")
     def test_missing_user_id_raises_value_error(self, mock_proxy: MagicMock) -> None:
-        captured = self._register()
-        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+        _, captured = self._register()
+        with pytest.raises(ValueError) as exc_info:
             captured["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, {})
+        assert str(exc_info.value) == "Missing user_id in auth_credentials"
+        mock_proxy.assert_not_called()
+
+    @patch(f"{HUBSPOT_MODULE}.proxy_request_sync")
+    def test_empty_user_id_raises_value_error(self, mock_proxy: MagicMock) -> None:
+        _, captured = self._register()
+        with pytest.raises(ValueError) as exc_info:
+            captured["CUSTOM_GATHER_CONTEXT"](
+                GatherContextInput(), EXECUTE_REQUEST, {"user_id": ""}
+            )
+        assert str(exc_info.value) == "Missing user_id in auth_credentials"
+        mock_proxy.assert_not_called()
 
 
 # =============================================================================

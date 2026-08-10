@@ -8,19 +8,25 @@ tests focus on correctness of the six operations.
 
 from __future__ import annotations
 
+from datetime import date
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.agents.tools.coding import query_json_tool
 from app.agents.tools.coding.query_json_tool import (
     _apply_query,
+    _format_result,
+    _hashable,
     _load_records,
     _match_condition,
+    _sort_key,
     query_json,
 )
+from app.constants.log_tags import LogTag
+from app.services.storage import FsOps
 
 CONFIG = {"configurable": {"user_id": "u1", "conversation_id": "c1"}}
 
@@ -89,6 +95,39 @@ def test_match_condition(cond: dict, expected: bool) -> None:
 def test_match_condition_type_mismatch_is_false_not_error() -> None:
     # gt across incompatible types must not raise.
     assert _match_condition({"n": "abc"}, {"field": "n", "op": "gt", "value": 5}) is False
+
+
+def test_match_condition_not_equals_true() -> None:
+    # A not_equals that actually differs must return True — the parametrized
+    # case above only covers the "same value" side, which cannot distinguish
+    # not_equals from a broken fall-through to False.
+    assert (
+        _match_condition({"from": "github"}, {"field": "from", "op": "not_equals", "value": "bob"})
+        is True
+    )
+
+
+def test_match_condition_lt_true() -> None:
+    # Same for lt: the parametrized case is always False (no record is
+    # earlier than the minimum), so a fall-through to False goes unnoticed.
+    assert (
+        _match_condition({"time": "2026-06-01"}, {"field": "time", "op": "lt", "value": "2026-06-02"})
+        is True
+    )
+
+
+def test_match_condition_gt_lt_are_exclusive() -> None:
+    # An equal value is neither greater nor less — pins the strict comparison
+    # (> vs >=, < vs <=) at the equality boundary.
+    rec = {"n": 5}
+    assert _match_condition(rec, {"field": "n", "op": "gt", "value": 5}) is False
+    assert _match_condition(rec, {"field": "n", "op": "lt", "value": 5}) is False
+
+
+def test_match_condition_unknown_op_is_false() -> None:
+    # An op outside the known set must fall through to False (the tool
+    # validates ops earlier, but _match_condition must not blindly match).
+    assert _match_condition({"from": "github"}, {"field": "from", "op": "bogus"}) is False
 
 
 # --- _apply_query ------------------------------------------------------------ #
@@ -266,6 +305,74 @@ def test_load_pathological_line_is_dropped_not_raised(tmp_path: Path) -> None:
     assert records == [{"a": 1}, {"b": 2}] and dropped == 1
 
 
+def test_load_dropped_counts_accumulate_per_line(tmp_path: Path) -> None:
+    # dropped must accumulate (dropped = 1 per line, not overwritten each time):
+    # two parse errors plus two non-dict lines = 4, not 1.
+    f = tmp_path / "bad.jsonl"
+    f.write_text('bad one\nbad two\n42\n43\n{"a":1}\n')
+    records, dropped, truncated = _load_records(f)
+    assert records == [{"a": 1}] and dropped == 4 and truncated is False
+
+
+def test_load_blank_lines_skipped_not_dropped(tmp_path: Path) -> None:
+    # Empty and whitespace-only lines are skipped, not counted as unparseable.
+    f = tmp_path / "blank.jsonl"
+    f.write_text('{"a":1}\n\n  \n{"b":2}\n')
+    records, dropped, truncated = _load_records(f)
+    assert records == [{"a": 1}, {"b": 2}] and dropped == 0 and truncated is False
+
+
+def test_load_invalid_utf8_replaced_not_raised(tmp_path: Path) -> None:
+    # A non-UTF-8 byte must be replaced, not raise — the decode uses errors="replace".
+    f = tmp_path / "latin.jsonl"
+    f.write_bytes(b'{"a":1}\n\xff\n{"b":2}\n')
+    records, dropped, truncated = _load_records(f)
+    assert records == [{"a": 1}, {"b": 2}] and dropped == 1 and truncated is False
+
+
+def test_load_array_with_leading_whitespace(tmp_path: Path) -> None:
+    # Array detection strips leading whitespace (lstrip, not rstrip).
+    f = tmp_path / "arr.json"
+    f.write_text('  [{"a":1},{"b":2}]  \n')
+    records, dropped, truncated = _load_records(f)
+    assert records == [{"a": 1}, {"b": 2}] and dropped == 0 and truncated is False
+
+
+def test_load_array_keeps_only_dict_records(tmp_path: Path) -> None:
+    f = tmp_path / "arr.json"
+    f.write_text('[{"a":1},"skip",7,null,{"b":2}]')
+    records, dropped, truncated = _load_records(f)
+    assert records == [{"a": 1}, {"b": 2}] and dropped == 0 and truncated is False
+
+
+def test_load_array_at_record_cap_not_truncated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Exactly-at-cap arrays are complete (only *over*-cap counts as truncated).
+    monkeypatch.setattr(query_json_tool, "MAX_QUERY_RECORDS", 5)
+    f = tmp_path / "arr.json"
+    f.write_text(json.dumps([{"n": i} for i in range(5)]))
+    records, dropped, truncated = _load_records(f)
+    assert len(records) == 5 and dropped == 0 and truncated is False
+
+
+def test_load_byte_cap_exact_boundary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A file that fits exactly in the byte cap is NOT truncated (only over-cap
+    # is) — pins > vs >= on the truncation flag.
+    body = '{"a":1}\n'
+    monkeypatch.setattr(query_json_tool, "MAX_QUERY_INPUT_BYTES", len(body))
+    f = tmp_path / "exact.jsonl"
+    f.write_text(body)
+    records, dropped, truncated = _load_records(f)
+    assert records == [{"a": 1}] and dropped == 0 and truncated is False
+
+
+def test_load_byte_cap_overflow_signals_truncation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(query_json_tool, "MAX_QUERY_INPUT_BYTES", len('{"a":1}\n'))
+    f = tmp_path / "over.jsonl"
+    f.write_text('{"a":1}\n0')  # exactly cap+1 bytes: one full record + one byte of the next
+    records, dropped, truncated = _load_records(f)
+    assert records == [{"a": 1}] and dropped == 0 and truncated is True
+
+
 async def test_tool_reports_truncation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(query_json_tool, "MAX_QUERY_RECORDS", 2)
     with _mock_resolve(_jsonl(tmp_path)):
@@ -323,13 +430,13 @@ async def test_tool_rejects_unknown_op(tmp_path: Path) -> None:
             {"path": "inbox.jsonl", "where": [{"field": "from", "op": "regex", "value": "x"}]},
             config=CONFIG,
         )
-    assert "unknown filter op" in out
+    assert out == f"Error: unknown filter op(s) ['regex']; allowed: {sorted(query_json_tool._OPS)}"
 
 
 async def test_tool_rejects_bad_match(tmp_path: Path) -> None:
     with _mock_resolve(_jsonl(tmp_path)):
         out = await query_json.ainvoke({"path": "inbox.jsonl", "match": "some"}, config=CONFIG)
-    assert "match must be" in out
+    assert out == "Error: match must be 'all' or 'any'"
 
 
 async def test_tool_root_path_rejected() -> None:
@@ -457,3 +564,239 @@ async def test_tool_group_count_by_labels_end_to_end(tmp_path: Path) -> None:
             {"path": "inbox.jsonl", "group_count_by": "labels"}, config=CONFIG
         )
     assert "count" in out and "Error" not in out  # list-valued group key, no crash
+
+
+# --- _hashable / _sort_key (exact grouping/dedup/sort keys) ------------------- #
+
+
+def test_hashable_scalars_pass_through() -> None:
+    assert _hashable(None) is None
+    assert _hashable("x") == "x"
+    assert _hashable(5) == 5
+    assert _hashable(True) is True
+
+
+def test_hashable_dict_becomes_sorted_json() -> None:
+    # sort_keys=True: dict keys must be stable regardless of insertion order.
+    assert _hashable({"b": 1, "a": 2}) == '{"a": 2, "b": 1}'
+
+
+def test_hashable_non_serializable_value_uses_default_str() -> None:
+    assert _hashable({"d": date(2026, 6, 1)}) == '{"d": "2026-06-01"}'
+
+
+def test_sort_key_ranks_types() -> None:
+    assert _sort_key(None) == (0, 0)
+    assert _sort_key(False) == (1, False)
+    assert _sort_key(3) == (2, 3)
+    assert _sort_key("x") == (3, "x")
+
+
+def test_sort_key_dict_becomes_sorted_json() -> None:
+    assert _sort_key({"b": 1, "a": 2}) == (4, '{"a": 2, "b": 1}')
+
+
+def test_sort_key_non_serializable_value_uses_default_str() -> None:
+    assert _sort_key({"d": date(2026, 6, 1)}) == (4, '{"d": "2026-06-01"}')
+
+
+# --- _format_result (exact output strings) ----------------------------------- #
+
+
+def test_format_count_only_exact() -> None:
+    assert _format_result({"count": 2}, dropped=0, truncated=False) == '{"count": 2}'
+
+
+def test_format_no_matches_exact() -> None:
+    assert _format_result([], dropped=0, truncated=False) == "(no matches)"
+
+
+def test_format_records_joined_exact() -> None:
+    assert _format_result([{"a": 1}, {"b": 2}], dropped=0, truncated=False) == '{"a": 1}\n{"b": 2}'
+
+
+def test_format_non_serializable_values_use_default_str() -> None:
+    assert _format_result([{"d": date(2026, 6, 1)}], dropped=0, truncated=False) == '{"d": "2026-06-01"}'
+
+
+def test_format_truncation_note_exact() -> None:
+    out = _format_result([{"a": 1}], dropped=0, truncated=True)
+    assert out == '{"a": 1}\n\n[input truncated (file too large) — results may be incomplete]'
+
+
+def test_format_dropped_note_exact() -> None:
+    out = _format_result([{"a": 1}], dropped=3, truncated=False)
+    assert out == '{"a": 1}\n\n[3 unparseable line(s) skipped]'
+
+
+def test_format_both_notes_exact() -> None:
+    out = _format_result([{"a": 1}], dropped=3, truncated=True)
+    assert out == (
+        '{"a": 1}\n\n'
+        "[input truncated (file too large) — results may be incomplete; "
+        "3 unparseable line(s) skipped]"
+    )
+
+
+def test_format_output_char_cap_exact_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A body exactly at the char cap is returned whole (pins > vs >=).
+    record = {"pad": "x" * 4}
+    body = json.dumps(record)
+    monkeypatch.setattr(query_json_tool, "MAX_FILTER_OUTPUT_CHARS", len(body))
+    assert _format_result([record], dropped=0, truncated=False) == body
+
+
+def test_format_output_char_cap_slices_and_notes(monkeypatch: pytest.MonkeyPatch) -> None:
+    cap = 10
+    monkeypatch.setattr(query_json_tool, "MAX_FILTER_OUTPUT_CHARS", cap)
+    record = {"pad": "x" * 20}
+    out = _format_result([record], dropped=0, truncated=False)
+    assert out == (
+        json.dumps(record)[:cap]
+        + "\n\n[output truncated at 10 chars — narrow the filter or lower limit]"
+    )
+
+
+# --- tool wiring: exact seam args and defaults ------------------------------- #
+
+
+async def test_tool_pins_seam_args(tmp_path: Path) -> None:
+    # The tool must call its seams with exact args: canonical_rel gets the raw
+    # path + resolved session, the concurrency slot and timer get their keys,
+    # resolve_user_file gets the resolved user/rel, and the wide event carries
+    # the tool name/action.
+    logger = MagicMock()
+    sem = MagicMock(return_value=AsyncMock())
+    timer = MagicMock(return_value=AsyncMock())
+    resolve = AsyncMock(return_value=_jsonl(tmp_path))
+    canonical = MagicMock(wraps=query_json_tool.canonical_rel)
+    _, rel = query_json_tool.canonical_rel("inbox.jsonl", session_id="c1")
+    with (
+        patch.object(query_json_tool, "canonical_rel", canonical),
+        patch.object(query_json_tool, "loop_bound_semaphore", sem),
+        patch.object(query_json_tool, "fs_timer", timer),
+        patch.object(query_json_tool, "resolve_user_file", resolve),
+        patch.object(query_json_tool, "log", logger),
+    ):
+        out = await query_json.ainvoke({"path": "inbox.jsonl"}, config=CONFIG)
+    canonical.assert_called_once_with("inbox.jsonl", session_id="c1")
+    sem.assert_called_once_with("query_json", query_json_tool.MAX_QUERY_CONCURRENCY)
+    timer.assert_called_once_with(FsOps.TOOL_QUERY_JSON)
+    resolve.assert_awaited_once_with("u1", rel)
+    logger.set.assert_called_once_with(tool={"name": "query_json", "action": "query"})
+    assert len(out.splitlines()) == 3
+
+
+async def test_tool_passes_exact_query_args(tmp_path: Path) -> None:
+    # _apply_query receives every knob as the caller gave it (and where=None
+    # becomes []), with count_only/group_count_by defaults filled in.
+    where = [{"field": "from", "op": "contains", "value": "github"}]
+    spy = MagicMock(wraps=query_json_tool._apply_query)
+    with (
+        patch.object(query_json_tool, "_apply_query", spy),
+        _mock_resolve(_jsonl(tmp_path)),
+    ):
+        out = await query_json.ainvoke(
+            {
+                "path": "inbox.jsonl",
+                "where": where,
+                "match": "any",
+                "fields": ["subject"],
+                "sort_by": "time",
+                "order": "asc",
+                "limit": 2,
+                "unique_by": "threadId",
+            },
+            config=CONFIG,
+        )
+    assert spy.call_count == 1
+    call = spy.call_args
+    assert call.args[0] == RECORDS
+    assert call.kwargs == {
+        "where": where,
+        "match": "any",
+        "fields": ["subject"],
+        "sort_by": "time",
+        "order": "asc",
+        "limit": 2,
+        "count_only": False,
+        "unique_by": "threadId",
+        "group_count_by": None,
+    }
+    assert out == '{"subject": "PR merged"}'
+
+
+async def test_tool_defaults(tmp_path: Path) -> None:
+    # match/order/limit/count_only defaults: match is AND, order desc, 50 max,
+    # and records (not a count) are returned.
+    with _mock_resolve(_jsonl(tmp_path)):
+        out = await query_json.ainvoke(
+            {
+                "path": "inbox.jsonl",
+                "fields": ["time"],
+                "where": [
+                    {"field": "from", "op": "equals", "value": "github"},
+                    {"field": "from", "op": "equals", "value": "bob@co.com"},
+                ],
+            },
+            config=CONFIG,
+        )
+    assert out == "(no matches)"  # AND of two mutually exclusive conditions
+
+    with _mock_resolve(_jsonl(tmp_path)):
+        out = await query_json.ainvoke(
+            {"path": "inbox.jsonl", "fields": ["time"], "sort_by": "time"}, config=CONFIG
+        )
+    assert out.splitlines() == [
+        '{"time": "2026-06-03"}',
+        '{"time": "2026-06-02"}',
+        '{"time": "2026-06-01"}',
+    ]  # desc, not asc
+
+    with _mock_resolve(_jsonl(tmp_path, [{"n": i} for i in range(60)])):
+        out = await query_json.ainvoke({"path": "inbox.jsonl"}, config=CONFIG)
+    assert len(out.splitlines()) == 50  # default limit, not 51
+
+
+async def test_tool_match_any_succeeds(tmp_path: Path) -> None:
+    with _mock_resolve(_jsonl(tmp_path)):
+        out = await query_json.ainvoke(
+            {
+                "path": "inbox.jsonl",
+                "match": "any",
+                "where": [{"field": "subject", "op": "contains", "value": "lunch"}],
+            },
+            config=CONFIG,
+        )
+    assert json.loads(out) == RECORDS[1]  # 'any' is accepted, not rejected
+
+
+async def test_tool_file_not_found_exact_message() -> None:
+    with (
+        patch.object(query_json_tool, "canonical_rel", return_value=("/workspace/scratch/x.jsonl", "x.jsonl")),
+        patch.object(query_json_tool, "resolve_user_file", AsyncMock(side_effect=FileNotFoundError("nope"))),
+    ):
+        out = await query_json.ainvoke({"path": "x.jsonl"}, config=CONFIG)
+    assert out == "Error: file not found at /workspace/scratch/x.jsonl"
+
+
+async def test_tool_runtime_error_exact_message_and_log() -> None:
+    logger = MagicMock()
+    with (
+        patch.object(query_json_tool, "log", logger),
+        patch.object(query_json_tool, "canonical_rel", return_value=("/workspace/x.jsonl", "x.jsonl")),
+        patch.object(query_json_tool, "resolve_user_file", AsyncMock(side_effect=RuntimeError("boom"))),
+    ):
+        out = await query_json.ainvoke({"path": "x.jsonl"}, config=CONFIG)
+    assert out == "Error running query_json: boom"
+    logger.error.assert_called_once_with(
+        f"{LogTag.SANDBOX} query_json failed", error_type="RuntimeError", exc_info=True
+    )
+
+
+async def test_tool_reports_dropped_lines(tmp_path: Path) -> None:
+    f = tmp_path / "bad.jsonl"
+    f.write_text('{"a":1}\nnot json\n{"b":2}\n')
+    with _mock_resolve(f):
+        out = await query_json.ainvoke({"path": "bad.jsonl"}, config=CONFIG)
+    assert "1 unparseable line(s) skipped" in out
