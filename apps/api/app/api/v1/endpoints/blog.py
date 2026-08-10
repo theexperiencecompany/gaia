@@ -1,5 +1,3 @@
-from typing import cast
-
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.constants.general import MAX_PAGE_NUMBER
@@ -32,16 +30,13 @@ async def get_blogs(
         )
         log.set(result_count=len(results))
         log.set(outcome="success")
-        # Cacheable erases the wrapped function's return type (Callable[..., Awaitable[Any]]);
-        # search_blogs is declared -> list[BlogPost], so this is correct by construction.
-        return cast(list[BlogPost], results)
+        return results
     results = await BlogService.get_all_blogs(
         page=page, limit=limit, include_content=include_content
     )
     log.set(result_count=len(results))
     log.set(outcome="success")
-    # Same Cacheable return-type erasure as above.
-    return cast(list[BlogPost], results)
+    return results
 
 
 @router.get("/blogs/{slug}", response_model=BlogPost)
@@ -51,9 +46,7 @@ async def get_blog(slug: str) -> BlogPost:
     log.set(operation="get_blog", slug=slug)
     result = await BlogService.get_blog_by_slug(slug)
     log.set(outcome="success")
-    # Cacheable erases the wrapped function's return type; get_blog_by_slug is
-    # declared -> BlogPost, so this is correct by construction.
-    return cast(BlogPost, result)
+    return result
 
 
 @router.get("/blogs/count", response_model=BlogCountResponse)

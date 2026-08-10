@@ -28,7 +28,7 @@ from app.constants.device_bridge import (
     FRAME_PONG,
 )
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
+from app.db.redis import close_pubsub, redis_cache
 from app.services.device.bridge import (
     down_channel,
     mark_offline,
@@ -168,7 +168,7 @@ async def _down_relay(websocket: WebSocket, device_id: str) -> None:
     finally:
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe(down_channel(device_id))
-            await pubsub.aclose()
+            await close_pubsub(pubsub)
 
 
 async def _heartbeat(websocket: WebSocket, device_id: str, state: dict[str, float]) -> None:

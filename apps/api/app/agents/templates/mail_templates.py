@@ -96,7 +96,7 @@ class GmailMessageParser:
             parser = email.parser.BytesParser(policy=email.policy.default)
             # BytesParser is typed as producing a plain Message; under
             # ``email.policy.default`` it always builds an EmailMessage.
-            return cast("email.message.EmailMessage", parser.parsebytes(raw_email_bytes))
+            return parser.parsebytes(raw_email_bytes)
 
         # Manual parsing from payload structure
         payload = self.gmail_message.get("payload")

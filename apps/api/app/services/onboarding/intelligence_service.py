@@ -72,7 +72,7 @@ from app.models.onboarding_models import (
 )
 from app.models.todo_models import Priority, TodoModel
 from app.models.trigger_config import WorkflowTriggerSchema
-from app.models.user_models import OnboardingPhase, UserDocument
+from app.models.user_models import OnboardingPhase, OnboardingPreferences, UserDocument
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     SuggestedTrigger,
@@ -448,7 +448,9 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     onboarding = user.onboarding or {}
     name: str = user.name or "there"
     user_email: str | None = user.email
-    profession: str = (onboarding.get("preferences") or {}).get("profession", "") or ""
+    profession: str = (
+        OnboardingPreferences.model_validate(onboarding.get("preferences") or {}).profession or ""
+    )
     focus: str = onboarding.get("focus", "") or ""
     clarify_answers: list[ClarifyAnswerRecord] = onboarding.get("clarify_answers") or []
     selected_integrations: list[str] = onboarding.get("selected_integrations") or []
@@ -1351,7 +1353,9 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
 
     onboarding = user.onboarding or {}
     name: str = user.name or "there"
-    profession: str = (onboarding.get("preferences") or {}).get("profession", "") or ""
+    profession: str = (
+        OnboardingPreferences.model_validate(onboarding.get("preferences") or {}).profession or ""
+    )
     focus: str = onboarding.get("focus", "") or ""
     clarify_answers: list[ClarifyAnswerRecord] = onboarding.get("clarify_answers") or []
     selected_integrations: list[str] = onboarding.get("selected_integrations") or []

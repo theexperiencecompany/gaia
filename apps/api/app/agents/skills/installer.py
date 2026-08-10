@@ -10,7 +10,7 @@ as flat fields on the Skill document.
 """
 
 import re
-from typing import Any, cast
+from typing import Any
 
 import httpx
 
@@ -231,25 +231,20 @@ async def install_from_github(
         )
 
     # Register flat metadata in MongoDB
-    # install_skill is wrapped in @CacheInvalidator, whose __call__ erases the
-    # return type to Awaitable[Any]; install_skill itself is annotated -> Skill.
-    installed = cast(
-        Skill,
-        await install_skill(
-            user_id=user_id,
-            name=metadata.name,
-            description=metadata.description,
-            target=target,
-            vfs_path=storage_path,
-            source=SkillSource.GITHUB,
-            source_url=source_url,
-            body_content=body,
-            files=file_list,
-            license=metadata.license,
-            compatibility=metadata.compatibility,
-            metadata=metadata.metadata,
-            allowed_tools=metadata.allowed_tools,
-        ),
+    installed = await install_skill(
+        user_id=user_id,
+        name=metadata.name,
+        description=metadata.description,
+        target=target,
+        vfs_path=storage_path,
+        source=SkillSource.GITHUB,
+        source_url=source_url,
+        body_content=body,
+        files=file_list,
+        license=metadata.license,
+        compatibility=metadata.compatibility,
+        metadata=metadata.metadata,
+        allowed_tools=metadata.allowed_tools,
     )
 
     log.info(
@@ -350,24 +345,19 @@ async def install_from_inline(
     await write_skill_file(user_id, metadata.name, "SKILL.md", body)
 
     # Register flat metadata in MongoDB
-    # install_skill is wrapped in @CacheInvalidator, whose __call__ erases the
-    # return type to Awaitable[Any]; install_skill itself is annotated -> Skill.
-    installed = cast(
-        Skill,
-        await install_skill(
-            user_id=user_id,
-            name=metadata.name,
-            description=metadata.description,
-            target=metadata.target,
-            vfs_path=storage_path,
-            source=SkillSource.INLINE,
-            body_content=body,
-            files=["SKILL.md"],
-            license=metadata.license,
-            compatibility=metadata.compatibility,
-            metadata=metadata.metadata,
-            allowed_tools=metadata.allowed_tools,
-        ),
+    installed = await install_skill(
+        user_id=user_id,
+        name=metadata.name,
+        description=metadata.description,
+        target=metadata.target,
+        vfs_path=storage_path,
+        source=SkillSource.INLINE,
+        body_content=body,
+        files=["SKILL.md"],
+        license=metadata.license,
+        compatibility=metadata.compatibility,
+        metadata=metadata.metadata,
+        allowed_tools=metadata.allowed_tools,
     )
 
     log.info(f"{LogTag.SKILLS} Created inline skill", skill_name=name, target=target)
@@ -432,19 +422,14 @@ async def update_skill_inline(
         await ensure_user_skills_dir(user_id)
         await write_skill_file(user_id, skill.name, "SKILL.md", body)
 
-    # update_skill is wrapped in @CacheInvalidator, whose __call__ erases the
-    # return type to Awaitable[Any]; update_skill itself is annotated -> Skill | None.
-    updated = cast(
-        "Skill | None",
-        await update_skill(
-            user_id,
-            skill_id,
-            {
-                "description": metadata.description,
-                "target": metadata.target,
-                "body_content": body,
-            },
-        ),
+    updated = await update_skill(
+        user_id,
+        skill_id,
+        {
+            "description": metadata.description,
+            "target": metadata.target,
+            "body_content": body,
+        },
     )
 
     log.info(f"{LogTag.SKILLS} Updated inline skill", skill_name=skill.name, target=metadata.target)
@@ -488,4 +473,4 @@ async def uninstall_skill_full(user_id: str, skill_id: str) -> bool:
     # Remove from registry
     # uninstall_skill is wrapped in @CacheInvalidator, whose __call__ erases the
     # return type to Awaitable[Any]; uninstall_skill itself is annotated -> bool.
-    return cast(bool, await uninstall_skill(user_id, skill_id))
+    return await uninstall_skill(user_id, skill_id)

@@ -25,7 +25,7 @@ from app.constants.nurture import (
     NurtureStep,
 )
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserDocument
+from app.models.user_models import NurtureHistoryEntry, UserDocument
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.email import EmailMessage, render_email_template, send_email
 from app.services.nurture.context_builders import CONTEXT_BUILDERS
@@ -36,7 +36,7 @@ from app.utils.timezone import as_utc, is_within_local_daytime
 from shared.py.wide_events import log
 
 
-def _within_frequency_caps(history: list[dict[str, Any]], now: datetime) -> bool:
+def _within_frequency_caps(history: list[NurtureHistoryEntry], now: datetime) -> bool:
     sent_times = [
         sent_at
         for entry in history

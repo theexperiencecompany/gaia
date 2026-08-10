@@ -38,7 +38,7 @@ from app.constants.artifacts import (
 )
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.core.stream_manager import stream_manager
-from app.db.redis import redis_cache
+from app.db.redis import close_pubsub, redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationSource
 from app.services.artifact_events import artifact_channel
@@ -396,7 +396,7 @@ async def _close_pubsub(pubsub: PubSub, channel: str) -> None:
     with contextlib.suppress(Exception):
         await pubsub.unsubscribe(channel)
     with contextlib.suppress(Exception):
-        await pubsub.aclose()
+        await close_pubsub(pubsub)
 
 
 def _warm_artifact_blocks(host_path: Path) -> None:

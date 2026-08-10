@@ -594,8 +594,9 @@ async def list_drafts(
             # Transform draft messages if needed
             detailed_drafts = []
             for draft in result.drafts or []:
-                if "message" in draft:
-                    draft["message"] = transform_gmail_message(draft["message"])
+                raw_message = draft.get("message")
+                if isinstance(raw_message, dict):
+                    draft["message"] = transform_gmail_message(raw_message)
                 detailed_drafts.append(draft)
 
             return GmailDraftsResponse(

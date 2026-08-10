@@ -82,6 +82,18 @@ from shared.py.wide_events import log
 router = APIRouter()
 
 
+def _gmail_envelope_id(data: dict[str, object] | None) -> str | None:
+    """Read the Gmail envelope's ``id`` at the Composio boundary.
+
+    Gmail owns the schema of the envelope ``data``, so the value is checked
+    (``isinstance``), not assumed — a non-string id is treated as absent.
+    """
+    if data is None:
+        return None
+    raw_id = data.get("id")
+    return raw_id if isinstance(raw_id, str) else None
+
+
 @router.get("/gmail/labels", summary="List Gmail Labels")
 async def list_labels(
     user_id: str = Depends(require_integration_user_id("gmail")),
@@ -352,7 +364,7 @@ async def send_email_route(
         )
         # Gmail owns the schema of the Composio envelope's ``data``; this is the boundary read.
         return SendEmailWithAttachmentsResponse(
-            message_id=(sent_message.data or {}).get("id"),
+            message_id=_gmail_envelope_id(sent_message.data),
             status="Email sent successfully",
             attachments_count=len(attachments) if attachments else 0,
         )
@@ -406,7 +418,7 @@ async def send_email_json(
             outcome="success",
         )
         return SendEmailResponse(
-            message_id=(sent_message.data or {}).get("id"),
+            message_id=_gmail_envelope_id(sent_message.data),
             status="Email sent successfully",
         )
     except HTTPException:
@@ -918,7 +930,7 @@ async def create_draft_route(
             cc_list=request.cc,
             bcc_list=request.bcc,
         )
-        message_id = (draft.message or {}).get("id")
+        message_id = _gmail_envelope_id(draft.message)
 
         log.set(
             operation="create_draft",
@@ -1029,7 +1041,7 @@ async def update_draft_route(
         )
         return DraftMutationResponse(
             draft_id=updated_draft.id,
-            message_id=(updated_draft.message or {}).get("id"),
+            message_id=_gmail_envelope_id(updated_draft.message),
             status="Draft updated successfully",
         )
     except Exception as e:

@@ -4,7 +4,6 @@ Payment and subscription related models for Dodo Payments integration.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -70,8 +69,8 @@ class UserSubscriptionStatus(BaseModel):
     """Response model for user subscription status."""
 
     user_id: str = Field(..., description="User ID")
-    current_plan: dict[str, Any] | None = Field(None, description="Current plan details")
-    subscription: dict[str, Any] | None = Field(None, description="Current subscription")
+    current_plan: dict[str, object] | None = Field(None, description="Current plan details")
+    subscription: dict[str, object] | None = Field(None, description="Current subscription")
     is_subscribed: bool = Field(False, description="Whether user has an active subscription")
     days_remaining: int | None = Field(None, description="Days remaining in current period")
     can_upgrade: bool = Field(True, description="Whether user can upgrade")

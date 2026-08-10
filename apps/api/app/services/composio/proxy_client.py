@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 from threading import Lock
 import time
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict
 
 from composio import Composio
 
@@ -175,7 +175,7 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             active.id,
             now + _CONNECTED_ACCOUNT_CACHE_TTL_SECONDS,
         )
-    return cast(str, active.id)
+    return active.id
 
 
 def _build_parameters(

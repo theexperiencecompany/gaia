@@ -131,7 +131,7 @@ def _conversation_id(config: RunnableConfig) -> str | None:
     summarization middleware.
     """
     configurable = agent_configurable(config)
-    return cast("str | None", configurable.get("vfs_session_id") or configurable.get("thread_id"))
+    return configurable.get("vfs_session_id") or configurable.get("thread_id")
 
 
 # =============================================================================

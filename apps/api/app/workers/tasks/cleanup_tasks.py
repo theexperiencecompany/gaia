@@ -6,7 +6,7 @@ from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserDocument
+from app.models.user_models import OnboardingDocument, UserDocument
 from app.services.onboarding.intelligence_job import (
     enqueue_intelligence_job,
     enqueue_workflows_job,
@@ -24,7 +24,7 @@ class _RequeueOutcome(Enum):
     ERROR = "error"
 
 
-async def _requeue_stuck_workflows(user_id: str, onboarding: dict[str, Any]) -> _RequeueOutcome:
+async def _requeue_stuck_workflows(user_id: str, onboarding: OnboardingDocument) -> _RequeueOutcome:
     """Re-queue the deferred workflows phase for a split-mode user whose early
     intelligence finished but whose workflows job is no longer live."""
     if not onboarding.get("workflows_job_id"):

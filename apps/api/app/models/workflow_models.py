@@ -490,7 +490,7 @@ class WorkflowListResponse(BaseModel):
 class WorkflowExecutionRequest(BaseModel):
     """Request model for executing a workflow."""
 
-    context: dict[str, Any] | None = Field(
+    context: dict[str, object] | None = Field(
         default=None, description="Additional context for execution"
     )
 
@@ -541,7 +541,7 @@ class PublicWorkflowsResponse(BaseModel):
     # keys from the payload; that reaches outside this flow's files and changes
     # what a frontend consumer receives if it is done partially (Type Safety
     # item 14). Typed together with that endpoint, not before.
-    workflows: list[dict[str, Any]] = Field(
+    workflows: list[dict[str, object]] = Field(
         description="List of public workflows with creator info"
     )
     total: int = Field(description="Total number of public workflows")

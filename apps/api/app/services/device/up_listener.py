@@ -20,7 +20,7 @@ from typing import Any
 
 from app.constants.device_bridge import DEVICE_LISTENER_RESUBSCRIBE_SECONDS
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
+from app.db.redis import close_pubsub, redis_cache
 from app.services.device.bridge import POD_ID, up_pod_channel
 from shared.py.wide_events import log, log_context
 
@@ -99,7 +99,7 @@ async def _consume() -> None:
     finally:
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe(up_pod_channel(POD_ID))
-            await pubsub.aclose()
+            await close_pubsub(pubsub)
 
 
 async def _listener_loop() -> None:

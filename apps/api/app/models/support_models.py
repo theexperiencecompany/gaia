@@ -2,7 +2,6 @@
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -78,7 +77,7 @@ class SupportRequestResponse(BaseModel):
     updated_at: datetime = Field(..., description="Last update timestamp")
     resolved_at: datetime | None = Field(None, description="Resolution timestamp")
     tags: list[str] = Field(default_factory=list, description="Tags for categorization")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict[str, object] = Field(default_factory=dict, description="Additional metadata")
     attachments: list[SupportAttachment] = Field(
         default_factory=list, description="File attachments"
     )
@@ -166,7 +165,7 @@ class SupportRequestDocument(UserScopedDocument):
     resolved_at: datetime | None = None
     tags: list[str] = Field(default_factory=list)
     attachments: list[SupportAttachment] = Field(default_factory=list)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class SupportRequestUpdate(BaseModel):

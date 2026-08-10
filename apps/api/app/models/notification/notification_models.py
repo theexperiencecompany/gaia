@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -73,7 +73,7 @@ class ApiCallConfig(BaseModel):
 
     endpoint: str
     method: Literal["GET", "POST", "PUT", "DELETE"] = "POST"
-    payload: dict[str, Any] | None = None
+    payload: dict[str, object] | None = None
     headers: dict[str, str] | None = None
     success_message: str | None = None
     error_message: str | None = None
@@ -84,7 +84,7 @@ class ModalConfig(BaseModel):
     """Configuration for an action that opens a frontend modal component."""
 
     component: str
-    props: dict[str, Any] = Field(default_factory=dict)
+    props: dict[str, object] = Field(default_factory=dict)
 
 
 class ActionConfig(BaseModel):
@@ -142,7 +142,7 @@ class NotificationContent(BaseModel):
     title: str
     body: str
     actions: list[NotificationAction] | None = None
-    rich_content: dict[str, Any] | None = None
+    rich_content: dict[str, object] | None = None
 
 
 class ChannelConfig(BaseModel):
@@ -152,7 +152,7 @@ class ChannelConfig(BaseModel):
     enabled: bool = True
     priority: int = 1  # 1 highest
     template: str | None = None
-    config: dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, object] = Field(default_factory=dict)
 
 
 class NotificationRequest(BaseModel):
@@ -165,7 +165,7 @@ class NotificationRequest(BaseModel):
     priority: int = Field(default=3, ge=1, le=5)  # 1 highest
     channels: list[ChannelConfig] = Field(default_factory=list)
     content: NotificationContent
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
     scheduled_for: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -291,7 +291,7 @@ class NotificationView(BaseModel):
     content: NotificationContentView
     source: NotificationSourceEnum
     type: NotificationType
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
     channels: list[NotificationChannelView] = Field(default_factory=list)
 
 
@@ -315,10 +315,10 @@ class ActionResult(BaseModel):
 
     success: bool
     message: str | None = None
-    data: dict[str, Any] | None = None
+    data: dict[str, object] | None = None
     next_actions: list[NotificationAction] | None = None
-    update_notification: dict[str, Any] | None = None
-    update_action: dict[str, Any] | None = None
+    update_notification: dict[str, object] | None = None
+    update_action: dict[str, object] | None = None
     error_code: str | None = None
 
 

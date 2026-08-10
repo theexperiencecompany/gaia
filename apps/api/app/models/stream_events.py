@@ -49,8 +49,7 @@ in exactly one helper, so the frame and the persisted record can never
 disagree.
 """
 
-from typing import Any
-
+from langchain_core.messages.ai import UsageMetadata
 from pydantic import BaseModel
 
 from app.models.hil_models import HILApprovalStatus
@@ -68,7 +67,7 @@ class ToolCallsDataEntryData(BaseModel):
     message: str | None
     show_category: bool
     tool_call_id: str | None
-    inputs: dict[str, Any]
+    inputs: dict[str, object]
     icon_url: str | None
     integration_name: str | None
 
@@ -85,7 +84,7 @@ class ToolCallsDataEntry(BaseModel):
     tool_category: str
     data: ToolCallsDataEntryData
     timestamp: str
-    mcp_ui: dict[str, Any] | None
+    mcp_ui: dict[str, object] | None
     mcp_server_url: str | None
 
 
@@ -98,7 +97,7 @@ class ApprovalRequestEntryData(BaseModel):
     integration_name: str | None
     summary: str
     # The gated call's own arguments — arbitrary LLM-authored JSON, no fixed schema.
-    args_preview: dict[str, Any]
+    args_preview: dict[str, object]
     status: HILApprovalStatus
     feedback: str | None
     auto_reason: str | None
@@ -196,13 +195,13 @@ class MainResponseCompleteFrame(BaseModel):
     """
 
     main_response_complete: bool
-    usage: dict[str, Any] | None = None
+    usage: dict[str, UsageMetadata] | None = None
 
 
 class TodoProgressFrame(BaseModel):
     """Envelope for a todo-progress snapshot."""
 
-    todo_progress: dict[str, Any]
+    todo_progress: dict[str, object]
 
 
 class ConversationDescriptionFrame(BaseModel):

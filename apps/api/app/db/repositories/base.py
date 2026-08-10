@@ -243,7 +243,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         if policy is not None:
             cached = await get_cache(policy.entity_key(scope, doc_id), model=self.document_model)
             if cached is not None:
-                return cast(TDoc, cached)
+                return cached
         collection = get_async_collection(self.collection_name)
         raw = await collection.find_one({**self._identity_filter(doc_id), **extra_filter})
         if raw is None:

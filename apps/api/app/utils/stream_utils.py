@@ -97,7 +97,9 @@ def _approval_id_of(entry: ToolDataEntry) -> str | None:
     data = entry.get("data")
     if not isinstance(data, dict):
         return None
-    approval_id: str | None = data.get("approval_id")
+    approval_id = data.get("approval_id")
+    if not isinstance(approval_id, str):
+        return None
     return approval_id
 
 
@@ -204,7 +206,7 @@ def apply_outputs_to_tool_data(
         if not isinstance(data, dict):
             continue
         tc_id = data.get("tool_call_id")
-        if tc_id and tc_id in tool_outputs:
+        if isinstance(tc_id, str) and tc_id in tool_outputs:
             data["output"] = tool_outputs[tc_id]
 
 

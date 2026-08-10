@@ -5,8 +5,6 @@ agent text must stay URL-free; text-only clients (bots, background runs) need
 the link inline because there is no card to click.
 """
 
-from typing import cast
-
 from langgraph.config import get_config
 
 from app.config.settings import settings
@@ -24,7 +22,7 @@ def _current_source_category() -> str | None:
         config = get_config()
     except RuntimeError:
         return None
-    return cast(str | None, agent_configurable(config).get("source_category"))
+    return agent_configurable(config).get("source_category")
 
 
 def build_integration_connection_message(

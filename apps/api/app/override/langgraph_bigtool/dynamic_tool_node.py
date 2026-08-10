@@ -420,7 +420,7 @@ class DynamicToolNode(ToolNode):
         # list[AnyMessage] | dict[str, Any] | BaseModel; list is handled above,
         # so only BaseModel and dict remain here.
         if isinstance(delegate_state, BaseModel):
-            raw_state = cast(dict[str, Any], delegate_state.model_dump())
+            raw_state = delegate_state.model_dump()
         else:
             raw_state = dict(delegate_state)
 

@@ -3,8 +3,6 @@ Clean workflow API router for GAIA workflow system.
 Provides CRUD operations, execution, and status endpoints.
 """
 
-from typing import cast
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pymongo.errors import DuplicateKeyError
 
@@ -620,9 +618,7 @@ async def get_explore_workflows(
     try:
         result = await WorkflowService.get_explore_workflows(limit=limit, offset=offset)
         log.set_ns("workflow", result_count=len(result.workflows))
-        # Cacheable erases the wrapped function's return type; get_explore_workflows
-        # is declared -> PublicWorkflowsResponse, so this is correct by construction.
-        return cast(PublicWorkflowsResponse, result)
+        return result
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error fetching explore workflows",
@@ -650,9 +646,7 @@ async def get_public_workflows(
             limit=limit, offset=offset, user_id=None
         )
         log.set_ns("workflow", result_count=len(result.workflows))
-        # Cacheable erases the wrapped function's return type; get_community_workflows
-        # is declared -> PublicWorkflowsResponse, so this is correct by construction.
-        return cast(PublicWorkflowsResponse, result)
+        return result
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error fetching public workflows",

@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Annotated, Any, TypedDict, cast
+from typing import Annotated, Any, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -127,7 +127,7 @@ async def deep_research(
             # search_for_research is @Cacheable-wrapped, which types its return
             # Awaitable[Any] (app/decorators/caching.py); the wrapped function's
             # own declared return is dict[str, Any].
-            return cast("dict[str, Any]", await search_for_research(q, count=5))
+            return await search_for_research(q, count=5)
 
         search_results = await asyncio.gather(
             *[_resilient_search(q) for q in sub_queries],

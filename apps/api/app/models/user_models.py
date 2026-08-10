@@ -1,7 +1,12 @@
 from datetime import datetime
 from enum import Enum
 import re
-from typing import Annotated, Any, TypedDict
+from typing import TYPE_CHECKING, Annotated, TypedDict
+
+if TYPE_CHECKING:
+    # Defined in onboarding_models, which imports from this module — the
+    # forward reference keeps the dependency one-way.
+    from app.models.onboarding_models import ClarifyAnswerRecord
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
@@ -190,7 +195,7 @@ class OnboardingRequest(BaseModel):
 class OnboardingResponse(BaseModel):
     success: bool = Field(..., description="Whether onboarding was successful")
     message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
-    user: dict[str, Any] | None = Field(None, description="Updated user data")
+    user: dict[str, object] | None = Field(None, description="Updated user data")
 
 
 class OnboardingIntegrationsRequest(BaseModel):
@@ -249,6 +254,81 @@ def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
     return out
 
 
+class PlatformLinkRecord(TypedDict, total=False):
+    """One ``users.platform_links.{platform}`` entry — the bot-account link.
+
+    A ``TypedDict``, not a model (Type Safety item 6): it is written and read
+    in-process against an already-persisted subdocument, and the read path has to
+    keep tolerating legacy rows that stored a bare id instead of this mapping, so
+    validating it would add a failure mode without adding safety. ``total=False``
+    because only ``id`` is always written — ``username``/``display_name`` are
+    stored only when the platform's profile supplied them.
+    """
+
+    id: str
+    username: str
+    display_name: str
+
+
+class SocialProfileDoc(TypedDict, total=False):
+    """One entry of the user document's ``onboarding.social_profiles``."""
+
+    platform: str
+    url: str
+
+
+class OnboardingDocument(TypedDict, total=False):
+    """The user document's ``onboarding`` subdocument (Mongo-owned JSON).
+
+    Scalar fields are typed directly so reads are checked; structured blobs stay
+    ``dict[str, object]`` and are validated at the consumption boundary via
+    ``model_validate`` (``OnboardingPreferences``, ``PersistedTriageSummary``)
+    — nothing here is trusted without validation.
+    """
+
+    preferences: dict[str, object]
+    bio_status: str | None
+    suggested_workflows: list[str]
+    social_profiles: list[SocialProfileDoc]
+    triage_summary: dict[str, object]
+    house: str
+    personality_phrase: str
+    overlay_color: str
+    overlay_opacity: int
+    first_message_conversation_id: str | None
+    first_message: str | None
+    writing_style: dict[str, object]
+    completed: bool
+    completed_at: datetime | None
+    phase: str | None
+    # Account identity (backfilled by the onboarding service).
+    account_number: int | None
+    member_since: str | None
+    # Memory-pipeline split mode (workers).
+    pipeline_mode: str | None
+    early_intelligence_done_at: datetime | None
+    # Onboarding-intelligence job inputs (workers).
+    focus: str | None
+    clarify_answers: "list[ClarifyAnswerRecord] | None"
+    selected_integrations: list[str] | None
+    user_bio: str | None
+
+
+class NurtureHistoryEntry(TypedDict, total=False):
+    """One nurture-step outcome on the user document (``nurture.history``)."""
+
+    step: str
+    at: datetime
+    status: str
+
+
+class NurtureState(TypedDict, total=False):
+    """The user document's ``nurture`` subdocument (workers)."""
+
+    history: list[NurtureHistoryEntry]
+    completed_steps: list[str]
+
+
 class AuthenticatedUser(TypedDict, total=False):
     """``request.state.user`` — what every ``Depends(get_current_user)`` yields.
 
@@ -286,19 +366,19 @@ class AuthenticatedUser(TypedDict, total=False):
     created_at: datetime | None
     updated_at: datetime | None
     last_active_at: datetime | None
-    onboarding: dict[str, Any] | None
-    provider_metadata: dict[str, Any] | None
-    hil_preferences: dict[str, Any] | None
-    notification_channel_prefs: dict[str, Any] | None
-    platform_links: dict[str, Any] | None
-    platform_links_connected_at: dict[str, Any] | None
+    onboarding: OnboardingDocument | None
+    provider_metadata: dict[str, object] | None
+    hil_preferences: dict[str, object] | None
+    notification_channel_prefs: dict[str, object] | None
+    platform_links: dict[str, PlatformLinkRecord] | None
+    platform_links_connected_at: dict[str, str] | None
     starred_voice_ids: list[str] | None
     selected_voice_id: str | None
     first_name: str | None
     email_memory_processed: bool | None
     email_memory_processed_at: datetime | None
     email_memory_count: int | None
-    integration_scan_states: dict[str, Any] | None
+    integration_scan_states: dict[str, object] | None
     is_active: bool | None
     memory_backfilled: datetime | None
     last_inactive_email_sent: datetime | None
@@ -308,23 +388,7 @@ class AuthenticatedUser(TypedDict, total=False):
     highest_activity_tier: str | None
     highest_activity_tier_at: datetime | None
     # Nurture email sequence state (workers) — completed_steps + send history.
-    nurture: dict[str, Any] | None
-
-
-class PlatformLinkRecord(TypedDict, total=False):
-    """One ``users.platform_links.{platform}`` entry — the bot-account link.
-
-    A ``TypedDict``, not a model (Type Safety item 6): it is written and read
-    in-process against an already-persisted subdocument, and the read path has to
-    keep tolerating legacy rows that stored a bare id instead of this mapping, so
-    validating it would add a failure mode without adding safety. ``total=False``
-    because only ``id`` is always written — ``username``/``display_name`` are
-    stored only when the platform's profile supplied them.
-    """
-
-    id: str
-    username: str
-    display_name: str
+    nurture: NurtureState | None
 
 
 class UserDocument(MongoDocument):
@@ -355,14 +419,15 @@ class UserDocument(MongoDocument):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     last_active_at: datetime | None = None
-    # These nested subdocuments are schemaless-ish and read via chained `.get`
-    # across many callers; typed as Any (not a sub-model) per this wave's scope.
-    onboarding: dict[str, Any] | None = None
-    provider_metadata: dict[str, Any] | None = None
-    hil_preferences: dict[str, Any] | None = None
-    notification_channel_prefs: dict[str, Any] | None = None
-    platform_links: dict[str, Any] | None = None
-    platform_links_connected_at: dict[str, Any] | None = None
+    # These nested subdocuments are Mongo-owned JSON; the structured ones are
+    # typed via TypedDict and validated at the consumption boundary, the rest
+    # stay object-typed bags read through isinstance/accessor helpers.
+    onboarding: OnboardingDocument | None = None
+    provider_metadata: dict[str, object] | None = None
+    hil_preferences: dict[str, object] | None = None
+    notification_channel_prefs: dict[str, object] | None = None
+    platform_links: dict[str, PlatformLinkRecord] | None = None
+    platform_links_connected_at: dict[str, str] | None = None
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     # Profile / billing display name used by the payments emails.
@@ -371,7 +436,7 @@ class UserDocument(MongoDocument):
     email_memory_processed: bool | None = None
     email_memory_processed_at: datetime | None = None
     email_memory_count: int | None = None
-    integration_scan_states: dict[str, Any] | None = None
+    integration_scan_states: dict[str, object] | None = None
     # Lifecycle / re-engagement markers (workers).
     is_active: bool | None = None
     memory_backfilled: datetime | None = None
@@ -384,7 +449,7 @@ class UserDocument(MongoDocument):
     highest_activity_tier: str | None = None
     highest_activity_tier_at: datetime | None = None
     # Nurture email sequence state (workers): completed_steps + send history.
-    nurture: dict[str, Any] | None = None
+    nurture: NurtureState | None = None
 
 
 class OnboardingStatusResponse(BaseModel):
@@ -443,18 +508,18 @@ class AuthenticatedUserResponse(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     last_active_at: datetime | None = None
-    provider_metadata: dict[str, Any] | None = None
-    hil_preferences: dict[str, Any] | None = None
-    notification_channel_prefs: dict[str, Any] | None = None
-    platform_links: dict[str, Any] | None = None
-    platform_links_connected_at: dict[str, Any] | None = None
+    provider_metadata: dict[str, object] | None = None
+    hil_preferences: dict[str, object] | None = None
+    notification_channel_prefs: dict[str, object] | None = None
+    platform_links: dict[str, PlatformLinkRecord] | None = None
+    platform_links_connected_at: dict[str, str] | None = None
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     first_name: str | None = None
     email_memory_processed: bool | None = None
     email_memory_processed_at: datetime | None = None
     email_memory_count: int | None = None
-    integration_scan_states: dict[str, Any] | None = None
+    integration_scan_states: dict[str, object] | None = None
     is_active: bool | None = None
     memory_backfilled: datetime | None = None
     last_inactive_email_sent: datetime | None = None
@@ -464,7 +529,7 @@ class AuthenticatedUserResponse(BaseModel):
 class HoloCardOnboardingFields(BaseModel):
     """The subset of ``UserDocument.onboarding`` the holo-card endpoint reads.
 
-    ``UserDocument.onboarding`` stays ``dict[str, Any]`` (see its field comment
+    ``UserDocument.onboarding`` stays ``dict[str, object]`` (see its field comment
     in ``UserDocument``) because it's read via chained ``.get()`` across many
     other callers with different shape needs, several of which are under
     active, unrelated development right now -- widening that shared field is
@@ -524,7 +589,7 @@ class UserUpdate(BaseModel):
     picture: str | None = None
 
 
-def user_to_legacy_dict(user: UserDocument) -> dict[str, Any]:
+def user_to_legacy_dict(user: UserDocument) -> dict[str, object]:
     """Raw-style user dict (string ``_id``) for consumers not yet migrated off
     the pre-repository dict shape — auth context building, bot resolution. A
     transitional bridge; removed once those consumers take ``UserDocument``."""

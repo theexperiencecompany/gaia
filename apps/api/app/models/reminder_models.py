@@ -4,7 +4,7 @@ Reminder models for task scheduling system.
 
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any, Union
+from typing import Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -61,7 +61,7 @@ class ReminderModel(BaseScheduledTask):
         default=datetime.now(UTC) + timedelta(days=180),
         description="Stop executing after this date (optional), defaults to 6 months from now",
     )
-    payload: Union[StaticReminderPayload, dict[str, Any]] = Field(
+    payload: Union[StaticReminderPayload, dict[str, object]] = Field(
         ..., description="Task-specific data based on agent type"
     )
 
@@ -368,7 +368,7 @@ class ReminderResponse(BaseModel):
     )
     max_occurrences: int | None = Field(None, description="Maximum number of executions")
     stop_after: datetime | None = Field(None, description="Stop executing after this date")
-    payload: Union[StaticReminderPayload, dict[str, Any]] = Field(
+    payload: Union[StaticReminderPayload, dict[str, object]] = Field(
         ..., description="Task-specific data"
     )
     created_at: datetime = Field(..., description="Creation timestamp")

@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, Literal, TypedDict
+from typing import ClassVar, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -273,7 +273,7 @@ class StagePayload(BaseModel):
     # ran and came back empty".
     omit_none_on_wire: ClassVar[bool] = False
 
-    def to_wire(self) -> dict[str, Any]:
+    def to_wire(self) -> dict[str, object]:
         return self.model_dump(mode="json", exclude_none=self.omit_none_on_wire)
 
 

@@ -8,7 +8,6 @@ development behind the auth bypass — see ``create_app``.
 """
 
 import asyncio
-from typing import cast
 
 from fastapi import UploadFile
 
@@ -96,16 +95,11 @@ async def attach_dev_file(
     uploads from that id alone.
     """
     user = await require_dev_user(email)
-    # CacheInvalidator erases the wrapped function's return type; FileService.upload
-    # is declared -> FileDocument, so this is correct by construction.
-    document = cast(
-        FileDocument,
-        await FileService.upload(
-            file=file,
-            user_id=user.id,
-            conversation_id=conversation_id,
-            content_length=content_length,
-        ),
+    document = await FileService.upload(
+        file=file,
+        user_id=user.id,
+        conversation_id=conversation_id,
+        content_length=content_length,
     )
     log.info(
         f"{LogTag.DEV} attached file to dev conversation",

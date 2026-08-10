@@ -26,7 +26,7 @@ from app.constants.cache import (
 )
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from app.db.redis import redis_cache
+from app.db.redis import close_pubsub, redis_cache
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -143,7 +143,7 @@ async def request_desktop_action(
             await redis_cache.delete(request_key)
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe(result_channel)
-            await pubsub.aclose()
+            await close_pubsub(pubsub)
 
 
 async def _await_result(pubsub: PubSub) -> DesktopToolOutcome:

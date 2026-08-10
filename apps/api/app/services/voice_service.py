@@ -6,7 +6,7 @@ even when the upstream call fails.
 """
 
 import asyncio
-from typing import Any, cast
+from typing import Any
 
 import httpx
 
@@ -87,7 +87,7 @@ async def get_elevenlabs_voices() -> list[ElevenLabsAccountVoice]:
         # erases the return type to Awaitable[Any]; the function itself is
         # annotated -> list[ElevenLabsAccountVoice], and the decorator's
         # model= gives the cache-hit path the same type.
-        return cast(list[ElevenLabsAccountVoice], await _fetch_elevenlabs_voices())
+        return await _fetch_elevenlabs_voices()
     except (httpx.HTTPError, ValueError, KeyError) as e:
         log.warning("Failed to fetch ElevenLabs voices", error=str(e))
         return []
@@ -138,7 +138,7 @@ async def get_shared_voices() -> list[ElevenLabsSharedVoice]:
         return []
     try:
         # Same Cacheable return-type erasure as get_elevenlabs_voices above.
-        return cast(list[ElevenLabsSharedVoice], await _fetch_shared_voices())
+        return await _fetch_shared_voices()
     except (httpx.HTTPError, ValueError, KeyError) as e:
         log.warning("Failed to fetch ElevenLabs shared voices", error=str(e))
         return []

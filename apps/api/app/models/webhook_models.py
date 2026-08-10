@@ -71,7 +71,7 @@ class DodoPaymentData(BaseModel):
     card_issuing_country: str | None = None
     created_at: str
     updated_at: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
     error_code: str | None = None
     error_message: str | None = None
 
@@ -99,7 +99,7 @@ class DodoSubscriptionData(BaseModel):
     tax_inclusive: bool = False
     trial_period_days: int = 0
     on_demand: bool = False
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
     addons: list[Any] = Field(default_factory=list)
     discount_id: str | None = None
 
@@ -110,13 +110,13 @@ class DodoWebhookEvent(BaseModel):
     business_id: str
     type: DodoWebhookEventType
     timestamp: str
-    data: dict[str, Any]
+    data: dict[str, object]
 
     def get_payment_data(self) -> DodoPaymentData | None:
         """Extract payment data if payment event."""
         if self.type.value.startswith("payment."):
             try:
-                return DodoPaymentData(**self.data)
+                return DodoPaymentData.model_validate(self.data)
             except ValidationError as exc:
                 # Loud on purpose: returning None here is indistinguishable from
                 # "not a payment event", so a provider schema change would silently
@@ -133,7 +133,7 @@ class DodoWebhookEvent(BaseModel):
         """Extract subscription data if subscription event."""
         if self.type.value.startswith("subscription."):
             try:
-                return DodoSubscriptionData(**self.data)
+                return DodoSubscriptionData.model_validate(self.data)
             except ValidationError as exc:
                 # Loud on purpose: returning None here is indistinguishable from
                 # "not a subscription event", so a provider schema change would silently
@@ -178,7 +178,7 @@ class ComposioWebhookEvent(BaseModel):
 
     type: str
     timestamp: str
-    data: dict[str, Any]
+    data: dict[str, object]
     connection_id: str
     connection_nano_id: str
     trigger_nano_id: str

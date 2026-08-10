@@ -1,6 +1,6 @@
 """Trigger configuration models (Pydantic)."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -76,7 +76,7 @@ class TriggerConfig(BaseModel):
     description: str
     # Handed straight to `composio.triggers.create(trigger_config=...)`; the key
     # set is each Composio trigger's own, so it stays an unmodelled payload.
-    config: dict[str, Any] | None = None
+    config: dict[str, object] | None = None
     config_fields: list[TriggerFieldConfig] | None = None
     auto_activate: bool = True
     workflow_trigger_schema: WorkflowTriggerSchema | None = None

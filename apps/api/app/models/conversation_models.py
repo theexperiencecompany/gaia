@@ -24,7 +24,6 @@ the base's auto-stamp.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -70,7 +69,7 @@ class ConversationDocument(UserScopedDocument):
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path. Kept as raw dicts — the element shape is owned by
     # services/chat/artifacts_registry.py and mirrored verbatim to the client.
-    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    artifacts: list[dict[str, object]] = Field(default_factory=list)
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
@@ -245,7 +244,7 @@ class ConversationSyncRow(BaseModel):
     messages: list[MessageModel] = Field(default_factory=list)
     # Mirrored verbatim from the document — the element shape is owned by
     # services/chat/artifacts_registry.py (see ConversationDocument.artifacts).
-    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    artifacts: list[dict[str, object]] = Field(default_factory=list)
     active_stream_id: str | None = None
 
 

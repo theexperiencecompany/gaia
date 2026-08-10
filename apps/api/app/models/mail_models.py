@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal, TypedDict
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -100,12 +100,12 @@ class MailUpdate(BaseModel):
 class EmailImportanceSummariesResponse(BaseModel):
     """Response for ``GET /gmail/importance-summaries``.
 
-    ``emails`` entries stay ``dict[str, Any]`` because they are JSON dumps of
+    ``emails`` entries stay ``dict[str, object]`` because they are JSON dumps of
     ``MailDocument``, which allows analyzer-supplied extra fields that vary per email.
     """
 
     status: Literal["success"]
-    emails: list[dict[str, Any]]
+    emails: list[dict[str, object]]
     count: int
     filtered_by_importance: bool
 
@@ -113,30 +113,30 @@ class EmailImportanceSummariesResponse(BaseModel):
 class EmailImportanceSummaryResponse(BaseModel):
     """Response for ``GET /gmail/importance-summary/{message_id}``.
 
-    ``email`` stays ``dict[str, Any]`` for the same reason as
+    ``email`` stays ``dict[str, object]`` for the same reason as
     ``EmailImportanceSummariesResponse.emails``.
     """
 
     status: Literal["success"]
-    email: dict[str, Any]
+    email: dict[str, object]
 
 
 class BulkEmailImportanceSummariesResponse(BaseModel):
     """Response for ``POST /gmail/importance-summaries/bulk``.
 
-    ``emails`` values stay ``dict[str, Any]`` for the same reason as
+    ``emails`` values stay ``dict[str, object]`` for the same reason as
     ``EmailImportanceSummariesResponse.emails``.
     """
 
     status: Literal["success"]
-    emails: dict[str, dict[str, Any]]
+    emails: dict[str, dict[str, object]]
     found_count: int
     missing_count: int
     found_message_ids: list[str]
     missing_message_ids: list[str]
 
 
-# Every Gmail message, label and draft payload below stays ``dict[str, Any]``:
+# Every Gmail message, label and draft payload below stays ``dict[str, object]``:
 # Google owns those schemas and ``transform_gmail_message`` spreads the raw
 # Composio message before adding its derived keys, so the field set varies per
 # message. Only the envelopes the API builds itself are modelled here.
@@ -165,16 +165,16 @@ class GmailToolResult(BaseModel):
 
     successful: bool = True
     error: str | None = None
-    data: dict[str, Any] | None = None
-    messages: list[dict[str, Any]] | None = None
-    labels: list[dict[str, Any]] | None = None
-    drafts: list[dict[str, Any]] | None = None
-    message: dict[str, Any] | None = None
+    data: dict[str, object] | None = None
+    messages: list[dict[str, object]] | None = None
+    labels: list[dict[str, object]] | None = None
+    drafts: list[dict[str, object]] | None = None
+    message: dict[str, object] | None = None
     id: str | None = None
     thread_id: str | None = Field(default=None, alias="threadId")
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
 
-    def as_payload(self) -> dict[str, Any]:
+    def as_payload(self) -> dict[str, object]:
         """The response exactly as the provider sent it — keys it omitted stay omitted."""
         return self.model_dump(exclude_unset=True, by_alias=True)
 
@@ -184,7 +184,7 @@ class GmailFetchEmailsData(BaseModel):
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    messages: list[dict[str, Any]] = Field(default_factory=list)
+    messages: list[dict[str, object]] = Field(default_factory=list)
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
 
 
@@ -204,7 +204,7 @@ class GmailMessagesResponse(BaseModel):
     """Response for ``GET /gmail/messages`` and ``GET /gmail/search``, and the return
     shape of ``search_messages``, which the routes forward unchanged."""
 
-    messages: list[dict[str, Any]]
+    messages: list[dict[str, object]]
     next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
 
 
@@ -212,7 +212,7 @@ class GmailLabelsResult(BaseModel):
     """Return shape of ``list_labels`` — ``count``/``error`` are branch-specific."""
 
     success: bool
-    labels: list[dict[str, Any]] = Field(default_factory=list)
+    labels: list[dict[str, object]] = Field(default_factory=list)
     count: int = 0
     error: str | None = None
 
@@ -237,7 +237,7 @@ class GmailDraftResource(BaseModel):
 class GmailLabelsResponse(BaseModel):
     """Response for ``GET /gmail/labels``."""
 
-    labels: list[dict[str, Any]]
+    labels: list[dict[str, object]]
     count: int
 
 
@@ -245,14 +245,14 @@ class GmailEmailResult(BaseModel):
     """Return shape of ``get_email_by_id``."""
 
     success: bool
-    message: dict[str, Any] | None = None
+    message: dict[str, object] | None = None
     error: str | None = None
 
 
 class GmailMessageResponse(BaseModel):
     """Response for ``GET /gmail/message/{message_id}``."""
 
-    message: dict[str, Any] | None
+    message: dict[str, object] | None
     status: str
 
 
@@ -265,7 +265,7 @@ class GmailThreadResponse(BaseModel):
 
     thread_id: str
     messages_count: int
-    thread: dict[str, Any]
+    thread: dict[str, object]
 
 
 class SendEmailResponse(BaseModel):
@@ -334,7 +334,7 @@ class ModifyLabelsResponse(GmailMessageActionResponse):
 class GmailDraftsResponse(BaseModel):
     """Return shape of ``list_drafts``, forwarded verbatim by ``GET /gmail/drafts``."""
 
-    drafts: list[dict[str, Any]]
+    drafts: list[dict[str, object]]
     next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
 
 

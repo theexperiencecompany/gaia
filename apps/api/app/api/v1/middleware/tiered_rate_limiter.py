@@ -25,7 +25,7 @@ from app.config.rate_limits import (
 )
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
+from app.db.redis import discard_pipeline_watch, redis_cache, start_pipeline_transaction
 from app.models.payment_models import PlanType
 from app.models.usage_models import (
     FeatureUsage,
@@ -217,7 +217,7 @@ class TieredRateLimiter:
 
                         # Double-check limit hasn't been exceeded by concurrent requests
                         if current_val >= limit:
-                            await pipe.unwatch()
+                            await discard_pipeline_watch(pipe)
                             free_limits = get_limits_for_plan(feature_key, PlanType.FREE)
                             is_plan_gated = getattr(free_limits, period.value) == 0
                             plan_required = (
@@ -231,7 +231,7 @@ class TieredRateLimiter:
                             )
 
                         # Execute atomic increment
-                        pipe.multi()
+                        start_pipeline_transaction(pipe)
                         await pipe.incr(redis_key)
                         await pipe.expire(redis_key, ttl)
                         await pipe.execute()

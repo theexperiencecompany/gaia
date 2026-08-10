@@ -1,7 +1,5 @@
 """File upload, update, and delete endpoints."""
 
-from typing import cast
-
 from fastapi import (
     APIRouter,
     Depends,
@@ -53,16 +51,11 @@ async def upload_file_endpoint(
             )
 
     try:
-        # CacheInvalidator erases the wrapped function's return type; FileService.upload
-        # is declared -> FileDocument, so this is correct by construction.
-        uploaded = cast(
-            FileDocument,
-            await FileService.upload(
-                file=file,
-                user_id=user_id,
-                conversation_id=conversation_id,
-                content_length=content_length,
-            ),
+        uploaded = await FileService.upload(
+            file=file,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            content_length=content_length,
         )
 
         log.set(
@@ -114,7 +107,7 @@ async def update_file_endpoint(
         log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
         # CacheInvalidator erases the wrapped function's return type; FileService.update
         # is declared -> FileDocument, so this is correct by construction.
-        return cast(FileDocument, result)
+        return result
     except Exception as e:
         log.error(
             "Error updating file",
@@ -149,7 +142,7 @@ async def delete_file_endpoint(
         )
         # CacheInvalidator erases the wrapped function's return type; FileService.delete
         # is declared -> FileDeletedResponse, so this is correct by construction.
-        return cast(FileDeletedResponse, result)
+        return result
     except Exception as e:
         log.error(
             "Error deleting file",

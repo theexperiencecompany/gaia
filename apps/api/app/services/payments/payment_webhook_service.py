@@ -340,7 +340,7 @@ class PaymentWebhookService:
         # Find user by email or metadata
         user_id = sub_data.metadata.get("user_id")
         user_email = sub_data.customer.email
-        if not user_id:
+        if not isinstance(user_id, str) or not user_id:
             user = await user_repository.get_by_email(user_email)
             if not user:
                 log.error(

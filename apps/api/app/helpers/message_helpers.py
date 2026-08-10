@@ -36,7 +36,7 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.todo_models import TodoDocument
-from app.models.user_models import OnboardingPhase
+from app.models.user_models import OnboardingPhase, OnboardingPreferences
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.tracked_todo_service import tracked_todo_service
@@ -770,7 +770,8 @@ async def get_onboarding_system_prompt_if_applicable(
             return None
 
         name = user_doc.name or "there"
-        profession = onboarding.get("preferences", {}).get("profession", "")
+        prefs = OnboardingPreferences.model_validate(onboarding.get("preferences") or {})
+        profession = prefs.profession or ""
         triage_summary = onboarding.get("triage_summary", "")
 
         onboarding_context = (

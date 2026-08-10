@@ -6,7 +6,7 @@ parameterized /{memory_id} routes so they never shadow each other.
 """
 
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated, cast
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
@@ -99,9 +99,7 @@ async def search_memories(
     result = await memory_engine.recall(user_id, q, limit=limit, include_graph_expansion=False)
 
     log.set(memory=MemoryContext(operation="recall", result_count=len(result.memories)))
-    # Cacheable erases the wrapped function's return type; recall is declared
-    # -> MemorySearchResult, so this is correct by construction.
-    return cast(MemorySearchResult, result)
+    return result
 
 
 @router.get("/overview")

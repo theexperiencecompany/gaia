@@ -12,7 +12,6 @@ from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from sqlalchemy import Connection, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.schema import DDL
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -57,15 +56,15 @@ def _ensure_timestamptz_columns(connection: Connection) -> None:
         ).scalar()
         if data_type is None or data_type == "timestamp with time zone":
             continue
-        # DDL, not text(): identifiers can never be bind parameters in any
-        # dialect, so this is the construct built for the job. They come from
-        # the _TIMESTAMPTZ_COLUMNS whitelist rather than user input, and the
+        # DDL-shaped statement, run via text(): identifiers can never be bind
+        # parameters in any dialect, so they are interpolated directly. They come
+        # from the _TIMESTAMPTZ_COLUMNS whitelist rather than user input, and the
         # dialect's preparer quotes them so a reserved word or mixed-case name
         # stays valid.
         quoted_table = preparer.quote(table)
         quoted_column = preparer.quote(column)
         connection.execute(
-            DDL(
+            text(
                 f"ALTER TABLE {quoted_table} ALTER COLUMN {quoted_column} "
                 f"TYPE timestamptz USING {quoted_column} AT TIME ZONE 'UTC'"
             )

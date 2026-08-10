@@ -20,7 +20,7 @@ from app.constants.device_bridge import (
     FRAME_REVOKE,
 )
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
+from app.db.redis import close_pubsub, redis_cache
 from app.services.device.connection_manager import device_connection_manager
 from shared.py.wide_events import log, log_context
 
@@ -68,7 +68,7 @@ async def _consume() -> None:
     finally:
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe(DEVICE_REVOKE_CHANNEL)
-            await pubsub.aclose()
+            await close_pubsub(pubsub)
 
 
 async def _listener_loop() -> None:

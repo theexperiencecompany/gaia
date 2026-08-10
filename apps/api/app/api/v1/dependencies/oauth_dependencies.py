@@ -166,7 +166,7 @@ async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
 
-    return cast(AuthenticatedUser, user_info)
+    return user_info
 
 
 GET_USER_TZ_TYPE = tuple[str, datetime]

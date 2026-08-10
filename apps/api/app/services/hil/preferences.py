@@ -7,7 +7,7 @@ from app.models.hil_models import HILMode, HILPreferences
 async def get_hil_preferences(user_id: str) -> HILPreferences:
     """Return a user's HIL preferences (defaults when unset or the user is gone)."""
     user = await user_repository.get(user_id)
-    return HILPreferences(**((user.hil_preferences if user else None) or {}))
+    return HILPreferences.model_validate((user.hil_preferences if user else None) or {})
 
 
 async def update_hil_preferences(

@@ -33,6 +33,7 @@ from app.models.onboarding_models import (
 from app.models.user_models import (
     AuthenticatedUser,
     BioStatus,
+    OnboardingDocument,
     OnboardingIntegrationsRequest,
     OnboardingIntegrationsResponse,
     OnboardingPhaseUpdateRequest,
@@ -348,7 +349,7 @@ async def update_user_preferences(
 
 
 async def _resolve_account_identity(
-    user_doc: UserDocument, onboarding: dict[str, Any]
+    user_doc: UserDocument, onboarding: OnboardingDocument
 ) -> tuple[int, str]:
     """The stored account number and join date, derived from ``created_at`` on
     the first read (both are backfilled together or not at all)."""
@@ -391,7 +392,7 @@ async def _load_suggested_workflows(workflow_ids: list[str]) -> list[Personaliza
         return []
 
 
-async def _resolve_display_bio(onboarding: dict[str, Any], user_id: str) -> str:
+async def _resolve_display_bio(onboarding: OnboardingDocument, user_id: str) -> str:
     """The bio to show now. While extraction is still pending we only promise a
     bio if there is a Gmail connection to extract one from."""
     bio_status = onboarding.get("bio_status", "pending")
@@ -399,8 +400,8 @@ async def _resolve_display_bio(onboarding: dict[str, Any], user_id: str) -> str:
     if bio_status in ["processing", BioStatus.PROCESSING]:
         return _BIO_PROCESSING_MESSAGE
     if bio_status not in ["pending", BioStatus.PENDING]:
-        # onboarding is dict[str, Any] on the document; user_bio is stored as str.
-        stored_bio: str = onboarding.get("user_bio", "")
+        # user_bio is stored as str on the onboarding subdocument.
+        stored_bio: str = onboarding.get("user_bio") or ""
         return stored_bio
 
     connection_status = await get_composio_service().check_connection_status(["gmail"], user_id)
@@ -472,7 +473,7 @@ async def get_onboarding_personalization(
             raise HTTPException(status_code=404, detail="User not found")
 
         onboarding = user_doc.onboarding or {}
-        phase = onboarding.get("phase", "initial")
+        phase = onboarding.get("phase") or "initial"
         log.info(
             f"{LogTag.ONBOARDING} User onboarding state",
             user_id=user_id,

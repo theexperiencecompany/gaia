@@ -8,7 +8,7 @@ Two concerns share the ``/desktop`` prefix:
   desktop binary so its buttons link straight to the right platform/arch asset.
 """
 
-from typing import Annotated, cast
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -38,7 +38,7 @@ async def latest_desktop_release() -> DesktopReleaseResponse:
     log.set(desktop_release={"tag": release.tag, "asset_count": len(release.assets)})
     # Cacheable erases the wrapped function's return type; get_latest_desktop_release
     # is declared -> DesktopReleaseResponse, so this is correct by construction.
-    return cast(DesktopReleaseResponse, release)
+    return release
 
 
 @router.post("/tool-result")

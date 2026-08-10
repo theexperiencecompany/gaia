@@ -286,8 +286,9 @@ async def fetch_emails_for_onboarding(
                 break
             all_emails.extend(batch)
             if on_batch is not None:
+                raw_sender = batch[-1].get("from") or batch[-1].get("sender")
                 latest_sender = _extract_display_name(
-                    batch[-1].get("from") or batch[-1].get("sender") or ""
+                    raw_sender if isinstance(raw_sender, str) else ""
                 )
                 await on_batch(len(all_emails), latest_sender or None)
             page_token = result.next_page_token

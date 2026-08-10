@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from livekit.agents import AgentSession
 
 
-class CustomLLM(LLM):
+class CustomLLM(LLM[Any]):
     """LLM adapter that streams SSE from POST /api/v1/chat-stream on the GAIA backend."""
 
     def __init__(
@@ -68,7 +68,7 @@ class CustomLLM(LLM):
         self._http_session: aiohttp.ClientSession | None = None
         # Set by the entrypoint once the AgentSession exists. The drain uses it
         # to speak each delegated executor answer as its own utterance.
-        self.session: AgentSession | None = None
+        self.session: AgentSession[Any] | None = None
         # Keep drain tasks referenced so they aren't garbage-collected mid-run.
         self._drain_tasks: set[asyncio.Task[None]] = set()
 

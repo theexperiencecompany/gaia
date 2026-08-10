@@ -35,7 +35,7 @@ class ToolDataEntry(TypedDict):
     """
 
     tool_name: str
-    data: Union[dict[str, Any], list[Any], str, int, float, bool]
+    data: Union[dict[str, object], list[Any], str, int, float, bool]
     # Optional: emitters always stamp it, but legacy stored entries predate the
     # field, so a read must tolerate its absence rather than fail validation.
     timestamp: NotRequired[str | None]
@@ -50,7 +50,7 @@ class ToolDataEntry(TypedDict):
     # MCP App UI metadata (resource_uri, csp, permissions) and the server that
     # serves it. Only tool_calls_data entries for MCP tools carry these; without
     # them a restored turn cannot re-fetch the iframe.
-    mcp_ui: NotRequired[dict[str, Any] | None]
+    mcp_ui: NotRequired[dict[str, object] | None]
     mcp_server_url: NotRequired[str | None]
 
 
@@ -109,7 +109,7 @@ class MessageModel(BaseModel):
     selectedWorkflow: SelectedWorkflowData | None = None
     tool_data: list[ToolDataEntry] | None = None
     follow_up_actions: list[str] | None = None
-    metadata: dict[str, Any] | None = None
+    metadata: dict[str, object] | None = None
     replyToMessage: ReplyToMessageData | None = None
     # Terminal stream error for a bot turn that produced no response — rendered
     # on reload instead of an empty bubble.

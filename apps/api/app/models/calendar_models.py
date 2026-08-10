@@ -1,6 +1,6 @@
 from datetime import datetime
 import re
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import (
     BaseModel,
@@ -33,7 +33,7 @@ class GooglePassthroughModel(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     @model_serializer(mode="wrap")
-    def _drop_unset_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+    def _drop_unset_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
         dumped = handler(self)
         return {key: value for key, value in dumped.items() if key in self.model_fields_set}
 

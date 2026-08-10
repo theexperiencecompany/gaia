@@ -159,9 +159,7 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     if not doc:
         # No catalog row — just drop this user's link. The mutator deletes the
         # row and invalidates atomically, returning False if there was nothing.
-        # @CacheInvalidator erases the wrapped function's return type to Any
-        # (see app/decorators/caching.py); cast back to the real contract.
-        return cast(bool, await remove_user_integration(user_id, integration_id))
+        return await remove_user_integration(user_id, integration_id)
 
     is_creator = doc.created_by == user_id
 

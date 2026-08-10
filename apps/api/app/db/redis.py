@@ -207,7 +207,10 @@ def _new_client(redis_url: str) -> AsyncRedisCommands:
     traded for the async-accurate ones in ``AsyncRedisCommands``; see that
     protocol for why they differ. ``from_url`` is lazy — this does not connect.
     """
-    return cast(AsyncRedisCommands, redis.from_url(redis_url, decode_responses=True))
+    return cast(
+        AsyncRedisCommands,
+        redis.Redis.from_url(redis_url, decode_responses=True),
+    )
 
 
 class RedisCache:
@@ -544,3 +547,30 @@ async def delete_cache_by_pattern(pattern: str) -> None:
 
 # Caching decorators have been moved to app.decorators.caching
 # Import them from there: from app.decorators.caching import Cacheable, CacheInvalidator
+
+
+async def close_pubsub(pubsub: PubSub) -> None:
+    """Close a redis PubSub subscription.
+
+    redis-py leaves ``PubSub.aclose`` unannotated; this wrapper is the single
+    typed seam for it (mypy: ``no-untyped-call``).
+    """
+    await pubsub.aclose()  # type: ignore[no-untyped-call]
+
+
+async def discard_pipeline_watch(pipe: Pipeline) -> None:
+    """Abort a ``WATCH`` on a pipeline without executing.
+
+    redis-py leaves ``Pipeline.unwatch`` unannotated; this wrapper is the single
+    typed seam for it (mypy: ``no-untyped-call``).
+    """
+    await pipe.unwatch()  # type: ignore[no-untyped-call]
+
+
+def start_pipeline_transaction(pipe: Pipeline) -> None:
+    """Switch a pipeline into MULTI/transaction mode.
+
+    redis-py leaves ``Pipeline.multi`` unannotated; this wrapper is the single
+    typed seam for it (mypy: ``no-untyped-call``).
+    """
+    pipe.multi()  # type: ignore[no-untyped-call]

@@ -20,7 +20,7 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import AuthenticatedUser, OnboardingDocument
 from app.services.files import FileService
 
 
@@ -82,7 +82,7 @@ async def construct_langchain_messages(
     )
 
     user_timezone = user_dict.get("timezone") if user_dict else None
-    onboarding = user_dict.get("onboarding", {}) if user_dict else {}
+    onboarding: OnboardingDocument | None = user_dict.get("onboarding") if user_dict else None
     user_preferences = onboarding.get("preferences") if onboarding else None
     writing_style = onboarding.get("writing_style") if onboarding else None
 

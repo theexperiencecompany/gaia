@@ -94,9 +94,7 @@ async def _resolve_handoff_display_name(subagent_id: str) -> str:
     if platform_subagent:
         return platform_subagent.name
 
-    # @Cacheable erases the wrapped function's return type to Any (see
-    # app/decorators/caching.py); cast back to the real annotated contract.
-    cached_name = cast("str | None", await _lookup_custom_integration_name(clean_id))
+    cached_name = await _lookup_custom_integration_name(clean_id)
     if cached_name:
         return cached_name
 
