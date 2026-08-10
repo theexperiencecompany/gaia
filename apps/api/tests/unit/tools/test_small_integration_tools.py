@@ -21,6 +21,7 @@ from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.models.common_models import GatherContextInput
@@ -663,6 +664,12 @@ class TestTrelloGatherContext:
 
 URGENCY_MODULE = "app.agents.tools.integrations.urgency_tool"
 
+EMPTY_RESULT: dict[str, Any] = {
+    "urgent_items": [],
+    "total_urgent": 0,
+    "summary": {"high_priority": 0, "medium_priority": 0, "low_priority": 0},
+}
+
 
 class TestUrgencyAggregator:
     """Tests for CUSTOM_URGENCY_AGGREGATOR."""
@@ -674,7 +681,7 @@ class TestUrgencyAggregator:
         )
 
         names = register_urgency_custom_tools(composio)
-        assert "GAIA_CUSTOM_URGENCY_AGGREGATOR" in names
+        assert names == ["GAIA_CUSTOM_URGENCY_AGGREGATOR"]
         return captured
 
     def _make_input(self, snapshots: dict[str, Any]) -> Any:
@@ -682,346 +689,531 @@ class TestUrgencyAggregator:
 
         return UrgencyAggregatorInput(snapshots=snapshots)
 
-    def test_empty_snapshots(self) -> None:
-        """Empty snapshots returns empty urgent items."""
+    def _aggregate(self, snapshots: dict[str, Any]) -> Any:
         captured = self._register()
         fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
-        result = fn(self._make_input({}), EXECUTE_REQUEST, {})
+        return fn(self._make_input(snapshots), EXECUTE_REQUEST, {})
 
-        assert result["urgent_items"] == []
-        assert result["total_urgent"] == 0
+    def test_empty_snapshots_return_empty_aggregate(self) -> None:
+        """Empty snapshots returns the empty aggregate result verbatim."""
+        assert self._aggregate({}) == EMPTY_RESULT
 
-    def test_gmail_unread(self) -> None:
-        """Gmail unread emails create urgency items."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+    def test_input_model_requires_snapshots(self) -> None:
+        """snapshots is a required field — building the model without it fails."""
+        from app.agents.tools.integrations.urgency_tool import UrgencyAggregatorInput
 
-        # High priority: > 20 unread
-        result = fn(
-            self._make_input({"gmail": {"inbox_unread_count": 25}}),
-            EXECUTE_REQUEST,
-            {},
+        with pytest.raises(ValidationError):
+            UrgencyAggregatorInput()
+
+    def test_input_model_snapshots_description(self) -> None:
+        """The snapshots field description documents the accepted shape."""
+        from app.agents.tools.integrations.urgency_tool import UrgencyAggregatorInput
+
+        assert UrgencyAggregatorInput.model_fields["snapshots"].description == (
+            "Dict mapping integration name to its CUSTOM_GATHER_CONTEXT output. "
+            "Example: {'gmail': {...}, 'slack': {...}, 'linear': {...}}"
         )
-        assert result["total_urgent"] == 1
+
+    def test_gmail_unread_over_20_is_high_priority(self) -> None:
+        """Gmail with > 20 unread emails is a high-priority item."""
+        result = self._aggregate({"gmail": {"inbox_unread_count": 25}})
+
+        assert result == {
+            "urgent_items": [
+                {
+                    "integration": "gmail",
+                    "type": "unread_emails",
+                    "count": 25,
+                    "priority": "high",
+                    "description": "25 unread emails in inbox",
+                }
+            ],
+            "total_urgent": 1,
+            "summary": {"high_priority": 1, "medium_priority": 0, "low_priority": 0},
+        }
+
+    def test_gmail_exactly_20_unread_is_medium_priority(self) -> None:
+        """20 unread emails stays medium — only strictly more than 20 is high."""
+        result = self._aggregate({"gmail": {"inbox_unread_count": 20}})
+
+        item = result["urgent_items"][0]
+        assert item["count"] == 20
+        assert item["priority"] == "medium"
+        assert item["description"] == "20 unread emails in inbox"
+
+    def test_gmail_exactly_21_unread_is_high_priority(self) -> None:
+        """21 unread emails crosses into high priority."""
+        result = self._aggregate({"gmail": {"inbox_unread_count": 21}})
+
         assert result["urgent_items"][0]["priority"] == "high"
-        assert result["urgent_items"][0]["count"] == 25
 
-    def test_gmail_medium_priority(self) -> None:
-        """Gmail with <= 20 unread emails is medium priority."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+    def test_gmail_one_unread_creates_item(self) -> None:
+        """A single unread email still creates an item."""
+        result = self._aggregate({"gmail": {"inbox_unread_count": 1}})
 
-        result = fn(
-            self._make_input({"gmail": {"inbox_unread_count": 5}}),
-            EXECUTE_REQUEST,
-            {},
-        )
-        assert result["urgent_items"][0]["priority"] == "medium"
+        assert result["total_urgent"] == 1
+        assert result["urgent_items"][0]["count"] == 1
+        assert result["urgent_items"][0]["description"] == "1 unread emails in inbox"
 
-    def test_gmail_zero_unread(self) -> None:
-        """Gmail with 0 unread does not create an item."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+    def test_gmail_zero_unread_creates_no_item(self) -> None:
+        """Gmail with 0 unread emails creates nothing."""
+        assert self._aggregate({"gmail": {"inbox_unread_count": 0}}) == EMPTY_RESULT
 
-        result = fn(
-            self._make_input({"gmail": {"inbox_unread_count": 0}}),
-            EXECUTE_REQUEST,
-            {},
-        )
-        assert result["total_urgent"] == 0
+    def test_gmail_falls_back_to_unread_count_when_inbox_count_zero(self) -> None:
+        """Zero inbox_unread_count falls through the `or` chain to unread_count.
 
-    def test_slack_mentions(self) -> None:
-        """Slack mentions create high priority items."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+        unread_count also satisfies the Slack detection block, so both the
+        gmail item (via the fallback) and a slack item are produced.
+        """
+        result = self._aggregate({"gmail": {"inbox_unread_count": 0, "unread_count": 4}})
 
-        result = fn(
-            self._make_input(
-                {
-                    "slack": {
-                        "mentions": [{"text": "Hey @you check this"}],
-                        "unread_count": 5,
-                    }
+        assert result["total_urgent"] == 2
+        gmail_item = next(i for i in result["urgent_items"] if i["integration"] == "gmail")
+        assert gmail_item == {
+            "integration": "gmail",
+            "type": "unread_emails",
+            "count": 4,
+            "priority": "medium",
+            "description": "4 unread emails in inbox",
+        }
+        slack_item = next(i for i in result["urgent_items"] if i["integration"] == "slack")
+        assert slack_item["count"] == 4
+
+    def test_gmail_unread_count_key_alone_triggers_gmail_and_slack_blocks(self) -> None:
+        """A bare unread_count key is detected by both the gmail and slack blocks."""
+        result = self._aggregate({"gmail": {"unread_count": 7}})
+
+        assert result["total_urgent"] == 2
+        assert {i["integration"] for i in result["urgent_items"]} == {"gmail", "slack"}
+        gmail_item = next(i for i in result["urgent_items"] if i["integration"] == "gmail")
+        assert gmail_item["count"] == 7
+        slack_item = next(i for i in result["urgent_items"] if i["integration"] == "slack")
+        assert slack_item["count"] == 7
+        assert slack_item["description"] == "7 unread Slack messages"
+
+    def test_slack_mentions_use_mention_count_and_truncated_details(self) -> None:
+        """Mentions win over unread_count; details truncate text to 80 and keep 3."""
+        result = self._aggregate(
+            {
+                "slack": {
+                    "mentions": [
+                        {"text": "x" * 100},
+                        {"text": "second"},
+                        {},
+                        {"text": "fourth"},
+                    ],
+                    "unread_count": 99,
                 }
-            ),
-            EXECUTE_REQUEST,
-            {},
+            }
         )
-        items = [i for i in result["urgent_items"] if i["integration"] == "slack"]
-        assert len(items) == 1
-        assert items[0]["priority"] == "high"
-        assert "1 Slack @mentions" in items[0]["description"]
 
-    def test_slack_unread_no_mentions(self) -> None:
-        """Slack unread without mentions uses unread_count."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+        slack_items = [i for i in result["urgent_items"] if i["integration"] == "slack"]
+        assert len(slack_items) == 1
+        assert slack_items[0] == {
+            "integration": "slack",
+            "type": "unread_messages",
+            "count": 4,
+            "priority": "high",
+            "description": "4 Slack @mentions",
+            "details": ["x" * 80, "second", ""],
+        }
 
-        result = fn(
-            self._make_input({"slack": {"mentions": [], "unread_count": 10}}),
-            EXECUTE_REQUEST,
-            {},
+    def test_slack_mentions_with_zero_unread_count_still_create_item(self) -> None:
+        """Mentions alone (unread_count 0) are enough to create the item."""
+        result = self._aggregate(
+            {"slack": {"mentions": [{"text": "hi"}], "unread_count": 0}}
         )
-        items = [i for i in result["urgent_items"] if i["integration"] == "slack"]
-        assert len(items) == 1
-        assert "10 unread Slack messages" in items[0]["description"]
 
-    def test_linear_overdue_issues(self) -> None:
-        """Linear overdue issues create high priority items."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+        slack_items = [i for i in result["urgent_items"] if i["integration"] == "slack"]
+        assert len(slack_items) == 1
+        assert slack_items[0]["count"] == 1
+        assert slack_items[0]["description"] == "1 Slack @mentions"
 
-        result = fn(
-            self._make_input(
-                {
-                    "linear": {
-                        "overdue_issues": [
-                            {"title": "Fix bug"},
-                            {"title": "Deploy"},
-                        ]
-                    }
+    def test_slack_unread_count_without_mentions(self) -> None:
+        """Slack unread without mentions uses unread_count with an empty details list."""
+        result = self._aggregate({"slack": {"mentions": [], "unread_count": 10}})
+
+        # unread_count also triggers the gmail block, hence 2 items.
+        assert result["total_urgent"] == 2
+        slack_item = next(i for i in result["urgent_items"] if i["integration"] == "slack")
+        assert slack_item == {
+            "integration": "slack",
+            "type": "unread_messages",
+            "count": 10,
+            "priority": "high",
+            "description": "10 unread Slack messages",
+            "details": [],
+        }
+        gmail_item = next(i for i in result["urgent_items"] if i["integration"] == "gmail")
+        assert gmail_item["count"] == 10
+
+    def test_slack_no_signals_creates_no_item(self) -> None:
+        """Empty mentions and no unread_count create nothing."""
+        assert self._aggregate({"slack": {"mentions": []}}) == EMPTY_RESULT
+        assert self._aggregate({"slack": {"mentions": [], "unread_count": 0}}) == EMPTY_RESULT
+
+    def test_linear_overdue_issues_with_truncated_details(self) -> None:
+        """Linear overdue issues create a high-priority item; details keep 3 titles."""
+        result = self._aggregate(
+            {
+                "linear": {
+                    "overdue_issues": [
+                        {"title": "Fix bug"},
+                        {"title": "Deploy"},
+                        {},
+                        {"title": "Fourth"},
+                    ]
                 }
-            ),
-            EXECUTE_REQUEST,
-            {},
+            }
         )
-        items = [i for i in result["urgent_items"] if i["integration"] == "linear"]
-        assert len(items) == 1
-        assert items[0]["count"] == 2
-        assert items[0]["priority"] == "high"
 
-    def test_calendar_events(self) -> None:
-        """Calendar events create medium priority items."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+        assert result["urgent_items"] == [
+            {
+                "integration": "linear",
+                "type": "overdue_issues",
+                "count": 4,
+                "priority": "high",
+                "description": "4 overdue Linear issues",
+                "details": ["Fix bug", "Deploy", None],
+            }
+        ]
 
-        result = fn(
-            self._make_input({"googlecalendar": {"events": [{"summary": "Standup"}]}}),
-            EXECUTE_REQUEST,
-            {},
-        )
-        items = [i for i in result["urgent_items"] if i["integration"] == "googlecalendar"]
-        assert len(items) == 1
-        assert items[0]["priority"] == "medium"
+    def test_linear_empty_overdue_list_creates_no_item(self) -> None:
+        """An empty overdue_issues list creates nothing."""
+        assert self._aggregate({"linear": {"overdue_issues": []}}) == EMPTY_RESULT
 
-    def test_calendar_next_event(self) -> None:
-        """Calendar with only next_event (no events list) still creates item."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
-
-        result = fn(
-            self._make_input({"googlecalendar": {"next_event": {"summary": "1:1"}}}),
-            EXECUTE_REQUEST,
-            {},
-        )
-        items = [i for i in result["urgent_items"] if i["integration"] == "googlecalendar"]
-        assert len(items) == 1
-        assert items[0]["count"] == 1
-
-    def test_github_notifications_and_reviews(self) -> None:
-        """GitHub notifications and review requests create separate items."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
-
-        result = fn(
-            self._make_input(
-                {
-                    "github": {
-                        "notifications": [{"id": "n1"}],
-                        "review_requests": [{"title": "PR #1"}, {"title": "PR #2"}],
-                    }
+    def test_calendar_events_preferred_over_next_event(self) -> None:
+        """events wins over next_event; summary beats title; details keep 3 entries."""
+        result = self._aggregate(
+            {
+                "googlecalendar": {
+                    "events": [
+                        {"summary": "Standup", "title": "Standup alias"},
+                        {"title": "1:1"},
+                        {},
+                        {"summary": "Fourth"},
+                    ],
+                    "next_event": {"summary": "Next"},
                 }
-            ),
-            EXECUTE_REQUEST,
-            {},
+            }
         )
-        gh_items = [i for i in result["urgent_items"] if i["integration"] == "github"]
-        assert len(gh_items) == 2
-        notif_item = next(i for i in gh_items if i["type"] == "unread_notifications")
-        review_item = next(i for i in gh_items if i["type"] == "review_requests")
-        assert notif_item["priority"] == "medium"
-        assert review_item["priority"] == "high"
-        assert review_item["count"] == 2
 
-    def test_overdue_tasks(self) -> None:
-        """Asana/Todoist/ClickUp overdue tasks create high priority items."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+        calendar_items = [
+            i for i in result["urgent_items"] if i["integration"] == "googlecalendar"
+        ]
+        assert len(calendar_items) == 1
+        assert calendar_items[0] == {
+            "integration": "googlecalendar",
+            "type": "upcoming_events",
+            "count": 4,
+            "priority": "medium",
+            "description": "4 calendar events today",
+            "details": ["Standup", "1:1", ""],
+        }
 
-        result = fn(
-            self._make_input({"asana": {"overdue_tasks": [{"name": "Task 1"}]}}),
-            EXECUTE_REQUEST,
-            {},
+    def test_calendar_next_event_fallback(self) -> None:
+        """A lone next_event still creates an item, using its title as detail."""
+        result = self._aggregate(
+            {"googlecalendar": {"next_event": {"title": "1:1"}}}
         )
-        items = [i for i in result["urgent_items"] if i["type"] == "overdue_tasks"]
-        assert len(items) == 1
-        assert items[0]["integration"] == "asana"
-        assert items[0]["priority"] == "high"
 
-    def test_urgent_tasks_fallback(self) -> None:
-        """Falls back to urgent_tasks with overdue flag for Google Tasks."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+        calendar_items = [
+            i for i in result["urgent_items"] if i["integration"] == "googlecalendar"
+        ]
+        assert len(calendar_items) == 1
+        assert calendar_items[0]["count"] == 1
+        assert calendar_items[0]["description"] == "1 calendar events today"
+        assert calendar_items[0]["details"] == ["1:1"]
 
-        result = fn(
-            self._make_input(
-                {
-                    "googletasks": {
-                        "urgent_tasks": [
-                            {"title": "Overdue task", "overdue": True},
-                            {"title": "Not overdue", "overdue": False},
-                        ]
-                    }
+    def test_calendar_events_without_next_event_key(self) -> None:
+        """A snapshot carrying only events (no next_event key) still creates an item."""
+        result = self._aggregate(
+            {"googlecalendar": {"events": [{"summary": "Standup"}]}}
+        )
+
+        calendar_items = [
+            i for i in result["urgent_items"] if i["integration"] == "googlecalendar"
+        ]
+        assert len(calendar_items) == 1
+        assert calendar_items[0]["count"] == 1
+
+    def test_calendar_empty_events_creates_no_item(self) -> None:
+        """Empty events with no next_event create nothing."""
+        assert (
+            self._aggregate(
+                {"googlecalendar": {"events": [], "next_event": None}}
+            )
+            == EMPTY_RESULT
+        )
+
+    def test_github_notifications_only(self) -> None:
+        """GitHub notifications alone create a medium-priority item."""
+        result = self._aggregate(
+            {"github": {"notifications": [{"id": "n1"}, {"id": "n2"}]}}
+        )
+
+        assert result["urgent_items"] == [
+            {
+                "integration": "github",
+                "type": "unread_notifications",
+                "count": 2,
+                "priority": "medium",
+                "description": "2 unread GitHub notifications",
+            }
+        ]
+
+    def test_github_review_requests_only(self) -> None:
+        """GitHub review requests alone create a high-priority item with details."""
+        result = self._aggregate(
+            {
+                "github": {
+                    "review_requests": [
+                        {"title": "PR #1"},
+                        {},
+                        {"title": "PR #3"},
+                        {"title": "PR #4"},
+                    ]
                 }
-            ),
-            EXECUTE_REQUEST,
-            {},
+            }
         )
-        items = [i for i in result["urgent_items"] if i["type"] == "overdue_tasks"]
-        assert len(items) == 1
-        assert items[0]["count"] == 1
+
+        assert result["urgent_items"] == [
+            {
+                "integration": "github",
+                "type": "review_requests",
+                "count": 4,
+                "priority": "high",
+                "description": "4 GitHub PRs awaiting your review",
+                "details": ["PR #1", "", "PR #3"],
+            }
+        ]
+
+    def test_github_both_notifications_and_reviews(self) -> None:
+        """Notifications and review requests produce two items, review first."""
+        result = self._aggregate(
+            {
+                "github": {
+                    "notifications": [{"id": "n1"}],
+                    "review_requests": [{"title": "PR"}],
+                }
+            }
+        )
+
+        assert result["total_urgent"] == 2
+        assert [i["type"] for i in result["urgent_items"]] == [
+            "review_requests",
+            "unread_notifications",
+        ]
+
+    def test_github_empty_lists_creates_no_item(self) -> None:
+        """Empty notifications and review_requests create nothing."""
+        assert (
+            self._aggregate(
+                {"github": {"notifications": [], "review_requests": []}}
+            )
+            == EMPTY_RESULT
+        )
+
+    def test_overdue_tasks_lowercase_integration_and_detail_fallbacks(self) -> None:
+        """Overdue tasks use the lowercased integration name; name beats title."""
+        result = self._aggregate(
+            {
+                "MyAsana": {
+                    "overdue_tasks": [
+                        {"name": "Named", "title": "Named alias"},
+                        {"title": "Titled only"},
+                        {"neither": True},
+                        {"name": "Fourth"},
+                    ]
+                }
+            }
+        )
+
+        assert result["urgent_items"] == [
+            {
+                "integration": "myasana",
+                "type": "overdue_tasks",
+                "count": 4,
+                "priority": "high",
+                "description": "4 overdue tasks in myasana",
+                "details": ["Named", "Titled only", None],
+            }
+        ]
+
+    def test_urgent_tasks_fallback_filters_overdue_flag(self) -> None:
+        """urgent_tasks fallback keeps only entries with a truthy overdue flag."""
+        result = self._aggregate(
+            {
+                "googletasks": {
+                    "urgent_tasks": [
+                        {"title": "Overdue", "overdue": True},
+                        {"title": "Not overdue", "overdue": False},
+                        {"title": "Missing flag"},
+                        {"title": "Truthy flag", "overdue": 1},
+                    ]
+                }
+            }
+        )
+
+        item = result["urgent_items"][0]
+        assert item["type"] == "overdue_tasks"
+        assert item["count"] == 2
+        assert item["details"] == ["Overdue", "Truthy flag"]
+
+    def test_overdue_tasks_prefer_overdue_tasks_key(self) -> None:
+        """A present overdue_tasks key shadows the urgent_tasks fallback."""
+        result = self._aggregate(
+            {
+                "asana": {
+                    "overdue_tasks": [{"name": "From overdue_tasks"}],
+                    "urgent_tasks": [
+                        {"name": "From urgent_tasks", "overdue": True}
+                    ],
+                }
+            }
+        )
+
+        item = result["urgent_items"][0]
+        assert item["count"] == 1
+        assert item["details"] == ["From overdue_tasks"]
+
+    def test_no_overdue_signals_creates_no_task_item(self) -> None:
+        """Snapshots without overdue or urgent tasks create nothing."""
+        assert self._aggregate({"asana": {}}) == EMPTY_RESULT
+        assert (
+            self._aggregate({"asana": {"urgent_tasks": [{"name": "Not overdue"}]}})
+            == EMPTY_RESULT
+        )
 
     def test_teams_unread_chats(self) -> None:
-        """Teams unread chats create medium priority items."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+        """Teams unread chats create a medium-priority item."""
+        result = self._aggregate({"teams": {"unread_chat_count": 3}})
 
-        result = fn(
-            self._make_input({"teams": {"unread_chat_count": 3}}),
-            EXECUTE_REQUEST,
-            {},
-        )
-        items = [i for i in result["urgent_items"] if i["integration"] == "microsoft_teams"]
-        assert len(items) == 1
-        assert items[0]["priority"] == "medium"
-        assert items[0]["count"] == 3
+        assert result["urgent_items"] == [
+            {
+                "integration": "microsoft_teams",
+                "type": "unread_chats",
+                "count": 3,
+                "priority": "medium",
+                "description": "3 unread Microsoft Teams chats",
+            }
+        ]
 
-    def test_teams_zero_unread(self) -> None:
-        """Teams with 0 unread chats does not create an item."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+    def test_teams_one_unread_chat_creates_item(self) -> None:
+        """A single unread chat still creates an item."""
+        assert self._aggregate({"teams": {"unread_chat_count": 1}})["total_urgent"] == 1
 
-        result = fn(
-            self._make_input({"teams": {"unread_chat_count": 0}}),
-            EXECUTE_REQUEST,
-            {},
-        )
-        items = [i for i in result["urgent_items"] if i["integration"] == "microsoft_teams"]
-        assert len(items) == 0
+    def test_teams_zero_unread_chats_creates_no_item(self) -> None:
+        """Zero unread chats create nothing."""
+        assert self._aggregate({"teams": {"unread_chat_count": 0}}) == EMPTY_RESULT
 
     def test_reddit_unread_messages(self) -> None:
-        """Reddit unread messages create low priority items."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+        """Reddit unread messages create a low-priority item."""
+        result = self._aggregate({"reddit": {"unread_message_count": 2}})
 
-        result = fn(
-            self._make_input({"reddit": {"unread_message_count": 2}}),
-            EXECUTE_REQUEST,
-            {},
-        )
-        items = [i for i in result["urgent_items"] if i["integration"] == "reddit"]
-        assert len(items) == 1
-        assert items[0]["priority"] == "low"
+        assert result["urgent_items"] == [
+            {
+                "integration": "reddit",
+                "type": "unread_messages",
+                "count": 2,
+                "priority": "low",
+                "description": "2 unread Reddit messages",
+            }
+        ]
 
-    def test_sorting_by_priority_and_count(self) -> None:
-        """Items are sorted high > medium > low, then by count descending."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
+    def test_reddit_one_unread_message_creates_item(self) -> None:
+        """A single unread message still creates an item."""
+        assert self._aggregate({"reddit": {"unread_message_count": 1}})["total_urgent"] == 1
 
-        result = fn(
-            self._make_input(
-                {
-                    "gmail": {"inbox_unread_count": 5},  # medium, count=5
-                    "linear": {"overdue_issues": [{"title": "a"}, {"title": "b"}]},  # high, count=2
-                    "reddit": {"unread_message_count": 10},  # low, count=10
-                    "github": {
-                        "review_requests": [{"title": "PR"}],
-                        "notifications": [],
-                    },  # high, count=1
-                }
-            ),
-            EXECUTE_REQUEST,
-            {},
-        )
+    def test_reddit_zero_unread_messages_creates_no_item(self) -> None:
+        """Zero unread messages create nothing."""
+        assert self._aggregate({"reddit": {"unread_message_count": 0}}) == EMPTY_RESULT
 
-        items = result["urgent_items"]
-        assert len(items) >= 3
-        # High priority items first
-        high_items = [i for i in items if i["priority"] == "high"]
-        medium_items = [i for i in items if i["priority"] == "medium"]
-        low_items = [i for i in items if i["priority"] == "low"]
+    def test_items_sorted_by_priority_then_count_descending(self) -> None:
+        """Items are sorted high > medium > low, then by count descending.
 
-        # All high before all medium before all low
-        high_indices = [items.index(i) for i in high_items]
-        medium_indices = [items.index(i) for i in medium_items]
-        low_indices = [items.index(i) for i in low_items]
-
-        if high_indices and medium_indices:
-            assert max(high_indices) < min(medium_indices)
-        if medium_indices and low_indices:
-            assert max(medium_indices) < min(low_indices)
-
-    def test_summary_counts(self) -> None:
-        """Summary contains correct high/medium/low counts."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
-
-        result = fn(
-            self._make_input(
-                {
-                    "linear": {"overdue_issues": [{"title": "a"}]},  # high
-                    "gmail": {"inbox_unread_count": 5},  # medium
-                    "reddit": {"unread_message_count": 1},  # low
-                }
-            ),
-            EXECUTE_REQUEST,
-            {},
+        The high tier is deliberately inserted in count-ascending order
+        (review_requests before overdue_issues) so that a sort key that
+        ignores the count would produce a visibly different order.
+        """
+        result = self._aggregate(
+            {
+                "github": {
+                    "review_requests": [{"title": "PR"}],  # high, count 1 — inserted first
+                    "notifications": [{"id": "n1"}],  # medium, count 1
+                },
+                "linear": {"overdue_issues": [{"title": "a"}, {"title": "b"}, {"title": "c"}]},  # high, count 3
+                "gmail": {"inbox_unread_count": 5},  # medium, count 5
+                "reddit": {"unread_message_count": 10},  # low, count 10
+            }
         )
 
-        assert result["summary"]["high_priority"] >= 1
-        assert result["summary"]["medium_priority"] >= 1
-        assert result["summary"]["low_priority"] >= 1
+        assert [i["type"] for i in result["urgent_items"]] == [
+            "overdue_issues",  # high, count 3 — first among highs (desc count)
+            "review_requests",  # high, count 1
+            "unread_emails",  # medium, count 5
+            "unread_notifications",  # medium, count 1
+            "unread_messages",  # low, count 10
+        ]
+        assert result["total_urgent"] == 5
+
+    def test_summary_counts_exact(self) -> None:
+        """Summary reports exact per-priority counts."""
+        result = self._aggregate(
+            {
+                "linear": {"overdue_issues": [{"title": "a"}]},  # high
+                "gmail": {"inbox_unread_count": 5},  # medium
+                "reddit": {"unread_message_count": 1},  # low
+            }
+        )
+
+        assert result["total_urgent"] == 3
+        assert result["summary"] == {
+            "high_priority": 1,
+            "medium_priority": 1,
+            "low_priority": 1,
+        }
 
     def test_non_dict_snapshot_skipped(self) -> None:
-        """Non-dict snapshots are skipped."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
-
-        result = fn(
-            self._make_input(
-                {
-                    "broken": "not a dict",
-                    "also_broken": 123,
-                }
-            ),
-            EXECUTE_REQUEST,
-            {},
+        """Non-dict snapshots are skipped without stopping later integrations."""
+        result = self._aggregate(
+            {
+                "broken": "not a dict",
+                "also_broken": 123,
+                "gmail": {"inbox_unread_count": 5},
+            }
         )
-        assert result["total_urgent"] == 0
+
+        assert result["total_urgent"] == 1
+        assert result["urgent_items"][0]["integration"] == "gmail"
+        assert result["summary"] == {
+            "high_priority": 0,
+            "medium_priority": 1,
+            "low_priority": 0,
+        }
 
     def test_multiple_integrations(self) -> None:
-        """Multiple integrations aggregate correctly."""
-        captured = self._register()
-        fn = captured["CUSTOM_URGENCY_AGGREGATOR"]
-
-        result = fn(
-            self._make_input(
-                {
-                    "gmail": {"inbox_unread_count": 3},
-                    "slack": {"mentions": [{"text": "hey"}]},
-                    "asana": {"overdue_tasks": [{"name": "task1"}]},
-                    "teams": {"unread_chat_count": 2},
-                    "reddit": {"unread_message_count": 1},
-                }
-            ),
-            EXECUTE_REQUEST,
-            {},
+        """Multiple integrations aggregate into a single sorted result."""
+        result = self._aggregate(
+            {
+                "gmail": {"inbox_unread_count": 3},
+                "slack": {"mentions": [{"text": "hey"}]},
+                "asana": {"overdue_tasks": [{"name": "task1"}]},
+                "teams": {"unread_chat_count": 2},
+                "reddit": {"unread_message_count": 1},
+            }
         )
 
         assert result["total_urgent"] == 5
-        integrations = {i["integration"] for i in result["urgent_items"]}
-        assert "gmail" in integrations
-        assert "slack" in integrations
-        assert "asana" in integrations
-        assert "microsoft_teams" in integrations
-        assert "reddit" in integrations
+        assert [i["type"] for i in result["urgent_items"]] == [
+            "unread_messages",  # slack mention — high, count 1 (inserted first)
+            "overdue_tasks",  # asana — high, count 1
+            "unread_emails",  # gmail — medium, count 3
+            "unread_chats",  # teams — medium, count 2
+            "unread_messages",  # reddit — low
+        ]
+        assert result["summary"] == {
+            "high_priority": 2,
+            "medium_priority": 2,
+            "low_priority": 1,
+        }

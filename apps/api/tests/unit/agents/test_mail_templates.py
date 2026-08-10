@@ -6,14 +6,21 @@ from unittest.mock import patch
 
 from app.agents.templates.mail_templates import (
     GmailMessageParser,
+    _attachment_metadata,
+    _copy_headers,
     _get_text_from_html,
+    _set_decoded_content,
+    build_message_view,
     detailed_message_template,
     draft_template,
+    message_view_needs_body,
     minimal_message_template,
     process_get_thread_response,
     process_list_drafts_response,
+    project_message_view,
     thread_template,
 )
+from app.models.composio_schemas.gmail import GmailMessagePart
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -104,6 +111,204 @@ class TestGetTextFromHtml:
         result = _get_text_from_html(html)
         assert "Item 1" in result
         assert "Item 2" in result
+
+    def test_exact_text(self):
+        assert _get_text_from_html("<p>Hello <b>World</b></p>") == "Hello World"
+
+    def test_exact_entities(self):
+        assert _get_text_from_html("<p>5 &gt; 3 &amp; 2 &lt; 4</p>") == "5 > 3 & 2 < 4"
+
+
+# ---------------------------------------------------------------------------
+# _copy_headers
+# ---------------------------------------------------------------------------
+
+
+class TestCopyHeaders:
+    def test_copies_all_headers(self):
+        part = GmailMessagePart.model_validate(
+            {
+                "headers": [
+                    {"name": "Subject", "value": "Hi"},
+                    {"name": "From", "value": "a@b.com"},
+                ]
+            }
+        )
+        target = email.message.EmailMessage()
+        _copy_headers(part, target)
+        assert list(target.keys()) == ["Subject", "From"]
+        assert target["Subject"] == "Hi"
+        assert target["From"] == "a@b.com"
+
+    def test_skips_empty_name_or_value(self):
+        part = GmailMessagePart.model_validate(
+            {
+                "headers": [
+                    {"name": "", "value": "orphan"},
+                    {"name": "Empty", "value": ""},
+                    {"name": "Ok", "value": "v"},
+                ]
+            }
+        )
+        target = email.message.EmailMessage()
+        _copy_headers(part, target)
+        assert list(target.keys()) == ["Ok"]
+        assert target["Ok"] == "v"
+
+    def test_no_headers(self):
+        target = email.message.EmailMessage()
+        _copy_headers(GmailMessagePart.model_validate({"headers": []}), target)
+        assert list(target.keys()) == []
+
+
+# ---------------------------------------------------------------------------
+# _set_decoded_content
+# ---------------------------------------------------------------------------
+
+
+def _part_with_body(data: str) -> GmailMessagePart:
+    return GmailMessagePart.model_validate({"body": {"data": data}})
+
+
+class TestSetDecodedContent:
+    def test_no_body_sets_nothing(self):
+        target = email.message.EmailMessage()
+        _set_decoded_content(target, GmailMessagePart.model_validate({}), "text/plain")
+        assert target.get_payload() is None
+
+    def test_empty_body_data_sets_nothing(self):
+        target = email.message.EmailMessage()
+        _set_decoded_content(target, _part_with_body(""), "text/plain")
+        assert target.get_payload() is None
+
+    def test_plain_text_decoded(self):
+        target = email.message.EmailMessage()
+        _set_decoded_content(target, _part_with_body(_b64_encode("Hello")), "text/plain")
+        assert target.get_content() == "Hello\n"
+        assert target.get_content_type() == "text/plain"
+
+    def test_html_uses_html_subtype(self):
+        target = email.message.EmailMessage()
+        _set_decoded_content(target, _part_with_body(_b64_encode("<p>Hi</p>")), "text/html")
+        assert target.get_content() == "<p>Hi</p>\n"
+        assert target.get_content_type() == "text/html"
+        assert target["Content-Type"] == 'text/html; charset="utf-8"'
+
+    def test_invalid_base64_falls_back_to_raw(self):
+        target = email.message.EmailMessage()
+        _set_decoded_content(target, _part_with_body("not-base64!!"), "text/plain")
+        assert target.get_content() == "not-base64!!\n"
+
+    def test_invalid_utf8_bytes_are_ignored(self):
+        target = email.message.EmailMessage()
+        _set_decoded_content(target, _part_with_body("//4A"), "text/plain")
+        assert target.get_content() == "\x00\n"
+
+
+# ---------------------------------------------------------------------------
+# _attachment_metadata
+# ---------------------------------------------------------------------------
+
+
+class TestAttachmentMetadata:
+    def test_no_payload(self):
+        assert _attachment_metadata({}) == []
+        assert _attachment_metadata({"id": "x"}) == []
+
+    def test_single_attachment_exact(self):
+        raw = {
+            "payload": {
+                "parts": [
+                    {
+                        "filename": "doc.pdf",
+                        "mimeType": "application/pdf",
+                        "body": {"attachmentId": "att_1", "size": 1024},
+                    },
+                ],
+            },
+        }
+        assert _attachment_metadata(raw) == [
+            {
+                "filename": "doc.pdf",
+                "mimeType": "application/pdf",
+                "size": 1024,
+                "attachmentId": "att_1",
+            },
+        ]
+
+    def test_multiple_attachments_in_order(self):
+        raw = {
+            "payload": {
+                "parts": [
+                    {
+                        "filename": "a.pdf",
+                        "mimeType": "application/pdf",
+                        "body": {"attachmentId": "att_1", "size": 1},
+                    },
+                    {
+                        "filename": "b.png",
+                        "mimeType": "image/png",
+                        "body": {"attachmentId": "att_2", "size": 2},
+                    },
+                ],
+            },
+        }
+        assert _attachment_metadata(raw) == [
+            {"filename": "a.pdf", "mimeType": "application/pdf", "size": 1, "attachmentId": "att_1"},
+            {"filename": "b.png", "mimeType": "image/png", "size": 2, "attachmentId": "att_2"},
+        ]
+
+    def test_nested_parts_walked(self):
+        raw = {
+            "payload": {
+                "parts": [
+                    {"mimeType": "text/plain", "body": {"data": _b64_encode("x")}},
+                    {
+                        "mimeType": "multipart/mixed",
+                        "parts": [
+                            {
+                                "filename": "inner.pdf",
+                                "mimeType": "application/pdf",
+                                "body": {"attachmentId": "att_2", "size": 5},
+                            },
+                        ],
+                    },
+                ],
+            },
+        }
+        assert _attachment_metadata(raw) == [
+            {"filename": "inner.pdf", "mimeType": "application/pdf", "size": 5, "attachmentId": "att_2"},
+        ]
+
+    def test_filename_without_attachment_id_excluded(self):
+        raw = {
+            "payload": {
+                "parts": [
+                    {"filename": "noid.pdf", "mimeType": "application/pdf", "body": {"size": 1}},
+                ],
+            },
+        }
+        assert _attachment_metadata(raw) == []
+
+    def test_attachment_id_without_filename_excluded(self):
+        raw = {
+            "payload": {
+                "parts": [
+                    {"mimeType": "application/pdf", "body": {"attachmentId": "att_3"}},
+                ],
+            },
+        }
+        assert _attachment_metadata(raw) == []
+
+    def test_no_body_excluded(self):
+        raw = {
+            "payload": {
+                "parts": [
+                    {"filename": "x.pdf", "mimeType": "application/pdf"},
+                ],
+            },
+        }
+        assert _attachment_metadata(raw) == []
 
 
 # ---------------------------------------------------------------------------
@@ -438,12 +643,61 @@ class TestMinimalMessageTemplate:
         # Short body is truncated to 100 chars
         assert len(result["body"]) <= 100
 
+    def test_exact_parsed_message(self):
+        raw = _make_raw_email(
+            subject="Hello",
+            sender="a@b.com",
+            to="c@d.com",
+            cc="e@f.com",
+            body_text="Body text",
+            body_html="<p>Body HTML</p>",
+            date="Wed, 01 Jan 2025 12:00:00 +0000",
+        )
+        msg = {
+            "messageId": "mid_1",
+            "id": "msg_001",
+            "threadId": "thread_001",
+            "snippet": "Preview",
+            "labelIds": ["INBOX"],
+            "raw": raw,
+        }
+
+        result = minimal_message_template(msg, short_body=False, include_both_formats=True)
+
+        assert result == {
+            "id": "mid_1",
+            "threadId": "thread_001",
+            "from": "a@b.com",
+            "to": "c@d.com",
+            "subject": "Hello",
+            "snippet": "Preview",
+            "time": "Wed, 01 Jan 2025 12:00:00 +0000",
+            "isRead": True,
+            "hasAttachment": False,
+            "body": "Body text\n",
+            "labels": ["INBOX"],
+            "content": {"text": "Body text\n", "html": "<p>Body HTML</p>\n"},
+        }
+
+    def test_truncation_exact(self):
+        raw = _make_raw_email(body_text="A" * 150)
+        msg = _make_gmail_message(raw=raw)
+
+        assert minimal_message_template(msg)["body"] == "A" * 100
+
+    def test_body_of_exactly_100_not_truncated(self):
+        raw = _make_raw_email(body_text="B" * 100)
+        msg = _make_gmail_message(raw=raw)
+
+        assert minimal_message_template(msg)["body"] == "B" * 100
+
     def test_short_body_false(self):
         raw = _make_raw_email(body_text="A" * 200)
         msg = _make_gmail_message(raw=raw)
 
         result = minimal_message_template(msg, short_body=False)
         assert len(result["body"]) >= 200
+        assert result["body"].rstrip("\n") == "A" * 200
 
     def test_include_both_formats(self):
         raw = _make_raw_email(body_text="Plain", body_html="<p>HTML</p>")
@@ -453,6 +707,13 @@ class TestMinimalMessageTemplate:
         assert "content" in result
         assert "text" in result["content"]
         assert "html" in result["content"]
+
+    def test_no_content_key_by_default(self):
+        raw = _make_raw_email(body_text="Plain", body_html="<p>HTML</p>")
+        msg = _make_gmail_message(raw=raw)
+
+        result = minimal_message_template(msg)
+        assert "content" not in result
 
     def test_is_read_and_has_attachment(self):
         raw = _make_raw_email()
@@ -478,8 +739,38 @@ class TestMinimalMessageTemplate:
         }
 
         result = minimal_message_template(msg)
-        assert result["id"] == "mid_1"
-        assert result["from"] == "fallback@sender.com"
+        assert result == {
+            "id": "mid_1",
+            "threadId": "t1",
+            "from": "fallback@sender.com",
+            "to": "fallback@to.com",
+            "subject": "Fallback Subject",
+            "snippet": "snip",
+            "time": "2025-01-01T00:00:00Z",
+            "isRead": True,
+            "hasAttachment": False,
+            "body": "fallback body",
+            "labels": [],
+        }
+
+    def test_empty_message_uses_defaults(self):
+        assert minimal_message_template({}) == {
+            "id": "",
+            "threadId": "",
+            "from": "",
+            "to": "",
+            "subject": "",
+            "snippet": "",
+            "time": "",
+            "isRead": True,
+            "hasAttachment": False,
+            "body": "",
+            "labels": [],
+        }
+
+    def test_message_id_falls_back_to_id_when_empty(self):
+        msg = {"messageId": "", "id": "real_id", "labelIds": []}
+        assert minimal_message_template(msg)["id"] == "real_id"
 
 
 # ---------------------------------------------------------------------------
@@ -513,6 +804,122 @@ class TestDetailedMessageTemplate:
 
         result = detailed_message_template(msg)
         assert result["id"] == "m1"
+
+    def test_exact_detailed_view(self):
+        raw = _make_raw_email(
+            subject="Detailed",
+            sender="a@b.com",
+            to="c@d.com",
+            cc="e@f.com",
+            body_text="Full body",
+            body_html="<p>Full body</p>",
+            date="Wed, 01 Jan 2025 12:00:00 +0000",
+        )
+        msg = {
+            "messageId": "mid_1",
+            "id": "msg_001",
+            "threadId": "thread_001",
+            "snippet": "snip",
+            "labelIds": ["UNREAD", "HAS_ATTACHMENT"],
+            "raw": raw,
+        }
+
+        assert detailed_message_template(msg) == {
+            "id": "mid_1",
+            "threadId": "thread_001",
+            "from": "a@b.com",
+            "to": "c@d.com",
+            "subject": "Detailed",
+            "snippet": "snip",
+            "time": "Wed, 01 Jan 2025 12:00:00 +0000",
+            "isRead": False,
+            "hasAttachment": True,
+            "attachments": [],
+            "labels": ["UNREAD", "HAS_ATTACHMENT"],
+            "cc": "e@f.com",
+            "body": "Full body\n",
+            "content": {"text": "Full body\n", "html": "<p>Full body</p>\n"},
+        }
+
+    def test_include_body_false_omits_body_and_content(self):
+        raw = _make_raw_email(
+            subject="Detailed",
+            sender="a@b.com",
+            to="c@d.com",
+            cc="e@f.com",
+            body_text="Full body",
+            body_html="<p>Full body</p>",
+            date="Wed, 01 Jan 2025 12:00:00 +0000",
+        )
+        msg = {
+            "messageId": "mid_1",
+            "id": "msg_001",
+            "threadId": "thread_001",
+            "snippet": "snip",
+            "labelIds": ["UNREAD", "HAS_ATTACHMENT"],
+            "raw": raw,
+        }
+
+        assert detailed_message_template(msg, include_body=False) == {
+            "id": "mid_1",
+            "threadId": "thread_001",
+            "from": "a@b.com",
+            "to": "c@d.com",
+            "subject": "Detailed",
+            "snippet": "snip",
+            "time": "Wed, 01 Jan 2025 12:00:00 +0000",
+            "isRead": False,
+            "hasAttachment": True,
+            "attachments": [],
+            "labels": ["UNREAD", "HAS_ATTACHMENT"],
+            "cc": "e@f.com",
+        }
+
+    def test_include_body_false_still_carries_attachments(self):
+        payload = {
+            "mimeType": "multipart/mixed",
+            "headers": [{"name": "Subject", "value": "S"}],
+            "parts": [
+                {"mimeType": "text/plain", "headers": [], "body": {"data": _b64_encode("body")}},
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "doc.pdf",
+                    "headers": [],
+                    "body": {"attachmentId": "att_1", "size": 1024},
+                },
+            ],
+        }
+        msg = {"id": "m1", "threadId": "t1", "snippet": "", "labelIds": ["INBOX"], "payload": payload}
+
+        result = detailed_message_template(msg, include_body=False)
+        assert result["attachments"] == [
+            {"filename": "doc.pdf", "mimeType": "application/pdf", "size": 1024, "attachmentId": "att_1"},
+        ]
+        assert "body" not in result
+        assert "content" not in result
+
+    def test_empty_message_uses_defaults(self):
+        assert detailed_message_template(
+            {"id": "m1", "threadId": "t1", "labelIds": []}, include_body=False
+        ) == {
+            "id": "m1",
+            "threadId": "t1",
+            "from": "",
+            "to": "",
+            "subject": "",
+            "snippet": "",
+            "time": "",
+            "isRead": True,
+            "hasAttachment": False,
+            "attachments": [],
+            "labels": [],
+            "cc": "",
+        }
+
+    def test_missing_id_falls_back_to_default(self):
+        result = detailed_message_template({"labelIds": [], "snippet": ""})
+        assert result["id"] == ""
+        assert result["threadId"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -549,6 +956,24 @@ class TestThreadTemplate:
         result = thread_template(thread_data)
         assert result["messageCount"] == 0
 
+    def test_messages_carry_full_body_and_content(self):
+        raw = _make_raw_email(body_text="A" * 150, body_html="<p>HTML</p>")
+        thread_data = {
+            "id": "t1",
+            "messages": [_make_gmail_message(raw=raw, msg_id="m1")],
+        }
+
+        result = thread_template(thread_data)
+        message = result["messages"][0]
+        assert message["body"] == "A" * 150 + "\n"
+        assert message["content"] == {"text": "A" * 150 + "\n", "html": "<p>HTML</p>\n"}
+
+    def test_missing_id_uses_default(self):
+        assert thread_template({"messages": []})["id"] == ""
+
+    def test_empty_thread(self):
+        assert thread_template({}) == {"id": "", "messages": [], "messageCount": 0}
+
 
 # ---------------------------------------------------------------------------
 # draft_template
@@ -580,6 +1005,57 @@ class TestDraftTemplate:
         result = draft_template(draft_data)
         assert result["id"] == "d_empty"
 
+    def test_exact_draft(self):
+        raw = _make_raw_email(
+            subject="Draft Subject",
+            to="recipient@example.com",
+            body_text="Draft body",
+            body_html="<p>Draft HTML</p>",
+        )
+        draft_data = {
+            "id": "draft_001",
+            "message": {"id": "m9", "snippet": "Draft snip", "raw": raw},
+        }
+
+        assert draft_template(draft_data) == {
+            "id": "draft_001",
+            "message": {
+                "to": "recipient@example.com",
+                "subject": "Draft Subject",
+                "snippet": "Draft snip",
+                "body": "Draft body\n",
+                "content": {"text": "Draft body\n", "html": "<p>Draft HTML</p>\n"},
+            },
+        }
+
+    def test_missing_id_uses_default(self):
+        draft_data = {"message": {"id": "m9", "snippet": ""}}
+        assert draft_template(draft_data)["id"] == ""
+
+    def test_missing_message_key(self):
+        assert draft_template({"id": "d"}) == {
+            "id": "d",
+            "message": {
+                "to": "",
+                "subject": "",
+                "snippet": "",
+                "body": "",
+                "content": {"text": "", "html": ""},
+            },
+        }
+
+    def test_empty_message_exact(self):
+        assert draft_template({"id": "d_empty", "message": {}}) == {
+            "id": "d_empty",
+            "message": {
+                "to": "",
+                "subject": "",
+                "snippet": "",
+                "body": "",
+                "content": {"text": "", "html": ""},
+            },
+        }
+
 
 # ---------------------------------------------------------------------------
 # process_list_drafts_response
@@ -609,6 +1085,156 @@ class TestProcessListDraftsResponse:
         response = {"drafts": [], "error": "Draft error"}
         result = process_list_drafts_response(response)
         assert result["error"] == "Draft error"
+
+    def test_exact_with_drafts(self):
+        raw = _make_raw_email(subject="S", to="r@x.com", body_text="body")
+        response = {
+            "nextPageToken": "tok",
+            "drafts": [
+                {"id": "d1", "message": {"id": "m", "snippet": "Preview text", "raw": raw}},
+            ],
+        }
+
+        assert process_list_drafts_response(response) == {
+            "nextPageToken": "tok",
+            "resultSize": 1,
+            "drafts": [
+                {
+                    "id": "d1",
+                    "message": {
+                        "to": "r@x.com",
+                        "subject": "S",
+                        "snippet": "Preview text",
+                        "body": "body\n",
+                        "content": {"text": "body\n", "html": ""},
+                    },
+                },
+            ],
+        }
+
+    def test_no_drafts_key_exact(self):
+        assert process_list_drafts_response({"nextPageToken": "tok"}) == {
+            "nextPageToken": "tok",
+            "resultSize": 0,
+        }
+
+    def test_empty_drafts_list_present(self):
+        assert process_list_drafts_response({"drafts": []}) == {
+            "nextPageToken": None,
+            "resultSize": 0,
+            "drafts": [],
+        }
+
+
+# ---------------------------------------------------------------------------
+# message_view_needs_body / project_message_view / build_message_view
+# ---------------------------------------------------------------------------
+
+
+class TestMessageViewNeedsBody:
+    def test_none_processing_never_needs_body(self):
+        assert message_view_needs_body(None, "none") is False
+        assert message_view_needs_body(["body"], "none") is False
+        assert message_view_needs_body([], "none") is False
+
+    def test_no_fields_means_all_fields(self):
+        assert message_view_needs_body(None, "normalize") is True
+        assert message_view_needs_body([], "raw") is True
+
+    def test_body_field_only_requires_payload(self):
+        assert message_view_needs_body(["body"], "normalize") is True
+        assert message_view_needs_body(["body"], "raw") is True
+
+    def test_other_fields_do_not_require_payload(self):
+        assert message_view_needs_body(["id", "subject"], "raw") is False
+        assert message_view_needs_body(["snippet"], "normalize") is False
+
+
+class TestProjectMessageView:
+    def test_none_or_empty_returns_view_unchanged(self):
+        view = {"id": "m1", "snippet": "s"}
+        assert project_message_view(view, None) is view
+        assert project_message_view(view, []) is view
+
+    def test_projects_selected_fields(self):
+        view = {"id": "m1", "subject": "S", "snippet": "s", "cc": "c"}
+        assert project_message_view(view, ["id", "subject"]) == {"id": "m1", "subject": "S"}
+
+    def test_skips_fields_not_in_view(self):
+        view = {"id": "m1"}
+        assert project_message_view(view, ["id", "missing"]) == {"id": "m1"}
+
+    def test_output_follows_field_order(self):
+        view = {"a": 1, "b": 2}
+        assert project_message_view(view, ["b", "a"]) == {"b": 2, "a": 1}
+
+
+class TestBuildMessageView:
+    def test_default_drops_body_and_content(self):
+        raw = _make_raw_email(
+            subject="S",
+            sender="a@b.com",
+            to="c@d.com",
+            body_text="Body text",
+            date="Wed, 01 Jan 2025 12:00:00 +0000",
+        )
+        msg = {"id": "m1", "threadId": "t1", "snippet": "snip", "labelIds": ["INBOX"], "raw": raw}
+
+        result = build_message_view(msg)
+
+        assert result["id"] == "m1"
+        assert "body" not in result
+        assert "content" not in result
+
+    def test_raw_processing_keeps_body_untouched(self):
+        body = "Meeting at 3pm tomorrow.\n\n-- \nSent from my iPhone"
+        raw = _make_raw_email(subject="S", body_text=body)
+        msg = {"id": "m1", "threadId": "t1", "snippet": "", "labelIds": [], "raw": raw}
+
+        result = build_message_view(msg, body_processing="raw")
+        assert result["body"] == body + "\n"
+        assert "content" not in result
+
+    def test_normalize_processing_strips_signature(self):
+        body = "Meeting at 3pm tomorrow.\n\n-- \nSent from my iPhone"
+        raw = _make_raw_email(subject="S", body_text=body)
+        msg = {"id": "m1", "threadId": "t1", "snippet": "", "labelIds": [], "raw": raw}
+
+        result = build_message_view(msg, body_processing="normalize")
+        assert result["body"] == "Meeting at 3pm tomorrow."
+        assert "content" not in result
+
+    def test_field_projection_respects_body_processing(self):
+        raw = _make_raw_email(subject="S", body_text="Body")
+        msg = {"id": "m1", "threadId": "t1", "snippet": "", "labelIds": [], "raw": raw}
+
+        result = build_message_view(msg, fields=["id"], body_processing="normalize")
+        assert result == {"id": "m1"}
+
+    def test_delegates_include_body_flag(self):
+        with patch(
+            "app.agents.templates.mail_templates.detailed_message_template"
+        ) as detailed:
+            detailed.return_value = {}
+            build_message_view({"id": "m1"}, fields=["id"], body_processing="normalize")
+            assert detailed.call_args.kwargs["include_body"] is False
+            build_message_view({"id": "m1"}, fields=["body"], body_processing="raw")
+            assert detailed.call_args.kwargs["include_body"] is True
+
+    def test_none_processing_drops_body_even_when_requested(self):
+        raw = _make_raw_email(subject="S", body_text="Body")
+        msg = {"id": "m1", "threadId": "t1", "snippet": "", "labelIds": [], "raw": raw}
+
+        assert build_message_view(msg, body_processing="none", fields=["body"]) == {}
+
+    def test_field_projection(self):
+        raw = _make_raw_email(subject="S", body_text="Body")
+        msg = {"id": "m1", "threadId": "t1", "snippet": "snip", "labelIds": [], "raw": raw}
+
+        assert build_message_view(msg, fields=["id", "snippet"], body_processing="raw") == {
+            "id": "m1",
+            "snippet": "snip",
+        }
 
 
 # ---------------------------------------------------------------------------

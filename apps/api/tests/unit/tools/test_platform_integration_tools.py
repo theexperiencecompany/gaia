@@ -435,68 +435,256 @@ class TestHubSpotGatherContext:
 # =============================================================================
 
 INSTAGRAM_MODULE = "app.agents.tools.integrations.instagram_tool"
+INSTAGRAM_ME_ENDPOINT = "https://graph.instagram.com/v18.0/me"
+INSTAGRAM_MEDIA_ENDPOINT = "https://graph.instagram.com/v18.0/me/media"
+INSTAGRAM_ME_QUERY: dict[str, Any] = {
+    "fields": (
+        "id,name,username,account_type,media_count,"
+        "followers_count,follows_count,biography"
+    ),
+}
+INSTAGRAM_MEDIA_QUERY: dict[str, Any] = {
+    "limit": "5",
+    "fields": "id,caption,media_type,timestamp,like_count,comments_count,permalink",
+}
+INSTAGRAM_ME_RESPONSE: dict[str, Any] = {
+    "id": "u1",
+    "name": "Ada",
+    "username": "ada",
+    "account_type": "BUSINESS",
+    "media_count": 3,
+    "followers_count": 42,
+    "follows_count": 7,
+    "biography": "Building things",
+}
+INSTAGRAM_MEDIA_RESPONSE: dict[str, Any] = {
+    "data": [
+        {
+            "id": "m1",
+            "caption": "a caption",
+            "media_type": "IMAGE",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "like_count": 4,
+            "comments_count": 1,
+            "permalink": "https://ig/p1",
+        },
+        {
+            "id": "m2",
+            "caption": "no counters recorded",
+            "media_type": "VIDEO",
+            "timestamp": "2024-01-02T00:00:00Z",
+            "permalink": "https://ig/p2",
+        },
+    ]
+}
+EXPECTED_INSTAGRAM_USER: dict[str, Any] = {
+    "id": "u1",
+    "name": "Ada",
+    "username": "ada",
+    "account_type": "BUSINESS",
+    "media_count": 3,
+    "followers": 42,
+    "following": 7,
+    "biography": "Building things",
+}
+EXPECTED_INSTAGRAM_MEDIA: list[dict[str, Any]] = [
+    {
+        "id": "m1",
+        "caption": "a caption",
+        "media_type": "IMAGE",
+        "timestamp": "2024-01-01T00:00:00Z",
+        "likes": 4,
+        "comments": 1,
+        "permalink": "https://ig/p1",
+    },
+    {
+        "id": "m2",
+        "caption": "no counters recorded",
+        "media_type": "VIDEO",
+        "timestamp": "2024-01-02T00:00:00Z",
+        "likes": 0,
+        "comments": 0,
+        "permalink": "https://ig/p2",
+    },
+]
+EMPTY_INSTAGRAM_USER: dict[str, Any] = {
+    "id": None,
+    "name": None,
+    "username": None,
+    "account_type": None,
+    "media_count": 0,
+    "followers": 0,
+    "following": 0,
+    "biography": "",
+}
 
 
 class TestInstagramGatherContext:
-    def _register(self) -> dict[str, Callable[..., Any]]:
+    def _register(self) -> tuple[MagicMock, dict[str, Callable[..., Any]]]:
         composio, captured = _make_capturing_composio()
         from app.agents.tools.integrations.instagram_tool import (
             register_instagram_custom_tools,
         )
 
         names = register_instagram_custom_tools(composio)
-        assert "INSTAGRAM_CUSTOM_GATHER_CONTEXT" in names
-        return captured
+        assert names == ["INSTAGRAM_CUSTOM_GATHER_CONTEXT"]
+        return composio, captured
+
+    def _assert_proxy_call(
+        self, mock_proxy: MagicMock, index: int, *, endpoint: str, query: dict[str, Any]
+    ) -> None:
+        assert mock_proxy.call_args_list[index].kwargs == {
+            "user_id": FAKE_USER_ID,
+            "toolkit": "INSTAGRAM",
+            "endpoint": endpoint,
+            "method": "GET",
+            "query": query,
+        }
+
+    def test_registers_custom_tool_with_instagram_toolkit(self) -> None:
+        composio, _ = self._register()
+        assert composio.tool_kwargs == [{"toolkit": "INSTAGRAM"}]
 
     @patch(f"{INSTAGRAM_MODULE}.proxy_request_sync")
-    def test_basic_success(self, mock_proxy: MagicMock) -> None:
-        mock_proxy.side_effect = [
-            {
-                "id": "u1",
-                "name": "Ada",
-                "username": "ada",
-                "account_type": "BUSINESS",
-                "media_count": 3,
-            },
-            {
-                "data": [
-                    {
-                        "id": "m1",
-                        "caption": "a caption",
-                        "media_type": "IMAGE",
-                        "timestamp": "t",
-                        "like_count": 4,
-                        "comments_count": 1,
-                        "permalink": "https://ig/p1",
-                    },
-                ]
-            },
-        ]
+    def test_basic_success_exact_return_and_proxy_calls(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [INSTAGRAM_ME_RESPONSE, INSTAGRAM_MEDIA_RESPONSE]
 
-        captured = self._register()
+        _, captured = self._register()
         result = captured["CUSTOM_GATHER_CONTEXT"](
             GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
         )
 
-        assert result["user"]["username"] == "ada"
-        assert result["user"]["media_count"] == 3
-        assert result["recent_media"][0]["caption"] == "a caption"
-        assert result["recent_media"][0]["likes"] == 4
+        assert result == {
+            "user": EXPECTED_INSTAGRAM_USER,
+            "recent_media": EXPECTED_INSTAGRAM_MEDIA,
+        }
+        assert mock_proxy.call_count == 2
+        self._assert_proxy_call(
+            mock_proxy, 0, endpoint=INSTAGRAM_ME_ENDPOINT, query=INSTAGRAM_ME_QUERY
+        )
+        self._assert_proxy_call(
+            mock_proxy, 1, endpoint=INSTAGRAM_MEDIA_ENDPOINT, query=INSTAGRAM_MEDIA_QUERY
+        )
 
     @patch(f"{INSTAGRAM_MODULE}.proxy_request_sync")
-    def test_media_fetch_failure_returns_empty_media(self, mock_proxy: MagicMock) -> None:
+    @patch(f"{INSTAGRAM_MODULE}.log")
+    def test_media_fetch_failure_keeps_user_and_warns(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
         mock_proxy.side_effect = [
-            {"id": "u1", "username": "ada"},
+            INSTAGRAM_ME_RESPONSE,
             RuntimeError("graph api down"),
         ]
 
-        captured = self._register()
+        _, captured = self._register()
         result = captured["CUSTOM_GATHER_CONTEXT"](
             GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
         )
 
-        assert result["user"]["username"] == "ada"
-        assert result["recent_media"] == []
+        assert result == {"user": EXPECTED_INSTAGRAM_USER, "recent_media": []}
+        assert mock_proxy.call_count == 2
+        mock_log.warning.assert_called_once_with(
+            "[TOOL] Instagram media fetch failed",
+            user_id=FAKE_USER_ID,
+            error_type="RuntimeError",
+        )
+
+    @patch(f"{INSTAGRAM_MODULE}.proxy_request_sync")
+    @patch(f"{INSTAGRAM_MODULE}.log")
+    def test_profile_fetch_failure_propagates_without_warning(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [RuntimeError("graph api down"), INSTAGRAM_MEDIA_RESPONSE]
+
+        _, captured = self._register()
+        with pytest.raises(RuntimeError, match="graph api down"):
+            captured["CUSTOM_GATHER_CONTEXT"](
+                GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+            )
+
+        mock_log.warning.assert_not_called()
+
+    @patch(f"{INSTAGRAM_MODULE}.proxy_request_sync")
+    @patch(f"{INSTAGRAM_MODULE}.log")
+    def test_none_responses_yield_empty_defaults_without_warnings(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [None, None]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result == {"user": EMPTY_INSTAGRAM_USER, "recent_media": []}
+        mock_log.warning.assert_not_called()
+
+    @patch(f"{INSTAGRAM_MODULE}.proxy_request_sync")
+    @patch(f"{INSTAGRAM_MODULE}.log")
+    def test_empty_payloads_yield_empty_defaults_without_warnings(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [{}, {}]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result == {"user": EMPTY_INSTAGRAM_USER, "recent_media": []}
+        mock_log.warning.assert_not_called()
+
+    @patch(f"{INSTAGRAM_MODULE}.proxy_request_sync")
+    @patch(f"{INSTAGRAM_MODULE}.log")
+    def test_media_response_without_data_key_is_not_an_error(
+        self, mock_log: MagicMock, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [INSTAGRAM_ME_RESPONSE, {"paging": {"next": "x"}}]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result == {"user": EXPECTED_INSTAGRAM_USER, "recent_media": []}
+        mock_log.warning.assert_not_called()
+
+    @patch(f"{INSTAGRAM_MODULE}.proxy_request_sync")
+    def test_nullable_fields_become_empty_strings_and_zeros(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        mock_proxy.side_effect = [{"id": "u1"}, {"data": [{"id": "m1"}]}]
+
+        _, captured = self._register()
+        result = captured["CUSTOM_GATHER_CONTEXT"](
+            GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
+        )
+
+        assert result == {
+            "user": {
+                "id": "u1",
+                "name": None,
+                "username": None,
+                "account_type": None,
+                "media_count": 0,
+                "followers": 0,
+                "following": 0,
+                "biography": "",
+            },
+            "recent_media": [
+                {
+                    "id": "m1",
+                    "caption": "",
+                    "media_type": None,
+                    "timestamp": None,
+                    "likes": 0,
+                    "comments": 0,
+                    "permalink": None,
+                }
+            ],
+        }
 
     @patch(f"{INSTAGRAM_MODULE}.proxy_request_sync")
     def test_caption_and_biography_are_truncated(self, mock_proxy: MagicMock) -> None:
@@ -507,19 +695,31 @@ class TestInstagramGatherContext:
             {"data": [{"id": "m1", "caption": long_caption, "media_type": "IMAGE"}]},
         ]
 
-        captured = self._register()
+        _, captured = self._register()
         result = captured["CUSTOM_GATHER_CONTEXT"](
             GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY
         )
 
-        assert len(result["recent_media"][0]["caption"]) == 100
-        assert len(result["user"]["biography"]) == 200
+        assert result["recent_media"][0]["caption"] == "c" * 100
+        assert result["user"]["biography"] == "b" * 200
 
     @patch(f"{INSTAGRAM_MODULE}.proxy_request_sync")
     def test_missing_user_id_raises_value_error(self, mock_proxy: MagicMock) -> None:
-        captured = self._register()
-        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+        _, captured = self._register()
+        with pytest.raises(ValueError) as exc_info:
             captured["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), EXECUTE_REQUEST, {})
+        assert str(exc_info.value) == "Missing user_id in auth_credentials"
+        mock_proxy.assert_not_called()
+
+    @patch(f"{INSTAGRAM_MODULE}.proxy_request_sync")
+    def test_empty_user_id_raises_value_error(self, mock_proxy: MagicMock) -> None:
+        _, captured = self._register()
+        with pytest.raises(ValueError) as exc_info:
+            captured["CUSTOM_GATHER_CONTEXT"](
+                GatherContextInput(), EXECUTE_REQUEST, {"user_id": ""}
+            )
+        assert str(exc_info.value) == "Missing user_id in auth_credentials"
+        mock_proxy.assert_not_called()
 
 
 # =============================================================================
