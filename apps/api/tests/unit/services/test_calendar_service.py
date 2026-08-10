@@ -50,6 +50,7 @@ from app.services.calendar_service import (
     _with_utc_suffix,
     create_calendar_event,
     delete_calendar_event,
+    fetch_all_calendar_events,
     fetch_calendar_events,
     filter_events,
     format_event_for_frontend,
@@ -399,6 +400,63 @@ class TestFetchCalendarEvents:
             "singleEvents": "true",
             "orderBy": "startTime",
         }
+
+
+class TestFetchAllCalendarEvents:
+    def _event(self) -> GoogleCalendarEventResource:
+        return GoogleCalendarEventResource(
+            id="e1", start=GoogleCalendarEventDateTime(dateTime="2025-01-01T10:00:00")
+        )
+
+    async def test_truncated_when_more_pages_exist_beyond_cap(self):
+        """20 full pages, each with a next token: the loop hits the page cap
+        with a pending token, so the calendar is truncated (events remain)."""
+        event = self._event()
+        pages = [
+            GoogleCalendarEventsPage(items=[event], nextPageToken=f"tk{i}")
+            for i in range(1, 21)
+        ]
+        with (
+            patch("app.services.calendar_service.log") as mock_log,
+            patch(
+                "app.services.calendar_service.fetch_calendar_events", new_callable=AsyncMock
+            ) as mock_fetch,
+        ):
+            mock_fetch.side_effect = pages
+            result = await fetch_all_calendar_events("c1", USER_ID)
+        assert mock_fetch.await_count == 20
+        assert result.truncated is True
+        assert result.total_fetched == 20
+        mock_log.warning.assert_any_call(
+            "Calendar truncated at events (hit max pages limit)",
+            calendar_id="c1",
+            all_items_count=20,
+            user_id=USER_ID,
+        )
+
+    async def test_not_truncated_when_last_page_exhausts_token(self):
+        """19 full pages plus a final page WITHOUT a next token: the loop exits
+        at the page cap with nothing left to fetch, so the calendar is NOT
+        truncated. The predicate is ``page_count >= max_pages AND token is not
+        None`` — both must hold for truncation to be reported."""
+        event = self._event()
+        pages = [
+            GoogleCalendarEventsPage(items=[event], nextPageToken=f"tk{i}")
+            for i in range(1, 20)
+        ] + [GoogleCalendarEventsPage(items=[event])]
+        with (
+            patch("app.services.calendar_service.log") as mock_log,
+            patch(
+                "app.services.calendar_service.fetch_calendar_events", new_callable=AsyncMock
+            ) as mock_fetch,
+        ):
+            mock_fetch.side_effect = pages
+            result = await fetch_all_calendar_events("c1", USER_ID)
+        assert mock_fetch.await_count == 20
+        assert result.truncated is False
+        assert result.total_fetched == 20
+        assert len(result.items) == 20
+        mock_log.warning.assert_not_called()
 
 
 class TestSearchEventsInCalendar:
@@ -1418,6 +1476,12 @@ class TestDatePart:
 
     def test_empty(self):
         assert _date_part("") == ""
+
+    def test_split_at_first_t_separator(self):
+        # A malformed timestamp with a second "T" still yields the part before
+        # the FIRST separator — the date half is pinned to the leftmost "T"
+        # (a right-anchored split would return the whole tail instead).
+        assert _date_part("2025-01-15TT10:00:00") == "2025-01-15"
 
 
 class TestEventSortKey:
