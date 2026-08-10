@@ -1043,10 +1043,11 @@ def _assert_credentials_delete(session: AsyncMock, *, user_id: str | None = None
 
 
 class TestCreateCustomIntegration:
+    @patch("app.services.integrations.custom_crud.Integration", wraps=Integration)
     @patch("app.services.integrations.custom_crud.log")
     @patch("app.services.integrations.custom_crud.add_user_integration", new_callable=AsyncMock)
     @patch("app.services.integrations.custom_crud.integration_repository")
-    async def test_create_success(self, mock_repo, mock_add_user, mock_log):
+    async def test_create_success(self, mock_repo, mock_add_user, mock_log, mock_integration_cls):
         mock_repo.create = AsyncMock()
         mock_add_user.return_value = MagicMock()
 
@@ -1059,6 +1060,11 @@ class TestCreateCustomIntegration:
         result = await create_custom_integration(USER_ID, request)
 
         assert isinstance(result, Integration)
+        # The service must construct the catalog row with an explicit
+        # clone_count=0 (the Integration model coerces None->0 before
+        # validation, so only the constructor call can tell the difference).
+        mock_integration_cls.assert_called_once()
+        assert mock_integration_cls.call_args.kwargs["clone_count"] == 0
         assert result.name == "My MCP"
         assert result.description == "desc"
         assert result.category == "custom"
@@ -4314,6 +4320,84 @@ class TestConnectMorePaths:
 
         assert result.status == "redirect"
         assert result.redirect_url == "https://auth.example.com"
+    @patch(
+        "app.services.integrations.integration_connection_service._handle_auth_required",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_requires_auth_without_probe_passes_none_auth_type(
+        self, mock_get_client, mock_handle_auth_required
+    ) -> None:
+        """requires_auth=True with no probe data -> detected_auth_type stays None.
+
+        The sentinel matters: `detected_auth_type: str | None = None` means "no
+        auth type detected". If it were initialized to anything else (e.g. ""),
+        the auth-required handler would be told a bogus auth type on every
+        requires_auth=True connect.
+        """
+        mock_client = AsyncMock()
+        mock_get_client.return_value = mock_client
+        mock_handle_auth_required.return_value = MagicMock(status="redirect")
+
+        result = await connect_mcp_integration(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=True,
+            redirect_path="/integrations",
+        )
+
+        mock_handle_auth_required.assert_awaited_once_with(
+            USER_ID,
+            INTEGRATION_ID,
+            "Test",
+            "/integrations",
+            is_platform=False,
+            detected_auth_type=None,
+            probe_result=None,
+            mcp_client=mock_client,
+        )
+
+    @patch(
+        "app.services.integrations.integration_connection_service._handle_auth_required",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_probe_auth_branch_forwards_detected_auth_type(
+        self, mock_get_client, mock_handle_auth_required
+    ) -> None:
+        """A probe-discovered auth type is forwarded verbatim to the handler."""
+        mock_client = AsyncMock()
+        mock_get_client.return_value = mock_client
+
+        await connect_mcp_integration(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=False,
+            redirect_path="/integrations",
+            probe_result={"requires_auth": True, "auth_type": "custom"},
+        )
+
+        mock_handle_auth_required.assert_awaited_once_with(
+            USER_ID,
+            INTEGRATION_ID,
+            "Test",
+            "/integrations",
+            is_platform=False,
+            detected_auth_type="custom",
+            probe_result={"requires_auth": True, "auth_type": "custom"},
+            mcp_client=mock_client,
+        )
+        mock_client.update_integration_auth_status.assert_awaited_once_with(
+            INTEGRATION_ID, requires_auth=True, auth_type="custom"
+        )
 
 
 def _resolved(
