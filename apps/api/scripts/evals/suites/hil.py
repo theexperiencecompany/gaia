@@ -83,6 +83,11 @@ CASE_TIMEOUT_S = float(os.environ.get("EVALS_HIL_TIMEOUT_S", "420"))
 # polls — the create_tracked_todo path lands in ~3-6s.
 RESUME_TIMEOUT_S = float(os.environ.get("EVALS_HIL_RESUME_TIMEOUT_S", "90"))
 RESUME_POLL_INTERVAL_S = 3.0
+# How long to wait after a turn's [DONE] for the executor's result message to
+# land in the conversation before reading end state. The result persists just
+# after the stream closes; without the settle the case sees only the MOMENT-2
+# ack and grades a completed outcome as a failure.
+HIL_SETTLE_SECONDS = float(os.environ.get("EVALS_HIL_SETTLE_S", "8.0"))
 
 Frame = dict[str, Any]
 Card = dict[str, Any]
@@ -314,7 +319,25 @@ class HilTransport:
                     continue
         if not frames:
             raise ProviderError(provider.name, "chat-stream returned no frames")
-        return _reduce(frames)
+        reduced = _reduce(frames)
+        # The stream's [DONE] fires when the SSE consumer drains, but the
+        # executor's result message persists to Mongo slightly later (the
+        # finalize's delivery/narration path runs after signal_executor_done).
+        # Read the conversation state once after a short settle so the case's
+        # end-state reflects the outcome, not the pre-result ack. Best-effort:
+        # a settle failure must not fabricate a missing result.
+        try:
+            await asyncio.sleep(HIL_SETTLE_SECONDS)
+            _, settled_text = await self._conversation_state(
+                client, email, str(reduced.get("conversation_id") or "")
+            )
+            if settled_text:
+                reduced["text"] = settled_text
+        except httpx.HTTPError:
+            # Settling is best-effort: a conversation read failure must not
+            # fabricate a missing result — the stream's own text stands.
+            pass
+        return reduced
 
     # -- the decision --------------------------------------------------------
 
