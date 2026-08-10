@@ -76,7 +76,7 @@ async def run_executor_background(
     run: ExecutorRun,
     task: str,
     configurable: AgentConfigurable,
-    resume: Command | None = None,
+    resume: Command[Any] | None = None,
 ) -> None:
     """Run (or resume) the executor agent in background and hand its result to delivery.
 
@@ -195,7 +195,7 @@ async def _execute_executor(
     task: str,
     configurable: AgentConfigurable,
     stream_id: str,
-    resume: Command | None = None,
+    resume: Command[Any] | None = None,
 ) -> _ExecutorResult:
     """Run the executor agent graph once. Never raises — errors come back as
     ``_ExecutorResult(text, "error")``.

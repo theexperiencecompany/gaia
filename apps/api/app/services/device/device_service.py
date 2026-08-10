@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import secrets
+from typing import Any
 from urllib.parse import quote
 import uuid
 
@@ -120,7 +121,7 @@ async def start_pairing(
     )
 
 
-async def lookup_pending_by_user_code(user_code: str) -> dict | None:
+async def lookup_pending_by_user_code(user_code: str) -> dict[str, Any] | None:
     """Resolve a browser-typed ``user_code`` to its pending pairing record."""
     mapping = await get_cache(_user_code_key(user_code.strip().upper()))
     if not isinstance(mapping, dict):

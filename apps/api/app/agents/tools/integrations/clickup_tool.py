@@ -10,7 +10,7 @@ from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
 
-def register_clickup_custom_tools(composio: Composio) -> list[str]:
+def register_clickup_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     """Register ClickUp tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="CLICKUP")

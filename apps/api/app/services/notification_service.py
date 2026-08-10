@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import Request
 
 from app.models.notification.notification_models import (
@@ -87,7 +89,7 @@ class NotificationService:
     # WebSocket management
 
     # Registration methods
-    def register_channel_adapter(self, adapter: ChannelAdapter) -> None:
+    def register_channel_adapter(self, adapter: ChannelAdapter[Any]) -> None:
         self.orchestrator.register_channel_adapter(adapter)
 
     def register_action_handler(self, handler: ActionHandler) -> None:

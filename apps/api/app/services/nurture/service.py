@@ -7,6 +7,7 @@ enforces the frequency caps.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import urlencode
 
 from app.config.settings import settings
@@ -35,7 +36,7 @@ from app.utils.timezone import as_utc, is_within_local_daytime
 from shared.py.wide_events import log
 
 
-def _within_frequency_caps(history: list[dict], now: datetime) -> bool:
+def _within_frequency_caps(history: list[dict[str, Any]], now: datetime) -> bool:
     sent_times = [
         sent_at
         for entry in history
@@ -54,7 +55,7 @@ async def _record_step(user_id: str, step_key: str, now: datetime, status: str) 
 
 
 async def _send_step(user: UserDocument, step: NurtureStep) -> None:
-    context: dict = {
+    context: dict[str, Any] = {
         "user_name": user.name,
         "contact_email": CONTACT_EMAIL,
         "founder_meeting_url": FOUNDER_MEETING_URL,

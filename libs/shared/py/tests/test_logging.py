@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 import sys
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -231,9 +231,9 @@ class TestBuildJsonEntry:
     def _make_record(
         message: str = "test",
         level_name: str = "INFO",
-        extra: dict | None = None,
+        extra: dict[str, Any] | None = None,
         exception: object = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         return {
             "time": datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC),
             "level": SimpleNamespace(name=level_name),

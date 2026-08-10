@@ -16,7 +16,7 @@ module that composes middleware stacks is also the one that constructs
 
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
-from typing import cast
+from typing import Any, cast
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
@@ -45,7 +45,7 @@ from shared.py.wide_events import log
 #: retrieve-tools enabled, subagents-in-retrieve enabled).
 SpawnGraphCacheKey = tuple[str, str, tuple[str, ...], bool, bool]
 
-_graph_cache: dict[SpawnGraphCacheKey, CompiledStateGraph] = {}
+_graph_cache: dict[SpawnGraphCacheKey, CompiledStateGraph[Any, None, Any, Any]] = {}
 _cache_lock = asyncio.Lock()
 
 
@@ -77,7 +77,7 @@ async def get_spawn_graph(
     tool_space: str,
     runtime: ToolRuntimeConfig,
     middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
-) -> CompiledStateGraph:
+) -> CompiledStateGraph[Any, None, Any, Any]:
     """The compiled graph for this parent's spawn configuration, built once."""
     key = _cache_key(llm, tool_space, runtime)
     cached = _graph_cache.get(key)
@@ -102,7 +102,7 @@ async def _build_spawn_graph(
     tool_space: str,
     runtime: ToolRuntimeConfig,
     middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
-) -> CompiledStateGraph:
+) -> CompiledStateGraph[Any, None, Any, Any]:
     store = await get_tools_store()
 
     # ``excluded_tool_names`` always contains spawn_subagent (SubagentMiddleware
@@ -139,7 +139,7 @@ async def _build_spawn_graph(
 
     try:
         checkpointer_manager = await get_checkpointer_manager()
-        checkpointer: BaseCheckpointSaver = checkpointer_manager.get_checkpointer()
+        checkpointer: BaseCheckpointSaver[Any] = checkpointer_manager.get_checkpointer()
     except Exception as e:
         # A spawn's thread must be durable while it is parked on an approval —
         # the decision can arrive hours later in another process. In-memory means

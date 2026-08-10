@@ -10,7 +10,7 @@ read path — no content parsing.
 from __future__ import annotations
 
 import json
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from langchain_core.messages import ToolMessage
 
@@ -31,7 +31,7 @@ class OffloadInfo(TypedDict):
     records: int | None  # line/message count when known, else None
 
 
-def mark_offload(additional_kwargs: dict, info: OffloadInfo) -> dict:
+def mark_offload(additional_kwargs: dict[str, Any], info: OffloadInfo) -> dict[str, Any]:
     """Return a copy of ``additional_kwargs`` with the offload marker attached."""
     return {**additional_kwargs, OFFLOAD_KEY: info}
 

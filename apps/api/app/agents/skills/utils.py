@@ -1,6 +1,5 @@
 """
 GitHub Skills Utilities - Helper functions for GitHub skill discovery.
-
 This module provides utility functions for:
 - GitHub API authentication
 - URL parsing
@@ -9,6 +8,7 @@ This module provides utility functions for:
 """
 
 import os
+from typing import Any
 from urllib.parse import urlparse
 
 from app.constants.log_tags import LogTag
@@ -71,7 +71,7 @@ def parse_github_url(url: str) -> tuple[str, str]:
     raise ValueError(f"Invalid GitHub URL: {url}")
 
 
-def find_skill_files(tree_entries: list[dict]) -> list[str]:
+def find_skill_files(tree_entries: list[dict[str, Any]]) -> list[str]:
     """Find all SKILL.md and skill.md files in the tree.
 
     Args:
@@ -144,7 +144,7 @@ def get_folder_priority(file_path: str) -> int:
     return 10
 
 
-def check_tree_truncated(tree_data: dict, owner: str, repo: str) -> None:
+def check_tree_truncated(tree_data: dict[str, Any], owner: str, repo: str) -> None:
     """Log a warning if the tree is truncated.
 
     Args:

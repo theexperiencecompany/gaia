@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Any
 
 from composio import Composio
 
@@ -88,13 +89,13 @@ class CustomToolsRegistry:
     """
 
     def __init__(self) -> None:
-        self._composio: Composio | None = None
+        self._composio: Composio[Any, Any] | None = None
         self._tools_by_toolkit: dict[str, list[str]] = {}
         self._registered_toolkits: set[str] = set()
 
     def _toolkit_registrations(
         self,
-    ) -> list[tuple[str, Callable[["Composio"], list[str]]]]:
+    ) -> list[tuple[str, Callable[["Composio[Any, Any]"], list[str]]]]:
         """Return the canonical list of toolkit registrations."""
         return [
             ("gmail", register_gmail_custom_tools),
@@ -127,7 +128,7 @@ class CustomToolsRegistry:
         expected_count = len(self._toolkit_registrations())
         return len(self._registered_toolkits) == expected_count
 
-    def initialize(self, composio: Composio) -> None:
+    def initialize(self, composio: Composio[Any, Any]) -> None:
         """Initialize the registry with the Composio client and register all custom tools."""
         if self._composio is composio and self._is_fully_initialized():
             return
@@ -155,7 +156,7 @@ class CustomToolsRegistry:
     def _register_toolkit(
         self,
         toolkit: str,
-        register_func: Callable[["Composio"], list[str]],
+        register_func: Callable[["Composio[Any, Any]"], list[str]],
     ) -> None:
         """Register custom tools for a specific toolkit."""
         if self._composio is None:

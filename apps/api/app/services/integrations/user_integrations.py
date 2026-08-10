@@ -29,7 +29,7 @@ from shared.py.wide_events import log
 
 
 def _build_integration_response(
-    integration_id: str, doc: dict | None, creators: dict[str, dict]
+    integration_id: str, doc: dict[str, Any] | None, creators: dict[str, dict[str, Any]]
 ) -> IntegrationResponse | None:
     """Build an IntegrationResponse from prefetched data — no per-item DB queries.
 
@@ -57,14 +57,14 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
     # One query for every integration's stored doc (custom metadata + stored MCP
     # tools). Platform metadata comes from the in-memory catalog, so there are no
     # per-integration DB round trips.
-    int_docs: dict[str, dict] = {}
+    int_docs: dict[str, dict[str, Any]] = {}
     if ids:
         for doc_model in await integration_repository.find_by_ids(ids):
             int_docs[doc_model.integration_id] = doc_model.model_dump()
 
     # One query for all creators referenced by the user's custom integrations.
     creator_ids = [doc["created_by"] for doc in int_docs.values() if doc.get("created_by")]
-    creators: dict[str, dict] = {}
+    creators: dict[str, dict[str, Any]] = {}
     for creator in await user_repository.find_by_ids(creator_ids):
         creators[creator.id] = {"name": creator.name, "picture": creator.picture}
 

@@ -5,6 +5,7 @@ by issuing tokens only after legitimate platform messages.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from jose import JWTError, jwt
 
@@ -56,7 +57,7 @@ def create_bot_session_token(
     return token
 
 
-def verify_bot_session_token(token: str) -> dict:
+def verify_bot_session_token(token: str) -> dict[str, Any]:
     """Verify and decode bot session token.
 
     Args:

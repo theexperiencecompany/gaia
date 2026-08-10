@@ -12,7 +12,7 @@ from app.utils.context_utils import execute_tool
 from shared.py.wide_events import log
 
 
-def register_slack_custom_tools(composio: Composio) -> list[str]:
+def register_slack_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     """Register Slack tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="SLACK")

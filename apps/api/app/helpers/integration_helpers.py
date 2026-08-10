@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.helpers.slug_helpers import slugify
 
@@ -84,12 +84,12 @@ def generate_integration_slug(
     return slug.rstrip("-")
 
 
-def parse_integration_slug(slug: str) -> dict:
+def parse_integration_slug(slug: str) -> dict[str, Any]:
     """Parse slug to extract: name_part, category, shortid.
 
     Handles both new format (no hash) and legacy format (with 6-char hash).
     """
-    result: dict = {
+    result: dict[str, Any] = {
         "name_part": slug,
         "category": None,
         "shortid": None,
@@ -117,7 +117,7 @@ def parse_integration_slug(slug: str) -> dict:
     return result
 
 
-def format_public_integration_response(integration: IntegrationWithCreator) -> dict:
+def format_public_integration_response(integration: IntegrationWithCreator) -> dict[str, Any]:
     """Format an integration (with joined creator) into a response dict.
 
     Returns a dict that can be unpacked into PublicIntegrationDetailResponse.

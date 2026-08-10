@@ -147,7 +147,7 @@ def _sidecar_url() -> str | None:
     return url.rstrip("/") or None
 
 
-async def _sidecar_post(path: str, payload: dict) -> dict[str, Any]:
+async def _sidecar_post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS) as client:
         response = await client.post(f"{_sidecar_url()}{path}", json=payload)
         response.raise_for_status()

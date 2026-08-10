@@ -1,6 +1,7 @@
 """Marketplace integration functions - get_all_integrations, get_integration_details."""
 
 import asyncio
+from typing import Any
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
@@ -25,7 +26,7 @@ async def get_all_integrations(
     """Get all available integrations for the marketplace."""
     log.set(integration={"provider": category or "all", "action": "get_all_integrations"})
 
-    async def fetch_mcp_tools() -> dict[str, dict]:
+    async def fetch_mcp_tools() -> dict[str, dict[str, Any]]:
         return await get_all_mcp_tools()
 
     async def fetch_custom_integrations() -> list[IntegrationResponse]:
@@ -76,9 +77,9 @@ async def get_all_integrations(
 
 def assemble_integration_response(
     platform_integration: OAuthIntegration | None,
-    custom_doc: dict | None,
-    stored_tools: list[dict] | None,
-    creator_doc: dict | None,
+    custom_doc: dict[str, Any] | None,
+    stored_tools: list[dict[str, Any]] | None,
+    creator_doc: dict[str, Any] | None,
 ) -> IntegrationResponse | None:
     """Assemble an IntegrationResponse from already-resolved pieces.
 

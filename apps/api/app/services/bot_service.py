@@ -1,9 +1,9 @@
 """Bot Service
-
 Business logic for bot chat sessions, rate limiting, and conversation management.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -181,7 +181,7 @@ class BotService:
     @staticmethod
     async def load_conversation_history(
         conversation_id: str, user_id: str, limit: int = 20
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """
         Load recent conversation history for context.
 

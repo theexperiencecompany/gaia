@@ -16,7 +16,7 @@ REDDIT_TOOLKIT = "REDDIT"
 _REDDIT_HEADERS = {"User-Agent": "GAIA/1.0"}
 
 
-def register_reddit_custom_tools(composio: Composio) -> list[str]:
+def register_reddit_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     @composio.tools.custom_tool(toolkit="REDDIT")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,

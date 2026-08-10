@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import cast
+from typing import Any, cast
 
 from composio import Composio, after_execute, before_execute, schema_modifier
 from composio.types import Tool
@@ -63,7 +63,7 @@ class ComposioService:
 
     async def connect_account(
         self, provider: str, user_id: str, state_token: str | None = None
-    ) -> dict:
+    ) -> dict[str, Any]:
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
 
@@ -167,7 +167,7 @@ class ComposioService:
         )
         return result
 
-    async def _store_tool_metadata(self, toolkit_name: str, tools: list) -> None:
+    async def _store_tool_metadata(self, toolkit_name: str, tools: list[StructuredTool]) -> None:
         """Store Composio tool metadata in MongoDB for frontend visibility."""
         if not tools:
             return

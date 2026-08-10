@@ -12,7 +12,7 @@ apart once already: the memory copy lost ``name()``/``get_config()`` and
 chromadb 1.x turned the missing methods into a hard deprecation error.
 """
 
-from typing import TypeAlias, cast
+from typing import Any, TypeAlias, cast
 
 from chromadb.api.types import EmbeddingFunction, Embeddings
 import numpy as np
@@ -50,7 +50,7 @@ class NoOpEmbeddingFunction(EmbeddingFunction[EmbeddingInput]):
         return {"name": NOOP_EMBEDDING_NAME}
 
     @staticmethod
-    def build_from_config(config: dict) -> "NoOpEmbeddingFunction":
+    def build_from_config(config: dict[str, Any]) -> "NoOpEmbeddingFunction":
         """Reconstruct the embedding function from its config dict; the config
         only carries the name, so the no-op constructor suffices."""
         return NoOpEmbeddingFunction()

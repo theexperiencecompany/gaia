@@ -10,7 +10,7 @@ as flat fields on the Skill document.
 """
 
 import re
-from typing import cast
+from typing import Any, cast
 
 import httpx
 
@@ -87,7 +87,7 @@ async def _fetch_github_contents(
     path: str,
     client: httpx.AsyncClient,
     branch: str = "main",
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Fetch directory contents from GitHub API.
 
     Returns list of file info dicts with 'name', 'path', 'type', 'download_url'.
@@ -109,7 +109,7 @@ async def _fetch_github_contents(
         )
 
     resp.raise_for_status()
-    data: list[dict] | dict = resp.json()
+    data: list[dict[str, Any]] | dict[str, Any] = resp.json()
 
     if isinstance(data, dict):
         return [data]
@@ -267,7 +267,7 @@ async def _download_github_dir(
     owner: str,
     repo: str,
     remote_path: str,
-    contents: list[dict],
+    contents: list[dict[str, Any]],
     file_list: list[str],
     client: httpx.AsyncClient,
 ) -> None:

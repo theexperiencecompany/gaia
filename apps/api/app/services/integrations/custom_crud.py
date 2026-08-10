@@ -263,7 +263,7 @@ async def create_and_connect_custom_integration(
     user_id: str,
     request: CreateCustomIntegrationRequest,
     mcp_client: MCPClient,
-) -> tuple[Integration, dict]:
+) -> tuple[Integration, dict[str, Any]]:
     """Create a custom integration and attempt connection."""
     log.set(
         integration={
@@ -316,7 +316,7 @@ async def _probe_connection_safely(mcp_client: MCPClient, server_url: str) -> di
 
 async def _connect_with_bearer_token(
     user_id: str, integration_id: str, bearer_token: str, mcp_client: MCPClient
-) -> tuple[Any, dict]:
+) -> tuple[Any, dict[str, Any]]:
     """Store bearer token and attempt connection."""
     token_store = MCPTokenStore(user_id)
     await token_store.store_bearer_token(integration_id, bearer_token)
@@ -337,7 +337,7 @@ async def _connect_with_bearer_token(
 
 async def _connect_without_auth(
     integration: Integration, mcp_client: MCPClient
-) -> tuple[Integration, dict]:
+) -> tuple[Integration, dict[str, Any]]:
     """Attempt connection without authentication."""
     try:
         tools = await mcp_client.connect(integration.integration_id)
@@ -359,7 +359,7 @@ async def _get_integration(integration_id: str) -> Integration | None:
     return await integration_repository.get(integration_id)
 
 
-async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> dict:
+async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> dict[str, Any]:
     """Build OAuth redirect result."""
     try:
         auth_url = await mcp_client.build_oauth_auth_url(

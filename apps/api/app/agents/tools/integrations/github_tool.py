@@ -11,7 +11,7 @@ from app.utils.context_utils import execute_tool
 from shared.py.wide_events import log
 
 
-def register_github_custom_tools(composio: Composio) -> list[str]:
+def register_github_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     """Register GitHub tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="GITHUB")

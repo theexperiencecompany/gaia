@@ -1,7 +1,7 @@
 """Voice mode endpoints — LiveKit session tokens and voice selection."""
 
 import json
-from typing import Annotated
+from typing import Annotated, Any
 import uuid
 
 from fastapi import APIRouter, Depends, Query
@@ -32,7 +32,7 @@ from shared.py.wide_events import log
 
 router = APIRouter()
 
-CurrentUser = Annotated[dict, Depends(get_current_user)]
+CurrentUser = Annotated[dict[str, Any], Depends(get_current_user)]
 
 
 @router.get(

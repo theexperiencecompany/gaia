@@ -345,7 +345,7 @@ class ChromaStore(BaseStore):
             return False
         return namespace[: len(prefix)] == prefix
 
-    def _check_filter(self, value: dict, filter_dict: dict) -> bool:
+    def _check_filter(self, value: dict[str, Any], filter_dict: dict[str, Any]) -> bool:
         """Check if value matches filter conditions."""
         for key, filter_value in filter_dict.items():
             if key.startswith("$"):

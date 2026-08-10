@@ -51,10 +51,12 @@ _ResultT = TypeVar("_ResultT")
 # A fallback may be passed as a ready runnable or as a zero-arg factory, so
 # expensive preparation (e.g. re-binding the full tool list) only happens in
 # the rare case the primary actually fails.
-LLMFallback = Runnable | Callable[[], Runnable | None] | None
+LLMFallback = Runnable[Any, Any] | Callable[[], Runnable[Any, Any] | None] | None
 
 
-def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS) -> Runnable:
+def with_llm_retry(
+    runnable: Runnable[Any, Any], *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
+) -> Runnable[Any, Any]:
     """The single, canonical LLM retry. Wraps a (tool-bound) model runnable so
     transient provider/infra errors are retried with exponential backoff before
     the caller falls back to the default model. Applied AFTER ``bind_tools`` so
@@ -437,7 +439,9 @@ def _stamp_fallback(result: _ResultT) -> _ResultT:
     return result
 
 
-def _resolve_fallback(fallback: LLMFallback, label: str, primary_error: BaseException) -> Runnable:
+def _resolve_fallback(
+    fallback: LLMFallback, label: str, primary_error: BaseException
+) -> Runnable[Any, Any]:
     """Materialize the fallback (calling a factory if one was passed), log the
     downgrade, and return the retry-wrapped runnable. Re-raises ``primary_error``
     when no fallback is available."""
@@ -453,7 +457,7 @@ def _resolve_fallback(fallback: LLMFallback, label: str, primary_error: BaseExce
 
 
 async def ainvoke_llm(
-    primary: Runnable,
+    primary: Runnable[Any, Any],
     messages: LanguageModelInput,
     *,
     fallback: LLMFallback = None,
@@ -518,7 +522,7 @@ async def ainvoke_llm(
 
 
 def invoke_llm(
-    primary: Runnable,
+    primary: Runnable[Any, Any],
     messages: LanguageModelInput,
     *,
     fallback: LLMFallback = None,

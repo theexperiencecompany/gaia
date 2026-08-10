@@ -74,7 +74,7 @@ class SpawnGraphProvider(Protocol):
         tool_space: str,
         runtime: ToolRuntimeConfig,
         middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
-    ) -> CompiledStateGraph: ...
+    ) -> CompiledStateGraph[Any, None, Any, Any]: ...
 
 
 class SubagentState(AgentState[Any]):

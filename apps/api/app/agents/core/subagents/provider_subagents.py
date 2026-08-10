@@ -10,6 +10,7 @@ MCPClient (the source of truth) rather than copied into a process-global cache.
 """
 
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from langgraph.graph.state import CompiledStateGraph
 
@@ -44,7 +45,7 @@ class SubagentUnavailableError(Exception):
         self.reason = reason
 
 
-async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
+async def create_subagent(subagent: Subagent) -> CompiledStateGraph[Any, None, Any, Any]:
     """
     Create a provider subagent graph on-demand.
     Registers provider tools to registry if not already present.
@@ -147,7 +148,9 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
     return graph
 
 
-async def create_subagent_for_user(integration_id: str, user_id: str) -> CompiledStateGraph:
+async def create_subagent_for_user(
+    integration_id: str, user_id: str
+) -> CompiledStateGraph[Any, None, Any, Any]:
     """Build a per-user subagent graph.
 
     No memoization — every handoff rebuilds the graph from live MCPClient
@@ -158,7 +161,9 @@ async def create_subagent_for_user(integration_id: str, user_id: str) -> Compile
     return await _build_user_subagent(integration_id, user_id)
 
 
-async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledStateGraph:
+async def _build_user_subagent(
+    integration_id: str, user_id: str
+) -> CompiledStateGraph[Any, None, Any, Any]:
     """Build a per-user subagent graph for an MCP integration.
 
     Pulls live tools from MCPClient. Lazy-connects on first use per integration;
@@ -249,7 +254,9 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
     return graph
 
 
-async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> CompiledStateGraph:
+async def _create_custom_mcp_subagent(
+    integration_id: str, user_id: str
+) -> CompiledStateGraph[Any, None, Any, Any]:
     """Build a subagent graph for a custom MCP integration from MongoDB.
 
     Pulls live tools from MCPClient (lazy-connects on first use). Namespace
@@ -331,10 +338,10 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> Comp
 
 def _make_subagent_loader(
     subagent: Subagent,
-) -> Callable[[], Awaitable[CompiledStateGraph]]:
+) -> Callable[[], Awaitable[CompiledStateGraph[Any, None, Any, Any]]]:
     """Bind the subagent into a zero-arg async loader for `providers.register`."""
 
-    async def _loader() -> CompiledStateGraph:
+    async def _loader() -> CompiledStateGraph[Any, None, Any, Any]:
         return await create_subagent(subagent)
 
     return _loader

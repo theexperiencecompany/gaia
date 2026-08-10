@@ -1,6 +1,7 @@
 """Helper functions for email processing."""
 
 import time
+from typing import Any
 import unicodedata
 
 import html2text
@@ -47,7 +48,7 @@ def remove_invisible_chars(s: str) -> str:
     return "".join(c for c in s if unicodedata.category(c) not in ("Cf", "Cc"))
 
 
-def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
+def process_email_content(emails: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
     """
     Process email content converting HTML to clean text.
     Skips platform emails (they're only used for profile discovery).
@@ -111,7 +112,7 @@ def process_email_content(emails: list[dict]) -> tuple[list[dict], int]:
 
 async def store_emails_to_memory(
     user_id: str,
-    processed_emails: list[dict],
+    processed_emails: list[dict[str, Any]],
     user_name: str | None = None,
     user_email: str | None = None,
 ) -> None:

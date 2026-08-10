@@ -1,11 +1,11 @@
 """
 SKILL.md Parser - Parse and validate Agent Skills format files.
-
 Handles YAML frontmatter extraction and validation following the
 Agent Skills spec (agentskills.io/specification).
 """
 
 import re
+from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
@@ -165,7 +165,7 @@ def generate_skill_md(
         metadata=metadata or {},
     )
 
-    frontmatter: dict = {
+    frontmatter: dict[str, Any] = {
         "name": name,
         "description": description,
         "target": target,

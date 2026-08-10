@@ -23,7 +23,7 @@ class UrgencyAggregatorInput(BaseModel):
     )
 
 
-def register_urgency_custom_tools(composio: Composio) -> list[str]:
+def register_urgency_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     """Register urgency aggregator tool as a Composio custom tool."""
 
     @composio.tools.custom_tool(toolkit="GAIA")

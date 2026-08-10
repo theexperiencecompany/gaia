@@ -47,7 +47,7 @@ class SlackListAllChannelsData(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
-    channels: list[dict] = Field(default_factory=list)
+    channels: list[dict[str, Any]] = Field(default_factory=list)
     response_metadata: dict[str, Any] | None = None
 
     def get_channels(self) -> list[SlackChannel]:

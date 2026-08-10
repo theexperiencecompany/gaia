@@ -10,7 +10,7 @@ from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
 
-def register_todoist_custom_tools(composio: Composio) -> list[str]:
+def register_todoist_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     """Register Todoist tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="TODOIST")

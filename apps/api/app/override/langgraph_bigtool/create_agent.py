@@ -84,10 +84,10 @@ RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
 
 def _prepare_fallback(
-    fallback_llm: Runnable | None,
+    fallback_llm: Runnable[Any, Any] | None,
     tools_to_bind: list[BaseTool],
     model_configurations: AgentConfigurable,
-) -> Callable[[], Runnable] | None:
+) -> Callable[[], Runnable[Any, Any]] | None:
     """Factory that binds the default fallback model with the same tools as the
     primary. Returned as a zero-arg callable so the (per-turn, tool-list-sized)
     binding only happens if the primary actually fails. None when no fallback is
@@ -114,7 +114,7 @@ def create_agent(
     middleware: Sequence["AgentMiddleware"] | None = None,
     pre_model_hooks: list[HookType] | None = None,
     end_graph_hooks: list[HookType] | None = None,
-) -> StateGraph:
+) -> StateGraph[Any, Any, Any, Any]:
     """Create an agent with a registry of tools.
 
     The agent will function as a typical ReAct agent, but is equipped with a tool
@@ -205,7 +205,7 @@ def create_agent(
     # Default model used as the last-resort fallback when the selected model
     # keeps failing; None when Google isn't configured (fallback then skipped).
     try:
-        fallback_llm: Runnable | None = get_default_llm()
+        fallback_llm: Runnable[Any, Any] | None = get_default_llm()
     except LLMNotConfiguredError:
         fallback_llm = None
 
@@ -339,7 +339,9 @@ def create_agent(
                 result[key] = value
         return result  # type: ignore[return-value]
 
-    def select_tools(tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore) -> State:
+    def select_tools(
+        tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
+    ) -> State:
         if retrieve_tools is None:
             raise RuntimeError("retrieve_tools is disabled and select_tools should not be called")
 
@@ -386,7 +388,7 @@ def create_agent(
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
 
     async def aselect_tools(
-        tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
+        tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
     ) -> State:
         if retrieve_tools is None:
             raise RuntimeError("retrieve_tools is disabled and aselect_tools should not be called")
@@ -463,7 +465,7 @@ def create_agent(
                 bound.add(tool.name)
         return bound
 
-    def reject_unbound_tools(tool_calls: list[dict], *, store: BaseStore) -> State:
+    def reject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: BaseStore) -> State:
         """Return error ToolMessages for tool calls that were not bound."""
         messages = [
             ToolMessage(
@@ -479,7 +481,7 @@ def create_agent(
         ]
         return {"messages": messages}  # type: ignore[return-value]
 
-    async def areject_unbound_tools(tool_calls: list[dict], *, store: BaseStore) -> State:
+    async def areject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: BaseStore) -> State:
         return reject_unbound_tools(tool_calls, store=store)
 
     def _last_tool_calling_message(state: State) -> AIMessage | None:

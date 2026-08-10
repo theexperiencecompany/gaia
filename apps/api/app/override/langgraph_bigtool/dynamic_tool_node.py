@@ -58,8 +58,8 @@ def _timeout_error_text(tool_name: str) -> str:
 
 async def timeout_guarded_tool_call(
     request: ToolCallRequest,
-    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
-) -> ToolMessage | Command:
+    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
+) -> ToolMessage | Command[Any]:
     """Per-call execution wrapper (ToolNode ``awrap_tool_call``): bound hung tools.
 
     A hung integration call previously hung the entire run forever. Long-running
@@ -83,8 +83,8 @@ async def timeout_guarded_tool_call(
 
 async def hil_and_timeout_guarded_tool_call(
     request: ToolCallRequest,
-    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
-) -> ToolMessage | Command:
+    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
+) -> ToolMessage | Command[Any]:
     """Parent ToolNode ``awrap_tool_call`` for InjectedState/middleware tools.
 
     The gate is asked first and separately: it only ever reads a decision the
@@ -263,7 +263,7 @@ class DynamicToolNode(ToolNode):
         if middleware_executor is None:
             return await super()._afunc(input, config, runtime)
 
-        results: list[ToolMessage | Command] = []
+        results: list[ToolMessage | Command[Any]] = []
         for tool_call in tool_calls:
             tool_name = tool_call.get("name", "")
 
@@ -304,7 +304,7 @@ class DynamicToolNode(ToolNode):
         delegate_state: list[AnyMessage] | dict[str, Any] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
-    ) -> list[ToolMessage | Command]:
+    ) -> list[ToolMessage | Command[Any]]:
         single_call_with_context = {
             "__type": "tool_call_with_context",
             "tool_call": dict(cast(Mapping[str, Any], tool_call)),
@@ -326,13 +326,13 @@ class DynamicToolNode(ToolNode):
         store: BaseStore | None,
         config: RunnableConfig,
         state: State,
-    ) -> ToolMessage | Command:
+    ) -> ToolMessage | Command[Any]:
         """Result is normally a ToolMessage; a middleware (e.g. workspace
         compaction) may replace it with a Command graph update instead — see
         MiddlewareExecutor.wrap_tool_invocation.
         """
 
-        async def invoke_tool(tc: dict[str, Any]) -> ToolMessage | Command:
+        async def invoke_tool(tc: dict[str, Any]) -> ToolMessage | Command[Any]:
             resolved_tool = self.get_tool(tc.get("name", ""))
             if resolved_tool is None:
                 return ToolMessage(

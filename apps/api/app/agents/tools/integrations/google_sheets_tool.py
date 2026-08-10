@@ -79,7 +79,7 @@ def _sheets_proxy(
     )
 
 
-def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
+def register_google_sheets_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     """Register Google Sheets tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="GOOGLESHEETS")

@@ -58,7 +58,7 @@ def _user_id(auth_credentials: dict[str, Any]) -> str:
     return user_id
 
 
-def register_linkedin_custom_tools(composio: Composio) -> list[str]:
+def register_linkedin_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     """Register LinkedIn tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="LINKEDIN")

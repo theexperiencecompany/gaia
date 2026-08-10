@@ -1,5 +1,4 @@
 """Core-document consolidation: debounced LLM rewrites of the user's docs.
-
 After every ingestion the affected doc types are merged into a per-user
 Redis pending set and a single in-process waiter sleeps out the debounce
 window before rewriting them (plan F2.5). Each rewrite is one structured
@@ -12,6 +11,7 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime, timedelta
 import time
+from typing import Any
 
 from app.constants.memory import (
     CONSOLIDATION_DEBOUNCE_SECONDS,
@@ -82,7 +82,7 @@ _PENDING_AGENDA_UPDATES = "agenda_updates"
 # memory_node background-task set). A process restart during the sleep loses
 # the pending debounce — acceptable: the next ingestion reschedules it and
 # the documents converge.
-_waiters: dict[str, asyncio.Task] = {}
+_waiters: dict[str, asyncio.Task[Any]] = {}
 
 
 def infer_doc_types(facts: list[ExtractedFact], agenda_updates: list[str]) -> set[MemoryDocType]:

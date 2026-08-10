@@ -47,7 +47,7 @@ _connected_account_cache: dict[tuple[str, str], tuple[str, float]] = {}
 _cache_lock = Lock()
 
 
-def _get_composio() -> Composio:
+def _get_composio() -> Composio[Any, Any]:
     # Lazy import to avoid a circular dependency between proxy_client and
     # the Composio service / custom-tool registry that imports it.
     from app.services.composio.composio_service import get_composio_service

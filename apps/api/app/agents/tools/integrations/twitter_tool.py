@@ -57,7 +57,7 @@ def _user_id(auth_credentials: dict[str, Any]) -> str:
     return user_id
 
 
-def register_twitter_custom_tools(composio: Composio) -> list[str]:
+def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     """Register Twitter custom tools with Composio."""
 
     @composio.tools.custom_tool(toolkit="TWITTER")

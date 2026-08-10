@@ -86,7 +86,7 @@ def _user_local_today() -> date:
         return datetime.now(UTC).date()
 
 
-def register_linear_custom_tools(composio: Composio) -> list[str]:
+def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     """Register Linear tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="linear")
@@ -208,7 +208,7 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
             else:
                 filtered.append(issue)
 
-        def sort_key(issue: dict) -> tuple:
+        def sort_key(issue: dict[str, Any]) -> tuple[Any, ...]:
             p = issue.get("priority", 99)
             due = issue.get("dueDate") or "9999-12-31"
             return (p, due)
@@ -703,7 +703,7 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
         sprints = []
         for cycle in cycles:
             issues = cycle.get("issues", {}).get("nodes", [])
-            by_state: dict[str, list[dict]] = {
+            by_state: dict[str, list[dict[str, Any]]] = {
                 "backlog": [],
                 "unstarted": [],
                 "started": [],

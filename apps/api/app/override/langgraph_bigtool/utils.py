@@ -5,7 +5,7 @@ Contains helper functions for tool selection formatting and type definitions.
 """
 
 from collections.abc import Sequence
-from typing import Annotated, TypedDict, cast
+from typing import Annotated, Any, TypedDict, cast
 
 from langchain_core.messages import (
     AnyMessage,
@@ -28,7 +28,9 @@ from langgraph_bigtool.graph import State as _BigtoolState
 from app.constants.llm import MESSAGES_SNAPSHOT_FREQUENCY
 
 
-def _replace_todos(_left: list, right: list) -> list:
+def _replace_todos(
+    _left: list[dict[str, Any]], right: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     """Last-write-wins reducer for the todos channel."""
     return right
 
@@ -101,7 +103,7 @@ class State(_BigtoolState):
             reducer=messages_delta_reducer, snapshot_frequency=MESSAGES_SNAPSHOT_FREQUENCY
         ),
     ]
-    todos: Annotated[list, _replace_todos]
+    todos: Annotated[list[dict[str, Any]], _replace_todos]
     intent: str | None
     integration_usernames: dict[str, str]
     # LangGraph-managed countdown of supersteps left before the recursion
@@ -146,7 +148,7 @@ def dedupe_tool_bindings(tools: Sequence[BaseTool]) -> list[BaseTool]:
 
 
 def format_selected_tools(
-    selected_tools: dict, tool_registry: dict[str, BaseTool]
+    selected_tools: dict[str, Any], tool_registry: dict[str, BaseTool]
 ) -> tuple[list[ToolMessage], list[str]]:
     """Format selected tools, gracefully handling tools not in registry.
 

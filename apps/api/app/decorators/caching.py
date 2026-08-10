@@ -112,7 +112,7 @@ class Cacheable:
     def __init__(
         self,
         key_pattern: str | None = None,
-        key_generator: Callable | None = None,
+        key_generator: Callable[..., Any] | None = None,
         key: str | None = None,
         ttl: int = ONE_YEAR_TTL,
         serializer: Callable[[Any], Any] | None = None,
@@ -290,7 +290,7 @@ class CacheInvalidator:
     def __init__(
         self,
         key_patterns: list[str] | None = None,
-        key_generator: Callable | None = None,
+        key_generator: Callable[..., Any] | None = None,
         key: str | None = None,
     ):
         """

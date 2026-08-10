@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from datetime import UTC, datetime
+from typing import Any
 
 from app.db.mongodb.collections import get_async_collection
 from shared.py.wide_events import log
@@ -231,7 +232,7 @@ def _resolve_prompt(target: str | None, next_description: str) -> str | None:
     return target
 
 
-def _select_manifest(only: set[str]) -> dict | None:
+def _select_manifest(only: set[str]) -> dict[str, Any] | None:
     if not only:
         return MANIFEST
     manifest = {k: v for k, v in MANIFEST.items() if k in only}
@@ -241,7 +242,9 @@ def _select_manifest(only: set[str]) -> dict | None:
     return manifest
 
 
-def _report_discrepancies(docs: dict, manifest: dict, *, skip_orphans: bool) -> None:
+def _report_discrepancies(
+    docs: dict[str, Any], manifest: dict[str, Any], *, skip_orphans: bool
+) -> None:
     orphan_ids = sorted(set(docs) - set(MANIFEST))
     missing_ids = sorted(set(manifest) - set(docs))
 
@@ -259,7 +262,9 @@ def _report_discrepancies(docs: dict, manifest: dict, *, skip_orphans: bool) -> 
             print(f"  - {wid}")
 
 
-def _plan_for(wid: str, target: dict, doc: dict) -> tuple[dict[str, str], dict[str, str]] | None:
+def _plan_for(
+    wid: str, target: dict[str, Any], doc: dict[str, Any]
+) -> tuple[dict[str, str], dict[str, str]] | None:
     current_desc = doc.get("description") or ""
     current_prompt = doc.get("prompt") or ""
 
@@ -289,7 +294,9 @@ def _print_edit(wid: str, title: str, before: dict[str, str], after: dict[str, s
         print(f"             ->  {_truncate(after['prompt'])}")
 
 
-def _build_plans(manifest: dict, docs: dict) -> list[tuple[str, dict[str, str], dict[str, str]]]:
+def _build_plans(
+    manifest: dict[str, Any], docs: dict[str, Any]
+) -> list[tuple[str, dict[str, str], dict[str, str]]]:
     plans: list[tuple[str, dict[str, str], dict[str, str]]] = []
     for wid, target in manifest.items():
         doc = docs.get(wid)

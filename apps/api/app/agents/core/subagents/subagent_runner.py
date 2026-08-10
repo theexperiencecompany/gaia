@@ -261,7 +261,7 @@ async def build_initial_messages(
     ]
 
 
-def _with_current_time(resume: Command, configurable: AgentConfigurable) -> Command:
+def _with_current_time(resume: Command[Any], configurable: AgentConfigurable) -> Command[Any]:
     """Re-clock a resumed run.
 
     A resume replaces ``initial_state``, so the fresh time message
@@ -356,7 +356,7 @@ async def execute_subagent_stream(
     stream_writer: StreamWriterCallable | None = None,
     integration_metadata: IntegrationMetadata | None = None,
     subagent_id: str | None = None,
-    resume: Command | None = None,
+    resume: Command[Any] | None = None,
 ) -> SubagentOutcome:
     """Execute (or resume) a subagent with streaming and tool tracking.
 
@@ -543,8 +543,8 @@ async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutc
 
 
 async def _address_resume(
-    graph: CompiledAgentGraph, config: RunnableConfig, resume: Command
-) -> Command | None:
+    graph: CompiledAgentGraph, config: RunnableConfig, resume: Command[Any]
+) -> Command[Any] | None:
     """Aim a resume at the one interrupt it answers, or ``None`` if there is none left.
 
     A bare ``Command(resume=value)`` feeds the next interrupt positionally, and
@@ -605,7 +605,7 @@ async def _address_resume(
     return resume
 
 
-def _approval_id_of(resume: Command) -> str | None:
+def _approval_id_of(resume: Command[Any]) -> str | None:
     """Which gate this decision answers, when the payload carries one."""
     payload = resume.resume
     if not isinstance(payload, dict):

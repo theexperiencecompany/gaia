@@ -2,6 +2,7 @@
 
 import asyncio
 import contextvars
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -291,7 +292,7 @@ class TestTraceId:
 # ---------------------------------------------------------------------------
 
 
-def _emitted_event(mock_loguru: MagicMock) -> dict:
+def _emitted_event(mock_loguru: MagicMock) -> dict[str, Any]:
     """The event the boundary actually emitted.
 
     Read this instead of ``log.get()`` after a boundary exits. A boundary
@@ -407,7 +408,7 @@ class TestContextVarIsolation:
     @pytest.mark.asyncio
     @patch("shared.py.wide_events._loguru")
     async def test_concurrent_tasks_isolated(self, mock_loguru: MagicMock):
-        results: dict[str, dict] = {}
+        results: dict[str, dict[str, Any]] = {}
 
         async def task(name: str):
             log.reset()

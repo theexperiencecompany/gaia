@@ -74,10 +74,10 @@ FALLBACK_CLARIFY_JSON = (
 )
 
 # Singleton for the workflow subagent graph
-_workflow_subagent_graph: CompiledStateGraph | None = None
+_workflow_subagent_graph: CompiledStateGraph[Any, None, Any, Any] | None = None
 
 
-async def get_workflow_subagent() -> CompiledStateGraph:
+async def get_workflow_subagent() -> CompiledStateGraph[Any, None, Any, Any]:
     """
     Get or create the workflow subagent graph (singleton).
 
@@ -257,7 +257,7 @@ class WorkflowSubagentRunner:
 
     @staticmethod
     async def _forced_finalize(
-        subagent_graph: CompiledStateGraph,
+        subagent_graph: CompiledStateGraph[Any, None, Any, Any],
         config: RunnableConfig,
         stream_writer: StreamWriter | None,
         emitted_tool_calls: set[str],
@@ -290,7 +290,7 @@ class WorkflowSubagentRunner:
 
     @staticmethod
     async def _stream_turn(
-        subagent_graph: CompiledStateGraph,
+        subagent_graph: CompiledStateGraph[Any, None, Any, Any],
         state: dict[str, Any],
         config: RunnableConfig,
         stream_writer: StreamWriter | None,

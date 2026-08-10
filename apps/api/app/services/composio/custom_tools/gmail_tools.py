@@ -1035,7 +1035,7 @@ def _recent_inbox_ids(user_id: str, *, since: str | None, max_results: int) -> l
     return [ref.id for ref in messages_data.messages if ref.id]
 
 
-def register_gmail_custom_tools(composio: Composio) -> list[str]:
+def register_gmail_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     """Register custom Gmail tools with the Composio client. Returns the registered tool names."""
 
     @composio.tools.custom_tool(toolkit="gmail")

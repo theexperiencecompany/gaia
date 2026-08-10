@@ -15,7 +15,7 @@ MAPS_API_BASE = "https://maps.googleapis.com/maps/api"
 MAPS_TOOLKIT = "GOOGLE_MAPS"
 
 
-def register_google_maps_custom_tools(composio: Composio) -> list[str]:
+def register_google_maps_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     @composio.tools.custom_tool(toolkit="GOOGLE_MAPS")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,

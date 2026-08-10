@@ -1,5 +1,7 @@
 """Publish/unpublish service for community marketplace."""
 
+from typing import Any
+
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import (
     index_public_integration,
@@ -29,7 +31,7 @@ class PublishError(Exception):
 async def publish_custom_integration(
     integration_id: str,
     user_id: str,
-) -> dict:
+) -> dict[str, Any]:
     """Publish a custom integration to the community marketplace.
 
     Returns dict with integration_id and public_url on success.
@@ -121,7 +123,7 @@ async def publish_custom_integration(
 async def unpublish_custom_integration(
     integration_id: str,
     user_id: str,
-) -> dict:
+) -> dict[str, Any]:
     """Unpublish a custom integration from the community marketplace.
 
     Returns dict with integration_id on success.

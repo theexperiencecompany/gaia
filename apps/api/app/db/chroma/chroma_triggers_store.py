@@ -6,7 +6,7 @@ and only updated when their configuration changes.
 """
 
 import hashlib
-from typing import cast
+from typing import Any, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
 from langgraph.store.base import PutOp
@@ -70,7 +70,7 @@ def _build_trigger_description(integration: OAuthIntegration, trigger: TriggerCo
     )
 
 
-def _get_current_triggers_with_hashes() -> dict[str, dict]:
+def _get_current_triggers_with_hashes() -> dict[str, dict[str, Any]]:
     """Get all current triggers with their hashes.
 
     Returns:
@@ -100,7 +100,9 @@ def _get_current_triggers_with_hashes() -> dict[str, dict]:
     return current_triggers
 
 
-async def _get_existing_triggers_from_chroma(collection: AsyncCollection) -> dict[str, dict]:
+async def _get_existing_triggers_from_chroma(
+    collection: AsyncCollection,
+) -> dict[str, dict[str, Any]]:
     """Fetch existing triggers from ChromaDB collection.
 
     Args:
@@ -139,8 +141,8 @@ async def _get_existing_triggers_from_chroma(collection: AsyncCollection) -> dic
 
 
 def _compute_trigger_diff(
-    current_triggers: dict[str, dict], existing_triggers: dict[str, dict]
-) -> tuple[list[tuple[str, dict]], list[str]]:
+    current_triggers: dict[str, dict[str, Any]], existing_triggers: dict[str, dict[str, Any]]
+) -> tuple[list[tuple[str, dict[str, Any]]], list[str]]:
     """Compute the difference between current and existing triggers.
 
     Args:
@@ -169,7 +171,7 @@ def _compute_trigger_diff(
 
 
 def _build_put_operations(
-    triggers_to_upsert: list[tuple[str, dict]],
+    triggers_to_upsert: list[tuple[str, dict[str, Any]]],
     triggers_to_delete: list[str],
 ) -> list[PutOp]:
     """Build PutOp operations for upserting and deleting triggers.

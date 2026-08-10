@@ -76,7 +76,9 @@ async def prepare_weather_data(
     return weather
 
 
-async def fetch_weather_data(lat: float, lon: float, api_key: str) -> tuple[dict, dict]:
+async def fetch_weather_data(
+    lat: float, lon: float, api_key: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Fetch weather and forecast data in parallel using asyncio.
 
@@ -221,7 +223,7 @@ async def user_weather(location_name: str | None = None) -> dict[str, Any] | str
         return f"Failed to fetch weather: {e!s}"
 
 
-def process_forecast_data(forecast_data: dict) -> list[dict]:
+def process_forecast_data(forecast_data: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Process raw forecast data from OpenWeatherMap API into daily summaries.
 
