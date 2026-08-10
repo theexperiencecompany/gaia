@@ -45,12 +45,19 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            // hotfix/* is the escape hatch for production defects that cannot
+            // wait for the develop backlog to be release-ready. It still gets
+            // the full quality gate — it only skips the promotion ordering.
+            // Every hotfix must be landed on develop too, or the next
+            // develop -> master merge ships a regression.
             const isAllowed = (ref) =>
-              ref === "develop" || ref.startsWith("release-please--");
+              ref === "develop" ||
+              ref.startsWith("release-please--") ||
+              ref.startsWith("hotfix/");
             const pr = context.payload.pull_request;
             if (pr.base.ref === "master" && !isAllowed(pr.head.ref)) {
               core.setFailed(
-                `PRs to master must come from develop or release-please. Got '${pr.head.ref}'.`
+                `PRs to master must come from develop, release-please, or hotfix/*. Got '${pr.head.ref}'.`
               );
             }
 

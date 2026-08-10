@@ -51,7 +51,7 @@ from app.services.workflow.conversation_service import (
     get_or_create_workflow_conversation,
 )
 from app.services.workflow.execution_service import complete_execution, create_execution
-from app.services.workflow.scheduler import WorkflowScheduler
+from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import create_error
 from app.utils.timezone import Timezone, format_local_time
@@ -448,12 +448,15 @@ async def execute_workflow_by_id(
     log.set(actual_fire_utc=actual_fire_utc.isoformat())
     log.info(f"{LogTag.WORKER} Processing workflow execution", workflow_id=workflow_id)
 
-    scheduler = WorkflowScheduler()
+    # Process-wide singleton, initialized once by init_workflow_service(). A
+    # per-job instance opened its own ARQ Redis pool on every execution and
+    # closed it in `finally` — thousands of pool churns an hour, which drove
+    # the worker into repeated OOM kills.
+    scheduler = workflow_scheduler
     workflow = None
     execution_id = None
 
     try:
-        await scheduler.initialize()
         workflow = await scheduler.get_task(workflow_id)
 
         if not workflow:
@@ -555,10 +558,6 @@ async def execute_workflow_by_id(
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
 
         return "Error executing workflow %s: %s" % (workflow_id, str(e))
-
-    finally:
-        if scheduler:
-            await scheduler.close()
 
 
 @tiered_rate_limit("trigger_workflow_executions")

@@ -27,7 +27,6 @@ from mcp.types import (
     TextResourceContents,
 )
 from pydantic import AnyUrl
-import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag

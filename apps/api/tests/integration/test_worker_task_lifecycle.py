@@ -349,13 +349,11 @@ class TestWorkflowTaskExecution:
         """When workflow ID does not exist, return a not-found message."""
 
         mock_scheduler = AsyncMock()
-        mock_scheduler.initialize = AsyncMock()
         mock_scheduler.get_task = AsyncMock(return_value=None)
-        mock_scheduler.close = AsyncMock()
 
         with patch(
-            "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-            return_value=mock_scheduler,
+            "app.workers.tasks.workflow_tasks.workflow_scheduler",
+            mock_scheduler,
         ):
             result = await execute_workflow_by_id(ARQ_CTX, "nonexistent-wf-id")
 
@@ -371,17 +369,15 @@ class TestWorkflowTaskExecution:
         mock_workflow.steps = [MagicMock(), MagicMock()]
 
         mock_scheduler = AsyncMock()
-        mock_scheduler.initialize = AsyncMock()
         mock_scheduler.get_task = AsyncMock(return_value=mock_workflow)
-        mock_scheduler.close = AsyncMock()
 
         mock_execution = MagicMock()
         mock_execution.execution_id = "exec-456"
 
         with (
             patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                return_value=mock_scheduler,
+                "app.workers.tasks.workflow_tasks.workflow_scheduler",
+                mock_scheduler,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.create_execution",
@@ -434,17 +430,15 @@ class TestWorkflowTaskExecution:
         mock_workflow.steps = [MagicMock()]
 
         mock_scheduler = AsyncMock()
-        mock_scheduler.initialize = AsyncMock()
         mock_scheduler.get_task = AsyncMock(return_value=mock_workflow)
-        mock_scheduler.close = AsyncMock()
 
         mock_execution = MagicMock()
         mock_execution.execution_id = "exec-err"
 
         with (
             patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                return_value=mock_scheduler,
+                "app.workers.tasks.workflow_tasks.workflow_scheduler",
+                mock_scheduler,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.create_execution",

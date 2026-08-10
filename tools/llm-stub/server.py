@@ -85,6 +85,7 @@ def _log_request(parsed: ChatRequest) -> None:
     )
 
 
+# evlog-map-disable-next-line wide-event -- dev-only stub, never deployed; the PEP-723 header pins fastapi+uvicorn so it runs with no repo venv, putting shared.py.wide_events out of reach by design, and _log_request() already prints the per-request debug line
 async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     body = await request.json()
     parsed = parse_request(body)

@@ -370,7 +370,10 @@ class ProductionSettings(CommonSettings):
     R2_ACCESS_KEY: str
     R2_SECRET_KEY: str
     # Templated metadata URL: contains {shard} substituted at mount time.
-    # Example: "postgres://juicefs:pass@host:5432/gaia_juicefs_{shard}?sslmode=require"
+    # Redis (prod): "rediss://:pass@jfs-meta.heygaia.io:6380/{shard}" — {shard} is
+    # the DB number. Postgres: "postgres://juicefs:pass@host:5432/gaia_juicefs_{shard}".
+    # The password is split out into META_PASSWORD before reaching the sandbox
+    # (see _split_meta_url in services/sandbox/lifecycle.py).
     JUICEFS_META_URL_TEMPLATE: str
     JUICEFS_NUM_SHARDS: int = 1  # Phase 1: 1, Phase 2: 16
     # JuiceFS RSA-4096 private key in PEM form. Whole multi-line PEM stored as a

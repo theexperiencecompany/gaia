@@ -65,6 +65,20 @@ def _make_workflow(
     return wf
 
 
+def _patch_scheduler(workflow=None):
+    """Stand in for the process-wide workflow_scheduler singleton.
+
+    Returns the mock plus its unstarted patcher, so callers can enter it in a
+    `with (...):` block alongside their other patches.
+    """
+    scheduler = AsyncMock()
+    scheduler.get_task = AsyncMock(return_value=workflow)
+    return scheduler, patch(
+        "app.workers.tasks.workflow_tasks.workflow_scheduler",
+        scheduler,
+    )
+
+
 # ---------------------------------------------------------------------------
 # execute_workflow_by_id
 # ---------------------------------------------------------------------------
@@ -82,19 +96,13 @@ class TestExecuteWorkflowById:
         return str(uuid4())
 
     async def test_workflow_not_found_returns_message(self, ctx, workflow_id):
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=None)
-        mock_scheduler_cls.return_value = mock_scheduler
+        _, p_scheduler = _patch_scheduler()
 
         mock_create_execution = AsyncMock()
         mock_complete_execution = AsyncMock()
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
+            p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.create_execution",
                 mock_create_execution,
@@ -114,10 +122,7 @@ class TestExecuteWorkflowById:
         mock_execution = MagicMock()
         mock_execution.execution_id = str(uuid4())
 
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
+        _, p_scheduler = _patch_scheduler(workflow)
 
         mock_create_exec = AsyncMock(return_value=mock_execution)
         mock_complete_exec = AsyncMock()
@@ -125,10 +130,7 @@ class TestExecuteWorkflowById:
         mock_execute_chat = AsyncMock(return_value="conv_123")
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
+            p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 mock_execute_chat,
@@ -146,7 +148,6 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = mock_increment
             result = await execute_workflow_by_id(ctx, workflow.id)
 
-        mock_scheduler.initialize.assert_awaited_once()
         assert "executed successfully" in result
         assert workflow.id in result
         mock_complete_exec.assert_awaited_once()
@@ -160,20 +161,14 @@ class TestExecuteWorkflowById:
         mock_execution = MagicMock()
         mock_execution.execution_id = str(uuid4())
 
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
+        _, p_scheduler = _patch_scheduler(workflow)
 
         mock_create_exec = AsyncMock(return_value=mock_execution)
         mock_complete_exec = AsyncMock()
         mock_increment = AsyncMock()
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
+            p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 AsyncMock(return_value="conv_123"),
@@ -191,7 +186,6 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = mock_increment
             await execute_workflow_by_id(ctx, workflow.id)
 
-        mock_scheduler.initialize.assert_awaited_once()
         mock_increment.assert_awaited_once_with(workflow.id, workflow.user_id, is_successful=True)
 
     async def test_execution_count_incremented_as_failed_on_error(self, ctx):
@@ -200,20 +194,14 @@ class TestExecuteWorkflowById:
         mock_execution = MagicMock()
         mock_execution.execution_id = str(uuid4())
 
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
+        _, p_scheduler = _patch_scheduler(workflow)
 
         mock_create_exec = AsyncMock(return_value=mock_execution)
         mock_complete_exec = AsyncMock()
         mock_increment = AsyncMock()
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
+            p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 AsyncMock(side_effect=RuntimeError("LLM timeout")),
@@ -234,30 +222,26 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = mock_increment
             result = await execute_workflow_by_id(ctx, workflow.id)
 
-        mock_scheduler.initialize.assert_awaited_once()
         mock_increment.assert_awaited_once_with(workflow.id, workflow.user_id, is_successful=False)
         assert "Error executing workflow" in result
 
-    async def test_trigger_type_from_context(self, ctx):
+    @pytest.mark.parametrize(
+        "context,expected_trigger_type",
+        [({"trigger_type": "scheduled"}, "scheduled"), (None, "manual")],
+    )
+    async def test_trigger_type_from_context(self, ctx, context, expected_trigger_type):
         workflow = _make_workflow()
-        context = {"trigger_type": "scheduled"}
 
         mock_execution = MagicMock()
         mock_execution.execution_id = str(uuid4())
 
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
+        _, p_scheduler = _patch_scheduler(workflow)
 
         mock_create_exec = AsyncMock(return_value=mock_execution)
         mock_complete_exec = AsyncMock()
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
+            p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 AsyncMock(return_value="conv_123"),
@@ -275,71 +259,25 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = AsyncMock()
             await execute_workflow_by_id(ctx, workflow.id, context=context)
 
-        mock_scheduler.initialize.assert_awaited_once()
         mock_create_exec.assert_awaited_once_with(
             workflow_id=workflow.id,
             user_id=workflow.user_id,
-            trigger_type="scheduled",
+            trigger_type=expected_trigger_type,
         )
 
-    async def test_default_trigger_type_is_manual_when_no_context(self, ctx):
-        workflow = _make_workflow()
-        mock_execution = MagicMock()
-        mock_execution.execution_id = str(uuid4())
-
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
-
-        mock_create_exec = AsyncMock(return_value=mock_execution)
-        mock_complete_exec = AsyncMock()
-
-        with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_123"),
-            ),
-            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.create_execution",
-                mock_create_exec,
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.complete_execution",
-                mock_complete_exec,
-            ),
-        ):
-            mock_wf_svc.increment_execution_count = AsyncMock()
-            await execute_workflow_by_id(ctx, workflow.id, context=None)
-
-        mock_scheduler.initialize.assert_awaited_once()
-        mock_create_exec.assert_awaited_once_with(
-            workflow_id=workflow.id,
-            user_id=workflow.user_id,
-            trigger_type="manual",
-        )
-
-    async def test_scheduler_always_closed_in_finally(self, ctx):
+    async def test_shared_scheduler_survives_failed_execution(self, ctx):
+        # The scheduler is a process-wide singleton owning an ARQ Redis pool.
+        # Closing it per job churned thousands of pools an hour and OOM-killed
+        # the worker, so a failing job must leave it open for the next one.
         workflow = _make_workflow()
 
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
+        mock_scheduler, p_scheduler = _patch_scheduler(workflow)
 
         mock_execution = MagicMock()
         mock_execution.execution_id = str(uuid4())
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
+            p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 AsyncMock(side_effect=ValueError("boom")),
@@ -358,8 +296,7 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = AsyncMock()
             await execute_workflow_by_id(ctx, workflow.id)
 
-        mock_scheduler.initialize.assert_awaited_once()
-        mock_scheduler.close.assert_awaited_once()
+        mock_scheduler.close.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -1046,18 +983,11 @@ class TestExecuteWorkflowByIdNotifications:
         Returns individual patch objects so they can be used in a `with (...):`
         block without needing iterable unpacking.
         """
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
+        _, p_scheduler = _patch_scheduler(workflow)
 
         mock_execution = MagicMock()
         mock_execution.execution_id = str(uuid4())
 
-        p_scheduler = patch(
-            "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-            mock_scheduler_cls,
-        )
         p_chat = patch(
             "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
             AsyncMock(side_effect=error),
@@ -1228,19 +1158,13 @@ class TestExecuteWorkflowByIdNotifications:
         """If complete_execution fails during error handling, it doesn't crash."""
         workflow = _make_workflow()
 
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
+        _, p_scheduler = _patch_scheduler(workflow)
 
         mock_execution = MagicMock()
         mock_execution.execution_id = str(uuid4())
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
+            p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 AsyncMock(side_effect=RuntimeError("LLM crash")),
@@ -1266,19 +1190,13 @@ class TestExecuteWorkflowByIdNotifications:
         """If increment_execution_count fails during error handling, it doesn't crash."""
         workflow = _make_workflow()
 
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
+        _, p_scheduler = _patch_scheduler(workflow)
 
         mock_execution = MagicMock()
         mock_execution.execution_id = str(uuid4())
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
+            p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 AsyncMock(side_effect=RuntimeError("LLM crash")),
@@ -1307,18 +1225,12 @@ class TestExecuteWorkflowByIdNotifications:
         and complete_execution is not called."""
         workflow = _make_workflow()
 
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
+        _, p_scheduler = _patch_scheduler(workflow)
 
         mock_complete_exec = AsyncMock()
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
+            p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.create_execution",
                 AsyncMock(side_effect=RuntimeError("DB unavailable")),
@@ -1343,10 +1255,7 @@ class TestExecuteWorkflowByIdNotifications:
         to complete_execution."""
         workflow = _make_workflow()
 
-        mock_scheduler_cls = MagicMock()
-        mock_scheduler = AsyncMock()
-        mock_scheduler.get_task = AsyncMock(return_value=workflow)
-        mock_scheduler_cls.return_value = mock_scheduler
+        _, p_scheduler = _patch_scheduler(workflow)
 
         mock_execution = MagicMock()
         mock_execution.execution_id = str(uuid4())
@@ -1354,10 +1263,7 @@ class TestExecuteWorkflowByIdNotifications:
         mock_complete_exec = AsyncMock()
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                mock_scheduler_cls,
-            ),
+            p_scheduler,
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 AsyncMock(return_value="conv_123"),

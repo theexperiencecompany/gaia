@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from httpx import AsyncClient
-import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints.reminders import _reminder_context
