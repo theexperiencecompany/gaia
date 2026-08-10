@@ -450,6 +450,23 @@ async def test_a_fresh_sandbox_is_mounted_with_its_own_shard_credentials() -> No
     assert env["USER_ID"] == "u1"
 
 
+async def test_a_created_sandbox_without_an_id_is_recorded_as_none_not_a_crash() -> None:
+    # A handle that never got an id (partial provisioning, SDK edge) must not
+    # blow up the acquire: the getattr guard records None so the caller sees
+    # "no sandbox id" instead of a bare AttributeError mid-tool-call.
+    cls = _sandbox_class(SimpleNamespace())
+    with (
+        patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
+        patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
+        patch.object(lifecycle, "AsyncSandbox", cls),
+        patch.object(lifecycle, "_run_mount_script", AsyncMock()),
+        _capture_wide_events() as (fields, _),
+    ):
+        await lifecycle._create_fresh_sandbox("u1", 2)
+    assert fields["created"] is True
+    assert fields["sandbox_id"] is None, "a missing sandbox_id must record None, not raise"
+
+
 # --------------------------------------------------------------------------
 # _run_mount_script
 # --------------------------------------------------------------------------
@@ -1189,6 +1206,27 @@ async def test_a_healthy_cached_entry_short_circuits_before_any_mongo_or_e2b_cal
         get_sandbox_pool().evict(uid)
 
 
+async def test_a_cached_entry_whose_sandbox_lacks_an_id_still_attributes_the_hit() -> None:
+    # Same guard on the cache-hit path: a pooled handle without a sandbox_id
+    # must record None and return the entry, not raise mid-acquire.
+    uid = _uid()
+    entry = PooledSandbox(sandbox=SimpleNamespace(), last_canary_ts="ts-1")
+    try:
+        with (
+            patch.object(lifecycle, "_mount_env", MagicMock(return_value={})),
+            patch.object(lifecycle, "_reuse_cached_entry", AsyncMock(return_value=entry)),
+            patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
+            _capture_wide_events() as (fields, _),
+        ):
+            assert await lifecycle._acquire_or_create(uid) is entry
+        assert fields["source"] == "cache"
+        assert fields["sandbox_id"] is None, (
+            "a cached handle without an id must record None, not raise"
+        )
+    finally:
+        get_sandbox_pool().evict(uid)
+
+
 async def test_fresh_creation_forwards_exact_args_to_every_dependency() -> None:
     # The acquire state machine is a fan-out: every dependency must receive the
     # right user_id/shard_id/mount_env or the created sandbox is credited to
@@ -1287,6 +1325,31 @@ async def test_resume_passes_the_mount_env_built_for_the_users_shard() -> None:
     expected_doc = _doc("sbx-old", workspace_version=7, shard_id=real_shard)
     resume.assert_awaited_once_with(expected_doc, env_marker)
     assert fields["source"] == "resume"
+
+
+async def test_a_fresh_sandbox_without_an_id_is_persisted_as_none() -> None:
+    # The same guard on the create path: a handle that never got an id must
+    # reach Mongo as None (so the next acquire treats it as resumable-unknown),
+    # not raise and leave no acquisition record at all.
+    uid = _uid()
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=None)
+    stack = [
+        *_acquire_patches(SimpleNamespace(), repo),
+        patch.object(lifecycle, "_create_fresh_sandbox", AsyncMock(return_value=SimpleNamespace())),
+        patch.object(lifecycle, "_write_canary", AsyncMock(return_value="ts-1")),
+    ]
+    for p in stack:
+        p.start()
+    try:
+        with _capture_wide_events() as (fields, _):
+            await lifecycle._acquire_or_create(uid)
+    finally:
+        for p in reversed(stack):
+            p.stop()
+        get_sandbox_pool().evict(uid)
+    assert fields["sandbox_id"] is None, "a fresh handle without an id must record None, not raise"
+    assert repo.record_acquisition.await_args.kwargs["sandbox_id"] is None
 
 
 # --------------------------------------------------------------------------
