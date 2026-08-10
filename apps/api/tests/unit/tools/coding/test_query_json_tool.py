@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import date
 import json
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -371,6 +372,37 @@ def test_load_byte_cap_overflow_signals_truncation(tmp_path: Path, monkeypatch: 
     f.write_text('{"a":1}\n0')  # exactly cap+1 bytes: one full record + one byte of the next
     records, dropped, truncated = _load_records(f)
     assert records == [{"a": 1}] and dropped == 0 and truncated is True
+
+
+def test_load_records_reads_exactly_cap_plus_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The byte cap is a MEMORY bound, not just a truncation flag: the file
+    # handle must be asked for exactly cap+1 bytes — never the whole file
+    # (read(None) would OOM on a multi-GB file) and never more (cap+2). Pin
+    # the exact read size at the I/O seam.
+    monkeypatch.setattr(query_json_tool, "MAX_QUERY_INPUT_BYTES", 8)
+    f = tmp_path / "big.jsonl"
+    f.write_text("x" * 100)
+    read_sizes: list[int | None] = []
+    real_open = Path.open
+
+    def spy_open(self: Path, *args: Any, **kwargs: Any) -> Any:
+        fh = real_open(self, *args, **kwargs)
+        orig_read = fh.read
+
+        def read(size: int | None = -1) -> bytes:
+            read_sizes.append(size)
+            return orig_read(size)
+
+        fh.read = read  # type: ignore[method-assign]
+        return fh
+
+    monkeypatch.setattr(Path, "open", spy_open)
+    records, dropped, truncated = _load_records(f)
+    assert read_sizes == [8 + 1]
+    assert truncated is True
+    assert records == [] and dropped == 1
 
 
 async def test_tool_reports_truncation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -756,6 +788,38 @@ async def test_tool_defaults(tmp_path: Path) -> None:
     with _mock_resolve(_jsonl(tmp_path, [{"n": i} for i in range(60)])):
         out = await query_json.ainvoke({"path": "inbox.jsonl"}, config=CONFIG)
     assert len(out.splitlines()) == 50  # default limit, not 51
+
+
+async def test_tool_signature_defaults_pinned_via_direct_call(tmp_path: Path) -> None:
+    # ainvoke() fills omitted args from langchain's generated args schema,
+    # which is built from the tool signature at decoration time — so a mutant
+    # that changes the signature defaults (match/order/limit/count_only) is
+    # invisible to ainvoke-based tests: the schema injects the ORIGINAL
+    # defaults, and the mutated ones are never read. Call the underlying
+    # function directly (bypassing the schema) to pin each default:
+    # match="all" (AND), order="desc", limit=50, count_only=False.
+    coroutine = cast(Any, query_json).coroutine  # structured tool exposes the raw fn
+    big = [{"n": i, "time": f"2026-06-{i % 28 + 1:02d}"} for i in range(60)]
+
+    # default match="all": two mutually exclusive conditions -> no matches
+    with _mock_resolve(_jsonl(tmp_path)):
+        out = await coroutine(
+            path="inbox.jsonl",
+            where=[
+                {"field": "from", "op": "equals", "value": "github"},
+                {"field": "from", "op": "equals", "value": "bob@co.com"},
+            ],
+            config=CONFIG,
+        )
+    assert out == "(no matches)"  # AND, not OR
+
+    # default order="desc" + limit=50 + count_only=False, all at once
+    with _mock_resolve(_jsonl(tmp_path, big)):
+        out = await coroutine(path="inbox.jsonl", sort_by="time", config=CONFIG)
+    lines = out.splitlines()
+    assert len(lines) == 50  # default limit=50, not 51
+    assert json.loads(lines[0]) == {"n": 27, "time": "2026-06-28"}  # desc, not asc
+    assert all("count" not in json.loads(line) for line in lines)  # records, not {"count": ...}
 
 
 async def test_tool_match_any_succeeds(tmp_path: Path) -> None:
