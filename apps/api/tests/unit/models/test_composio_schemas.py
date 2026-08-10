@@ -314,9 +314,7 @@ class TestGitHubListRepositoriesData:
         assert [r.id for r in repos] == [1]
 
     def test_from_data_key(self):
-        repos = GitHubListRepositoriesData.from_response_data(
-            {"data": [{"id": 1, "name": "a"}]}
-        )
+        repos = GitHubListRepositoriesData.from_response_data({"data": [{"id": 1, "name": "a"}]})
         assert [r.id for r in repos] == [1]
 
     def test_from_empty_dict(self):
@@ -324,9 +322,7 @@ class TestGitHubListRepositoriesData:
         assert repos == []
 
     def test_repositories_key_not_a_list(self):
-        repos = GitHubListRepositoriesData.from_response_data(
-            {"repositories": {"not": "a list"}}
-        )
+        repos = GitHubListRepositoriesData.from_response_data({"repositories": {"not": "a list"}})
         assert repos == []
 
     def test_missing_repo_fields_tolerated(self):
@@ -587,9 +583,7 @@ class TestLinearTeam:
         assert m.members[0].name == "Alice"
 
     def test_members_from_dicts(self):
-        m = LinearTeam.model_validate(
-            {"id": "team1", "members": [{"id": "mem1", "name": "Alice"}]}
-        )
+        m = LinearTeam.model_validate({"id": "team1", "members": [{"id": "mem1", "name": "Alice"}]})
         assert m.members[0].name == "Alice"
 
     def test_extra_fields_ignored(self):
@@ -763,9 +757,7 @@ class TestNotionFetchDataData:
         assert m.get_items() == []
 
     def test_get_items_returns_typed_models(self):
-        m = NotionFetchDataData(
-            values=[{"id": "p1", "title": "A"}, {"id": "p2", "title": "B"}]
-        )
+        m = NotionFetchDataData(values=[{"id": "p1", "title": "A"}, {"id": "p2", "title": "B"}])
         items = m.get_items()
         assert isinstance(items[0], NotionItem)
         assert [i.id for i in items] == ["p1", "p2"]
@@ -870,7 +862,12 @@ class TestGoogleSheetsSpreadsheet:
             mimeType="application/vnd.google-apps.spreadsheet",
             shared=False,
             owners=[
-                {"me": True, "kind": "drive#user", "displayName": "Alice", "emailAddress": "a@b.com"}
+                {
+                    "me": True,
+                    "kind": "drive#user",
+                    "displayName": "Alice",
+                    "emailAddress": "a@b.com",
+                }
             ],
         )
         assert m.id == "spr123"
@@ -1065,9 +1062,7 @@ class TestSlackListAllChannelsData:
         assert not hasattr(m, "extra")
 
     def test_next_cursor_present(self):
-        m = SlackListAllChannelsData(
-            response_metadata={"next_cursor": "cursor-123"}
-        )
+        m = SlackListAllChannelsData(response_metadata={"next_cursor": "cursor-123"})
         assert m.next_cursor == "cursor-123"
 
     def test_next_cursor_absent(self):

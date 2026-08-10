@@ -63,9 +63,7 @@ class TestListCommunityIntegrations:
         assert item["iconUrl"] is None
         assert item["publishedAt"] is None
         assert item["creator"] is None
-        assert item["tools"] == [
-            {"name": "tool_a", "description": "does A", "destructive": False}
-        ]
+        assert item["tools"] == [{"name": "tool_a", "description": "does A", "destructive": False}]
 
     @pytest.mark.asyncio
     async def test_query_params_passed_through(self, client: AsyncClient) -> None:

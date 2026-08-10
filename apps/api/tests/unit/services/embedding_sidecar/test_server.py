@@ -126,9 +126,7 @@ class TestRerank:
     async def test_empty_documents_returns_empty_without_calling_model(
         self, mock_rerank: MagicMock, sidecar_client: AsyncClient
     ) -> None:
-        response = await sidecar_client.post(
-            "/rerank", json={"query": QUERY, "documents": []}
-        )
+        response = await sidecar_client.post("/rerank", json={"query": QUERY, "documents": []})
 
         assert response.status_code == 200
         assert response.json() == {"scores": []}

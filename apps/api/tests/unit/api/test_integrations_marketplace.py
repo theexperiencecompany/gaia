@@ -31,9 +31,7 @@ def _integration_response(
 
 
 def _marketplace_response() -> MarketplaceResponse:
-    featured = _integration_response(
-        "f1", "Featured Tool", is_featured=True, display_priority=10
-    )
+    featured = _integration_response("f1", "Featured Tool", is_featured=True, display_priority=10)
     regular = _integration_response("i1", "My Tool", clone_count=5)
     return MarketplaceResponse(featured=[featured], integrations=[regular], total=2)
 
@@ -43,9 +41,7 @@ class TestListMarketplaceIntegrations:
 
     @pytest.mark.asyncio
     async def test_happy_path(self, client: AsyncClient) -> None:
-        with patch(
-            f"{_MARKETPLACE}.get_all_integrations", new_callable=AsyncMock
-        ) as mock_get_all:
+        with patch(f"{_MARKETPLACE}.get_all_integrations", new_callable=AsyncMock) as mock_get_all:
             mock_get_all.return_value = _marketplace_response()
             resp = await client.get(BASE)
 
@@ -70,9 +66,7 @@ class TestListMarketplaceIntegrations:
 
     @pytest.mark.asyncio
     async def test_category_param_passed_through(self, client: AsyncClient) -> None:
-        with patch(
-            f"{_MARKETPLACE}.get_all_integrations", new_callable=AsyncMock
-        ) as mock_get_all:
+        with patch(f"{_MARKETPLACE}.get_all_integrations", new_callable=AsyncMock) as mock_get_all:
             mock_get_all.return_value = _marketplace_response()
             resp = await client.get(BASE, params={"category": "ai"})
 
@@ -81,9 +75,7 @@ class TestListMarketplaceIntegrations:
 
     @pytest.mark.asyncio
     async def test_empty_marketplace(self, client: AsyncClient) -> None:
-        with patch(
-            f"{_MARKETPLACE}.get_all_integrations", new_callable=AsyncMock
-        ) as mock_get_all:
+        with patch(f"{_MARKETPLACE}.get_all_integrations", new_callable=AsyncMock) as mock_get_all:
             mock_get_all.return_value = MarketplaceResponse()
             resp = await client.get(BASE)
 

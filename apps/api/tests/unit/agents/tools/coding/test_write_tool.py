@@ -77,9 +77,7 @@ def _sandbox_cm(sbx: AsyncMock) -> Callable[[str], AsyncIterator[AsyncMock]]:
     ("content", "n_bytes"),
     [("hello", 5), ("héllo", 6), ("", 0)],
 )
-async def test_writes_session_scratch_file_with_exact_payloads(
-    content: str, n_bytes: int
-) -> None:
+async def test_writes_session_scratch_file_with_exact_payloads(content: str, n_bytes: int) -> None:
     sbx = AsyncMock()
     mtime = 1_234.0
     with (
@@ -123,9 +121,7 @@ async def test_writes_absolute_path_without_session_conv() -> None:
         patch(f"{MODULE}.safe_emit"),
         patch(f"{MODULE}.publish_artifact_write", AsyncMock()) as mock_publish,
     ):
-        result = await write.ainvoke(
-            {"path": abs_path, "content": "hi"}, config=CONFIG
-        )
+        result = await write.ainvoke({"path": abs_path, "content": "hi"}, config=CONFIG)
 
     assert result == "Wrote 2 bytes to /workspace/notes.md"
     mock_publish.assert_awaited_once_with(
@@ -146,7 +142,9 @@ async def test_content_at_max_bytes_boundary_is_written() -> None:
             {"path": "scratch/big.txt", "content": at_limit}, config=CONFIG
         )
 
-    assert result == f"Wrote {MAX_CONTENT_BYTES} bytes to /workspace/sessions/conv-1/scratch/big.txt"
+    assert (
+        result == f"Wrote {MAX_CONTENT_BYTES} bytes to /workspace/sessions/conv-1/scratch/big.txt"
+    )
     mock_bytes.assert_called_once_with(FsOps.TOOL_WRITE, MAX_CONTENT_BYTES)
 
 
@@ -185,21 +183,15 @@ async def test_missing_user_id_returns_error() -> None:
 
 async def test_path_escaping_workspace_is_rejected() -> None:
     with patch(f"{MODULE}.acquire_sandbox") as mock_acquire:
-        result = await write.ainvoke(
-            {"path": "/etc/passwd", "content": "x"}, config=CONFIG
-        )
+        result = await write.ainvoke({"path": "/etc/passwd", "content": "x"}, config=CONFIG)
 
     assert result == "Error: Path escapes /workspace: /etc/passwd"
     mock_acquire.assert_not_called()
 
 
 async def test_sandbox_unavailable_returns_friendly_error() -> None:
-    with patch(
-        f"{MODULE}.acquire_sandbox", side_effect=SandboxAcquisitionError("pool empty")
-    ):
-        result = await write.ainvoke(
-            {"path": "scratch/x.py", "content": "x"}, config=CONFIG
-        )
+    with patch(f"{MODULE}.acquire_sandbox", side_effect=SandboxAcquisitionError("pool empty")):
+        result = await write.ainvoke({"path": "scratch/x.py", "content": "x"}, config=CONFIG)
 
     assert result == "Error: sandbox unavailable — pool empty"
 
@@ -207,14 +199,10 @@ async def test_sandbox_unavailable_returns_friendly_error() -> None:
 async def test_write_failure_returns_error_and_logs() -> None:
     with (
         patch(f"{MODULE}.acquire_sandbox", _sandbox_cm(AsyncMock())),
-        patch(
-            f"{MODULE}.atomic_write", AsyncMock(side_effect=RuntimeError("disk full"))
-        ),
+        patch(f"{MODULE}.atomic_write", AsyncMock(side_effect=RuntimeError("disk full"))),
         patch(f"{MODULE}.log") as mock_log,
     ):
-        result = await write.ainvoke(
-            {"path": "scratch/x.py", "content": "x"}, config=CONFIG
-        )
+        result = await write.ainvoke({"path": "scratch/x.py", "content": "x"}, config=CONFIG)
 
     assert result == "Error writing file: disk full"
     mock_log.error.assert_called_once_with(
@@ -236,6 +224,4 @@ async def test_artifact_publish_failure_propagates() -> None:
         ),
     ):
         with pytest.raises(RuntimeError, match="channel down"):
-            await write.ainvoke(
-                {"path": "scratch/x.py", "content": "x"}, config=CONFIG
-            )
+            await write.ainvoke({"path": "scratch/x.py", "content": "x"}, config=CONFIG)

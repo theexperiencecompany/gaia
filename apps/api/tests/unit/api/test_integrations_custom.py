@@ -195,9 +195,7 @@ class TestUpdateCustomIntegration:
 
     @pytest.mark.asyncio
     async def test_happy_path(self, client: AsyncClient) -> None:
-        with patch(
-            f"{_CUSTOM}.update_custom_integration", new_callable=AsyncMock
-        ) as mock_update:
+        with patch(f"{_CUSTOM}.update_custom_integration", new_callable=AsyncMock) as mock_update:
             mock_update.return_value = _integration()
             resp = await client.patch(
                 f"{BASE}/i1", json={"name": "Renamed Tool", "is_public": True}
@@ -219,9 +217,7 @@ class TestUpdateCustomIntegration:
 
     @pytest.mark.asyncio
     async def test_not_owner_returns_404(self, client: AsyncClient) -> None:
-        with patch(
-            f"{_CUSTOM}.update_custom_integration", new_callable=AsyncMock
-        ) as mock_update:
+        with patch(f"{_CUSTOM}.update_custom_integration", new_callable=AsyncMock) as mock_update:
             mock_update.return_value = None
             resp = await client.patch(f"{BASE}/i1", json={"name": "Renamed"})
 
@@ -242,9 +238,7 @@ class TestUpdateCustomIntegration:
 
     @pytest.mark.asyncio
     async def test_private_ip_server_url_returns_422(self, client: AsyncClient) -> None:
-        resp = await client.patch(
-            f"{BASE}/i1", json={"server_url": "http://10.0.0.5:8000"}
-        )
+        resp = await client.patch(f"{BASE}/i1", json={"server_url": "http://10.0.0.5:8000"})
         assert resp.status_code == 422
 
 
@@ -253,9 +247,7 @@ class TestDeleteCustomIntegration:
 
     @pytest.mark.asyncio
     async def test_happy_path(self, client: AsyncClient) -> None:
-        with patch(
-            f"{_CUSTOM}.delete_custom_integration", new_callable=AsyncMock
-        ) as mock_delete:
+        with patch(f"{_CUSTOM}.delete_custom_integration", new_callable=AsyncMock) as mock_delete:
             mock_delete.return_value = True
             resp = await client.delete(f"{BASE}/i1")
 
@@ -268,9 +260,7 @@ class TestDeleteCustomIntegration:
 
     @pytest.mark.asyncio
     async def test_not_owner_returns_404(self, client: AsyncClient) -> None:
-        with patch(
-            f"{_CUSTOM}.delete_custom_integration", new_callable=AsyncMock
-        ) as mock_delete:
+        with patch(f"{_CUSTOM}.delete_custom_integration", new_callable=AsyncMock) as mock_delete:
             mock_delete.return_value = False
             resp = await client.delete(f"{BASE}/i1")
 
@@ -295,9 +285,7 @@ class TestPublishIntegration:
 
     @pytest.mark.asyncio
     async def test_happy_path(self, client: AsyncClient) -> None:
-        with patch(
-            f"{_CUSTOM}.publish_custom_integration", new_callable=AsyncMock
-        ) as mock_publish:
+        with patch(f"{_CUSTOM}.publish_custom_integration", new_callable=AsyncMock) as mock_publish:
             mock_publish.return_value = {
                 "integration_id": "i1",
                 "public_url": "/marketplace/my-tool",
@@ -329,9 +317,7 @@ class TestPublishIntegration:
         with patch(
             f"{_CUSTOM}.publish_custom_integration",
             new_callable=AsyncMock,
-            side_effect=PublishError(
-                "You can only publish integrations you created", 403
-            ),
+            side_effect=PublishError("You can only publish integrations you created", 403),
         ):
             resp = await client.post(f"{BASE}/i1/publish")
 
