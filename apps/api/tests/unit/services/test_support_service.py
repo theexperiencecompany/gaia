@@ -938,6 +938,9 @@ class TestCreateSupportRequest:
         stored = mock_support_repo.create.await_args.args[0]
         assert stored.created_at == fixed_now
         assert result.support_request.created_at == fixed_now
+        # The UTC tz argument is pinned: a naive now() would silently produce
+        # an unaware created_at.
+        mock_dt.now.assert_any_call(UTC)
 
     async def test_create_failure_rolls_back_and_raises_500(
         self,
@@ -1451,6 +1454,9 @@ class TestCreateSupportRequestWithAttachments:
         assert stored.created_at == fixed_now
         assert stored.attachments[0].uploaded_at == fixed_now
         assert result.support_request.created_at == fixed_now
+        # The UTC tz argument is pinned: a naive now() would silently produce
+        # an unaware created_at.
+        mock_dt.now.assert_any_call(UTC)
 
     async def test_success_with_empty_attachments(
         self,
@@ -1652,6 +1658,38 @@ class TestCreateSupportRequestWithAttachments:
 
         assert exc_info.value.status_code == 500
         mock_delete.assert_awaited_once()
+
+    async def test_db_failure_without_uploads_skips_file_cleanup(
+        self,
+        mock_support_repo,
+        sample_request_data,
+    ):
+        """A DB failure with no uploaded files rolls back the DB entry but never
+        touches Cloudinary: file cleanup only runs when files were uploaded."""
+        mock_support_repo.create.side_effect = RuntimeError("write failed")
+
+        with patch(
+            "app.services.support_service._delete_uploaded_files",
+            new_callable=AsyncMock,
+        ) as mock_delete_files:
+            with patch("app.services.support_service.log") as mock_log:
+                with pytest.raises(HTTPException) as exc_info:
+                    await create_support_request_with_attachments(
+                        request_data=sample_request_data,
+                        attachments=[],
+                        user_id=USER_ID,
+                        user_email=USER_EMAIL,
+                    )
+
+        assert exc_info.value.status_code == 500
+        # No files were uploaded, so no Cloudinary cleanup happens...
+        mock_delete_files.assert_not_awaited()
+        # ...but the database rollback still runs.
+        mock_support_repo.delete.assert_awaited_once()
+        assert not any(
+            c.args and c.args[0] == "Cleaned up uploaded files due to unexpected error"
+            for c in mock_log.info.call_args_list
+        )
 
     async def test_db_failure_cleans_up_exact_url_via_real_delete(
         self,
