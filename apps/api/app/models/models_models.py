@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,14 +22,14 @@ class DevModelOption(TypedDict):
     A TypedDict, not a model: it is a fixed in-process shape that is only ever
     spread onto a LangGraph configurable, so it crosses no validation boundary.
 
-    ``model_kwargs`` and ``reasoning``'s effort payload stay ``dict[str, Any]``
+    ``model_kwargs`` and ``reasoning``'s effort payload stay ``dict[str, object]``
     because that is exactly how ``ChatOpenRouter`` declares the fields they are
     bound to — free-form OpenRouter request params, not a shape we own.
     """
 
     provider: str
     model: str | None
-    model_kwargs: dict[str, Any] | None
+    model_kwargs: dict[str, object] | None
     reasoning: bool
 
 

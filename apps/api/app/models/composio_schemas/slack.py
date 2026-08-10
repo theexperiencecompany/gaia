@@ -4,15 +4,13 @@ Slack trigger payload and tool output models.
 Reference: node_modules/@composio/core/generated/slack.ts
 """
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 
 class SlackReceiveMessagePayload(BaseModel):
     """Payload for SLACK_RECEIVE_MESSAGE trigger."""
 
-    attachments: list[dict[str, Any]] | None = Field(
+    attachments: list[dict[str, object]] | None = Field(
         None, description="Attachments included with the message"
     )
     bot_id: str | None = Field(None, description="ID of the bot that posted")

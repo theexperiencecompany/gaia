@@ -152,7 +152,7 @@ OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
 # OpenRouter `provider` routing param) and inherited by child agents via
 # agent_helpers._inherit_from_parent_configurable so subagents stay on the same lane.
 PAID_MODEL_PROVIDER_SLUG = "deepseek"
-PAID_MODEL_MODEL_KWARGS = {"provider": {"only": [PAID_MODEL_PROVIDER_SLUG]}}
+PAID_MODEL_MODEL_KWARGS: dict[str, object] = {"provider": {"only": [PAID_MODEL_PROVIDER_SLUG]}}
 # Comms-specific reasoning: "low" instead of the executor's "medium". Comms is
 # mostly routing/ack work, so the reasoning budget is most useful for the executor's
 # tool selection. GLM 5.2 also documents "high"/"xhigh" efforts — revisit these

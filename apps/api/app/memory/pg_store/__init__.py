@@ -7,7 +7,6 @@ provider initializes) creates the memory tables.
 
 from app.memory.pg_store.documents import get_document, get_documents, upsert_document
 from app.memory.pg_store.episodes import (
-    EpisodeEntry,
     append_episode_entries,
     get_episode,
     get_episodes_range,
@@ -44,6 +43,7 @@ from app.memory.pg_store.memories import (
     mark_forgotten,
     supersede_memory,
 )
+from app.models.memory_db_models import EpisodeEntry
 
 __all__ = [
     "EpisodeEntry",

@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
 from typing_extensions import TypedDict
@@ -41,7 +41,7 @@ class SelectedWorkflowData(BaseModel):
     title: str
     description: str
     prompt: str | None = None
-    steps: list[dict[str, Any]]
+    steps: list[dict[str, object]]
 
 
 class SelectedCalendarEventData(BaseModel):

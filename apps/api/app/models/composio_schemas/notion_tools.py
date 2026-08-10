@@ -7,7 +7,7 @@ Note: All Composio tool responses are wrapped in ToolExecutionResponse with
 `data`, `error`, `successful` keys. These models represent the INNER data structure.
 """
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,7 +38,7 @@ class NotionFetchDataData(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
-    values: list[dict[str, Any]] = Field(default_factory=list)
+    values: list[dict[str, object]] = Field(default_factory=list)
 
     def get_items(self) -> list[NotionItem]:
         """Get items as typed models."""

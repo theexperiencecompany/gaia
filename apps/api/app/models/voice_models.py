@@ -12,8 +12,6 @@ what the previous plain dicts stored, so entries written before this shape
 existed still validate.
 """
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 
@@ -32,7 +30,7 @@ class ElevenLabsAccountVoice(ElevenLabsVoice):
     # Provider-owned free-form label bag: ElevenLabs lets an account define its own
     # label keys on cloned voices, so this is a genuinely dynamic mapping, not a
     # fixed shape. ``_map_account_voice`` reads the documented keys defensively.
-    labels: dict[str, Any] = Field(default_factory=dict)
+    labels: dict[str, object] = Field(default_factory=dict)
 
 
 class ElevenLabsSharedVoice(ElevenLabsVoice):

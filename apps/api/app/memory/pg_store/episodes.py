@@ -7,9 +7,7 @@ from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.sql import func
 
 from app.memory.pg_store._session import LIKE_ESCAPE_CHAR, escape_like, memory_session
-from app.models.memory_db_models import MemoryEpisode
-
-EpisodeEntry = dict[str, str]  # {time, text, source}
+from app.models.memory_db_models import EpisodeEntry, MemoryEpisode
 
 _APOSTROPHES = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
 

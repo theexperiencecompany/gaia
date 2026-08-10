@@ -47,7 +47,7 @@ class LinearGetAllTeamsData(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
-    items: list[dict[str, Any]] = Field(default_factory=list)
+    items: list[dict[str, object]] = Field(default_factory=list)
     teams: list[Any] = Field(default_factory=list)
 
     def get_teams(self) -> list[LinearTeam]:

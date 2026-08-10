@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal, TypedDict
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -91,7 +91,7 @@ class HILApprovalRecord(MongoDocument):
     stream_id: str
     tool_name: str
     tool_call_id: str = ""
-    args: dict[str, Any] = Field(default_factory=dict)
+    args: dict[str, object] = Field(default_factory=dict)
     summary: str = ""
     integration_name: str | None = None
     status: HILApprovalStatus = HILApprovalStatus.PENDING
@@ -107,7 +107,7 @@ class HILApprovalRecord(MongoDocument):
     # Serialized run context (executor_queue.build_run_item shape) written when
     # the executor pauses; a decision re-dispatches the run from it. Lives on the
     # record — not a TTL'd cache — so a decision can never outlive its context.
-    resume_item: dict[str, Any] | None = None
+    resume_item: dict[str, object] | None = None
     # Stamped when the resume run is dispatched; a decided record without it is
     # a crashed resume the sweep re-dispatches.
     resumed_at: datetime | None = None
@@ -137,7 +137,7 @@ class HILApprovalUpdate(BaseModel):
 
     # Typed on the write side only. set_resume_item is the sole writer and takes
     # an ExecutorRunItem, so every write is controlled. HILApprovalRecord keeps
-    # `dict[str, Any]` on the read side deliberately — narrowing a persisted
+    # `dict[str, object]` on the read side deliberately — narrowing a persisted
     # field would start rejecting rows written before this type existed.
     resume_item: ExecutorRunItem | None = None
     resumed_at: datetime | None = None

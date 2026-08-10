@@ -179,14 +179,19 @@ def _construct_content(
         elif isinstance(document_content, list):
             target_page_number = similar_document.metadata["page_number"]
             for page in document_content:
-                if page["data"]["page_number"] == target_page_number:
+                data = page.get("data")
+                if not isinstance(data, dict):
+                    continue
+                if data.get("page_number") == target_page_number:
                     content += f"Document ID: {document_id}\n"
                     content += f"Page Number: {target_page_number}\n"
-                    content += f"Description: {page['data']['content']}\n\n"
+                    content += f"Description: {data.get('content')}\n\n"
                     break
         elif isinstance(document_content, dict):
-            content += f"Document ID: {document_id}\n"
-            content += f"Description: {document_content.get('data', {}).get('content', 'Description not available!')}\n\n"
+            data = document_content.get("data")
+            if isinstance(data, dict):
+                content += f"Document ID: {document_id}\n"
+                content += f"Description: {data.get('content', 'Description not available!')}\n\n"
 
     log.info(f"{LogTag.TOOL} Constructed document content", content_length=len(content))
 

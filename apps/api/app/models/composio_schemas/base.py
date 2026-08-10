@@ -2,8 +2,6 @@
 Base Composio response model.
 """
 
-from typing import Any
-
 from pydantic import BaseModel, ConfigDict
 
 
@@ -14,4 +12,4 @@ class ComposioResponse(BaseModel):
 
     successful: bool
     error: str | None = None
-    data: dict[str, Any]
+    data: dict[str, object]

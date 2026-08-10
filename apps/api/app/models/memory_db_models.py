@@ -75,7 +75,7 @@ class MemoryRecord(Base):
     importance: Mapped[float] = mapped_column(
         Float, default=DEFAULT_MEMORY_IMPORTANCE, nullable=False
     )
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    metadata_json: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
     search_tsv: Mapped[Any] = mapped_column(
         TSVECTOR,
         Computed(_MEMORY_SEARCH_TSV, persisted=True),
@@ -162,6 +162,9 @@ class MemoryGraphEdge(Base):
     )
 
 
+EpisodeEntry = dict[str, str]  # {time, text, source}
+
+
 class MemoryEpisode(Base):
     """One row per (user, date): what happened that day, appended at ingestion."""
 
@@ -170,7 +173,7 @@ class MemoryEpisode(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)
-    entries: Mapped[list[dict[str, Any]]] = mapped_column(
+    entries: Mapped[list[EpisodeEntry]] = mapped_column(
         JSONB, default=list, nullable=False
     )  # [{time, text, source}]
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -195,7 +198,7 @@ class MemoryDocument(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     # Last N previous versions: [{version, content, updated_at}], newest first.
-    history: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)
+    history: Mapped[list[dict[str, object]]] = mapped_column(JSONB, default=list, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False
     )

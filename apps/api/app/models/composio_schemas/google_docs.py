@@ -4,8 +4,6 @@ Google Docs trigger payloads.
 Reference: node_modules/@composio/core/generated/googledocs.ts
 """
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 
@@ -14,11 +12,13 @@ class GoogleDocsDocument(BaseModel):
 
     createdTime: str = Field(..., description="Creation time in ISO format")
     id: str = Field(..., description="Unique identifier of the document")
-    lastModifyingUser: dict[str, Any] | None = Field(None, description="Last modifying user info")
+    lastModifyingUser: dict[str, object] | None = Field(
+        None, description="Last modifying user info"
+    )
     mimeType: str = Field(..., description="MIME type of the document")
     modifiedTime: str = Field(..., description="Last modification time in ISO format")
     name: str = Field(..., description="Name of the document")
-    owners: list[dict[str, Any]] | None = Field(None, description="List of document owners")
+    owners: list[dict[str, object]] | None = Field(None, description="List of document owners")
 
 
 class GoogleDocsPageAddedPayload(BaseModel):

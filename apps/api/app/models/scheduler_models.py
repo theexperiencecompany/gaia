@@ -4,7 +4,6 @@ Base scheduler models for task scheduling system.
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -117,4 +116,4 @@ class TaskExecutionResult(BaseModel):
 
     success: bool = Field(..., description="Whether the task executed successfully")
     message: str | None = Field(None, description="Result message or error details")
-    data: dict[str, Any] | None = Field(default=None, description="Additional result data")
+    data: dict[str, object] | None = Field(default=None, description="Additional result data")

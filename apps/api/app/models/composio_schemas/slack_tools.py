@@ -7,8 +7,6 @@ Note: All Composio tool responses are wrapped in ToolExecutionResponse with
 `data`, `error`, `successful` keys. These models represent the INNER data structure.
 """
 
-from typing import Any
-
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -47,8 +45,8 @@ class SlackListAllChannelsData(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
-    channels: list[dict[str, Any]] = Field(default_factory=list)
-    response_metadata: dict[str, Any] | None = None
+    channels: list[dict[str, object]] = Field(default_factory=list)
+    response_metadata: dict[str, object] | None = None
 
     def get_channels(self) -> list[SlackChannel]:
         """Get channels as typed models."""

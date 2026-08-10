@@ -4,8 +4,6 @@ Google Calendar trigger payloads.
 Reference: node_modules/@composio/core/generated/googlecalendar.ts
 """
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 
@@ -24,7 +22,7 @@ class GoogleCalendarEventCreatedPayload(BaseModel):
 class GoogleCalendarEventStartingSoonPayload(BaseModel):
     """Payload for GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER."""
 
-    attendees: list[dict[str, Any]] | None = Field(None, description="List of attendees")
+    attendees: list[dict[str, object]] | None = Field(None, description="List of attendees")
     calendar_id: str | None = Field(None, description="The calendar identifier")
     countdown_window_minutes: int | None = Field(
         None, description="Countdown window used for this trigger"

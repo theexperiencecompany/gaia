@@ -107,10 +107,10 @@ class AgentConfigurable(TypedDict, total=False):
     max_tokens: int
     #: OpenRouter provider-routing pin, inherited by subagents so they stay on
     #: the first-party lane instead of load-balancing onto throttled resellers.
-    model_kwargs: dict[str, Any]
+    model_kwargs: dict[str, object]
     #: Reasoning-effort config; comms sets its own lower effort, the executor
     #: and provider subagents keep the client default.
-    reasoning: dict[str, Any]
+    reasoning: dict[str, object]
 
     # --- run scope ----------------------------------------------------------
     selected_tool: str | None
@@ -197,7 +197,7 @@ class AgentRunnableConfig(RunnableConfig):
     user-facing agent's tokens reach the client. Subclassing rather than a
     parallel type keeps the value directly passable to ``graph.astream(config=...)``.
 
-    ``configurable`` keeps LangGraph's ``dict[str, Any]`` annotation because a
+    ``configurable`` keeps LangGraph's ``dict[str, object]`` annotation because a
     TypedDict field cannot be narrowed in a subclass without making the result
     unassignable to ``RunnableConfig`` — which is the whole point of
     subclassing. :class:`AgentConfigurable` names what is inside it, and

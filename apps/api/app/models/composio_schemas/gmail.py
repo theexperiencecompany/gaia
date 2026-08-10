@@ -24,7 +24,7 @@ class GmailNewMessagePayload(BaseModel):
     message_id: str | None = Field(None, description="Message ID")
     message_text: str | None = Field(None, description="Text content of the message")
     message_timestamp: str | None = Field(None, description="Timestamp of the message")
-    payload: dict[str, Any] | None = Field(None, description="Full message payload")
+    payload: dict[str, object] | None = Field(None, description="Full message payload")
     sender: str | None = Field(None, description="Sender email address")
     subject: str | None = Field(None, description="Email subject")
     thread_id: str | None = Field(None, description="Thread ID")

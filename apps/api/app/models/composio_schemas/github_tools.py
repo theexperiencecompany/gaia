@@ -41,7 +41,7 @@ class GitHubRepository(BaseModel):
     name: str | None = None
     full_name: str | None = None
     private: bool | None = None
-    owner: dict[str, Any] | None = None
+    owner: dict[str, object] | None = None
     html_url: str | None = None
     description: str | None = None
     fork: bool | None = None
@@ -65,7 +65,7 @@ class GitHubListRepositoriesData(BaseModel):
     # We handle this in the handler by checking structure
 
     @classmethod
-    def from_response_data(cls, data: dict[str, Any] | list[Any]) -> list[GitHubRepository]:
+    def from_response_data(cls, data: dict[str, object] | list[Any]) -> list[GitHubRepository]:
         """Extract repositories from response data.
 
         The data structure can vary:

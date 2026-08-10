@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,7 +24,7 @@ class DocumentSummaryModel(BaseModel):
 
 # A page-wise summary is stored either as one summary (str/dict) or a list of
 # per-page summary dicts (``DocumentSummaryModel`` serialised to JSON).
-PageWiseSummary = list[dict[str, Any]] | dict[str, Any] | str | None
+PageWiseSummary = list[dict[str, object]] | dict[str, object] | str | None
 
 
 class FileDocument(UserScopedDocument):

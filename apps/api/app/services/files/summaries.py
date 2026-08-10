@@ -57,15 +57,21 @@ def render_summary_markdown(
 
     if isinstance(page_wise_summary, list):
         for page in page_wise_summary:
-            data = page.get("data", {})
-            parts += [f"## Page {data.get('page_number', '?')}", ""]
-            if page.get("summary"):
-                parts += [f"**Summary:** {page['summary'].strip()}", ""]
-            if data.get("content"):
+            data = page.get("data")
+            parts += [
+                f"## Page {data.get('page_number', '?') if isinstance(data, dict) else '?'}",
+                "",
+            ]
+            raw_summary = page.get("summary")
+            if isinstance(raw_summary, str):
+                parts += [f"**Summary:** {raw_summary.strip()}", ""]
+            if isinstance(data, dict) and data.get("content"):
                 parts += [str(data["content"]).strip(), ""]
     elif isinstance(page_wise_summary, dict):
-        content = page_wise_summary.get("data", {}).get("content")
-        if content:
-            parts += ["## Content", "", str(content).strip(), ""]
+        data = page_wise_summary.get("data")
+        if isinstance(data, dict):
+            content = data.get("content")
+            if content:
+                parts += ["## Content", "", str(content).strip(), ""]
 
     return "\n".join(parts).rstrip() + "\n"
