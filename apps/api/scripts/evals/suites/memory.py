@@ -382,6 +382,18 @@ class MemorySuite(Suite):
         tokens_in = tracker.total_input - tokens_in_before
         tokens_out = tracker.total_output - tokens_out_before
 
+        if tokens_in + tokens_out == 0:
+            # Every scenario retains at least one non-empty transcript, which
+            # always drives extraction LLM calls — zero metered tokens means the
+            # provider never answered (extraction degrades to an empty batch
+            # silently). Grade nothing: an outage is not a wrong answer.
+            return CaseRun(
+                case_id=case.id,
+                provider=provider.name,
+                model=provider.model,
+                error="no LLM calls were metered — provider unavailable during retain",
+            )
+
         probes: list[dict[str, object]] = []
         for result in results:
             probes.append(
