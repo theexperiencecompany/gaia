@@ -12,7 +12,6 @@ creates a second record nor resets a decided one.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from app.agents.core.background.executor_queue import ExecutorRunItem
@@ -40,7 +39,7 @@ async def upsert_pending_approval(
     stream_id: str,
     tool_name: str,
     tool_call_id: str,
-    args: dict[str, Any],
+    args: dict[str, object],
     summary: str,
     integration_name: str | None,
 ) -> bool:
@@ -75,7 +74,7 @@ async def record_auto_approval(
     stream_id: str,
     tool_name: str,
     tool_call_id: str,
-    args: dict[str, Any],
+    args: dict[str, object],
     summary: str,
     integration_name: str | None,
     reason: str,

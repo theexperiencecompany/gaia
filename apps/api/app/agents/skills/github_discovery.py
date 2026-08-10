@@ -11,7 +11,6 @@ Based on Vercel skills CLI patterns (https://github.com/vercel-labs/skills)
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any
 
 import httpx
 
@@ -46,7 +45,7 @@ async def _fetch_git_tree(
     owner: str,
     repo: str,
     branch: str = "main",
-) -> tuple[list[dict[str, Any]], str]:
+) -> tuple[list[dict[str, object]], str]:
     """Fetch entire repository tree using Git Tree API.
 
     Uses recursive=1 to get all files in a single API call.

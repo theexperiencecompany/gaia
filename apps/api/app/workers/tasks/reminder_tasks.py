@@ -3,7 +3,6 @@ Reminder-related ARQ tasks.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.reminders import reminder_repository
@@ -11,7 +10,7 @@ from app.services.reminder_service import reminder_scheduler
 from shared.py.wide_events import log
 
 
-async def process_reminder(ctx: dict[str, Any], reminder_id: str) -> str:
+async def process_reminder(ctx: dict[str, object], reminder_id: str) -> str:
     """
     Process a reminder task.
 
@@ -29,7 +28,7 @@ async def process_reminder(ctx: dict[str, Any], reminder_id: str) -> str:
     return f"Successfully processed reminder {reminder_id}"
 
 
-async def cleanup_expired_reminders(ctx: dict[str, Any]) -> str:
+async def cleanup_expired_reminders(ctx: dict[str, object]) -> str:
     """
     Cleanup expired or completed reminders (scheduled task).
 

@@ -11,7 +11,6 @@ unlinked.
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
 
 from app.db.repositories.users import user_repository
 from app.models.platform_models import (
@@ -51,7 +50,7 @@ class PlatformLinkService:
     @staticmethod
     async def get_user_by_platform_id(
         platform: str, platform_user_id: str
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, object] | None:
         """Find a GAIA user by their platform account ID (queries the nested .id field)."""
         user = await user_repository.get_by_platform_id(platform, platform_user_id)
         return user_to_legacy_dict(user) if user else None

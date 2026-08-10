@@ -9,7 +9,7 @@ Image encoding and transcoding live in ``app/utils/image_codec.py``; per-lane
 delivery lives in ``app/agents/llm/vision/``.
 """
 
-from typing import Any, TypeAlias, TypeGuard
+from typing import TypeAlias, TypeGuard
 
 from langchain_core.messages import is_data_content_block
 
@@ -22,7 +22,7 @@ _MEDIA_BLOCK_CHARS = MEDIA_BLOCK_TOKEN_ESTIMATE * 4
 # ``Any`` because provider and LangChain data blocks are genuinely heterogeneous
 # third-party shapes — this is the one place that ``Any`` is unavoidable. The
 # blocks this codebase itself produces (text / image) follow a fixed schema.
-ContentBlock: TypeAlias = dict[str, Any]
+ContentBlock: TypeAlias = dict[str, object]
 # One entry in a structured content list: a bare string or a block.
 ContentItem: TypeAlias = str | ContentBlock
 # A message's ``content``: plain text, or a list of items. Mirrors the shape of

@@ -20,7 +20,6 @@ cross-process guard for multi-worker deployments.
 import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable
@@ -50,7 +49,7 @@ class StreamSession:
     kind: RunKind
     executor_spawned: bool = False
     done_event: asyncio.Event = field(default_factory=asyncio.Event)
-    tool_events: list[dict[str, Any]] = field(default_factory=list)
+    tool_events: list[dict[str, object]] = field(default_factory=list)
     pending_subagents: int = 0
     # Integrations with a background handoff in flight this run. Guards against a
     # second concurrent handoff to the same integration, whose subagent would share

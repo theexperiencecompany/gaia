@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from enum import Enum
 from typing import Any, NotRequired, Union
 
@@ -109,7 +110,7 @@ class MessageModel(BaseModel):
     selectedWorkflow: SelectedWorkflowData | None = None
     tool_data: list[ToolDataEntry] | None = None
     follow_up_actions: list[str] | None = None
-    metadata: dict[str, object] | None = None
+    metadata: Mapping[str, object] | None = None
     replyToMessage: ReplyToMessageData | None = None
     # Terminal stream error for a bot turn that produced no response — rendered
     # on reload instead of an empty bubble.

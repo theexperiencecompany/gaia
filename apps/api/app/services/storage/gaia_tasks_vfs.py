@@ -31,7 +31,7 @@ the legacy constants below.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from app.services.storage._vfs_common import (
     GUIDE_FILENAME,
@@ -54,6 +54,7 @@ from app.services.storage.user_todos_vfs import (
     USER_TODOS_MARKER,
     USER_TODOS_PER_DOC_MARKER_DIR,
 )
+from app.utils.json_helpers import dict_bag, text_bag, text_opt_bag
 
 # --- Path constants ---------------------------------------------------------
 
@@ -76,7 +77,7 @@ class GaiaTaskProjection(TypedDict):
     id: str
     canvas: str
     log: str
-    meta: dict[str, Any]
+    meta: dict[str, object]
 
 
 # ====================================================================
@@ -157,12 +158,12 @@ def cleanup_legacy_todos_dir(user_root: Path) -> bool:
 # ====================================================================
 
 
-def _glyph(meta: dict[str, Any]) -> str:
+def _glyph(meta: dict[str, object]) -> str:
     return "DONE" if meta.get("completed") else "OPEN"
 
 
 def _folder_name(doc: GaiaTaskProjection) -> str:
-    return common_folder_name(doc["id"], doc["meta"].get("title"))
+    return common_folder_name(text_bag(doc, "id"), text_opt_bag(dict_bag(doc, "meta"), "title"))
 
 
 def _index_lines(docs: list[GaiaTaskProjection]) -> str:
@@ -177,7 +178,7 @@ def _index_lines(docs: list[GaiaTaskProjection]) -> str:
     body = []
     for d in sorted_docs:
         meta = d["meta"]
-        title = (meta.get("title") or "(untitled)").replace("\n", " ").strip()
+        title = (text_bag(meta, "title") or "(untitled)").replace("\n", " ").strip()
         updated = updated_at_key(meta) or "—"
         body.append(f"- [{_glyph(meta)}] `{_folder_name(d)}`  {title}  _(updated {updated})_")
     return "\n".join([header, "", *body]) + "\n"

@@ -3,7 +3,7 @@ GitHub trigger handler.
 """
 
 import asyncio
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -192,7 +192,7 @@ class GitHubTriggerHandler(TriggerHandler):
             return []
 
         # Build configs by parsing owner/repo from full names
-        configs: list[dict[str, Any]] = []
+        configs: list[dict[str, object]] = []
         for repo_full_name in trigger_data.repos:
             if "/" in repo_full_name:
                 parts = repo_full_name.split("/")
@@ -211,7 +211,7 @@ class GitHubTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows matching a GitHub trigger event."""
         log.set_ns("trigger", integration_id="github", trigger_type=event_type)

@@ -6,7 +6,6 @@ This module provides routes for checking the health and status of the API.
 
 import asyncio
 import time
-from typing import Any
 
 from fastapi import APIRouter, Response
 from fastapi.responses import FileResponse
@@ -26,10 +25,10 @@ async def measure_event_loop_lag() -> float:
     return (time.monotonic() - start) * 1000
 
 
-# Typed as FastAPI declares the `responses=` parameter — the open dict[str, Any]
+# Typed as FastAPI declares the `responses=` parameter — the open dict[str, object]
 # is its own contract (an entry may carry description/headers/content too), not
 # a loose annotation of ours.
-_DEGRADED_RESPONSE_SCHEMA: dict[int | str, dict[str, Any]] = {
+_DEGRADED_RESPONSE_SCHEMA: dict[int | str, dict[str, object]] = {
     503: {"model": DegradedHealthResponse}
 }
 

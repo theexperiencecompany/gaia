@@ -20,15 +20,13 @@ master). Drop this patch once the library formats tool content itself; the
 import will fail loudly if either private name goes away.
 """
 
-from typing import Any
-
 from langchain_core.messages import BaseMessage
 from langchain_openrouter import chat_models
 
 _original_convert_message_to_dict = chat_models._convert_message_to_dict
 
 
-def _convert_message_to_dict(message: BaseMessage) -> dict[str, Any]:
+def _convert_message_to_dict(message: BaseMessage) -> dict[str, object]:
     message_dict = _original_convert_message_to_dict(message)
     if message_dict.get("role") == "tool":
         # Plain-string content (the overwhelming majority of tool results) is

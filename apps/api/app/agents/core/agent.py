@@ -9,7 +9,7 @@ Both share _core_agent_logic() for common setup (messages, graph, config).
 import asyncio
 from collections.abc import AsyncGenerator
 import json
-from typing import Any, cast
+from typing import cast
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -42,6 +42,7 @@ from app.models.agent_models import (
 from app.models.message_models import MessageRequestWithHistory
 from app.models.models_models import ModelConfig
 from app.models.user_models import AuthenticatedUser
+from app.utils.json_helpers import text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 
@@ -50,12 +51,12 @@ async def _core_agent_logic(
     conversation_id: str,
     user: AuthenticatedUser,
     user_model_config: ModelConfig | None = None,
-    trigger_context: dict[str, Any] | None = None,
+    trigger_context: dict[str, object] | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     source: str | None = None,
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
-) -> tuple[CompiledAgentGraph, dict[str, Any], AgentRunnableConfig]:
+) -> tuple[CompiledAgentGraph, dict[str, object], AgentRunnableConfig]:
     """Shared setup for streaming and silent execution.
 
     Constructs messages, initializes the graph, builds state, and kicks off
@@ -84,7 +85,9 @@ async def _core_agent_logic(
     active_todo_id: str | None = None
     execution_mode: ExecutionMode = "interactive"
     if trigger_context:
-        active_todo_id = trigger_context.get("active_todo_id") or trigger_context.get("todo_id")
+        active_todo_id = text_opt_bag(trigger_context, "active_todo_id") or text_opt_bag(
+            trigger_context, "todo_id"
+        )
         mode = trigger_context.get("execution_mode")
         if mode in ("interactive", "background"):
             execution_mode = cast(ExecutionMode, mode)
@@ -157,10 +160,10 @@ async def _core_agent_logic(
     # path can route the final result to the workflow-completion notification
     # instead of a normal conversation message. Absent for interactive chat.
     if trigger_context and trigger_context.get("workflow_id"):
-        configurable["workflow_id"] = trigger_context["workflow_id"]
-        configurable["workflow_title"] = trigger_context.get("workflow_title", "")
-        configurable["workflow_notify_on_completion"] = trigger_context.get(
-            "workflow_notify_on_completion", True
+        configurable["workflow_id"] = text_bag(trigger_context, "workflow_id")
+        configurable["workflow_title"] = text_bag(trigger_context, "workflow_title")
+        configurable["workflow_notify_on_completion"] = bool(
+            trigger_context.get("workflow_notify_on_completion", True)
         )
 
     log.set(
@@ -253,9 +256,9 @@ async def call_agent_silent(
     user: AuthenticatedUser,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     user_model_config: ModelConfig | None = None,
-    trigger_context: dict[str, Any] | None = None,
+    trigger_context: dict[str, object] | None = None,
     source: str | None = None,
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[str, dict[str, object]]:
     """
     Execute agent in silent mode for background processing.
 

@@ -8,7 +8,6 @@ Each public method orchestrates the concern-specific helpers (`store`, `sandbox`
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 import uuid
 
 from fastapi import HTTPException, UploadFile
@@ -36,6 +35,7 @@ from app.services.files.summaries import (
     render_summary_markdown,
 )
 from app.utils.file_utils import generate_file_summary
+from app.utils.json_helpers import text_bag, text_opt_bag
 from app.utils.upload_validation import validate_upload
 from shared.py.wide_events import FileContext, log
 
@@ -296,7 +296,7 @@ class FileService:
     async def update(
         file_id: str,
         user_id: str,
-        update_data: dict[str, Any],
+        update_data: dict[str, object],
         file_content: bytes | None = None,
         conversation_id: str | None = None,
     ) -> FileDocument:
@@ -312,7 +312,7 @@ class FileService:
 
         # Build the update from allowlisted fields only — never spread the raw
         # payload, or a client could mass-assign protected fields (user_id, …).
-        set_fields: dict[str, Any] = {
+        set_fields: dict[str, object] = {
             field: update_data[field]
             for field in ALLOWED_FILE_UPDATE_FIELDS
             if update_data.get(field) is not None
@@ -323,7 +323,7 @@ class FileService:
                 generated_summary = await generate_file_summary(
                     file_content=file_content,
                     content_type=file_data.type,
-                    filename=set_fields.get("filename") or file_data.filename,
+                    filename=text_opt_bag(set_fields, "filename") or file_data.filename,
                     user_id=user_id,
                 )
                 description, page_wise_summary = process_summary(generated_summary)
@@ -344,7 +344,7 @@ class FileService:
         description_updated = "description" in set_fields
         # updated_at is stamped by the repository.
         updated_file = await file_repository.apply_metadata_update(
-            file_id, user_id=user_id, update=FileUpdate(**set_fields)
+            file_id, user_id=user_id, update=FileUpdate.model_validate(set_fields)
         )
         if not updated_file:
             raise HTTPException(status_code=404, detail="File not found after update")
@@ -355,7 +355,7 @@ class FileService:
                 user_id=user_id,
                 filename=updated_file.filename,
                 content_type=updated_file.type,
-                summary=set_fields["description"],
+                summary=text_bag(set_fields, "description"),
                 conversation_id=conversation_id,
             )
 

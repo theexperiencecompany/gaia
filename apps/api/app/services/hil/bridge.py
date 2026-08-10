@@ -243,7 +243,7 @@ async def _publish_entry(stream_id: str, entry: ApprovalRequestEntry) -> None:
     Both carry the same plain-dict frame the rest of the tool_data pipeline
     (``stream_utils``, the bot bridge, the frontend parser) reads.
     """
-    frame = {"tool_data": entry.model_dump()}
+    frame: dict[str, object] = {"tool_data": entry.model_dump()}
     await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(frame)}\n\n")
     session = get_session(stream_id)
     if session is not None:

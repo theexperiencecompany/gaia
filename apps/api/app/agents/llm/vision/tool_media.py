@@ -11,7 +11,6 @@ the thread still works if the lane later changes to one that can see pixels.
 """
 
 import asyncio
-from typing import Any
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -24,6 +23,7 @@ from app.constants.media import (
     MEDIA_DESCRIPTIONS_KEY,
     TOOL_MEDIA_DESCRIBE_PROMPT,
 )
+from app.utils.json_helpers import text_bag
 from app.utils.multimodal import extract_text_content, media_blocks
 from shared.py.wide_events import log
 
@@ -55,8 +55,8 @@ async def describe_tool_media(
     described = await asyncio.gather(
         *(
             describe_image(
-                block["base64"],
-                block["mime_type"],
+                text_bag(block, "base64"),
+                text_bag(block, "mime_type"),
                 prompt=prompt,
                 label="tool_media_vision",
             )
@@ -71,7 +71,7 @@ async def describe_tool_media(
             "failed": sum(1 for text in described if text is None),
         },
     )
-    updated: dict[str, Any] = {
+    updated: dict[str, object] = {
         **message.additional_kwargs,
         MEDIA_DESCRIPTIONS_KEY: [text or MEDIA_DESCRIBE_FAILED for text in described],
     }

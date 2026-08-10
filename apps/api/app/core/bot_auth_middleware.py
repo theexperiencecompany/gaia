@@ -27,6 +27,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.bot_token_service import verify_bot_session_token
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.auth_utils import build_user_context
+from app.utils.json_helpers import text_opt_bag
 from shared.py.wide_events import log
 
 
@@ -162,9 +163,9 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         try:
             payload = verify_bot_session_token(token)
 
-            user_id = payload.get("user_id")
-            platform = payload.get("platform")
-            platform_user_id = payload.get("platform_user_id")
+            user_id = text_opt_bag(payload, "user_id")
+            platform = text_opt_bag(payload, "platform")
+            platform_user_id = text_opt_bag(payload, "platform_user_id")
 
             if not user_id or not platform or not platform_user_id:
                 return None

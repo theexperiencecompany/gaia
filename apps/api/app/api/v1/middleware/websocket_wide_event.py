@@ -18,15 +18,15 @@ one canonical ``background_task`` line with ``outcome`` and ``duration_ms``.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
 
+from app.utils.json_helpers import list_bag, text_bag
 from shared.py.wide_events import log_context
 
 ASGIApp = Callable[
     [
-        dict[str, Any],
-        Callable[[], Awaitable[dict[str, Any]]],
-        Callable[[dict[str, Any]], Awaitable[None]],
+        dict[str, object],
+        Callable[[], Awaitable[dict[str, object]]],
+        Callable[[dict[str, object]], Awaitable[None]],
     ],
     Awaitable[None],
 ]
@@ -40,9 +40,9 @@ class WebSocketWideEventMiddleware:
 
     async def __call__(
         self,
-        scope: dict[str, Any],
-        receive: Callable[[], Awaitable[dict[str, Any]]],
-        send: Callable[[dict[str, Any]], Awaitable[None]],
+        scope: dict[str, object],
+        receive: Callable[[], Awaitable[dict[str, object]]],
+        send: Callable[[dict[str, object]], Awaitable[None]],
     ) -> None:
         if scope.get("type") != "websocket":
             await self.app(scope, receive, send)
@@ -51,8 +51,8 @@ class WebSocketWideEventMiddleware:
         # Mirror LoggingMiddleware: honour an incoming trace-id so distributed
         # callers can correlate the connection with the request that opened it.
         trace_id = _header(scope, b"x-trace-id")
-        task = _task_name(scope.get("path", ""))
-        async with log_context(task, trace_id=trace_id, path=scope.get("path", "")):
+        task = _task_name(text_bag(scope, "path"))
+        async with log_context(task, trace_id=trace_id, path=text_bag(scope, "path")):
             await self.app(scope, receive, send)
 
 
@@ -69,9 +69,14 @@ def _task_name(path: str) -> str:
     return "ws_connection"
 
 
-def _header(scope: dict[str, Any], key: bytes) -> str | None:
+def _header(scope: dict[str, object], key: bytes) -> str | None:
     """The value of a header in a raw ASGI scope, if present."""
-    for name, value in scope.get("headers", ()):
+    for header in list_bag(scope, "headers"):
+        if not isinstance(header, tuple) or len(header) != 2:
+            continue
+        name, value = header
+        if not isinstance(name, bytes) or not isinstance(value, bytes):
+            continue
         if name == key:
             return str(value.decode("latin-1"))
     return None

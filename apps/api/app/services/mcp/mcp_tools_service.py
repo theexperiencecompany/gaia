@@ -89,7 +89,7 @@ async def store_mcp_tools_batch(items: Sequence[tuple[str, Sequence[RawToolMetad
         raise
 
 
-async def get_integration_tools(integration_id: str) -> list[dict[str, Any]]:
+async def get_integration_tools(integration_id: str) -> list[dict[str, object]]:
     """Stored tools for an integration as plain dicts (frontend/display consumers)."""
     try:
         tools = await integration_repository.get_tools(integration_id)
@@ -104,16 +104,16 @@ async def get_integration_tools(integration_id: str) -> list[dict[str, Any]]:
         return []
 
 
-async def get_all_mcp_tools() -> dict[str, dict[str, Any]]:
+async def get_all_mcp_tools() -> dict[str, dict[str, object]]:
     """All MCP tools with metadata, keyed by integration_id. Redis-cached 24h."""
     cached = await get_cache(MCP_TOOLS_CACHE_KEY)
     if cached:
         # get_cache is typed Any; this key is only ever written below as
         # the `grouped` roll-up.
-        return cast(dict[str, dict[str, Any]], cached)
+        return cast(dict[str, dict[str, object]], cached)
 
     try:
-        grouped: dict[str, dict[str, Any]] = {
+        grouped: dict[str, dict[str, object]] = {
             record.integration_id: {
                 "tools": [t.model_dump() for t in record.tools],
                 "name": record.name,

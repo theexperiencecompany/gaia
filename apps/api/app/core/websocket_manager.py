@@ -1,5 +1,5 @@
 import json
-from typing import Any, ClassVar, TypeVar, cast
+from typing import ClassVar, TypeVar, cast
 
 from fastapi import WebSocket
 
@@ -47,7 +47,7 @@ class WebSocketManager:
         log.set(websocket={"user_id": user_id, "connection_id": id(websocket)})
         log.info(f"{LogTag.STARTUP} Removed WebSocket connection for user", user_id=user_id)
 
-    async def broadcast_to_user(self, user_id: str, message: dict[str, Any]) -> None:
+    async def broadcast_to_user(self, user_id: str, message: dict[str, object]) -> None:
         """Broadcast message to all connections for a user"""
 
         # If we don't have websocket pool (not main app), publish to RabbitMQ
@@ -75,7 +75,7 @@ class WebSocketManager:
         for ws in disconnected:
             self.connections[user_id].discard(ws)
 
-    async def _publish_to_rabbitmq(self, user_id: str, message: dict[str, Any]) -> None:
+    async def _publish_to_rabbitmq(self, user_id: str, message: dict[str, object]) -> None:
         """Publish WebSocket message to RabbitMQ for main app to broadcast."""
         try:
             publisher = await get_rabbitmq_publisher()

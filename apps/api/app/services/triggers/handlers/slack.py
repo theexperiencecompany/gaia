@@ -3,7 +3,7 @@ Slack trigger handler.
 """
 
 import asyncio
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -21,6 +21,7 @@ from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
+from app.utils.json_helpers import text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 
@@ -105,11 +106,11 @@ class SlackTriggerHandler(TriggerHandler):
             channel_ids = [""]
 
         # Build list of all triggers to register
-        triggers_to_register: list[tuple[str, dict[str, Any]]] = []
+        triggers_to_register: list[tuple[str, dict[str, object]]] = []
 
         # Always register main message trigger for regular channel messages
         for channel_id in channel_ids:
-            base_config: dict[str, Any] = {}
+            base_config: dict[str, object] = {}
             if channel_id:
                 base_config["channel_id"] = channel_id
             triggers_to_register.append(("SLACK_RECEIVE_MESSAGE", base_config.copy()))
@@ -139,7 +140,7 @@ class SlackTriggerHandler(TriggerHandler):
             return []
 
         # Register all triggers in parallel
-        async def register_single(composio_slug: str, config: dict[str, Any]) -> list[str]:
+        async def register_single(composio_slug: str, config: dict[str, object]) -> list[str]:
             return await asyncio.to_thread(
                 self._register_single_trigger_sync, user_id, composio_slug, config
             )
@@ -185,7 +186,7 @@ class SlackTriggerHandler(TriggerHandler):
         return successful_ids
 
     def _register_single_trigger_sync(
-        self, user_id: str, composio_slug: str, trigger_config: dict[str, Any]
+        self, user_id: str, composio_slug: str, trigger_config: dict[str, object]
     ) -> list[str]:
         """Helper to register a single Composio trigger synchronously."""
         try:
@@ -216,7 +217,7 @@ class SlackTriggerHandler(TriggerHandler):
             return []
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows matching a Slack trigger event."""
         log.set_ns("trigger", integration_id="slack", trigger_type=event_type)
@@ -247,20 +248,29 @@ class SlackTriggerHandler(TriggerHandler):
                     # Get trigger_data
                     trigger_data = config_dict.get("trigger_data", {})
 
-                    # Filter by channel_ids if specified
-                    channel_ids_str = trigger_data.get("channel_ids", "")
-                    if channel_ids_str:
-                        # Parse comma-separated channel IDs
+                    # Filter by channel_ids if specified (list from the config
+                    # model, or comma-separated string from legacy stored configs)
+                    channel_ids_value = trigger_data.get("channel_ids")
+                    if isinstance(channel_ids_value, list):
                         selected_channels = [
-                            c.strip() for c in channel_ids_str.split(",") if c.strip()
+                            c.strip() for c in channel_ids_value if isinstance(c, str) and c.strip()
                         ]
+                    elif isinstance(channel_ids_value, str):
+                        selected_channels = [
+                            c.strip() for c in channel_ids_value.split(",") if c.strip()
+                        ]
+                    else:
+                        selected_channels = []
+                    if selected_channels:
                         # Use typed payload model for type-safe access
                         try:
                             payload = SlackReceiveMessagePayload.model_validate(data)
                             message_channel = payload.channel or ""
                         except Exception:
                             # Fallback to dict access if validation fails
-                            message_channel = data.get("channel") or data.get("channel_id", "")
+                            message_channel = text_opt_bag(data, "channel") or text_bag(
+                                data, "channel_id"
+                            )
 
                         # If channels specified and message not in list, skip
                         if selected_channels and message_channel not in selected_channels:

@@ -2,7 +2,6 @@
 
 import hashlib
 import time
-from typing import Any
 
 from app.utils.search.budget import FreeTierBudget
 from app.utils.search.models import SearchResponse
@@ -39,7 +38,7 @@ class SearchEngine:
         # A query hash (never the raw text) keeps the log high-cardinality but
         # leak-free; the hash still lets us correlate retries of the same query.
         query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:12]
-        attempts: list[dict[str, Any]] = []
+        attempts: list[dict[str, object]] = []
         result = SearchResponse()
 
         for provider in self._providers:

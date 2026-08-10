@@ -6,7 +6,7 @@ tracked todos. Follows the same pattern as todo_vector_utils.py.
 """
 
 from datetime import UTC, datetime
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
@@ -155,7 +155,7 @@ async def search_canvas_context(
         )
 
         if include_completed:
-            where_filter: dict[str, Any] = {"user_id": str(user_id)}
+            where_filter: dict[str, object] = {"user_id": str(user_id)}
         else:
             where_filter = {
                 "$and": [

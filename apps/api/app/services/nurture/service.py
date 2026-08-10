@@ -7,7 +7,6 @@ enforces the frequency caps.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from urllib.parse import urlencode
 
 from app.config.settings import settings
@@ -55,7 +54,7 @@ async def _record_step(user_id: str, step_key: str, now: datetime, status: str) 
 
 
 async def _send_step(user: UserDocument, step: NurtureStep) -> None:
-    context: dict[str, Any] = {
+    context: dict[str, object] = {
         "user_name": user.name,
         "contact_email": CONTACT_EMAIL,
         "founder_meeting_url": FOUNDER_MEETING_URL,

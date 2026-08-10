@@ -31,6 +31,7 @@ from app.services.integrations.integration_connection_service import (
 from app.services.integrations.user_integrations import add_user_integration
 from app.services.mcp.mcp_tools_service import get_integration_tools
 from app.utils.creator import format_creator
+from app.utils.json_helpers import int_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -59,8 +60,11 @@ async def get_public_integration(
 
             stored_tools = await get_integration_tools(native.id)
             integration_tools = [
-                IntegrationTool(name=t["name"], description=t.get("description"))
+                IntegrationTool(
+                    name=text_bag(t, "name"), description=text_opt_bag(t, "description")
+                )
                 for t in stored_tools
+                if isinstance(t, dict)
             ]
 
             log.set(integration_name=native.name)
@@ -89,7 +93,7 @@ async def get_public_integration(
         # Fallback: legacy hash-based lookup
         if not integration:
             slug_parts = parse_integration_slug(identifier)
-            short_id = slug_parts.get("shortid")
+            short_id = text_opt_bag(slug_parts, "shortid")
             if short_id:
                 integration = await integration_repository.get_public_by_id_prefix(short_id)
 
@@ -99,7 +103,7 @@ async def get_public_integration(
         response_data = format_public_integration_response(integration)
         log.set(integration_name=response_data.get("name"))
         log.set(outcome="success")
-        return PublicIntegrationDetailResponse(**response_data)
+        return PublicIntegrationDetailResponse.model_validate(response_data)
 
     except HTTPException:
         raise
@@ -230,7 +234,11 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
             log.set(outcome="success")
             return SearchIntegrationsResponse(integrations=[], query=q)
 
-        relevance_map = {r["integration_id"]: r["relevance_score"] for r in results}
+        relevance_map = {
+            text_bag(r, "integration_id"): int_bag(r, "relevance_score")
+            for r in results
+            if isinstance(r, dict)
+        }
         integration_ids = list(relevance_map.keys())
 
         integrations = await integration_repository.find_public_by_ids(integration_ids)

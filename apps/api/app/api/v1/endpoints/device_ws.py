@@ -14,7 +14,6 @@ import asyncio
 import contextlib
 import json
 import time
-from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -129,7 +128,7 @@ async def _receive_loop(websocket: WebSocket, device_id: str, state: dict[str, f
         raw = await websocket.receive_text()
         state["last_recv"] = time.monotonic()
         try:
-            frame: dict[str, Any] = json.loads(raw)
+            frame: dict[str, object] = json.loads(raw)
         except json.JSONDecodeError:
             log.warning(f"{LogTag.API} Device sent malformed frame", device_id=device_id)
             continue

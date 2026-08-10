@@ -11,7 +11,7 @@ Handles:
 
 from datetime import UTC, datetime, timedelta
 import random
-from typing import Any, cast
+from typing import cast
 from uuid import uuid4
 
 from arq.connections import ArqRedis
@@ -34,6 +34,7 @@ from app.services.todo_canvas_storage import read_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.cron_utils import CronError, get_next_run_time
+from app.utils.json_helpers import text_opt_bag
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
@@ -60,14 +61,16 @@ async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]
             # shape — cast, not isinstance (Type Safety item 12). Narrowing it to
             # the fields the agent reads would drop `onboarding`, which
             # construct_langchain_messages needs for custom instructions.
-            return cast(AuthenticatedUser, user_data), Timezone.parse(user_data.get("timezone"))
+            return cast(AuthenticatedUser, user_data), Timezone.parse(
+                text_opt_bag(user_data, "timezone")
+            )
         return {"user_id": user_id}, Timezone.utc()
     except Exception as e:
         log.warning("tracked_todo.load_user_failed", user_id=user_id, error=str(e))
         return {"user_id": user_id}, Timezone.utc()
 
 
-async def execute_tracked_todo(_ctx: dict[str, Any], todo_id: str) -> str:
+async def execute_tracked_todo(_ctx: dict[str, object], todo_id: str) -> str:
     """
     ARQ task: execute a single scheduled tracked todo.
 
@@ -216,7 +219,7 @@ async def _run_execution(doc: TodoDocument, user_id: str, *, user_data: Authenti
         # Deferred import to avoid circular dependency
         from app.services.workflow.queue_service import WorkflowQueueService
 
-        context = {
+        context: dict[str, object] = {
             "trigger_type": "scheduled_todo",
             "todo_id": doc.id,
         }
@@ -327,7 +330,7 @@ async def _execute_via_agent(
         selectedTool=None,
     )
 
-    trigger_context = {
+    trigger_context: dict[str, object] = {
         "trigger_type": "scheduled_todo",
         "todo_id": todo_id,
         "todo_title": title,
@@ -485,7 +488,7 @@ def _compute_next_run(
         return None
 
 
-async def safety_net_check_orphaned_todos(_ctx: dict[str, Any]) -> str:
+async def safety_net_check_orphaned_todos(_ctx: dict[str, object]) -> str:
     """
     Cron safety net: find scheduled tracked todos that should have run but
     were never picked up (e.g. worker was down, job was lost).

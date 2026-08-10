@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Literal
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
@@ -39,7 +39,7 @@ async def construct_langchain_messages(
     reply_to_message: ReplyToMessageData | None = None,
     # Open by construction: schedulers spread arbitrary provider trigger data
     # through this alongside the agent's own keys, so there is no fixed shape.
-    trigger_context: dict[str, Any] | None = None,
+    trigger_context: dict[str, object] | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
     active_todo_id: str | None = None,
     execution_mode: Literal["interactive", "background"] = "interactive",

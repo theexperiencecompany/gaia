@@ -1,7 +1,10 @@
+from typing import cast
+
 import aio_pika
 from aio_pika import Message
 from aio_pika.abc import AbstractChannel, AbstractRobustConnection
 from aio_pika.exceptions import ChannelPreconditionFailed
+from pamqp.common import FieldTable
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -121,7 +124,9 @@ class RabbitMQPublisher:
             dlq = await self.channel.declare_queue(dlq_name(queue_name), durable=True)
             await dlq.bind(dlx, routing_key=dlq_name(queue_name))
             await self.channel.declare_queue(
-                queue_name, durable=True, arguments=work_queue_arguments(queue_name)
+                queue_name,
+                durable=True,
+                arguments=cast(FieldTable, work_queue_arguments(queue_name)),
             )
         self._outbound_topology_declared = True
 

@@ -10,8 +10,6 @@ conversation that was abandoned without an explicit delete).
 
 from __future__ import annotations
 
-from typing import Any
-
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.services.storage import (
@@ -22,7 +20,7 @@ from app.services.storage import (
 from shared.py.wide_events import log
 
 
-async def prune_inactive_sessions(_ctx: dict[str, Any]) -> str:
+async def prune_inactive_sessions(_ctx: dict[str, object]) -> str:
     """Delete session dirs inactive past SESSION_RETENTION_DAYS."""
     cutoff_days = settings.SESSION_RETENTION_DAYS
     limit = settings.SESSION_PRUNE_BATCH_LIMIT

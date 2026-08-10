@@ -2,7 +2,6 @@
 
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-from typing import Any
 
 from pydantic import BaseModel
 
@@ -25,10 +24,10 @@ _CONTEXT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ctx-fe
 
 def execute_tool(
     tool_name: str,
-    params: dict[str, Any],
+    params: dict[str, object],
     user_id: str,
     output_model: type[BaseModel] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Execute a Composio tool directly (bypasses hook pipeline) and return its data dict.
 
     Args:
@@ -83,15 +82,15 @@ def fetch_all_providers(
     providers: list[str],
     provider_tools: dict[str, str],
     user_id: str,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Fetch all providers in parallel by calling each CUSTOM_GATHER_CONTEXT tool.
 
-    Values stay ``dict[str, Any]``: each is a provider's raw
+    Values stay ``dict[str, object]``: each is a provider's raw
     ``CUSTOM_GATHER_CONTEXT`` payload, whose shape is the provider's own and
     differs per integration (Type Safety item 8).
     """
 
-    def fetch_one(provider: str) -> tuple[str, dict[str, Any] | None]:
+    def fetch_one(provider: str) -> tuple[str, dict[str, object] | None]:
         tool_slug = provider_tools[provider]
         try:
             data = execute_tool(tool_slug, {}, user_id)
@@ -106,7 +105,7 @@ def fetch_all_providers(
             )
             return provider, None
 
-    results: dict[str, Any] = {}
+    results: dict[str, object] = {}
     # Use the module-level dedicated pool instead of creating a new one per call.
     # This prevents unbounded thread creation under concurrent agent sessions
     # and isolates context-fetching threads from the default asyncio pool.

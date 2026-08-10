@@ -40,7 +40,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import re
-from typing import Any
 from uuid import UUID
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -347,7 +346,7 @@ async def prune_thread_versions(pool: AsyncConnectionPool) -> dict[str, int]:
         return totals
 
 
-async def prune_checkpoint_versions(_ctx: dict[str, Any]) -> str:
+async def prune_checkpoint_versions(_ctx: dict[str, object]) -> str:
     """Nightly: sweep orphaned and stale-spawn threads, then prune checkpoint versions."""
 
     manager = await get_checkpointer_manager()

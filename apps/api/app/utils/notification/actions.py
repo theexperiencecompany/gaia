@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import Request
 import httpx
@@ -245,18 +244,18 @@ class ModalActionHandler(ActionHandler):
         )
 
     def _process_template_variables(
-        self, props: dict[str, Any], notification_id: str, action_id: str, user_id: str
-    ) -> dict[str, Any]:
+        self, props: dict[str, object], notification_id: str, action_id: str, user_id: str
+    ) -> dict[str, object]:
         """Substitute ``{{notification_id}}``-style placeholders in modal props.
 
-        Props stay ``dict[str, Any]``: they are the arbitrary payload a modal
+        Props stay ``dict[str, object]``: they are the arbitrary payload a modal
         component declares for itself (``ModalConfig.props``), with no fixed key
         set to model.
         """
         if not props:
             return {}
 
-        processed_props: dict[str, Any] = {}
+        processed_props: dict[str, object] = {}
         template_map = {
             "{{notification_id}}": notification_id,
             "{{action_id}}": action_id,

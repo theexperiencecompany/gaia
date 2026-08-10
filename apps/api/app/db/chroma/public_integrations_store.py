@@ -1,7 +1,5 @@
 """ChromaDB store for public integrations semantic search."""
 
-from typing import Any
-
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.chroma.chromadb import ChromaClient
@@ -14,7 +12,7 @@ async def index_public_integration(
     integration_id: str,
     name: str,
     description: str,
-    tools: list[dict[str, Any]],
+    tools: list[dict[str, object]],
 ) -> None:
     """Index a public integration in ChromaDB for semantic search."""
     log.set(vector=VectorContext(operation="upsert", collection=COLLECTION_NAME))
@@ -76,7 +74,7 @@ async def remove_public_integration(integration_id: str) -> None:
 async def search_public_integrations(
     query: str,
     limit: int = 20,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Search public integrations. Returns list of {integration_id, relevance_score}."""
     log.set(vector=VectorContext(operation="query", collection=COLLECTION_NAME, n_results=limit))
     try:

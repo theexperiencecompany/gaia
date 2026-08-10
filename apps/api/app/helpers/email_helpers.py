@@ -1,7 +1,6 @@
 """Helper functions for email processing."""
 
 import time
-from typing import Any
 import unicodedata
 
 import html2text
@@ -12,6 +11,7 @@ from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
 from app.constants.memory import MemorySourceType
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
+from app.utils.json_helpers import dict_bag, text_bag
 from shared.py.wide_events import log
 
 # HTML to text converter
@@ -48,7 +48,7 @@ def remove_invisible_chars(s: str) -> str:
     return "".join(c for c in s if unicodedata.category(c) not in ("Cf", "Cc"))
 
 
-def process_email_content(emails: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+def process_email_content(emails: list[dict[str, object]]) -> tuple[list[dict[str, object]], int]:
     """
     Process email content converting HTML to clean text.
     Skips platform emails (they're only used for profile discovery).
@@ -59,13 +59,13 @@ def process_email_content(emails: list[dict[str, Any]]) -> tuple[list[dict[str, 
     Returns:
         Tuple of (processed_emails, failed_count)
     """
-    processed = []
+    processed: list[dict[str, object]] = []
     failed_count = 0
 
     for email_data in emails:
         try:
             # Skip platform emails - only used for profile discovery
-            sender = (email_data.get("sender") or email_data.get("from", "")).lower()
+            sender = (text_bag(email_data, "sender") or text_bag(email_data, "from")).lower()
 
             # Check against all platform sender domains from config
             is_platform_email = False
@@ -78,7 +78,7 @@ def process_email_content(emails: list[dict[str, Any]]) -> tuple[list[dict[str, 
             if is_platform_email:
                 continue
 
-            message_text = email_data.get("messageText", "")
+            message_text = text_bag(email_data, "messageText")
             if not message_text.strip():
                 failed_count += 1
                 continue
@@ -112,7 +112,7 @@ def process_email_content(emails: list[dict[str, Any]]) -> tuple[list[dict[str, 
 
 async def store_emails_to_memory(
     user_id: str,
-    processed_emails: list[dict[str, Any]],
+    processed_emails: list[dict[str, object]],
     user_name: str | None = None,
     user_email: str | None = None,
 ) -> None:
@@ -134,13 +134,13 @@ async def store_emails_to_memory(
                 "role": "user",
                 "content": f"""The user RECEIVED this email (not sent by the user).
 
-From: {email_data.get("metadata", {}).get("sender", UNKNOWN_SENDER)}
-Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
+From: {text_bag(dict_bag(email_data, "metadata"), "sender", UNKNOWN_SENDER)}
+Subject: {text_bag(dict_bag(email_data, "metadata"), "subject", NO_SUBJECT)}
 
-{email_data.get("content", "")}""",
+{text_bag(email_data, "content")}""",
             }
             for email_data in processed_emails
-            if email_data.get("content", "").strip()
+            if text_bag(email_data, "content").strip()
         ]
 
         if not messages:

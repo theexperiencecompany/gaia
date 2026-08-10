@@ -6,10 +6,10 @@ This module provides helper functions for Linear GraphQL API interactions:
 """
 
 from difflib import SequenceMatcher
-from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.services.composio.proxy_client import proxy_request_sync
+from app.utils.json_helpers import dict_bag, int_bag, text_opt_bag
 from shared.py.wide_events import log
 
 LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql"
@@ -35,9 +35,9 @@ def history_label_names(raw: object) -> list[str]:
 
 def graphql_request(
     query: str,
-    variables: dict[str, Any] | None,
-    auth_credentials: dict[str, Any],
-) -> dict[str, Any]:
+    variables: dict[str, object] | None,
+    auth_credentials: dict[str, object],
+) -> dict[str, object]:
     """
     Execute a GraphQL request against Linear's API via Composio's proxy.
 
@@ -52,13 +52,13 @@ def graphql_request(
     Raises:
         Exception: If the request fails or returns GraphQL errors
     """
-    user_id = auth_credentials.get("user_id")
+    user_id = text_opt_bag(auth_credentials, "user_id")
     if not user_id:
         raise ValueError("Missing user_id in auth_credentials")
 
     log.set(operation="graphql_request", endpoint=LINEAR_GRAPHQL_ENDPOINT)
 
-    payload: dict[str, Any] = {"query": query}
+    payload: dict[str, object] = {"query": query}
     if variables:
         payload["variables"] = variables
 
@@ -80,11 +80,11 @@ def graphql_request(
 
 def fuzzy_match(
     query: str,
-    candidates: list[dict[str, Any]],
+    candidates: list[dict[str, object]],
     key: str,
     limit: int = 3,
     threshold: float = 0.4,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """
     Fuzzy match a query string against a list of candidates.
 
@@ -148,9 +148,14 @@ def priority_to_int(priority: str) -> int:
     return mapping.get(priority.lower(), 0)
 
 
-def priority_to_str(priority: int) -> str:
-    """Convert Linear priority int to readable string."""
-    mapping = {
+def priority_to_str(priority: int | str) -> str:
+    """Convert Linear priority to a readable string.
+
+    The Linear API sends an int for some queries and the label string for
+    others; both go through the same mapping (string labels that are not
+    canonical keys fall back to "none", exactly as before).
+    """
+    mapping: dict[int | str, str] = {
         0: "none",
         1: "urgent",
         2: "high",
@@ -160,19 +165,23 @@ def priority_to_str(priority: int) -> str:
     return mapping.get(priority, "none")
 
 
-def format_issue_summary(issue: dict[str, Any]) -> dict[str, Any]:
+def format_issue_summary(issue: dict[str, object]) -> dict[str, object]:
     """Format an issue into a concise summary for LLM consumption."""
     return {
         "id": issue.get("id"),
         "identifier": issue.get("identifier"),
         "title": issue.get("title"),
-        "state": issue.get("state", {}).get("name") if issue.get("state") else None,
-        "priority": priority_to_str(issue.get("priority", 0)),
-        "assignee": issue.get("assignee", {}).get("name") if issue.get("assignee") else None,
+        "state": text_opt_bag(dict_bag(issue, "state"), "name") if issue.get("state") else None,
+        "priority": priority_to_str(int_bag(issue, "priority")),
+        "assignee": text_opt_bag(dict_bag(issue, "assignee"), "name")
+        if issue.get("assignee")
+        else None,
         "dueDate": issue.get("dueDate"),
-        "team": issue.get("team", {}).get("key") if issue.get("team") else None,
-        "cycle": issue.get("cycle", {}).get("name") if issue.get("cycle") else None,
-        "parent": issue.get("parent", {}).get("identifier") if issue.get("parent") else None,
+        "team": text_opt_bag(dict_bag(issue, "team"), "key") if issue.get("team") else None,
+        "cycle": text_opt_bag(dict_bag(issue, "cycle"), "name") if issue.get("cycle") else None,
+        "parent": text_opt_bag(dict_bag(issue, "parent"), "identifier")
+        if issue.get("parent")
+        else None,
     }
 
 

@@ -4,7 +4,6 @@ Handles CRUD operations and execution coordination.
 """
 
 import secrets
-from typing import Any
 import uuid
 
 from pymongo.errors import DuplicateKeyError
@@ -1216,7 +1215,7 @@ class WorkflowService:
     @staticmethod
     async def _format_public_workflow(
         row: PublicWorkflowRow, *, default_creator_name: str | None = None
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Shape one hydrated marketplace row into the public-card dict.
 
         Shared by the community and explore lists so the two payloads can't drift.

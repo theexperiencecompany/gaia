@@ -1,7 +1,7 @@
 """Voice mode endpoints — LiveKit session tokens and voice selection."""
 
 import json
-from typing import Annotated, Any
+from typing import Annotated
 import uuid
 
 from fastapi import APIRouter, Depends, Query
@@ -28,11 +28,12 @@ from app.services.voice_service import (
     set_user_voice,
     set_voice_star,
 )
+from app.utils.json_helpers import text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 router = APIRouter()
 
-CurrentUser = Annotated[dict[str, Any], Depends(get_current_user)]
+CurrentUser = Annotated[dict[str, object], Depends(get_current_user)]
 
 
 @router.get(
@@ -48,8 +49,8 @@ async def get_token(
     conversation_id: Annotated[str | None, Query(alias="conversationId")] = None,
 ) -> VoiceTokenResponse:
     """Mint a LiveKit room token (and agent credentials) for a voice session."""
-    user_id = user.get("user_id")
-    user_email: str = user.get("email", "")
+    user_id = text_opt_bag(user, "user_id")
+    user_email: str = text_bag(user, "email")
     if not user_id or not isinstance(user_id, str):
         raise HTTPException(status_code=401, detail="Invalid or missing user_id")
     log.set(
@@ -115,7 +116,7 @@ async def get_token(
 async def get_voices(user: CurrentUser) -> VoiceListResponse:
     """List the curated voice catalog with the user's current selection."""
     log.set(user={"id": user["user_id"]}, operation="list_voices")
-    result = await list_voices(user["user_id"])
+    result = await list_voices(text_bag(user, "user_id"))
     log.set(voice_count=len(result.voices), selected_voice_id=result.selected_voice_id)
     return result
 
@@ -127,7 +128,7 @@ async def select_voice(
 ) -> VoiceSelectionResponse:
     """Set the user's voice for future voice-mode sessions."""
     log.set(user={"id": user["user_id"]}, operation="select_voice", voice_id=payload.voice_id)
-    selected = await set_user_voice(user["user_id"], payload.voice_id)
+    selected = await set_user_voice(text_bag(user, "user_id"), payload.voice_id)
     # May differ from the requested id when a library voice was added to the account.
     log.set(selected_voice_id=selected)
     return VoiceSelectionResponse(selected_voice_id=selected)
@@ -146,5 +147,5 @@ async def star_voice(
         voice_id=voice_id,
         starred=payload.starred,
     )
-    starred_ids = await set_voice_star(user["user_id"], voice_id, payload.starred)
+    starred_ids = await set_voice_star(text_bag(user, "user_id"), voice_id, payload.starred)
     return StarredVoicesResponse(starred_voice_ids=starred_ids)

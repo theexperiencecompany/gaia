@@ -10,7 +10,6 @@ as flat fields on the Skill document.
 """
 
 import re
-from typing import Any
 
 import httpx
 
@@ -35,6 +34,7 @@ from app.services.storage import (
     ensure_user_skills_dir,
     write_skill_file,
 )
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import SkillContext, log
 
 
@@ -87,7 +87,7 @@ async def _fetch_github_contents(
     path: str,
     client: httpx.AsyncClient,
     branch: str = "main",
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Fetch directory contents from GitHub API.
 
     Returns list of file info dicts with 'name', 'path', 'type', 'download_url'.
@@ -109,7 +109,7 @@ async def _fetch_github_contents(
         )
 
     resp.raise_for_status()
-    data: list[dict[str, Any]] | dict[str, Any] = resp.json()
+    data: list[dict[str, object]] | dict[str, object] = resp.json()
 
     if isinstance(data, dict):
         return [data]
@@ -188,7 +188,9 @@ async def install_from_github(
             )
 
         # Download SKILL.md
-        skill_md_content = await _fetch_file_content(skill_md_entry["download_url"], client=client)
+        skill_md_content = await _fetch_file_content(
+            text_bag(skill_md_entry, "download_url"), client=client
+        )
 
         # Validate
         errors = validate_skill_content(skill_md_content)
@@ -262,7 +264,7 @@ async def _download_github_dir(
     owner: str,
     repo: str,
     remote_path: str,
-    contents: list[dict[str, Any]],
+    contents: list[dict[str, object]],
     file_list: list[str],
     client: httpx.AsyncClient,
 ) -> None:
@@ -275,13 +277,15 @@ async def _download_github_dir(
             continue  # Already handled
 
         if entry_type == "file":
-            content = await _fetch_file_content(entry["download_url"], client=client)
-            relative_path = entry["path"].removeprefix(f"{remote_path}/")
+            content = await _fetch_file_content(text_bag(entry, "download_url"), client=client)
+            relative_path = text_bag(entry, "path").removeprefix(f"{remote_path}/")
             await write_skill_file(user_id, skill_name, relative_path, content)
             file_list.append(relative_path)
 
         elif entry_type == "dir":
-            sub_contents = await _fetch_github_contents(owner, repo, entry["path"], client=client)
+            sub_contents = await _fetch_github_contents(
+                owner, repo, text_bag(entry, "path"), client=client
+            )
             await _download_github_dir(
                 user_id=user_id,
                 skill_name=skill_name,

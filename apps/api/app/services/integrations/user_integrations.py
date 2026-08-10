@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Literal
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import get_integration_by_id
@@ -25,11 +25,12 @@ from app.services.integrations.marketplace import (
     assemble_integration_response,
     get_integration_details,
 )
+from app.utils.json_helpers import list_bag, text_opt_bag
 from shared.py.wide_events import log
 
 
 def _build_integration_response(
-    integration_id: str, doc: dict[str, Any] | None, creators: dict[str, dict[str, Any]]
+    integration_id: str, doc: dict[str, object] | None, creators: dict[str, dict[str, object]]
 ) -> IntegrationResponse | None:
     """Build an IntegrationResponse from prefetched data — no per-item DB queries.
 
@@ -38,12 +39,12 @@ def _build_integration_response(
     creator from the prefetched ``creators`` map. Shares the assembly step with
     get_integration_details via assemble_integration_response.
     """
-    created_by = doc.get("created_by") if doc else None
+    created_by = text_opt_bag(doc, "created_by") if doc else None
     creator_doc = creators.get(created_by) if created_by else None
     return assemble_integration_response(
         get_integration_by_id(integration_id),
         doc,
-        doc.get("tools") if doc else None,
+        [t for t in list_bag(doc, "tools") if isinstance(t, dict)] if doc else None,
         creator_doc,
     )
 
@@ -57,14 +58,16 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
     # One query for every integration's stored doc (custom metadata + stored MCP
     # tools). Platform metadata comes from the in-memory catalog, so there are no
     # per-integration DB round trips.
-    int_docs: dict[str, dict[str, Any]] = {}
+    int_docs: dict[str, dict[str, object]] = {}
     if ids:
         for doc_model in await integration_repository.find_by_ids(ids):
             int_docs[doc_model.integration_id] = doc_model.model_dump()
 
     # One query for all creators referenced by the user's custom integrations.
-    creator_ids = [doc["created_by"] for doc in int_docs.values() if doc.get("created_by")]
-    creators: dict[str, dict[str, Any]] = {}
+    creator_ids = [
+        created_by for doc in int_docs.values() if (created_by := text_opt_bag(doc, "created_by"))
+    ]
+    creators: dict[str, dict[str, object]] = {}
     for creator in await user_repository.find_by_ids(creator_ids):
         creators[creator.id] = {"name": creator.name, "picture": creator.picture}
 
@@ -92,7 +95,7 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
 
 
 @Cacheable(key_pattern="tools:user:{user_id}:integrations", ttl=ONE_DAY_TTL)
-async def get_user_integration_records(user_id: str) -> list[dict[str, Any]]:
+async def get_user_integration_records(user_id: str) -> list[dict[str, object]]:
     """Return the raw records for all of a user's integrations.
 
     Includes both ``created`` (added, not yet authenticated) and ``connected``
@@ -250,7 +253,7 @@ async def check_user_has_integration(user_id: str, integration_id: str) -> bool:
 
 
 @Cacheable(key_pattern="tools:user:{user_id}:integration_capabilities", ttl=ONE_DAY_TTL)
-async def get_user_integration_capabilities(user_id: str) -> dict[str, Any]:
+async def get_user_integration_capabilities(user_id: str) -> dict[str, object]:
     """
     Get capabilities (tools) for user's connected integrations + core tools.
 

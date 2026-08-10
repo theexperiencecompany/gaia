@@ -6,7 +6,6 @@ This service provides methods to store and search GAIA's self-knowledge
 """
 
 from dataclasses import dataclass
-from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -18,7 +17,9 @@ class KnowledgeItem(BaseModel):
     """Schema for a single knowledge item."""
 
     content: str = Field(..., min_length=1, description="Knowledge content to store")
-    metadata: dict[str, Any] | None = Field(default_factory=dict, description="Optional metadata")
+    metadata: dict[str, object] | None = Field(
+        default_factory=dict, description="Optional metadata"
+    )
 
     @field_validator("content")
     @classmethod
@@ -35,7 +36,7 @@ class KnowledgeResult:
 
     content: str
     relevance_score: float
-    metadata: dict[str, Any]
+    metadata: dict[str, object]
 
 
 class GaiaKnowledgeService:

@@ -12,7 +12,6 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import (
     Annotated,
-    Any,
     TypeAlias,
     TypedDict,
     Union,
@@ -44,6 +43,7 @@ from app.services.integrations.integration_service import (
 from app.services.integrations.user_integrations import get_user_integrations
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth.oauth_service import get_all_integrations_status
+from app.utils.json_helpers import dict_bag, float_bag, text_opt_bag
 from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
@@ -231,7 +231,7 @@ class ScoredToolHit(TypedDict):
 # ``SearchItem``s from the tool namespaces, or the public-integration store's
 # raw dicts. Kept as a union because the two backends genuinely differ; the
 # consumer discriminates on the first element and narrows with ``cast``.
-SearchTaskResult: TypeAlias = Union[list[SearchItem], list[dict[str, Any]]]
+SearchTaskResult: TypeAlias = Union[list[SearchItem], list[dict[str, object]]]
 
 
 async def _resolve_connected_subagents(user_id: str) -> dict[str, str | None]:
@@ -373,7 +373,7 @@ def _build_search_tasks(
 
 
 def _process_public_integration_result(
-    result: list[dict[str, Any]],
+    result: list[dict[str, object]],
 ) -> list[ScoredToolHit]:
     """Process public integration search results."""
     processed: list[ScoredToolHit] = []
@@ -386,7 +386,9 @@ def _process_public_integration_result(
             subagent_key = (
                 f"subagent:{integration_id} ({name})" if name else f"subagent:{integration_id}"
             )
-            processed.append(ScoredToolHit(id=subagent_key, score=item.get("relevance_score", 0)))
+            processed.append(
+                ScoredToolHit(id=subagent_key, score=float_bag(item, "relevance_score"))
+            )
 
     return processed
 
@@ -477,7 +479,7 @@ async def _process_search_results(
         is_public_search = isinstance(result[0], dict)
 
         if is_public_search:
-            processed = _process_public_integration_result(cast(list[dict[str, Any]], result))
+            processed = _process_public_integration_result(cast(list[dict[str, object]], result))
         else:
             items = cast(list[SearchItem], result)
             try:
@@ -647,7 +649,7 @@ def get_retrieve_tools_function(
             tool_space=tool_space,
             include_subagents=include_subagents,
             user_id=agent_configurable(config).get("user_id")
-            or config.get("metadata", {}).get("user_id"),
+            or text_opt_bag(dict_bag(config, "metadata"), "user_id"),
         )
         if not query and not exact_tool_names:
             # A no-usable-argument call (commonly retrieve_tools(exact_tool_names=[]),
@@ -688,7 +690,7 @@ def get_retrieve_tools_function(
         user_id = agent_configurable(config).get("user_id")
         if not user_id:
             # Fallback to metadata
-            user_id = config.get("metadata", {}).get("user_id")
+            user_id = text_opt_bag(dict_bag(config, "metadata"), "user_id")
             if user_id and "configurable" in config:
                 # Update configurable with user_id for consistency
                 config["configurable"]["user_id"] = user_id

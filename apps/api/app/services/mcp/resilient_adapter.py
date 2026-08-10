@@ -13,7 +13,7 @@ subsequent cold connect (post worker restart, post LRU eviction) skips it.
 
 from functools import lru_cache
 import json
-from typing import Any, cast
+from typing import cast
 
 from langchain_core.tools import BaseTool
 import mcp_use.agents.adapters.langchain_adapter as _mcp_use_lc_adapter
@@ -37,7 +37,7 @@ def _cached_jsonschema_to_pydantic_by_key(schema_key: str) -> type[BaseModel]:
     return cast(type[BaseModel], _ORIGINAL_JSONSCHEMA_TO_PYDANTIC(json.loads(schema_key)))
 
 
-def _memoized_jsonschema_to_pydantic(schema: dict[str, Any]) -> type[BaseModel]:
+def _memoized_jsonschema_to_pydantic(schema: dict[str, object]) -> type[BaseModel]:
     """Drop-in replacement for mcp_use's jsonschema_to_pydantic with an LRU cache.
 
     Falls through to the original when the schema isn't JSON-serializable

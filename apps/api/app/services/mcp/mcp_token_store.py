@@ -8,7 +8,7 @@ Follows same patterns as Composio for parity.
 from datetime import UTC, datetime
 import json
 import secrets
-from typing import Any, cast
+from typing import cast
 
 from cryptography.fernet import Fernet
 from sqlalchemy import select
@@ -373,7 +373,7 @@ class MCPTokenStore:
                 await session.commit()
                 log.info(f"{LogTag.MCP} Deleted DCR client for", integration_id=integration_id)
 
-    async def store_dcr_client(self, integration_id: str, dcr_data: dict[str, Any]) -> None:
+    async def store_dcr_client(self, integration_id: str, dcr_data: dict[str, object]) -> None:
         """Store DCR client registration from dynamic registration.
 
         The whole RFC 7591 response is persisted verbatim — servers return
@@ -480,7 +480,7 @@ class MCPTokenStore:
         integration_id: str,
         client_id: str | None = None,
         client_secret: str | None = None,
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, object] | None:
         """
         Introspect token at authorization server per RFC 7662.
 

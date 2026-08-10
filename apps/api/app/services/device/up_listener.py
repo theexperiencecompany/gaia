@@ -16,7 +16,6 @@ own queue and never stalls the shared listener or other sessions.
 import asyncio
 import contextlib
 import json
-from typing import Any
 
 from app.constants.device_bridge import DEVICE_LISTENER_RESUBSCRIBE_SECONDS
 from app.constants.log_tags import LogTag
@@ -24,7 +23,7 @@ from app.db.redis import close_pubsub, redis_cache
 from app.services.device.bridge import POD_ID, up_pod_channel
 from shared.py.wide_events import log, log_context
 
-Frame = dict[str, Any]
+Frame = dict[str, object]
 
 # session_id -> that session's inbox. The owning connector creates and drains it.
 _inboxes: dict[str, asyncio.Queue[Frame]] = {}

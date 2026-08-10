@@ -1,14 +1,14 @@
-from datetime import UTC, datetime
-from typing import Any
+from datetime import datetime
 
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoResponse
+from app.utils.json_helpers import list_bag, text_bag
 from shared.py.wide_events import log
 
 
-def create_todo_content_for_embedding(todo_data: dict[str, Any]) -> str:
+def create_todo_content_for_embedding(todo_data: dict[str, object]) -> str:
     """Build a text representation of a todo for embedding generation.
 
     Takes a dict rather than the ``TodoResponse`` its callers dump, because
@@ -29,7 +29,9 @@ def create_todo_content_for_embedding(todo_data: dict[str, Any]) -> str:
 
     # Add labels for context
     if todo_data.get("labels"):
-        labels_text = ", ".join(todo_data["labels"])
+        labels_text = ", ".join(
+            lbl for lbl in list_bag(todo_data, "labels") if isinstance(lbl, str)
+        )
         parts.append(f"Labels: {labels_text}")
 
     # Add priority information
@@ -47,7 +49,9 @@ def create_todo_content_for_embedding(todo_data: dict[str, Any]) -> str:
     # Add subtasks information
     if todo_data.get("subtasks"):
         subtask_titles = [
-            subtask.get("title", "") for subtask in todo_data["subtasks"] if subtask.get("title")
+            text_bag(subtask, "title")
+            for subtask in list_bag(todo_data, "subtasks")
+            if isinstance(subtask, dict) and text_bag(subtask, "title")
         ]
         if subtask_titles:
             parts.append(f"Subtasks: {', '.join(subtask_titles)}")
@@ -55,7 +59,7 @@ def create_todo_content_for_embedding(todo_data: dict[str, Any]) -> str:
     return " | ".join(parts)
 
 
-async def store_todo_embedding(todo_id: str, todo_data: dict[str, Any], user_id: str) -> bool:
+async def store_todo_embedding(todo_id: str, todo_data: dict[str, object], user_id: str) -> bool:
     """Generate and store a todo's embedding in ChromaDB. Returns success."""
     log.set(operation="store_todo_embedding", todo_id=todo_id, user_id=user_id)
     try:
@@ -77,20 +81,20 @@ async def store_todo_embedding(todo_id: str, todo_data: dict[str, Any], user_id:
                 todo_data.get("completed", False)
             ).lower(),  # Convert to "true" or "false"
             "created_at": (
-                todo_data.get("created_at", datetime.now(UTC)).isoformat()
-                if isinstance(todo_data.get("created_at"), datetime)
+                raw_created.isoformat()
+                if isinstance(raw_created := todo_data.get("created_at"), datetime)
                 else str(todo_data.get("created_at", ""))
             ),
             "updated_at": (
-                todo_data.get("updated_at", datetime.now(UTC)).isoformat()
-                if isinstance(todo_data.get("updated_at"), datetime)
+                raw_updated.isoformat()
+                if isinstance(raw_updated := todo_data.get("updated_at"), datetime)
                 else str(todo_data.get("updated_at", ""))
             ),
             "has_due_date": str(
                 bool(todo_data.get("due_date"))
             ).lower(),  # Convert to "true" or "false"
-            "labels_count": str(len(todo_data.get("labels", []))),
-            "subtasks_count": str(len(todo_data.get("subtasks", []))),
+            "labels_count": str(len(list_bag(todo_data, "labels"))),
+            "subtasks_count": str(len(list_bag(todo_data, "subtasks"))),
         }
 
         # Add optional fields to metadata
@@ -98,7 +102,9 @@ async def store_todo_embedding(todo_id: str, todo_data: dict[str, Any], user_id:
             metadata["project_id"] = str(todo_data["project_id"])
 
         if todo_data.get("labels"):
-            metadata["labels"] = ", ".join(todo_data["labels"])
+            metadata["labels"] = ", ".join(
+                lbl for lbl in list_bag(todo_data, "labels") if isinstance(lbl, str)
+            )
 
         if todo_data.get("due_date"):
             metadata["due_date"] = (
@@ -124,7 +130,7 @@ async def store_todo_embedding(todo_id: str, todo_data: dict[str, Any], user_id:
         return False
 
 
-async def update_todo_embedding(todo_id: str, todo_data: dict[str, Any], user_id: str) -> bool:
+async def update_todo_embedding(todo_id: str, todo_data: dict[str, object], user_id: str) -> bool:
     """Replace a todo's embedding in ChromaDB. Returns success."""
     try:
         # Delete existing embedding

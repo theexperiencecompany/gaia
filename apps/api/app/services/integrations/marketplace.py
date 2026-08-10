@@ -1,7 +1,6 @@
 """Marketplace integration functions - get_all_integrations, get_integration_details."""
 
 import asyncio
-from typing import Any
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
@@ -16,6 +15,7 @@ from app.models.integration_models import (
 from app.models.oauth_models import OAuthIntegration
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integration_tools
+from app.utils.json_helpers import list_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 
@@ -26,7 +26,7 @@ async def get_all_integrations(
     """Get all available integrations for the marketplace."""
     log.set(integration={"provider": category or "all", "action": "get_all_integrations"})
 
-    async def fetch_mcp_tools() -> dict[str, dict[str, Any]]:
+    async def fetch_mcp_tools() -> dict[str, dict[str, object]]:
         return await get_all_mcp_tools()
 
     async def fetch_custom_integrations() -> list[IntegrationResponse]:
@@ -53,12 +53,17 @@ async def get_all_integrations(
         # Hydrate tools from global store (SSoT format: {"tools": [...], "name": ..., "icon_url": ...})
         stored_data = all_mcp_tools.get(oauth_int.id, {})
         stored_tools = (
-            stored_data.get("tools", []) if isinstance(stored_data, dict) else stored_data
+            [t for t in list_bag(stored_data, "tools") if isinstance(t, dict)]
+            if isinstance(stored_data, dict)
+            else stored_data
         )
         if stored_tools:
             response.tools = [
-                IntegrationTool(name=t["name"], description=t.get("description"))
+                IntegrationTool(
+                    name=text_bag(t, "name"), description=text_opt_bag(t, "description")
+                )
                 for t in stored_tools
+                if isinstance(t, dict)
             ]
 
         platform_integrations.append(response)
@@ -77,9 +82,9 @@ async def get_all_integrations(
 
 def assemble_integration_response(
     platform_integration: OAuthIntegration | None,
-    custom_doc: dict[str, Any] | None,
-    stored_tools: list[dict[str, Any]] | None,
-    creator_doc: dict[str, Any] | None,
+    custom_doc: dict[str, object] | None,
+    stored_tools: list[dict[str, object]] | None,
+    creator_doc: dict[str, object] | None,
 ) -> IntegrationResponse | None:
     """Assemble an IntegrationResponse from already-resolved pieces.
 
@@ -92,7 +97,7 @@ def assemble_integration_response(
         response = IntegrationResponse.from_oauth_integration(platform_integration)
     elif custom_doc:
         try:
-            response = IntegrationResponse.from_integration(Integration(**custom_doc))
+            response = IntegrationResponse.from_integration(Integration.model_validate(custom_doc))
         except Exception as e:
             log.error(
                 f"{LogTag.INTEGRATION} Failed to parse integration",
@@ -105,13 +110,15 @@ def assemble_integration_response(
 
     if stored_tools and not response.tools:
         response.tools = [
-            IntegrationTool(name=t["name"], description=t.get("description")) for t in stored_tools
+            IntegrationTool(name=text_bag(t, "name"), description=text_opt_bag(t, "description"))
+            for t in stored_tools
+            if isinstance(t, dict)
         ]
 
     if creator_doc:
         response.creator = {
-            "name": creator_doc.get("name"),
-            "picture": creator_doc.get("picture"),
+            "name": text_opt_bag(creator_doc, "name"),
+            "picture": text_opt_bag(creator_doc, "picture"),
         }
 
     return response
@@ -127,8 +134,8 @@ async def get_integration_details(integration_id: str) -> IntegrationResponse | 
         return None
 
     # Creator lives only on custom integration docs; platform entries have none.
-    creator_doc = None
-    created_by = resolved.custom_doc.get("created_by") if resolved.custom_doc else None
+    creator_doc: dict[str, object] | None = None
+    created_by = text_opt_bag(resolved.custom_doc, "created_by") if resolved.custom_doc else None
     if created_by:
         try:
             creator = await user_repository.get(created_by)

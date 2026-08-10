@@ -46,6 +46,15 @@ from app.templates.docstrings.linear_tool_docs import (
     CUSTOM_RESOLVE_CONTEXT as CUSTOM_RESOLVE_CONTEXT_DOC,
     CUSTOM_SEARCH_ISSUES as CUSTOM_SEARCH_ISSUES_DOC,
 )
+from app.utils.json_helpers import (
+    bool_bag,
+    dict_bag,
+    float_bag,
+    int_bag,
+    list_bag,
+    text_bag,
+    text_opt_bag,
+)
 from app.utils.linear_utils import (
     MUTATION_CREATE_ISSUE,
     MUTATION_CREATE_RELATION,
@@ -72,6 +81,11 @@ from app.utils.linear_utils import (
     priority_to_str,
 )
 from app.utils.timezone import home_timezone_from_config
+
+
+def _nodes(data: dict[str, object], key: str) -> list[dict[str, object]]:
+    """The GraphQL ``key { nodes }`` list, checked (Linear API shape)."""
+    return [n for n in list_bag(dict_bag(data, key), "nodes") if isinstance(n, dict)]
 
 
 def _user_local_today() -> date:
@@ -101,22 +115,22 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         result: dict[str, object] = {}
 
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
-        viewer = viewer_data.get("viewer", {})
+        viewer = dict_bag(viewer_data, "viewer")
         result["current_user"] = {
-            "id": viewer.get("id"),
-            "name": viewer.get("name"),
-            "email": viewer.get("email"),
+            "id": text_opt_bag(viewer, "id"),
+            "name": text_opt_bag(viewer, "name"),
+            "email": text_opt_bag(viewer, "email"),
         }
 
         if request.team_name:
             teams_data = graphql_request(QUERY_TEAMS, None, auth_credentials)
-            teams = teams_data.get("teams", {}).get("nodes", [])
+            teams = _nodes(teams_data, "teams")
             result["teams"] = fuzzy_match(request.team_name, teams, "name", limit=3)
 
         if request.user_name:
             users_data = graphql_request(QUERY_USERS, None, auth_credentials)
-            users = users_data.get("users", {}).get("nodes", [])
-            active_users = [u for u in users if u.get("active", True)]
+            users = _nodes(users_data, "users")
+            active_users = [u for u in users if bool(u.get("active", True))]
             result["users"] = fuzzy_match(request.user_name, active_users, "name", limit=3)
 
         if request.label_names:
@@ -126,7 +140,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 )
             else:
                 labels_data = graphql_request(QUERY_LABELS_ALL, None, auth_credentials)
-            labels = labels_data.get("issueLabels", {}).get("nodes", [])
+            labels = _nodes(labels_data, "issueLabels")
             matched_labels = []
             for label_name in request.label_names[:3]:
                 matches = fuzzy_match(label_name, labels, "name", limit=1)
@@ -135,14 +149,14 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         if request.project_name:
             projects_data = graphql_request(QUERY_PROJECTS, None, auth_credentials)
-            projects = projects_data.get("projects", {}).get("nodes", [])
+            projects = _nodes(projects_data, "projects")
             result["projects"] = fuzzy_match(request.project_name, projects, "name", limit=3)
 
         if request.state_name and request.team_id:
             states_data = graphql_request(
                 QUERY_STATES, {"teamId": request.team_id}, auth_credentials
             )
-            states = states_data.get("workflowStates", {}).get("nodes", [])
+            states = _nodes(states_data, "workflowStates")
             result["states"] = fuzzy_match(request.state_name, states, "name", limit=3)
 
         return {"data": result}
@@ -157,7 +171,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         """Get the current user's assigned issues."""
         del execute_request  # unused: framework-mandated custom-tool signature
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
-        viewer_id = viewer_data.get("viewer", {}).get("id")
+        viewer_id = text_opt_bag(dict_bag(viewer_data, "viewer"), "id")
 
         if not viewer_id:
             raise ValueError("Could not get current user")
@@ -172,20 +186,20 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             auth_credentials,
         )
 
-        issues = issues_data.get("issues", {}).get("nodes", [])
+        issues = _nodes(issues_data, "issues")
         today = _user_local_today()
         week_end = today + timedelta(days=7)
 
         filtered = []
         for issue in issues:
-            due_str = issue.get("dueDate")
+            due_str = text_opt_bag(issue, "dueDate")
             due_date = None
             if due_str:
                 with contextlib.suppress(ValueError):
                     due_date = datetime.fromisoformat(due_str).date()
 
             priority = issue.get("priority", 0)
-            state_type = issue.get("state", {}).get("type", "")
+            state_type = text_bag(dict_bag(issue, "state"), "type", "")
 
             if not request.include_completed and state_type in [
                 "completed",
@@ -208,9 +222,9 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             else:
                 filtered.append(issue)
 
-        def sort_key(issue: dict[str, object]) -> tuple[Any, ...]:
-            p = issue.get("priority", 99)
-            due = issue.get("dueDate") or "9999-12-31"
+        def sort_key(issue: dict[str, object]) -> tuple[int, str]:
+            p = int_bag(issue, "priority", 99)
+            due = text_bag(issue, "dueDate", "9999-12-31")
             return (p, due)
 
         filtered.sort(key=sort_key)
@@ -237,19 +251,19 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             auth_credentials,
         )
 
-        issues = issues_data.get("searchIssues", {}).get("nodes", [])
+        issues = _nodes(issues_data, "searchIssues")
         filtered = []
 
         for issue in issues:
             if request.team_id:
-                if issue.get("team", {}).get("id") != request.team_id:
+                if text_opt_bag(dict_bag(issue, "team"), "id") != request.team_id:
                     continue
             if request.state_filter:
-                state_type = issue.get("state", {}).get("type", "").lower()
+                state_type = text_bag(dict_bag(issue, "state"), "type", "").lower()
                 if state_type != request.state_filter:
                     continue
             if request.assignee_id:
-                if issue.get("assignee", {}).get("id") != request.assignee_id:
+                if text_opt_bag(dict_bag(issue, "assignee"), "id") != request.assignee_id:
                     continue
             if request.priority_filter:
                 priority = issue.get("priority", 0)
@@ -257,7 +271,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 if priority != expected:
                     continue
             if request.created_after:
-                created = issue.get("createdAt", "")
+                created = text_bag(issue, "createdAt")
                 if created < request.created_after:
                     continue
             filtered.append(issue)
@@ -286,7 +300,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         if request.issue_id:
             data = graphql_request(QUERY_ISSUE_BY_ID, {"id": request.issue_id}, auth_credentials)
-            issue = data.get("issue")
+            issue = dict_bag(data, "issue")
         elif request.issue_identifier:
             parts = request.issue_identifier.split("-")
             if len(parts) != 2:
@@ -301,84 +315,86 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 {"identifier": request.issue_identifier},
                 auth_credentials,
             )
-            issue = data.get("issue")
+            issue = dict_bag(data, "issue")
 
         if not issue:
             raise ValueError(f"Issue not found: {request.issue_id or request.issue_identifier}")
 
-        result = {
-            "id": issue.get("id"),
-            "identifier": issue.get("identifier"),
-            "title": issue.get("title"),
-            "description": issue.get("description"),
-            "priority": priority_to_str(issue.get("priority", 0)),
-            "state": issue.get("state", {}).get("name"),
-            "dueDate": issue.get("dueDate"),
-            "estimate": issue.get("estimate"),
-            "team": (issue.get("team") or {}).get("name"),
-            "project": (issue.get("project") or {}).get("name"),
-            "cycle": (issue.get("cycle") or {}).get("name"),
-            "assignee": (issue.get("assignee") or {}).get("name"),
-            "creator": (issue.get("creator") or {}).get("name"),
+        result: dict[str, object] = {
+            "id": text_bag(issue, "id"),
+            "identifier": text_bag(issue, "identifier"),
+            "title": text_bag(issue, "title"),
+            "description": text_bag(issue, "description"),
+            "priority": priority_to_str(int_bag(issue, "priority")),
+            "state": text_opt_bag(dict_bag(issue, "state"), "name"),
+            "dueDate": text_opt_bag(issue, "dueDate"),
+            "estimate": text_opt_bag(issue, "estimate"),
+            "team": text_opt_bag(dict_bag(issue, "team"), "name"),
+            "project": text_opt_bag(dict_bag(issue, "project"), "name"),
+            "cycle": text_opt_bag(dict_bag(issue, "cycle"), "name"),
+            "assignee": text_opt_bag(dict_bag(issue, "assignee"), "name"),
+            "creator": text_opt_bag(dict_bag(issue, "creator"), "name"),
         }
 
-        if issue.get("parent"):
+        parent = dict_bag(issue, "parent")
+        if parent:
             result["parent"] = {
-                "identifier": issue["parent"].get("identifier"),
-                "title": issue["parent"].get("title"),
+                "identifier": text_opt_bag(parent, "identifier"),
+                "title": text_opt_bag(parent, "title"),
             }
 
-        children = (issue.get("children") or {}).get("nodes", [])
+        children = _nodes(issue, "children")
         if children:
             result["sub_issues"] = [
                 {
-                    "identifier": c.get("identifier"),
-                    "title": c.get("title"),
-                    "state": c.get("state", {}).get("name"),
+                    "identifier": text_bag(c, "identifier"),
+                    "title": text_opt_bag(c, "title"),
+                    "state": text_opt_bag(dict_bag(c, "state"), "name"),
                 }
                 for c in children
             ]
 
-        relations = (issue.get("relations") or {}).get("nodes", [])
+        relations = _nodes(issue, "relations")
         if relations:
             result["relations"] = [
                 {
-                    "type": r.get("type"),
+                    "type": text_opt_bag(r, "type"),
                     "issue": {
-                        "identifier": r.get("relatedIssue", {}).get("identifier"),
-                        "title": r.get("relatedIssue", {}).get("title"),
+                        "identifier": text_opt_bag(dict_bag(r, "relatedIssue"), "identifier"),
+                        "title": text_opt_bag(dict_bag(r, "relatedIssue"), "title"),
                     },
                 }
                 for r in relations
             ]
 
-        comments = (issue.get("comments") or {}).get("nodes", [])
+        comments = _nodes(issue, "comments")
         if comments:
             result["comments"] = [
                 {
-                    "author": (c.get("user") or {}).get("name"),
-                    "body": c.get("body"),
-                    "createdAt": c.get("createdAt"),
+                    "author": text_opt_bag(dict_bag(c, "user"), "name"),
+                    "body": text_opt_bag(c, "body"),
+                    "createdAt": text_opt_bag(c, "createdAt"),
                 }
                 for c in comments
             ]
 
-        history = (issue.get("history") or {}).get("nodes", [])
+        history = _nodes(issue, "history")
         if history:
-            result["activity"] = []
+            activity: list[dict[str, object]] = []
+            result["activity"] = activity
             for h in history:
-                entry = {
-                    "timestamp": h.get("createdAt"),
-                    "actor": (h.get("actor") or {}).get("name"),
+                entry: dict[str, object] = {
+                    "timestamp": text_opt_bag(h, "createdAt"),
+                    "actor": text_opt_bag(dict_bag(h, "actor"), "name"),
                 }
                 if h.get("fromState") or h.get("toState"):
                     entry["change"] = "state"
-                    entry["from"] = (h.get("fromState") or {}).get("name")
-                    entry["to"] = (h.get("toState") or {}).get("name")
+                    entry["from"] = text_opt_bag(dict_bag(h, "fromState"), "name")
+                    entry["to"] = text_opt_bag(dict_bag(h, "toState"), "name")
                 elif h.get("fromAssignee") or h.get("toAssignee"):
                     entry["change"] = "assignee"
-                    entry["from"] = (h.get("fromAssignee") or {}).get("name")
-                    entry["to"] = (h.get("toAssignee") or {}).get("name")
+                    entry["from"] = text_opt_bag(dict_bag(h, "fromAssignee"), "name")
+                    entry["to"] = text_opt_bag(dict_bag(h, "toAssignee"), "name")
                 elif history_label_names(h.get("addedLabels")):
                     entry["change"] = "labels_added"
                     entry["labels"] = history_label_names(h.get("addedLabels"))
@@ -387,12 +403,13 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                     entry["labels"] = history_label_names(h.get("removedLabels"))
                 else:
                     continue
-                result["activity"].append(entry)
+                activity.append(entry)
 
-        attachments = (issue.get("attachments") or {}).get("nodes", [])
+        attachments = _nodes(issue, "attachments")
         if attachments:
             result["attachments"] = [
-                {"title": a.get("title"), "url": a.get("url")} for a in attachments
+                {"title": text_opt_bag(a, "title"), "url": text_opt_bag(a, "url")}
+                for a in attachments
             ]
 
         return {"issue": result}
@@ -435,23 +452,23 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         # Create the main issue
         result = graphql_request(MUTATION_CREATE_ISSUE, {"input": input_data}, auth_credentials)
-        create_result = result.get("issueCreate", {})
-        if not create_result.get("success"):
+        create_result = dict_bag(result, "issueCreate")
+        if not bool_bag(create_result, "success"):
             raise RuntimeError("Failed to create issue")
 
-        created = create_result.get("issue", {})
+        created = dict_bag(create_result, "issue")
         response: dict[str, object] = {
             "issue": {
-                "id": created.get("id"),
-                "identifier": created.get("identifier"),
-                "title": created.get("title"),
-                "url": created.get("url"),
+                "id": text_opt_bag(created, "id"),
+                "identifier": text_opt_bag(created, "identifier"),
+                "title": text_opt_bag(created, "title"),
+                "url": text_opt_bag(created, "url"),
             },
         }
 
         # Create sub-issues if provided
         if request.sub_issues:
-            parent_id = created.get("id")
+            parent_id = text_opt_bag(created, "id")
             created_subs = []
             errors = []
 
@@ -471,14 +488,14 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 sub_result = graphql_request(
                     MUTATION_CREATE_ISSUE, {"input": sub_input}, auth_credentials
                 )
-                sub_create = sub_result.get("issueCreate", {})
-                if sub_create.get("success"):
-                    sub_issue = sub_create.get("issue", {})
+                sub_create = dict_bag(sub_result, "issueCreate")
+                if bool_bag(sub_create, "success"):
+                    sub_issue = dict_bag(sub_create, "issue")
                     created_subs.append(
                         {
-                            "id": sub_issue.get("id"),
-                            "identifier": sub_issue.get("identifier"),
-                            "title": sub_issue.get("title"),
+                            "id": text_opt_bag(sub_issue, "id"),
+                            "identifier": text_opt_bag(sub_issue, "identifier"),
+                            "title": text_opt_bag(sub_issue, "title"),
                         }
                     )
                 else:
@@ -516,19 +533,19 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 {"teamKey": team_key, "number": number},
                 auth_credentials,
             )
-            teams = data.get("teams", {}).get("nodes", [])
-            if teams and teams[0].get("issue"):
-                parent_id = teams[0]["issue"].get("id")
+            teams = _nodes(data, "teams")
+            if teams and dict_bag(teams[0], "issue"):
+                parent_id = text_opt_bag(dict_bag(teams[0], "issue"), "id")
 
         if not parent_id:
             raise ValueError("Could not resolve parent issue")
 
         parent_data = graphql_request(QUERY_ISSUE_BY_ID, {"id": parent_id}, auth_credentials)
-        parent_issue = parent_data.get("issue")
+        parent_issue = dict_bag(parent_data, "issue")
         if not parent_issue:
             raise ValueError("Parent issue not found")
 
-        team_id = parent_issue.get("team", {}).get("id")
+        team_id = text_opt_bag(dict_bag(parent_issue, "team"), "id")
         if not team_id:
             raise ValueError("Could not get parent's team")
 
@@ -549,14 +566,14 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 input_data["priority"] = sub_issue.priority
 
             result = graphql_request(MUTATION_CREATE_ISSUE, {"input": input_data}, auth_credentials)
-            create_result = result.get("issueCreate", {})
-            if create_result.get("success"):
-                created = create_result.get("issue", {})
+            create_result = dict_bag(result, "issueCreate")
+            if bool_bag(create_result, "success"):
+                created = dict_bag(create_result, "issue")
                 created_issues.append(
                     {
-                        "id": created.get("id"),
-                        "identifier": created.get("identifier"),
-                        "title": created.get("title"),
+                        "id": text_opt_bag(created, "id"),
+                        "identifier": text_opt_bag(created, "identifier"),
+                        "title": text_opt_bag(created, "title"),
                     }
                 )
             else:
@@ -595,14 +612,14 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             auth_credentials,
         )
 
-        create_result = result.get("issueRelationCreate", {})
-        if not create_result.get("success"):
+        create_result = dict_bag(result, "issueRelationCreate")
+        if not bool_bag(create_result, "success"):
             raise RuntimeError("Failed to create relation")
 
-        relation = create_result.get("issueRelation", {})
+        relation = dict_bag(create_result, "issueRelation")
         return {
             "relation": {
-                "id": relation.get("id"),
+                "id": text_opt_bag(relation, "id"),
                 "type": request.relation_type,
                 "from_issue": request.issue_id,
                 "to_issue": request.related_issue_id,
@@ -630,9 +647,9 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                         {"identifier": request.issue_identifier},
                         auth_credentials,
                     )
-                    issue = data.get("issue")
+                    issue = dict_bag(data, "issue")
                     if issue:
-                        issue_id = issue["id"]
+                        issue_id = text_bag(issue, "id")
                 except ValueError:
                     pass
 
@@ -644,30 +661,36 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             {"issueId": issue_id, "first": request.limit},
             auth_credentials,
         )
-        history = (data.get("issue") or {}).get("history", {}).get("nodes", [])
+        history = _nodes(dict_bag(data, "issue"), "history")
 
         activities = []
         for h in history:
-            entry = {
-                "timestamp": h.get("createdAt"),
-                "actor": (h.get("actor") or {}).get("name") if h.get("actor") else "System",
+            entry: dict[str, object] = {
+                "timestamp": text_opt_bag(h, "createdAt"),
+                "actor": text_opt_bag(dict_bag(h, "actor"), "name")
+                if text_opt_bag(h, "actor")
+                else "System",
             }
             if h.get("fromState") or h.get("toState"):
                 entry["change_type"] = "state"
-                entry["from"] = (h.get("fromState") or {}).get("name")
-                entry["to"] = (h.get("toState") or {}).get("name")
+                entry["from"] = text_opt_bag(dict_bag(h, "fromState"), "name")
+                entry["to"] = text_opt_bag(dict_bag(h, "toState"), "name")
             elif h.get("fromAssignee") or h.get("toAssignee"):
                 entry["change_type"] = "assignee"
                 entry["from"] = (
-                    (h.get("fromAssignee") or {}).get("name") if h.get("fromAssignee") else None
+                    text_opt_bag(dict_bag(h, "fromAssignee"), "name")
+                    if text_opt_bag(h, "fromAssignee")
+                    else None
                 )
                 entry["to"] = (
-                    (h.get("toAssignee") or {}).get("name") if h.get("toAssignee") else None
+                    text_opt_bag(dict_bag(h, "toAssignee"), "name")
+                    if text_opt_bag(h, "toAssignee")
+                    else None
                 )
             elif h.get("fromPriority") is not None or h.get("toPriority") is not None:
                 entry["change_type"] = "priority"
-                entry["from"] = priority_to_str(h.get("fromPriority", 0))
-                entry["to"] = priority_to_str(h.get("toPriority", 0))
+                entry["from"] = priority_to_str(int_bag(h, "fromPriority"))
+                entry["to"] = priority_to_str(int_bag(h, "toPriority"))
             elif history_label_names(h.get("addedLabels")):
                 entry["change_type"] = "labels_added"
                 entry["labels"] = history_label_names(h.get("addedLabels"))
@@ -694,15 +717,17 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         """Get the current/active sprint context."""
         del execute_request  # unused: framework-mandated custom-tool signature
         data = graphql_request(QUERY_ACTIVE_CYCLES, None, auth_credentials)
-        cycles = data.get("cycles", {}).get("nodes", [])
+        cycles = _nodes(data, "cycles")
 
         if request.team_id:
-            cycles = [c for c in cycles if c.get("team", {}).get("id") == request.team_id]
+            cycles = [
+                c for c in cycles if text_opt_bag(dict_bag(c, "team"), "id") == request.team_id
+            ]
 
         limit = request.issues_per_state_limit
         sprints = []
         for cycle in cycles:
-            issues = cycle.get("issues", {}).get("nodes", [])
+            issues = _nodes(cycle, "issues")
             by_state: dict[str, list[dict[str, object]]] = {
                 "backlog": [],
                 "unstarted": [],
@@ -711,29 +736,29 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             }
 
             for issue in issues:
-                state_type = issue.get("state", {}).get("type", "unstarted").lower()
+                state_type = text_bag(dict_bag(issue, "state"), "type", "unstarted").lower()
                 if state_type in by_state:
                     by_state[state_type].append(
                         {
-                            "identifier": issue.get("identifier"),
-                            "title": issue.get("title"),
-                            "priority": priority_to_str(issue.get("priority", 0)),
-                            "assignee": issue.get("assignee", {}).get("name")
-                            if issue.get("assignee")
+                            "identifier": text_opt_bag(issue, "identifier"),
+                            "title": text_opt_bag(issue, "title"),
+                            "priority": priority_to_str(int_bag(issue, "priority")),
+                            "assignee": text_opt_bag(dict_bag(issue, "assignee"), "name")
+                            if text_opt_bag(issue, "assignee")
                             else None,
                         }
                     )
 
             sprints.append(
                 {
-                    "id": cycle.get("id"),
-                    "name": cycle.get("name"),
-                    "number": cycle.get("number"),
-                    "team": cycle.get("team", {}).get("name"),
-                    "team_key": cycle.get("team", {}).get("key"),
-                    "starts_at": cycle.get("startsAt"),
-                    "ends_at": cycle.get("endsAt"),
-                    "progress": round(cycle.get("progress", 0) * 100, 1),
+                    "id": text_opt_bag(cycle, "id"),
+                    "name": text_opt_bag(cycle, "name"),
+                    "number": text_opt_bag(cycle, "number"),
+                    "team": text_opt_bag(dict_bag(cycle, "team"), "name"),
+                    "team_key": text_opt_bag(dict_bag(cycle, "team"), "key"),
+                    "starts_at": text_opt_bag(cycle, "startsAt"),
+                    "ends_at": text_opt_bag(cycle, "endsAt"),
+                    "progress": round(float_bag(cycle, "progress") * 100, 1),
                     "total_issues": len(issues),
                     "issues_by_state": {k: len(v) for k, v in by_state.items()},
                     "in_progress": by_state["started"][:limit],
@@ -777,15 +802,17 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             {"issueIds": request.issue_ids, "input": input_data},
             auth_credentials,
         )
-        update_result = result.get("issueBatchUpdate", {})
-        if not update_result.get("success"):
+        update_result = dict_bag(result, "issueBatchUpdate")
+        if not bool_bag(update_result, "success"):
             raise RuntimeError("Batch update failed")
 
-        updated = update_result.get("issues", [])
+        updated = list_bag(update_result, "issues")
         return {
             "updated_count": len(updated),
             "updated_issues": [
-                {"id": i.get("id"), "identifier": i.get("identifier")} for i in updated
+                {"id": text_opt_bag(i, "id"), "identifier": text_opt_bag(i, "identifier")}
+                for i in updated
+                if isinstance(i, dict)
             ],
         }
 
@@ -803,11 +830,11 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             {"first": request.limit},
             auth_credentials,
         )
-        notifications = data.get("notifications", {}).get("nodes", [])
+        notifications = _nodes(data, "notifications")
 
         formatted = []
         for n in notifications:
-            is_read = n.get("readAt") is not None
+            is_read = text_opt_bag(n, "readAt") is not None
 
             # Filter by read status if not including read
             if not request.include_read and is_read:
@@ -815,17 +842,19 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
             formatted.append(
                 {
-                    "id": n.get("id"),
-                    "type": n.get("type"),
-                    "created_at": n.get("createdAt"),
+                    "id": text_opt_bag(n, "id"),
+                    "type": text_opt_bag(n, "type"),
+                    "created_at": text_opt_bag(n, "createdAt"),
                     "read": is_read,
                     "issue": {
-                        "identifier": n.get("issue", {}).get("identifier"),
-                        "title": n.get("issue", {}).get("title"),
+                        "identifier": text_opt_bag(dict_bag(n, "issue"), "identifier"),
+                        "title": text_opt_bag(dict_bag(n, "issue"), "title"),
                     }
-                    if n.get("issue")
+                    if dict_bag(n, "issue")
                     else None,
-                    "actor": n.get("actor", {}).get("name") if n.get("actor") else None,
+                    "actor": text_opt_bag(dict_bag(n, "actor"), "name")
+                    if text_opt_bag(n, "actor")
+                    else None,
                 }
             )
 
@@ -841,18 +870,18 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         """Get full workspace context for session initialization."""
         del request, execute_request  # unused: framework-mandated custom-tool signature
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
-        viewer = viewer_data.get("viewer", {})
-        assigned_count = len(viewer.get("assignedIssues", {}).get("nodes", []))
+        viewer = dict_bag(viewer_data, "viewer")
+        assigned_count = len(list_bag(dict_bag(viewer, "assignedIssues"), "nodes"))
 
         teams_data = graphql_request(QUERY_TEAMS, None, auth_credentials)
-        teams = teams_data.get("teams", {}).get("nodes", [])
+        teams = _nodes(teams_data, "teams")
 
         issues_data = graphql_request(
             QUERY_MY_ISSUES,
-            {"assigneeId": viewer.get("id"), "includeCompleted": True, "first": 50},
+            {"assigneeId": text_opt_bag(viewer, "id"), "includeCompleted": True, "first": 50},
             auth_credentials,
         )
-        my_issues = issues_data.get("issues", {}).get("nodes", [])
+        my_issues = _nodes(issues_data, "issues")
 
         today = _user_local_today()
         overdue = []
@@ -860,11 +889,11 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         sla_at_risk = []
 
         for issue in my_issues:
-            state_type = issue.get("state", {}).get("type", "")
+            state_type = text_bag(dict_bag(issue, "state"), "type", "")
             if state_type in ["completed", "canceled"]:
                 continue
 
-            due_str = issue.get("dueDate")
+            due_str = text_opt_bag(issue, "dueDate")
             if due_str:
                 try:
                     due_date = datetime.fromisoformat(due_str).date()
@@ -873,29 +902,31 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 except ValueError:
                     pass
 
-            if issue.get("priority") in [1, 2]:
+            if int_bag(issue, "priority") in [1, 2]:
                 high_priority.append(format_issue_summary(issue))
 
-            if issue.get("slaBreachesAt"):
+            if text_opt_bag(issue, "slaBreachesAt"):
                 sla_at_risk.append(format_issue_summary(issue))
 
         return {
             "user": {
-                "id": viewer.get("id"),
-                "name": viewer.get("name"),
-                "email": viewer.get("email"),
+                "id": text_opt_bag(viewer, "id"),
+                "name": text_opt_bag(viewer, "name"),
+                "email": text_opt_bag(viewer, "email"),
                 "assigned_issue_count": assigned_count,
             },
             "teams": [
                 {
-                    "id": t.get("id"),
-                    "name": t.get("name"),
-                    "key": t.get("key"),
-                    "active_cycle": t.get("activeCycle", {}).get("name")
+                    "id": text_opt_bag(t, "id"),
+                    "name": text_opt_bag(t, "name"),
+                    "key": text_opt_bag(t, "key"),
+                    "active_cycle": text_opt_bag(dict_bag(t, "activeCycle"), "name")
                     if t.get("activeCycle")
                     else None,
-                    "cycle_progress": round(t.get("activeCycle", {}).get("progress", 0) * 100, 1)
-                    if t.get("activeCycle")
+                    "cycle_progress": round(
+                        float_bag(dict_bag(t, "activeCycle"), "progress") * 100, 1
+                    )
+                    if text_opt_bag(t, "activeCycle")
                     else None,
                 }
                 for t in teams
@@ -919,27 +950,27 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
-        viewer = viewer_data.get("viewer", {})
+        viewer = dict_bag(viewer_data, "viewer")
 
         teams_data = graphql_request(QUERY_TEAMS, None, auth_credentials)
-        teams = teams_data.get("teams", {}).get("nodes", [])
+        teams = _nodes(teams_data, "teams")
 
         issues_data = graphql_request(
             QUERY_MY_ISSUES,
-            {"assigneeId": viewer.get("id"), "includeCompleted": True, "first": 50},
+            {"assigneeId": text_opt_bag(viewer, "id"), "includeCompleted": True, "first": 50},
             auth_credentials,
         )
-        my_issues = issues_data.get("issues", {}).get("nodes", [])
+        my_issues = _nodes(issues_data, "issues")
 
         today = _user_local_today()
         overdue = []
         high_priority = []
 
         for issue in my_issues:
-            state_type = issue.get("state", {}).get("type", "")
+            state_type = text_bag(dict_bag(issue, "state"), "type", "")
             if state_type in ["completed", "canceled"]:
                 continue
-            due_str = issue.get("dueDate")
+            due_str = text_opt_bag(issue, "dueDate")
             if due_str:
                 try:
                     due_date = datetime.fromisoformat(due_str).date()
@@ -947,20 +978,20 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                         overdue.append(format_issue_summary(issue))
                 except ValueError:
                     pass
-            if issue.get("priority") in [1, 2]:
+            if text_opt_bag(issue, "priority") in [1, 2]:
                 high_priority.append(format_issue_summary(issue))
 
         return {
             "user": {
-                "id": viewer.get("id"),
-                "name": viewer.get("name"),
-                "email": viewer.get("email"),
+                "id": text_opt_bag(viewer, "id"),
+                "name": text_opt_bag(viewer, "name"),
+                "email": text_opt_bag(viewer, "email"),
             },
             "teams": [
                 {
-                    "id": t.get("id"),
-                    "name": t.get("name"),
-                    "key": t.get("key"),
+                    "id": text_opt_bag(t, "id"),
+                    "name": text_opt_bag(t, "name"),
+                    "key": text_opt_bag(t, "key"),
                 }
                 for t in teams
             ],

@@ -6,7 +6,6 @@ even when the upstream call fails.
 """
 
 import asyncio
-from typing import Any
 
 import httpx
 
@@ -31,6 +30,7 @@ from app.decorators.caching import Cacheable
 from app.models.voice_models import ElevenLabsAccountVoice, ElevenLabsSharedVoice
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.utils.errors import AppError
+from app.utils.json_helpers import dict_bag, list_bag, text_bag, text_opt_bag
 from app.utils.voice_utils import (
     _language_names,
     _map_account_voice,
@@ -57,16 +57,18 @@ async def _fetch_elevenlabs_voices() -> list[ElevenLabsAccountVoice]:
             headers={"xi-api-key": settings.ELEVENLABS_API_KEY or ""},
         )
         resp.raise_for_status()
-        payload: dict[str, Any] = resp.json()
+        payload: dict[str, object] = resp.json()
 
     # The provider's own voice objects — untyped until trimmed into our shape here.
-    raw_voices: list[dict[str, Any]] = payload.get("voices", [])
+    raw_voices: list[dict[str, object]] = [
+        v for v in list_bag(payload, "voices") if isinstance(v, dict)
+    ]
     return [
         ElevenLabsAccountVoice(
-            voice_id=voice["voice_id"],
-            name=voice.get("name") or "",
-            preview_url=voice.get("preview_url"),
-            labels=voice.get("labels") or {},
+            voice_id=text_bag(voice, "voice_id"),
+            name=text_bag(voice, "name"),
+            preview_url=text_opt_bag(voice, "preview_url"),
+            labels=dict_bag(voice, "labels"),
             language_codes=_verified_language_codes(voice),
         )
         for voice in raw_voices
@@ -111,20 +113,22 @@ async def _fetch_shared_voices() -> list[ElevenLabsSharedVoice]:
             headers={"xi-api-key": settings.ELEVENLABS_API_KEY or ""},
         )
         resp.raise_for_status()
-        payload: dict[str, Any] = resp.json()
+        payload: dict[str, object] = resp.json()
 
-    raw_voices: list[dict[str, Any]] = payload.get("voices", [])
+    raw_voices: list[dict[str, object]] = [
+        v for v in list_bag(payload, "voices") if isinstance(v, dict)
+    ]
     return [
         ElevenLabsSharedVoice(
-            voice_id=voice["voice_id"],
-            name=voice.get("name") or "",
-            preview_url=voice.get("preview_url"),
-            public_owner_id=voice["public_owner_id"],
-            gender=voice.get("gender") or "",
-            accent=voice.get("accent") or "",
-            language=voice.get("language") or "",
-            descriptive=voice.get("descriptive") or "",
-            use_case=voice.get("use_case") or "",
+            voice_id=text_bag(voice, "voice_id"),
+            name=text_bag(voice, "name"),
+            preview_url=text_opt_bag(voice, "preview_url"),
+            public_owner_id=text_bag(voice, "public_owner_id"),
+            gender=text_bag(voice, "gender"),
+            accent=text_bag(voice, "accent"),
+            language=text_bag(voice, "language"),
+            descriptive=text_bag(voice, "descriptive"),
+            use_case=text_bag(voice, "use_case"),
             language_codes=_verified_language_codes(voice),
         )
         for voice in raw_voices

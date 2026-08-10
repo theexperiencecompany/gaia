@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 import re
 import time
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from bs4 import BeautifulSoup  # For HTML cleaning
 import ftfy
@@ -27,6 +27,7 @@ from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
 )
 from app.constants.log_tags import LogTag
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 
@@ -250,7 +251,7 @@ Here are recent emails RECEIVED by the user from {platform}:
 Extract the RECIPIENT's username/handle ONLY if explicitly written (not inferred):"""
 
 
-async def _write_debug_json(platform: str, kind: str, payload: dict[str, Any]) -> None:
+async def _write_debug_json(platform: str, kind: str, payload: dict[str, object]) -> None:
     """Dump a debug payload beside this module when DEBUG_EMAIL_PROCESSING is on.
 
     The write runs in a worker thread: this is called from the async extraction
@@ -314,7 +315,7 @@ def _filter_garbage_content(text: str) -> str:
     return text
 
 
-def _deduplicate_emails(emails: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _deduplicate_emails(emails: list[dict[str, object]]) -> list[dict[str, object]]:
     """Remove near-duplicate emails by comparing normalized body similarity,
     before sending to the LLM. No count limit, just dedup."""
     if not emails:
@@ -350,7 +351,7 @@ def _deduplicate_emails(emails: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     for email in emails:
         # Get full email body (not truncated)
-        content = email.get("messageText", "").strip()
+        content = text_bag(email, "messageText").strip()
 
         if not content:
             continue
@@ -380,7 +381,7 @@ def _deduplicate_emails(emails: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 async def extract_username_with_llm(
-    platform: str, emails: list[dict[str, Any]], user_name: str | None = None, *, user_id: str
+    platform: str, emails: list[dict[str, object]], user_name: str | None = None, *, user_id: str
 ) -> str:
     """Use an LLM with structured output to extract the user's username from
     platform emails. Returns the username or "NOT_FOUND"."""
@@ -416,7 +417,7 @@ async def extract_username_with_llm(
     email_context = []
     for i, email in enumerate(unique_emails, 1):
         subject = email.get("subject", "[No Subject]")
-        raw_content = email.get("messageText", "")
+        raw_content = text_bag(email, "messageText")
 
         # Filter garbage content first
         cleaned_content = _filter_garbage_content(raw_content)

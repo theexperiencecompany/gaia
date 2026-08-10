@@ -10,12 +10,13 @@ the frontend's batch-sync staleness check refetch the conversation afterwards.
 """
 
 from datetime import UTC, datetime
-from typing import Any, NotRequired, TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 from app.constants.artifacts import ARTIFACT_ELEMENT_FIELDS
 from app.constants.cache import CONV_ARTIFACTS_CACHE_PATTERN, ONE_DAY_TTL
 from app.db.repositories.conversations import conversation_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
+from app.utils.json_helpers import float_bag, int_bag, text_bag, text_opt_bag
 
 
 class ArtifactRegistryEntry(TypedDict):
@@ -48,7 +49,9 @@ class ArtifactRegistryPatch(TypedDict, total=False):
 
 
 @CacheInvalidator(key_patterns=[CONV_ARTIFACTS_CACHE_PATTERN])
-async def upsert_conversation_artifact(user_id: str, conv_id: str, payload: dict[str, Any]) -> None:
+async def upsert_conversation_artifact(
+    user_id: str, conv_id: str, payload: dict[str, object]
+) -> None:
     """Upsert one artifact onto the conversation registry, keyed by ``path``.
 
     ``body`` is written only when the payload carries one, so a body-less watcher
@@ -59,16 +62,16 @@ async def upsert_conversation_artifact(user_id: str, conv_id: str, payload: dict
     than gaining a rival shape (Type Safety item 14).
     """
     now_iso = datetime.now(UTC).isoformat()
-    path = payload["path"]
+    path = text_bag(payload, "path")
 
     fields: ArtifactRegistryPatch = {
-        "size_bytes": payload.get("size_bytes"),
-        "mtime": payload.get("mtime"),
-        "content_type": payload.get("content_type"),
+        "size_bytes": int_bag(payload, "size_bytes"),
+        "mtime": float_bag(payload, "mtime"),
+        "content_type": text_opt_bag(payload, "content_type"),
         "updated_at": now_iso,
     }
     if payload.get("body") is not None:
-        fields["body"] = payload["body"]
+        fields["body"] = text_bag(payload, "body")
 
     if await conversation_repository.update_artifact(
         conv_id, user_id=user_id, path=path, fields=fields
@@ -76,7 +79,7 @@ async def upsert_conversation_artifact(user_id: str, conv_id: str, payload: dict
         return
 
     # No existing element — push a new one.
-    element: dict[str, Any] = {key: payload.get(key) for key in ARTIFACT_ELEMENT_FIELDS}
+    element: dict[str, object] = {key: payload.get(key) for key in ARTIFACT_ELEMENT_FIELDS}
     element["updated_at"] = now_iso
     if payload.get("body") is not None:
         element["body"] = payload["body"]

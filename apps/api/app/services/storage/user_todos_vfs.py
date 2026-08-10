@@ -27,7 +27,7 @@ way. Shared FS / hashing / slug helpers live in
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from app.services.storage._vfs_common import (
     GUIDE_FILENAME,
@@ -46,6 +46,7 @@ from app.services.storage._vfs_common import (
     write_rw_body,
     write_rw_if_changed,
 )
+from app.utils.json_helpers import dict_bag, text_bag, text_opt_bag
 
 # --- Path constants ---------------------------------------------------------
 
@@ -58,7 +59,7 @@ class UserTodoProjection(TypedDict):
     """In-memory shape passed from the Mongo glue to the materializer."""
 
     id: str
-    meta: dict[str, Any]
+    meta: dict[str, object]
 
 
 # ====================================================================
@@ -99,7 +100,7 @@ def write_user_todos_marker(user_root: Path, value: str) -> None:
 # ====================================================================
 
 
-def _glyph(meta: dict[str, Any]) -> str:
+def _glyph(meta: dict[str, object]) -> str:
     if meta.get("completed"):
         return "DONE"
     if meta.get("priority") == "high":
@@ -108,12 +109,12 @@ def _glyph(meta: dict[str, Any]) -> str:
 
 
 def _folder_name(doc: UserTodoProjection) -> str:
-    return common_folder_name(doc["id"], doc["meta"].get("title"))
+    return common_folder_name(text_bag(doc, "id"), text_opt_bag(dict_bag(doc, "meta"), "title"))
 
 
 def _index_line(doc: UserTodoProjection) -> str:
     meta = doc["meta"]
-    title = (meta.get("title") or "(untitled)").replace("\n", " ").strip()
+    title = (text_bag(meta, "title") or "(untitled)").replace("\n", " ").strip()
     updated = updated_at_key(meta) or "—"
     due = meta.get("due_date")
     due_suffix = f"  due={due}" if due else ""

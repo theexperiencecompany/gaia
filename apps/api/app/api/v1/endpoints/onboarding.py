@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -58,6 +58,7 @@ from app.services.onboarding.writing_style_service import (
     save_generated_example,
     save_user_edited_summary,
 )
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -80,10 +81,10 @@ def _normalize_example_blocks(raw: object) -> WritingStyleExampleBlocks | None:
         if not body:
             return None
         return WritingStyleExampleBlocks(
-            greeting=str(raw.get("greeting", "")),
+            greeting=str(text_bag(raw, "greeting")),
             body=body,
-            signoff=str(raw.get("signoff", "")),
-            name=str(raw.get("name", "")),
+            signoff=str(text_bag(raw, "signoff")),
+            name=str(text_bag(raw, "name")),
         )
     if isinstance(raw, str) and raw.strip():
         return WritingStyleExampleBlocks(greeting="", body=[raw.strip()], signoff="", name="")
@@ -411,14 +412,16 @@ async def _resolve_display_bio(onboarding: OnboardingDocument, user_id: str) -> 
 
 
 def _build_writing_style(
-    raw_writing_style: dict[str, Any] | None,
+    raw_writing_style: dict[str, object] | None,
 ) -> PersonalizationWritingStyle | None:
     """Only surface writing_style if it has a usable summary; otherwise return
     None so the frontend skips the reveal."""
     if not raw_writing_style:
         return None
     resolved_summary = (
-        raw_writing_style.get("user_edited_summary") or raw_writing_style.get("summary") or ""
+        text_bag(raw_writing_style, "user_edited_summary")
+        or text_bag(raw_writing_style, "summary")
+        or ""
     ).strip()
     if not resolved_summary:
         return None
@@ -506,7 +509,7 @@ async def get_onboarding_personalization(
             first_message=onboarding.get("first_message"),
             writing_style=_build_writing_style(onboarding.get("writing_style")),
             social_profiles=[
-                SocialProfile(platform=p.get("platform", ""), url=p.get("url", ""))
+                SocialProfile(platform=text_bag(p, "platform"), url=text_bag(p, "url"))
                 for p in raw_social_profiles
             ]
             if raw_social_profiles

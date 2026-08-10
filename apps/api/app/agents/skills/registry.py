@@ -11,7 +11,6 @@ and the composed skills text cache.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 from uuid import uuid4
 
 from app.agents.skills.models import Skill, SkillSource, SkillUpdate
@@ -158,14 +157,16 @@ async def disable_skill(user_id: str, skill_id: str) -> bool:
 
 
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
-async def update_skill(user_id: str, skill_id: str, fields: dict[str, Any]) -> Skill | None:
+async def update_skill(user_id: str, skill_id: str, fields: dict[str, object]) -> Skill | None:
     """Patch metadata fields on an existing skill and return the updated record.
 
     Always stamps ``updated_at``. Scoped to ``{_id, user_id}`` so a user can only
     edit their own skills. Returns None if no matching skill exists.
     """
     log.set(user_id=user_id, skill=SkillContext(skill_id=skill_id))
-    updated = await skill_repository.patch(user_id, skill_id, update=SkillUpdate(**fields))
+    updated = await skill_repository.patch(
+        user_id, skill_id, update=SkillUpdate.model_validate(fields)
+    )
     log.set_ns("skill", success=updated is not None)
     if updated is not None:
         log.info(f"{LogTag.SKILLS} Updated skill", skill_id=skill_id, user_id=user_id)

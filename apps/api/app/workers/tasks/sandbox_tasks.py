@@ -11,7 +11,6 @@ Currently:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -20,7 +19,7 @@ from app.services.sandbox import mark_sandbox_dead
 from shared.py.wide_events import SandboxContext, log
 
 
-async def sweep_idle_sandboxes(_ctx: dict[str, Any]) -> str:
+async def sweep_idle_sandboxes(_ctx: dict[str, object]) -> str:
     """Evict sandboxes whose last_used_at is older than the eviction window."""
     cutoff = datetime.now(UTC) - timedelta(days=settings.E2B_SANDBOX_EVICT_DAYS)
     idle_user_ids = await e2b_sandbox_repository.find_idle_user_ids(cutoff=cutoff)

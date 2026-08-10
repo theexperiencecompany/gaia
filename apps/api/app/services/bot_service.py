@@ -3,7 +3,6 @@ Business logic for bot chat sessions, rate limiting, and conversation management
 """
 
 from datetime import UTC, datetime
-from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -14,6 +13,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import create_conversation_service
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 # Constants
@@ -129,7 +129,7 @@ class BotService:
         # (re)create it with the SAME conversation_id stored on the session rather
         # than minting a new one and repointing, so the chat thread is never
         # orphaned or forked.
-        if await conversation_repository.exists(conversation_id, user_id=user.get("user_id", "")):
+        if await conversation_repository.exists(conversation_id, user_id=text_bag(user, "user_id")):
             log.set(
                 bot={
                     "platform": platform,
@@ -181,7 +181,7 @@ class BotService:
     @staticmethod
     async def load_conversation_history(
         conversation_id: str, user_id: str, limit: int = 20
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """
         Load recent conversation history for context.
 
@@ -197,7 +197,7 @@ class BotService:
         if conversation is None or not conversation.messages:
             return []
 
-        history = []
+        history: list[dict[str, object]] = []
         for msg in conversation.messages[-limit:]:
             if msg.type == "user":
                 history.append({"role": "user", "content": msg.response or ""})

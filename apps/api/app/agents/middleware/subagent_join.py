@@ -41,7 +41,7 @@ class SubagentJoinMiddleware(AgentMiddleware):
         self,
         state: AgentState[Any],
         runtime: Runtime[Any],
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, object] | None:
         del runtime  # config comes from the graph context var
         response = _latest_ai_message(state)
         if response is None or not _is_turn_ending(response):

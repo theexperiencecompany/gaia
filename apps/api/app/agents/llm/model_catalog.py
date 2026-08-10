@@ -16,7 +16,7 @@ its caching rules are load-bearing rather than an optimization:
 """
 
 import time
-from typing import Any, cast
+from typing import cast
 
 import httpx
 
@@ -28,6 +28,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.utils.json_helpers import dict_bag, list_bag, text_bag
 from shared.py.wide_events import log
 
 _IMAGE_MODALITY = "image"
@@ -105,14 +106,14 @@ class OpenRouterModelCatalog:
         )
 
     @staticmethod
-    def _parse(payload: dict[str, Any]) -> dict[str, bool]:
+    def _parse(payload: dict[str, object]) -> dict[str, bool]:
         models: dict[str, bool] = {}
-        for entry in payload.get("data") or []:
-            model_id = entry.get("id")
-            if not isinstance(model_id, str):
+        for entry in [e for e in list_bag(payload, "data") if isinstance(e, dict)]:
+            model_id = text_bag(entry, "id")
+            if not model_id:
                 continue
-            architecture = entry.get("architecture") or {}
-            modalities = architecture.get("input_modalities") or []
+            architecture = dict_bag(entry, "architecture")
+            modalities = list_bag(architecture, "input_modalities")
             models[model_id] = _IMAGE_MODALITY in modalities
         return models
 

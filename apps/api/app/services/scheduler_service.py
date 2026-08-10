@@ -4,7 +4,7 @@ Base scheduler service for managing scheduled tasks.
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
+from typing import Protocol
 
 from arq import ArqRedis, create_pool
 from arq.connections import RedisSettings
@@ -258,7 +258,7 @@ class BaseSchedulerService(ABC):
         if task_id is None:
             raise RuntimeError(f"cannot reschedule recurring task without an id: {task!r}")
         # Store scheduled_at as a native datetime so the `$lte` scan can match it.
-        update_fields: dict[str, Any] = {
+        update_fields: dict[str, object] = {
             "scheduled_at": next_run,
             "occurrence_count": occurrence_count,
         }
@@ -358,7 +358,7 @@ class BaseSchedulerService(ABC):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: dict[str, Any] | None = None,
+        update_data: dict[str, object] | None = None,
         user_id: str | None = None,
     ) -> bool:
         """Update task status and any additional fields."""

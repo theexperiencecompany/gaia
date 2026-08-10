@@ -6,7 +6,7 @@ conversations originating from the desktop client.
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -29,6 +29,7 @@ from app.templates.docstrings.desktop_tool_docs import (
     WRITE_CLIPBOARD,
 )
 from app.utils.image_codec import ImageCodec, InlineImage, InvalidImage
+from app.utils.json_helpers import list_bag, text_bag, text_opt_bag
 from app.utils.multimodal import text_content_block
 from shared.py.wide_events import log
 
@@ -42,7 +43,7 @@ _MISSING_CONTEXT_ERROR = "Desktop tool failed: no active stream context."
 async def _run_desktop_action(
     config: RunnableConfig,
     tool_name: str,
-    params: dict[str, Any] | None = None,
+    params: dict[str, object] | None = None,
 ) -> DesktopToolOutcome | str:
     """Validate the run context and execute one action on the desktop.
 
@@ -73,7 +74,7 @@ async def _run_desktop_action(
     )
 
 
-def _emit_tool_data(tool_name: str, data: dict[str, Any]) -> None:
+def _emit_tool_data(tool_name: str, data: dict[str, object]) -> None:
     """Stream a unified tool_data entry so the chat UI renders a card."""
     writer = get_stream_writer()
     writer(
@@ -114,7 +115,7 @@ async def _save_screenshot(config: RunnableConfig, image: InlineImage) -> str:
 async def take_screenshot(
     config: RunnableConfig,
     query: Annotated[str, "What to look for or describe on the screen"],
-) -> str | list[dict[str, Any]]:
+) -> str | list[dict[str, object]]:
     writer = get_stream_writer()
     writer({"progress": "Looking at your screen..."})
 
@@ -124,7 +125,7 @@ async def take_screenshot(
     if not outcome.ok or not outcome.data:
         return f"Could not capture the screen: {outcome.error or 'unknown error'}"
 
-    image_b64 = outcome.data.get("image_b64")
+    image_b64 = text_bag(outcome.data, "image_b64")
     if not image_b64:
         return "Could not capture the screen: the desktop app returned no image."
 
@@ -237,12 +238,13 @@ async def list_windows(config: RunnableConfig) -> str:
     if not outcome.ok:
         return f"Could not list windows: {outcome.error or 'unknown error'}"
 
-    windows = (outcome.data or {}).get("windows", [])
+    windows = list_bag(outcome.data or {}, "windows")
     if not windows:
         return "No open windows were reported."
     lines = [
-        f"- {window.get('app', 'Unknown app')}: {window.get('title') or '(untitled)'}"
+        f"- {text_opt_bag(window, 'app') or 'Unknown app'}: {text_opt_bag(window, 'title') or '(untitled)'}"
         for window in windows
+        if isinstance(window, dict)
     ]
     return "Open windows on the user's computer:\n" + "\n".join(lines)
 

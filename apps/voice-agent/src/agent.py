@@ -28,6 +28,7 @@ from livekit.agents import (
 from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+from app.utils.json_helpers import text_bag
 from shared.py.logging import configure_file_logging
 from shared.py.secrets import inject_infisical_secrets
 from shared.py.wide_events import ModelContext, VoiceContext, get_trace_id, log, log_context
@@ -114,7 +115,7 @@ class _SessionStats:
 
 
 def _register_session_logging(
-    ctx: JobContext, session: AgentSession[Any], identity: dict[str, Any], trace_id: str
+    ctx: JobContext, session: AgentSession[Any], identity: dict[str, str | None], trace_id: str
 ) -> None:
     """Wire per-session lifecycle logging: user/agent state, STT, metrics, usage.
 
@@ -240,7 +241,7 @@ async def _apply_participant_credentials(
     custom_llm: CustomLLM,
     tts: elevenlabs.TTS,
     applied_voice: dict[str, str],
-    identity: dict[str, Any],
+    identity: dict[str, str | None],
 ) -> None:
     """Apply agent token, TTS voice, and conversation id from participant metadata."""
     meta = extract_meta_data(md)
@@ -296,7 +297,7 @@ def _spawn_credential_task(
     who: str,
     *,
     tasks: set[asyncio.Task[None]],
-    identity: dict[str, Any],
+    identity: dict[str, str | None],
     trace_id: str,
 ) -> None:
     """Run a credential coroutine in its own wide event, kept alive in `tasks`.
@@ -319,7 +320,7 @@ def _spawn_credential_task(
             log.set(
                 voice=VoiceContext(
                     operation="credentials",
-                    room=identity["room"],
+                    room=text_bag(identity, "room"),
                     participant=who,
                 )
             )
@@ -354,7 +355,7 @@ async def entrypoint(ctx: JobContext) -> None:
     # callbacks fire outside this task's context, so identity is passed
     # explicitly into each log call rather than bound.
     user_id = user_id_from_room(ctx.room.name)
-    identity: dict[str, Any] = {
+    identity: dict[str, str | None] = {
         "room": ctx.room.name,
         "user_id": user_id,
         "job_id": getattr(ctx.job, "id", None),

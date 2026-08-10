@@ -1,7 +1,5 @@
 """ARQ worker task for post-onboarding personalization."""
 
-from typing import Any
-
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import OnboardingPhase
@@ -9,17 +7,18 @@ from app.services.onboarding.intelligence_job import (
     clear_active_intelligence_job,
     clear_active_workflows_job,
 )
+from app.utils.json_helpers import text_opt_bag
 from shared.py.wide_events import log
 
 
-async def process_onboarding_intelligence_task(ctx: dict[str, Any], user_id: str) -> str:
+async def process_onboarding_intelligence_task(ctx: dict[str, object], user_id: str) -> str:
     """ARQ background task for the full onboarding intelligence pipeline."""
     log.set(user_id=user_id, user={"id": user_id})
     from app.services.onboarding.intelligence_service import (
         process_onboarding_intelligence,
     )
 
-    job_id = ctx.get("job_id")
+    job_id = text_opt_bag(ctx, "job_id")
     try:
         await process_onboarding_intelligence(user_id)
     except Exception as e:
@@ -69,14 +68,14 @@ async def process_onboarding_intelligence_task(ctx: dict[str, Any], user_id: str
     return f"Onboarding intelligence completed for user {user_id}"
 
 
-async def process_onboarding_workflows_task(ctx: dict[str, Any], user_id: str) -> str:
+async def process_onboarding_workflows_task(ctx: dict[str, object], user_id: str) -> str:
     """ARQ background task for the split-pipeline workflows phase."""
     log.set(user_id=user_id, user={"id": user_id})
     from app.services.onboarding.intelligence_service import (
         process_onboarding_workflows_phase,
     )
 
-    job_id = ctx.get("job_id")
+    job_id = text_opt_bag(ctx, "job_id")
     try:
         await process_onboarding_workflows_phase(user_id)
     except Exception as e:

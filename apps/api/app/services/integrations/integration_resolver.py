@@ -7,7 +7,6 @@ across mcp_client.py, integrations.py, and integration_service.py.
 """
 
 from dataclasses import dataclass
-from typing import Any
 
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
@@ -32,7 +31,7 @@ class ResolvedIntegration:
     mcp_config: MCPConfig | None
     # Original sources for backward compatibility
     platform_integration: OAuthIntegration | None
-    custom_doc: dict[str, Any] | None
+    custom_doc: dict[str, object] | None
 
 
 class IntegrationResolver:

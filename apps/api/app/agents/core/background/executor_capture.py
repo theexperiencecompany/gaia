@@ -11,7 +11,7 @@ implementation so chat and workflow runs render identically.
 """
 
 import asyncio
-from typing import Any
+from typing import cast
 
 from app.agents.core.background.session import (
     RunKind,
@@ -89,7 +89,7 @@ def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
     # "tool_data" list has a fixed shape, and it is this list object throughout —
     # seeded here, mutated in place by every helper below, and rebound by
     # reconstruct_subagent_groups, hence the re-read at the end.
-    accumulated: dict[str, Any] = {"tool_data": entries}
+    accumulated: dict[str, object] = {"tool_data": entries}
     outputs: dict[str, str] = {}
     for evt in session.tool_events:
         # Hooks (e.g. GMAIL_FETCH_MESSAGES) emit raw field payloads like
@@ -97,9 +97,13 @@ def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
         # before absorbing, or absorb_collector_event drops them and the list
         # card never persists onto the background-executor message.
         absorb_collector_event(normalize_custom_event(evt), accumulated, outputs)
-    apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
+    apply_outputs_to_tool_data(
+        cast(list[ToolDataEntry], accumulated["tool_data"]),
+        outputs,
+        only_tool_name="tool_calls_data",
+    )
     reconstruct_subagent_groups(accumulated)
-    grouped: list[ToolDataEntry] = accumulated["tool_data"]
+    grouped: list[ToolDataEntry] = cast(list[ToolDataEntry], accumulated["tool_data"])
     return grouped
 
 

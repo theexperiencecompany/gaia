@@ -3,7 +3,7 @@ Linear trigger handler.
 """
 
 import asyncio
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -151,7 +151,7 @@ class LinearTriggerHandler(TriggerHandler):
                 trigger_name,
             )
 
-        composio_trigger_config: dict[str, Any] = {}
+        composio_trigger_config: dict[str, object] = {}
         if trigger_data.team_id:
             composio_trigger_config["team_id"] = trigger_data.team_id
 
@@ -164,7 +164,7 @@ class LinearTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows matching a Linear trigger event."""
         log.set_ns("trigger", integration_id="linear", trigger_type=event_type)

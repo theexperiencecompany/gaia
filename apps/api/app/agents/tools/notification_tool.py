@@ -1,4 +1,4 @@
-from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
+from typing import Annotated, Literal, NotRequired, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -35,7 +35,7 @@ from shared.py.wide_events import log
 # passed on as models. json mode matters: the default python mode leaves enum
 # *members* in the dict, which LangChain then stringifies into the ToolMessage as
 # ``<NotificationStatus.DELIVERED: 'delivered'>`` instead of ``'delivered'``.
-SerializedNotification: TypeAlias = dict[str, Any]
+SerializedNotification: TypeAlias = dict[str, object]
 
 
 # ---------------------------------------------------------------------------

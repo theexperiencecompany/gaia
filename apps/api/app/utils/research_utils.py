@@ -11,6 +11,7 @@ from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.constants.cache import SIX_HOUR_TTL
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
+from app.utils.json_helpers import int_bag, text_bag
 from shared.py.wide_events import log
 
 
@@ -96,12 +97,12 @@ async def decompose_research_queries(
     return base[:n_queries]
 
 
-def rank_and_deduplicate_urls(search_results: list[Any], max_urls: int) -> list[dict[str, Any]]:
+def rank_and_deduplicate_urls(search_results: list[Any], max_urls: int) -> list[dict[str, object]]:
     """
     Merge results from multiple searches, rank by appearance frequency + relevance score.
     Returns deduplicated URL list sorted by combined relevance.
     """
-    url_map: dict[str, dict[str, Any]] = {}
+    url_map: dict[str, dict[str, object]] = {}
 
     for result in search_results:
         if isinstance(result, Exception) or not result:
@@ -109,7 +110,7 @@ def rank_and_deduplicate_urls(search_results: list[Any], max_urls: int) -> list[
         for item in result.get("results", []):
             if not isinstance(item, dict):
                 continue
-            url = item.get("url", "").strip()
+            url = text_bag(item, "url").strip()
             if not url or not url.startswith("http"):
                 continue
             raw_score = item.get("score", 0.5)
@@ -118,20 +119,21 @@ def rank_and_deduplicate_urls(search_results: list[Any], max_urls: int) -> list[
             except (TypeError, ValueError):
                 score = 0.5
             if url in url_map:
-                url_map[url]["score"] += score
-                url_map[url]["appearances"] += 1
+                entry = url_map[url]
+                entry["score"] = int_bag(entry, "score") + score
+                entry["appearances"] = int_bag(entry, "appearances") + 1
             else:
                 url_map[url] = {
                     "url": url,
-                    "title": item.get("title", ""),
-                    "snippet": item.get("content", ""),
+                    "title": text_bag(item, "title"),
+                    "snippet": text_bag(item, "content"),
                     "score": score,
                     "appearances": 1,
                 }
 
     ranked = sorted(
         url_map.values(),
-        key=lambda x: x["appearances"] * 2 + x["score"],
+        key=lambda x: int_bag(x, "appearances") * 2 + int_bag(x, "score"),
         reverse=True,
     )
     return ranked[:max_urls]

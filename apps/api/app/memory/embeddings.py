@@ -24,7 +24,7 @@ from collections.abc import Awaitable
 import os
 import threading
 import time
-from typing import Any, TypeVar, cast
+from typing import TypeVar, cast
 
 from fastembed import TextEmbedding
 from fastembed.rerank.cross_encoder import TextCrossEncoder
@@ -147,11 +147,11 @@ def _sidecar_url() -> str | None:
     return url.rstrip("/") or None
 
 
-async def _sidecar_post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+async def _sidecar_post(path: str, payload: dict[str, object]) -> dict[str, object]:
     async with httpx.AsyncClient(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS) as client:
         response = await client.post(f"{_sidecar_url()}{path}", json=payload)
         response.raise_for_status()
-        return cast(dict[str, Any], response.json())
+        return cast(dict[str, object], response.json())
 
 
 async def embed_query(text: str) -> list[float]:

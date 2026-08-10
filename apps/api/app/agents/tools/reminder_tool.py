@@ -2,7 +2,7 @@
 
 from datetime import datetime
 import json
-from typing import Annotated, Any
+from typing import Annotated
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
@@ -122,7 +122,7 @@ async def list_user_reminders_tool(
         ReminderStatus | None,
         "Filter by reminder status (scheduled, completed, cancelled, paused)",
     ] = None,
-) -> dict[str, str] | list[dict[str, Any]]:
+) -> dict[str, str] | list[dict[str, object]]:
     """List user reminders tool function."""
     try:
         log.set(tool={"name": "list_user_reminders_tool", "action": "list"})
@@ -146,7 +146,7 @@ async def list_user_reminders_tool(
 async def get_reminder_tool(
     config: RunnableConfig,
     reminder_id: Annotated[str, "The unique identifier of the reminder"],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Get full details of a specific reminder by ID"""
     try:
         log.set(tool={"name": "get_reminder_tool", "action": "get"})
@@ -208,7 +208,7 @@ async def update_reminder_tool(
         "Timezone offset for stop_after in (+|-)HH:MM format. Only use if user explicitly mentions a timezone.",
     ] = None,
     payload: Annotated[
-        dict[str, Any] | None, "Additional data for the reminder task (optional)"
+        dict[str, object] | None, "Additional data for the reminder task (optional)"
     ] = None,
 ) -> dict[str, str]:
     """Update attributes of an existing reminder"""
@@ -272,7 +272,7 @@ async def update_reminder_tool(
 async def search_reminders_tool(
     config: RunnableConfig,
     query: Annotated[str, "Search keyword(s) to match against reminders"],
-) -> dict[str, str] | list[dict[str, Any]]:
+) -> dict[str, str] | list[dict[str, object]]:
     """Search reminders by keyword or content"""
     try:
         log.set(tool={"name": "search_reminders_tool", "action": "search"})
@@ -283,7 +283,7 @@ async def search_reminders_tool(
 
         reminders = await reminder_scheduler.list_user_reminders(user_id=user_id, limit=100, skip=0)
 
-        results: list[dict[str, Any]] = []
+        results: list[dict[str, object]] = []
         for r in reminders:
             rd = r.model_dump()
             if query.lower() in json.dumps(rd).lower():

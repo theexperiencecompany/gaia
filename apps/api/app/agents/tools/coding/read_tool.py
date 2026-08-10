@@ -9,7 +9,7 @@ falls back to reading through the sandbox so file reads still work.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from e2b import AsyncSandbox, NotFoundException
 from langchain_core.runnables.config import RunnableConfig
@@ -53,7 +53,7 @@ async def read(
     path: Annotated[str, "Path inside the workspace (relative = session scratch)"],
     offset: Annotated[int, "Starting line (1-indexed); 0 = start of file"] = 0,
     limit: Annotated[int, "Max lines to return"] = DEFAULT_LIMIT,
-) -> str | list[dict[str, Any]]:
+) -> str | list[dict[str, object]]:
     """Read a file from the persistent workspace."""
 
     log.set(tool={"name": "read", "action": "read"})
@@ -121,7 +121,7 @@ async def _read_image(
     abs_path: str,
     mime_type: str,
     session_id: str | None,
-) -> str | list[dict[str, Any]]:
+) -> str | list[dict[str, object]]:
     """Read an image file and return it as inline content blocks.
 
     Always returns the pixels. Fitting them to the active lane — actual image, or

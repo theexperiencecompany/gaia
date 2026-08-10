@@ -3,7 +3,6 @@ ARQ worker shutdown functionality.
 """
 
 import asyncio
-from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.core.provider_registration import unified_shutdown
@@ -11,7 +10,7 @@ from app.utils.browser_reaper import stop_browser_reaper
 from shared.py.wide_events import log, log_context
 
 
-async def shutdown(ctx: dict[str, Any]) -> None:
+async def shutdown(ctx: dict[str, object]) -> None:
     """ARQ worker shutdown function with proper cleanup.
 
     Own boundary for the same reason as ``startup``: ARQ provides none, so a
@@ -27,7 +26,7 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
         # Show runtime statistics
         startup_time = ctx.get("startup_time", 0)
-        if startup_time:
+        if isinstance(startup_time, (int, float)):
             runtime = asyncio.get_event_loop().time() - startup_time
             log.set(runtime_s=round(runtime, 2))
             log.info(f"{LogTag.WORKER} ARQ worker runtime recorded", runtime_s=round(runtime, 2))

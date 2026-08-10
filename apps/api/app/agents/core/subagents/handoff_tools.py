@@ -10,6 +10,7 @@ Subagent identity/metadata comes from agents/core/subagents/registry.py
 (unified view of OAuth-derived + builtin subagents).
 """
 
+from collections.abc import Mapping
 import re
 import time
 from typing import Annotated, Any
@@ -77,17 +78,18 @@ from app.utils.agent_utils import (
 )
 from app.utils.background_tasks import spawn_background_task
 from app.utils.integration_checker import build_integration_connection_message
+from app.utils.json_helpers import dict_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 SUBAGENTS_NAMESPACE = ("subagents",)
 
 
-def _extract_service_username(metadata: dict[str, Any] | None) -> str | None:
+def _extract_service_username(metadata: Mapping[str, object] | None) -> str | None:
     if not metadata:
         return None
     for key in ("username", "login", "handle"):
         value = metadata.get(key)
-        if value:
+        if isinstance(value, str) and value:
             return str(value)
     return None
 
@@ -156,7 +158,7 @@ async def check_integration_connection(
         return None
 
 
-async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | None:
+async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, object] | None:
     """
     Get subagent by ID or short_name.
 
@@ -177,7 +179,7 @@ async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | N
 
     # Check Redis cache for custom integrations
     cache_key = f"{SUBAGENT_CACHE_PREFIX}:{search_id}"
-    cached: dict[str, Any] | None = await get_cache(cache_key)
+    cached: dict[str, object] | None = await get_cache(cache_key)
     if cached is not None:
         # Return cached result (could be empty dict for negative cache)
         return cached or None
@@ -186,7 +188,7 @@ async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | N
     custom = await integration_repository.find_by_id_prefix_or_name(search_id)
 
     if custom:
-        result = {
+        result: dict[str, object] = {
             "id": custom.integration_id,
             "name": custom.name,
             "source": custom.source,
@@ -205,12 +207,12 @@ async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | N
     if resolved and resolved.custom_doc:
         doc = resolved.custom_doc
         result = {
-            "id": doc.get("integration_id"),
-            "name": doc.get("name"),
+            "id": text_opt_bag(doc, "integration_id"),
+            "name": text_opt_bag(doc, "name"),
             "source": resolved.source,
             "managed_by": "mcp",
-            "mcp_config": doc.get("mcp_config"),
-            "icon_url": doc.get("icon_url"),
+            "mcp_config": dict_bag(doc, "mcp_config"),
+            "icon_url": text_opt_bag(doc, "icon_url"),
             "subagent_config": None,
         }
         await set_cache(cache_key, result, ttl=SUBAGENT_CACHE_TTL)
@@ -313,7 +315,7 @@ async def _resolve_subagent(
     # Handle custom MCPs (returned as dict from MongoDB)
     if isinstance(resolved, dict):
         # Custom MCP - resolved is a dict
-        integration_id = str(resolved.get("id", ""))
+        integration_id = str(text_bag(resolved, "id"))
         integration_name = str(resolved.get("name", integration_id))
 
         if not integration_id:
@@ -406,9 +408,9 @@ async def _build_integration_metadata(
         integration = await _get_subagent_by_id(integration_id)
         if isinstance(integration, dict):
             return IntegrationMetadata(
-                icon_url=integration.get("icon_url"),
+                icon_url=text_opt_bag(integration, "icon_url"),
                 integration_id=integration_id,
-                name=str(integration.get("name") or integration_id),
+                name=str(text_bag(integration, "name") or integration_id),
             )
         return None
     platform_integ = get_subagent_by_id(integration_id)
@@ -472,7 +474,7 @@ async def prepare_subagent_execution(
         }
     )
 
-    thread_id = configurable.get("thread_id", "")
+    thread_id = text_bag(configurable, "thread_id")
     subagent_thread_id = f"{integration_id}_{thread_id}"
 
     user: AgentUserContext = {
@@ -761,7 +763,7 @@ async def handoff(
 
         # Fallback: try to get user_id from metadata if not in configurable
         if not user_id:
-            user_id = config.get("metadata", {}).get("user_id")
+            user_id = text_opt_bag(dict_bag(config, "metadata"), "user_id")
             if user_id:
                 configurable["user_id"] = user_id
 

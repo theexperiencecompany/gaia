@@ -2,7 +2,6 @@
 
 from collections.abc import Awaitable, Callable
 import time
-from typing import Any
 
 from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import (
@@ -19,6 +18,7 @@ from app.models.onboarding_models import (
     WritingStyleProfile,
 )
 from app.services.mail.mail_service import search_messages
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 # Minimum usable sent-email count below which style learning is skipped.
@@ -42,7 +42,7 @@ async def learn_writing_style(
             max_results=50,
         )
 
-        sent_emails: list[dict[str, Any]] = result.messages
+        sent_emails: list[dict[str, object]] = result.messages
         sent_count = len(sent_emails)
 
         if on_status is not None:
@@ -63,8 +63,8 @@ async def learn_writing_style(
         skipped_short = 0
         skipped_autoreply = 0
         for email in sent_emails:
-            body = email.get("body", email.get("snippet", "")).strip()
-            subject = email.get("subject", "")
+            body = (text_bag(email, "body") or text_bag(email, "snippet")).strip()
+            subject = text_bag(email, "subject")
             if len(body) < 20:
                 skipped_short += 1
                 continue

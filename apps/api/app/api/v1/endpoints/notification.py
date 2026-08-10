@@ -1,6 +1,6 @@
 import asyncio
 from html import escape
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import (
     APIRouter,
@@ -218,7 +218,7 @@ async def execute_action(
     notification_id: str = Path(..., description="Notification ID"),
     action_id: str = Path(..., description="Action ID"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> NotificationResponse[dict[str, Any]]:
+) -> NotificationResponse[dict[str, object]]:
     """Execute a notification action.
 
     ``data`` stays a free-form dict: it is whatever the matched ``ActionHandler``

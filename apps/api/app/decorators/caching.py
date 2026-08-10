@@ -365,7 +365,7 @@ class CacheInvalidator:
         return wrapper
 
 
-def _pattern_to_key(pattern: str, arguments: dict[str, Any]) -> str:
+def _pattern_to_key(pattern: str, arguments: dict[str, object]) -> str:
     """
     Convert key pattern template to actual cache key using function arguments.
 

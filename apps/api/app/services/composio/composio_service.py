@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Any, cast
+from typing import cast
 
 from composio import Composio, after_execute, before_execute, schema_modifier
 from composio.types import Tool
@@ -63,7 +63,7 @@ class ComposioService:
 
     async def connect_account(
         self, provider: str, user_id: str, state_token: str | None = None
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
 

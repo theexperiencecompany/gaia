@@ -4,7 +4,6 @@ Single service approach - simple and maintainable.
 """
 
 import json
-from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
@@ -200,7 +199,7 @@ async def handle_dodo_webhook(
         # Raw provider payload: process_webhook validates it into DodoWebhookEvent and
         # deliberately answers 200/"failed" for shapes it can't parse, so Dodo's retry
         # policy stays driven by the processing result rather than a request rejection.
-        webhook_data: dict[str, Any] = json.loads(payload)
+        webhook_data: dict[str, object] = json.loads(payload)
 
         log.set_ns("payment", event_type=webhook_data.get("type", "unknown"))
 

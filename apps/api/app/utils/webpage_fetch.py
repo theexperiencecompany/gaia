@@ -11,7 +11,6 @@ Full page content is returned untruncated; callers decide on any length limits.
 from abc import ABC, abstractmethod
 import asyncio
 import time
-from typing import Any
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
@@ -193,7 +192,7 @@ async def _fetch_first_success(url: str, fetchers: list[WebpageFetcher] | None =
     """
     fetchers = fetchers if fetchers is not None else _default_fetchers()
     host = urlparse(url).hostname or ""
-    attempts: list[dict[str, Any]] = []
+    attempts: list[dict[str, object]] = []
     errors: list[str] = []
 
     for fetcher in fetchers:

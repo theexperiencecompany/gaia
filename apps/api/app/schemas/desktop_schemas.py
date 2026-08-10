@@ -1,7 +1,5 @@
 """Pydantic schemas for the desktop tool bridge."""
 
-from typing import Any
-
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Generous cap (~16 MB of base64) for the screenshot image fields. A 1568px
@@ -16,12 +14,12 @@ class DesktopToolResultRequest(BaseModel):
 
     request_id: str = Field(min_length=1, description="Bridge request this result answers")
     ok: bool = Field(description="Whether the action executed successfully")
-    data: dict[str, Any] | None = Field(default=None, description="Tool-specific result payload")
+    data: dict[str, object] | None = Field(default=None, description="Tool-specific result payload")
     error: str | None = Field(default=None, description="Human-readable failure reason")
 
     @field_validator("data")
     @classmethod
-    def _bound_image_payload(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+    def _bound_image_payload(cls, value: dict[str, object] | None) -> dict[str, object] | None:
         """Reject oversized screenshot blobs before they hit Redis / the LLM."""
         if value:
             for key in _IMAGE_RESULT_FIELDS:

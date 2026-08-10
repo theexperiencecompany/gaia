@@ -11,7 +11,7 @@ design, generalized to a long-lived bidirectional MCP stream.
 from __future__ import annotations
 
 import json
-from typing import Any, Final
+from typing import Final
 import uuid
 
 from app.constants.device_bridge import (
@@ -83,7 +83,7 @@ async def online_device_ids(device_ids: list[str]) -> set[str]:
     return online
 
 
-async def send_down(device_id: str, frame: dict[str, Any]) -> None:
+async def send_down(device_id: str, frame: dict[str, object]) -> None:
     """Publish a frame to the device's owning pod for relay down the socket."""
     if not redis_cache.redis:
         raise RuntimeError("Device bridge unavailable (no Redis connection)")

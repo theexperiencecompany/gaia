@@ -14,10 +14,10 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime
 import json
-from typing import Any
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langchain_core.messages.ai import UsageMetadata
 from langgraph.errors import GraphRecursionError
 
 from app.agents.core.agent import call_agent
@@ -61,6 +61,7 @@ from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
+from app.utils.json_helpers import list_bag, text_bag
 from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
@@ -121,11 +122,11 @@ class _StreamState:
 
     def __init__(self, turn_id: str | None = None) -> None:
         self.complete_message: str = ""
-        self.tool_data: dict[str, Any] = {"tool_data": []}
+        self.tool_data: dict[str, object] = {"tool_data": []}
         self.tool_outputs: dict[str, str] = {}
-        self.todo_progress_accumulated: dict[str, Any] = {}
+        self.todo_progress_accumulated: dict[str, object] = {}
         self.follow_up_actions: list[str] = []
-        self.usage_metadata: dict[str, Any] = {}
+        self.usage_metadata: dict[str, UsageMetadata] = {}
         self.is_cancelled: bool = False
         # Terminal error for this turn, persisted onto the bot message so a
         # reload shows what happened instead of an empty bubble.
@@ -564,7 +565,7 @@ def _parse_complete_message(chunk: str) -> tuple[str, bool]:
     """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker."""
     nostream_json = json.loads(chunk.removeprefix("nostream: "))
     if isinstance(nostream_json, dict):
-        return str(nostream_json.get("complete_message", "")), bool(
+        return str(text_bag(nostream_json, "complete_message")), bool(
             nostream_json.get("cancelled", False)
         )
     return "", False
@@ -717,7 +718,7 @@ async def _attach_executor_tool_data(
     try:
         matched = await conversation_repository.append_message_tool_data(
             conversation_id,
-            user_id=user.get("user_id", ""),
+            user_id=text_bag(user, "user_id"),
             message_id=state.bot_message_id,
             entries=executor_td,
         )
@@ -785,12 +786,12 @@ async def _finalize_stream(
 
     await stream_manager.cleanup(stream_id)
 
-    tool_entries = state.tool_data.get("tool_data", [])
+    tool_entries = [e for e in list_bag(state.tool_data, "tool_data") if isinstance(e, dict)]
     fs_metrics = flush_fs_metrics()
     log.set(
         response_length=len(state.complete_message),
         tool_calls_count=len(tool_entries),
-        tool_types=list({e["tool_name"] for e in tool_entries if "tool_name" in e}),
+        tool_types=list({text_bag(e, "tool_name") for e in tool_entries if "tool_name" in e}),
         todo_progress_sources=list(state.todo_progress_accumulated.keys()),
         # Per-op FS latency aggregate — one structured field so LogQL can split
         # on op name, count, total_ms, max_ms without N+1 log lines. Empty dict

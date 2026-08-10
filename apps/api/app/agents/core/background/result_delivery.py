@@ -15,7 +15,6 @@ Every executor terminal path goes through one of these.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -562,7 +561,7 @@ async def _broadcast_bot_message(
     user_msg_content: str,
 ) -> None:
     """Push the bot message to web/mobile/system clients over the WebSocket."""
-    ws_payload: dict[str, Any] = {
+    ws_payload: dict[str, object] = {
         "type": "bot",
         "response": notification_text,
         "message_id": bot_message.message_id,
@@ -595,7 +594,7 @@ async def _broadcast_bot_message(
     )
 
 
-async def _broadcast_message(user_id: str, ws_event: dict[str, Any]) -> None:
+async def _broadcast_message(user_id: str, ws_event: dict[str, object]) -> None:
     """Best-effort WebSocket broadcast with one retry."""
     for attempt in range(2):
         try:

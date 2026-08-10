@@ -1,7 +1,7 @@
 """WorkOS session auth middleware + ``get_current_user`` dependency."""
 
 from collections.abc import Awaitable, Callable
-from typing import Any, cast
+from typing import cast
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -25,9 +25,9 @@ from app.utils.auth_utils import (
 from shared.py.wide_events import log
 
 
-def get_current_user(request: Request) -> dict[str, Any] | None:
+def get_current_user(request: Request) -> dict[str, object] | None:
     """Return the authenticated user dict on ``request.state``, or ``None``."""
-    return cast("dict[str, Any] | None", getattr(request.state, "user", None))
+    return cast("dict[str, object] | None", getattr(request.state, "user", None))
 
 
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):

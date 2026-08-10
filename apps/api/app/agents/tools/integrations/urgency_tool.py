@@ -10,11 +10,13 @@ from composio import Composio
 from composio.types import ExecuteRequestFn
 from pydantic import BaseModel, Field
 
+from app.utils.json_helpers import int_bag, text_bag
+
 
 class UrgencyAggregatorInput(BaseModel):
     """Input for the urgency aggregator — a dict of integration snapshots."""
 
-    snapshots: dict[str, Any] = Field(
+    snapshots: dict[str, object] = Field(
         ...,
         description=(
             "Dict mapping integration name to its CUSTOM_GATHER_CONTEXT output. "
@@ -30,8 +32,8 @@ def register_urgency_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_URGENCY_AGGREGATOR(
         request: UrgencyAggregatorInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Aggregate urgency signals from multiple integration context snapshots.
 
         Takes outputs from multiple CUSTOM_GATHER_CONTEXT calls and returns a
@@ -44,7 +46,7 @@ def register_urgency_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             Dict with urgent_items list (sorted by priority) and summary counts
         """
         del execute_request, auth_credentials  # unused: framework-mandated custom-tool signature
-        urgent_items: list[dict[str, Any]] = []
+        urgent_items: list[dict[str, object]] = []
 
         for integration, snapshot in request.snapshots.items():
             if not isinstance(snapshot, dict):
@@ -83,7 +85,7 @@ def register_urgency_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                                 if mentions_list
                                 else f"{unread_count} unread Slack messages"
                             ),
-                            "details": [m.get("text", "")[:80] for m in mentions_list[:3]],
+                            "details": [text_bag(m, "text")[:80] for m in mentions_list[:3]],
                         }
                     )
 
@@ -116,7 +118,7 @@ def register_urgency_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                             "priority": "medium",
                             "description": f"{len(event_list)} calendar events today",
                             "details": [
-                                e.get("summary", e.get("title", "")) for e in event_list[:3]
+                                e.get("summary", text_bag(e, "title")) for e in event_list[:3]
                             ],
                         }
                     )
@@ -145,7 +147,7 @@ def register_urgency_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                             "count": review_count,
                             "priority": "high",
                             "description": f"{review_count} GitHub PRs awaiting your review",
-                            "details": [pr.get("title", "") for pr in review_requests[:3]],
+                            "details": [text_bag(pr, "title") for pr in review_requests[:3]],
                         }
                     )
 
@@ -200,8 +202,8 @@ def register_urgency_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         priority_order = {"high": 0, "medium": 1, "low": 2}
         urgent_items.sort(
             key=lambda x: (
-                priority_order.get(x["priority"], 3),
-                -x.get("count", 0),
+                priority_order.get(text_bag(x, "priority"), 3),
+                -int_bag(x, "count"),
             )
         )
 

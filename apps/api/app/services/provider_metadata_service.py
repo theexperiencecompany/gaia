@@ -17,7 +17,7 @@ from app.services.composio.composio_service import get_composio_service
 from shared.py.wide_events import log
 
 
-def _extract_nested_field(data: dict[str, Any], field_path: str) -> str | None:
+def _extract_nested_field(data: dict[str, object], field_path: str) -> str | None:
     """Extract a value from a nested dict using dot-notation (e.g. "data.login")."""
     try:
         keys = field_path.split(".")
@@ -40,7 +40,7 @@ def _extract_nested_field(data: dict[str, Any], field_path: str) -> str | None:
 
 async def fetch_tool_response(
     user_id: str, tool_name: str, integration_id: str
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """Call a single tool and return its raw response dict, or None on failure."""
     log.set(
         provider_metadata_user_id=user_id,

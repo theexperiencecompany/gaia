@@ -1,7 +1,6 @@
 """Shared tool runtime configuration for agent and child-agent execution."""
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.constants.general import FINISH_TASK_NAME
@@ -26,14 +25,14 @@ def build_create_agent_tool_kwargs(
     *,
     tool_space: str,
     bindable_tool_names: set[str] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Build create_agent kwargs from shared tool runtime config.
 
     `bindable_tool_names` is the set of tools the agent's graph can actually bind
     (its scoped registry). Pass it for scoped agents so retrieve_tools validates
     binding against what the graph honors; leave None for full-registry agents.
     """
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "initial_tool_ids": tool_runtime_config.initial_tool_names,
     }
     if tool_runtime_config.enable_retrieve_tools:

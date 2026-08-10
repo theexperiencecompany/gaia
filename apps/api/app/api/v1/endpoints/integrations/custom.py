@@ -197,8 +197,8 @@ async def publish_integration(
         log.set(outcome="success")
         return PublishIntegrationResponse(
             message="Integration published successfully",
-            integration_id=result["integration_id"],
-            public_url=result["public_url"],
+            integration_id=text_bag(result, "integration_id"),
+            public_url=text_opt_bag(result, "public_url") or "",
         )
     except PublishError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
@@ -229,7 +229,7 @@ async def unpublish_integration(
         log.set(outcome="success")
         return UnpublishIntegrationResponse(
             message="Integration unpublished successfully",
-            integration_id=result["integration_id"],
+            integration_id=text_bag(result, "integration_id"),
         )
     except PublishError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e

@@ -4,7 +4,7 @@ Clean, simple, and maintainable.
 """
 
 import asyncio
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from dodopayments import DodoPayments
 from fastapi import HTTPException
@@ -130,7 +130,7 @@ class DodoPaymentService:
 
         # Create hosted checkout session (preferred over deprecated subscriptions.create)
         try:
-            params: dict[str, Any] = {
+            params: dict[str, object] = {
                 "product_cart": [
                     {
                         "product_id": product_id,
@@ -157,7 +157,10 @@ class DodoPaymentService:
                 # Pre-apply a known discount (customer can still edit it on the page)
                 params["discount_code"] = discount_code
 
-            checkout_session = self.client.checkout_sessions.create(**params)
+            # Dodo's SDK types each create() kwarg against nested TypedDicts; the
+            # bag is built above to match its schema exactly, so it is bridged at
+            # this one SDK boundary (same convention as the LazyLoader seams).
+            checkout_session = self.client.checkout_sessions.create(**cast(Any, params))
         except Exception as e:
             log.error(
                 f"{LogTag.PAYMENT} Error creating Dodo checkout session",

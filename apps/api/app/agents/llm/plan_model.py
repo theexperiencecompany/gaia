@@ -8,8 +8,6 @@ hard-walled mid-month. All other pro entitlements (rate limits, memory,
 per-request ceiling) stay intact; only the model changes.
 """
 
-from typing import Any
-
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
 from app.constants.llm import (
@@ -149,7 +147,7 @@ async def _notify_degrade_once(user_id: str) -> None:
 
 
 def _apply_dev_model(
-    configurable: AgentConfigurable, option: DevModelOption, reasoning_cfg: dict[str, Any]
+    configurable: AgentConfigurable, option: DevModelOption, reasoning_cfg: dict[str, object]
 ) -> None:
     """Pin a DEV_MODEL_OPTIONS entry onto a configurable, applying role-appropriate
     reasoning. Clears `model_kwargs`/`reasoning` for models that don't use them so a

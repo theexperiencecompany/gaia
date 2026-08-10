@@ -1,6 +1,6 @@
 """Utility functions for Google Docs operations."""
 
-from typing import Any
+from app.utils.json_helpers import dict_bag, int_bag, list_bag, text_bag
 
 # Mapping of Google Docs heading styles to levels
 HEADING_STYLE_MAP = {
@@ -14,21 +14,21 @@ HEADING_STYLE_MAP = {
 
 
 def extract_headings_from_document(
-    doc_content: dict[str, Any], include_levels: list[int]
-) -> list[dict[str, Any]]:
+    doc_content: dict[str, object], include_levels: list[int]
+) -> list[dict[str, object]]:
     """Extract headings from document body content."""
     headings = []
 
-    body = doc_content.get("body", {})
-    content = body.get("content", [])
+    body = dict_bag(doc_content, "body")
+    content = [e for e in list_bag(body, "content") if isinstance(e, dict)]
 
     for element in content:
-        if "paragraph" not in element:
+        if not isinstance(element, dict) or "paragraph" not in element:
             continue
 
         paragraph = element["paragraph"]
         paragraph_style = paragraph.get("paragraphStyle", {})
-        named_style = paragraph_style.get("namedStyleType", "")
+        named_style = text_bag(paragraph_style, "namedStyleType")
         # Extract text content first
         text_parts = []
         for text_element in paragraph.get("elements", []):
@@ -56,14 +56,14 @@ def extract_headings_from_document(
                 {
                     "level": level,
                     "text": full_text,
-                    "start_index": element.get("startIndex", 0),
+                    "start_index": int_bag(element, "startIndex"),
                 }
             )
 
     return headings
 
 
-def generate_toc_text(headings: list[dict[str, Any]], title: str) -> str:
+def generate_toc_text(headings: list[dict[str, object]], title: str) -> str:
     """Generate formatted TOC text from headings."""
     if not headings:
         return f"{title}\n\n(No headings found in document)\n\n"
@@ -71,10 +71,10 @@ def generate_toc_text(headings: list[dict[str, Any]], title: str) -> str:
     lines = [f"{title}", "=" * len(title), ""]
 
     for heading in headings:
-        level = heading["level"]
+        level = int_bag(heading, "level", 1)
         text = heading["text"]
         # Indent based on heading level
-        indent = "  " * (level - 1)
+        indent = "  " * max(level - 1, 0)
         # Use bullet style based on level
         if level == 1:
             lines.append(f"{indent}• {text}")

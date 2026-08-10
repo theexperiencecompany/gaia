@@ -11,7 +11,6 @@ Usage:
 
 from collections.abc import Callable
 import json
-from typing import Any
 
 from app.agents.core.background.session import get_session
 from app.constants.log_tags import LogTag
@@ -25,7 +24,7 @@ STREAM_PUBLISH_TASK_NAME = "stream-publish"
 from shared.py.wide_events import log
 
 
-def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]:
+def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, object]], None]:
     """Return a sync callable that publishes tool events directly to Redis.
 
     Matches the stream_writer protocol expected by execute_subagent_stream().
@@ -38,7 +37,7 @@ def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]
     only for the save path, not for re-publishing.
     """
 
-    def writer(data: dict[str, Any]) -> None:
+    def writer(data: dict[str, object]) -> None:
         chunk = f"data: {json.dumps(data)}\n\n"
         try:
             spawn_background_task(

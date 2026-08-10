@@ -9,6 +9,7 @@ from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from app.utils.errors import AppError
+from app.utils.json_helpers import text_opt_bag
 from shared.py.wide_events import log
 
 REDDIT_API_BASE = "https://oauth.reddit.com"
@@ -21,14 +22,14 @@ def register_reddit_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Reddit context snapshot: user profile, subscribed subreddits, and unread messages.
 
         Zero required parameters. Returns authenticated user's Reddit state.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
-        user_id = auth_credentials.get("user_id")
+        user_id = text_opt_bag(auth_credentials, "user_id")
         if not user_id:
             raise AppError(
                 message="Missing user_id in auth_credentials",
@@ -36,7 +37,7 @@ def register_reddit_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 status_code=500,
             )
 
-        me: dict[str, Any] = {}
+        me: dict[str, object] = {}
         try:
             me = (
                 proxy_request_sync(
@@ -54,7 +55,7 @@ def register_reddit_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             )
             log.error(f"{LogTag.TOOL} Reddit /me fetch failed", exc=e)
 
-        subreddits: list[dict[str, Any]] = []
+        subreddits: list[dict[str, object]] = []
         try:
             subs_data = (
                 proxy_request_sync(
@@ -84,7 +85,7 @@ def register_reddit_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             )
             log.error(f"{LogTag.TOOL} Reddit subreddits fetch failed", exc=e)
 
-        unread_messages: list[dict[str, Any]] = []
+        unread_messages: list[dict[str, object]] = []
         try:
             messages_data = (
                 proxy_request_sync(

@@ -37,6 +37,7 @@ from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.mcp.mcp_client import MCPClient, get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import create_oauth_state
+from app.utils.json_helpers import text_opt_bag
 from app.utils.oauth_utils import build_google_oauth_url
 from shared.py.wide_events import log
 
@@ -348,7 +349,7 @@ async def connect_composio_integration(
         status="redirect",
         integration_id=integration_id,
         name=integration_name,
-        redirect_url=url["redirect_url"],
+        redirect_url=text_opt_bag(url, "redirect_url"),
         message="OAuth authentication required",
     )
 

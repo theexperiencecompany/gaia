@@ -5,7 +5,6 @@ This module provides functions to create and configure the FastAPI application.
 """
 
 import secrets
-from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exception_handlers import (
@@ -146,7 +145,7 @@ def create_app() -> FastAPI:
         carry one (204/304) — recording a failure must not change what the API
         returns.
         """
-        failure: dict[str, Any] = {
+        failure: dict[str, object] = {
             "status_code": exc.status_code,
             "detail": exc.detail,
             "path": request.url.path,

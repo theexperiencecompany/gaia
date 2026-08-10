@@ -492,8 +492,8 @@ class _VoiceTurn:
             headers["Authorization"] = f"Bearer {self.llm.agent_token}"
         return headers
 
-    def _build_payload(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {
+    def _build_payload(self) -> dict[str, object]:
+        payload: dict[str, object] = {
             "message": self.user_message,
             "messages": self.messages,
             # Hold the stream open for a delegated executor's narrated answer
@@ -504,7 +504,7 @@ class _VoiceTurn:
             payload["conversation_id"] = self.llm.conversation_id
         return payload
 
-    def _turn_fields(self) -> dict[str, Any]:
+    def _turn_fields(self) -> dict[str, object]:
         """Shared field set for the turn_complete wide event (ok and error paths)."""
         return {
             "conversation_id": self.llm.conversation_id,
@@ -627,7 +627,7 @@ class _VoiceTurn:
         )
         return spoken
 
-    async def _on_response_piece(self, event_payload: dict[str, Any]) -> str | None:
+    async def _on_response_piece(self, event_payload: dict[str, object]) -> str | None:
         """Accumulate one response token and flush when a chunk is speakable."""
         piece = event_payload.get(RESPONSE_KEY, "")
         if not piece:

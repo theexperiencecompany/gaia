@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import AsyncGenerator
+from datetime import datetime
 import json
 import secrets
 from typing import Annotated, Any, cast
@@ -48,6 +49,7 @@ from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.platform_link_service import Platform, PlatformLinkService
 from app.utils.background_tasks import spawn_background_task
+from app.utils.json_helpers import text_bag, text_opt_bag
 from shared.py.wide_events import get_trace_id, log, log_context
 
 router = APIRouter()
@@ -59,7 +61,7 @@ async def require_bot_api_key(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing bot API key")
 
 
-def _bot_rate_limit_notice(chunk: dict[str, Any]) -> str | None:
+def _bot_rate_limit_notice(chunk: dict[str, object]) -> str | None:
     """Render a web-only rate-limit card as a plain-text notice for bots.
 
     Rate limits are streamed as a ``tool_data`` card for the web UI to render.
@@ -85,7 +87,7 @@ def _bot_rate_limit_notice(chunk: dict[str, Any]) -> str | None:
     return notice
 
 
-def _bot_approval_payload(chunk: dict[str, Any]) -> dict[str, Any] | None:
+def _bot_approval_payload(chunk: dict[str, object]) -> dict[str, object] | None:
     """Extract a HIL ``approval_request`` card as a bot ``approval`` payload.
 
     Bots drop ``tool_data``, but the approval prompt MUST reach the user — a bot
@@ -251,7 +253,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     # The resolved user is a plain user dict (middleware state or the platform
     # lookup); its shape matches AuthenticatedUser, which is what the services take.
     user = cast(AuthenticatedUser, user)
-    user_id = user.get("user_id") or str(user.get("_id", ""))
+    user_id = text_bag(user, "user_id") or str(text_bag(user, "_id"))
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform, outcome="success")
 
@@ -262,7 +264,9 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     raw_history = await BotService.load_conversation_history(conversation_id, user_id)
     raw_history.append({"role": "user", "content": body.message})
     history: list[MessageDict] = [
-        MessageDict(role=m["role"], content=m["content"]) for m in raw_history
+        MessageDict(role=text_bag(m, "role"), content=text_bag(m, "content"))
+        for m in raw_history
+        if isinstance(m, dict)
     ]
 
     message_request = MessageRequestWithHistory(
@@ -463,7 +467,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     # Same shape as the chat-stream path: the platform lookup yields a plain user
     # dict that matches AuthenticatedUser, which is what the service takes.
     user = cast(AuthenticatedUser, user)
-    user_id = user.get("user_id") or str(user.get("_id", ""))
+    user_id = text_bag(user, "user_id") or text_bag(user, "_id")
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform)
 
@@ -546,15 +550,15 @@ async def get_settings(
             connected_integrations=[],
         )
 
-    user_id = user.get("user_id") or str(user.get("_id", ""))
+    user_id = text_bag(user, "user_id") or text_bag(user, "_id")
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
 
     connected_integrations_list = []
     try:
         integrations = await get_user_integration_records(user_id)
         for integration_doc in integrations:
-            integration_id = integration_doc.get("integration_id")
-            status = integration_doc.get("status", "created")
+            integration_id = text_opt_bag(integration_doc, "integration_id")
+            status = text_bag(integration_doc, "status", "created")
             if integration_id:
                 integration_details = await get_integration_details(integration_id)
                 if integration_details:
@@ -573,11 +577,12 @@ async def get_settings(
             error=str(e),
         )
 
-    user_name = user.get("name") or user.get("username")
-    profile_image_url = user.get("profile_image_url") or user.get("avatar_url")
+    user_name = text_opt_bag(user, "name") or text_opt_bag(user, "username")
+    profile_image_url = text_opt_bag(user, "profile_image_url") or text_opt_bag(user, "avatar_url")
     account_created_at = None
     if user.get("created_at"):
-        account_created_at = user["created_at"].isoformat()
+        raw_created = user.get("created_at")
+        account_created_at = raw_created.isoformat() if isinstance(raw_created, datetime) else ""
 
     log.set(outcome="success")
     return BotSettingsResponse(

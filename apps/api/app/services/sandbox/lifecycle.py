@@ -54,6 +54,7 @@ from app.services.storage import (
     ensure_user_workspace,
     fs_timer,
 )
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 CANARY_PATH = "/workspace/.gaia/canary.txt"
@@ -169,7 +170,7 @@ async def _enforce_creation_limit(user_id: str) -> None:
         # RateLimitExceededException always sets it to a dict at runtime — cast
         # to Any so the isinstance check isn't (incorrectly) statically unreachable.
         raw_detail = cast(Any, e.detail)
-        detail: dict[str, Any] = raw_detail if isinstance(raw_detail, dict) else {}
+        detail: dict[str, object] = raw_detail if isinstance(raw_detail, dict) else {}
         _record(
             rate_limited=True,
             rate_limit_reset=detail.get("reset_time"),
@@ -185,7 +186,9 @@ async def _enforce_creation_limit(user_id: str) -> None:
         if detail.get("reset_time"):
             message += f"; resets at {detail['reset_time']}"
         if detail.get("plan_required"):
-            message += f" (upgrade to {detail['plan_required'].upper()} for higher limits)"
+            message += (
+                f" (upgrade to {text_bag(detail, 'plan_required').upper()} for higher limits)"
+            )
         raise SandboxRateLimitError(message) from e
     except Exception as e:
         log.error(

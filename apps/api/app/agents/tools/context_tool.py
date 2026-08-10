@@ -6,7 +6,7 @@ Calls each integration's CUSTOM_GATHER_CONTEXT tool in parallel via Composio.
 import asyncio
 from datetime import UTC, datetime
 import time
-from typing import Annotated, Any
+from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -35,7 +35,7 @@ async def gather_context(
         str | None,
         "Target date in YYYY-MM-DD format. Defaults to today.",
     ] = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Gather context from all connected providers in parallel."""
     log.set(tool={"name": "gather_context", "action": "gather"})
     start_time = time.time()

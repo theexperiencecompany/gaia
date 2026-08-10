@@ -2,7 +2,7 @@
 Asana trigger handler.
 """
 
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -62,7 +62,7 @@ class AsanaTriggerHandler(TriggerHandler):
             )
 
         # Build trigger config with optional filters
-        composio_trigger_config: dict[str, Any] = {}
+        composio_trigger_config: dict[str, object] = {}
         if trigger_data.project_id:
             composio_trigger_config["project_id"] = trigger_data.project_id
         if trigger_data.workspace_id:
@@ -77,7 +77,7 @@ class AsanaTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, _data: dict[str, Any]
+        self, event_type: str, trigger_id: str, _data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows matching an Asana trigger event."""
         log.set_ns("trigger", integration_id="asana", trigger_type=event_type)

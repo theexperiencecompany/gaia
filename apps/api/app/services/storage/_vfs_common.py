@@ -88,13 +88,13 @@ def folder_name(doc_id: str, title: str | None) -> str:
 # ====================================================================
 
 
-def hash_meta_only(meta: dict[str, Any]) -> str:
+def hash_meta_only(meta: dict[str, object]) -> str:
     """sha256 of the canonical JSON encoding of ``meta``."""
     payload = json.dumps(meta, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
-def hash_body_with_meta(canvas: str, log_text: str, meta: dict[str, Any]) -> str:
+def hash_body_with_meta(canvas: str, log_text: str, meta: dict[str, object]) -> str:
     """sha256 of canvas + log + meta, NUL-separated.
 
     Used by materializers that project a body bigger than just the
@@ -223,7 +223,7 @@ def write_rw_body(target: Path, content: str) -> None:
     target.chmod(RW_MODE)
 
 
-def meta_body(meta: dict[str, Any]) -> str:
+def meta_body(meta: dict[str, object]) -> str:
     """Serialize ``meta`` to canonical JSON for on-disk storage."""
     return json.dumps(meta, sort_keys=True, default=str, indent=2) + "\n"
 
@@ -233,7 +233,7 @@ def meta_body(meta: dict[str, Any]) -> str:
 # ====================================================================
 
 
-def updated_at_key(meta: dict[str, Any]) -> str:
+def updated_at_key(meta: dict[str, object]) -> str:
     """Sort key for ``index.md`` — ``updated_at``, then ``created_at``, then ``""``."""
     v = meta.get("updated_at") or meta.get("created_at") or ""
     return v.isoformat() if isinstance(v, datetime) else str(v)

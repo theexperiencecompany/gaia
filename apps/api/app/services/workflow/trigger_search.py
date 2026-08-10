@@ -9,14 +9,13 @@ This module provides functionality to:
 Triggers are indexed in ChromaDB by chroma_triggers_store.py at startup.
 """
 
-from typing import Any
-
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.db.chroma.chroma_triggers_store import (
     TRIGGERS_NAMESPACE,
     get_triggers_store,
 )
+from app.utils.json_helpers import dict_bag, text_bag
 from shared.py.wide_events import log
 
 
@@ -29,7 +28,7 @@ class TriggerSearchService:
         query: str,
         user_id: str,
         limit: int = 15,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """Search for triggers matching the query via ChromaDB semantic search.
 
         Returns trigger dicts enriched with connection status and config_fields.
@@ -52,7 +51,7 @@ class TriggerSearchService:
         for item in results:
             value = item.value
             trigger_slug = value.get("slug")
-            integration_id = value.get("integration_id", "")
+            integration_id = text_bag(value, "integration_id")
 
             # Cache connection checks per integration
             if integration_id not in checked_integrations:
@@ -70,11 +69,11 @@ class TriggerSearchService:
                     checked_integrations[integration_id] = False
 
             # Get config schema for this trigger (embedded in results)
-            config_fields: dict[str, Any] = {}
+            config_fields: dict[str, object] = {}
             if isinstance(trigger_slug, str):
                 schema = await cls.get_schema(trigger_slug)
                 if schema:
-                    config_fields = schema.get("config_fields", {})
+                    config_fields = dict_bag(schema, "config_fields")
 
             enriched.append(
                 {
@@ -91,7 +90,7 @@ class TriggerSearchService:
         return enriched
 
     @classmethod
-    async def get_schema(cls, trigger_slug: str) -> dict[str, Any] | None:
+    async def get_schema(cls, trigger_slug: str) -> dict[str, object] | None:
         """Get the configuration schema for a trigger, or None if not found."""
         for integration in OAUTH_INTEGRATIONS:
             if not integration.associated_triggers:
@@ -99,7 +98,7 @@ class TriggerSearchService:
 
             for trigger in integration.associated_triggers:
                 if trigger.slug == trigger_slug:
-                    schema: dict[str, Any] = {
+                    schema: dict[str, object] = {
                         "trigger_slug": trigger.slug,
                         "trigger_name": trigger.name,
                         "description": trigger.description,
@@ -120,7 +119,7 @@ class TriggerSearchService:
                             field_config,
                         ) in trigger.workflow_trigger_schema.config_schema.items():
                             default_val = getattr(field_config, "default", _sentinel)
-                            schema["config_fields"][field_name] = {
+                            dict_bag(schema, "config_fields")[field_name] = {
                                 "type": getattr(field_config, "type", "string"),
                                 "description": getattr(field_config, "description", ""),
                                 "default": None if default_val is _sentinel else default_val,

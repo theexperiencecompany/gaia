@@ -8,6 +8,7 @@ from composio.types import ExecuteRequestFn
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
+from app.utils.json_helpers import list_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 
@@ -18,29 +19,29 @@ def register_airtable_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Airtable context snapshot: bases (workspaces) and their tables.
 
         Zero required parameters. Returns current workspace structure for situational awareness.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "airtable", "action": "gather_context"})
-        user_id = auth_credentials.get("user_id", "")
+        user_id = text_bag(auth_credentials, "user_id")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")
 
-        bases_raw: list[dict[str, Any]] = []
+        bases_raw: list[dict[str, object]] = []
         try:
             data = execute_tool("AIRTABLE_LIST_BASES", {}, user_id)
-            bases_raw = data.get("bases", [])
+            bases_raw = [b for b in list_bag(data, "bases") if isinstance(b, dict)]
         except Exception as e:
             log.debug(f"{LogTag.TOOL} Airtable bases fetch failed", error_type=type(e).__name__)
 
-        bases: list[dict[str, Any]] = []
+        bases: list[dict[str, object]] = []
         for base in bases_raw[:3]:
-            base_id = base.get("id", "")
-            tables: list[dict[str, Any]] = []
+            base_id = text_bag(base, "id")
+            tables: list[dict[str, object]] = []
             try:
                 schema_data = execute_tool(
                     "AIRTABLE_GET_BASE_SCHEMA",
@@ -48,8 +49,9 @@ def register_airtable_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                     user_id,
                 )
                 tables = [
-                    {"id": t.get("id"), "name": t.get("name")}
-                    for t in schema_data.get("tables", [])
+                    {"id": text_opt_bag(t, "id"), "name": text_opt_bag(t, "name")}
+                    for t in list_bag(schema_data, "tables")
+                    if isinstance(t, dict)
                 ]
             except Exception as e:
                 log.debug(
@@ -57,7 +59,7 @@ def register_airtable_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                     base_id=base_id,
                     error_type=type(e).__name__,
                 )
-            bases.append({"id": base_id, "name": base.get("name", ""), "tables": tables})
+            bases.append({"id": base_id, "name": text_bag(base, "name"), "tables": tables})
 
         return {"bases": bases, "base_count": len(bases_raw)}
 

@@ -8,6 +8,7 @@ from composio.types import ExecuteRequestFn
 
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
+from app.utils.json_helpers import list_bag, text_bag, text_opt_bag
 
 
 def register_asana_custom_tools(composio: Composio[Any, Any]) -> list[str]:
@@ -17,14 +18,14 @@ def register_asana_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Asana context snapshot: assigned open tasks across workspaces.
 
         Zero required parameters. Returns current workspace state for situational awareness.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
-        user_id = auth_credentials.get("user_id", "")
+        user_id = text_bag(auth_credentials, "user_id")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")
 
@@ -33,9 +34,15 @@ def register_asana_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             {"assignee.any": "me", "completed": False, "limit": 10},
             user_id,
         )
-        tasks = data.get("data", data.get("tasks", []))
+        tasks = list_bag(data, "data") or list_bag(data, "tasks")
         today = date.today().strftime("%Y-%m-%d")
-        overdue = [t for t in tasks if t.get("due_on") and t["due_on"] < today]
+        overdue = [
+            t
+            for t in tasks
+            if isinstance(t, dict)
+            and text_opt_bag(t, "due_on")
+            and (text_opt_bag(t, "due_on") or "9999") < today
+        ]
         return {"tasks": tasks, "overdue_tasks": overdue}
 
     return ["ASANA_CUSTOM_GATHER_CONTEXT"]

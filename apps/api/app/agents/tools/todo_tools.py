@@ -77,7 +77,7 @@ def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None
     `source_label` is its human-readable name, included so the frontend can
     show the integration's name instead of reverse-mapping the id.
     """
-    snapshot: dict[str, Any] = {
+    snapshot: dict[str, object] = {
         "todos": [{"id": t["id"], "content": t["content"], "status": t["status"]} for t in todos],
         "source": source,
     }

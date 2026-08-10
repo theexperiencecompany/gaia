@@ -3,7 +3,6 @@ Sentry configuration for error tracking and performance monitoring.
 """
 
 from collections.abc import Callable
-from typing import Any
 
 from loguru import logger as _loguru
 import sentry_sdk
@@ -20,7 +19,7 @@ from shared.py.wide_events import log
 _PII_KEYS = frozenset({"client_ip", "email", "user_agent", "user_email"})
 
 
-def _scrub_pii(extra: dict[str, Any]) -> dict[str, Any]:
+def _scrub_pii(extra: dict[str, object]) -> dict[str, object]:
     """Drop direct identifiers from wide-event fields, including nested dicts (user.email)."""
     return {
         key: _scrub_pii(value) if isinstance(value, dict) else value

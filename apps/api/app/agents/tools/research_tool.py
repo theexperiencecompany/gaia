@@ -179,7 +179,7 @@ async def deep_research(
         writer({"progress": "Fetching sources..."})
         urls_to_fetch = [u["url"] for u in ranked_urls]
         crawl4ai_contents, crawl4ai_errors = await batch_fetch_with_crawl4ai(
-            urls_to_fetch,
+            [u for u in urls_to_fetch if isinstance(u, str)],
             page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
             total_timeout_seconds=DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
             semaphore_count=DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT,

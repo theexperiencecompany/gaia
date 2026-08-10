@@ -20,8 +20,6 @@ or removes it, the assert below fails loudly at import time rather than letting
 every custom tool silently 500 with "Missing user_id in auth_credentials".
 """
 
-from typing import Any
-
 from composio.core.models.custom_tools import CustomTool
 
 # Name-mangled private method: ``CustomTool.__get_auth_credentials``. Both
@@ -40,7 +38,7 @@ if not hasattr(CustomTool, _PRIVATE_AUTH_METHOD):
 _original_get_auth_credentials = getattr(CustomTool, _PRIVATE_AUTH_METHOD)
 
 
-def _patched_get_auth_credentials(self: CustomTool, user_id: str) -> dict[str, Any]:
+def _patched_get_auth_credentials(self: CustomTool, user_id: str) -> dict[str, object]:
     """Return Composio's auth credentials with the trusted ``user_id`` added.
 
     ``user_id`` comes from the SDK's structurally-separate parameter, not from

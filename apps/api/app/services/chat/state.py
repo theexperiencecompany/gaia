@@ -6,14 +6,15 @@ Pure data manipulation on the orchestrator's accumulators
 cancellation paths where the ``nostream`` marker never arrives.
 
 Entries inside the ``tool_data`` accumulator are :class:`ToolDataEntry`; the
-accumulator envelope holding them stays ``dict[str, Any]`` because
+accumulator envelope holding them stays ``dict[str, object]`` because
 ``services/chat/persistence`` ``setattr``s every one of its keys onto the
 message, so arbitrary non-``tool_data`` keys (``follow_up_actions``, …) ride
 along in the same bag (see ``utils/stream_utils``).
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any, NamedTuple
+from typing import NamedTuple, cast
 
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -32,12 +33,12 @@ class TokenTotals(NamedTuple):
 
 
 def aggregate_usage_metadata(
-    usage_metadata: dict[str, Any],
+    usage_metadata: Mapping[str, object],
 ) -> TokenTotals:
     """Sum input, output, and cache-read tokens across all model entries.
 
     ``usage_metadata`` is LangChain's ``UsageMetadataCallbackHandler`` output
-    keyed by model name. It stays ``dict[str, Any]``: the per-entry values are
+    keyed by model name. It stays ``dict[str, object]``: the per-entry values are
     canonically ``UsageMetadata``, but some provider SDK versions add their own
     keys (``cached_content_token_count``) that the canonical TypedDict does not
     declare — hence the ``isinstance`` guard and the fallback below.
@@ -59,8 +60,8 @@ def aggregate_usage_metadata(
 async def recover_stream_state(
     stream_id: str,
     complete_message: str,
-    tool_data: dict[str, Any],
-) -> tuple[str, dict[str, Any]]:
+    tool_data: dict[str, object],
+) -> tuple[str, dict[str, object]]:
     """Recover accumulated state from Redis progress.
 
     Called on cancellation / error paths where the ``nostream`` complete-message
@@ -90,7 +91,7 @@ async def recover_stream_state(
 
 
 def merge_tool_outputs(
-    tool_data: dict[str, Any],
+    tool_data: dict[str, object],
     tool_outputs: dict[str, str],
 ) -> None:
     """Merge captured tool outputs into ``tool_calls_data`` entries in-place.
@@ -98,13 +99,16 @@ def merge_tool_outputs(
     The envelope-taking counterpart of ``apply_outputs_to_tool_data``, which the
     background-executor drain calls with the entry list directly.
     """
-    entries: list[ToolDataEntry] = tool_data.get("tool_data", [])
+    raw_entries = tool_data.get("tool_data", [])
+    entries: list[ToolDataEntry] = (
+        cast(list[ToolDataEntry], raw_entries) if isinstance(raw_entries, list) else []
+    )
     apply_outputs_to_tool_data(entries, tool_outputs, only_tool_name="tool_calls_data")
 
 
 def inject_todo_progress(
-    tool_data: dict[str, Any],
-    todo_progress_accumulated: dict[str, Any],
+    tool_data: dict[str, object],
+    todo_progress_accumulated: dict[str, object],
 ) -> None:
     """Append the accumulated todo snapshots as a single ``tool_data`` entry."""
     if todo_progress_accumulated:
@@ -113,5 +117,8 @@ def inject_todo_progress(
             "data": todo_progress_accumulated,
             "timestamp": datetime.now(UTC).isoformat(),
         }
-        entries: list[ToolDataEntry] = tool_data["tool_data"]
+        raw_entries = tool_data["tool_data"]
+        entries: list[ToolDataEntry] = (
+            cast(list[ToolDataEntry], raw_entries) if isinstance(raw_entries, list) else []
+        )
         entries.append(entry)

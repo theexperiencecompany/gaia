@@ -8,6 +8,7 @@ from composio.types import ExecuteRequestFn
 
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
+from app.utils.json_helpers import text_bag
 
 
 def register_todoist_custom_tools(composio: Composio[Any, Any]) -> list[str]:
@@ -17,14 +18,14 @@ def register_todoist_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Todoist context snapshot: tasks and overdue items.
 
         Zero required parameters. Returns current task state for situational awareness.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
-        user_id = auth_credentials.get("user_id", "")
+        user_id = text_bag(auth_credentials, "user_id")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")
 

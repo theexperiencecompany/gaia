@@ -9,13 +9,13 @@ isn't actively watching the stream):
 """
 
 import asyncio
-from typing import Any
 
 import httpx
 
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
 from app.services.device_token_service import get_device_token_service
+from app.utils.json_helpers import dict_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 _EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
@@ -93,7 +93,7 @@ async def _active_device_tokens(user_id: str) -> list[str]:
 async def _send_expo_push(
     tokens: list[str], *, conversation_id: str, approval_id: str, summary: str
 ) -> None:
-    messages: list[dict[str, Any]] = [
+    messages: list[dict[str, object]] = [
         {
             "to": token,
             "title": "GAIA needs your approval",
@@ -119,7 +119,9 @@ async def _send_expo_push(
         await _deactivate_device_tokens(dead_tokens)
 
 
-def _dead_tokens_from_receipts(batch: list[dict[str, Any]], response: httpx.Response) -> list[str]:
+def _dead_tokens_from_receipts(
+    batch: list[dict[str, object]], response: httpx.Response
+) -> list[str]:
     """Return the tokens Expo reported as ``DeviceNotRegistered`` for this batch.
 
     Expo replies with ``{"data": [ticket, ...]}`` aligned to the messages sent; a
@@ -132,8 +134,8 @@ def _dead_tokens_from_receipts(batch: list[dict[str, Any]], response: httpx.Resp
     dead: list[str] = []
     for message, ticket in zip(batch, tickets, strict=False):
         if isinstance(ticket, dict) and ticket.get("status") == "error":
-            if (ticket.get("details") or {}).get("error") == "DeviceNotRegistered":
-                dead.append(message["to"])
+            if text_opt_bag(dict_bag(ticket, "details"), "error") == "DeviceNotRegistered":
+                dead.append(text_bag(message, "to"))
     return dead
 
 

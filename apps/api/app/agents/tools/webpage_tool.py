@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import Sequence
 import re
 import time
-from typing import Annotated, Any, Union
+from typing import Annotated, Union
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -85,7 +85,7 @@ async def web_search_tool(
         "The search query to look up on the web. Be specific and concise for better results.",
     ],
     config: RunnableConfig,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     log.set(tool={"name": "web_search_tool", "action": "search"})
     start_time = time.time()
 

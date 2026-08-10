@@ -50,6 +50,7 @@ from app.templates.docstrings.calendar_tool_docs import (
 )
 from app.utils.context_utils import execute_tool
 from app.utils.errors import AppError
+from app.utils.json_helpers import text_bag, text_opt_bag
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
 
@@ -87,7 +88,7 @@ def _extract_datetime(dt: dict[str, object] | str | None) -> str:
         return ""
     if isinstance(dt, str):
         return dt
-    value = dt.get("dateTime") or dt.get("date", "")
+    value = dt.get("dateTime") or text_bag(dt, "date")
     return value if isinstance(value, str) else ""
 
 
@@ -96,11 +97,11 @@ def _format_calendar_option_for_stream(opt: dict[str, object]) -> dict[str, obje
     raw_start = opt.get("start")
     raw_end = opt.get("end")
     formatted: dict[str, object] = {
-        "summary": opt.get("summary", ""),
-        "description": opt.get("description", ""),
+        "summary": text_bag(opt, "summary"),
+        "description": text_bag(opt, "description"),
         "is_all_day": opt.get("is_all_day", False),
-        "calendar_id": opt.get("calendar_id", ""),
-        "calendar_name": opt.get("calendar_name", ""),
+        "calendar_id": text_bag(opt, "calendar_id"),
+        "calendar_name": text_bag(opt, "calendar_name"),
         "background_color": opt.get("color", DEFAULT_CALENDAR_COLOR),
         "start": _extract_datetime(raw_start if isinstance(raw_start, (dict, str)) else None),
         "end": _extract_datetime(raw_end if isinstance(raw_end, (dict, str)) else None),
@@ -126,7 +127,7 @@ def _format_calendar_for_stream(cal: CalendarSummary) -> dict[str, str | None]:
 
 def _get_user_id(auth_credentials: dict[str, object]) -> str:
     """Extract user_id from auth_credentials."""
-    user_id = auth_credentials.get("user_id", "")
+    user_id = text_bag(auth_credentials, "user_id")
     if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
@@ -193,7 +194,7 @@ def register_calendar_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         try:
             user = _run_sync(user_service.get_user_by_id(user_id), timeout=5)
-            user_timezone = user.get("timezone") if user else None
+            user_timezone = text_opt_bag(user, "timezone") if user else None
         except Exception:
             user_timezone = None
 
@@ -681,12 +682,12 @@ def register_calendar_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                     {
                         "calendar_fetch_data": [
                             {
-                                "summary": e.get("summary", ""),
+                                "summary": text_bag(e, "summary"),
                                 "start_time": _extract_datetime(e.get("start")),
                                 "end_time": _extract_datetime(e.get("end")),
-                                "calendar_name": name_map.get(e.get("calendar_id", ""), ""),
+                                "calendar_name": name_map.get(text_bag(e, "calendar_id"), ""),
                                 "background_color": color_map.get(
-                                    e.get("calendar_id", ""), DEFAULT_CALENDAR_COLOR
+                                    text_bag(e, "calendar_id"), DEFAULT_CALENDAR_COLOR
                                 ),
                             }
                             for e in created_events

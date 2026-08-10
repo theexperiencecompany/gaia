@@ -2,7 +2,7 @@
 Todoist trigger handler.
 """
 
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -61,7 +61,7 @@ class TodoistTriggerHandler(TriggerHandler):
             )
 
         # No config needed for Todoist new task trigger
-        composio_trigger_config: dict[str, Any] = {}
+        composio_trigger_config: dict[str, object] = {}
 
         # Use the base class helper for consistent error handling
         return await self._register_triggers_parallel(
@@ -72,7 +72,7 @@ class TodoistTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, _data: dict[str, Any]
+        self, event_type: str, trigger_id: str, _data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows matching a Todoist trigger event."""
         log.set_ns("trigger", integration_id="todoist", trigger_type=event_type)

@@ -16,7 +16,6 @@ import ipaddress
 import json
 import re
 import time
-from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -60,7 +59,7 @@ _ACCEPT_JSON_SSE = f"{_CONTENT_TYPE_JSON}, text/event-stream"
 # in response to an actual MCP request, so the probe POSTs this rather than
 # issuing a bare GET — a GET only opens the optional server->client SSE stream
 # and may be rejected (405/406) before auth is ever evaluated.
-_MCP_INITIALIZE_PROBE_REQUEST: dict[str, Any] = JSONRPCRequest(
+_MCP_INITIALIZE_PROBE_REQUEST: dict[str, object] = JSONRPCRequest(
     jsonrpc="2.0",
     id=1,
     method="initialize",
@@ -506,11 +505,11 @@ async def introspect_token(
     client_id: str | None = None,
     client_secret: str | None = None,
     timeout: int = 10,
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """Introspect an OAuth token per RFC 7662.
 
     Returns the introspection response dict (with an ``active`` field), or None
-    if introspection failed. Stays ``dict[str, Any]``: RFC 7662 fixes only
+    if introspection failed. Stays ``dict[str, object]``: RFC 7662 fixes only
     ``active`` and lets the authorization server add any claims it likes, so the
     body is an unmodelled provider payload (Type Safety item 8).
     """
@@ -552,7 +551,7 @@ async def introspect_token(
             )
 
             if response.status_code == 200:
-                result: dict[str, Any] = response.json()
+                result: dict[str, object] = response.json()
                 log.debug(f"{LogTag.MCP} Token introspection result", active=result.get("active"))
                 return result
 

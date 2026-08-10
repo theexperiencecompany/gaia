@@ -9,7 +9,7 @@ from typing import Any
 def build_contact_index(
     messages: list[Any],
     filter_query: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Extract unique contacts from already-fetched Gmail message payloads.
 
     ``messages`` items are typed ``Any``, not ``dict``, because they come from

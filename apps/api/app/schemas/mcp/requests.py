@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel
 
 
@@ -12,7 +10,7 @@ class MCPProxyToolCallRequest(BaseModel):
 
     server_url: str
     tool_name: str
-    arguments: dict[str, Any] = {}
+    arguments: dict[str, object] = {}
 
 
 class MCPProxyResourcesListRequest(BaseModel):

@@ -3,7 +3,6 @@ Reminder scheduler for managing reminder tasks.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 from arq.connections import RedisSettings
 
@@ -171,7 +170,7 @@ class ReminderScheduler(BaseSchedulerService):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: dict[str, Any] | None = None,
+        update_data: dict[str, object] | None = None,
         user_id: str | None = None,
     ) -> bool:
         """Update reminder status (plus the scheduler's re-arm fields).
@@ -185,8 +184,14 @@ class ReminderScheduler(BaseSchedulerService):
             task_id,
             status,
             user_id=user_id,
-            occurrence_count=data.get("occurrence_count"),
-            scheduled_at=data.get("scheduled_at"),
+            occurrence_count=(
+                raw_count if isinstance(raw_count := data.get("occurrence_count"), int) else None
+            ),
+            scheduled_at=(
+                raw_scheduled
+                if isinstance(raw_scheduled := data.get("scheduled_at"), datetime)
+                else None
+            ),
         )
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:

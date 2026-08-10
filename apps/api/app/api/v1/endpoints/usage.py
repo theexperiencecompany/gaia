@@ -4,7 +4,6 @@ Usage tracking API endpoints.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -137,7 +136,7 @@ async def get_usage_history(
 async def get_usage_activity(
     days: int = Query(default=365, ge=1, le=366, description="Trailing window in days"),
     user_id: str = Depends(get_user_id),
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Daily activity for the heatmap: per-day action counts, streak, and standing."""
     log.set(operation="get_usage_activity", period=f"{days}d")
     try:

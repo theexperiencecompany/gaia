@@ -8,8 +8,6 @@ shape: Composio fetches the source URL and forwards the bytes to LinkedIn's
 upload endpoint with the authenticated headers.
 """
 
-from typing import Any
-
 from app.constants.log_tags import LogTag
 from app.models.composio_schemas.linkedin import (
     LinkedInInitializeUploadResponse,
@@ -37,8 +35,8 @@ def _proxy(
     *,
     endpoint: str,
     method: ProxyMethod,
-    body: dict[str, Any] | None = None,
-    query: dict[str, Any] | None = None,
+    body: dict[str, object] | None = None,
+    query: dict[str, object] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
 ) -> object:

@@ -4,7 +4,7 @@ Google Sheets trigger handler with cascading dropdown support.
 
 import asyncio
 from collections.abc import Sequence
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -261,7 +261,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
             )
 
         # Build list of trigger configs to register; None monitors the default sheet.
-        configs: list[dict[str, Any]] = []
+        configs: list[dict[str, object]] = []
         spreadsheets_to_monitor: Sequence[str | None]
         if spreadsheet_ids:
             spreadsheets_to_monitor = spreadsheet_ids
@@ -279,7 +279,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     else:
                         sheet_name = sheet_key
 
-                    config: dict[str, Any] = {}
+                    config: dict[str, object] = {}
                     if spreadsheet_id:
                         config["spreadsheet_id"] = spreadsheet_id
                     if sheet_name:
@@ -298,7 +298,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows matching a Google Sheets trigger event."""
         log.set_ns("trigger", integration_id="google_sheets", trigger_type=event_type)

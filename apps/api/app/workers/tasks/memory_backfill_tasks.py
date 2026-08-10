@@ -15,7 +15,6 @@ run sees it as eligible and backfills it.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from app.constants.memory import (
     MEMORY_BACKFILL_ACTIVE_DAYS,
@@ -40,6 +39,7 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.services.notification_service import notification_service
+from app.utils.json_helpers import list_bag, text_bag
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import MemoryContext, UserContext, log
@@ -53,7 +53,7 @@ def _active_since() -> datetime:
     return datetime.now(UTC) - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
 
 
-async def backfill_active_users(ctx: dict[str, Any]) -> str:
+async def backfill_active_users(ctx: dict[str, object]) -> str:
     """Daily cron: enqueue a memory backfill for eligible users, capped per run.
 
     Capping per run drains the backlog gradually instead of spiking the
@@ -83,7 +83,7 @@ async def backfill_active_users(ctx: dict[str, Any]) -> str:
     return f"memory backfill: enqueued {enqueued}, {max(remaining - enqueued, 0)} still pending"
 
 
-async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:
+async def backfill_user_memories(ctx: dict[str, object], user_id: str) -> str:
     """Replay one user's conversations into memory, then notify them.
 
     Idempotent: re-checks the marker, and the engine's reconciliation dedups
@@ -148,19 +148,21 @@ async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:
     return f"backfilled {user_id}: {processed} conversations, {facts} facts"
 
 
-def _conversation_to_messages(doc: dict[str, Any]) -> list[dict[str, str]]:
+def _conversation_to_messages(doc: dict[str, object]) -> list[dict[str, str]]:
     """Map a stored conversation's embedded messages to extraction format."""
     role_map = {"user": "user", "bot": "assistant"}
     messages: list[dict[str, str]] = []
-    for msg in doc.get("messages", []):
-        role = role_map.get(msg.get("type", ""))
+    for msg in list_bag(doc, "messages"):
+        if not isinstance(msg, dict):
+            continue
+        role = role_map.get(text_bag(msg, "type"))
         content = (msg.get("response") or "").strip()
         if role and content:
             messages.append({"role": role, "content": content})
     return messages
 
 
-def _conversation_date(doc: dict[str, Any]) -> datetime:
+def _conversation_date(doc: dict[str, object]) -> datetime:
     """Best-effort original timestamp so replayed facts land on the right day."""
     value = doc.get("createdAt") or doc.get("updatedAt")
     if isinstance(value, datetime):

@@ -6,8 +6,6 @@ users._id, plus the post-aggregation creator-dict shape (with the system →
 apps/web/src/features/workflows/utils/creator.ts.
 """
 
-from typing import Any
-
 from app.models.workflow_models import PublicWorkflowRow, WorkflowCreator
 
 SYSTEM_CREATOR_ID = "system"
@@ -18,13 +16,13 @@ UNKNOWN_CREATOR_NAME = "Unknown"
 def creator_lookup_stage(
     creator_field: str = "created_by",
     output_field: str = "creator_info",
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Return a `$lookup` stage that joins `creator_field` (a user id string)
     against the `users` collection's ObjectId `_id`. Uses `$convert` with
     `onError: None` so non-OID values (like the literal "system") don't crash
     the aggregation — they simply yield no match.
 
-    Stays `dict[str, Any]`: this is Mongo's aggregation DSL, an arbitrarily
+    Stays `dict[str, object]`: this is Mongo's aggregation DSL, an arbitrarily
     nested expression grammar with no fixed key set to model (Type Safety
     item 14).
     """

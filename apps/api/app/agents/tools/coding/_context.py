@@ -13,7 +13,6 @@ import contextlib
 from datetime import UTC
 import posixpath
 import time
-from typing import Any
 
 from e2b import AsyncSandbox
 from langchain_core.runnables import RunnableConfig
@@ -137,7 +136,7 @@ async def atomic_write(sbx: AsyncSandbox, abs_path: str, data: bytes) -> float:
     return mtime.replace(tzinfo=UTC).timestamp() if mtime is not None else time.time()
 
 
-def safe_emit(event: dict[str, Any], *, session_id: str | None = None) -> None:
+def safe_emit(event: dict[str, object], *, session_id: str | None = None) -> None:
     """Emit a custom stream event, swallowing 'no writer' errors silently.
 
     Tools are invoked both during live chat (writer present) and during

@@ -14,7 +14,6 @@ import contextlib
 from dataclasses import dataclass
 from http import HTTPStatus
 import json
-from typing import Any
 from uuid import uuid4
 
 from redis.asyncio.client import PubSub
@@ -65,7 +64,7 @@ class DesktopToolOutcome:
     """Result of a desktop-executed action, as reported by the Electron app."""
 
     ok: bool
-    data: dict[str, Any] | None = None
+    data: dict[str, object] | None = None
     error: str | None = None
 
 
@@ -74,7 +73,7 @@ async def request_desktop_action(
     stream_id: str,
     user_id: str,
     tool: str,
-    params: dict[str, Any] | None = None,
+    params: dict[str, object] | None = None,
 ) -> DesktopToolOutcome:
     """Execute one action on the user's desktop and await its result.
 
@@ -176,7 +175,7 @@ async def publish_desktop_result(
     request_id: str,
     *,
     ok: bool,
-    data: dict[str, Any] | None,
+    data: dict[str, object] | None,
     error: str | None,
 ) -> None:
     """Relay a result POSTed by the desktop app to the awaiting tool."""
@@ -194,7 +193,7 @@ async def relay_desktop_result(
     request_id: str,
     user_id: str,
     ok: bool,
-    data: dict[str, Any] | None,
+    data: dict[str, object] | None,
     error: str | None,
 ) -> None:
     """Validate ownership of a pending desktop request and relay its result.

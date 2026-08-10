@@ -10,7 +10,6 @@ Note: User authentication via WorkOS is handled separately by the WorkOSAuthMidd
 
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Any
 
 from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2.rfc6749 import OAuth2Token
@@ -22,6 +21,7 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.db.postgresql import get_db_session
 from app.models.db_oauth import OAuthToken
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 
@@ -65,12 +65,12 @@ class TokenRepository:
                 f"{LogTag.STARTUP} Google OAuth credentials not found, client not registered"
             )
 
-    def _get_token_expiration(self, token_data: dict[str, Any]) -> datetime:
+    def _get_token_expiration(self, token_data: dict[str, object]) -> datetime:
         """Get token expiration time with fallback logic."""
 
         # Try expires_at first (epoch seconds are UTC).
         expires_at = token_data.get("expires_at")
-        if expires_at is not None:
+        if isinstance(expires_at, (int, float, str)):
             try:
                 return datetime.fromtimestamp(float(expires_at), UTC)
             except (ValueError, TypeError, OverflowError):
@@ -78,17 +78,20 @@ class TokenRepository:
 
         # Fall back to expires_in
         expires_in = token_data.get("expires_in", 3500)  # Default about 1 hour
-        try:
-            expires_in = float(expires_in)
-            return datetime.now(UTC) + timedelta(seconds=expires_in)
-        except (ValueError, TypeError):
-            log.warning(
-                f"{LogTag.STARTUP} Invalid expires_in, using default", expires_in=expires_in
-            )
-            return datetime.now(UTC) + timedelta(seconds=3600)
+        if isinstance(expires_in, (int, float, str)):
+            try:
+                expires_in = float(expires_in)
+                return datetime.now(UTC) + timedelta(seconds=expires_in)
+            except (ValueError, TypeError):
+                log.warning(
+                    f"{LogTag.STARTUP} Invalid expires_in, using default", expires_in=expires_in
+                )
+                return datetime.now(UTC) + timedelta(seconds=3600)
+
+        return datetime.now(UTC) + timedelta(seconds=3600)
 
     async def store_token(
-        self, user_id: str, provider: str, token_data: dict[str, Any]
+        self, user_id: str, provider: str, token_data: dict[str, object]
     ) -> OAuth2Token:
         """
         Store a new integration OAuth token in the database.
@@ -136,7 +139,7 @@ class TokenRepository:
                         token_data=token_json,
                         expires_at=expires_at,
                         updated_at=datetime.now(UTC),
-                        scopes=token_data.get("scope", ""),
+                        scopes=text_bag(token_data, "scope"),
                     )
                 )
             else:
@@ -148,7 +151,7 @@ class TokenRepository:
                     refresh_token=refresh_token_value,
                     token_data=token_json,
                     expires_at=expires_at,
-                    scopes=token_data.get("scope", ""),
+                    scopes=text_bag(token_data, "scope"),
                 )
                 session.add(new_token)
 
@@ -162,7 +165,7 @@ class TokenRepository:
                     "refresh_token": refresh_token_value,
                     "token_type": token_data.get("token_type", "Bearer"),
                     "expires_at": expires_at.timestamp(),
-                    "scope": token_data.get("scope", ""),
+                    "scope": text_bag(token_data, "scope"),
                 }
             )
 
@@ -210,7 +213,7 @@ class TokenRepository:
                     "expires_at": int(token_record.expires_at.timestamp())
                     if token_record.expires_at
                     else None,
-                    "scope": token_data.get("scope", ""),
+                    "scope": text_bag(token_data, "scope"),
                 }
             )
 

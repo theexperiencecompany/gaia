@@ -6,7 +6,7 @@ This module provides SQLAlchemy setup for PostgreSQL database connection.
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, cast
+from typing import cast
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import Connection, text
@@ -72,7 +72,7 @@ def _ensure_timestamptz_columns(connection: Connection) -> None:
         log.info(f"{LogTag.STARTUP} Promoted column to timestamptz", table=table, column=column)
 
 
-def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, Any]]:
+def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, object]]:
     """Translate a libpq-style URL into something asyncpg accepts.
 
     The same `POSTGRES_URL` is consumed by `psycopg` (langgraph checkpointer)
@@ -85,7 +85,7 @@ def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, Any]]:
     """
     parts = urlsplit(postgres_url)
     query = parse_qs(parts.query, keep_blank_values=True)
-    connect_args: dict[str, Any] = {}
+    connect_args: dict[str, object] = {}
 
     sslmode_values = query.pop("sslmode", None)
     if sslmode_values:

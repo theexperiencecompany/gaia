@@ -7,7 +7,7 @@ Handles all calendar-specific trigger logic including:
 - Event-to-workflow matching
 """
 
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -106,9 +106,9 @@ class CalendarTriggerHandler(TriggerHandler):
             return []
 
         # Build configs for each calendar
-        configs: list[dict[str, Any]] = []
+        configs: list[dict[str, object]] = []
         for calendar_id in calendar_ids:
-            config: dict[str, Any] = {"calendarId": calendar_id}
+            config: dict[str, object] = {"calendarId": calendar_id}
             if trigger_name == "calendar_event_starting_soon":
                 if not isinstance(trigger_data, CalendarEventStartingSoonConfig):
                     # Should be covered by validation above, but for MyPy safety:
@@ -149,7 +149,7 @@ class CalendarTriggerHandler(TriggerHandler):
         return trigger_ids
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows matching a calendar trigger event."""
         log.set_ns("trigger", integration_id="google_calendar", trigger_type=event_type)

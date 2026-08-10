@@ -14,10 +14,10 @@ message renders correctly even when the user's browser is holding a stale
 frontend chunk.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 import json
 import re
-from typing import Any
 
 from app.constants.chat import ARTIFACT_REF_RE, WORKSPACE_ARTIFACT_RE
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
@@ -107,8 +107,8 @@ async def save_conversation_async(
     user: AuthenticatedUser,
     conversation_id: str,
     complete_message: str,
-    tool_data: dict[str, Any],
-    metadata: dict[str, Any],
+    tool_data: dict[str, object],
+    metadata: Mapping[str, object],
     user_message_id: str,
     bot_message_id: str,
     bot_timestamp: datetime | None = None,

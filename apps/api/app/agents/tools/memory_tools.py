@@ -32,7 +32,7 @@ is a ``MemoryDocType`` value (``user_md`` ... ``insights_md``).
 """
 
 from datetime import UTC, date as date_type, datetime
-from typing import Annotated, Any, Literal, TypeAlias, TypedDict
+from typing import Annotated, Literal, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -79,7 +79,7 @@ _ERR_NO_USER_ID = "Error: user_id not found in config"
 
 # A ``MemoryEntry``/``MemoryEpisodeEntry`` serialized with ``model_dump(mode="json")``
 # — an arbitrary JSON object by the time it reaches the payload.
-SerializedEntry: TypeAlias = dict[str, Any]
+SerializedEntry: TypeAlias = dict[str, object]
 
 
 class JournalLinePayload(TypedDict):

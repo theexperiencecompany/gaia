@@ -8,10 +8,10 @@ embeds anything itself.
 
 import asyncio
 from collections.abc import Mapping, Sequence
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
-from chromadb.api.types import Metadata
+from chromadb.api.types import Metadata, Where
 
 from app.constants.memory import (
     CHROMA_CONVERSATION_CHUNKS_COLLECTION,
@@ -20,6 +20,7 @@ from app.constants.memory import (
 )
 from app.db.chroma.chromadb import ChromaClient
 from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
+from app.utils.json_helpers import text_bag
 
 # Collections are cached per event loop: an asyncio.Lock (and Chroma's async
 # client) binds to the loop that first uses it, so sharing one cache/lock
@@ -173,7 +174,7 @@ async def query_similar(
     if n_results == 0:
         return []
 
-    conditions: list[dict[str, Any]] = [
+    conditions: list[dict[str, object]] = [
         {"user_id": user_id},
         {"is_forgotten": False},
     ]
@@ -184,7 +185,7 @@ async def query_similar(
     result = await collection.query(
         query_embeddings=query_embeddings,
         n_results=n_results,
-        where={"$and": conditions},
+        where={"$and": [cast(Where, c) for c in conditions]},
         include=["distances"],
     )
     ids = result["ids"][0]
@@ -270,7 +271,7 @@ async def query_conversation_chunks(
     metadatas = (result.get("metadatas") or [[]])[0]
     distances = (result.get("distances") or [[]])[0]
     return [
-        (str(metadata.get("date", "")), document, 1.0 - distance)
+        (str(text_bag(metadata, "date")), document, 1.0 - distance)
         for document, metadata, distance in zip(documents, metadatas, distances)
     ]
 

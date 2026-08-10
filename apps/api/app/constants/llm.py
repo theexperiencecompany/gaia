@@ -1,5 +1,3 @@
-from typing import Any
-
 from app.models.models_models import DevModelOption
 
 GEMINI_PROVIDER = "gemini"
@@ -144,7 +142,7 @@ OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
 
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
-OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
+OPENROUTER_REASONING: dict[str, object] = {"effort": "medium"}
 # Pin the paid model to the first-party "z-ai" provider on OpenRouter. Without
 # this, OpenRouter may load-balance z-ai/glm-5.2 across resellers (DeepInfra,
 # Together, Parasail, etc.) whose shared pools get rate-limited upstream (429). `only`
@@ -157,7 +155,7 @@ PAID_MODEL_MODEL_KWARGS: dict[str, object] = {"provider": {"only": [PAID_MODEL_P
 # mostly routing/ack work, so the reasoning budget is most useful for the executor's
 # tool selection. GLM 5.2 also documents "high"/"xhigh" efforts — revisit these
 # levels if comms routing or executor tool-selection quality needs more headroom.
-COMMS_REASONING: dict[str, Any] = {"effort": "low"}
+COMMS_REASONING: dict[str, object] = {"effort": "low"}
 
 # Output cap for the env-defined custom dev provider (the "custom" entry below;
 # endpoint/key/model all come from the DEV_LLM_* settings). 64k fits under the

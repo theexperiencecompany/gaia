@@ -11,7 +11,6 @@ neither benefits from an id-keyed entity cache. Matches the workflows repository
 """
 
 from datetime import datetime
-from typing import Any
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
@@ -41,7 +40,7 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
     ) -> list[ReminderDocument]:
         """A user's reminders, optionally filtered by status (insertion order,
         paginated) — matches the existing listing query."""
-        query: dict[str, Any] = {"user_id": user_id}
+        query: dict[str, object] = {"user_id": user_id}
         if status is not None:
             query["status"] = status.value
         return await self._find(query, limit=limit, skip=skip)
@@ -85,10 +84,10 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
         ``occurrence_count`` and a new ``scheduled_at``). Returns whether a reminder
         was matched. ``user_id`` adds the owner guard where the caller has one (e.g.
         cancel); the worker paths update by id alone."""
-        filter_: dict[str, Any] = {"_id": self._id_value(reminder_id)}
+        filter_: dict[str, object] = {"_id": self._id_value(reminder_id)}
         if user_id:
             filter_["user_id"] = user_id
-        set_fields: dict[str, Any] = {"status": status.value}
+        set_fields: dict[str, object] = {"status": status.value}
         if occurrence_count is not None:
             set_fields["occurrence_count"] = occurrence_count
         if scheduled_at is not None:

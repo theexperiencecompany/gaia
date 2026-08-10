@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Any, Literal, NamedTuple
+from typing import Literal, NamedTuple
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -42,6 +42,7 @@ from app.services.integrations.user_integrations import get_connected_integratio
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
 from app.utils.artifact_utils import artifact_url_base
+from app.utils.json_helpers import dict_bag, text_bag
 from app.utils.timezone import Timezone
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
@@ -390,8 +391,8 @@ async def build_dynamic_context_messages(
     query: str | None,
     user_name: str | None = None,
     user_timezone: str | None = None,
-    user_preferences: dict[str, Any] | None = None,
-    writing_style: dict[str, Any] | None = None,
+    user_preferences: dict[str, object] | None = None,
+    writing_style: dict[str, object] | None = None,
     source: str | None = None,
     include_openui: bool = False,
     memories_text: str | None = None,
@@ -603,7 +604,7 @@ async def format_workflow_execution_message(
     user_id: str | None = None,
     # Open by construction: schedulers spread arbitrary provider trigger data
     # through this alongside the agent's own keys, so there is no fixed shape.
-    trigger_context: dict[str, Any] | None = None,
+    trigger_context: dict[str, object] | None = None,
     existing_content: str = "",
 ) -> str:
     """Format workflow execution message, handling both manual and automated triggers."""
@@ -641,7 +642,7 @@ async def format_workflow_execution_message(
     # Build signal matching section from tracked todos
     tracked_todos_ctx = ""
     if trigger_context:
-        tracked_todos_ctx = trigger_context.get("tracked_todos_context", "")
+        tracked_todos_ctx = text_bag(trigger_context, "tracked_todos_context")
 
     signal_matching_section = ""
     if tracked_todos_ctx:
@@ -675,14 +676,14 @@ async def format_workflow_execution_message(
 
     # Email-triggered workflows get enhanced context
     if trigger_context and trigger_context.get("type") == "gmail":
-        email_data = trigger_context.get("email_data", {})
-        msg_text = email_data.get("message_text", "")
+        email_data = dict_bag(trigger_context, "email_data")
+        msg_text = text_bag(email_data, "message_text")
 
         return EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
-            email_sender=email_data.get("sender", "Unknown"),
-            email_subject=email_data.get("subject", "No Subject"),
+            email_sender=text_bag(email_data, "sender", "Unknown"),
+            email_subject=text_bag(email_data, "subject", "No Subject"),
             email_content_preview=msg_text[:200] + ("..." if len(msg_text) > 200 else ""),
-            trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
+            trigger_timestamp=text_bag(trigger_context, "triggered_at", "Unknown"),
             **common_args,
         )
 
@@ -772,7 +773,7 @@ async def get_onboarding_system_prompt_if_applicable(
         name = user_doc.name or "there"
         prefs = OnboardingPreferences.model_validate(onboarding.get("preferences") or {})
         profession = prefs.profession or ""
-        triage_summary = onboarding.get("triage_summary", "")
+        triage_summary = text_bag(onboarding, "triage_summary")
 
         onboarding_context = (
             f"Profession: {profession}" if profession else "Profession: not specified"

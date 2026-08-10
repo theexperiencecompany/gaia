@@ -3,7 +3,6 @@ Device Token Service for Push Notifications
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 
@@ -16,8 +15,8 @@ class DeviceTokenService:
     """Service for managing device push notification tokens"""
 
     def __init__(self, mongodb: MongoDB):
-        self.collection: AsyncIOMotorCollection[dict[str, Any]] = mongodb.database.get_collection(
-            "device_tokens"
+        self.collection: AsyncIOMotorCollection[dict[str, object]] = (
+            mongodb.database.get_collection("device_tokens")
         )
 
     async def register_device_token(

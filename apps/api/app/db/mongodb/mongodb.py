@@ -1,7 +1,6 @@
 from datetime import UTC
 from functools import lru_cache
 import sys
-from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 import pymongo
@@ -22,8 +21,8 @@ class MongoDB:
     A class to manage the MongoDB connection using Motor.
     """
 
-    client: AsyncIOMotorClient[dict[str, Any]]
-    database: AsyncIOMotorDatabase[dict[str, Any]]
+    client: AsyncIOMotorClient[dict[str, object]]
+    database: AsyncIOMotorDatabase[dict[str, object]]
 
     def __init__(self, uri: str | None, db_name: str):
         """
@@ -72,7 +71,7 @@ class MongoDB:
         """
         try:
             # Use the same URI that was used to initialize the async client
-            sync_client: pymongo.MongoClient[dict[str, Any]] = pymongo.MongoClient(
+            sync_client: pymongo.MongoClient[dict[str, object]] = pymongo.MongoClient(
                 settings.MONGO_DB
             )
             sync_client.admin.command("ping")
@@ -95,7 +94,7 @@ class MongoDB:
                 error_type=type(e).__name__,
             )
 
-    def get_collection(self, collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
+    def get_collection(self, collection_name: str) -> AsyncIOMotorCollection[dict[str, object]]:
         """A Motor handle for one collection of the app's database."""
         return self.database.get_collection(collection_name)
 

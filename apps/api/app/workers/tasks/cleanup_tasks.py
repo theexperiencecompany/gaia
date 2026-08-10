@@ -2,7 +2,6 @@
 
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
@@ -76,7 +75,7 @@ async def _requeue_stuck_user(user: UserDocument) -> _RequeueOutcome:
     return _RequeueOutcome.QUEUED
 
 
-async def cleanup_stuck_personalization(ctx: dict[str, Any], max_age_minutes: int = 30) -> str:
+async def cleanup_stuck_personalization(ctx: dict[str, object], max_age_minutes: int = 30) -> str:
     """Re-queue users stuck at personalization_pending past max_age_minutes.
 
     Skips users whose ARQ job is still live so a slow-but-healthy pipeline is

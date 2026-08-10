@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import cast
 
 from starlette.datastructures import Headers
 from workos import AsyncWorkOSClient
@@ -42,7 +42,7 @@ async def resolve_dev_bypass_user(
 
 
 def build_user_context(
-    user_data: dict[str, Any], *, auth_provider: str, **extra: bool
+    user_data: dict[str, object], *, auth_provider: str, **extra: bool
 ) -> AuthenticatedUser:
     """Build the canonical ``request.state.user`` dict from a Mongo user doc.
 

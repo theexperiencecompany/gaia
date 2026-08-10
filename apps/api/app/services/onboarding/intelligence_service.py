@@ -206,7 +206,7 @@ class InboxScanContext:
     # Raw Gmail message dicts straight off `fetch_emails_for_onboarding`; the key
     # set varies with the fetch format and the provider's casing (`labelIds` vs
     # `label_ids`), so this is a genuine external-boundary shape (item 8).
-    emails: list[dict[str, Any]] = field(default_factory=list)
+    emails: list[dict[str, object]] = field(default_factory=list)
     first_batch_ready: asyncio.Event = field(default_factory=asyncio.Event)
     done: asyncio.Event = field(default_factory=asyncio.Event)
 

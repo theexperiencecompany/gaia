@@ -26,7 +26,7 @@ import json as _json
 import re
 import secrets
 import time
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 import urllib.parse
 
 import httpx
@@ -87,6 +87,7 @@ from app.services.mcp.token_management import (
     try_refresh_token,
 )
 from app.utils.background_tasks import spawn_background_task
+from app.utils.json_helpers import text_bag, text_opt_bag
 from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
     OAuthSecurityError,
@@ -865,9 +866,13 @@ class MCPClient:
             # MCPs use the integration's tool_space (or fall back to id).
             # Redis cache in index_tools_to_store dedupes across users.
             if is_custom:
-                custom_name = resolved.custom_doc.get("name") if resolved.custom_doc else None
+                custom_name = (
+                    text_opt_bag(resolved.custom_doc, "name") if resolved.custom_doc else None
+                )
                 custom_desc = (
-                    resolved.custom_doc.get("description") if resolved.custom_doc else None
+                    text_opt_bag(resolved.custom_doc, "description")
+                    if resolved.custom_doc
+                    else None
                 )
                 post_tasks.append(
                     self._handle_custom_integration_connect(
@@ -1099,8 +1104,8 @@ class MCPClient:
                 if resolved_name is None:
                     resolved = await IntegrationResolver.resolve(integration_id)
                     if resolved and resolved.custom_doc:
-                        resolved_name = resolved.custom_doc.get("name", integration_id)
-                        resolved_description = resolved.custom_doc.get("description", "")
+                        resolved_name = text_bag(resolved.custom_doc, "name", integration_id)
+                        resolved_description = text_bag(resolved.custom_doc, "description")
 
                 if resolved_name:
                     # Local import to avoid circular dependency
@@ -1937,7 +1942,7 @@ class MCPClient:
         self,
         server_url: str,
         tool_name: str,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> CallToolResult:
         """Call a specific tool on a specific MCP server identified by server_url.
 
@@ -2095,7 +2100,9 @@ class MCPClient:
                 if text is not None:
                     content_meta = getattr(content, "_meta", None) or getattr(content, "meta", None)
                     raw_ui_meta = content_meta.get("ui") if isinstance(content_meta, dict) else None
-                    ui_meta: dict[str, Any] = raw_ui_meta if isinstance(raw_ui_meta, dict) else {}
+                    ui_meta: dict[str, object] = (
+                        raw_ui_meta if isinstance(raw_ui_meta, dict) else {}
+                    )
 
                     return McpUiResourceDetails(
                         html=str(text),

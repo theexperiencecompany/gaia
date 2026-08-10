@@ -9,8 +9,6 @@ under `tools:user:{user_id}:*`, which the integration mutators bust via
 `USER_INTEGRATION_CACHE_PATTERNS`.
 """
 
-from typing import Any
-
 from app.agents.tools.core.registry import (
     DESKTOP_TOOL_CATEGORY,
     get_tool_registry,
@@ -24,6 +22,7 @@ from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListRe
 from app.schemas.integrations.responses import IntegrationTool
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integration_tools
+from app.utils.json_helpers import list_bag, text_bag, text_opt_bag
 from app.utils.request_coalescing import coalesce_request
 from shared.py.wide_events import log
 
@@ -126,7 +125,7 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
     # workspace here is also the leak guard: an entry the user hasn't added — a
     # platform MCP they never connected, or another user's custom MCP — is skipped.
     try:
-        global_mcp_tools: dict[str, dict[str, Any]] = await get_all_mcp_tools()
+        global_mcp_tools: dict[str, dict[str, object]] = await get_all_mcp_tools()
     except Exception as e:
         log.warning(
             f"{LogTag.TOOL} Failed to fetch MCP tools",
@@ -141,14 +140,16 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
         if iid not in added:
             continue
         display_name = (
-            data.get("name")
+            text_opt_bag(data, "name")
             or get_integration_name(integration_id)
             or integration_id.replace("_", " ").title()
         )
-        icon_url = data.get("icon_url")
+        icon_url = text_opt_bag(data, "icon_url")
         locked = iid not in connected
-        for tool_dict in data.get("tools", []):
-            tool_name = tool_dict.get("name")
+        for tool_dict in list_bag(data, "tools"):
+            if not isinstance(tool_dict, dict):
+                continue
+            tool_name = text_bag(tool_dict, "name")
             if not tool_name:
                 log.warning(
                     f"{LogTag.TOOL} Skipping tool with missing 'name' from custom MCP",
@@ -250,8 +251,8 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
     stored = await get_integration_tools(integration_id)
     return [
         IntegrationTool(
-            name=tool["name"],
-            description=tool.get("description"),
+            name=text_bag(tool, "name"),
+            description=text_opt_bag(tool, "description"),
             destructive=tool["name"] in destructive,
         )
         for tool in stored

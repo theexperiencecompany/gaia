@@ -2,7 +2,6 @@ import asyncio
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
-from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
@@ -63,7 +62,7 @@ def _build_run_config(
     slower, so batch crawls (deep research) leave it off. ``networkidle`` is
     deliberately not used — it hangs on SPAs that hold persistent connections.
     """
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "page_timeout": page_timeout_ms,
         "wait_until": CRAWL4AI_WAIT_UNTIL,
         "semaphore_count": semaphore_count,

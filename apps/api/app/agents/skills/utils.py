@@ -8,10 +8,10 @@ This module provides utility functions for:
 """
 
 import os
-from typing import Any
 from urllib.parse import urlparse
 
 from app.constants.log_tags import LogTag
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 GITHUB_API_BASE = "https://api.github.com"
@@ -71,7 +71,7 @@ def parse_github_url(url: str) -> tuple[str, str]:
     raise ValueError(f"Invalid GitHub URL: {url}")
 
 
-def find_skill_files(tree_entries: list[dict[str, Any]]) -> list[str]:
+def find_skill_files(tree_entries: list[dict[str, object]]) -> list[str]:
     """Find all SKILL.md and skill.md files in the tree.
 
     Args:
@@ -86,7 +86,7 @@ def find_skill_files(tree_entries: list[dict[str, Any]]) -> list[str]:
         if entry.get("type") != "blob":
             continue
 
-        path = entry.get("path", "")
+        path = text_bag(entry, "path")
         filename = path.split("/")[-1] if "/" in path else path
 
         if filename in SKILL_FILENAMES:
@@ -144,7 +144,7 @@ def get_folder_priority(file_path: str) -> int:
     return 10
 
 
-def check_tree_truncated(tree_data: dict[str, Any], owner: str, repo: str) -> None:
+def check_tree_truncated(tree_data: dict[str, object], owner: str, repo: str) -> None:
     """Log a warning if the tree is truncated.
 
     Args:

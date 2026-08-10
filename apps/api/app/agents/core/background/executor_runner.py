@@ -180,7 +180,7 @@ class _ExecutorResult(NamedTuple):
     paused_on: tuple[str, ...] = ()
 
 
-def _paused_approval_ids(payload: dict[str, Any]) -> tuple[str, ...]:
+def _paused_approval_ids(payload: dict[str, object]) -> tuple[str, ...]:
     """Approval ids from an interrupt payload — batch shape first, then single."""
     batch = payload.get("approval_ids")
     if isinstance(batch, list):

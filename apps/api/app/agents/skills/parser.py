@@ -5,7 +5,6 @@ Agent Skills spec (agentskills.io/specification).
 """
 
 import re
-from typing import Any
 
 import yaml
 
@@ -165,7 +164,7 @@ def generate_skill_md(
         metadata=metadata or {},
     )
 
-    frontmatter: dict[str, Any] = {
+    frontmatter: dict[str, object] = {
         "name": name,
         "description": description,
         "target": target,

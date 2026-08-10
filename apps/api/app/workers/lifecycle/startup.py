@@ -4,7 +4,6 @@ ARQ worker startup functionality.
 
 import asyncio
 import os
-from typing import Any
 
 from shared.py.logging import configure_file_logging
 
@@ -34,7 +33,7 @@ from shared.py.wide_events import log, log_context  # noqa: E402
 setup_warnings()
 
 
-async def startup(ctx: dict[str, Any]) -> None:
+async def startup(ctx: dict[str, object]) -> None:
     """ARQ worker startup function with eager initialization.
 
     ARQ runs this outside any task boundary, so it gets its own: a worker that

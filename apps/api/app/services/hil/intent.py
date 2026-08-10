@@ -35,7 +35,7 @@ secrets outward (the one block no wording can override).
 from dataclasses import dataclass
 from enum import StrEnum
 import re
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -118,7 +118,7 @@ async def judge_intent(
     user_messages: list[str],
     tool_name: str,
     description: str,
-    args: dict[str, Any],
+    args: dict[str, object],
     summary: str,
     prior_calls: list[PriorCall],
 ) -> IntentDecision:
@@ -174,7 +174,7 @@ async def _ask_judge(
     turns: list[str],
     tool_name: str,
     description: str,
-    args: dict[str, Any],
+    args: dict[str, object],
     summary: str,
     prior_calls: list[PriorCall],
 ) -> _Verdict:

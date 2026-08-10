@@ -5,8 +5,6 @@ trimmed account/shared-library voices (``app/models/voice_models.py``) into the
 catalog-compatible ``VoiceOption`` schema used by the voice picker.
 """
 
-from typing import Any
-
 from app.constants.voices import ACCENT_TO_COUNTRY, LANGUAGE_NAMES
 from app.models.voice_models import (
     ElevenLabsAccountVoice,
@@ -14,9 +12,10 @@ from app.models.voice_models import (
     ElevenLabsVoice,
 )
 from app.schemas.voice_schemas import VoiceOption
+from app.utils.json_helpers import list_bag, text_opt_bag
 
 
-def _verified_language_codes(voice: dict[str, Any]) -> list[str]:
+def _verified_language_codes(voice: dict[str, object]) -> list[str]:
     """Ordered, deduped ISO codes from a voice's verified_languages.
 
     Reads the RAW provider voice object, before it is trimmed into one of the
@@ -27,8 +26,8 @@ def _verified_language_codes(voice: dict[str, Any]) -> list[str]:
     entry per language, preserving first-seen order.
     """
     seen: list[str] = []
-    for entry in voice.get("verified_languages") or []:
-        code = str(entry.get("language") or "").lower()
+    for entry in [e for e in list_bag(voice, "verified_languages") if isinstance(e, dict)]:
+        code = (text_opt_bag(entry, "language") or "").lower()
         if code and code not in seen:
             seen.append(code)
     return seen

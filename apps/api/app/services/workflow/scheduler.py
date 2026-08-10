@@ -3,7 +3,7 @@ Workflow scheduler extending BaseSchedulerService for robust scheduling.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import cast
 
 from arq.connections import RedisSettings
 
@@ -18,6 +18,7 @@ from app.models.scheduler_models import (
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
+from app.utils.json_helpers import int_bag, text_opt_bag
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -142,7 +143,7 @@ class WorkflowScheduler(BaseSchedulerService):
         self,
         task_id: str,
         status: ScheduledTaskStatus,
-        update_data: dict[str, Any] | None = None,
+        update_data: dict[str, object] | None = None,
         user_id: str | None = None,
     ) -> bool:
         """Update workflow status and other fields."""
@@ -163,10 +164,10 @@ class WorkflowScheduler(BaseSchedulerService):
                 task_id,
                 status,
                 user_id=user_id,
-                scheduled_at=data.get("scheduled_at", UNSET),
-                occurrence_count=data.get("occurrence_count"),
-                repeat=data.get("repeat"),
-                next_run=data.get("trigger_config.next_run", UNSET),
+                scheduled_at=cast(datetime | None, data.get("scheduled_at", UNSET)),
+                occurrence_count=int_bag(data, "occurrence_count"),
+                repeat=text_opt_bag(data, "repeat"),
+                next_run=cast(datetime | None, data.get("trigger_config.next_run", UNSET)),
             )
 
             if matched:
@@ -259,7 +260,7 @@ class WorkflowScheduler(BaseSchedulerService):
         """Reschedule an existing workflow."""
         try:
             # Update the workflow's scheduling fields in database
-            update_data: dict[str, Any] = {
+            update_data: dict[str, object] = {
                 "scheduled_at": new_scheduled_at,
                 "status": ScheduledTaskStatus.SCHEDULED.value,
             }
@@ -331,7 +332,7 @@ class WorkflowScheduler(BaseSchedulerService):
 
             schedule_tz = Timezone.parse(timezone) if timezone else None
             next_run = get_next_run_time(repeat, now, schedule_tz) if repeat else None
-            update_fields: dict[str, Any] = {"scheduled_at": next_run}
+            update_fields: dict[str, object] = {"scheduled_at": next_run}
             if next_run is not None:
                 update_fields["trigger_config.next_run"] = next_run
 

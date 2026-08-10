@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import secrets
-from typing import Any
 from urllib.parse import quote
 import uuid
 
@@ -55,6 +54,7 @@ from app.services.integrations.user_integrations import (
     invalidate_user_integration_caches,
     remove_user_integration,
 )
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 PAIRING_VERIFICATION_PATH = "/settings/devices/approve"
@@ -121,7 +121,7 @@ async def start_pairing(
     )
 
 
-async def lookup_pending_by_user_code(user_code: str) -> dict[str, Any] | None:
+async def lookup_pending_by_user_code(user_code: str) -> dict[str, object] | None:
     """Resolve a browser-typed ``user_code`` to its pending pairing record."""
     mapping = await get_cache(_user_code_key(user_code.strip().upper()))
     if not isinstance(mapping, dict):
@@ -150,9 +150,9 @@ async def approve_pairing(user_id: str, user_code: str) -> tuple[str, str]:
     if not pending:
         raise PairingError("Pairing code is invalid or expired")
 
-    device_code = pending["device_code"]
+    device_code = text_bag(pending, "device_code")
     device_id = str(uuid.uuid4())
-    name = pending.get("name") or "Device"
+    name = text_bag(pending, "name") or "Device"
     refresh_token = generate_refresh_token()
 
     device = Device(

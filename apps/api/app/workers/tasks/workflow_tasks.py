@@ -54,7 +54,7 @@ from app.services.workflow.execution_service import complete_execution, create_e
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import create_error
-from app.utils.json_helpers import text_bag
+from app.utils.json_helpers import text_bag, text_opt_bag
 from app.utils.timezone import Timezone, format_local_time
 from shared.py.wide_events import WorkflowContext, log
 
@@ -294,7 +294,7 @@ async def _quota_exhausted_body(workflow: Workflow, reset_time_str: str) -> str:
             reset_dt = reset_dt.replace(tzinfo=UTC)
         try:
             reset_user = await get_user_by_id(workflow.user_id)
-            reset_tz = reset_user.get("timezone") if reset_user else None
+            reset_tz = text_opt_bag(reset_user, "timezone") if reset_user else None
         except Exception:
             reset_tz = None
         formatted_reset = format_local_time(reset_dt, reset_tz, fmt="%b %d at %I:%M %p %Z")
@@ -313,7 +313,7 @@ async def _rate_limit_failure_content(
     # inherited annotation.
     raw_detail = getattr(error, "detail", None)
     detail: dict[str, str] = raw_detail if isinstance(raw_detail, dict) else {}
-    reset_time_str = detail.get("reset_time", "")
+    reset_time_str = text_bag(detail, "reset_time")
     # A user already on the top tier has nothing to upgrade to — drop the
     # pitch and the upgrade action for them.
     is_pro = detail.get("current_plan") == PlanType.PRO.value

@@ -1,4 +1,4 @@
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
@@ -23,7 +23,7 @@ class InAppActionPayload(TypedDict):
     style: ActionStyle
     requires_confirmation: bool
     confirmation_message: str | None
-    config: dict[str, Any] | None
+    config: dict[str, object] | None
 
 
 class InAppPayload(TypedDict):
@@ -35,7 +35,7 @@ class InAppPayload(TypedDict):
     type: NotificationType
     priority: int
     actions: list[InAppActionPayload]
-    metadata: dict[str, Any]
+    metadata: dict[str, object]
     created_at: str
 
 

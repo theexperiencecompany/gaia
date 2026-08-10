@@ -1,12 +1,12 @@
 """Triage inbox emails for onboarding — find what matters and interesting patterns."""
 
 import time
-from typing import Any
 
 from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
 from app.constants.log_tags import LogTag
 from app.models.onboarding_models import InboxTriage, InboxTriageOutput
+from app.utils.json_helpers import list_bag, text_bag
 from shared.py.wide_events import log
 
 _NOISE_SENDERS = (
@@ -28,15 +28,15 @@ _MEANINGFUL_LABELS = {
 }
 
 
-def _is_noise_email(email: dict[str, Any]) -> bool:
-    sender = email.get("sender", "").lower()
-    snippet = email.get("snippet", "").lower()[:200]
+def _is_noise_email(email: dict[str, object]) -> bool:
+    sender = text_bag(email, "sender").lower()
+    snippet = text_bag(email, "snippet").lower()[:200]
     return any(sender.startswith(prefix) for prefix in _NOISE_SENDERS) or ("unsubscribe" in snippet)
 
 
-def _format_labels(email: dict[str, Any]) -> str:
-    labels = email.get("labelIds") or email.get("label_ids") or []
-    kept = [lbl for lbl in labels if lbl in _MEANINGFUL_LABELS]
+def _format_labels(email: dict[str, object]) -> str:
+    labels = list_bag(email, "labelIds") or list_bag(email, "label_ids")
+    kept = [lbl for lbl in labels if isinstance(lbl, str) and lbl in _MEANINGFUL_LABELS]
     if not kept:
         return ""
     pretty = [lbl.replace("CATEGORY_", "").lower() for lbl in kept]
@@ -45,7 +45,7 @@ def _format_labels(email: dict[str, Any]) -> str:
 
 async def triage_inbox(
     user_id: str,
-    emails: list[dict[str, Any]],
+    emails: list[dict[str, object]],
     profession: str = "",
     focus: str = "",
 ) -> InboxTriage | None:
@@ -71,7 +71,7 @@ async def triage_inbox(
         for e in sampled:
             sender = e.get("sender", "Unknown")
             subject = e.get("subject", "(no subject)")
-            snippet = e.get("snippet", "")
+            snippet = text_bag(e, "snippet")
             labels = _format_labels(e)
             email_lines.append(f"- {labels}{sender} | {subject} | {snippet}")
 

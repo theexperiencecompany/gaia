@@ -8,7 +8,7 @@ data, not the short-lived Redis rate-limit counters.
 
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Any, NamedTuple, cast
+from typing import NamedTuple, cast
 
 from pymongo.errors import PyMongoError
 
@@ -123,7 +123,7 @@ def _current_streak(counts: dict[str, int], end: datetime) -> int:
     return streak
 
 
-async def get_activity(user_id: str, days: int) -> dict[str, Any]:
+async def get_activity(user_id: str, days: int) -> dict[str, object]:
     """Trailing ``days`` of daily counts plus total, streak, percentile, and tier."""
     end = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     start = end - timedelta(days=days - 1)
@@ -134,7 +134,7 @@ async def get_activity(user_id: str, days: int) -> dict[str, Any]:
     # served as percentage-of-allowance once that representation lands.
     counts = await usage_daily_repository.counts_since(user_id, _day(start))
 
-    day_list: list[dict[str, Any]] = []
+    day_list: list[dict[str, object]] = []
     total = 0
     cursor = start
     while cursor <= end:

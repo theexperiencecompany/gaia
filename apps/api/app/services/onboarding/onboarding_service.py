@@ -1,5 +1,4 @@
 import asyncio
-from typing import Any
 
 from fastapi import BackgroundTasks, HTTPException
 
@@ -36,10 +35,10 @@ from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
 
-def _serialize_user(user: UserDocument) -> dict[str, Any]:
+def _serialize_user(user: UserDocument) -> dict[str, object]:
     """The JSON-serializable user dict the onboarding endpoints return.
 
-    Stays a ``dict[str, Any]`` deliberately: ``UserDocument`` is ``extra="allow"``
+    Stays a ``dict[str, object]`` deliberately: ``UserDocument`` is ``extra="allow"``
     precisely so these endpoints can spread the whole stored document into their
     response, and the frontend's ``UserInfo`` reads it that way. Narrowing this to
     a declared model would silently strip whatever undeclared fields production
@@ -56,7 +55,7 @@ async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Complete a user's onboarding submission. Idempotent under concurrent
     retries via an atomic `onboarding: {$exists: false}` gate."""
     log.set(auth={"user_id": user_id})
@@ -242,7 +241,7 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
 
 async def update_onboarding_preferences(
     user_id: str, preferences: OnboardingPreferences
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """
     Update user's onboarding preferences (for settings page).
     Uses atomic operations for data consistency.

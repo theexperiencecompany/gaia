@@ -20,11 +20,9 @@ Every command that launches the worker must pass it::
         --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG
 """
 
-from typing import Any
-
 from shared.py.logging import LOG_CONFIG
 
-ARQ_LOG_CONFIG: dict[str, Any] = {
+ARQ_LOG_CONFIG: dict[str, object] = {
     "version": 1,
     # The root interceptor and every already-configured GAIA logger must survive
     # this dictConfig call; disabling them would silence the whole process.

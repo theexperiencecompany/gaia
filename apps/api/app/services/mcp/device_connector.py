@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from datetime import timedelta
-from typing import Any
 import uuid
 
 import anyio
@@ -58,7 +57,7 @@ class DeviceConnector(BaseConnector):
         self.session_id = uuid.uuid4().hex
         # Fed by the shared per-pod up-listener (up_listener.py); drained by
         # _reader_task. Replaces a per-session Redis pub/sub subscription.
-        self._inbox: asyncio.Queue[dict[str, Any]] | None = None
+        self._inbox: asyncio.Queue[dict[str, object]] | None = None
         self._reader_task: asyncio.Task[None] | None = None
         self._writer_task: asyncio.Task[None] | None = None
         self._opened: asyncio.Future[None] | None = None

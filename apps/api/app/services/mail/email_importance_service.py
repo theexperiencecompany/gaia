@@ -1,7 +1,5 @@
 """Simple email processing with Gemini for background tasks."""
 
-from typing import Any
-
 from app.constants.log_tags import LogTag
 from app.db.repositories.mail import mail_repository
 from app.models.mail_models import (
@@ -13,7 +11,7 @@ from app.models.mail_models import (
 from shared.py.wide_events import MailContext, log
 
 
-def _mail_dict(summary: MailDocument) -> dict[str, Any]:
+def _mail_dict(summary: MailDocument) -> dict[str, object]:
     """JSON-safe email-summary dict the read endpoints return (string ``_id``)."""
     return {**summary.model_dump(mode="json", exclude={"id"}), "_id": summary.id}
 

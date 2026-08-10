@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, time, timedelta
-from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
+from typing import Annotated, Literal, NotRequired, TypeAlias, TypedDict
 import uuid
 
 from langchain_core.runnables import RunnableConfig
@@ -71,7 +71,7 @@ from shared.py.wide_events import log
 # A TodoResponse / ProjectResponse / TodoStats serialized with
 # ``model_dump(mode="json")`` — an arbitrary JSON object by the time a tool
 # hands it to the LLM and the stream writer.
-SerializedModel: TypeAlias = dict[str, Any]
+SerializedModel: TypeAlias = dict[str, object]
 
 
 class _TodoBucket(TypedDict):

@@ -11,8 +11,6 @@ RabbitMQ rejects a redeclare whose arguments differ from the existing queue.
 
 from __future__ import annotations
 
-from typing import Any
-
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 
 # Dead-letter exchange every outbound work queue routes failed messages to.
@@ -33,10 +31,10 @@ def dlq_name(queue_name: str) -> str:
     return f"{queue_name}.dlq"
 
 
-def work_queue_arguments(queue_name: str) -> dict[str, Any]:
+def work_queue_arguments(queue_name: str) -> dict[str, object]:
     """Declaration arguments for a work queue: dead-letter to the shared DLX.
 
-    Typed ``dict[str, Any]`` to satisfy aio-pika's ``FieldTable`` argument
+    Typed ``dict[str, object]`` to satisfy aio-pika's ``FieldTable`` argument
     (an invariant dict whose values are an AMQP field-value union).
     """
     return {

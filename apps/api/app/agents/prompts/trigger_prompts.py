@@ -4,7 +4,6 @@ Simple template that accepts raw trigger config data as JSON.
 """
 
 import json
-from typing import Any
 
 from app.models.workflow_models import TriggerConfig
 
@@ -12,7 +11,7 @@ from app.models.workflow_models import TriggerConfig
 # handle the raw-dict form the workflow/scheduler codebase still produces
 # elsewhere (see the scheduler_service.py ANN401 note). Naming both is honest
 # about what they accept without deleting a live branch.
-TriggerConfigInput = TriggerConfig | dict[str, Any]
+TriggerConfigInput = TriggerConfig | dict[str, object]
 
 TRIGGER_CONTEXT_TEMPLATE = """## TRIGGER CONTEXT:
 

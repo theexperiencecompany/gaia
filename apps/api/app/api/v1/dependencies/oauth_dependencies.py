@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, cast
+from typing import cast
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
@@ -76,7 +76,7 @@ async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR py
 
     # request.state is Starlette's untyped bag (Any); WorkOSAuthMiddleware always
     # sets .user to the dict built by build_user_context() when authenticated=True.
-    user = cast(dict[str, Any], request.state.user)
+    user = cast(dict[str, object], request.state.user)
     log.set(
         auth={
             "user_id": user.get("user_id"),

@@ -8,6 +8,7 @@ from composio.types import ExecuteRequestFn
 
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
+from app.utils.json_helpers import list_bag, text_opt_bag
 
 
 def register_google_tasks_custom_tools(composio: Composio[Any, Any]) -> list[str]:
@@ -33,9 +34,11 @@ def register_google_tasks_custom_tools(composio: Composio[Any, Any]) -> list[str
             {"showCompleted": False, "maxResults": 20},
             user_id,
         )
-        tasks = data.get("items", data.get("tasks", []))
+        tasks = list_bag(data, "items") or list_bag(data, "tasks")
         today = date.today().strftime("%Y-%m-%d")
-        overdue = [t for t in tasks if t.get("due", "9999") < today]
+        overdue = [
+            t for t in tasks if isinstance(t, dict) and (text_opt_bag(t, "due") or "9999") < today
+        ]
         return {"tasks": tasks, "overdue_tasks": overdue}
 
     return ["GOOGLETASKS_CUSTOM_GATHER_CONTEXT"]

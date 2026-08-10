@@ -33,6 +33,7 @@ from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLO
 from app.services.user_service import get_user_by_id
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.trigger_service import TriggerService
+from app.utils.json_helpers import text_bag
 from app.utils.workflow_utils import ensure_trigger_config_object
 from shared.py.wide_events import log
 
@@ -108,7 +109,7 @@ async def provision_system_workflows(
             if trigger_config.type == TriggerType.SCHEDULE and not trigger_config.timezone:
                 if user_timezone is None:
                     user = await get_user_by_id(user_id) or {}
-                    user_timezone = (user.get("timezone") or "").strip() or "UTC"
+                    user_timezone = (text_bag(user, "timezone") or "").strip() or "UTC"
                 trigger_config.timezone = user_timezone
                 request.trigger_config = trigger_config
             await WorkflowService.create_workflow(request, user_id)

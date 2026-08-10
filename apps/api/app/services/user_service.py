@@ -1,5 +1,3 @@
-from typing import Any
-
 from fastapi import HTTPException
 
 from app.db.repositories.users import user_repository
@@ -8,7 +6,7 @@ from app.utils.oauth_utils import upload_user_picture
 from shared.py.wide_events import log
 
 
-async def get_user_by_id(user_id: str) -> dict[str, Any] | None:
+async def get_user_by_id(user_id: str) -> dict[str, object] | None:
     """Get user by ID from database.
 
     Returns the ``user_to_legacy_dict`` bridge shape — a raw-style dict with a

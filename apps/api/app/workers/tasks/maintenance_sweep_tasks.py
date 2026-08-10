@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import random
-from typing import Any, Literal, cast
+from typing import Literal, cast
 from uuid import uuid4
 
 from arq.connections import ArqRedis
@@ -29,6 +29,7 @@ from app.services.model_service import get_default_model
 from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
+from app.utils.json_helpers import text_opt_bag
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import is_within_local_daytime
 from shared.py.wide_events import log
@@ -59,7 +60,7 @@ ExpiredOutcome = Literal["archived", "notified", "muted"]
 DormantOutcome = Literal["requeued", "needs_attention"]
 
 
-async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
+async def maintenance_sweep_tracked_todos(_ctx: dict[str, object]) -> str:
     """Cron task: scan active tracked todos and apply tiered staleness handling.
 
     Tiers:
@@ -684,7 +685,7 @@ async def _is_user_daytime(user_id: str, now: datetime, cache: dict[str, bool]) 
     try:
         user = await get_user_by_id(user_id)
         if user:
-            timezone_name = user.get("timezone")
+            timezone_name = text_opt_bag(user, "timezone")
     except Exception as exc:
         log.warning("maintenance_sweep.user_tz_lookup_failed", user_id=user_id, error=str(exc))
 

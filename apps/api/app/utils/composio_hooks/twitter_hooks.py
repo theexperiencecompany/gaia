@@ -5,8 +5,6 @@ These hooks implement schema modifiers for customizing tool descriptions,
 before/after hooks for data processing, and frontend streaming via writer.
 """
 
-from typing import Any
-
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
 
@@ -163,7 +161,7 @@ def twitter_search_before_hook(
 @register_after_hook(tools=["TWITTER_RECENT_SEARCH", "TWITTER_FULL_ARCHIVE_SEARCH"])
 def twitter_search_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process search response and send tweet data to frontend."""
     log.set(twitter_tool=tool, toolkit=toolkit)
     try:
@@ -250,7 +248,7 @@ def twitter_search_after_hook(
 @register_after_hook(tools=["TWITTER_USER_LOOKUP_BY_USERNAME", "TWITTER_USER_LOOKUP_BY_USERNAMES"])
 def twitter_user_lookup_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process user lookup and stream profile data to frontend."""
     try:
         writer = get_stream_writer()
@@ -314,7 +312,7 @@ def twitter_user_lookup_after_hook(
 @register_after_hook(tools=["TWITTER_USER_HOME_TIMELINE_BY_USER_ID"])
 def twitter_timeline_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process timeline and stream tweets to frontend."""
     try:
         writer = get_stream_writer()
@@ -388,7 +386,7 @@ def twitter_timeline_after_hook(
 @register_after_hook(tools=["TWITTER_FOLLOWERS_BY_USER_ID", "TWITTER_FOLLOWING_BY_USER_ID"])
 def twitter_followers_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process followers/following list and stream to frontend."""
     try:
         writer = get_stream_writer()
@@ -448,7 +446,7 @@ def twitter_followers_after_hook(
 @register_after_hook(tools=["TWITTER_CREATION_OF_A_POST"])
 def twitter_post_created_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Send created post data to frontend."""
     try:
         writer = get_stream_writer()

@@ -5,7 +5,7 @@ Contains helper functions for tool selection formatting and type definitions.
 """
 
 from collections.abc import Sequence
-from typing import Annotated, Any, TypedDict, cast
+from typing import Annotated, TypedDict, cast
 
 from langchain_core.messages import (
     AnyMessage,
@@ -29,8 +29,8 @@ from app.constants.llm import MESSAGES_SNAPSHOT_FREQUENCY
 
 
 def _replace_todos(
-    _left: list[dict[str, Any]], right: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
+    _left: list[dict[str, object]], right: list[dict[str, object]]
+) -> list[dict[str, object]]:
     """Last-write-wins reducer for the todos channel."""
     return right
 
@@ -103,7 +103,7 @@ class State(_BigtoolState):
             reducer=messages_delta_reducer, snapshot_frequency=MESSAGES_SNAPSHOT_FREQUENCY
         ),
     ]
-    todos: Annotated[list[dict[str, Any]], _replace_todos]
+    todos: Annotated[list[dict[str, object]], _replace_todos]
     intent: str | None
     integration_usernames: dict[str, str]
     # LangGraph-managed countdown of supersteps left before the recursion
@@ -148,7 +148,7 @@ def dedupe_tool_bindings(tools: Sequence[BaseTool]) -> list[BaseTool]:
 
 
 def format_selected_tools(
-    selected_tools: dict[str, Any], tool_registry: dict[str, BaseTool]
+    selected_tools: dict[str, list[str]], tool_registry: dict[str, BaseTool]
 ) -> tuple[list[ToolMessage], list[str]]:
     """Format selected tools, gracefully handling tools not in registry.
 
@@ -163,7 +163,7 @@ def format_selected_tools(
         and tool_ids are the IDs to bind
     """
     tool_messages = []
-    tool_ids = []
+    tool_ids: list[str] = []
 
     for tool_call_id, batch in selected_tools.items():
         tool_names = []

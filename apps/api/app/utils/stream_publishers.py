@@ -7,14 +7,14 @@ truth for that behavior so the two call sites cannot drift.
 """
 
 import json
-from typing import Any
 
 from app.core.stream_manager import stream_manager
 from app.models.stream_events import FollowUpActionsFrame
+from app.utils.json_helpers import list_bag
 
 
 def accumulate_todo_progress(
-    chunk_json: dict[str, Any] | None, todo_progress_accumulated: dict[str, Any]
+    chunk_json: dict[str, object] | None, todo_progress_accumulated: dict[str, object]
 ) -> None:
     """Record the latest todo-progress snapshot keyed by its source."""
     if chunk_json and "todo_progress" in chunk_json:
@@ -25,12 +25,15 @@ def accumulate_todo_progress(
 
 
 async def publish_other_data(
-    stream_id: str, new_data: dict[str, Any], follow_up_actions: list[str]
+    stream_id: str, new_data: dict[str, object], follow_up_actions: list[str]
 ) -> list[str]:
     """Publish follow-up actions if present, returning the (possibly updated) list."""
     other_data_dict = new_data.get("other_data")
-    if other_data_dict and "follow_up_actions" in other_data_dict:
-        follow_up_actions = other_data_dict["follow_up_actions"]
+    if isinstance(other_data_dict, dict) and "follow_up_actions" in other_data_dict:
+        raw_actions = other_data_dict["follow_up_actions"]
+        follow_up_actions = (
+            [a for a in raw_actions if isinstance(a, str)] if isinstance(raw_actions, list) else []
+        )
         await stream_manager.publish_chunk(
             stream_id,
             f"data: {json.dumps(FollowUpActionsFrame(follow_up_actions=follow_up_actions).model_dump())}\n\n",
@@ -39,11 +42,15 @@ async def publish_other_data(
 
 
 async def publish_tool_data(
-    stream_id: str, new_data: dict[str, Any], tool_data: dict[str, Any]
+    stream_id: str, new_data: dict[str, object], tool_data: dict[str, object]
 ) -> None:
     """Append each tool-data entry and stream it to the frontend."""
-    for tool_entry in new_data.get("tool_data", []):
-        tool_data["tool_data"].append(tool_entry)
+    for tool_entry in list_bag(new_data, "tool_data"):
+        entries = tool_data.get("tool_data")
+        if not isinstance(entries, list):
+            entries = []
+            tool_data["tool_data"] = entries
+        entries.append(tool_entry)
         await stream_manager.publish_chunk(
             stream_id,
             f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
@@ -51,7 +58,7 @@ async def publish_tool_data(
 
 
 async def publish_tool_output(
-    stream_id: str, new_data: dict[str, Any], tool_outputs: dict[str, str]
+    stream_id: str, new_data: dict[str, object], tool_outputs: dict[str, str]
 ) -> None:
     """Capture a tool_output event for merging before save and stream it live."""
     if "tool_output" not in new_data:

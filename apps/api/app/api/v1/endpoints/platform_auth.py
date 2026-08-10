@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter
@@ -10,13 +9,14 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.services.outbound_delivery import notify_account_linked
 from app.services.platform_link_service import PlatformLinkService
+from app.utils.json_helpers import dict_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 
 class PlatformOAuthConfig:
     """Configuration for platform-specific OAuth flows.
 
-    The provider payloads (``token_data``, ``user_data``) stay ``dict[str, Any]``
+    The provider payloads (``token_data``, ``user_data``) stay ``dict[str, object]``
     on purpose: they are Discord's and Slack's response bodies, and the accessors
     below read only the two or three keys each flow needs. Modelling the rest
     would be inventing a third-party schema from the fields we happen to touch.
@@ -29,11 +29,11 @@ class PlatformOAuthConfig:
         get_client_id: Callable[[], str | None],
         get_client_secret: Callable[[], str | None],
         get_redirect_uri: Callable[[], str],
-        extract_user_id: Callable[[dict[str, Any], str | None], str],
+        extract_user_id: Callable[[dict[str, object], str | None], str],
         user_info_url: str | None = None,
         extra_token_headers: dict[str, str] | None = None,
-        get_user_access_token: Callable[[dict[str, Any]], str | None] | None = None,
-        extract_profile_from_user_info: Callable[[dict[str, Any]], dict[str, str | None]]
+        get_user_access_token: Callable[[dict[str, object]], str | None] | None = None,
+        extract_profile_from_user_info: Callable[[dict[str, object]], dict[str, str | None]]
         | None = None,
     ) -> None:
         self.platform = platform
@@ -46,13 +46,14 @@ class PlatformOAuthConfig:
         self.extra_token_headers = extra_token_headers or {}
         # How to get the access token for user info calls (defaults to top-level access_token)
         self.get_user_access_token = get_user_access_token or (
-            lambda data: data.get("access_token")
+            lambda data: text_opt_bag(data, "access_token")
         )
         # How to extract profile from user info response (defaults to Discord-style)
         self.extract_profile_from_user_info = extract_profile_from_user_info or (
             lambda user_data: {
-                "username": user_data.get("username"),
-                "display_name": user_data.get("global_name") or user_data.get("username"),
+                "username": text_opt_bag(user_data, "username"),
+                "display_name": text_opt_bag(user_data, "global_name")
+                or text_opt_bag(user_data, "username"),
             }
         )
 
@@ -75,13 +76,17 @@ PLATFORM_CONFIGS = {
         get_client_secret=lambda: settings.SLACK_OAUTH_CLIENT_SECRET,
         get_redirect_uri=lambda: settings.SLACK_OAUTH_REDIRECT_URI,
         user_info_url="https://slack.com/api/users.identity",
-        extract_user_id=lambda token_data, access_token: token_data["authed_user"]["id"],
+        extract_user_id=lambda token_data, access_token: text_bag(
+            dict_bag(token_data, "authed_user"), "id"
+        ),
         # User token lives under authed_user, not at the top level
-        get_user_access_token=lambda data: data.get("authed_user", {}).get("access_token"),
+        get_user_access_token=lambda data: text_opt_bag(
+            dict_bag(data, "authed_user"), "access_token"
+        ),
         # users.identity returns {"user": {"id": ..., "name": ...}}
         extract_profile_from_user_info=lambda user_data: {
-            "username": user_data.get("user", {}).get("name"),
-            "display_name": user_data.get("user", {}).get("name"),
+            "username": text_opt_bag(dict_bag(user_data, "user"), "name"),
+            "display_name": text_opt_bag(dict_bag(user_data, "user"), "name"),
         },
     ),
 }
@@ -201,7 +206,7 @@ async def _handle_platform_oauth_callback(
 
                 user_data = user_response.json()
                 platform_user_id = (
-                    user_data["id"]
+                    text_bag(user_data, "id")
                     if "id" in user_data
                     else config.extract_user_id(token_data, access_token)
                 )

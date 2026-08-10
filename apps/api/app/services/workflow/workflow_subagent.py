@@ -202,7 +202,7 @@ class WorkflowSubagentRunner:
             additional_kwargs={"visible_to": {"workflow_agent"}},
         )
 
-        initial_state: dict[str, Any] = {
+        initial_state: dict[str, object] = {
             "messages": [system_message, context_message, human_message],
             "intent": task,
             "integration_usernames": {},
@@ -214,7 +214,7 @@ class WorkflowSubagentRunner:
         # structure or integration_ids that name a non-existent integration), hand the
         # error back and let it re-emit, up to MAX_DRAFT_CORRECTIONS times.
         emitted_tool_calls: set[str] = set()
-        state: dict[str, Any] = initial_state
+        state: dict[str, object] = initial_state
         complete_message = ""
         for attempt in range(MAX_DRAFT_CORRECTIONS + 1):
             complete_message, hit_limit = await WorkflowSubagentRunner._stream_turn(
@@ -270,7 +270,7 @@ class WorkflowSubagentRunner:
         draft so the caller always receives parseable JSON.
         """
         log.warning(f"{LogTag.WORKFLOW} Authoring loop hit its step budget; forcing a final answer")
-        directive_state = {
+        directive_state: dict[str, object] = {
             "messages": [
                 HumanMessage(
                     content=FORCE_FINALIZE_DIRECTIVE,
@@ -291,7 +291,7 @@ class WorkflowSubagentRunner:
     @staticmethod
     async def _stream_turn(
         subagent_graph: CompiledStateGraph[Any, None, Any, Any],
-        state: dict[str, Any],
+        state: dict[str, object],
         config: RunnableConfig,
         stream_writer: StreamWriter | None,
         emitted_tool_calls: set[str],

@@ -1,13 +1,11 @@
 """ARQ worker task for Gmail email memory processing."""
 
-from typing import Any
-
 from app.agents.memory.email_processor import process_gmail_to_memory
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
-async def process_gmail_emails_to_memory(ctx: dict[str, Any], user_id: str) -> str:
+async def process_gmail_emails_to_memory(ctx: dict[str, object], user_id: str) -> str:
     """
     ARQ background task to process Gmail emails into memories.
 

@@ -1,7 +1,5 @@
 """Validation for integration publishing."""
 
-from typing import Any
-
 from app.services.integrations.profanity import contains_profanity
 
 
@@ -18,7 +16,7 @@ class PublishIntegrationValidator:
         cls,
         name: str,
         description: str | None,
-        tools: list[dict[str, Any]],
+        tools: list[dict[str, object]],
     ) -> list[str]:
         """Validate integration content for publishing. Returns error messages (empty if valid)."""
         # Order matches the pre-refactor sequence so any caller that surfaces
@@ -52,7 +50,7 @@ class PublishIntegrationValidator:
         return []
 
     @classmethod
-    def _validate_tools(cls, tools: list[dict[str, Any]]) -> list[str]:
+    def _validate_tools(cls, tools: list[dict[str, object]]) -> list[str]:
         if not tools or len(tools) < cls.MIN_TOOLS:
             return ["Integration must have at least one tool to be published"]
         return []

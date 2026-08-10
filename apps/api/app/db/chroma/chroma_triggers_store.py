@@ -6,7 +6,7 @@ and only updated when their configuration changes.
 """
 
 import hashlib
-from typing import Any, cast
+from typing import cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
 from langgraph.store.base import PutOp
@@ -17,6 +17,7 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
 from app.models.oauth_models import OAuthIntegration
 from app.models.trigger_config import TriggerConfig
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import VectorContext, log
 
 from .chroma_store import ChromaStore
@@ -70,13 +71,13 @@ def _build_trigger_description(integration: OAuthIntegration, trigger: TriggerCo
     )
 
 
-def _get_current_triggers_with_hashes() -> dict[str, dict[str, Any]]:
+def _get_current_triggers_with_hashes() -> dict[str, dict[str, object]]:
     """Get all current triggers with their hashes.
 
     Returns:
         Dictionary mapping trigger slugs to their hash and metadata
     """
-    current_triggers = {}
+    current_triggers: dict[str, dict[str, object]] = {}
 
     for integration in OAUTH_INTEGRATIONS:
         if not integration.associated_triggers:
@@ -102,7 +103,7 @@ def _get_current_triggers_with_hashes() -> dict[str, dict[str, Any]]:
 
 async def _get_existing_triggers_from_chroma(
     collection: AsyncCollection,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, dict[str, object]]:
     """Fetch existing triggers from ChromaDB collection.
 
     Args:
@@ -111,7 +112,7 @@ async def _get_existing_triggers_from_chroma(
     Returns:
         Dictionary mapping trigger slugs to their hash and metadata
     """
-    existing_triggers = {}
+    existing_triggers: dict[str, dict[str, object]] = {}
 
     try:
         existing_data = await collection.get(include=["metadatas"])
@@ -127,7 +128,7 @@ async def _get_existing_triggers_from_chroma(
                         continue
 
                     existing_triggers[trigger_slug] = {
-                        "hash": metadata.get("trigger_hash", ""),
+                        "hash": text_bag(metadata, "trigger_hash"),
                         "namespace": namespace,
                     }
     except Exception as e:
@@ -141,8 +142,8 @@ async def _get_existing_triggers_from_chroma(
 
 
 def _compute_trigger_diff(
-    current_triggers: dict[str, dict[str, Any]], existing_triggers: dict[str, dict[str, Any]]
-) -> tuple[list[tuple[str, dict[str, Any]]], list[str]]:
+    current_triggers: dict[str, dict[str, object]], existing_triggers: dict[str, dict[str, object]]
+) -> tuple[list[tuple[str, dict[str, object]]], list[str]]:
     """Compute the difference between current and existing triggers.
 
     Args:
@@ -171,7 +172,7 @@ def _compute_trigger_diff(
 
 
 def _build_put_operations(
-    triggers_to_upsert: list[tuple[str, dict[str, Any]]],
+    triggers_to_upsert: list[tuple[str, dict[str, object]]],
     triggers_to_delete: list[str],
 ) -> list[PutOp]:
     """Build PutOp operations for upserting and deleting triggers.
@@ -197,7 +198,7 @@ def _build_put_operations(
                     "description": trigger_data["description"],
                     "integration_id": trigger_data["integration_id"],
                     "integration_name": trigger_data["integration_name"],
-                    "category": trigger_data.get("category", ""),
+                    "category": text_bag(trigger_data, "category"),
                     "rich_description": trigger_data["rich_description"],
                     "trigger_hash": trigger_data["hash"],
                 },

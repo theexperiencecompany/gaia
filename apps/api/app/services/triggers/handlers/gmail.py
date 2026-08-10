@@ -4,7 +4,7 @@ Gmail trigger handler.
 Handles Gmail new message trigger processing.
 """
 
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -12,6 +12,7 @@ from app.models.composio_schemas import GmailNewMessagePayload
 from app.models.trigger_configs import GmailNewMessageConfig
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
+from app.utils.json_helpers import text_opt_bag
 from shared.py.wide_events import log
 
 
@@ -59,7 +60,7 @@ class GmailTriggerHandler(TriggerHandler):
         return []  # No explicit trigger IDs for Gmail
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows for a Gmail event.
 
@@ -80,7 +81,7 @@ class GmailTriggerHandler(TriggerHandler):
                     error_type=type(e).__name__,
                 )
 
-            user_id = data.get("user_id")
+            user_id = text_opt_bag(data, "user_id")
             if not user_id and not trigger_id:
                 log.error(f"{LogTag.TRIGGER} Gmail webhook has neither user_id nor trigger_id")
                 return []
