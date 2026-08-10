@@ -1622,3 +1622,27 @@ class TestRunChatStreamBackground:
         )
         cm.__aenter__.assert_awaited_once()
         cm.__aexit__.assert_awaited_once()
+
+    async def test_request_trace_id_flows_into_wide_task(self) -> None:
+        """The spawning request's trace_id is inherited through the copied task
+        context and MUST be handed to the wide-event boundary — a run that
+        hardcodes ``trace_id=None`` orphans the ``chat_stream`` event from its
+        ``http_request`` event and breaks LogQL correlation."""
+        body = _body()
+        user = {"user_id": "u1"}
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock()
+        cm.__aexit__ = AsyncMock(return_value=False)
+        with (
+            patch.object(chat_stream, "_run_chat_stream", new_callable=AsyncMock),
+            patch.object(chat_stream, "wide_task", return_value=cm) as wt,
+            patch.object(chat_stream, "get_trace_id", return_value="0123456789abcdef"),
+        ):
+            await run_chat_stream_background("s1", body, user, "conv-1", "telegram")
+
+        wt.assert_called_once_with(
+            "chat_stream",
+            trace_id="0123456789abcdef",
+            conversation_id="conv-1",
+            stream_id="s1",
+        )
