@@ -25,7 +25,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 import contextlib
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from app.services.storage._vfs_common import (
     catalog_signature,
@@ -38,11 +38,11 @@ from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import UserContext, log, wide_task
 
 # Generic over each module's projection TypedDict (``GaiaTaskProjection``,
-# ``UserTodoProjection``, …). ``Mapping[str, Any]`` is the right bound:
+# ``UserTodoProjection``, …). ``Mapping[str, object]`` is the right bound:
 # TypedDicts structurally satisfy ``Mapping`` (covariant in the value
 # type), so callers can pass their concrete TypedDict here without any
 # cast, while the helper still gets ``d["id"]`` access.
-ProjectionT = TypeVar("ProjectionT", bound=Mapping[str, Any])
+ProjectionT = TypeVar("ProjectionT", bound=Mapping[str, object])
 
 
 async def run_hashed_sync(
@@ -76,7 +76,14 @@ async def run_hashed_sync(
         return 0
     async with fs_timer(fs_op):
         docs = await fetch_fn(user_id)
-        per_doc = {d["id"]: per_doc_sig_fn(d) for d in docs}
+        # ``d["id"]`` reads through the ``Mapping[str, object]`` bound, so narrow
+        # to str before it feeds ``catalog_signature`` (every projection's id is
+        # a str by contract).
+        per_doc: dict[str, str] = {}
+        for doc in docs:
+            doc_id = doc["id"]
+            if isinstance(doc_id, str):
+                per_doc[doc_id] = per_doc_sig_fn(doc)
         expected = catalog_signature(per_doc)
         u_root = user_workspace_path(user_id)
         marker_path = catalog_marker_path_fn(u_root)

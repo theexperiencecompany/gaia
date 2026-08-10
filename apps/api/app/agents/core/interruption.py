@@ -15,12 +15,10 @@ the evidence of the interruption is erased entirely.
    sees the turn boundary for what it was.
 """
 
-from typing import Any
-
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.graph.state import CompiledStateGraph
 
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from shared.py.wide_events import log
@@ -77,9 +75,7 @@ def build_interruption_messages(messages: list[AnyMessage]) -> list[AnyMessage]:
     return [*backfill, marker]
 
 
-async def record_interruption(
-    graph: CompiledStateGraph[Any, None, Any, Any], config: RunnableConfig
-) -> None:
+async def record_interruption(graph: CompiledAgentGraph, config: RunnableConfig) -> None:
     """Write the interruption record into the thread's checkpoint.
 
     Must be called after the cancelled run has actually stopped (the astream

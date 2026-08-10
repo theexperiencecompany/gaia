@@ -6,7 +6,7 @@ avoiding a cyclic dependency.
 """
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Protocol, cast
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from langchain_core.messages import (
@@ -18,7 +18,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
-from langgraph.types import Command, StateSnapshot, interrupt
+from langgraph.types import Command, interrupt
 
 from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
 from app.agents.core.graph_manager import (
@@ -262,7 +262,7 @@ async def build_initial_messages(
     ]
 
 
-def _with_current_time(resume: Command[Any], configurable: AgentConfigurable) -> Command[Any]:
+def _with_current_time(resume: Command[None], configurable: AgentConfigurable) -> Command[None]:
     """Re-clock a resumed run.
 
     A resume replaces ``initial_state``, so the fresh time message
@@ -357,7 +357,7 @@ async def execute_subagent_stream(
     stream_writer: StreamWriterCallable | None = None,
     integration_metadata: IntegrationMetadata | None = None,
     subagent_id: str | None = None,
-    resume: Command[Any] | None = None,
+    resume: Command[None] | None = None,
 ) -> SubagentOutcome:
     """Execute (or resume) a subagent with streaming and tool tracking.
 
@@ -421,7 +421,9 @@ async def execute_subagent_stream(
             continue
         # A list `stream_mode` makes astream yield (mode, payload) tuples, which
         # langgraph's own overload return type does not express.
-        stream_mode, payload = cast(tuple[str, Any], event)
+        stream_mode, payload = cast(
+            tuple[str, dict[str, object] | tuple[BaseMessage, dict[str, object]]], event
+        )
 
         if stream_mode == "updates":
             # The run paused. Record the approval and KEEP DRAINING — never break.
@@ -432,6 +434,8 @@ async def execute_subagent_stream(
             # tasks re-run on resume. That is how an ungated tool call beside a gated
             # one used to execute twice. Verified in isolation — break + "exit" is the
             # only combination that loses them; either alone is fine.
+            if not isinstance(payload, dict):
+                continue
             if LANGGRAPH_INTERRUPT_KEY in payload:
                 # ONE event per paused task, so two gated calls in a message arrive as
                 # two events. Accumulate: the caller stamps re-dispatch context onto
@@ -465,6 +469,8 @@ async def execute_subagent_stream(
             continue
 
         if stream_mode == "messages":
+            if not isinstance(payload, tuple):
+                continue
             complete_message = _process_messages_payload(
                 payload, complete_message, stream_writer, subagent_id, ctx.stream_id or ""
             )
@@ -473,6 +479,8 @@ async def execute_subagent_stream(
             continue
 
         if stream_mode == "custom":
+            if not isinstance(payload, dict):
+                continue
             if stream_writer:
                 stream_writer(normalize_custom_event(payload))
 
@@ -504,14 +512,27 @@ async def execute_subagent_stream(
     return SubagentOutcome(text=final_message)
 
 
-def _snapshot_messages(snapshot: StateSnapshot) -> list[AnyMessage]:
+class StateSnapshotLike(Protocol):
+    """The ``values`` surface of langgraph's ``StateSnapshot``.
+
+    ``StateSnapshot`` itself is unusable as an annotation: its ``values`` field is
+    declared ``dict[str, Any] | Any``, which trips ``disallow-any-explicit`` at
+    every use site. These helpers only read ``values``, so this protocol is the
+    precise structural type.
+    """
+
+    @property
+    def values(self) -> object: ...
+
+
+def _snapshot_messages(snapshot: StateSnapshotLike) -> list[AnyMessage]:
     """The messages a checkpoint holds. Empty means the thread has never run."""
     values = getattr(snapshot, "values", None) or {}
     messages = values.get("messages") if isinstance(values, dict) else None
     return messages if isinstance(messages, list) else []
 
 
-def _final_text_from_snapshot(snapshot: StateSnapshot) -> str:
+def _final_text_from_snapshot(snapshot: StateSnapshotLike) -> str:
     messages = _snapshot_messages(snapshot)
     if not messages:
         return ""
@@ -544,8 +565,8 @@ async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutc
 
 
 async def _address_resume(
-    graph: CompiledAgentGraph, config: RunnableConfig, resume: Command[Any]
-) -> Command[Any] | None:
+    graph: CompiledAgentGraph, config: RunnableConfig, resume: Command[None]
+) -> Command[None] | None:
     """Aim a resume at the one interrupt it answers, or ``None`` if there is none left.
 
     A bare ``Command(resume=value)`` feeds the next interrupt positionally, and
@@ -606,7 +627,7 @@ async def _address_resume(
     return resume
 
 
-def _approval_id_of(resume: Command[Any]) -> str | None:
+def _approval_id_of(resume: Command[None]) -> str | None:
     """Which gate this decision answers, when the payload carries one."""
     payload = resume.resume
     if not isinstance(payload, dict):

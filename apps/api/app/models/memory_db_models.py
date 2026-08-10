@@ -6,7 +6,6 @@ memory, and core documents. ChromaDB holds only the dense vectors.
 """
 
 from datetime import date, datetime
-from typing import Any
 import uuid
 
 from sqlalchemy import (
@@ -76,7 +75,7 @@ class MemoryRecord(Base):
         Float, default=DEFAULT_MEMORY_IMPORTANCE, nullable=False
     )
     metadata_json: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
-    search_tsv: Mapped[Any] = mapped_column(
+    search_tsv: Mapped[str | None] = mapped_column(
         TSVECTOR,
         Computed(_MEMORY_SEARCH_TSV, persisted=True),
         nullable=True,

@@ -14,10 +14,12 @@ It handles executing middleware hooks at appropriate points:
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 import inspect
-from typing import Any, cast
+from typing import cast
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import (
+    AgentState,
+    ExtendedModelResponse,
     ModelRequest,
     ModelResponse,
     ToolCallRequest,
@@ -27,6 +29,7 @@ from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.errors import GraphBubbleUp
+from langgraph.graph.message import Messages
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
@@ -46,11 +49,26 @@ from shared.py.wide_events import log
 # The handler chains built below. LangChain's hooks accept a wider return union
 # (a bare AIMessage / ExtendedModelResponse for the model hook); this executor only
 # ever feeds and consumes ModelResponse, so the model chain is narrowed to it.
-ModelCallHandler = Callable[[ModelRequest], Awaitable[ModelResponse]]
-ToolCallHandler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
+# The stack's runtime is BigtoolRuntime and structured responses are never
+# requested (response_format is always None), so those type params are concrete.
+ModelCallHandler = Callable[[ModelRequest[BigtoolRuntime]], Awaitable[ModelResponse[None]]]
+ToolCallHandler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[None]]]
+
+# The middleware stack's concrete instantiation of AgentMiddleware.
+StackMiddleware = AgentMiddleware[AgentState[None], BigtoolRuntime, None]
+
+# A sync wrap hook may return its result directly or hand back the async
+# handler's unawaited coroutine — the executor awaits the latter below.
+ModelHookResult = (
+    ModelResponse[None]
+    | AIMessage
+    | ExtendedModelResponse[None]
+    | Awaitable[ModelResponse[None] | AIMessage | ExtendedModelResponse[None]]
+)
+ToolHookResult = ToolMessage | Command[None] | Awaitable[ToolMessage | Command[None]]
 
 
-def _apply_state_update(current_state: dict[str, object], update: Mapping[str, Any]) -> None:
+def _apply_state_update(current_state: dict[str, object], update: Mapping[str, object]) -> None:
     """Merge a middleware hook's return into ``current_state``, in place.
 
     A hook returns a LangGraph *state update* — channel writes the graph
@@ -70,18 +88,19 @@ def _apply_state_update(current_state: dict[str, object], update: Mapping[str, A
     for key, value in update.items():
         if key == "messages":
             # The bag read is object-typed; the reducer's contract is the message
-            # list. Bridged with a checked container guard — elements pass through
-            # unfiltered (RemoveMessage tombstones drive summarization deletion).
+            # list. Bridged with checked container/value guards — elements pass
+            # through unfiltered (RemoveMessage tombstones drive summarization
+            # deletion), and a "messages" write is a Messages value by contract.
             raw_messages = current_state.get("messages", [])
             current_state["messages"] = messages_delta_reducer(
                 cast(list[AnyMessage], raw_messages if isinstance(raw_messages, list) else []),
-                [value],
+                [cast(Messages, value)],
             )
         else:
             current_state[key] = value
 
 
-def _has_override(mw: AgentMiddleware, method_name: str) -> bool:
+def _has_override(mw: StackMiddleware, method_name: str) -> bool:
     """Check if middleware actually overrides a method.
 
     The base AgentMiddleware defines all hook methods (awrap_model_call,
@@ -271,7 +290,7 @@ class MiddlewareExecutor:
         config: RunnableConfig,
         store: BaseStore | None,
         tools: list[BaseTool | dict[str, object]],
-        invoke_fn: Callable[..., Awaitable[AIMessage]],
+        invoke_fn: Callable[[list[AnyMessage]], Awaitable[AIMessage]],
     ) -> AIMessage:
         """
         Wrap the model invocation with all wrap_model_call middleware.
@@ -291,10 +310,14 @@ class MiddlewareExecutor:
             AIMessage response from the model (possibly modified by middleware)
         """
         runtime = self._create_runtime(config, store)
-        request = create_model_request(model, state, runtime, tools)
+        # create_model_request is typed with the library's generic default
+        # (ContextT=None); this stack always runs on a BigtoolRuntime.
+        request = cast(
+            ModelRequest[BigtoolRuntime], create_model_request(model, state, runtime, tools)
+        )
 
         # Build the handler chain from inside out
-        async def final_handler(req: ModelRequest) -> ModelResponse:
+        async def final_handler(req: ModelRequest[BigtoolRuntime]) -> ModelResponse[None]:
             """Innermost handler - actually calls the model."""
             # Build messages list: prepend system_message if present, then messages
             messages_to_send: list[AnyMessage] = []
@@ -310,10 +333,12 @@ class MiddlewareExecutor:
             if _has_override(mw, "awrap_model_call"):
                 # Create closure to capture current handler and middleware
                 def make_wrapper(
-                    middleware: AgentMiddleware, handler: ModelCallHandler
+                    middleware: StackMiddleware, handler: ModelCallHandler
                 ) -> ModelCallHandler:
-                    async def wrapped(req: ModelRequest) -> ModelResponse:
-                        return cast(ModelResponse, await middleware.awrap_model_call(req, handler))
+                    async def wrapped(req: ModelRequest[BigtoolRuntime]) -> ModelResponse[None]:
+                        return cast(
+                            ModelResponse[None], await middleware.awrap_model_call(req, handler)
+                        )
 
                     return wrapped
 
@@ -321,18 +346,22 @@ class MiddlewareExecutor:
             elif _has_override(mw, "wrap_model_call"):
 
                 def make_sync_wrapper(
-                    middleware: AgentMiddleware, handler: ModelCallHandler
+                    middleware: StackMiddleware, handler: ModelCallHandler
                 ) -> ModelCallHandler:
-                    async def wrapped(req: ModelRequest) -> ModelResponse:
+                    async def wrapped(req: ModelRequest[BigtoolRuntime]) -> ModelResponse[None]:
                         # Sync version - call and await if needed
                         # This bridge is async-only, so the sync hook is handed the
                         # async handler and its awaitable result is awaited below.
-                        result: Any = middleware.wrap_model_call(
-                            req, cast(Callable[[ModelRequest], ModelResponse], handler)
+                        result: ModelHookResult = middleware.wrap_model_call(
+                            req,
+                            cast(
+                                Callable[[ModelRequest[BigtoolRuntime]], ModelResponse[None]],
+                                handler,
+                            ),
                         )
                         if inspect.iscoroutine(result):
                             result = await result
-                        return cast(ModelResponse, result)
+                        return cast(ModelResponse[None], result)
 
                     return wrapped
 
@@ -366,8 +395,8 @@ class MiddlewareExecutor:
         state: State,
         config: RunnableConfig,
         store: BaseStore | None,
-        invoke_fn: Callable[..., Awaitable[ToolMessage | Command[Any]]],
-    ) -> ToolMessage | Command[Any]:
+        invoke_fn: Callable[[dict[str, object]], Awaitable[ToolMessage | Command[None]]],
+    ) -> ToolMessage | Command[None]:
         """
         Wrap a tool invocation with all wrap_tool_call middleware.
 
@@ -393,13 +422,15 @@ class MiddlewareExecutor:
         # Holds the tool's own result once it has run, so the fallback below can
         # tell a middleware that failed *before* the tool from one that failed
         # after it — only the former is safe to retry.
-        tool_result: ToolMessage | Command[Any] | None = None
+        tool_result: ToolMessage | Command[None] | None = None
 
         # Build the handler chain from inside out
-        async def final_handler(req: ToolCallRequest) -> ToolMessage | Command[Any]:
+        async def final_handler(req: ToolCallRequest) -> ToolMessage | Command[None]:
             """Innermost handler - actually calls the tool."""
             nonlocal tool_result
-            tool_result = await invoke_fn(req.tool_call)
+            # The invoke target is typed on plain dicts; ToolCall is the
+            # TypedDict view of the same data, so it is converted at the seam.
+            tool_result = await invoke_fn(dict(req.tool_call))
             return tool_result
 
         # Wrap with middleware (reverse order so first middleware is outermost)
@@ -408,9 +439,9 @@ class MiddlewareExecutor:
             if _has_override(mw, "awrap_tool_call"):
 
                 def make_wrapper(
-                    middleware: AgentMiddleware, handler: ToolCallHandler
+                    middleware: StackMiddleware, handler: ToolCallHandler
                 ) -> ToolCallHandler:
-                    async def wrapped(req: ToolCallRequest) -> ToolMessage | Command[Any]:
+                    async def wrapped(req: ToolCallRequest) -> ToolMessage | Command[None]:
                         return await middleware.awrap_tool_call(req, handler)
 
                     return wrapped
@@ -419,17 +450,20 @@ class MiddlewareExecutor:
             elif _has_override(mw, "wrap_tool_call"):
 
                 def make_sync_wrapper(
-                    middleware: AgentMiddleware, handler: ToolCallHandler
+                    middleware: StackMiddleware, handler: ToolCallHandler
                 ) -> ToolCallHandler:
-                    async def wrapped(req: ToolCallRequest) -> ToolMessage | Command[Any]:
+                    async def wrapped(req: ToolCallRequest) -> ToolMessage | Command[None]:
                         # Async handler into the sync hook — see wrap_model_invocation.
-                        result: Any = middleware.wrap_tool_call(
+                        result: ToolHookResult = middleware.wrap_tool_call(
                             req,
-                            cast(Callable[[ToolCallRequest], ToolMessage | Command[Any]], handler),
+                            cast(
+                                Callable[[ToolCallRequest], ToolMessage | Command[None]],
+                                handler,
+                            ),
                         )
                         if inspect.iscoroutine(result):
                             result = await result
-                        return cast(ToolMessage | Command[Any], result)
+                        return cast(ToolMessage | Command[None], result)
 
                     return wrapped
 

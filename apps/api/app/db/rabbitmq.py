@@ -209,7 +209,9 @@ async def get_rabbitmq_publisher() -> RabbitMQPublisher:
     Raises:
         RuntimeError: If RabbitMQ publisher is not available
     """
-    publisher_instance: RabbitMQPublisher | None = await providers.aget("rabbitmq_publisher")
+    publisher_instance: RabbitMQPublisher | None = cast(
+        RabbitMQPublisher | None, await providers.aget("rabbitmq_publisher")
+    )
     if publisher_instance is None:
         raise RuntimeError("RabbitMQ publisher not available")
     return publisher_instance

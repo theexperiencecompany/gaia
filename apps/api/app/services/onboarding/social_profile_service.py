@@ -1,6 +1,5 @@
 """Extract and save social profile URLs from email sender info and snippets."""
 
-from typing import Any
 import urllib.parse
 
 from langchain_core.messages import HumanMessage
@@ -12,6 +11,7 @@ from app.agents.prompts.onboarding_prompts import SOCIAL_PROFILE_FILTER_PROMPT
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.onboarding_models import SocialProfile, SocialProfileFilterOutput
+from app.utils.json_helpers import list_bag, text_bag
 from shared.py.wide_events import log
 
 # URLs containing these are marketing/newsletter links, not user profiles.
@@ -147,7 +147,7 @@ def _extract_handle(remainder: str) -> str | None:
 
 
 async def extract_social_profiles_from_emails(
-    emails: list[dict[str, Any]],
+    emails: list[dict[str, object]],
     user_name: str | None,
     user_email: str | None,
 ) -> list[SocialProfile]:
@@ -156,14 +156,16 @@ async def extract_social_profiles_from_emails(
     candidates: dict[tuple[str, str], _ProfileCandidate] = {}
 
     for email in emails:
-        body = email.get("body", "") or email.get("snippet", "") or email.get("messageText", "")
-        sender = email.get("sender", "") or email.get("from", "")
-        subject = email.get("subject", "")
+        body = (
+            text_bag(email, "body") or text_bag(email, "snippet") or text_bag(email, "messageText")
+        )
+        sender = text_bag(email, "sender") or text_bag(email, "from")
+        subject = text_bag(email, "subject")
         combined = f"{body} {sender} {subject}"
         if not combined.strip():
             continue
 
-        is_sent = "SENT" in (email.get("labelIds") or email.get("label_ids") or [])
+        is_sent = "SENT" in list_bag(email, "labelIds") or "SENT" in list_bag(email, "label_ids")
 
         seen_in_email: set[tuple[str, str]] = set()
         urls = _extract_urls_from_text(combined)
@@ -204,7 +206,7 @@ async def extract_social_profiles_from_emails(
                     _CandidateContext(
                         sender=sender[:_MAX_CONTEXT_FIELD_LEN],
                         subject=subject[:_MAX_CONTEXT_FIELD_LEN],
-                        snippet=(email.get("snippet", "") or "")[:_MAX_CONTEXT_SNIPPET_LEN],
+                        snippet=(text_bag(email, "snippet"))[:_MAX_CONTEXT_SNIPPET_LEN],
                     )
                 )
 

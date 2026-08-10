@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import wraps
 import inspect
-from typing import Any, ParamSpec, TypeVar, cast
+from typing import ParamSpec, TypeVar, cast
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -74,12 +74,12 @@ def with_rate_limiting(
             context = user_context.get()
             # Decoration-time validation above guarantees a `config` parameter; it
             # carries LangGraph's RunnableConfig mapping.
-            config = cast(Mapping[str, Any] | None, kwargs.get("config"))
+            config = cast(Mapping[str, object] | None, kwargs.get("config"))
 
             if not context and config:
                 # Extract from RunnableConfig
                 context = {
-                    "user_id": config.get("metadata", {}).get("user_id"),
+                    "user_id": dict_bag(config, "metadata").get("user_id"),
                     # Always user-initiated: no producer writes an "initiator" into
                     # a run's configurable (see AgentConfigurable), so the lookup
                     # this replaces could only ever return this default. Backend
@@ -144,7 +144,7 @@ def with_rate_limiting(
                         # RateLimitExceededException always sets it to a dict at
                         # runtime — cast to Any so the isinstance checks below
                         # aren't (incorrectly) treated as statically unreachable.
-                        detail_value = cast(Any, e.detail) if hasattr(e, "detail") else None
+                        detail_value = cast(object, e.detail) if hasattr(e, "detail") else None
                         if detail_value is not None:
                             if isinstance(detail_value, dict):
                                 detail_dict = detail_value
@@ -310,7 +310,7 @@ class LangChainRateLimitException(Exception):
     def __init__(
         self,
         feature: str,
-        detail: dict[Any, Any] | None = None,
+        detail: dict[str, object] | None = None,
         reset_time: str | None = None,
     ):
         self.feature = feature
@@ -321,7 +321,7 @@ class LangChainRateLimitException(Exception):
         if reset_time:
             message += f" Resets at {reset_time}."
         if detail and detail.get("plan_required"):
-            message += f" Upgrade to {detail['plan_required'].upper()} for higher limits."
+            message += f" Upgrade to {text_bag(detail, 'plan_required').upper()} for higher limits."
 
         super().__init__(message)
 

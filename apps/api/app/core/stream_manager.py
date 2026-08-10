@@ -59,6 +59,7 @@ from app.constants.streaming import (
     STREAM_ERROR_SIGNAL,
 )
 from app.db.redis import redis_cache
+from app.utils.json_helpers import dict_bag, list_bag, text_bag
 from shared.py.wide_events import log
 
 
@@ -151,9 +152,10 @@ class StreamManager:
         """
         # Update progress to complete
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        raw_progress = await redis_cache.get(key)
 
-        if progress_data:
+        if isinstance(raw_progress, dict):
+            progress_data: dict[str, object] = raw_progress
             progress_data["is_complete"] = True
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
             await cls._clear_active_index(progress_data)
@@ -173,7 +175,7 @@ class StreamManager:
         completion can still re-attach and replay the finished turn.
         """
         progress_data = await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
-        if progress_data:
+        if isinstance(progress_data, dict):
             await cls._clear_active_index(progress_data)
         await redis_cache.delete(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
         await redis_cache.delete(f"{STREAM_SIGNAL_PREFIX}{stream_id}")
@@ -392,7 +394,7 @@ class StreamManager:
         # Update progress
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
         progress_data = await redis_cache.get(key)
-        if progress_data:
+        if isinstance(progress_data, dict):
             progress_data["is_cancelled"] = True
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
             await cls._clear_active_index(progress_data)
@@ -437,21 +439,22 @@ class StreamManager:
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
         progress_data = await redis_cache.get(key)
 
-        if not progress_data:
+        if not isinstance(progress_data, dict):
             return
 
         if message_chunk:
             progress_data["complete_message"] = (
-                progress_data.get("complete_message", "") + message_chunk
+                text_bag(progress_data, "complete_message") + message_chunk
             )
 
         if tool_data:
-            existing = progress_data.get("tool_data", {})
+            existing = dict_bag(progress_data, "tool_data")
             # Merge tool_data arrays
             if "tool_data" in tool_data and "tool_data" in existing:
-                existing["tool_data"] = existing.get("tool_data", []) + tool_data.get(
-                    "tool_data", []
-                )
+                existing["tool_data"] = [
+                    *list_bag(existing, "tool_data"),
+                    *list_bag(tool_data, "tool_data"),
+                ]
             else:
                 existing.update(tool_data)
             progress_data["tool_data"] = existing
@@ -486,7 +489,7 @@ class StreamManager:
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
         progress_data = await redis_cache.get(key)
 
-        if progress_data:
+        if isinstance(progress_data, dict):
             progress_data["error"] = error
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
 

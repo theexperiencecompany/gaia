@@ -135,7 +135,7 @@ class ArtifactWatcher:
         self._stopped = True
         # per-conv snapshot {rel_path: (size, mtime)} for diffing
         self._snapshots: dict[str, dict[str, tuple[int, float]]] = {}
-        self._rescan_task: asyncio.Task[None] | None = None
+        self._rescan_task: asyncio.Task[object] | None = None
         # accesslog scoping: map a mutating-op inode -> conv so a rescan hits
         # only the changed session. Populated from each rescan (artifact files +
         # their session/artifacts dir inodes, all from stats the scan already did).
@@ -149,7 +149,7 @@ class ArtifactWatcher:
         self._last_full_rescan = 0.0
         # accesslog mode only: watches the background tail handle for exit so
         # is_alive() reflects a dead stream (watch_dir gets this via on_exit).
-        self._accesslog_monitor: asyncio.Task[None] | None = None
+        self._accesslog_monitor: asyncio.Task[object] | None = None
 
     # -- public surface ---------------------------------------------------
 

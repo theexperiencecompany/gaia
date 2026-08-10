@@ -20,7 +20,7 @@ Pattern deletion:
 """
 
 from collections.abc import Mapping
-from typing import Any, Protocol, TypeVar, cast, overload
+from typing import Protocol, TypeVar, cast, overload
 
 from pydantic import TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
@@ -56,7 +56,7 @@ T = TypeVar("T")
 # narrow to ``object`` at zero cost — a follow-up, not an ANN401 unblock.
 
 
-def serialize_any(data: object, model: type[Any] | None = None) -> str:
+def serialize_any(data: object, model: type[object] | None = None) -> str:
     """
     Serialize Python objects to JSON string using Pydantic TypeAdapter.
 
@@ -78,7 +78,7 @@ def serialize_any(data: object, model: type[Any] | None = None) -> str:
         user = User(name="John", email="john@example.com")
         json_str = serialize_any(user, model=User)
     """
-    adapter: TypeAdapterType[Any] = TypeAdapter(model or Any)
+    adapter: TypeAdapterType[object] = TypeAdapter(model or object)
     return adapter.dump_json(data).decode()
 
 
@@ -87,10 +87,10 @@ def deserialize_any(json_str: str, model: type[T]) -> T: ...
 
 
 @overload
-def deserialize_any(json_str: str, model: type[Any] | None = None) -> Any: ...
+def deserialize_any(json_str: str, model: None = None) -> object: ...
 
 
-def deserialize_any(json_str: str, model: type[T] | None = None) -> Any:
+def deserialize_any(json_str: str, model: type[T] | None = None) -> object:
     """
     Deserialize JSON string back to Python objects with optional type validation.
 
@@ -116,7 +116,7 @@ def deserialize_any(json_str: str, model: type[T] | None = None) -> Any:
         # Type-safe deserialization
         user = deserialize_any(json_str, model=User)  # Returns User instance
     """
-    adapter: TypeAdapterType[Any] = TypeAdapter(model or Any)
+    adapter: TypeAdapterType[object] = TypeAdapter(model or object)
     return adapter.validate_json(json_str)
 
 
@@ -191,9 +191,9 @@ class AsyncRedisCommands(Protocol):
         block: int | None = None,
     ) -> list[tuple[str, list[tuple[str, dict[str, str]]]]]: ...
 
-    # Lua's return type is whatever the script yields — genuinely dynamic, so the
-    # caller narrows it (the one call site coerces to bool).
-    async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> Any: ...
+    # Lua's return type is whatever the script yields — genuinely dynamic, so it
+    # stays ``object``; the two call sites discard the value.
+    async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> object: ...
 
     def pubsub(self) -> PubSub: ...
 
@@ -279,9 +279,9 @@ class RedisCache:
     async def get(self, key: str, model: type[T]) -> T | None: ...
 
     @overload
-    async def get(self, key: str, model: type[Any] | None = None) -> Any: ...
+    async def get(self, key: str, model: None = None) -> object: ...
 
-    async def get(self, key: str, model: type[T] | None = None) -> Any:
+    async def get(self, key: str, model: type[T] | None = None) -> object:
         """
         Retrieve cached value by key with optional type validation.
 
@@ -321,7 +321,7 @@ class RedisCache:
             return None
 
     async def set(
-        self, key: str, value: object, ttl: int = 3600, model: type[Any] | None = None
+        self, key: str, value: object, ttl: int = 3600, model: type[object] | None = None
     ) -> bool:
         """
         Store value in cache with TTL and optional type validation.
@@ -407,10 +407,10 @@ async def get_cache(key: str, model: type[T]) -> T | None: ...
 
 
 @overload
-async def get_cache(key: str, model: type[Any] | None = None) -> Any: ...
+async def get_cache(key: str, model: None = None) -> object: ...
 
 
-async def get_cache(key: str, model: type[T] | None = None) -> Any:
+async def get_cache(key: str, model: type[T] | None = None) -> object:
     """
     Convenience wrapper for retrieving cached values.
 
@@ -428,7 +428,7 @@ async def get_cache(key: str, model: type[T] | None = None) -> Any:
 
 
 async def set_cache(
-    key: str, value: object, ttl: int = ONE_YEAR_TTL, model: type[Any] | None = None
+    key: str, value: object, ttl: int = ONE_YEAR_TTL, model: type[object] | None = None
 ) -> bool:
     """
     Convenience wrapper for storing cached values.
@@ -465,10 +465,10 @@ async def get_and_delete_cache(key: str, model: type[T]) -> T | None: ...
 
 
 @overload
-async def get_and_delete_cache(key: str, model: type[Any] | None = None) -> Any: ...
+async def get_and_delete_cache(key: str, model: None = None) -> object: ...
 
 
-async def get_and_delete_cache(key: str, model: type[T] | None = None) -> Any:
+async def get_and_delete_cache(key: str, model: type[T] | None = None) -> object:
     """
     Atomically get and delete a cached value using Redis GETDEL.
 

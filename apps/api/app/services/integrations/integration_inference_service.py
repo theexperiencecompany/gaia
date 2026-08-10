@@ -14,7 +14,7 @@ research helpers.
 """
 
 import asyncio
-from typing import Any, cast
+from typing import cast
 from urllib.parse import urlparse
 
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -40,7 +40,7 @@ _CONTENT_GENERATION_TIMEOUT_SECONDS = 12
 _CATEGORY_INFERENCE_TIMEOUT_SECONDS = 10
 
 
-def _tools_summary(tools: list[dict[str, Any]], limit: int) -> str:
+def _tools_summary(tools: list[dict[str, object]], limit: int) -> str:
     """Comma-joined names of the first ``limit`` tools, or "None" when empty."""
     names = [str(t.get("name")) for t in tools[:limit] if t.get("name")]
     return ", ".join(names) or "None"
@@ -57,7 +57,7 @@ def _server_domain(server_url: str) -> str:
 async def infer_integration_category(
     name: str,
     description: str,
-    tools: list[dict[str, Any]],
+    tools: list[dict[str, object]],
     server_url: str,
 ) -> str:
     """Classify an integration into one ``INTEGRATION_CATEGORIES`` value.
@@ -108,7 +108,7 @@ async def infer_integration_category(
 async def infer_integration_content(
     name: str,
     description: str,
-    tools: list[dict[str, Any]],
+    tools: list[dict[str, object]],
     server_url: str,
     category: str,
     *,

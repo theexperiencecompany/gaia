@@ -33,9 +33,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 
 from app.db.mongodb.collections import get_async_collection
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 # ---------------------------------------------------------------------------
@@ -232,7 +232,7 @@ def _resolve_prompt(target: str | None, next_description: str) -> str | None:
     return target
 
 
-def _select_manifest(only: set[str]) -> dict[str, Any] | None:
+def _select_manifest(only: set[str]) -> dict[str, dict[str, str | None]] | None:
     if not only:
         return MANIFEST
     manifest = {k: v for k, v in MANIFEST.items() if k in only}
@@ -243,7 +243,10 @@ def _select_manifest(only: set[str]) -> dict[str, Any] | None:
 
 
 def _report_discrepancies(
-    docs: dict[str, Any], manifest: dict[str, Any], *, skip_orphans: bool
+    docs: dict[str, dict[str, object]],
+    manifest: dict[str, dict[str, str | None]],
+    *,
+    skip_orphans: bool,
 ) -> None:
     orphan_ids = sorted(set(docs) - set(MANIFEST))
     missing_ids = sorted(set(manifest) - set(docs))
@@ -263,10 +266,10 @@ def _report_discrepancies(
 
 
 def _plan_for(
-    wid: str, target: dict[str, Any], doc: dict[str, Any]
+    wid: str, target: dict[str, str | None], doc: dict[str, object]
 ) -> tuple[dict[str, str], dict[str, str]] | None:
-    current_desc = doc.get("description") or ""
-    current_prompt = doc.get("prompt") or ""
+    current_desc = text_bag(doc, "description")
+    current_prompt = text_bag(doc, "prompt")
 
     next_desc = target["description"] if target["description"] is not None else current_desc
     next_prompt = _resolve_prompt(target["prompt"], next_desc)
@@ -274,12 +277,12 @@ def _plan_for(
         next_prompt = current_prompt
 
     if next_desc == current_desc and next_prompt == current_prompt:
-        print(f"  [skip] {wid} {doc.get('title', '')!r} — already matches target")
+        print(f"  [skip] {wid} {text_bag(doc, 'title')!r} — already matches target")
         return None
 
     before = {"description": current_desc, "prompt": current_prompt}
     after = {"description": next_desc, "prompt": next_prompt}
-    _print_edit(wid, doc.get("title", ""), before, after)
+    _print_edit(wid, text_bag(doc, "title"), before, after)
     return before, after
 
 
@@ -295,7 +298,7 @@ def _print_edit(wid: str, title: str, before: dict[str, str], after: dict[str, s
 
 
 def _build_plans(
-    manifest: dict[str, Any], docs: dict[str, Any]
+    manifest: dict[str, dict[str, str | None]], docs: dict[str, dict[str, object]]
 ) -> list[tuple[str, dict[str, str], dict[str, str]]]:
     plans: list[tuple[str, dict[str, str], dict[str, str]]] = []
     for wid, target in manifest.items():
@@ -349,7 +352,7 @@ async def _run(args: argparse.Namespace) -> int:
         return 1
 
     cursor = get_async_collection("workflows").find({"is_public": True})
-    docs = {doc["_id"]: doc async for doc in cursor}
+    docs: dict[str, dict[str, object]] = {doc["_id"]: doc async for doc in cursor}
 
     print(f"Found {len(docs)} public workflows in Mongo; manifest covers {len(manifest)}.")
     _report_discrepancies(docs, manifest, skip_orphans=args.skip_orphans)

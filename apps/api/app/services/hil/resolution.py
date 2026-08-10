@@ -17,7 +17,7 @@ Two guarantees:
 
 import asyncio
 from http import HTTPStatus
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from langgraph.types import Command
 
@@ -354,7 +354,7 @@ async def _dispatch_resume(
         await release_resume_dispatch(record.conversation_id)
         return
 
-    resume: Command[Any] = Command(
+    resume: Command[None] = Command(
         resume={
             "status": resume_status,
             "feedback": feedback,

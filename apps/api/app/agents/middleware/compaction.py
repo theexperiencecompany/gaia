@@ -43,7 +43,6 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 import hashlib
 import json
-from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
@@ -400,21 +399,17 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
     async def awrap_tool_call(
         self,
         request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-    ) -> ToolMessage | Command[Any]:
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[None]]],
+    ) -> ToolMessage | Command[None]:
         result = await handler(request)
         if not isinstance(result, ToolMessage):
             return result
 
         # `ToolCall` is a TypedDict, but tool calls also reach middleware in
-        # attribute form; Any keeps the else-branch from being narrowed away.
-        tool_call: Any = request.tool_call
-        if isinstance(tool_call, dict):
-            tool_name = tool_call.get("name", "")
-            tool_call_id = tool_call.get("id", "")
-        else:
-            tool_name = tool_call.name
-            tool_call_id = tool_call.id
+        # attribute form; the isinstance branch keeps both forms reachable.
+        tool_call = request.tool_call
+        tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
+        tool_call_id = (tool_call.get("id") if isinstance(tool_call, dict) else tool_call.id) or ""
 
         configurable = runtime_configurable(request)
         thread_id = configurable.get("thread_id")
@@ -443,7 +438,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
 
     def _bind_offload_tools(
         self, result: ToolMessage, request: ToolCallRequest
-    ) -> ToolMessage | Command[Any]:
+    ) -> ToolMessage | Command[None]:
         """Append query_json/grep to ``selected_tool_ids`` if ``result`` carries an offload marker.
 
         Binds only the mining tools not already selected — selected_tool_ids is an

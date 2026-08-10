@@ -4,9 +4,10 @@ Clean, simple, and maintainable.
 """
 
 import asyncio
-from typing import Any, Literal, cast
+from typing import Literal
 
 from dodopayments import DodoPayments
+from dodopayments.types.checkout_session_create_params import CheckoutSessionCreateParams
 from fastapi import HTTPException
 
 from app.config.settings import settings
@@ -69,7 +70,7 @@ class DodoPaymentService:
 
         # Try cache first
         cached = await redis_cache.get(cache_key)
-        if cached:
+        if isinstance(cached, list):
             try:
                 # Try to create PlanResponse objects from cached data
                 plan_responses = []
@@ -122,6 +123,10 @@ class DodoPaymentService:
         user = await user_repository.get(user_id)
         if not user:
             raise HTTPException(404, "User not found")
+        if user.email is None:
+            # Checkout creates a customer from this email; a record without one
+            # cannot complete a payment.
+            raise HTTPException(400, "User has no email address")
 
         # Check for existing active subscription
         existing = await subscription_repository.get_active_for_user(user_id)
@@ -130,7 +135,7 @@ class DodoPaymentService:
 
         # Create hosted checkout session (preferred over deprecated subscriptions.create)
         try:
-            params: dict[str, object] = {
+            params: CheckoutSessionCreateParams = {
                 "product_cart": [
                     {
                         "product_id": product_id,
@@ -157,10 +162,7 @@ class DodoPaymentService:
                 # Pre-apply a known discount (customer can still edit it on the page)
                 params["discount_code"] = discount_code
 
-            # Dodo's SDK types each create() kwarg against nested TypedDicts; the
-            # bag is built above to match its schema exactly, so it is bridged at
-            # this one SDK boundary (same convention as the LazyLoader seams).
-            checkout_session = self.client.checkout_sessions.create(**cast(Any, params))
+            checkout_session = self.client.checkout_sessions.create(**params)
         except Exception as e:
             log.error(
                 f"{LogTag.PAYMENT} Error creating Dodo checkout session",

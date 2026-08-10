@@ -24,7 +24,6 @@ is what fails hard in production).
 
 import asyncio
 from collections.abc import Awaitable
-from typing import Any
 
 from redis.exceptions import RedisError
 
@@ -112,7 +111,7 @@ async def record_model_call_usage(
         return
 
     # (operation label, awaitable) so a per-op failure can be logged by name.
-    labeled: list[tuple[str, Awaitable[Any]]] = []
+    labeled: list[tuple[str, Awaitable[object]]] = []
 
     # Durable per-day rollup — the Redis windows expire in ~26h, so this is the
     # only cost history the usage charts can plot. Runs concurrently with the

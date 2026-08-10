@@ -3,6 +3,7 @@
 from inspect import Parameter, Signature
 import types
 import typing as t
+import uuid
 
 from composio.core.provider import AgenticProvider, AgenticProviderExecuteFn
 from composio.types import Tool
@@ -11,6 +12,7 @@ from composio.utils.shared import (
     get_signature_format_from_schema_params,
     json_schema_to_model,
 )
+from langchain_core.callbacks import Callbacks
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool as BaseStructuredTool
 import pydantic
@@ -27,23 +29,31 @@ def _clean_reserved_keyword(keyword: str) -> str:
 
 
 def _substitute_reserved_python_keywords(
-    schema: dict[str, t.Any],
-) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
+    schema: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
     if "properties" not in schema:
         return schema, {}
 
-    keywords: dict[str, t.Any] = {}
-    for p_name in list(schema["properties"]):
+    properties = schema["properties"]
+    if not isinstance(properties, dict):
+        raise ValueError(f"Expected 'properties' to be a dict, got {type(properties).__name__}")
+
+    keywords: dict[str, object] = {}
+    for p_name in list(properties):
         if p_name not in _python_reserved:
             continue
 
-        _keywords: dict[str, t.Any] = {}
-        p_val = schema["properties"].pop(p_name)
+        _keywords: dict[str, object] = {}
+        p_val = properties.pop(p_name)
+        if not isinstance(p_val, dict):
+            raise ValueError(
+                f"Expected property {p_name!r} schema to be a dict, got {type(p_val).__name__}"
+            )
         if p_val.get("type") == "object":
             p_val, _keywords = _substitute_reserved_python_keywords(schema=p_val)
 
         p_name_clean = _clean_reserved_keyword(keyword=p_name)
-        schema["properties"][p_name_clean] = p_val
+        properties[p_name_clean] = p_val
         keywords[p_name_clean] = p_name
         keywords[f"{p_name_clean}{_obj_marker}"] = _keywords
 
@@ -51,34 +61,81 @@ def _substitute_reserved_python_keywords(
 
 
 def _reinstate_reserved_python_keywords(
-    request: dict[str, t.Any], keywords: dict[str, t.Any]
-) -> dict[str, t.Any]:
+    request: dict[str, object], keywords: dict[str, object]
+) -> dict[str, object]:
     for clean_key in sorted(list(keywords), reverse=True):
-        subkeys = None
+        subkeys: dict[str, object] | None = None
         if clean_key.endswith(_obj_marker):
-            subkeys = keywords[clean_key]
+            marker_value = keywords[clean_key]
+            if not isinstance(marker_value, dict):
+                raise ValueError(
+                    f"Expected {clean_key!r} marker to hold a keyword map, "
+                    f"got {type(marker_value).__name__}"
+                )
+            subkeys = marker_value
             clean_key, _ = clean_key.split(_obj_marker, maxsplit=1)
 
         if clean_key not in request:
             continue
 
-        orginal_value = request.pop(clean_key)
-        if subkeys is not None:
-            orginal_value = _reinstate_reserved_python_keywords(
-                request=orginal_value,
+        original_value = request.pop(clean_key)
+        # Empty subkeys (a nested object whose reserved properties were all
+        # leaves) is the normal scalar case: nothing to reinstate inside.
+        if subkeys:
+            if not isinstance(original_value, dict):
+                raise ValueError(
+                    f"Expected {clean_key!r} value to be a dict for keyword "
+                    f"reinstatement, got {type(original_value).__name__}"
+                )
+            original_value = _reinstate_reserved_python_keywords(
+                request=original_value,
                 keywords=subkeys,
             )
-        request[keywords[clean_key]] = orginal_value
+        original_key = keywords[clean_key]
+        if not isinstance(original_key, str):
+            raise ValueError(
+                f"Expected {clean_key!r} to map to a keyword name, "
+                f"got {type(original_key).__name__}"
+            )
+        request[original_key] = original_value
     return request
 
 
 class StructuredTool(BaseStructuredTool):
     """StructuredTool that returns a structured failure instead of raising on invalid args."""
 
-    def run(self, *args: t.Any, **kwargs: t.Any) -> t.Any:
+    def run(
+        self,
+        tool_input: str | dict[str, object],
+        verbose: bool | None = None,
+        start_color: str | None = "green",
+        color: str | None = "green",
+        callbacks: Callbacks = None,
+        *,
+        tags: list[str] | None = None,
+        metadata: dict[str, object] | None = None,
+        run_name: str | None = None,
+        run_id: uuid.UUID | None = None,
+        config: RunnableConfig | None = None,
+        tool_call_id: str | None = None,
+        **kwargs: object,
+    ) -> object:
         """Run the tool, converting argument validation errors into a failure result."""
         try:
-            return super().run(*args, **kwargs)
+            return super().run(
+                tool_input,
+                verbose=verbose,
+                start_color=start_color,
+                color=color,
+                callbacks=callbacks,
+                tags=tags,
+                metadata=metadata,
+                run_name=run_name,
+                run_id=run_id,
+                config=config,
+                tool_call_id=tool_call_id,
+                **kwargs,
+            )
         except pydantic.ValidationError as e:
             return {"successful": False, "error": parse_pydantic_error(e), "data": None}
 
@@ -97,12 +154,12 @@ class LangchainProvider(
         self,
         tool: str,
         description: str,
-        schema_params: dict[str, t.Any],
+        schema_params: dict[str, object],
         execute_tool: AgenticProviderExecuteFn,
-        keywords: dict[str, t.Any],
+        keywords: dict[str, object],
         toolkit: str | None = None,
     ) -> types.FunctionType:
-        def function(**kwargs: t.Any) -> dict[str, t.Any]:
+        def function(**kwargs: object) -> dict[str, object]:
             """Wrapper function for composio action."""
 
             # Discarding other data except metadata from __runnable_config__

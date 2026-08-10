@@ -7,8 +7,6 @@ Note: All Composio tool responses are wrapped in ToolExecutionResponse with
 `data`, `error`, `successful` keys. These models represent the INNER data structure.
 """
 
-from typing import Any
-
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -48,7 +46,7 @@ class LinearGetAllTeamsData(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     items: list[dict[str, object]] = Field(default_factory=list)
-    teams: list[Any] = Field(default_factory=list)
+    teams: list[object] = Field(default_factory=list)
 
     def get_teams(self) -> list[LinearTeam]:
         """Get teams list, preferring 'items' over 'teams'."""

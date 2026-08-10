@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from enum import Enum
-from typing import Any, NotRequired, Union
+from typing import NotRequired, Union
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -36,7 +36,7 @@ class ToolDataEntry(TypedDict):
     """
 
     tool_name: str
-    data: Union[dict[str, object], list[Any], str, int, float, bool]
+    data: Union[dict[str, object], list[object], str, int, float, bool]
     # Optional: emitters always stamp it, but legacy stored entries predate the
     # field, so a read must tolerate its absence rather than fail validation.
     timestamp: NotRequired[str | None]

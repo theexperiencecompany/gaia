@@ -10,10 +10,8 @@ MCPClient (the source of truth) rather than copied into a process-global cache.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import Any
 
-from langgraph.graph.state import CompiledStateGraph
-
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.llm.client import init_llm
 from app.agents.tools.core.registry import (
@@ -45,7 +43,7 @@ class SubagentUnavailableError(Exception):
         self.reason = reason
 
 
-async def create_subagent(subagent: Subagent) -> CompiledStateGraph[Any, None, Any, Any]:
+async def create_subagent(subagent: Subagent) -> CompiledAgentGraph:
     """
     Create a provider subagent graph on-demand.
     Registers provider tools to registry if not already present.
@@ -148,9 +146,7 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph[Any, None, A
     return graph
 
 
-async def create_subagent_for_user(
-    integration_id: str, user_id: str
-) -> CompiledStateGraph[Any, None, Any, Any]:
+async def create_subagent_for_user(integration_id: str, user_id: str) -> CompiledAgentGraph:
     """Build a per-user subagent graph.
 
     No memoization — every handoff rebuilds the graph from live MCPClient
@@ -161,9 +157,7 @@ async def create_subagent_for_user(
     return await _build_user_subagent(integration_id, user_id)
 
 
-async def _build_user_subagent(
-    integration_id: str, user_id: str
-) -> CompiledStateGraph[Any, None, Any, Any]:
+async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledAgentGraph:
     """Build a per-user subagent graph for an MCP integration.
 
     Pulls live tools from MCPClient. Lazy-connects on first use per integration;
@@ -254,9 +248,7 @@ async def _build_user_subagent(
     return graph
 
 
-async def _create_custom_mcp_subagent(
-    integration_id: str, user_id: str
-) -> CompiledStateGraph[Any, None, Any, Any]:
+async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> CompiledAgentGraph:
     """Build a subagent graph for a custom MCP integration from MongoDB.
 
     Pulls live tools from MCPClient (lazy-connects on first use). Namespace
@@ -338,10 +330,10 @@ async def _create_custom_mcp_subagent(
 
 def _make_subagent_loader(
     subagent: Subagent,
-) -> Callable[[], Awaitable[CompiledStateGraph[Any, None, Any, Any]]]:
+) -> Callable[[], Awaitable[CompiledAgentGraph]]:
     """Bind the subagent into a zero-arg async loader for `providers.register`."""
 
-    async def _loader() -> CompiledStateGraph[Any, None, Any, Any]:
+    async def _loader() -> CompiledAgentGraph:
         return await create_subagent(subagent)
 
     return _loader

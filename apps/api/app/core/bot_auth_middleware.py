@@ -143,7 +143,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         cache_key = f"bot_user:{platform}:{platform_user_id}"
         cached_user_info = await get_cache(cache_key)
 
-        if cached_user_info and cached_user_info.get("user_id"):
+        if isinstance(cached_user_info, dict) and cached_user_info.get("user_id"):
             return cast(AuthenticatedUser, cached_user_info)
 
         user_data = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
@@ -173,7 +173,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
             cache_key = f"bot_user:{platform}:{platform_user_id}"
             cached_user_info = await get_cache(cache_key)
 
-            if cached_user_info and cached_user_info.get("user_id") == user_id:
+            if isinstance(cached_user_info, dict) and cached_user_info.get("user_id") == user_id:
                 return cast(AuthenticatedUser, cached_user_info)
 
             user_data = await PlatformLinkService.get_user_by_platform_id(

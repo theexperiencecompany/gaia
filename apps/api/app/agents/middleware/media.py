@@ -6,7 +6,7 @@ that helper directly, because it runs outside the middleware stack. Same split a
 """
 
 from collections.abc import Awaitable, Callable
-from typing import Any, cast
+from typing import cast
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
@@ -23,8 +23,8 @@ class MediaDescriptionMiddleware(AgentMiddleware):
     async def awrap_tool_call(
         self,
         request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-    ) -> ToolMessage | Command[Any]:
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[None]]],
+    ) -> ToolMessage | Command[None]:
         result = await handler(request)
         if not isinstance(result, ToolMessage):
             return result

@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
@@ -236,19 +236,21 @@ def _apply_query(
         return {"count": len(matched)}
 
     if group_count_by:
-        counts: dict[Any, int] = {}
-        originals: dict[Any, Any] = {}
+        counts: dict[JSONScalar, int] = {}
+        originals: dict[JSONScalar, JSONValue] = {}
         for r in matched:
             v = r.get(group_count_by)
             k = _hashable(v)  # list/dict values would be unhashable otherwise
             counts[k] = counts.get(k, 0) + 1
             originals.setdefault(k, v)
-        grouped = [{"value": originals[k], "count": n} for k, n in counts.items()]
-        grouped.sort(key=lambda g: g["count"], reverse=True)
+        grouped: list[JSONRecord] = [
+            {"value": originals[k], "count": n}
+            for k, n in sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+        ]
         return grouped
 
     if unique_by:
-        seen: set[Any] = set()
+        seen: set[JSONScalar] = set()
         deduped = []
         for r in matched:
             key = _hashable(r.get(unique_by))

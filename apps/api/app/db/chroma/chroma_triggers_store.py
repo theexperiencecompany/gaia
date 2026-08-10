@@ -9,7 +9,8 @@ import hashlib
 from typing import cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
-from langgraph.store.base import PutOp
+from langchain_core.embeddings import Embeddings
+from langgraph.store.base import IndexConfig, PutOp
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
@@ -20,7 +21,7 @@ from app.models.trigger_config import TriggerConfig
 from app.utils.json_helpers import text_bag
 from shared.py.wide_events import VectorContext, log
 
-from .chroma_store import ChromaStore
+from .chroma_store import ChromaStore, PutOpShape
 
 # Namespace for workflow triggers in the store
 TRIGGERS_NAMESPACE = "workflow_triggers"
@@ -174,7 +175,7 @@ def _compute_trigger_diff(
 def _build_put_operations(
     triggers_to_upsert: list[tuple[str, dict[str, object]]],
     triggers_to_delete: list[str],
-) -> list[PutOp]:
+) -> list[PutOpShape]:
     """Build PutOp operations for upserting and deleting triggers.
 
     Args:
@@ -184,7 +185,7 @@ def _build_put_operations(
     Returns:
         List of PutOp operations
     """
-    put_ops = []
+    put_ops: list[PutOpShape] = []
 
     # Add upsert operations
     for trigger_slug, trigger_data in triggers_to_upsert:
@@ -220,7 +221,7 @@ def _build_put_operations(
 
 
 async def _execute_batch_operations(
-    store: ChromaStore, put_ops: list[PutOp], batch_size: int = 50
+    store: ChromaStore, put_ops: list[PutOpShape], batch_size: int = 50
 ) -> None:
     """Execute put operations in batches.
 
@@ -272,11 +273,11 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
     store = ChromaStore(
         client=chroma_client,
         collection_name="langgraph_triggers_store",
-        index={
-            "embed": embeddings,
-            "dims": 768,
-            "fields": ["rich_description"],
-        },
+        index=IndexConfig(
+            embed=cast(Embeddings, embeddings),
+            dims=768,
+            fields=["rich_description"],
+        ),
     )
 
     collection = await store._get_collection()

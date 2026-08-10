@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 import functools
 import inspect
-from typing import Any, ClassVar, Generic, TypeVar, cast
+from typing import ClassVar, Generic, Protocol, TypeVar, cast
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
@@ -54,14 +54,32 @@ TDoc = TypeVar("TDoc", bound=MongoDocument)
 TUserDoc = TypeVar("TUserDoc", bound=UserScopedDocument)
 TUpdate = TypeVar("TUpdate", bound=BaseModel)
 TResult = TypeVar("TResult", bound=BaseModel)
-# Bound to the decorated finder itself so ``cached_query`` preserves its exact
-# signature — parameter list and return type, ``| None`` included.
-_TFinder = TypeVar("_TFinder", bound=Callable[..., Awaitable[Any]])
+# Inferred from the decorated finder itself so ``cached_query`` preserves its
+# exact signature — parameter list and return type, ``| None`` included.
+_TFinder = TypeVar("_TFinder")
+_TCached = TypeVar("_TCached")
+
+
+class _AnyAsyncCallable(Protocol):
+    """Any callable returning an awaitable — the shape every decorated finder has.
+
+    ``cached_query`` preserves the finder's exact signature via
+    ``cast(_TFinder, wrapper)``; this protocol is only the seam the wrapper needs
+    to *call* the finder and read ``__name__``. It is deliberately not a TypeVar
+    bound: mypy cannot express "any async callable" as a bound without ``Any``
+    (``Callable[..., Awaitable[Any]]``), so the check is a single cast at the one
+    seam where the decorator's contract guarantees the shape.
+    """
+
+    __name__: str
+
+    def __call__(self, *args: object, **kwargs: object) -> Awaitable[object]: ...
+
 
 _REQUIRED_CLASSVARS = ("collection_name", "document_model", "update_model", "uses_object_id")
 
 
-def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
+def cached_query(result_model: type[_TCached]) -> Callable[[_TFinder], _TFinder]:
     """Cache a named finder's result under its scope's current generation.
 
     Key is ``{method}:{hash(args)}`` under the scope (its ``user_id`` argument,
@@ -75,15 +93,18 @@ def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
     """
 
     def decorator(fn: _TFinder) -> _TFinder:
-        signature = inspect.signature(fn)
+        # fn is a bare TypeVar (its bound cannot express "any async callable"
+        # without Any); the decorator's contract guarantees the shape.
+        finder = cast(_AnyAsyncCallable, fn)
+        signature = inspect.signature(finder)
 
-        @functools.wraps(fn)
+        @functools.wraps(finder)
         async def wrapper(
             self: _BaseRepository[MongoDocument, BaseModel], *args: object, **kwargs: object
         ) -> object:
             policy = self.cache_policy
             if policy is None:
-                return await fn(self, *args, **kwargs)
+                return await finder(self, *args, **kwargs)
             bound = signature.bind(self, *args, **kwargs)
             bound.apply_defaults()
             call_args = dict(bound.arguments)
@@ -91,12 +112,12 @@ def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
             scope = str(call_args.get("user_id", REPO_GLOBAL_SCOPE))
             generation = await read_generation(policy, scope)
             if generation is None:
-                return await fn(self, *args, **kwargs)
-            key = policy.query_key(scope, generation, fn.__name__, query_arg_hash(call_args))
+                return await finder(self, *args, **kwargs)
+            key = policy.query_key(scope, generation, finder.__name__, query_arg_hash(call_args))
             cached = await get_cache(key, model=result_model)
             if cached is not None:
                 return cached
-            result = await fn(self, *args, **kwargs)
+            result = await finder(self, *args, **kwargs)
             if result is not None:
                 await set_cache(key, result, ttl=policy.query_ttl, model=result_model)
             return result

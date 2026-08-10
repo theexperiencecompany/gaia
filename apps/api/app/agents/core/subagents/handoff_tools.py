@@ -13,14 +13,13 @@ Subagent identity/metadata comes from agents/core/subagents/registry.py
 from collections.abc import Mapping
 import re
 import time
-from typing import Annotated, Any
+from typing import Annotated, cast
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp
-from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore, PutOp
 from langgraph.types import Command
 
@@ -179,7 +178,8 @@ async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, object] 
 
     # Check Redis cache for custom integrations
     cache_key = f"{SUBAGENT_CACHE_PREFIX}:{search_id}"
-    cached: dict[str, object] | None = await get_cache(cache_key)
+    cached_value = await get_cache(cache_key)
+    cached: dict[str, object] | None = cached_value if isinstance(cached_value, dict) else None
     if cached is not None:
         # Return cached result (could be empty dict for negative cache)
         return cached or None
@@ -331,9 +331,9 @@ async def _resolve_subagent(
 
         # Create subagent for custom MCP
         try:
-            subagent_graph: (
-                CompiledStateGraph[Any, None, Any, Any] | None
-            ) = await create_subagent_for_user(integration_id, user_id)
+            subagent_graph: CompiledAgentGraph | None = await create_subagent_for_user(
+                integration_id, user_id
+            )
         except SubagentUnavailableError as e:
             return (
                 None,
@@ -391,7 +391,7 @@ async def _resolve_subagent(
                 return None, None, error_message, False
 
         try:
-            subagent_graph = await providers.aget(agent_name)
+            subagent_graph = cast(CompiledAgentGraph | None, await providers.aget(agent_name))
         except KeyError:
             return None, None, f"Error: {agent_name} not available", False
         if not subagent_graph:

@@ -9,7 +9,7 @@ This module provides a ToolNode subclass that:
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, cast
+from typing import cast
 
 from langchain_core.messages import AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -33,6 +33,7 @@ from app.agents.workspace.offload import mark_offload, pop_offload_descriptor
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.override.langgraph_bigtool.utils import State
 from app.services.hil.gate import decide_tool_call
+from app.utils.json_helpers import text_bag
 
 
 def format_tool_error(exc: Exception) -> str:
@@ -58,8 +59,8 @@ def _timeout_error_text(tool_name: str) -> str:
 
 async def timeout_guarded_tool_call(
     request: ToolCallRequest,
-    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-) -> ToolMessage | Command[Any]:
+    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[None]]],
+) -> ToolMessage | Command[None]:
     """Per-call execution wrapper (ToolNode ``awrap_tool_call``): bound hung tools.
 
     A hung integration call previously hung the entire run forever. Long-running
@@ -83,8 +84,8 @@ async def timeout_guarded_tool_call(
 
 async def hil_and_timeout_guarded_tool_call(
     request: ToolCallRequest,
-    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-) -> ToolMessage | Command[Any]:
+    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[None]]],
+) -> ToolMessage | Command[None]:
     """Parent ToolNode ``awrap_tool_call`` for InjectedState/middleware tools.
 
     The gate is asked first and separately: it only ever reads a decision the
@@ -117,7 +118,7 @@ class DynamicToolNode(ToolNode):
         tags: list[str] | None = None,
         handle_tool_errors: bool
         | str
-        | Callable[..., str]
+        | Callable[[Exception], str]
         | type[Exception]
         | tuple[type[Exception], ...] = _default_handle_tool_errors,
         messages_key: str = "messages",
@@ -183,31 +184,39 @@ class DynamicToolNode(ToolNode):
                 if name not in self._injected_args:
                     self._injected_args[name] = _get_all_injected_args(raw_tool)
 
+    def _narrow_parent_result(
+        self,
+        result: object,
+    ) -> dict[str, list[ToolMessage | Command[None]]] | list[ToolMessage | Command[None]]:
+        """Narrow the parent ``ToolNode`` result (typed ``Any`` upstream) to its
+        real shapes: a ``{messages_key: results}`` dict or a results list."""
+        if not isinstance(result, (dict, list)):
+            raise TypeError(f"ToolNode returned an unexpected shape: {type(result).__name__}")
+        return result
+
     def _func(
         self,
-        input: list[AnyMessage] | dict[str, Any] | BaseModel,
+        input: list[AnyMessage] | dict[str, object] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
-    ) -> Any:
+    ) -> dict[str, list[ToolMessage | Command[None]]] | list[ToolMessage | Command[None]]:
         """Override to inject dynamically added tools before execution.
 
-        Return type mirrors ``ToolNode._func``, which is itself typed ``Any``
-        upstream (its shape varies: dict[str, list[BaseMessage]], a list of
-        results, or a Command).
+        The shape varies by input kind: a ``{messages_key: results}`` dict for
+        dict/tool_calls input, a bare results list for list input.
         """
         self._sync_registry()
-        return super()._func(input, config, runtime)
+        return self._narrow_parent_result(super()._func(input, config, runtime))
 
     async def _afunc(
         self,
-        input: list[AnyMessage] | dict[str, Any] | BaseModel,
+        input: list[AnyMessage] | dict[str, object] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
-    ) -> Any:
+    ) -> dict[str, list[ToolMessage | Command[None]]] | list[ToolMessage | Command[None]]:
         """Override to inject dynamically added tools before execution and apply middleware.
 
-        Return type mirrors ``ToolNode._afunc``, which is itself typed ``Any``
-        upstream — see ``_func`` above.
+        Same return-shape contract as ``_func``.
         """
         self._sync_registry()
 
@@ -215,7 +224,7 @@ class DynamicToolNode(ToolNode):
         if self._middleware_executor and self._middleware_executor.has_wrap_tool_call():
             return await self._afunc_with_middleware(input, config, runtime)
 
-        return await super()._afunc(input, config, runtime)
+        return self._narrow_parent_result(await super()._afunc(input, config, runtime))
 
     def _needs_parent_routing(self, tool_name: str) -> bool:
         """Check if a tool needs parent ToolNode execution path.
@@ -231,14 +240,13 @@ class DynamicToolNode(ToolNode):
 
     async def _afunc_with_middleware(
         self,
-        input: list[AnyMessage] | dict[str, Any] | BaseModel,
+        input: list[AnyMessage] | dict[str, object] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
-    ) -> Any:
+    ) -> dict[str, list[ToolMessage | Command[None]]] | list[ToolMessage | Command[None]]:
         """Execute tools with middleware wrap_tool_call hooks.
 
-        Return type is ``Any``: two branches delegate straight to
-        ``ToolNode._afunc`` (itself typed ``Any`` upstream); the rest return
+        Two branches delegate straight to ``ToolNode._afunc``; the rest return
         ``dict[str, list[ToolMessage | Command]] | list[ToolMessage | Command]``.
 
         This method is called when middleware with wrap_tool_call is present.
@@ -253,7 +261,7 @@ class DynamicToolNode(ToolNode):
         tool_calls, _ = self._parse_input(input)
         all_parent_routed = all(self._needs_parent_routing(tc.get("name", "")) for tc in tool_calls)
         if all_parent_routed:
-            return await super()._afunc(input, config, runtime)
+            return self._narrow_parent_result(await super()._afunc(input, config, runtime))
         delegate_state = self._extract_state(input, config)
         middleware_state = self._coerce_middleware_state(delegate_state)
 
@@ -261,9 +269,9 @@ class DynamicToolNode(ToolNode):
         store: BaseStore | None = getattr(runtime, "store", None)
         middleware_executor = self._middleware_executor
         if middleware_executor is None:
-            return await super()._afunc(input, config, runtime)
+            return self._narrow_parent_result(await super()._afunc(input, config, runtime))
 
-        results: list[ToolMessage | Command[Any]] = []
+        results: list[ToolMessage | Command[None]] = []
         for tool_call in tool_calls:
             tool_name = tool_call.get("name", "")
 
@@ -271,7 +279,7 @@ class DynamicToolNode(ToolNode):
             if self._needs_parent_routing(tool_name):
                 results.extend(
                     await self._run_parent_for_tool_call(
-                        dict(cast(Mapping[str, Any], tool_call)),
+                        dict(tool_call),
                         delegate_state,
                         config,
                         runtime,
@@ -281,7 +289,7 @@ class DynamicToolNode(ToolNode):
 
             results.append(
                 await self._run_tool_call_with_middleware(
-                    tool_call=dict(cast(Mapping[str, Any], tool_call)),
+                    tool_call=dict(tool_call),
                     tool=self.get_tool(tool_name),
                     middleware_executor=middleware_executor,
                     store=store,
@@ -300,14 +308,14 @@ class DynamicToolNode(ToolNode):
 
     async def _run_parent_for_tool_call(
         self,
-        tool_call: dict[str, Any],
-        delegate_state: list[AnyMessage] | dict[str, Any] | BaseModel,
+        tool_call: dict[str, object],
+        delegate_state: list[AnyMessage] | dict[str, object] | BaseModel,
         config: RunnableConfig,
         runtime: "Runtime",
-    ) -> list[ToolMessage | Command[Any]]:
+    ) -> list[ToolMessage | Command[None]]:
         single_call_with_context = {
             "__type": "tool_call_with_context",
-            "tool_call": dict(cast(Mapping[str, Any], tool_call)),
+            "tool_call": dict(tool_call),
             "state": delegate_state,
         }
         single_result = await super()._afunc(single_call_with_context, config, runtime)
@@ -320,29 +328,29 @@ class DynamicToolNode(ToolNode):
     async def _run_tool_call_with_middleware(
         self,
         *,
-        tool_call: dict[str, Any],
+        tool_call: dict[str, object],
         tool: BaseTool | None,
         middleware_executor: MiddlewareExecutor,
         store: BaseStore | None,
         config: RunnableConfig,
         state: State,
-    ) -> ToolMessage | Command[Any]:
+    ) -> ToolMessage | Command[None]:
         """Result is normally a ToolMessage; a middleware (e.g. workspace
         compaction) may replace it with a Command graph update instead — see
         MiddlewareExecutor.wrap_tool_invocation.
         """
 
-        async def invoke_tool(tc: dict[str, Any]) -> ToolMessage | Command[Any]:
-            resolved_tool = self.get_tool(tc.get("name", ""))
+        async def invoke_tool(tc: dict[str, object]) -> ToolMessage | Command[None]:
+            resolved_tool = self.get_tool(text_bag(tc, "name"))
             if resolved_tool is None:
                 return ToolMessage(
-                    content=f"Tool '{tc.get('name')}' not found",
-                    tool_call_id=tc.get("id", ""),
+                    content=f"Tool '{text_bag(tc, 'name')}' not found",
+                    tool_call_id=text_bag(tc, "id"),
                 )
 
             tool_input = dict(tc)
             tool_input["type"] = "tool_call"
-            tool_name = tc.get("name", "")
+            tool_name = text_bag(tc, "name")
             try:
                 if tool_name in TOOL_TIMEOUT_EXEMPT_TOOLS:
                     result = await resolved_tool.ainvoke(tool_input, config=config)
@@ -390,13 +398,13 @@ class DynamicToolNode(ToolNode):
             additional_kwargs = mark_offload({}, info) if info else {}
             return ToolMessage(
                 content=str(result) if not isinstance(result, str) else result,
-                tool_call_id=tc.get("id", ""),
-                name=tc.get("name", ""),
+                tool_call_id=text_bag(tc, "id"),
+                name=text_bag(tc, "name"),
                 additional_kwargs=additional_kwargs,
             )
 
         return await middleware_executor.wrap_tool_invocation(
-            tool_call=dict(cast(Mapping[str, Any], tool_call)),
+            tool_call=dict(tool_call),
             tool=tool,
             state=state,
             config=config,
@@ -406,7 +414,7 @@ class DynamicToolNode(ToolNode):
 
     def _coerce_middleware_state(
         self,
-        delegate_state: list[AnyMessage] | dict[str, Any] | BaseModel,
+        delegate_state: list[AnyMessage] | dict[str, object] | BaseModel,
     ) -> State:
         """Normalize tool-call input state for middleware consumption.
 

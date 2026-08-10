@@ -1,6 +1,7 @@
 from collections.abc import Awaitable, Callable
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
+from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.core.lazy_loader import providers
 from app.core.websocket_consumer import (
     start_websocket_consumer,
@@ -8,6 +9,7 @@ from app.core.websocket_consumer import (
 )
 from app.db.postgresql import close_postgresql_db
 from app.db.rabbitmq import get_rabbitmq_publisher
+from app.services.mcp.mcp_client_pool import MCPClientPool
 from app.services.reminder_service import reminder_scheduler
 from app.services.workflow.scheduler import workflow_scheduler
 from shared.py.wide_events import log
@@ -129,7 +131,9 @@ async def close_checkpointer_manager() -> None:
         if not providers.is_initialized("checkpointer_manager"):
             return
 
-        checkpointer_manager = await providers.aget("checkpointer_manager")
+        checkpointer_manager = cast(
+            CheckpointerManager | None, await providers.aget("checkpointer_manager")
+        )
         if checkpointer_manager:
             await checkpointer_manager.close()
             log.info("Checkpointer manager closed")
@@ -141,7 +145,7 @@ async def close_mcp_client_pool() -> None:
     """Close MCP client pool and all active connections."""
     try:
         if providers.is_initialized("mcp_client_pool"):
-            pool = await providers.aget("mcp_client_pool")
+            pool = cast(MCPClientPool | None, await providers.aget("mcp_client_pool"))
             if pool:
                 await pool.shutdown()
                 log.info("MCP client pool closed")

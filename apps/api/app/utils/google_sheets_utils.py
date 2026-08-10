@@ -11,6 +11,7 @@ import re
 from typing import NotRequired, TypedDict, cast
 
 from app.services.composio.proxy_client import proxy_request_sync
+from app.utils.json_helpers import dict_bag, list_bag
 from shared.py.wide_events import log
 
 
@@ -145,9 +146,14 @@ def get_sheet_id_by_name(spreadsheet_id: str, sheet_name: str, user_id: str) -> 
         method="GET",
         query={"fields": "sheets.properties"},
     )
-    for sheet in (data or {}).get("sheets", []):
-        if sheet.get("properties", {}).get("title") == sheet_name:
-            return cast(int, sheet["properties"]["sheetId"])
+    if not isinstance(data, dict):
+        return None
+    for sheet in list_bag(data, "sheets"):
+        if not isinstance(sheet, dict):
+            continue
+        properties = dict_bag(sheet, "properties")
+        if properties.get("title") == sheet_name:
+            return cast(int, properties["sheetId"])
     return None
 
 
@@ -169,9 +175,14 @@ def get_column_index_by_header(
         endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
         method="GET",
     )
+    if not isinstance(data, dict):
+        return None
     # An empty sheet comes back with no `values` at all, not an empty first row.
-    rows = (data or {}).get("values") or [[]]
-    for idx, header in enumerate(rows[0]):
+    rows = list_bag(data, "values") or [[]]
+    first_row = rows[0]
+    if not isinstance(first_row, list):
+        return None
+    for idx, header in enumerate(first_row):
         if str(header).lower() == column_name.lower():
             return idx
     return None

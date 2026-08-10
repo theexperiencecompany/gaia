@@ -10,19 +10,26 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
-from typing import Any
 
 from langchain.agents.middleware import SummarizationMiddleware
-from langchain.agents.middleware.summarization import ContextSize, TriggerClause
+from langchain.agents.middleware.summarization import (
+    _DEFAULT_TRIM_TOKEN_LIMIT,
+    DEFAULT_SUMMARY_PROMPT,
+    ContextSize,
+    TokenCounter,
+    TriggerClause,
+)
 from langchain.agents.middleware.types import AgentState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
+from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
+from app.utils.json_helpers import list_bag
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
@@ -46,15 +53,26 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         keep: ContextSize = ("messages", 15),
         enable_archive: bool = True,
         excluded_tools: set[str] | None = None,
-        **kwargs: Any,
+        token_counter: TokenCounter = count_tokens_approximately,
+        summary_prompt: str = DEFAULT_SUMMARY_PROMPT,
+        trim_tokens_to_summarize: int | None = _DEFAULT_TRIM_TOKEN_LIMIT,
+        **kwargs: object,
     ) -> None:
-        super().__init__(model=model, trigger=trigger, keep=keep, **kwargs)
+        super().__init__(
+            model=model,
+            trigger=trigger,
+            keep=keep,
+            token_counter=token_counter,
+            summary_prompt=summary_prompt,
+            trim_tokens_to_summarize=trim_tokens_to_summarize,
+            **kwargs,
+        )
         self.enable_archive = enable_archive
         self.excluded_tools = excluded_tools or set()
 
     async def abefore_model(
-        self, state: AgentState[Any], runtime: Runtime[Any]
-    ) -> dict[str, Any] | None:
+        self, state: AgentState[object], runtime: Runtime[None]
+    ) -> dict[str, object] | None:
         archive_path: str | None = None
         if self.enable_archive and self._should_trigger_summarization(state):
             try:
@@ -72,7 +90,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             self._inject_archive_path(result, archive_path)
         return result
 
-    def _should_trigger_summarization(self, state: AgentState[Any]) -> bool:
+    def _should_trigger_summarization(self, state: AgentState[object]) -> bool:
         """Whether the archive should be written before ``super().abefore_model`` runs.
 
         Delegates the threshold decision to the parent's ``_should_summarize`` so
@@ -89,7 +107,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         ]
         return self._should_summarize(filtered, self.token_counter(filtered))
 
-    async def _archive(self, state: AgentState[Any]) -> str:
+    async def _archive(self, state: AgentState[object]) -> str:
         messages = state.get("messages", [])
         # The `runtime` handed to a middleware hook carries no config — LangGraph's
         # `Runtime` deliberately omits it (see its class docstring). Reading it from
@@ -123,13 +141,13 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         )
         return sandbox_path
 
-    def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, Any]]:
-        history: list[dict[str, Any]] = []
+    def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, object]]:
+        history: list[dict[str, object]] = []
         for msg in messages:
             # Text-extract so inline media never lands base64 in the archive —
             # the archive is a text record of the conversation, and a single
             # image block would add ~1.4 MB of base64 to the JSON.
-            entry: dict[str, Any] = {
+            entry: dict[str, object] = {
                 "type": type(msg).__name__,
                 "content": extract_text_content(msg.content)
                 if hasattr(msg, "content")
@@ -147,12 +165,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             history.append(entry)
         return history
 
-    def _inject_archive_path(self, result: dict[str, Any], archive_path: str) -> None:
+    def _inject_archive_path(self, result: dict[str, object], archive_path: str) -> None:
         """Annotate the summary HumanMessage in ``result`` with the archive path.
 
         Mutates ``result``'s messages in place.
         """
-        messages = result.get("messages", [])
+        messages = list_bag(result, "messages")
         for msg in messages:
             if isinstance(msg, HumanMessage):
                 additional_kwargs = getattr(msg, "additional_kwargs", {})

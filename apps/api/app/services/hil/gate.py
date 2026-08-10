@@ -34,7 +34,6 @@ Three invariants hold this together:
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
@@ -79,7 +78,7 @@ from app.services.hil.utils import (
 )
 from shared.py.wide_events import log
 
-Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
+Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[None]]]
 
 
 @dataclass(frozen=True)

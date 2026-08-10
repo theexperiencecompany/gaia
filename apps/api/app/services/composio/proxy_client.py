@@ -14,11 +14,14 @@ of a connection.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from threading import Lock
 import time
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, TypedDict, cast
 
 from composio import Composio
+from composio_client import omit
+from composio_client.types.tool_proxy_params import BinaryBody, Parameter
 
 from app.config.oauth_config import get_composio_social_configs
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
@@ -32,13 +35,15 @@ ProxyMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"]
 class ProxyResponse(TypedDict):
     """A proxy call's full result: provider status, payload and headers.
 
-    ``data`` is the provider's parsed JSON body, so it stays ``Any`` — every
-    provider answers a different shape and this is the boundary where it lands.
+    ``data`` is the provider's parsed JSON body — every provider answers a
+    different shape, so the honest type is ``object`` and callers validate it
+    into a real model at their own boundary. ``headers`` are the provider's
+    response headers, normalized to lowercase keys with ``str`` values.
     """
 
     status: int
-    data: Any
-    headers: dict[str, Any]
+    data: object
+    headers: dict[str, str]
 
 
 _CONNECTED_ACCOUNT_CACHE_TTL_SECONDS = 600
@@ -180,9 +185,9 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
 
 def _build_parameters(
     headers: dict[str, str] | None,
-    query: dict[str, Any] | None,
-) -> list[dict[str, str]]:
-    params: list[dict[str, str]] = []
+    query: Mapping[str, object] | None,
+) -> list[Parameter]:
+    params: list[Parameter] = []
     if headers:
         for name, value in headers.items():
             params.append({"name": name, "type": "header", "value": str(value)})
@@ -204,7 +209,7 @@ def _proxy_call(
     endpoint: str,
     method: ProxyMethod,
     body: object = None,
-    query: dict[str, Any] | None = None,
+    query: Mapping[str, object] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
 ) -> ProxyResponse:
@@ -221,20 +226,18 @@ def _proxy_call(
     connected_account_id = _resolve_connected_account_id(user_id, toolkit)
     parameters = _build_parameters(headers, query)
 
-    proxy_kwargs: dict[str, Any] = {
-        "endpoint": endpoint,
-        "method": method,
-        "connected_account_id": connected_account_id,
-    }
-    if parameters:
-        proxy_kwargs["parameters"] = parameters
-    if binary_body is not None:
-        proxy_kwargs["binary_body"] = binary_body
-    elif body is not None:
-        proxy_kwargs["body"] = body
-
+    # Route through the client-level proxy, not the SDK ``tools.proxy`` wrapper:
+    # the wrapper drops ``binary_body`` (no such parameter), silently corrupting
+    # binary uploads; the underlying client accepts it.
     try:
-        response = _get_composio().tools.proxy(**proxy_kwargs)
+        response = _get_composio()._client.tools.proxy(
+            endpoint=endpoint,
+            method=method,
+            body=omit if binary_body is not None else (body if body is not None else omit),
+            connected_account_id=connected_account_id,
+            parameters=parameters if parameters else omit,
+            binary_body=cast(BinaryBody, binary_body) if binary_body is not None else omit,
+        )
     except AppError:
         raise
     except Exception as e:
@@ -269,7 +272,7 @@ def _proxy_call(
         if status == 401:
             invalidate_connected_account_cache(user_id=user_id, toolkit=toolkit)
         gaia_status = 403 if status == 401 else (status if 400 <= status < 600 else 502)
-        meta: dict[str, Any] = {
+        meta: dict[str, object] = {
             "toolkit": toolkit,
             "endpoint": endpoint,
             "method": method,
@@ -305,10 +308,10 @@ def proxy_request_sync(
     endpoint: str,
     method: ProxyMethod,
     body: object = None,
-    query: dict[str, Any] | None = None,
+    query: Mapping[str, object] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> Any:
+) -> object:
     """Send an authenticated request to a provider via Composio's proxy.
 
     Returns the parsed `data` field from the proxy response. Raises
@@ -346,7 +349,7 @@ def proxy_request_full_sync(
     endpoint: str,
     method: ProxyMethod,
     body: object = None,
-    query: dict[str, Any] | None = None,
+    query: Mapping[str, object] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
 ) -> ProxyResponse:
@@ -374,10 +377,10 @@ async def proxy_request(
     endpoint: str,
     method: ProxyMethod,
     body: object = None,
-    query: dict[str, Any] | None = None,
+    query: Mapping[str, object] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> Any:
+) -> object:
     """Async variant of `proxy_request_sync`. Runs the SDK call in a worker thread."""
     return await asyncio.to_thread(
         proxy_request_sync,

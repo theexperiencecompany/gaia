@@ -3,7 +3,7 @@ Clean webhook models for Dodo Payments based on actual webhook format.
 """
 
 from enum import Enum
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -100,7 +100,7 @@ class DodoSubscriptionData(BaseModel):
     trial_period_days: int = 0
     on_demand: bool = False
     metadata: dict[str, object] = Field(default_factory=dict)
-    addons: list[Any] = Field(default_factory=list)
+    addons: list[object] = Field(default_factory=list)
     discount_id: str | None = None
 
 

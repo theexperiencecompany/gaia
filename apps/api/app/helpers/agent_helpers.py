@@ -1,14 +1,15 @@
 """Core agent helpers: config building, state init, and graph execution (streaming and silent)."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from datetime import UTC, datetime
 import json
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 from uuid import uuid4
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, ToolMessage
 from langsmith import traceable
+from posthog import Posthog
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.core.background.session import claim_tool_output
@@ -52,8 +53,8 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
 )
 from app.utils.general_utils import clip_text
-from app.utils.json_helpers import list_bag
-from app.utils.multimodal import extract_text_content, has_media_blocks
+from app.utils.json_helpers import list_bag, text_bag
+from app.utils.multimodal import MessageContent, extract_text_content, has_media_blocks
 from shared.py.wide_events import log
 
 
@@ -132,7 +133,7 @@ def _build_agent_callbacks(
     if posthog_client is not None:
         callbacks.append(
             PostHogCallbackHandler(
-                client=posthog_client,
+                client=cast(Posthog, posthog_client),
                 distinct_id=user.get("user_id"),
                 properties={
                     "conversation_id": conversation_id,
@@ -396,7 +397,7 @@ def build_agent_config(  # NOSONAR python:S107
     if resolved.get("model_kwargs"):
         configurable["model_kwargs"] = resolved["model_kwargs"]
 
-    metadata: dict[str, Any] = {
+    metadata: dict[str, object] = {
         "user_id": user.get("user_id"),
         "source_category": source_category,
         "source_channel": source_channel,
@@ -413,7 +414,7 @@ def build_agent_config(  # NOSONAR python:S107
         # The one seam where the typed bag becomes LangGraph's untyped field:
         # RunnableConfig declares ``configurable: dict[str, Any]`` and merges its
         # own keys into it at runtime. Read it back with ``agent_configurable``.
-        "configurable": cast(dict[str, Any], configurable),
+        "configurable": cast(dict[str, object], configurable),
         "recursion_limit": recursion_limit,
         "metadata": metadata,
         "callbacks": callbacks,
@@ -430,10 +431,10 @@ def build_initial_state(
     # The trigger payload merged with the agent's own keys (active_todo_id,
     # execution_mode, workflow_*). Genuinely open: schedulers spread arbitrary
     # provider trigger data through it, so there is no fixed key set to model.
-    trigger_context: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    trigger_context: dict[str, object] | None = None,
+) -> dict[str, object]:
     """Construct the initial LangGraph state (query, history, tool selections, trigger context)."""
-    state: dict[str, Any] = {
+    state: dict[str, object] = {
         "query": request.message,
         "intent": request.message,
         "messages": history,
@@ -464,9 +465,9 @@ def build_initial_state(
 @traceable(run_type="llm", name="Call Agent Silent")
 async def execute_graph_silent(
     graph: CompiledAgentGraph,
-    initial_state: dict[str, Any],
+    initial_state: Mapping[str, object],
     config: AgentRunnableConfig,
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[str, dict[str, object]]:
     """Execute LangGraph in silent mode, accumulating the full message and tool data.
 
     Used for background processing and workflow triggers that don't need streaming.
@@ -474,8 +475,8 @@ async def execute_graph_silent(
     Returns (complete_message, tool_data).
     """
     complete_message = ""
-    tool_data: dict[str, Any] = {"tool_data": []}
-    todo_progress_accumulated: dict[str, Any] = {}  # Accumulate todo_progress by source
+    tool_data: dict[str, object] = {"tool_data": []}
+    todo_progress_accumulated: dict[str, object] = {}  # Accumulate todo_progress by source
 
     # Track tool calls to avoid duplicate emissions (same as streaming)
     emitted_tool_calls: set[str] = set()
@@ -487,7 +488,7 @@ async def execute_graph_silent(
     # (namespace, mode, payload) triples, which langgraph's own overload return
     # type does not express (same cast as subagent_runner's driver).
     silent_stream = cast(
-        AsyncGenerator[tuple[tuple[str, ...], str, Any], None],
+        AsyncGenerator[tuple[tuple[str, ...], str, object], None],
         graph.astream(
             initial_state,
             stream_mode=["messages", "custom", "updates"],
@@ -500,6 +501,8 @@ async def execute_graph_silent(
 
         # Process "updates" events - same logic as execute_graph_streaming
         if stream_mode == "updates":
+            if not isinstance(payload, dict):
+                continue
             for node_name, state_update in payload.items():
                 # Only collect tool_data from the LLM node — pre-model hooks
                 # produce updates containing historical messages with old tool_calls.
@@ -540,12 +543,18 @@ async def execute_graph_silent(
                                 user_id=user_id,
                             )
                             if tool_entry:
-                                tool_data["tool_data"].append(tool_entry)
+                                tool_entries = tool_data["tool_data"]
+                                if isinstance(tool_entries, list):
+                                    tool_entries.append(tool_entry)
                                 emitted_tool_calls.add(tc_id)
             continue
 
         if stream_mode == "messages":
+            if not isinstance(payload, tuple):
+                continue
             chunk, metadata = payload
+            if not isinstance(metadata, dict):
+                continue
 
             if metadata.get("silent"):
                 continue  # Skip silent chunks (e.g. follow-up actions generation)
@@ -562,6 +571,8 @@ async def execute_graph_silent(
                 source = snapshot.get("source", "executor")
                 todo_progress_accumulated[source] = snapshot
 
+            if not isinstance(payload, dict):
+                continue
             new_data = process_custom_event_for_tools(payload)
             if new_data:
                 # Merge custom event tool_data into our array
@@ -569,7 +580,9 @@ async def execute_graph_silent(
                     for entry in list_bag(new_data, "tool_data"):
                         if not isinstance(entry, dict):
                             continue
-                        tool_data["tool_data"].append(entry)
+                        tool_entries = tool_data["tool_data"]
+                        if isinstance(tool_entries, list):
+                            tool_entries.append(entry)
                 # Always merge non-tool_data keys (follow_up_actions, etc.)
                 for key, value in new_data.items():
                     if key != "tool_data":
@@ -577,18 +590,20 @@ async def execute_graph_silent(
 
     # Inject accumulated todo_progress as a single tool_data entry
     if todo_progress_accumulated:
-        tool_data["tool_data"].append(
-            {
-                "tool_name": "todo_progress",
-                "data": todo_progress_accumulated,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        )
+        tool_entries = tool_data["tool_data"]
+        if isinstance(tool_entries, list):
+            tool_entries.append(
+                {
+                    "tool_name": "todo_progress",
+                    "data": todo_progress_accumulated,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
 
     return complete_message, tool_data
 
 
-def _json_safe_tool_result(content: Any) -> Any:
+def _json_safe_tool_result(content: MessageContent) -> object:
     """The raw tool result handed to an MCP-UI iframe, as JSON-serializable data.
 
     Inline media is text-extracted out: media blocks are plain dicts, so they
@@ -604,7 +619,7 @@ def _json_safe_tool_result(content: Any) -> Any:
         if callable(model_dump):
             return model_dump()
         if hasattr(content, "__dict__"):
-            return dict(content.__dict__)
+            return dict(vars(content))
         return str(content)
     return content
 
@@ -612,7 +627,7 @@ def _json_safe_tool_result(content: Any) -> Any:
 @traceable(run_type="llm", name="Call Agent")
 async def execute_graph_streaming(
     graph: CompiledAgentGraph,
-    initial_state: dict[str, Any],
+    initial_state: Mapping[str, object],
     config: AgentRunnableConfig,
 ) -> AsyncGenerator[str, None]:
     """Execute LangGraph in streaming mode, yielding SSE-formatted updates.
@@ -636,14 +651,14 @@ async def execute_graph_streaming(
     # Buffer MCP App UI metadata by tool_call_id for deferred emission
     # We detect UI metadata in "updates" but emit the mcp_app event in "messages"
     # when the ToolMessage arrives with the actual result.
-    pending_mcp_apps: dict[str, dict[str, Any]] = {}
+    pending_mcp_apps: dict[str, dict[str, object]] = {}
 
     cancelled = False
     # Yields (namespace, mode, payload) triples — occasionally (mode, payload)
     # pairs, handled below — and is a real async generator, so it supports
     # aclose(); langgraph's astream overloads express neither.
     stream = cast(
-        AsyncGenerator[tuple[Any, ...], None],
+        AsyncGenerator[tuple[object, ...], None],
         graph.astream(
             initial_state,
             stream_mode=["messages", "custom", "updates"],
@@ -666,6 +681,8 @@ async def execute_graph_streaming(
             continue
 
         if stream_mode == "updates":
+            if not isinstance(payload, dict):
+                continue
             for node_name, state_update in payload.items():
                 # Only emit tool_data from the LLM ("agent") node.
                 # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
@@ -738,8 +755,8 @@ async def execute_graph_streaming(
                                     # tool_calls_data entry only ever comes from
                                     # format_tool_call_entry, whose data is the
                                     # ToolCallsDataEntryData dump (item 12).
-                                    entry_data = cast(dict[str, Any], tool_entry["data"])
-                                    tc_id_for_app = entry_data.get("tool_call_id", "")
+                                    entry_data = cast(dict[str, object], tool_entry["data"])
+                                    tc_id_for_app = text_bag(entry_data, "tool_call_id")
                                     if tc_id_for_app:
                                         pending_mcp_apps[tc_id_for_app] = {
                                             "tool_category": tool_entry.get("tool_category", ""),
@@ -752,7 +769,11 @@ async def execute_graph_streaming(
             continue
 
         if stream_mode == "messages":
+            if not isinstance(payload, tuple):
+                continue
             chunk, metadata = payload
+            if not isinstance(metadata, dict):
+                continue
             if metadata.get("silent"):
                 continue
 
@@ -793,11 +814,18 @@ async def execute_graph_streaming(
                 # Emit deferred mcp_app event now that tool result is available
                 app_meta = pending_mcp_apps.pop(chunk.tool_call_id, None)
                 if app_meta:
+                    server_url = app_meta["server_url"]
+                    app_mcp_ui = app_meta["mcp_ui"]
+                    if not isinstance(server_url, str) or not isinstance(app_mcp_ui, dict):
+                        continue
+                    resource_uri = app_mcp_ui.get("resource_uri")
+                    if not isinstance(resource_uri, str):
+                        continue
                     tool_result_payload = _json_safe_tool_result(chunk.content)
                     try:
                         ui_resource = await fetch_mcp_ui_resource(
-                            server_url=app_meta["server_url"],
-                            resource_uri=app_meta["mcp_ui"]["resource_uri"],
+                            server_url=server_url,
+                            resource_uri=resource_uri,
                             user_id=user_id or "",
                         )
                         html_content = (
@@ -820,16 +848,16 @@ async def execute_graph_streaming(
                                         "data": {
                                             "tool_call_id": chunk.tool_call_id,
                                             "tool_name": app_meta["tool_name"],
-                                            "server_url": app_meta["server_url"],
-                                            "resource_uri": app_meta["mcp_ui"]["resource_uri"],
+                                            "server_url": server_url,
+                                            "resource_uri": resource_uri,
                                             "html_content": html_content,
                                             "tool_result": tool_result_payload,
                                             "csp": content_csp
                                             if content_csp is not None
-                                            else app_meta["mcp_ui"].get("csp"),
+                                            else app_mcp_ui.get("csp"),
                                             "permissions": content_permissions
                                             if content_permissions is not None
-                                            else app_meta["mcp_ui"].get("permissions", []),
+                                            else app_mcp_ui.get("permissions", []),
                                             "tool_arguments": app_meta.get("tool_arguments", {}),
                                         },
                                         "timestamp": app_meta["timestamp"],
@@ -875,10 +903,17 @@ async def execute_graph_streaming(
                 tc_id = sub_output.get("tool_call_id", "")
                 app_meta = pending_mcp_apps.pop(tc_id, None)
                 if app_meta:
+                    server_url = app_meta["server_url"]
+                    app_mcp_ui = app_meta["mcp_ui"]
+                    if not isinstance(server_url, str) or not isinstance(app_mcp_ui, dict):
+                        continue
+                    resource_uri = app_mcp_ui.get("resource_uri")
+                    if not isinstance(resource_uri, str):
+                        continue
                     try:
                         ui_resource = await fetch_mcp_ui_resource(
-                            server_url=app_meta["server_url"],
-                            resource_uri=app_meta["mcp_ui"]["resource_uri"],
+                            server_url=server_url,
+                            resource_uri=resource_uri,
                             user_id=user_id or "",
                         )
                         html_content = (
@@ -901,16 +936,16 @@ async def execute_graph_streaming(
                                         "data": {
                                             "tool_call_id": tc_id,
                                             "tool_name": app_meta["tool_name"],
-                                            "server_url": app_meta["server_url"],
-                                            "resource_uri": app_meta["mcp_ui"]["resource_uri"],
+                                            "server_url": server_url,
+                                            "resource_uri": resource_uri,
                                             "html_content": html_content,
                                             "tool_result": sub_output.get("output"),
                                             "csp": content_csp
                                             if content_csp is not None
-                                            else app_meta["mcp_ui"].get("csp"),
+                                            else app_mcp_ui.get("csp"),
                                             "permissions": content_permissions
                                             if content_permissions is not None
-                                            else app_meta["mcp_ui"].get("permissions", []),
+                                            else app_mcp_ui.get("permissions", []),
                                             "tool_arguments": app_meta.get("tool_arguments", {}),
                                         },
                                         "timestamp": app_meta["timestamp"],

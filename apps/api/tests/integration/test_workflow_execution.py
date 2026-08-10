@@ -813,6 +813,12 @@ class TestQueueService:
             "generate_workflow_steps",
             FAKE_WORKFLOW_ID,
             FAKE_USER_ID,
+            _job_id=None,
+            _queue_name=None,
+            _defer_until=None,
+            _defer_by=None,
+            _expires=None,
+            _job_try=None,
             _gaia_trace_id=trace_id,
         )
 

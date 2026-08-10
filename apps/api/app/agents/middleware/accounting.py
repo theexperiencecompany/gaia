@@ -41,6 +41,7 @@ from app.models.agent_models import agent_configurable
 from app.models.payment_models import PlanType
 from app.services.cost_budget import get_budget_stop_reason
 from app.services.llm_metering import record_llm_call
+from app.utils.json_helpers import dict_bag, float_bag, int_bag
 from shared.py.wide_events import ModelContext, log
 
 
@@ -156,8 +157,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
 
     async def abefore_model(
         self,
-        state: AgentState[Any],
-        runtime: Runtime[Any],
+        state: AgentState[object],
+        runtime: Runtime[None],
     ) -> dict[str, object] | None:
         """Pre-call hook: stamp the model-call start time for latency deltas.
 
@@ -175,8 +176,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
     async def awrap_model_call(
         self,
         request: ModelRequest,
-        handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
-    ) -> ModelResponse:
+        handler: Callable[[ModelRequest], Awaitable[ModelResponse[object]]],
+    ) -> ModelResponse[object]:
         """Budget wall: stop the run BEFORE the model is invoked when a limit binds.
 
         Runs on every model call in every execution path (chat, workflows,
@@ -233,8 +234,8 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
 
     async def aafter_model(
         self,
-        state: AgentState[Any],
-        runtime: Runtime[Any],
+        state: AgentState[object],
+        runtime: Runtime[None],
     ) -> dict[str, object] | None:
         """Emit ``llm_call`` wide event after the model produces a response."""
         del runtime  # unused — config is fetched from the graph context var
@@ -287,11 +288,11 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # reading the prior totals first, every step would overwrite the dict
         # and the final event would carry only the last step's numbers (which
         # is how ``cached_tokens`` / ``cache_hit_rate`` came back null).
-        prior = log.get().get("model") or {}
-        prior_input = int(prior.get("input_tokens") or 0)
-        prior_output = int(prior.get("output_tokens") or 0)
-        prior_cached = int(prior.get("cached_tokens") or 0)
-        prior_cost = float(prior.get("cost_usd") or 0.0)
+        prior = dict_bag(log.get() or {}, "model")
+        prior_input = int_bag(prior, "input_tokens")
+        prior_output = int_bag(prior, "output_tokens")
+        prior_cached = int_bag(prior, "cached_tokens")
+        prior_cost = float_bag(prior, "cost_usd")
 
         agg_input = prior_input + input_tokens
         agg_output = prior_output + output_tokens
@@ -350,7 +351,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
     # Synchronous fallbacks (LangChain middleware dispatch to the sync path
     # when the graph is compiled without an async runtime).
     def before_model(
-        self, state: AgentState[Any], runtime: Runtime[Any]
+        self, state: AgentState[object], runtime: Runtime[None]
     ) -> dict[str, object] | None:
         del state, runtime
         thread_id = self._thread_id(_current_config())
@@ -358,7 +359,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         return None
 
     def after_model(
-        self, state: AgentState[Any], runtime: Runtime[Any]
+        self, state: AgentState[object], runtime: Runtime[None]
     ) -> dict[str, object] | None:
         del state, runtime
         # Cost calc is async-only; in sync mode we still want the HWM signal.

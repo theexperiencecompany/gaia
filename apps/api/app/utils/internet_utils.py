@@ -158,8 +158,8 @@ async def fetch_url_metadata(url: str) -> URLResponse:
 
     cache_key = f"url_metadata:{url}"
     cached = await get_cache(cache_key)
-    if cached:
-        return URLResponse(**cached)
+    if isinstance(cached, dict):
+        return URLResponse.model_validate(cached)
 
     stored = await search_url_repository.get_by_url(url)
     if stored is not None:

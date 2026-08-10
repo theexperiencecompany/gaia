@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from composio_client import omit
 import pytest
 
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
@@ -48,6 +49,9 @@ def _make_composio(
     response.status = proxy_status
     response.data = proxy_data if proxy_data is not None else {"ok": True}
     composio.tools.proxy.return_value = response
+    # proxy_client routes through the client-level proxy (the SDK wrapper drops
+    # binary_body); mirror that on the mock so both paths answer the same.
+    composio._client.tools.proxy.return_value = response
     return composio
 
 
@@ -157,14 +161,15 @@ class TestProxyRequestSync:
                 method="GET",
             )
         assert result == {"hello": "world"}
-        composio.tools.proxy.assert_called_once()
-        kwargs = composio.tools.proxy.call_args.kwargs
+        composio._client.tools.proxy.assert_called_once()
+        kwargs = composio._client.tools.proxy.call_args.kwargs
         assert kwargs["endpoint"] == "https://gmail.googleapis.com/x"
         assert kwargs["method"] == "GET"
         assert kwargs["connected_account_id"] == "acc_active"
-        assert "body" not in kwargs
-        assert "binary_body" not in kwargs
-        assert "parameters" not in kwargs
+        # Absent args are forwarded as the SDK's `omit` sentinel — "don't send".
+        assert kwargs.get("body") is omit
+        assert kwargs.get("binary_body") is omit
+        assert kwargs.get("parameters") is omit
 
     def test_passes_body_and_parameters(self) -> None:
         composio = _make_composio()
@@ -178,7 +183,7 @@ class TestProxyRequestSync:
                 headers={"Content-Type": "application/json"},
                 query={"page": 2},
             )
-        kwargs = composio.tools.proxy.call_args.kwargs
+        kwargs = composio._client.tools.proxy.call_args.kwargs
         assert kwargs["body"] == {"a": 1}
         assert {
             "name": "Content-Type",
@@ -198,12 +203,12 @@ class TestProxyRequestSync:
                 body={"ignored": True},
                 binary_body={"url": "https://x/y", "content_type": "image/png"},
             )
-        kwargs = composio.tools.proxy.call_args.kwargs
+        kwargs = composio._client.tools.proxy.call_args.kwargs
         assert kwargs["binary_body"] == {
             "url": "https://x/y",
             "content_type": "image/png",
         }
-        assert "body" not in kwargs
+        assert kwargs.get("body") is omit
 
     def test_raises_app_error_on_non_2xx(self) -> None:
         composio = _make_composio(proxy_status=404, proxy_data={"err": "missing"})
@@ -232,4 +237,4 @@ class TestProxyRequestAsync:
                 method="GET",
             )
         assert result == {"async": True}
-        composio.tools.proxy.assert_called_once()
+        composio._client.tools.proxy.assert_called_once()

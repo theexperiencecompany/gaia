@@ -13,19 +13,20 @@ The subagent has access to:
 """
 
 import json
-from typing import Any, cast
+from typing import cast
 
 from langchain_core.messages import (
     AIMessageChunk,
+    BaseMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
 from langgraph.errors import GraphRecursionError
-from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.subagents.base_subagent import SubAgentFactory
 from app.agents.core.subagents.subagent_helpers import create_agent_context_message
 from app.agents.llm.client import init_llm
@@ -74,10 +75,10 @@ FALLBACK_CLARIFY_JSON = (
 )
 
 # Singleton for the workflow subagent graph
-_workflow_subagent_graph: CompiledStateGraph[Any, None, Any, Any] | None = None
+_workflow_subagent_graph: CompiledAgentGraph | None = None
 
 
-async def get_workflow_subagent() -> CompiledStateGraph[Any, None, Any, Any]:
+async def get_workflow_subagent() -> CompiledAgentGraph:
     """
     Get or create the workflow subagent graph (singleton).
 
@@ -257,7 +258,7 @@ class WorkflowSubagentRunner:
 
     @staticmethod
     async def _forced_finalize(
-        subagent_graph: CompiledStateGraph[Any, None, Any, Any],
+        subagent_graph: CompiledAgentGraph,
         config: RunnableConfig,
         stream_writer: StreamWriter | None,
         emitted_tool_calls: set[str],
@@ -290,7 +291,7 @@ class WorkflowSubagentRunner:
 
     @staticmethod
     async def _stream_turn(
-        subagent_graph: CompiledStateGraph[Any, None, Any, Any],
+        subagent_graph: CompiledAgentGraph,
         state: dict[str, object],
         config: RunnableConfig,
         stream_writer: StreamWriter | None,
@@ -313,9 +314,13 @@ class WorkflowSubagentRunner:
                     continue
                 # A list `stream_mode` makes astream yield (mode, payload) tuples,
                 # which langgraph's own overload return type does not express.
-                stream_mode, payload = cast(tuple[str, Any], event)
+                stream_mode, payload = cast(
+                    tuple[str, dict[str, object] | tuple[BaseMessage, dict[str, object]]], event
+                )
 
                 if stream_mode == "updates":
+                    if not isinstance(payload, dict):
+                        continue
                     for _node_name, state_update in payload.items():
                         from app.utils.stream_utils import extract_tool_entries_from_update
 
@@ -329,6 +334,8 @@ class WorkflowSubagentRunner:
                     continue
 
                 if stream_mode == "messages":
+                    if not isinstance(payload, tuple):
+                        continue
                     chunk, metadata = payload
                     if metadata.get("silent"):
                         continue
@@ -349,6 +356,8 @@ class WorkflowSubagentRunner:
                     continue
 
                 if stream_mode == "custom" and stream_writer:
+                    if not isinstance(payload, dict):
+                        continue
                     stream_writer(payload)
         except GraphRecursionError:
             return complete_message, True

@@ -291,7 +291,7 @@ async def _apply_participant_credentials(
 
 
 def _spawn_credential_task(
-    apply: Callable[[str | None, str, str], Coroutine[Any, Any, None]],
+    apply: Callable[[str | None, str, str], Coroutine[None, None, None]],
     md: str | None,
     origin: str,
     who: str,

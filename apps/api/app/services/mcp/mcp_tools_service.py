@@ -6,30 +6,31 @@ the roll-up cache so a freshly stored tool set is reflected on the next read.
 """
 
 from collections.abc import Mapping, Sequence
-from typing import Any, cast
+from typing import cast
 
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.models.integration_models import IntegrationTool
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log, spawn_logged_task
 
 # One raw tool entry as the callers build it — ``{"name": ..., "description": ...}``
 # assembled from LangChain/Composio tool objects. It stays a mapping rather than a
 # model because ``_format_tools`` is the validation boundary (Type Safety item 8):
 # it drops nameless entries and returns real ``IntegrationTool`` models.
-RawToolMetadata = Mapping[str, Any]
+RawToolMetadata = Mapping[str, object]
 
 
 def _format_tools(tools: Sequence[RawToolMetadata]) -> list[IntegrationTool]:
     """Normalize raw tool dicts: strip whitespace, drop entries without a name."""
     formatted: list[IntegrationTool] = []
     for tool in tools:
-        name = tool.get("name", "").strip()
+        name = text_bag(tool, "name").strip()
         if name:
             formatted.append(
-                IntegrationTool(name=name, description=(tool.get("description") or "").strip())
+                IntegrationTool(name=name, description=text_bag(tool, "description").strip())
             )
     return formatted
 

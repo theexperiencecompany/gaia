@@ -732,9 +732,12 @@ async def create_ai_models_indexes() -> None:
 async def _create_index_safe(
     collection: AsyncIOMotorCollection[dict[str, object]], keys: IndexKeys, **kwargs: Any
 ) -> None:
-    """
-    Create an index safely, handling IndexOptionsConflict gracefully.
+    """Create an index safely, handling IndexOptionsConflict gracefully.
 
+    ``**kwargs`` stays ``Any``: they are forwarded verbatim to pymongo's
+    ``create_index``, whose kwargs typing (``session`` collision etc.) cannot
+    be satisfied by any checked bag type. Sanctioned seam — see the mypy
+    grind T3 list (``disallow_any_explicit`` end-state exceptions).
     MongoDB raises IndexOptionsConflict (code 85) when an index with the same
     key pattern already exists but with a different name. This is fine - the
     index functionality exists, so we skip silently.

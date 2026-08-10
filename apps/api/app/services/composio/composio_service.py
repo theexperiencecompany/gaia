@@ -37,6 +37,7 @@ from app.utils.composio_hooks.registry import (
     master_before_execute_hook,
     master_schema_modifier,
 )
+from app.utils.json_helpers import dict_bag, int_bag, list_bag
 from app.utils.query_utils import add_query_param
 from shared.py.wide_events import log
 
@@ -157,12 +158,12 @@ class ComposioService:
 
         result = [tool for tool in tools if tool.name not in exclude_tools]
         await self._store_tool_metadata(tool_kit, result)
-        existing = log.get().get("composio", {})
+        existing = dict_bag(log.get() or {}, "composio")
         log.set(
             composio={
                 **existing,
-                "toolkits": existing.get("toolkits", []) + [tool_kit],
-                "tools_loaded": existing.get("tools_loaded", 0) + len(result),
+                "toolkits": list_bag(existing, "toolkits") + [tool_kit],
+                "tools_loaded": int_bag(existing, "tools_loaded") + len(result),
             }
         )
         return result
@@ -229,11 +230,11 @@ class ComposioService:
             result_count=len(result),
             tools_time=tools_time,
         )
-        existing = log.get().get("composio", {})
+        existing = dict_bag(log.get() or {}, "composio")
         log.set(
             composio={
                 **existing,
-                "tools_loaded": existing.get("tools_loaded", 0) + len(result),
+                "tools_loaded": int_bag(existing, "tools_loaded") + len(result),
             }
         )
         return result

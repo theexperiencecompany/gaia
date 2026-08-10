@@ -9,18 +9,21 @@ def apply() -> None:
         from composio.utils import shared
         from langchain_core.tools import base as lc_base
         from pydantic import ValidationError
+        from pydantic.v1 import ValidationError as ValidationErrorV1
 
         # Patch 1: Composio flattening anyOf items in arrays
         original_json_schema_to_pydantic_type = shared.json_schema_to_pydantic_type
 
         def patched_json_schema_to_pydantic_type(
-            json_schema: dict[str, t.Any] | bool,
-        ) -> t.Union[type, t.Any | None]:
+            json_schema: dict[str, object] | bool,
+        ) -> type | None:
             # Boolean JSON Schemas (draft-06+, e.g. bare `true`/`false` sub-schemas)
             # have no "anyOf" to flatten — delegate straight to the original,
             # which already handles them (isinstance(json_schema, bool) branch).
             if isinstance(json_schema, dict) and "anyOf" in json_schema:
                 options = json_schema["anyOf"]
+                if not isinstance(options, list):
+                    return original_json_schema_to_pydantic_type(json_schema)
                 pydantic_types = [patched_json_schema_to_pydantic_type(o) for o in options]
                 valid_types = [pt for pt in pydantic_types if pt is not None and pt is not dict]
                 if len(valid_types) == 1:
@@ -29,8 +32,7 @@ def apply() -> None:
                     return str
                 from functools import reduce
 
-                cast_types = [t.cast(type, ptype) for ptype in valid_types]
-                return reduce(lambda a, b: t.Union[a, b], cast_types)  # type: ignore[arg-type,return-value]
+                return reduce(lambda a, b: t.Union[a, b], valid_types)  # type: ignore[arg-type,return-value]
 
             return original_json_schema_to_pydantic_type(json_schema)
 
@@ -39,9 +41,9 @@ def apply() -> None:
         # Patch 2: Langchain swallowing Tool Validation Errors
         # If we just override _handle_validation_error, that gets called from inside BaseTool._run
         def patched_handle_validation_error(
-            e: t.Union[ValidationError, Exception],
+            e: t.Union[ValidationError, ValidationErrorV1],
             *,
-            flag: t.Union[bool, str, t.Callable[[t.Any], str]],
+            flag: t.Union[bool, str, t.Callable[[ValidationError | ValidationErrorV1], str]],
         ) -> str:
             if isinstance(flag, str):
                 return flag

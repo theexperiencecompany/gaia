@@ -33,7 +33,7 @@ from app.templates.docstrings.notion_tool_docs import (
 )
 from app.utils.context_utils import execute_tool
 from app.utils.errors import AppError
-from app.utils.json_helpers import text_opt_bag
+from app.utils.json_helpers import dict_bag, list_bag, text_bag, text_opt_bag
 from app.utils.notion_md import blocks_to_markdown, markdown_to_notion_blocks
 from shared.py.wide_events import log
 
@@ -262,19 +262,19 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             search_body["query"] = request.query
 
         try:
-            search_results = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=NOTION_TOOLKIT,
-                    endpoint=f"{NOTION_API_BASE}/search",
-                    method="POST",
-                    body=search_body,
-                    headers=_NOTION_HEADERS,
-                )
-                or {}
+            search_response = proxy_request_sync(
+                user_id=user_id,
+                toolkit=NOTION_TOOLKIT,
+                endpoint=f"{NOTION_API_BASE}/search",
+                method="POST",
+                body=search_body,
+                headers=_NOTION_HEADERS,
             )
+            search_results = search_response if isinstance(search_response, dict) else {}
 
-            results = search_results.get("results", [])
+            results = [
+                item for item in list_bag(search_results, "results") if isinstance(item, dict)
+            ]
             values = []
 
             for item in results:
@@ -283,16 +283,18 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
                 title = "Untitled"
                 if object_type == "database":
-                    title_array = item.get("title", [])
-                    if title_array and len(title_array) > 0:
-                        title = title_array[0].get("plain_text", "Untitled")
+                    title_array = list_bag(item, "title")
+                    if title_array and isinstance(title_array[0], dict):
+                        title = text_bag(title_array[0], "plain_text", "Untitled")
                 elif object_type == "page":
-                    properties = item.get("properties", {})
+                    properties = dict_bag(item, "properties")
                     for _prop_name, prop_value in properties.items():
+                        if not isinstance(prop_value, dict):
+                            continue
                         if prop_value.get("type") == "title":
-                            title_data = prop_value.get("title", [])
-                            if title_data and len(title_data) > 0:
-                                title = title_data[0].get("plain_text", "Untitled")
+                            title_array = list_bag(prop_value, "title")
+                            if title_array and isinstance(title_array[0], dict):
+                                title = text_bag(title_array[0], "plain_text", "Untitled")
                             break
 
                 if item_id:

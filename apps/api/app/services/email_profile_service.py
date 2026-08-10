@@ -119,14 +119,14 @@ async def _people_search(
     silently to the next source — previews must never surface errors.
     """
     try:
-        result: dict[str, object] | None = await proxy_request(
+        raw_result = await proxy_request(
             user_id=user_id,
             toolkit=_GMAIL_TOOLKIT,
             method="GET",
             endpoint=endpoint,
             query={"query": query, "readMask": read_mask},
         )
-        return result
+        return raw_result if isinstance(raw_result, dict) else None
     except Exception as exc:
         log.debug(
             "email_profile people search failed",
@@ -192,7 +192,8 @@ async def _fetch_profile_photo(user_id: str, person: dict[str, object]) -> str |
             error_type=type(exc).__name__,
         )
         return None
-    return _pick_photo((full or {}).get("photos", []))
+    full_dict = full if isinstance(full, dict) else {}
+    return _pick_photo([p for p in list_bag(full_dict, "photos") if isinstance(p, dict)])
 
 
 async def _fetch_gravatar_profile(email: str) -> _ProfileFields | None:
@@ -261,7 +262,8 @@ async def fetch_email_profile(user_id: str, raw_value: str) -> URLResponse:
     cache_key = EMAIL_PROFILE_CACHE_KEY_TEMPLATE.format(user_id=user_id, email=email)
     # get_cache is typed Any (generic cache wrapper); this key only ever stores
     # what the write below puts there — a URLResponse minus its `url`.
-    cached: dict[str, object] | None = await get_cache(cache_key)
+    raw_cached = await get_cache(cache_key)
+    cached: dict[str, object] | None = raw_cached if isinstance(raw_cached, dict) else None
     if cached:
         return URLResponse.model_validate({**cached, "url": raw_value})
 

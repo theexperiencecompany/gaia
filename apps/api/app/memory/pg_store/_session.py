@@ -7,7 +7,7 @@ returned from write functions stay readable after the session closes
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, cast
+from typing import cast
 
 from sqlalchemy import CursorResult, Result
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,13 +23,15 @@ async def memory_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-def rowcount(result: Result[Any]) -> int:
+def rowcount(result: Result[tuple[object, ...]]) -> int:
     """Rows affected by a DML statement.
 
     ``session.execute`` is typed as ``Result`` but returns ``CursorResult``
-    for INSERT/UPDATE/DELETE; the cast recovers ``rowcount`` for mypy.
+    for INSERT/UPDATE/DELETE; the cast recovers ``rowcount`` for mypy. The
+    row-type parameter is irrelevant to the count, so it stays a generic
+    tuple shape.
     """
-    return cast(CursorResult[Any], result).rowcount
+    return cast(CursorResult[tuple[object, ...]], result).rowcount
 
 
 LIKE_ESCAPE_CHAR = "\\"

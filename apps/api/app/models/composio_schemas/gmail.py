@@ -4,7 +4,7 @@ Gmail trigger payload and tool output models.
 Reference: node_modules/@composio/core/generated/gmail.ts
 """
 
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -18,7 +18,7 @@ from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
 class GmailNewMessagePayload(BaseModel):
     """Payload for GMAIL_NEW_GMAIL_MESSAGE trigger."""
 
-    attachment_list: list[Any] | None = Field(
+    attachment_list: list[dict[str, object]] | None = Field(
         None, description="List of attachments in the message"
     )
     message_id: str | None = Field(None, description="Message ID")

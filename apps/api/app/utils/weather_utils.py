@@ -192,7 +192,9 @@ async def user_weather(location_name: str | None = None) -> dict[str, object] | 
             location_data = await get_location_data(location_name=location_name)
             cache_key = text_bag(location_data, "cache_key")
 
-            cached_weather: dict[str, object] | None = await get_cache(cache_key)
+            cached_weather = await get_cache(cache_key)
+            if not isinstance(cached_weather, dict):
+                cached_weather = None
             if cached_weather:
                 log.debug(
                     f"{LogTag.TOOL} Using cached weather data for location",

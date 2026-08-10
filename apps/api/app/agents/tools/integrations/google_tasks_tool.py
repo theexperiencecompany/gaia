@@ -18,15 +18,15 @@ def register_google_tasks_custom_tools(composio: Composio[Any, Any]) -> list[str
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Google Tasks context snapshot: task lists and overdue/due-today tasks.
 
         Zero required parameters. Returns task lists and urgent tasks.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = auth_credentials.get("user_id", "")
-        if not user_id:
+        if not isinstance(user_id, str) or not user_id:
             raise ValueError("Missing user_id in auth_credentials")
 
         data = execute_tool(

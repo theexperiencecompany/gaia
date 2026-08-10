@@ -7,15 +7,15 @@ end_graph_hook to learn user memories (IDs, preferences, contacts) per user.
 
 import asyncio
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import cast
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_node,
@@ -159,7 +159,7 @@ class SubAgentFactory:
         mcp_tools: list[BaseTool] | None = None,
         source_label: str | None = None,
         authoring_only: bool = False,
-    ) -> CompiledStateGraph[Any, None, Any, Any]:
+    ) -> CompiledAgentGraph:
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
 
@@ -322,7 +322,7 @@ class SubAgentFactory:
 
         try:
             checkpointer_manager = await get_checkpointer_manager()
-            checkpointer: BaseCheckpointSaver[Any] = checkpointer_manager.get_checkpointer()
+            checkpointer: BaseCheckpointSaver[str] = checkpointer_manager.get_checkpointer()
             log.debug(
                 f"{LogTag.AGENT} Using PostgreSQL checkpointer for sub-agent", provider=provider
             )

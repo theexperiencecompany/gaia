@@ -4,7 +4,6 @@ Handles webhook events and updates database state accordingly.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 from standardwebhooks.webhooks import Webhook
 
@@ -26,6 +25,7 @@ from app.services.analytics_service import (
 )
 from app.services.email import send_pro_subscription_email
 from app.services.payments.payment_service import payment_service
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 
@@ -133,7 +133,7 @@ class PaymentWebhookService:
             )
 
     async def process_webhook(
-        self, webhook_data: dict[str, Any], webhook_id: str
+        self, webhook_data: dict[str, object], webhook_id: str
     ) -> DodoWebhookProcessingResult:
         """
         Process Dodo payment webhook with idempotency check.
@@ -148,7 +148,9 @@ class PaymentWebhookService:
         try:
             event_type_raw = webhook_data.get("type", "unknown")
             # Extract financial fields from the nested payload (Dodo wraps data under "data")
-            payload_data: dict[str, Any] = webhook_data.get("data", webhook_data)
+            payload_data = webhook_data.get("data")
+            if not isinstance(payload_data, dict):
+                payload_data = webhook_data
             customer_field = payload_data.get("customer")
             customer_id = (
                 customer_field.get("customer_id")
@@ -174,12 +176,12 @@ class PaymentWebhookService:
                     f"{LogTag.PAYMENT} Webhook already processed, skipping", webhook_id=webhook_id
                 )
                 return DodoWebhookProcessingResult(
-                    event_type=webhook_data.get("type", "unknown"),
+                    event_type=text_bag(webhook_data, "type", "unknown"),
                     status="ignored",
                     message="Webhook already processed",
                 )
 
-            event = DodoWebhookEvent(**webhook_data)
+            event = DodoWebhookEvent.model_validate(webhook_data)
 
             handler = self.handlers.get(event.type)
             if not handler:
@@ -210,15 +212,15 @@ class PaymentWebhookService:
                 error_type=type(e).__name__,
             )
             return DodoWebhookProcessingResult(
-                event_type=webhook_data.get("type", "unknown"),
+                event_type=text_bag(webhook_data, "type", "unknown"),
                 status="failed",
                 message=f"Processing error: {e!s}",
             )
 
-    async def _get_user_email_from_metadata(self, metadata: dict[str, Any]) -> str | None:
+    async def _get_user_email_from_metadata(self, metadata: dict[str, object]) -> str | None:
         """Get user email from metadata or database lookup."""
         user_id = metadata.get("user_id")
-        if user_id:
+        if isinstance(user_id, str) and user_id:
             user = await user_repository.get(user_id)
             if user:
                 return user.email

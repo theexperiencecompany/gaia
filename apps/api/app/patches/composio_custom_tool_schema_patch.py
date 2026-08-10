@@ -12,8 +12,23 @@ import jsonref
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
+if t.TYPE_CHECKING:
+    from composio.core.models.custom_tools import CustomTool
+    from composio_client.types.tool_list_response import Item
 
-def to_std_dict(obj: t.Any) -> t.Any:
+# Name-mangled private attribute (CustomTool.__parse_info) isn't a public
+# attribute mypy can resolve on the class; the mangled string is the runtime
+# spell the patch needs, so access it dynamically (see apply()).
+_PARSE_INFO_MANGLED_NAME = "_CustomTool__parse_info"
+
+
+@t.overload
+def to_std_dict(obj: dict[str, object]) -> dict[str, object]: ...
+@t.overload
+def to_std_dict(obj: list[object]) -> list[object]: ...
+@t.overload
+def to_std_dict(obj: object) -> object: ...
+def to_std_dict(obj: object) -> object:
     """Recursively convert jsonref proxies to standard python dicts/lists"""
     if isinstance(obj, dict):
         return {k: to_std_dict(v) for k, v in obj.items()}
@@ -22,11 +37,11 @@ def to_std_dict(obj: t.Any) -> t.Any:
     return obj
 
 
-_original_parse_info: Callable[..., t.Any] | None = None
+_original_parse_info: "Callable[[CustomTool], Item] | None" = None
 _applied = False
 
 
-def _patched_parse_info(self: t.Any) -> t.Any:
+def _patched_parse_info(self: "CustomTool") -> "Item":
     """Patched version that inlines $ref before storing schema"""
     if _original_parse_info is None:
         raise RuntimeError("composio_custom_tool_schema_patch.apply() was not called")
@@ -51,12 +66,8 @@ def apply() -> None:
     try:
         from composio.core.models.custom_tools import CustomTool
 
-        # Name-mangled private attribute (CustomTool.__parse_info) isn't a
-        # public attribute mypy can resolve on the class; the cast to Any
-        # describes that to the type checker without changing the access itself.
-        custom_tool_cls = t.cast(t.Any, CustomTool)
-        _original_parse_info = custom_tool_cls._CustomTool__parse_info
-        custom_tool_cls._CustomTool__parse_info = _patched_parse_info
+        _original_parse_info = getattr(CustomTool, _PARSE_INFO_MANGLED_NAME)
+        setattr(CustomTool, _PARSE_INFO_MANGLED_NAME, _patched_parse_info)
 
         _applied = True
         log.info(

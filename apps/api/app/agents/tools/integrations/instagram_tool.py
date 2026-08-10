@@ -8,7 +8,7 @@ from composio.types import ExecuteRequestFn
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
-from app.utils.json_helpers import text_opt_bag
+from app.utils.json_helpers import list_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 INSTAGRAM_API_BASE = "https://graph.instagram.com/v18.0"
@@ -31,51 +31,50 @@ def register_instagram_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")
 
-        me = (
-            proxy_request_sync(
-                user_id=user_id,
-                toolkit=INSTAGRAM_TOOLKIT,
-                endpoint=f"{INSTAGRAM_API_BASE}/me",
-                method="GET",
-                query={
-                    "fields": (
-                        "id,name,username,account_type,media_count,"
-                        "followers_count,follows_count,biography"
-                    ),
-                },
-            )
-            or {}
+        me_response = proxy_request_sync(
+            user_id=user_id,
+            toolkit=INSTAGRAM_TOOLKIT,
+            endpoint=f"{INSTAGRAM_API_BASE}/me",
+            method="GET",
+            query={
+                "fields": (
+                    "id,name,username,account_type,media_count,"
+                    "followers_count,follows_count,biography"
+                ),
+            },
         )
+        me = me_response if isinstance(me_response, dict) else {}
 
         recent_media: list[dict[str, object]] = []
         try:
-            media_data = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=INSTAGRAM_TOOLKIT,
-                    endpoint=f"{INSTAGRAM_API_BASE}/me/media",
-                    method="GET",
-                    query={
-                        "limit": "5",
-                        "fields": (
-                            "id,caption,media_type,timestamp,like_count,comments_count,permalink"
-                        ),
-                    },
-                )
-                or {}
+            media_response = proxy_request_sync(
+                user_id=user_id,
+                toolkit=INSTAGRAM_TOOLKIT,
+                endpoint=f"{INSTAGRAM_API_BASE}/me/media",
+                method="GET",
+                query={
+                    "limit": "5",
+                    "fields": (
+                        "id,caption,media_type,timestamp,like_count,comments_count,permalink"
+                    ),
+                },
             )
-            recent_media = [
-                {
-                    "id": m.get("id"),
-                    "caption": (m.get("caption") or "")[:100],
-                    "media_type": m.get("media_type"),
-                    "timestamp": m.get("timestamp"),
-                    "likes": m.get("like_count", 0),
-                    "comments": m.get("comments_count", 0),
-                    "permalink": m.get("permalink"),
-                }
-                for m in media_data.get("data", [])
-            ]
+            media_data = media_response if isinstance(media_response, dict) else {}
+            recent_media = []
+            for m in list_bag(media_data, "data"):
+                if not isinstance(m, dict):
+                    continue
+                recent_media.append(
+                    {
+                        "id": m.get("id"),
+                        "caption": text_bag(m, "caption")[:100],
+                        "media_type": m.get("media_type"),
+                        "timestamp": m.get("timestamp"),
+                        "likes": m.get("like_count", 0),
+                        "comments": m.get("comments_count", 0),
+                        "permalink": m.get("permalink"),
+                    }
+                )
         except Exception as e:
             log.warning(
                 f"{LogTag.TOOL} Instagram media fetch failed",
@@ -92,7 +91,7 @@ def register_instagram_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 "media_count": me.get("media_count", 0),
                 "followers": me.get("followers_count", 0),
                 "following": me.get("follows_count", 0),
-                "biography": (me.get("biography") or "")[:200],
+                "biography": text_bag(me, "biography")[:200],
             },
             "recent_media": recent_media,
         }

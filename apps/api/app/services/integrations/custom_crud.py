@@ -1,7 +1,7 @@
 """Custom integration CRUD operations."""
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 import uuid
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
@@ -276,9 +276,13 @@ async def create_and_connect_custom_integration(
 
     # Bearer token flow - store and connect
     if request.bearer_token:
-        return await _connect_with_bearer_token(
+        fetched_integration, conn_result = await _connect_with_bearer_token(
             user_id, integration_id, request.bearer_token, mcp_client
         )
+        # The row was created above and the connection just ran; the re-fetch
+        # can only miss if the row vanished mid-flight.
+        assert fetched_integration is not None  # nosec B101
+        return fetched_integration, conn_result
 
     # Probe for auth requirements
     probe_result = await _probe_connection_safely(mcp_client, request.server_url)
@@ -315,7 +319,7 @@ async def _probe_connection_safely(mcp_client: MCPClient, server_url: str) -> di
 
 async def _connect_with_bearer_token(
     user_id: str, integration_id: str, bearer_token: str, mcp_client: MCPClient
-) -> tuple[Any, dict[str, object]]:
+) -> tuple[Integration | None, dict[str, object]]:
     """Store bearer token and attempt connection."""
     token_store = MCPTokenStore(user_id)
     await token_store.store_bearer_token(integration_id, bearer_token)

@@ -304,13 +304,17 @@ class MCPTokenStore:
             # Written by create_oauth_state as {"state": ..., "code_verifier": ...};
             # set_cache may hand it back already deserialized or still as JSON text.
             data: dict[str, str] = (
-                stored_data if isinstance(stored_data, dict) else json.loads(stored_data)
+                stored_data
+                if isinstance(stored_data, dict)
+                else json.loads(
+                    stored_data if isinstance(stored_data, (str, bytes, bytearray)) else ""
+                )
             )
             stored_state = data.get("state")
             code_verifier = data.get("code_verifier")
         except (json.JSONDecodeError, TypeError):
             # Legacy format - just state string (backwards compat)
-            stored_state = stored_data
+            stored_state = stored_data if isinstance(stored_data, str) else None
             code_verifier = None
 
         if stored_state and stored_state == state:

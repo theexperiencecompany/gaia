@@ -42,7 +42,7 @@ from app.models.agent_models import (
 from app.models.message_models import MessageRequestWithHistory
 from app.models.models_models import ModelConfig
 from app.models.user_models import AuthenticatedUser
-from app.utils.json_helpers import text_bag, text_opt_bag
+from app.utils.json_helpers import list_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 
@@ -298,7 +298,7 @@ async def call_agent_silent(
         await await_executor_done(stream_id)
         executor_tool_data = drain_executor_tool_data(stream_id)
         if executor_tool_data:
-            tool_data["tool_data"] = [*tool_data.get("tool_data", []), *executor_tool_data]
+            tool_data["tool_data"] = [*list_bag(tool_data, "tool_data"), *executor_tool_data]
 
         if usage_metadata_callback and hasattr(usage_metadata_callback, "usage_metadata"):
             usage = usage_metadata_callback.usage_metadata or {}

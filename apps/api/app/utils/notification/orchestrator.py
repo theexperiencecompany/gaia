@@ -1,6 +1,8 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
+from typing import TypeVar, cast
+
+_T = TypeVar("_T")
 
 from fastapi import Request
 
@@ -56,7 +58,7 @@ class NotificationOrchestrator:
         # Erased element type: the registry is heterogeneous by design (each
         # adapter has its own payload shape). ``_deliver_via_channel`` rebinds
         # the real one per adapter, so transform → deliver stays checked.
-        self.channel_adapters: dict[str, ChannelAdapter[Any]] = {}
+        self.channel_adapters: dict[str, ChannelAdapter[object]] = {}
         self.action_handlers: dict[str, ActionHandler] = {}
 
         # Register default components
@@ -77,9 +79,11 @@ class NotificationOrchestrator:
         self.register_action_handler(RedirectActionHandler())
         self.register_action_handler(ModalActionHandler())
 
-    def register_channel_adapter(self, adapter: ChannelAdapter[Any]) -> None:
+    def register_channel_adapter(self, adapter: ChannelAdapter[_T]) -> None:
         """Register a new channel adapter"""
-        self.channel_adapters[adapter.channel_type] = adapter
+        # Registry erases the payload type by design (heterogeneous channels);
+        # _deliver_via_channel rebinds the real adapter per delivery.
+        self.channel_adapters[adapter.channel_type] = cast(ChannelAdapter[object], adapter)
         log.info(
             f"{LogTag.NOTIFICATION} Registered channel adapter", channel_type=adapter.channel_type
         )

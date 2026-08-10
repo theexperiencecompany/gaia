@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 import json
 import secrets
-from typing import Annotated, Any, cast
+from typing import Annotated, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
@@ -290,7 +290,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     await stream_manager.start_stream(stream_id, conversation_id, user_id)
 
     # Launch background task
-    def _log_stream_failure(t: asyncio.Task[Any]) -> None:
+    def _log_stream_failure(t: asyncio.Task[object]) -> None:
         if not t.cancelled() and (exc := t.exception()):
             log.error(
                 f"{LogTag.API} Background stream task failed",

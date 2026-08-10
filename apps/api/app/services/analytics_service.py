@@ -5,6 +5,7 @@ Provides type-safe event tracking with consistent naming conventions.
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import cast
 
 from posthog import Posthog
 
@@ -41,7 +42,7 @@ class AnalyticsEvents(StrEnum):
 
 def _get_posthog_client() -> Posthog | None:
     """Get the PostHog client from providers."""
-    client: Posthog | None = providers.get("posthog")
+    client: Posthog | None = cast(Posthog | None, providers.get("posthog"))
     return client
 
 

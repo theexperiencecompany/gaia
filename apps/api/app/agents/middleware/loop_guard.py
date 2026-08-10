@@ -31,7 +31,6 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 import hashlib
 import json
-from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
@@ -89,8 +88,8 @@ class LoopGuardMiddleware(AgentMiddleware):
     async def awrap_tool_call(
         self,
         request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-    ) -> ToolMessage | Command[Any]:
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[None]]],
+    ) -> ToolMessage | Command[None]:
         tool_call = request.tool_call
         tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
         tool_call_id = (tool_call.get("id") if isinstance(tool_call, dict) else tool_call.id) or ""
@@ -198,9 +197,10 @@ class LoopGuardMiddleware(AgentMiddleware):
         (content-block) form is handled defensively so the guard never drops a
         model's error text.
         """
-        # Typed as `str | list[...]`, but kept as Any so the non-string, non-list
-        # fallback below stays reachable rather than being narrowed away.
-        content: Any = result.content
+        # Typed as `str | list[...]`, but kept as object so the non-string,
+        # non-list fallback below stays reachable rather than being narrowed
+        # away.
+        content: object = result.content
         if isinstance(content, str):
             result.content = content + note
         elif isinstance(content, list):

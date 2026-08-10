@@ -12,7 +12,7 @@ older than this module would reject the kwarg. API and worker ship from the same
 image, so they only skew during a restart.
 """
 
-from typing import Any
+from datetime import datetime, timedelta
 
 from arq.connections import ArqRedis
 from arq.jobs import Job
@@ -23,7 +23,16 @@ TRACE_ID_KWARG = "_gaia_trace_id"
 
 
 async def enqueue_worker_job(
-    pool: ArqRedis, function: str, *args: Any, **kwargs: Any
+    pool: ArqRedis,
+    function: str,
+    *args: object,
+    _job_id: str | None = None,
+    _queue_name: str | None = None,
+    _defer_until: datetime | None = None,
+    _defer_by: int | float | timedelta | None = None,
+    _expires: int | float | timedelta | None = None,
+    _job_try: int | None = None,
+    **kwargs: object,
 ) -> Job | None:
     """Enqueue an ARQ job stamped with the caller's trace id.
 
@@ -35,4 +44,14 @@ async def enqueue_worker_job(
     trace_id = get_trace_id()
     if trace_id:
         kwargs[TRACE_ID_KWARG] = trace_id
-    return await pool.enqueue_job(function, *args, **kwargs)
+    return await pool.enqueue_job(
+        function,
+        *args,
+        _job_id=_job_id,
+        _queue_name=_queue_name,
+        _defer_until=_defer_until,
+        _defer_by=_defer_by,
+        _expires=_expires,
+        _job_try=_job_try,
+        **kwargs,
+    )

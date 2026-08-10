@@ -13,7 +13,7 @@ Three concerns the base ``mcp_use`` adapter doesn't cover:
 """
 
 import asyncio
-from typing import Any, NoReturn, cast
+from typing import NoReturn
 
 from langchain_core.tools import BaseTool
 
@@ -32,10 +32,11 @@ from app.constants.mcp import (
 )
 from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
 from app.utils.image_codec import ImageCodec, InvalidImage
-from app.utils.multimodal import text_content_block
+from app.utils.json_helpers import text_bag
+from app.utils.multimodal import ContentBlock, text_content_block
 from mcp.types import (
     CallToolResult,
-    ContentBlock,
+    ContentBlock as MCPContentBlock,
     EmbeddedResource,
     ImageContent,
     TextContent,
@@ -48,7 +49,7 @@ from mcp.types import (
 MCP_ANNOTATIONS_METADATA_KEY = "mcp_annotations"
 
 
-async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str, Any]]:
+async def _tool_result_to_content(result: CallToolResult) -> str | list[ContentBlock]:
     """Map MCP content items to LangChain message content.
 
     Text-only results collapse to a plain string (the common case). Image items
@@ -69,7 +70,7 @@ async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str
     # (budget-bounded) batch at once rather than serializing the result's images.
     decoded = iter(await asyncio.gather(*(_image_block(item) for item in kept)))
 
-    blocks: list[dict[str, Any]] = []
+    blocks: list[ContentBlock] = []
     for item in result.content:
         if isinstance(item, TextContent):
             blocks.append(text_content_block(item.text))
@@ -86,10 +87,10 @@ async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str
         return EMPTY_TOOL_RESULT
     if any(block["type"] != "text" for block in blocks):
         return blocks
-    return "\n".join(block["text"] for block in blocks)
+    return "\n".join(text_bag(block, "text") for block in blocks)
 
 
-def _non_media_text(item: ContentBlock) -> str:
+def _non_media_text(item: MCPContentBlock) -> str:
     """Text for a content item that is neither plain text nor an inline image.
 
     Never ``str(item)`` — that is the pydantic repr this adapter exists to keep
@@ -101,12 +102,20 @@ def _non_media_text(item: ContentBlock) -> str:
     return MCP_UNSUPPORTED_CONTENT_NOTICE.format(kind=type(item).__name__)
 
 
-async def _image_block(item: ImageContent) -> dict[str, Any]:
+async def _image_block(item: ImageContent) -> ContentBlock:
     try:
         image = await ImageCodec.from_base64(item.data)
     except InvalidImage as exc:
         return text_content_block(f"[Image from this result could not be read: {exc}]")
     return image.to_block()
+
+
+def _error_content(exc: Exception, tool: str) -> dict[str, object]:
+    """The mcp_use error dict (untyped upstream) narrowed to a real dict."""
+    error = format_error(exc, tool=tool)
+    if not isinstance(error, dict):
+        raise TypeError(f"MCP format_error returned {type(error).__name__}, expected a dict")
+    return error
 
 
 class SanitizingLangChainAdapter(LangChainAdapter):
@@ -121,14 +130,12 @@ class SanitizingLangChainAdapter(LangChainAdapter):
     ``destructiveHint``.
     """
 
-    def fix_schema(self, schema: Any) -> Any:
+    def fix_schema(self, schema: object) -> object:
         """Fix JSON schema for Pydantic compatibility.
 
-        Signature kept as ``Any`` on purpose: this overrides mcp_use's
-        ``LangChainAdapter.fix_schema``, which the base adapter calls with
-        arbitrary JSON-schema nodes (dict, list, or scalar) and whose own
-        annotation is ``Any``. Narrowing it here would break that contract
-        (Type Safety item 14).
+        ``object`` is the honest type here: the base adapter walks arbitrary
+        JSON-schema nodes (dict, list, or scalar) and this override recurses
+        over the same shape, so a bare dict/list/scalar is all we can promise.
 
         Extends the base fix_schema to also:
         - Strip leading underscores from property names
@@ -207,10 +214,10 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             def __repr__(self) -> str:
                 return f"MCP tool: {self.name}: {self.description}"
 
-            def _run(self, **kwargs: Any) -> NoReturn:
+            def _run(self, **kwargs: object) -> NoReturn:
                 raise NotImplementedError("MCP tools only support async operations")
 
-            async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]] | dict[str, Any]:
+            async def _arun(self, **kwargs: object) -> str | list[ContentBlock] | dict[str, object]:
                 try:
                     tool_result: CallToolResult = await self.tool_connector.call_tool(
                         self.name, kwargs
@@ -218,14 +225,10 @@ class SanitizingLangChainAdapter(LangChainAdapter):
                     try:
                         return await _tool_result_to_content(tool_result)
                     except Exception as e:
-                        # mcp_use ships no py.typed marker, so mypy treats
-                        # format_error's real `-> dict` annotation as Any.
-                        return cast(dict[str, Any], format_error(e, tool=self.name))
+                        return _error_content(e, self.name)
                 except Exception as e:
                     if self.handle_tool_error:
-                        # mcp_use ships no py.typed marker, so mypy treats
-                        # format_error's real `-> dict` annotation as Any.
-                        return cast(dict[str, Any], format_error(e, tool=self.name))
+                        return _error_content(e, self.name)
                     raise
 
         tool = McpToLangChainAdapter()

@@ -1,6 +1,6 @@
 """Trello tools using Composio custom tool infrastructure."""
 
-from typing import Any, cast
+from typing import Any
 
 from composio import Composio
 from composio.types import ExecuteRequestFn
@@ -30,13 +30,10 @@ def register_trello_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         # execute_tool declares -> dict[str, object], but this endpoint's real payload
         # can come back as a bare list — widen before narrowing.
-        data = cast(
-            "dict[str, object] | list[Any]",
-            execute_tool(
-                "TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER",
-                {"idMember": "me"},
-                user_id,
-            ),
+        data: dict[str, object] | list[object] = execute_tool(
+            "TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER",
+            {"idMember": "me"},
+            user_id,
         )
         cards = data if isinstance(data, list) else data.get("cards", [])
         return {"cards": cards}

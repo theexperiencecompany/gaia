@@ -7,7 +7,7 @@ Note: All Composio tool responses are wrapped in ToolExecutionResponse with
 `data`, `error`, `successful` keys. These models represent the INNER data structure.
 """
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -65,7 +65,7 @@ class GitHubListRepositoriesData(BaseModel):
     # We handle this in the handler by checking structure
 
     @classmethod
-    def from_response_data(cls, data: dict[str, object] | list[Any]) -> list[GitHubRepository]:
+    def from_response_data(cls, data: dict[str, object] | list[object]) -> list[GitHubRepository]:
         """Extract repositories from response data.
 
         The data structure can vary:

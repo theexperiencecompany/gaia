@@ -8,7 +8,7 @@ with our langgraph_bigtool-based agent state.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from langchain.agents.middleware.types import (
     AgentState,
@@ -34,10 +34,10 @@ def _noop_stream_writer(_: object) -> None:
     return
 
 
-def to_agent_state(state: State | dict[str, object]) -> AgentState[Any]:
+def to_agent_state(state: State | dict[str, object]) -> AgentState[object]:
     """Convert graph state into LangChain AgentState-compatible shape."""
     raw_messages = state.get("messages", [])
-    agent_state: AgentState[Any] = AgentState(
+    agent_state: AgentState[object] = AgentState(
         # Container-guarded, elements unfiltered (RemoveMessage tombstones drive
         # summarization deletion); bridged to the adapter's narrower type.
         messages=cast(list[AnyMessage], raw_messages if isinstance(raw_messages, list) else [])
@@ -55,7 +55,7 @@ def to_agent_state(state: State | dict[str, object]) -> AgentState[Any]:
 
 @dataclass(frozen=True)
 class BigtoolRuntime(  # type: ignore[misc]  # Runtime IS frozen via _DC_KWARGS but mypy can't see it
-    Runtime[Any]
+    Runtime[None]
 ):
     """
     Runtime adapter for langgraph_bigtool integration.
@@ -64,7 +64,7 @@ class BigtoolRuntime(  # type: ignore[misc]  # Runtime IS frozen via _DC_KWARGS 
     and AgentMiddleware.after_model hooks.
 
     Attributes:
-        context: Optional context object (can be used for custom data)
+        context: Unused in this stack — typed None (Runtime's context slot)
         store: The langgraph BaseStore instance
         stream_writer: Optional stream writer for output
         previous: Previous state (if any)
@@ -78,7 +78,7 @@ class BigtoolRuntime(  # type: ignore[misc]  # Runtime IS frozen via _DC_KWARGS 
         cls,
         config: RunnableConfig,
         store: BaseStore | None = None,
-        context: object = None,
+        context: None = None,
         stream_writer: StreamWriter = _noop_stream_writer,
         previous: object = None,
     ) -> "BigtoolRuntime":
@@ -157,7 +157,7 @@ def create_model_request(
 
     # Extract system message if present
     extracted_system = None
-    non_system_messages: list[Any] = []
+    non_system_messages: list[AnyMessage] = []
     for msg in messages:
         if isinstance(msg, SystemMessage):
             if extracted_system is None:

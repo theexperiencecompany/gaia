@@ -26,7 +26,7 @@ import contextlib
 from datetime import UTC, datetime
 from pathlib import Path
 import time
-from typing import Any, cast
+from typing import cast
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 from e2b import AsyncSandbox
@@ -169,7 +169,7 @@ async def _enforce_creation_limit(user_id: str) -> None:
         # HTTPException.detail is typed `str` by Starlette, but
         # RateLimitExceededException always sets it to a dict at runtime — cast
         # to Any so the isinstance check isn't (incorrectly) statically unreachable.
-        raw_detail = cast(Any, e.detail)
+        raw_detail = cast(object, e.detail)
         detail: dict[str, object] = raw_detail if isinstance(raw_detail, dict) else {}
         _record(
             rate_limited=True,

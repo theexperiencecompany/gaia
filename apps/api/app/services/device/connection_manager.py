@@ -1,6 +1,6 @@
 """Per-pod registry of device WebSockets this process currently owns."""
 
-from typing import Any, ClassVar, cast
+from typing import ClassVar
 
 from fastapi import WebSocket
 
@@ -15,14 +15,14 @@ class DeviceConnectionManager:
     device_id to the local socket so the down-relay task can write to it.
     """
 
-    _instance: ClassVar[Any] = None
+    _instance: ClassVar["DeviceConnectionManager | None"] = None
 
     def __new__(cls) -> "DeviceConnectionManager":
         if cls._instance is None:
             instance = super().__new__(cls)
             instance._connections = {}
             cls._instance = instance
-        return cast("DeviceConnectionManager", cls._instance)
+        return cls._instance
 
     def __init__(self) -> None:
         # _connections is set in __new__; annotate for mypy.

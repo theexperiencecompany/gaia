@@ -8,6 +8,7 @@ from composio.types import ExecuteRequestFn
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
+from app.utils.json_helpers import dict_bag, list_bag, text_bag
 from shared.py.wide_events import log
 
 TEAMS_TOOLKIT = "MICROSOFT_TEAMS"
@@ -21,8 +22,8 @@ def register_microsoft_teams_custom_tools(composio: Composio[Any, Any]) -> list[
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Microsoft Teams context snapshot: user info, joined teams, and recent chats.
 
         Zero required parameters. Returns current Teams state for situational awareness.
@@ -30,21 +31,19 @@ def register_microsoft_teams_custom_tools(composio: Composio[Any, Any]) -> list[
         del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "microsoft_teams", "action": "gather_context"})
         user_id = auth_credentials.get("user_id")
-        if not user_id:
+        if not isinstance(user_id, str) or not user_id:
             raise ValueError("Missing user_id in auth_credentials")
 
-        user_info: dict[str, Any] = {}
+        user_info: dict[str, object] = {}
         try:
-            me = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=TEAMS_TOOLKIT,
-                    endpoint=f"{GRAPH_API_BASE}/me",
-                    method="GET",
-                    query={"$select": "id,displayName,mail,userPrincipalName"},
-                )
-                or {}
+            me_response = proxy_request_sync(
+                user_id=user_id,
+                toolkit=TEAMS_TOOLKIT,
+                endpoint=f"{GRAPH_API_BASE}/me",
+                method="GET",
+                query={"$select": "id,displayName,mail,userPrincipalName"},
             )
+            me = me_response if isinstance(me_response, dict) else {}
             user_info = {
                 "id": me.get("id"),
                 "display_name": me.get("displayName"),
@@ -53,66 +52,67 @@ def register_microsoft_teams_custom_tools(composio: Composio[Any, Any]) -> list[
         except Exception as e:
             log.debug(f"{LogTag.TOOL} Teams /me fetch failed", error_type=type(e).__name__)
 
-        teams: list[dict[str, Any]] = []
+        teams: list[dict[str, object]] = []
         try:
-            data = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=TEAMS_TOOLKIT,
-                    endpoint=f"{GRAPH_API_BASE}/me/joinedTeams",
-                    method="GET",
-                    query={"$select": "id,displayName,description"},
-                )
-                or {}
+            teams_response = proxy_request_sync(
+                user_id=user_id,
+                toolkit=TEAMS_TOOLKIT,
+                endpoint=f"{GRAPH_API_BASE}/me/joinedTeams",
+                method="GET",
+                query={"$select": "id,displayName,description"},
             )
+            data = teams_response if isinstance(teams_response, dict) else {}
             teams = [
                 {
                     "id": t.get("id"),
                     "name": t.get("displayName"),
                     "description": t.get("description"),
                 }
-                for t in data.get("value", [])
+                for t in list_bag(data, "value")
+                if isinstance(t, dict)
             ]
         except Exception as e:
             log.debug(f"{LogTag.TOOL} Teams joinedTeams fetch failed", error_type=type(e).__name__)
 
-        chats: list[dict[str, Any]] = []
+        chats: list[dict[str, object]] = []
         unread_count = 0
         try:
-            data = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=TEAMS_TOOLKIT,
-                    endpoint=f"{GRAPH_API_BASE}/me/chats",
-                    method="GET",
-                    query={"$expand": "lastMessagePreview", "$top": 10},
-                )
-                or {}
+            chats_response = proxy_request_sync(
+                user_id=user_id,
+                toolkit=TEAMS_TOOLKIT,
+                endpoint=f"{GRAPH_API_BASE}/me/chats",
+                method="GET",
+                query={"$expand": "lastMessagePreview", "$top": 10},
             )
-            raw_chats = data.get("value", [])
+            data = chats_response if isinstance(chats_response, dict) else {}
+            raw_chats = list_bag(data, "value")
             unread_count = sum(
                 1
                 for c in raw_chats
-                if c.get("lastMessagePreview") and not c["lastMessagePreview"].get("isRead", True)
+                if isinstance(c, dict)
+                and c.get("lastMessagePreview")
+                and not dict_bag(c, "lastMessagePreview").get("isRead", True)
             )
-            chats = [
-                {
-                    "id": c.get("id"),
-                    "topic": c.get("topic"),
-                    "chat_type": c.get("chatType"),
-                    "last_message_preview": (
-                        c["lastMessagePreview"].get("body", {}).get("content", "")[:100]
-                        if c.get("lastMessagePreview")
-                        else None
-                    ),
-                    "is_read": (
-                        c["lastMessagePreview"].get("isRead", True)
-                        if c.get("lastMessagePreview")
-                        else True
-                    ),
-                }
-                for c in raw_chats
-            ]
+            chats = []
+            for c in raw_chats:
+                if not isinstance(c, dict):
+                    continue
+                preview = dict_bag(c, "lastMessagePreview")
+                chats.append(
+                    {
+                        "id": c.get("id"),
+                        "topic": c.get("topic"),
+                        "chat_type": c.get("chatType"),
+                        "last_message_preview": (
+                            text_bag(dict_bag(preview, "body"), "content")[:100]
+                            if c.get("lastMessagePreview")
+                            else None
+                        ),
+                        "is_read": (
+                            preview.get("isRead", True) if c.get("lastMessagePreview") else True
+                        ),
+                    }
+                )
         except Exception as e:
             log.debug(f"{LogTag.TOOL} Teams chats fetch failed", error_type=type(e).__name__)
 

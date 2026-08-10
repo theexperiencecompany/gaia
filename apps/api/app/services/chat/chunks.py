@@ -21,7 +21,7 @@ Two shapes here stay ``dict[str, object]`` on purpose (Type Safety item 14):
 
 from datetime import UTC, datetime
 import json
-from typing import Any, cast
+from typing import cast
 
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
@@ -186,7 +186,7 @@ def normalize_custom_event(payload: dict[str, object]) -> dict[str, object]:
                     # The payload writers are typed to produce exactly this JSON
                     # shape; the guard above excludes None. Bridged, not assumed.
                     "data": cast(
-                        dict[str, object] | list[Any] | str | int | float | bool, raw_value
+                        dict[str, object] | list[object] | str | int | float | bool, raw_value
                     ),
                     "timestamp": timestamp,
                 }

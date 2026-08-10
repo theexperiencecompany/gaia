@@ -1,5 +1,9 @@
 """ChromaDB store for public integrations semantic search."""
 
+from typing import cast
+
+from langchain_core.embeddings import Embeddings
+
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.chroma.chromadb import ChromaClient
@@ -17,7 +21,7 @@ async def index_public_integration(
     """Index a public integration in ChromaDB for semantic search."""
     log.set(vector=VectorContext(operation="upsert", collection=COLLECTION_NAME))
     try:
-        embedding_fn = await providers.aget("google_embeddings")
+        embedding_fn = cast(Embeddings | None, await providers.aget("google_embeddings"))
         chroma = await ChromaClient.get_langchain_client(
             collection_name=COLLECTION_NAME,
             embedding_function=embedding_fn,
@@ -50,7 +54,7 @@ async def remove_public_integration(integration_id: str) -> None:
     """Remove a public integration from ChromaDB index."""
     log.set(vector=VectorContext(operation="delete", collection=COLLECTION_NAME))
     try:
-        embedding_fn = await providers.aget("google_embeddings")
+        embedding_fn = cast(Embeddings | None, await providers.aget("google_embeddings"))
         chroma = await ChromaClient.get_langchain_client(
             collection_name=COLLECTION_NAME,
             embedding_function=embedding_fn,
@@ -78,7 +82,7 @@ async def search_public_integrations(
     """Search public integrations. Returns list of {integration_id, relevance_score}."""
     log.set(vector=VectorContext(operation="query", collection=COLLECTION_NAME, n_results=limit))
     try:
-        embedding_fn = await providers.aget("google_embeddings")
+        embedding_fn = cast(Embeddings | None, await providers.aget("google_embeddings"))
         chroma = await ChromaClient.get_langchain_client(
             collection_name=COLLECTION_NAME,
             embedding_function=embedding_fn,

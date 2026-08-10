@@ -14,7 +14,7 @@ Usage:
 
 import asyncio
 from collections.abc import Callable, Coroutine
-from typing import Any, TypeVar
+from typing import TypeVar, cast
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -22,11 +22,11 @@ from shared.py.wide_events import log
 T = TypeVar("T")
 
 # In-flight requests: maps key -> task
-_pending_requests: dict[str, asyncio.Task[Any]] = {}
+_pending_requests: dict[str, asyncio.Task[object]] = {}
 _lock = asyncio.Lock()
 
 
-async def coalesce_request(key: str, factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
+async def coalesce_request(key: str, factory: Callable[[], Coroutine[None, None, T]]) -> T:
     """
     Coalesce concurrent requests for the same key.
 
@@ -55,7 +55,7 @@ async def coalesce_request(key: str, factory: Callable[[], Coroutine[Any, Any, T
         if key in _pending_requests:
             # Another request is already running, wait for it
             log.debug(f"{LogTag.STARTUP} Request coalescing: waiting for in-flight", key=key)
-            task = _pending_requests[key]
+            task = cast(asyncio.Task[T], _pending_requests[key])
         else:
             # We're the first, create the task
             log.debug(f"{LogTag.STARTUP} Request coalescing: starting new request for", key=key)

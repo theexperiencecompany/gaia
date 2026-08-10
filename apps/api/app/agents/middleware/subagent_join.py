@@ -18,7 +18,6 @@ same object it hands to after-model hooks, and the messages reducer appends —
 a returned state update could not replace the message's tool calls.
 """
 
-from typing import Any
 from uuid import uuid4
 
 from langchain.agents.middleware.types import AgentMiddleware, AgentState
@@ -39,8 +38,8 @@ class SubagentJoinMiddleware(AgentMiddleware):
 
     async def aafter_model(
         self,
-        state: AgentState[Any],
-        runtime: Runtime[Any],
+        state: AgentState[None],
+        runtime: Runtime[None],
     ) -> dict[str, object] | None:
         del runtime  # config comes from the graph context var
         response = _latest_ai_message(state)
@@ -82,7 +81,7 @@ class SubagentJoinMiddleware(AgentMiddleware):
         return None
 
 
-def _latest_ai_message(state: AgentState[Any]) -> AIMessage | None:
+def _latest_ai_message(state: AgentState[None]) -> AIMessage | None:
     messages = state.get("messages") if isinstance(state, dict) else getattr(state, "messages", [])
     if not messages:
         return None

@@ -26,7 +26,7 @@ Gotchas:
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Literal
 import warnings
 
 from pydantic import PydanticDeprecatedSince20
@@ -91,7 +91,7 @@ setup_warnings()
 # Warmup tasks are tracked so shutdown can cancel them. `spawn_logged_task`
 # already keeps its own strong reference for GC safety and gives each task a
 # wide-event boundary; this list exists purely for the cancel-on-shutdown pass.
-_background_tasks: list[asyncio.Task[Any]] = []
+_background_tasks: list[asyncio.Task[object]] = []
 
 
 def _spawn_background_services(

@@ -7,7 +7,6 @@ system prompts with user context.
 """
 
 import json
-from typing import Any
 
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import PROVIDER_METADATA_CACHE_TTL
@@ -21,7 +20,7 @@ def _extract_nested_field(data: dict[str, object], field_path: str) -> str | Non
     """Extract a value from a nested dict using dot-notation (e.g. "data.login")."""
     try:
         keys = field_path.split(".")
-        value: Any = data
+        value: object = data
         for key in keys:
             if isinstance(value, dict):
                 value = value.get(key)

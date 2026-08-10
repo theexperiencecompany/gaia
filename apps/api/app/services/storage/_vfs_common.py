@@ -25,7 +25,7 @@ import json
 from pathlib import Path
 import re
 import shutil
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from _typeshed import ExcInfo
@@ -155,7 +155,7 @@ def prune_per_doc_markers(per_doc_dir: Path, active_ids: set[str]) -> None:
 # ====================================================================
 
 
-def _force_remove(func: Callable[..., Any], path: str, _exc_info: ExcInfo) -> None:
+def _force_remove(func: Callable[[str], object], path: str, _exc_info: ExcInfo) -> None:
     """``shutil.rmtree`` ``onerror`` hook: chmod target writable then retry.
 
     POSIX requires write permission on the file itself (not just the

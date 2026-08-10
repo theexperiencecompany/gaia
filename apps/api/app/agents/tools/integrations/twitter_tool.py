@@ -291,16 +291,14 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 writer({"progress": f"Posted tweet {i + 1}/{total_tweets}..."})
 
         try:
-            data = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=TWITTER_TOOLKIT,
-                    endpoint=f"{TWITTER_API_BASE}/users/me",
-                    method="GET",
-                )
-                or {}
+            raw_data = proxy_request_sync(
+                user_id=user_id,
+                toolkit=TWITTER_TOOLKIT,
+                endpoint=f"{TWITTER_API_BASE}/users/me",
+                method="GET",
             )
-            username = data.get("data", {}).get("username", "i")
+            data = raw_data if isinstance(raw_data, dict) else {}
+            username = text_opt_bag(dict_bag(data, "data"), "username") or "i"
         except Exception:
             username = "i"
 
@@ -434,37 +432,32 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
 
-        me_data = (
-            proxy_request_sync(
-                user_id=user_id,
-                toolkit=TWITTER_TOOLKIT,
-                endpoint=f"{TWITTER_API_BASE}/users/me",
-                method="GET",
-                query={"user.fields": "public_metrics,description,username"},
-            )
-            or {}
-        ).get("data", {})
+        raw_me = proxy_request_sync(
+            user_id=user_id,
+            toolkit=TWITTER_TOOLKIT,
+            endpoint=f"{TWITTER_API_BASE}/users/me",
+            method="GET",
+            query={"user.fields": "public_metrics,description,username"},
+        )
+        me_data = dict_bag(raw_me if isinstance(raw_me, dict) else {}, "data")
 
         twitter_user_id = me_data.get("id")
-        metrics = me_data.get("public_metrics", {})
+        metrics = dict_bag(me_data, "public_metrics")
 
         tweets: list[dict[str, object]] = []
         if twitter_user_id:
             try:
-                tweets_data = (
-                    proxy_request_sync(
-                        user_id=user_id,
-                        toolkit=TWITTER_TOOLKIT,
-                        endpoint=f"{TWITTER_API_BASE}/users/{twitter_user_id}/tweets",
-                        method="GET",
-                        query={
-                            "max_results": 5,
-                            "tweet.fields": "created_at,public_metrics",
-                        },
-                    )
-                    or {}
+                tweets_data = proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=TWITTER_TOOLKIT,
+                    endpoint=f"{TWITTER_API_BASE}/users/{twitter_user_id}/tweets",
+                    method="GET",
+                    query={
+                        "max_results": 5,
+                        "tweet.fields": "created_at,public_metrics",
+                    },
                 )
-                items = tweets_data.get("data", [])
+                items = list_bag(tweets_data if isinstance(tweets_data, dict) else {}, "data")
                 tweets = [
                     {
                         "id": t.get("id"),
@@ -474,6 +467,7 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                         "retweets": t.get("public_metrics", {}).get("retweet_count", 0),
                     }
                     for t in (items if isinstance(items, list) else [])
+                    if isinstance(t, dict)
                 ]
             except Exception as e:
                 # Profile context is still useful without recent tweets, so this
@@ -490,10 +484,10 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 "id": twitter_user_id,
                 "username": me_data.get("username"),
                 "name": me_data.get("name"),
-                "description": me_data.get("description", "")[:200],
-                "followers": metrics.get("followers_count", 0),
-                "following": metrics.get("following_count", 0),
-                "tweet_count": metrics.get("tweet_count", 0),
+                "description": text_bag(me_data, "description")[:200],
+                "followers": int_bag(metrics, "followers_count"),
+                "following": int_bag(metrics, "following_count"),
+                "tweet_count": int_bag(metrics, "tweet_count"),
             },
             "recent_tweets": tweets,
         }

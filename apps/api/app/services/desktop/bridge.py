@@ -205,7 +205,7 @@ async def relay_desktop_result(
     """
     request_key = f"{DESKTOP_REQUEST_PREFIX}{request_id}"
     pending = await redis_cache.get(request_key)
-    if not pending:
+    if not isinstance(pending, dict):
         raise DesktopRequestNotFound()
     if pending.get("user_id") != user_id:
         raise DesktopRequestForbidden()

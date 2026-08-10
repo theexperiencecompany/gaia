@@ -99,7 +99,10 @@ async def deep_research(
 
     # ── Phase 0: Full-result cache check ────────────────────────────────────
     cache_key = build_research_cache_key(query, scope, focus_areas, depth)
-    cached_result: dict[str, object] | None = await get_cache(cache_key)
+    cached_value = await get_cache(cache_key)
+    cached_result: dict[str, object] | None = (
+        cached_value if isinstance(cached_value, dict) else None
+    )
     if cached_result:
         writer({"progress": "Loaded research from cache!"})
         writer({"research_data": cached_result})

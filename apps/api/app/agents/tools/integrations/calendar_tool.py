@@ -60,7 +60,7 @@ CALENDAR_TOOLKIT = "GOOGLECALENDAR"
 _T = TypeVar("_T")
 
 
-def _run_sync(coro: Coroutine[Any, Any, _T], *, timeout: float | None = None) -> _T:
+def _run_sync(coro: Coroutine[None, None, _T], *, timeout: float | None = None) -> _T:
     """Run an async coroutine from a synchronous Composio custom-tool body.
 
     The custom tools are registered as sync callables but the services they call
@@ -545,7 +545,8 @@ def register_calendar_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             rrule_parts.append(f"BYDAY={','.join(request.by_day)}")
 
         rrule = "RRULE:" + ";".join(rrule_parts)
-        event["recurrence"] = [rrule]
+        if isinstance(event, dict):
+            event["recurrence"] = [rrule]
 
         updated = proxy_request_sync(
             user_id=user_id,
@@ -645,9 +646,13 @@ def register_calendar_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                     {
                         "index": index,
                         "summary": event.summary,
-                        "event_id": created_event.get("id"),
+                        "event_id": created_event.get("id")
+                        if isinstance(created_event, dict)
+                        else None,
                         "calendar_id": event.calendar_id,
-                        "link": created_event.get("htmlLink"),
+                        "link": created_event.get("htmlLink")
+                        if isinstance(created_event, dict)
+                        else None,
                         "start": body["start"],
                         "end": body["end"],
                     }

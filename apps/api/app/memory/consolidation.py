@@ -11,7 +11,6 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime, timedelta
 import time
-from typing import Any
 
 from app.constants.memory import (
     CONSOLIDATION_DEBOUNCE_SECONDS,
@@ -38,6 +37,7 @@ from app.memory.prompts import (
 )
 from app.memory.schemas import ExtractedFact
 from app.models.memory_db_models import MemoryRecord
+from app.utils.json_helpers import list_bag
 from shared.py.wide_events import MemoryContext, UserContext, log, wide_task
 
 # Which core documents a fact feeds, keyed by its top-level category folder.
@@ -82,7 +82,7 @@ _PENDING_AGENDA_UPDATES = "agenda_updates"
 # memory_node background-task set). A process restart during the sleep loses
 # the pending debounce — acceptable: the next ingestion reschedules it and
 # the documents converge.
-_waiters: dict[str, asyncio.Task[Any]] = {}
+_waiters: dict[str, asyncio.Task[object]] = {}
 
 
 def infer_doc_types(facts: list[ExtractedFact], agenda_updates: list[str]) -> set[MemoryDocType]:
@@ -114,13 +114,17 @@ async def schedule_consolidation(
     if not doc_types:
         return
     key = CONSOLIDATION_PENDING_KEY.format(user_id=user_id)
-    pending = await get_cache(key) or {}
+    pending_raw = await get_cache(key)
+    pending: dict[str, object] = pending_raw if isinstance(pending_raw, dict) else {}
     merged: dict[str, list[str]] = {
         _PENDING_DOC_TYPES: sorted(
-            {*pending.get(_PENDING_DOC_TYPES, []), *(doc.value for doc in doc_types)}
+            {
+                *[v for v in list_bag(pending, _PENDING_DOC_TYPES) if isinstance(v, str)],
+                *(doc.value for doc in doc_types),
+            }
         ),
         _PENDING_AGENDA_UPDATES: [
-            *pending.get(_PENDING_AGENDA_UPDATES, []),
+            *[v for v in list_bag(pending, _PENDING_AGENDA_UPDATES) if isinstance(v, str)],
             *(agenda_updates or []),
         ],
     }
@@ -165,10 +169,18 @@ async def _debounce_waiter(user_id: str) -> None:
                 pending = await get_and_delete_cache(
                     CONSOLIDATION_PENDING_KEY.format(user_id=user_id)
                 )
-                if not pending:
+                if not isinstance(pending, dict):
                     return
-                doc_types = [MemoryDocType(value) for value in pending.get(_PENDING_DOC_TYPES, [])]
-                agenda_updates = pending.get(_PENDING_AGENDA_UPDATES) or None
+                doc_types = [
+                    MemoryDocType(value)
+                    for value in list_bag(pending, _PENDING_DOC_TYPES)
+                    if isinstance(value, str)
+                ]
+                agenda_updates = [
+                    value
+                    for value in list_bag(pending, _PENDING_AGENDA_UPDATES)
+                    if isinstance(value, str)
+                ] or None
                 if doc_types:
                     await consolidate(user_id, doc_types, agenda_updates=agenda_updates)
     finally:

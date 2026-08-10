@@ -25,6 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from app.config.loggers import request_logger
+from app.utils.json_helpers import dict_bag, text_bag
 from shared.py.wide_events import log as wide_log
 
 _LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
@@ -154,7 +155,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         auto = {"id": user.get("user_id")} if user.get("user_id") else {}
         if not auto:
             return
-        wide_log.set(user={**auto, **wide_log.get().get("user", {})})
+        wide_log.set(user={**auto, **dict_bag(wide_log.get() or {}, "user")})
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in self._SKIP_PATHS:
@@ -261,7 +262,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         request_logger.bind(**context).log(level, "http_request")
 
-        trace_id = wide_log.get().get("trace_id", "")
+        trace_id = text_bag(wide_log.get() or {}, "trace_id")
         if trace_id:
             response.headers["x-trace-id"] = trace_id
 

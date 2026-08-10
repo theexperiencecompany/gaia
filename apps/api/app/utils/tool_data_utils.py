@@ -3,7 +3,7 @@ Utility functions for converting legacy tool data to unified format.
 """
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 
 from app.models.chat_models import ToolDataEntry, tool_fields
 
@@ -47,7 +47,7 @@ def convert_legacy_tool_data(message: dict[str, object]) -> dict[str, object]:
             tool_entry: ToolDataEntry = {
                 "tool_name": field_name,
                 "data": cast(
-                    dict[str, object] | list[Any] | str | int | float | bool,
+                    dict[str, object] | list[object] | str | int | float | bool,
                     converted_message[field_name],
                 ),
                 "timestamp": timestamp,

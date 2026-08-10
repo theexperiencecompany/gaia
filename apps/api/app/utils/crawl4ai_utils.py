@@ -98,7 +98,7 @@ async def _close_crawler(crawler: AsyncWebCrawler, context_name: str) -> None:
         )
 
 
-def _spawn_shielded_close(crawler: AsyncWebCrawler, context_name: str) -> asyncio.Task[None]:
+def _spawn_shielded_close(crawler: AsyncWebCrawler, context_name: str) -> asyncio.Task[object]:
     return spawn_background_task(_close_crawler(crawler, context_name))
 
 

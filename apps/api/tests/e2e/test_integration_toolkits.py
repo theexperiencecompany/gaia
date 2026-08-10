@@ -160,6 +160,9 @@ def fake_composio(proxy: Any, *, account_status: str = "ACTIVE") -> MagicMock:
     client = MagicMock()
     client.connected_accounts.list.return_value = listing
     client.tools.proxy.side_effect = proxy
+    # proxy_client routes through the client-level proxy (the SDK wrapper drops
+    # binary_body); mirror that on the mock so both paths answer the same.
+    client._client.tools.proxy.side_effect = proxy
     return client
 
 

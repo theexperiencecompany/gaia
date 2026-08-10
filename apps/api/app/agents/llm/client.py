@@ -3,12 +3,21 @@ from collections.abc import Callable
 from functools import cache
 from typing import Any, TypeVar, cast
 
-from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
-from langchain_core.language_models import LanguageModelInput, LanguageModelLike
+from langchain_core.callbacks import (
+    BaseCallbackHandler,
+    BaseCallbackManager,
+    UsageMetadataCallbackHandler,
+)
+from langchain_core.language_models import (
+    LanguageModelInput,
+    LanguageModelLike,
+    LanguageModelOutput,
+)
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
-from langchain_core.runnables import Runnable, RunnableConfig
+from langchain_core.messages import BaseMessage
+from langchain_core.runnables import Runnable, RunnableConfig, RunnableSerializable
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openrouter import ChatOpenRouter
@@ -47,16 +56,28 @@ from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 _ResultT = TypeVar("_ResultT")
+_InputT = TypeVar("_InputT")
+_OutputT = TypeVar("_OutputT")
+
+# What the provider registry hands out: the wired chat models and the
+# configurable_fields wrappers around them are all RunnableSerializable.
+_ProviderInstance = RunnableSerializable[LanguageModelInput, LanguageModelOutput]
 
 # A fallback may be passed as a ready runnable or as a zero-arg factory, so
 # expensive preparation (e.g. re-binding the full tool list) only happens in
-# the rare case the primary actually fails.
-LLMFallback = Runnable[Any, Any] | Callable[[], Runnable[Any, Any] | None] | None
+# the rare case the primary actually fails. Fallbacks are always chat models
+# ("falling back to the default model"), so the concrete runnable type is the
+# chat-model I/O pair.
+LLMFallback = (
+    Runnable[LanguageModelInput, BaseMessage]
+    | Callable[[], Runnable[LanguageModelInput, BaseMessage] | None]
+    | None
+)
 
 
 def with_llm_retry(
-    runnable: Runnable[Any, Any], *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
-) -> Runnable[Any, Any]:
+    runnable: Runnable[_InputT, _OutputT], *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
+) -> Runnable[_InputT, _OutputT]:
     """The single, canonical LLM retry. Wraps a (tool-bound) model runnable so
     transient provider/infra errors are retried with exponential backoff before
     the caller falls back to the default model. Applied AFTER ``bind_tools`` so
@@ -94,7 +115,7 @@ PROVIDER_PRIORITY = {
 
 class LLMProvider(TypedDict):
     name: str
-    instance: BaseChatModel
+    instance: _ProviderInstance
 
 
 @cache
@@ -279,7 +300,7 @@ def init_llm(
     return _create_configurable_llm(primary_provider, alternative_providers)
 
 
-def _get_available_providers() -> dict[str, Any]:
+def _get_available_providers() -> dict[str, _ProviderInstance]:
     """Retrieve available LLM provider instances from the global registry,
     mapped by provider name."""
     # Mapping of provider names to their instance keys in the providers registry
@@ -289,17 +310,17 @@ def _get_available_providers() -> dict[str, Any]:
         "custom": "custom_llm",
     }
 
-    available = {}
+    available: dict[str, _ProviderInstance] = {}
     for provider_name, instance_key in provider_instance_mapping.items():
         instance = providers.get(instance_key)
         if instance is not None:
-            available[provider_name] = instance
+            available[provider_name] = cast(_ProviderInstance, instance)
 
     return available
 
 
 def _get_ordered_providers(
-    available_providers: dict[str, Any],
+    available_providers: dict[str, _ProviderInstance],
     preferred_provider: str | None,
     fallback_enabled: bool,
 ) -> list[LLMProvider]:
@@ -441,7 +462,7 @@ def _stamp_fallback(result: _ResultT) -> _ResultT:
 
 def _resolve_fallback(
     fallback: LLMFallback, label: str, primary_error: BaseException
-) -> Runnable[Any, Any]:
+) -> Runnable[LanguageModelInput, BaseMessage]:
     """Materialize the fallback (calling a factory if one was passed), log the
     downgrade, and return the retry-wrapped runnable. Re-raises ``primary_error``
     when no fallback is available."""
@@ -483,8 +504,9 @@ async def ainvoke_llm(
     ``primary: Runnable[LanguageModelInput, _ResultT] -> _ResultT`` — was tried and
     measured, and it does not hold at either end:
 
-    - The fallback path resolves through ``LLMFallback``/``_resolve_fallback``, which
-      are plain unparametrized ``Runnable``, so every return trips ``warn_return_any``
+    - The fallback path resolves through ``LLMFallback``/``_resolve_fallback``, whose
+      concrete ``Runnable[LanguageModelInput, BaseMessage]`` output can't be unified
+      with the primary's result type, so every return trips ``warn_return_any``
       unless those are made generic too.
     - Callers pass both plain chat models (yielding a ``BaseMessage``) and
       ``with_structured_output(...)`` runnables, which LangChain types as
@@ -583,13 +605,17 @@ def _with_usage_handler(
     """Return ``config`` with ``handler`` attached, never mutating the caller's
     object — several callers pass a shared module-level config constant, and
     graph nodes forward a config whose ``callbacks`` is a live manager."""
-    merged: dict[str, Any] = dict(config) if config else {}
+    merged: dict[str, object] = dict(config) if config else {}
     existing = merged.get("callbacks")
     if existing is None:
         merged["callbacks"] = [handler]
     elif isinstance(existing, list):
         merged["callbacks"] = [*existing, handler]
     else:
+        if not isinstance(existing, BaseCallbackManager):
+            raise TypeError(
+                f"Unexpected 'callbacks' value in run config: {type(existing).__name__}"
+            )
         manager = existing.copy()
         manager.add_handler(handler, inherit=True)
         merged["callbacks"] = manager

@@ -23,11 +23,11 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp
-from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     SubagentOutcome,
@@ -74,7 +74,7 @@ class SpawnGraphProvider(Protocol):
         tool_space: str,
         runtime: ToolRuntimeConfig,
         middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
-    ) -> CompiledStateGraph[Any, None, Any, Any]: ...
+    ) -> CompiledAgentGraph: ...
 
 
 class SubagentState(AgentState[Any]):
@@ -138,7 +138,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             selected_tool_ids: Annotated[list[str], InjectedState("selected_tool_ids")],
             config: RunnableConfig,
             context: str = "",
-        ) -> Command[Any]:
+        ) -> Command[None]:
             """Spawn a subagent to handle a subtask with focused execution."""
             if middleware._llm is None:
                 return Command(

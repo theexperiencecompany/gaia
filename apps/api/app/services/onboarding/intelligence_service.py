@@ -22,7 +22,7 @@ from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 import time
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -322,7 +322,7 @@ async def _finalize_onboarding(
     focus: str,
     clarify_answers: list[ClarifyAnswerRecord],
     provision_future: asyncio.Task[None] | None,
-    concurrent_tasks: Sequence[Awaitable[Any]] = (),
+    concurrent_tasks: Sequence[Awaitable[object]] = (),
 ) -> str | None:
     """Shared pipeline tail for both onboarding shapes: generate the first
     message, persist it, seed the first conversation, persist completion, and
@@ -361,7 +361,7 @@ async def _finalize_onboarding(
     await user_repository.set_first_message(user_id, first_message)
 
     seed_result, *_ = await asyncio.gather(_seed_conversation(user_id), *concurrent_tasks)
-    conversation_id: str | None = seed_result
+    conversation_id: str | None = seed_result if isinstance(seed_result, str) else None
 
     # Unconditional end-of-pipeline transition: guarantees the user advances even
     # if the holo leg (which also writes this) failed.

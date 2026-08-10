@@ -5,7 +5,7 @@ Clean and lean workflow models for GAIA workflow system.
 from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
-from typing import Any, TypedDict
+from typing import TypedDict
 import uuid
 
 from pydantic import (
@@ -276,15 +276,14 @@ class Workflow(BaseScheduledTask):
         description="Creator info hydrated for public workflow lookups.",
     )
 
-    def __init__(self, **data: Any) -> None:
+    def __init__(self, **data: object) -> None:
         """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields.
 
-        ``**data`` stays ``Any``. Measured, don't re-litigate: ``**data: object``
-        produces 4 errors on the ``super().__init__(**data)`` below, because
-        BaseScheduledTask's generated ``__init__`` declares per-field types
-        (``str``, ``datetime``, ``ScheduledTaskStatus``, ``int``) that a
-        ``dict[str, object]`` bag cannot satisfy. The two "before" validators in
-        this module were narrowed to ``object`` and did not need it.
+        ``data`` is the raw pydantic init bag, so reads stay unchecked
+        (``dict[str, object]``); the ``trigger_config`` value is narrowed by
+        ``isinstance`` and the pydantic-model branch reads via ``getattr``, and
+        ``BaseModel.__init__`` — the runtime init this ``super().__init__``
+        resolves to — accepts the bag as-is.
         """
         # Ensure user_id is provided (it's required by BaseScheduledTask)
         if "user_id" not in data:
@@ -306,30 +305,24 @@ class Workflow(BaseScheduledTask):
             else:
                 # TriggerConfig is already a Pydantic model
                 # Map scheduled_at from trigger_config.next_run if not provided
-                if (
-                    "scheduled_at" not in data
-                    and hasattr(trigger_config, "next_run")
-                    and trigger_config.next_run
-                ):
-                    data["scheduled_at"] = trigger_config.next_run
+                next_run = getattr(trigger_config, "next_run", None)
+                if "scheduled_at" not in data and next_run:
+                    data["scheduled_at"] = next_run
 
                 # Map repeat from trigger_config.cron_expression if not provided
-                if (
-                    "repeat" not in data
-                    and hasattr(trigger_config, "cron_expression")
-                    and trigger_config.cron_expression
-                ):
-                    data["repeat"] = trigger_config.cron_expression
+                cron_expression = getattr(trigger_config, "cron_expression", None)
+                if "repeat" not in data and cron_expression:
+                    data["repeat"] = cron_expression
 
         # A workflow only has a scheduled_at when it is a schedule-triggered (cron)
         # workflow with a next_run (mapped above). Manual / integration / todo
         # workflows have no scheduled run — leave scheduled_at as None rather than
         # fabricating "now", which would make them look due to the recovery scan.
-        super().__init__(**data)
+        BaseModel.__init__(self, **data)
 
     @model_validator(mode="before")
     @classmethod
-    def hydrate_legacy_prompt_and_description(cls, data: Any) -> Any:
+    def hydrate_legacy_prompt_and_description(cls, data: object) -> object:
         """Ensure legacy records still expose prompt and non-null description."""
         if isinstance(data, dict):
             description = data.get("description") or ""

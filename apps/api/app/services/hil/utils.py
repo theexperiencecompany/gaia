@@ -11,7 +11,7 @@ assistant's prose must never reach its own gate (see ``intent.py``).
 from dataclasses import dataclass
 import json
 import secrets
-from typing import Any, cast
+from typing import cast
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
@@ -91,7 +91,7 @@ def current_tool_calls(state: object) -> list[dict[str, object]]:
     """
     for message in reversed(_messages_of(state)):
         calls = getattr(message, "tool_calls", None)
-        if calls:
+        if isinstance(calls, list):
             return list(calls)
     return []
 
@@ -111,12 +111,12 @@ def prior_tool_calls(state: object, exclude_id: str) -> list[PriorCall]:
         PriorCall(name=call.get("name", ""), args=call.get("args", {}) or {})
         for message in _messages_of(state)
         for call in getattr(message, "tool_calls", None) or []
-        if call.get("name") and call.get("id") != exclude_id
+        if isinstance(call, dict) and call.get("name") and call.get("id") != exclude_id
     ]
     return calls[-HIL_JUDGE_MAX_PRIOR_CALLS:]
 
 
-def _messages_of(state: object) -> list[Any]:
+def _messages_of(state: object) -> list[object]:
     messages = _state_get(state, "messages")
     return messages if isinstance(messages, list) else []
 

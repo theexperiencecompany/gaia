@@ -21,7 +21,6 @@ from enum import Enum
 import inspect
 from threading import Lock
 from typing import (
-    Any,
     Generic,
     Protocol,
     TypeVar,
@@ -457,7 +456,7 @@ class ProviderRegistry:
     """
 
     def __init__(self) -> None:
-        self._providers: dict[str, LazyLoader[Any]] = {}
+        self._providers: dict[str, LazyLoader[object]] = {}
         self._lock = Lock()
         self._auto_init_providers: set[str] = set()
 
@@ -493,7 +492,10 @@ class ProviderRegistry:
             if auto_initialize:
                 self._auto_init_providers.add(name)
 
-            self._providers[name] = provider
+            # Registry is heterogeneous by design (keyed by name); the loader
+            # type parameter is erased at store time, exactly like the consumers
+            # that cast on the way out (see get/aget docstrings).
+            self._providers[name] = cast(LazyLoader[object], provider)
             return provider
 
     async def initialize_auto_providers(
@@ -650,10 +652,10 @@ class ProviderRegistry:
             failed = ", ".join(name for name, _ in errors)
             raise RuntimeError(f"Provider warmup failed for: {failed}")
 
-    def get(self, name: str) -> Any | None:
+    def get(self, name: str) -> object | None:
         """Get a provider instance by name synchronously - only works for sync providers.
 
-        Returns ``Any`` because the registry is keyed by name, not by type: the
+        Returns ``object`` because the registry is keyed by name, not by type: the
         concrete provider type is only knowable at the call site. Callers narrow
         with ``cast(TheProvider, ...)`` rather than ``isinstance`` (Type Safety
         item 12) — the registered value is correct by construction.
@@ -672,10 +674,10 @@ class ProviderRegistry:
                     self.get(dep)
         return loader.get()
 
-    async def aget(self, name: str) -> Any | None:
+    async def aget(self, name: str) -> object | None:
         """Get a provider instance by name asynchronously - works for both sync and async providers.
 
-        Returns ``Any`` for the same reason as :meth:`get`; narrow with ``cast``.
+        Returns ``object`` for the same reason as :meth:`get`; narrow with ``cast``.
         """
         if name not in self._providers:
             raise KeyError(f"Provider '{name}' not found in registry")

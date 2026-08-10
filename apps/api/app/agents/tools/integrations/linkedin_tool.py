@@ -34,7 +34,7 @@ from app.templates.docstrings.linkedin_tool_docs import (
     CUSTOM_GET_POST_REACTIONS_DOC,
     CUSTOM_REACT_TO_POST_DOC,
 )
-from app.utils.json_helpers import dict_bag, int_bag, text_bag, text_opt_bag
+from app.utils.json_helpers import dict_bag, int_bag, list_bag, text_bag, text_opt_bag
 from app.utils.linkedin_utils import (
     LINKEDIN_REST_BASE,
     LINKEDIN_TOOLKIT,
@@ -224,22 +224,21 @@ def register_linkedin_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         user_id = _user_id(auth_credentials)
         encoded_urn = request.post_urn.replace(":", "%3A")
 
-        result = (
-            proxy_request_sync(
-                user_id=user_id,
-                toolkit=LINKEDIN_TOOLKIT,
-                endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/comments",
-                method="GET",
-                query={"count": request.count, "start": request.start},
-                headers=_REST_HEADERS,
-            )
-            or {}
+        result = proxy_request_sync(
+            user_id=user_id,
+            toolkit=LINKEDIN_TOOLKIT,
+            endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/comments",
+            method="GET",
+            query={"count": request.count, "start": request.start},
+            headers=_REST_HEADERS,
         )
 
-        comments = result.get("elements", [])
+        comments = list_bag(result if isinstance(result, dict) else {}, "elements")
 
         formatted_comments = []
         for comment in comments:
+            if not isinstance(comment, dict):
+                continue
             formatted_comments.append(
                 {
                     "id": comment.get("id"),
@@ -252,7 +251,11 @@ def register_linkedin_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         return {
             "comments": formatted_comments,
-            "total_count": result.get("paging", {}).get("total", len(comments)),
+            "total_count": int_bag(
+                dict_bag(result if isinstance(result, dict) else {}, "paging"),
+                "total",
+                len(comments),
+            ),
             "post_urn": request.post_urn,
         }
 
@@ -327,22 +330,21 @@ def register_linkedin_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         user_id = _user_id(auth_credentials)
         encoded_urn = request.post_urn.replace(":", "%3A")
 
-        result = (
-            proxy_request_sync(
-                user_id=user_id,
-                toolkit=LINKEDIN_TOOLKIT,
-                endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/likes",
-                method="GET",
-                query={"count": request.count},
-                headers=_REST_HEADERS,
-            )
-            or {}
+        result = proxy_request_sync(
+            user_id=user_id,
+            toolkit=LINKEDIN_TOOLKIT,
+            endpoint=f"{LINKEDIN_REST_BASE}/socialActions/{encoded_urn}/likes",
+            method="GET",
+            query={"count": request.count},
+            headers=_REST_HEADERS,
         )
 
-        reactions = result.get("elements", [])
+        reactions = list_bag(result if isinstance(result, dict) else {}, "elements")
 
         formatted_reactions = []
         for reaction in reactions:
+            if not isinstance(reaction, dict):
+                continue
             formatted_reactions.append(
                 {
                     "actor": reaction.get("actor"),
@@ -353,7 +355,11 @@ def register_linkedin_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         return {
             "reactions": formatted_reactions,
-            "total_count": result.get("paging", {}).get("total", len(reactions)),
+            "total_count": int_bag(
+                dict_bag(result if isinstance(result, dict) else {}, "paging"),
+                "total",
+                len(reactions),
+            ),
             "post_urn": request.post_urn,
         }
 
@@ -371,49 +377,53 @@ def register_linkedin_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
 
-        data = (
-            proxy_request_sync(
-                user_id=user_id,
-                toolkit=LINKEDIN_TOOLKIT,
-                endpoint=f"{LINKEDIN_API_BASE}/userinfo",
-                method="GET",
-            )
-            or {}
+        data = proxy_request_sync(
+            user_id=user_id,
+            toolkit=LINKEDIN_TOOLKIT,
+            endpoint=f"{LINKEDIN_API_BASE}/userinfo",
+            method="GET",
         )
 
-        person_id = data.get("sub", "")
+        person_id = text_bag(data if isinstance(data, dict) else {}, "sub")
         person_urn = f"urn:li:person:{person_id}"
 
         posts: list[dict[str, object]] = []
         if person_id:
             try:
                 encoded_urn = person_urn.replace(":", "%3A")
-                posts_data = (
-                    proxy_request_sync(
-                        user_id=user_id,
-                        toolkit=LINKEDIN_TOOLKIT,
-                        endpoint=f"{LINKEDIN_API_BASE}/ugcPosts",
-                        method="GET",
-                        query={
-                            "q": "authors",
-                            "authors": f"List({encoded_urn})",
-                            "count": 5,
-                        },
-                    )
-                    or {}
+                posts_data = proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=LINKEDIN_TOOLKIT,
+                    endpoint=f"{LINKEDIN_API_BASE}/ugcPosts",
+                    method="GET",
+                    query={
+                        "q": "authors",
+                        "authors": f"List({encoded_urn})",
+                        "count": 5,
+                    },
                 )
-                posts = posts_data.get("elements", [])
+                posts = [
+                    p
+                    for p in list_bag(
+                        posts_data if isinstance(posts_data, dict) else {}, "elements"
+                    )
+                    if isinstance(p, dict)
+                ]
             except Exception:
                 posts = []
 
         return {
             "user": {
                 "id": person_id,
-                "name": data.get("name"),
-                "given_name": data.get("given_name"),
-                "family_name": data.get("family_name"),
-                "email": data.get("email"),
-                "profile_picture": data.get("picture"),
+                "name": text_opt_bag(data, "name") if isinstance(data, dict) else None,
+                "given_name": text_opt_bag(data, "given_name") if isinstance(data, dict) else None,
+                "family_name": text_opt_bag(data, "family_name")
+                if isinstance(data, dict)
+                else None,
+                "email": text_opt_bag(data, "email") if isinstance(data, dict) else None,
+                "profile_picture": text_opt_bag(data, "picture")
+                if isinstance(data, dict)
+                else None,
             },
             "recent_posts": [
                 {

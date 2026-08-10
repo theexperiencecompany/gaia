@@ -25,10 +25,10 @@ Key Features:
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable
 import functools
 import inspect
-from typing import Any, ParamSpec, TypeVar, cast, overload
+from typing import ParamSpec, Protocol, TypeVar, cast, overload
 
 from app.constants.cache import ONE_YEAR_TTL
 from app.constants.log_tags import LogTag
@@ -44,7 +44,20 @@ R = TypeVar("R")
 # already-async callee, so every `await cached_fn()` would type as a Coroutine
 # instead of its value (measured: 105 errors across 45 files). The overload pair
 # splits the two cases so R is the awaited value in both.
-_SyncOrAsync = Callable[P, Coroutine[Any, Any, R]] | Callable[P, R]
+_SyncOrAsync = Callable[P, Awaitable[R]] | Callable[P, R]
+
+
+class _KeyGenerator(Protocol):
+    """A cache-key generator: receives the wrapped function's name plus its
+    call args, returns the cache key string.
+
+    ``Callable[..., str]`` would be the same contract but mypy treats the
+    ellipsis as explicit Any; the first parameter is named to match the
+    keyword-callable structural check against real generators (e.g.
+    ``_recall_cache_key``).
+    """
+
+    def __call__(self, _func_name: str, *args: object, **kwargs: object) -> str: ...
 
 
 class Cacheable:
@@ -112,12 +125,12 @@ class Cacheable:
     def __init__(
         self,
         key_pattern: str | None = None,
-        key_generator: Callable[..., Any] | None = None,
+        key_generator: _KeyGenerator | None = None,
         key: str | None = None,
         ttl: int = ONE_YEAR_TTL,
-        serializer: Callable[[Any], Any] | None = None,
-        deserializer: Callable[[Any], Any] | None = None,
-        model: type[Any] | None = None,
+        serializer: Callable[[object], object] | None = None,
+        deserializer: Callable[[object], object] | None = None,
+        model: type[object] | None = None,
         smart_hash: bool = False,
         namespace: str = "api",
         ignore_none: bool = False,
@@ -169,7 +182,7 @@ class Cacheable:
         self.model = model
 
     @overload
-    def __call__(self, func: Callable[P, Coroutine[Any, Any, R]]) -> Callable[P, Awaitable[R]]: ...
+    def __call__(self, func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]: ...
 
     @overload
     def __call__(self, func: Callable[P, R]) -> Callable[P, Awaitable[R]]: ...
@@ -229,7 +242,7 @@ class Cacheable:
             if result is None and self.ignore_none:
                 return result
 
-            serialized_result = result
+            serialized_result: object = result
             if self.serializer:
                 serialized_result = self.serializer(result)
 
@@ -290,7 +303,7 @@ class CacheInvalidator:
     def __init__(
         self,
         key_patterns: list[str] | None = None,
-        key_generator: Callable[..., Any] | None = None,
+        key_generator: _KeyGenerator | None = None,
         key: str | None = None,
     ):
         """
@@ -309,7 +322,7 @@ class CacheInvalidator:
             raise ValueError("Either key, key_patterns, or key_generator must be provided.")
 
     @overload
-    def __call__(self, func: Callable[P, Coroutine[Any, Any, R]]) -> Callable[P, Awaitable[R]]: ...
+    def __call__(self, func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]: ...
 
     @overload
     def __call__(self, func: Callable[P, R]) -> Callable[P, Awaitable[R]]: ...

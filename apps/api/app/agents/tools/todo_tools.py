@@ -18,7 +18,7 @@ context into the latest non-memory SystemMessage before each LLM call.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Literal, cast
 from uuid import uuid4
 
 from langchain.tools import InjectedToolCallId
@@ -136,7 +136,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
     async def plan_tasks(
         tasks: list[TaskInput],
         tool_call_id: Annotated[str, InjectedToolCallId],
-    ) -> Command[Any]:
+    ) -> Command[None]:
         """Create a task plan for multi-step work."""
         now = datetime.now(UTC).isoformat()
         new_todos: list[Todo] = []
@@ -173,7 +173,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         updates: list[TaskUpdate],
         tool_call_id: Annotated[str, InjectedToolCallId],
         todos: Annotated[list[Todo], InjectedState("todos")],
-    ) -> Command[Any]:
+    ) -> Command[None]:
         """Update task statuses and/or add new tasks in a single call."""
         now = datetime.now(UTC).isoformat()
         updated_todos: list[Todo] = [t.copy() for t in todos]

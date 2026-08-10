@@ -8,7 +8,7 @@ from composio.types import ExecuteRequestFn
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
-from app.utils.json_helpers import dict_bag, text_opt_bag
+from app.utils.json_helpers import dict_bag, list_bag, text_opt_bag
 from shared.py.wide_events import log
 
 HUBSPOT_TOOLKIT = "HUBSPOT"
@@ -35,41 +35,37 @@ def register_hubspot_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         contacts: list[dict[str, object]] = []
         try:
-            data = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=HUBSPOT_TOOLKIT,
-                    endpoint="https://api.hubapi.com/crm/v3/objects/contacts",
-                    method="GET",
-                    query={
-                        "limit": 10,
-                        "properties": "firstname,lastname,email,hs_lead_status",
-                        "sort": "-createdate",
-                    },
-                )
-                or {}
+            response = proxy_request_sync(
+                user_id=user_id,
+                toolkit=HUBSPOT_TOOLKIT,
+                endpoint="https://api.hubapi.com/crm/v3/objects/contacts",
+                method="GET",
+                query={
+                    "limit": 10,
+                    "properties": "firstname,lastname,email,hs_lead_status",
+                    "sort": "-createdate",
+                },
             )
-            contacts = data.get("results", [])
+            data = response if isinstance(response, dict) else {}
+            contacts = [c for c in list_bag(data, "results") if isinstance(c, dict)]
         except Exception as e:
             log.debug(f"{LogTag.TOOL} HubSpot contacts fetch failed", error_type=type(e).__name__)
 
         deals: list[dict[str, object]] = []
         try:
-            data = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=HUBSPOT_TOOLKIT,
-                    endpoint="https://api.hubapi.com/crm/v3/objects/deals",
-                    method="GET",
-                    query={
-                        "limit": 10,
-                        "properties": "dealname,amount,dealstage,closedate",
-                        "sort": "-createdate",
-                    },
-                )
-                or {}
+            response = proxy_request_sync(
+                user_id=user_id,
+                toolkit=HUBSPOT_TOOLKIT,
+                endpoint="https://api.hubapi.com/crm/v3/objects/deals",
+                method="GET",
+                query={
+                    "limit": 10,
+                    "properties": "dealname,amount,dealstage,closedate",
+                    "sort": "-createdate",
+                },
             )
-            deals = data.get("results", [])
+            data = response if isinstance(response, dict) else {}
+            deals = [d for d in list_bag(data, "results") if isinstance(d, dict)]
         except Exception as e:
             log.debug(f"{LogTag.TOOL} HubSpot deals fetch failed", error_type=type(e).__name__)
 

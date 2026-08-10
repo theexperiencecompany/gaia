@@ -1,4 +1,4 @@
-from typing import Any
+from typing import TypeVar
 
 from fastapi import Request
 
@@ -17,6 +17,8 @@ from app.utils.notification.actions import (
 )
 from app.utils.notification.channels import ChannelAdapter
 from app.utils.notification.orchestrator import NotificationOrchestrator
+
+_T = TypeVar("_T")
 
 
 # Service Factory
@@ -89,7 +91,7 @@ class NotificationService:
     # WebSocket management
 
     # Registration methods
-    def register_channel_adapter(self, adapter: ChannelAdapter[Any]) -> None:
+    def register_channel_adapter(self, adapter: ChannelAdapter[_T]) -> None:
         self.orchestrator.register_channel_adapter(adapter)
 
     def register_action_handler(self, handler: ActionHandler) -> None:

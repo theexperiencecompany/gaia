@@ -9,7 +9,7 @@ from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
 from app.utils.errors import AppError
-from app.utils.json_helpers import text_opt_bag
+from app.utils.json_helpers import dict_bag, list_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 REDDIT_API_BASE = "https://oauth.reddit.com"
@@ -39,16 +39,15 @@ def register_reddit_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         me: dict[str, object] = {}
         try:
-            me = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=REDDIT_TOOLKIT,
-                    endpoint=f"{REDDIT_API_BASE}/api/v1/me",
-                    method="GET",
-                    headers=_REDDIT_HEADERS,
-                )
-                or {}
+            me_response = proxy_request_sync(
+                user_id=user_id,
+                toolkit=REDDIT_TOOLKIT,
+                endpoint=f"{REDDIT_API_BASE}/api/v1/me",
+                method="GET",
+                headers=_REDDIT_HEADERS,
             )
+            if isinstance(me_response, dict):
+                me = me_response
         except Exception as e:
             log.set(
                 user_id=user_id, endpoint=f"{REDDIT_API_BASE}/api/v1/me", toolkit=REDDIT_TOOLKIT
@@ -57,26 +56,27 @@ def register_reddit_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         subreddits: list[dict[str, object]] = []
         try:
-            subs_data = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=REDDIT_TOOLKIT,
-                    endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber",
-                    method="GET",
-                    query={"limit": 5},
-                    headers=_REDDIT_HEADERS,
-                )
-                or {}
+            subs_response = proxy_request_sync(
+                user_id=user_id,
+                toolkit=REDDIT_TOOLKIT,
+                endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber",
+                method="GET",
+                query={"limit": 5},
+                headers=_REDDIT_HEADERS,
             )
-            children = subs_data.get("data", {}).get("children", [])
-            subreddits = [
-                {
-                    "name": c["data"].get("display_name"),
-                    "title": c["data"].get("title", "")[:80],
-                    "subscribers": c["data"].get("subscribers", 0),
-                }
-                for c in children
-            ]
+            subs_data = subs_response if isinstance(subs_response, dict) else {}
+            subreddits = []
+            for c in list_bag(dict_bag(subs_data, "data"), "children"):
+                if not isinstance(c, dict):
+                    continue
+                child_data = dict_bag(c, "data")
+                subreddits.append(
+                    {
+                        "name": child_data.get("display_name"),
+                        "title": text_bag(child_data, "title", "")[:80],
+                        "subscribers": child_data.get("subscribers", 0),
+                    }
+                )
         except Exception as e:
             log.set(
                 user_id=user_id,
@@ -87,27 +87,28 @@ def register_reddit_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         unread_messages: list[dict[str, object]] = []
         try:
-            messages_data = (
-                proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=REDDIT_TOOLKIT,
-                    endpoint=f"{REDDIT_API_BASE}/message/unread",
-                    method="GET",
-                    query={"limit": 5},
-                    headers=_REDDIT_HEADERS,
-                )
-                or {}
+            messages_response = proxy_request_sync(
+                user_id=user_id,
+                toolkit=REDDIT_TOOLKIT,
+                endpoint=f"{REDDIT_API_BASE}/message/unread",
+                method="GET",
+                query={"limit": 5},
+                headers=_REDDIT_HEADERS,
             )
-            children = messages_data.get("data", {}).get("children", [])
-            unread_messages = [
-                {
-                    "id": c["data"].get("id"),
-                    "subject": c["data"].get("subject", "")[:80],
-                    "author": c["data"].get("author"),
-                    "created_utc": c["data"].get("created_utc"),
-                }
-                for c in children
-            ]
+            messages_data = messages_response if isinstance(messages_response, dict) else {}
+            unread_messages = []
+            for c in list_bag(dict_bag(messages_data, "data"), "children"):
+                if not isinstance(c, dict):
+                    continue
+                child_data = dict_bag(c, "data")
+                unread_messages.append(
+                    {
+                        "id": child_data.get("id"),
+                        "subject": text_bag(child_data, "subject", "")[:80],
+                        "author": child_data.get("author"),
+                        "created_utc": child_data.get("created_utc"),
+                    }
+                )
         except Exception as e:
             log.set(
                 user_id=user_id,

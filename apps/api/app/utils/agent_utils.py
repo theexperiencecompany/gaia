@@ -347,7 +347,7 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
 
     cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
     cached = await get_cache(cache_key)
-    if cached:
+    if isinstance(cached, dict):
         return cached.get("icon_url"), cached.get("integration_name")
 
     try:

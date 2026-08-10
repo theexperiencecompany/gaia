@@ -77,7 +77,7 @@ class ChromaClient:
         """
         # Ensure we have the embedding function
         if embedding_function is None:
-            embedding_function = await providers.aget("google_embeddings")
+            embedding_function = cast(Embeddings | None, await providers.aget("google_embeddings"))
 
         # If no collection name provided, return the default client
         if not collection_name:
@@ -109,7 +109,9 @@ class ChromaClient:
                 collection_name=collection_name,
                 provider_name=provider_name,
             )
-            constructor_client = await providers.aget("chromadb_constructor")
+            constructor_client = cast(
+                ClientAPI | None, await providers.aget("chromadb_constructor")
+            )
             if not constructor_client:
                 raise RuntimeError("ChromaDB constructor client not initialized")
 
@@ -273,7 +275,7 @@ def init_langchain_chroma() -> Chroma:
     # Create default langchain client with no specific collection
     langchain_chroma_client = Chroma(
         client=constructor_client,
-        embedding_function=providers.get("google_embeddings"),
+        embedding_function=cast(Embeddings | None, providers.get("google_embeddings")),
     )
 
     return langchain_chroma_client

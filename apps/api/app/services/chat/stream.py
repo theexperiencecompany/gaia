@@ -61,7 +61,7 @@ from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
-from app.utils.json_helpers import list_bag, text_bag
+from app.utils.json_helpers import dict_bag, list_bag, text_bag
 from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
@@ -586,7 +586,7 @@ def _log_usage_summary(state: _StreamState) -> None:
     """
     total_input, total_output, total_cached = aggregate_usage_metadata(state.usage_metadata)
     cache_hit_rate = round(total_cached / max(total_input, 1), 4) if total_input else 0.0
-    existing_model = log.get().get("model") or {}
+    existing_model = dict_bag(log.get() or {}, "model")
     log.set(
         model={
             **existing_model,

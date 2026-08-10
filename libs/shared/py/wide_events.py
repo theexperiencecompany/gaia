@@ -54,11 +54,11 @@ log.get() into the final emitted event. For worker tasks use wide_task().
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Awaitable
 import contextlib
 import contextvars
 import time
-from typing import Any, TypedDict
+from typing import TypedDict
 import uuid
 
 from loguru import logger as _loguru
@@ -88,8 +88,8 @@ class _EventState:
 
     __slots__ = ("fields", "max_level")
 
-    def __init__(self, fields: dict[str, Any] | None = None) -> None:
-        self.fields: dict[str, Any] = fields if fields is not None else {}
+    def __init__(self, fields: dict[str, object] | None = None) -> None:
+        self.fields: dict[str, object] = fields if fields is not None else {}
         self.max_level: str = "INFO"
 
 
@@ -567,7 +567,7 @@ class WideEventFields(TypedDict, total=False):
     mime_type: str
     integration_id: str
     integration_name: str
-    webhook: dict[str, Any]
+    webhook: dict[str, object]
     # Internal wide-event metadata. `task` is the boundary's unit-of-work name
     # (wide_task/log_context), matching the bots' boundary key in
     # libs/shared/ts/src/bots/utils/wide-events.ts so `sum by (task)` spans both.
@@ -580,9 +580,9 @@ class WideEventFields(TypedDict, total=False):
     # bots' sanitizeErrorForLog (libs/shared/ts/src/bots/utils/logger.ts).
     error: str  # str(exception)
     error_type: str  # exception class name
-    errors: list[dict[str, Any]]
-    warnings: list[dict[str, Any]]
-    audit: list[dict[str, Any]]
+    errors: list[dict[str, object]]
+    warnings: list[dict[str, object]]
+    audit: list[dict[str, object]]
 
 
 class WideEventLogger:
@@ -614,7 +614,7 @@ class WideEventLogger:
             return _EventState()
         return state
 
-    def set(self, **kwargs: Any) -> None:
+    def set(self, **kwargs: object) -> None:
         """Merge structured context into the current request's wide event.
 
         ``trace_id`` is the one field that also lives outside the event: it
@@ -626,11 +626,11 @@ class WideEventLogger:
         second, easy-to-forget way to adopt a trace id.
         """
         trace_id = kwargs.get("trace_id")
-        if trace_id:
+        if isinstance(trace_id, str) and trace_id:
             _trace_id.set(trace_id)
         self._state().fields.update(kwargs)
 
-    def set_ns(self, namespace: str, **kwargs: Any) -> None:
+    def set_ns(self, namespace: str, **kwargs: object) -> None:
         """Merge ``kwargs`` into a nested ``namespace`` dict on the wide event.
 
         ``set`` shallow-merges at the top level, so re-setting a nested dict
@@ -640,7 +640,8 @@ class WideEventLogger:
         canonical case — see ``SandboxContext``).
         """
         fields = self._state().fields
-        fields[namespace] = {**fields.get(namespace, {}), **kwargs}
+        existing = fields.get(namespace)
+        fields[namespace] = {**existing, **kwargs} if isinstance(existing, dict) else {**kwargs}
 
     # --- Loguru-compatible message methods ---
     #
@@ -651,38 +652,50 @@ class WideEventLogger:
     # the log call — masking the real error and skipping the code after it.
     # bind() delivers the same fields to record["extra"] without formatting.
 
-    def debug(self, message: str, /, **kwargs: Any) -> None:
+    def debug(self, message: str, /, **kwargs: object) -> None:
         """Emit a debug log line; not recorded in the wide event."""
         _loguru.opt(depth=1).bind(**kwargs).debug(message)
 
-    def info(self, message: str, /, **kwargs: Any) -> None:
+    def info(self, message: str, /, **kwargs: object) -> None:
         """Emit an info log line; not recorded in the wide event (info is noise there)."""
         # Emit real-time Loguru line for visibility.
         # Does NOT add to wide event — info messages are noise there.
         _loguru.opt(depth=1).bind(**kwargs).info(message)
 
-    def warning(self, message: str, /, **kwargs: Any) -> None:
+    def warning(self, message: str, /, **kwargs: object) -> None:
         """Log a warning, append it to the event's ``warnings`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
+        # loguru's opt(exception=...) accepts bool / BaseException / sys.exc_info tuple;
+        # any other truthy value falls back to sys.exc_info() there, mirror that here.
+        if not isinstance(exc_info, (bool, BaseException, tuple)):
+            exc_info = bool(exc_info)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).warning(message)
         self._append("warnings", message, **kwargs)
         self._bump("WARNING")
 
-    def error(self, message: str, /, **kwargs: Any) -> None:
+    def error(self, message: str, /, **kwargs: object) -> None:
         """Log an error, append it to the event's ``errors`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
+        # loguru's opt(exception=...) accepts bool / BaseException / sys.exc_info tuple;
+        # any other truthy value falls back to sys.exc_info() there, mirror that here.
+        if not isinstance(exc_info, (bool, BaseException, tuple)):
+            exc_info = bool(exc_info)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).error(message)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")
 
-    def critical(self, message: str, /, **kwargs: Any) -> None:
+    def critical(self, message: str, /, **kwargs: object) -> None:
         """Log a critical error, append it to the event's ``errors`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
+        # loguru's opt(exception=...) accepts bool / BaseException / sys.exc_info tuple;
+        # any other truthy value falls back to sys.exc_info() there, mirror that here.
+        if not isinstance(exc_info, (bool, BaseException, tuple)):
+            exc_info = bool(exc_info)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).critical(message)
         self._append("errors", message, **kwargs)
         self._bump("CRITICAL")
 
-    def audit(self, message: str, /, **kwargs: Any) -> None:
+    def audit(self, message: str, /, **kwargs: object) -> None:
         """Record an audit-trail entry for a sensitive operation (auth, money, PII).
 
         Emits a real-time AUDIT-level line (level registered in
@@ -698,10 +711,14 @@ class WideEventLogger:
             log.audit("subscription cancelled", actor=user_id, resource=sub_id)
         """
         exc_info = kwargs.pop("exc_info", False)
+        # loguru's opt(exception=...) accepts bool / BaseException / sys.exc_info tuple;
+        # any other truthy value falls back to sys.exc_info() there, mirror that here.
+        if not isinstance(exc_info, (bool, BaseException, tuple)):
+            exc_info = bool(exc_info)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).log("AUDIT", message)
         self._append("audit", message, **kwargs)
 
-    def bind(self, **kwargs: Any) -> "WideEventLogger":
+    def bind(self, **kwargs: object) -> "WideEventLogger":
         """Loguru-compat shim: merges ``kwargs`` into the wide event and returns self.
 
         Unlike loguru's ``bind``, this does NOT attach fields to subsequent
@@ -710,7 +727,7 @@ class WideEventLogger:
         self.set(**kwargs)
         return self
 
-    def exception(self, message: str, /, **kwargs: Any) -> None:
+    def exception(self, message: str, /, **kwargs: object) -> None:
         """Log exception with traceback — same as .error() but includes stack trace."""
         _loguru.opt(depth=1, exception=True).bind(**kwargs).error(message)
         self._append("errors", message, **kwargs)
@@ -718,7 +735,7 @@ class WideEventLogger:
 
     # --- Internals called by middleware / wide_task ---
 
-    def get(self) -> dict[str, Any]:
+    def get(self) -> dict[str, object]:
         """Return accumulated wide event dict for this request."""
         return self._state().fields
 
@@ -738,7 +755,7 @@ class WideEventLogger:
 
     # --- Private helpers ---
 
-    def _append(self, category: str, message: str, /, **kwargs: Any) -> None:
+    def _append(self, category: str, message: str, /, **kwargs: object) -> None:
         # Both parameters are positional-only, and the first is `category` (not
         # `key`), for the same reason: callers pass arbitrary field names as
         # kwargs, and any of them colliding with a parameter name raises
@@ -748,8 +765,12 @@ class WideEventLogger:
         # colliding kwarg lands in **kwargs, the sink renames it ctx_<key>, and
         # tools/lints/wide_events_logging.py flags it.
         fields = self._state().fields
-        entry: dict[str, Any] = {"msg": message, **kwargs}
-        fields.setdefault(category, []).append(entry)
+        entry: dict[str, object] = {"msg": message, **kwargs}
+        category_list = fields.get(category)
+        if isinstance(category_list, list):
+            category_list.append(entry)
+        else:
+            fields[category] = [entry]
 
     def _bump(self, level: str) -> None:
         state = self._state()
@@ -767,7 +788,7 @@ async def _wide_event_boundary(
     event_name: str,
     logger_name: str,
     trace_id: str | None = None,
-    **initial_context: Any,
+    **initial_context: object,
 ) -> AsyncIterator[WideEventLogger]:
     """Bind a fresh wide event for non-request work and flush one canonical line.
 
@@ -835,7 +856,7 @@ async def _wide_event_boundary(
 
 
 def wide_task(
-    task_name: str, *, trace_id: str | None = None, **initial_context: Any
+    task_name: str, *, trace_id: str | None = None, **initial_context: object
 ) -> contextlib.AbstractAsyncContextManager[WideEventLogger]:
     """
     Context manager for wide event logging in ARQ worker tasks.
@@ -863,7 +884,7 @@ def wide_task(
 
 
 def log_context(
-    operation: str, *, trace_id: str | None = None, **initial_context: Any
+    operation: str, *, trace_id: str | None = None, **initial_context: object
 ) -> contextlib.AbstractAsyncContextManager[WideEventLogger]:
     """
     Context manager that establishes a wide event boundary for background work.
@@ -889,12 +910,12 @@ def log_context(
     )
 
 
-_spawned_tasks: set[asyncio.Task[Any]] = set()
+_spawned_tasks: set[asyncio.Task[object]] = set()
 
 
 def spawn_logged_task(
-    operation: str, coro: Coroutine[Any, Any, Any], **initial_context: Any
-) -> asyncio.Task[Any]:
+    operation: str, coro: Awaitable[object], **initial_context: object
+) -> asyncio.Task[object]:
     """``asyncio.create_task`` with a wide-event boundary and GC-safe bookkeeping.
 
     The sanctioned way to spawn fire-and-forget work from a request handler or
@@ -905,7 +926,7 @@ def spawn_logged_task(
     it cannot be garbage-collected mid-flight.
     """
 
-    async def _run() -> Any:
+    async def _run() -> object:
         async with log_context(operation, trace_id=get_trace_id() or None, **initial_context):
             return await coro
 

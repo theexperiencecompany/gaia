@@ -2,7 +2,6 @@
 
 import asyncio
 import contextvars
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -36,6 +35,13 @@ def _reset_context_vars():
 # ---------------------------------------------------------------------------
 # WideEventLogger — set / get / reset
 # ---------------------------------------------------------------------------
+
+
+def _entries(event: dict[str, object], key: str) -> list[dict[str, object]]:
+    """Checked read of a wide-event list-of-dicts field for assertions."""
+    value = event.get(key)
+    assert isinstance(value, list)
+    return [e for e in value if isinstance(e, dict)]
 
 
 class TestWideEventLoggerSetGetReset:
@@ -116,8 +122,9 @@ class TestWideEventLoggerLevels:
     def test_warning_appends_to_warnings(self, mock_loguru: MagicMock):
         log.warning("watch out")
         event = log.get()
-        assert len(event["warnings"]) == 1
-        assert event["warnings"][0]["msg"] == "watch out"
+        warnings = _entries(event, "warnings")
+        assert len(warnings) == 1
+        assert warnings[0]["msg"] == "watch out"
 
     @patch("shared.py.wide_events._loguru")
     def test_warning_bumps_max_level(self, mock_loguru: MagicMock):
@@ -128,8 +135,9 @@ class TestWideEventLoggerLevels:
     def test_error_appends_to_errors(self, mock_loguru: MagicMock):
         log.error("failure")
         event = log.get()
-        assert len(event["errors"]) == 1
-        assert event["errors"][0]["msg"] == "failure"
+        errors = _entries(event, "errors")
+        assert len(errors) == 1
+        assert errors[0]["msg"] == "failure"
 
     @patch("shared.py.wide_events._loguru")
     def test_error_bumps_max_level(self, mock_loguru: MagicMock):
@@ -140,8 +148,9 @@ class TestWideEventLoggerLevels:
     def test_critical_appends_to_errors(self, mock_loguru: MagicMock):
         log.critical("crash")
         event = log.get()
-        assert len(event["errors"]) == 1
-        assert event["errors"][0]["msg"] == "crash"
+        errors = _entries(event, "errors")
+        assert len(errors) == 1
+        assert errors[0]["msg"] == "crash"
 
     @patch("shared.py.wide_events._loguru")
     def test_critical_bumps_max_level_above_error(self, mock_loguru: MagicMock):
@@ -153,7 +162,7 @@ class TestWideEventLoggerLevels:
     def test_exception_appends_to_errors_with_traceback(self, mock_loguru: MagicMock):
         log.exception("unhandled")
         event = log.get()
-        assert event["errors"][0]["msg"] == "unhandled"
+        assert _entries(event, "errors")[0]["msg"] == "unhandled"
         # Should call loguru with exception=True
         mock_loguru.opt.assert_called_with(depth=1, exception=True)
 
@@ -161,8 +170,9 @@ class TestWideEventLoggerLevels:
     def test_warning_with_kwargs(self, mock_loguru: MagicMock):
         log.warning("slow query", query="SELECT *", duration_ms=5000)
         event = log.get()
-        assert event["warnings"][0]["query"] == "SELECT *"
-        assert event["warnings"][0]["duration_ms"] == 5000
+        warning = _entries(event, "warnings")[0]
+        assert warning["query"] == "SELECT *"
+        assert warning["duration_ms"] == 5000
 
     @patch("shared.py.wide_events._loguru")
     def test_error_with_exc_info(self, mock_loguru: MagicMock):
@@ -184,15 +194,15 @@ class TestWideEventLoggerLevels:
         log.warning("first")
         log.warning("second")
         log.warning("third")
-        assert len(log.get()["warnings"]) == 3
+        assert len(_entries(log.get(), "warnings")) == 3
 
     @patch("shared.py.wide_events._loguru")
     def test_errors_and_warnings_coexist(self, mock_loguru: MagicMock):
         log.warning("w1")
         log.error("e1")
         event = log.get()
-        assert len(event["warnings"]) == 1
-        assert len(event["errors"]) == 1
+        assert len(_entries(event, "warnings")) == 1
+        assert len(_entries(event, "errors")) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +302,7 @@ class TestTraceId:
 # ---------------------------------------------------------------------------
 
 
-def _emitted_event(mock_loguru: MagicMock) -> dict[str, Any]:
+def _emitted_event(mock_loguru: MagicMock) -> dict[str, object]:
     """The event the boundary actually emitted.
 
     Read this instead of ``log.get()`` after a boundary exits. A boundary
@@ -408,7 +418,7 @@ class TestContextVarIsolation:
     @pytest.mark.asyncio
     @patch("shared.py.wide_events._loguru")
     async def test_concurrent_tasks_isolated(self, mock_loguru: MagicMock):
-        results: dict[str, dict[str, Any]] = {}
+        results: dict[str, dict[str, object]] = {}
 
         async def task(name: str):
             log.reset()

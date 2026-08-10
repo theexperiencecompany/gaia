@@ -16,7 +16,7 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
@@ -76,7 +76,7 @@ async def run_executor_background(
     run: ExecutorRun,
     task: str,
     configurable: AgentConfigurable,
-    resume: Command[Any] | None = None,
+    resume: Command[None] | None = None,
 ) -> None:
     """Run (or resume) the executor agent in background and hand its result to delivery.
 
@@ -195,7 +195,7 @@ async def _execute_executor(
     task: str,
     configurable: AgentConfigurable,
     stream_id: str,
-    resume: Command[Any] | None = None,
+    resume: Command[None] | None = None,
 ) -> _ExecutorResult:
     """Run the executor agent graph once. Never raises — errors come back as
     ``_ExecutorResult(text, "error")``.

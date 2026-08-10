@@ -3,7 +3,7 @@ ARQ worker settings configuration.
 """
 
 from collections.abc import Callable, Coroutine
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from arq.connections import RedisSettings
 from arq.cron import CronJob
@@ -21,13 +21,34 @@ class WorkerSettings:
 
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
 
-    # Task functions will be populated from the main worker file. ``...`` because
-    # the registry is heterogeneous by design — each task takes the ARQ context
-    # plus its own enqueue arguments. Not ARQ's ``WorkerCoroutine`` protocol: these
-    # arrive already wrapped by ``instrument_task``, and a ``Callable`` value never
-    # structurally matches that protocol's ``(ctx, *args, **kwargs)``. The return
-    # type is the real contract every task shares and stays checked.
-    functions: ClassVar[list[Callable[..., Coroutine[Any, Any, str]]]] = []
+    # Task functions will be populated from the main worker file. The registry
+    # is heterogeneous by design — each task takes the ARQ context plus its own
+    # enqueue arguments — so the element type is the union of the concrete
+    # signatures actually registered today. (``Callable[..., X]`` would be the
+    # loose spelling, but mypy treats the ellipsis as explicit ``Any``.) A new
+    # task with a new arg shape fails loudly in worker.py's assignment, which
+    # is the point: the return contract — every task resolves to a job-result
+    # string — stays checked on every entry.
+    functions: ClassVar[
+        list[
+            Callable[[dict[str, object]], Coroutine[None, None, str]]
+            | Callable[[dict[str, object], str], Coroutine[None, None, str]]
+            | Callable[[dict[str, object], int], Coroutine[None, None, str]]
+            | Callable[[dict[str, object], str, str], Coroutine[None, None, str]]
+            | Callable[
+                [dict[str, object], str, dict[str, object] | None],
+                Coroutine[None, None, str],
+            ]
+            | Callable[
+                [dict[str, object], str, str, str, str],
+                Coroutine[None, None, str],
+            ]
+            | Callable[
+                [dict[str, object], str, str, str, bool],
+                Coroutine[None, None, str],
+            ]
+        ]
+    ] = []
 
     # Cron jobs will be populated from the main worker file
     cron_jobs: ClassVar[list[CronJob]] = []

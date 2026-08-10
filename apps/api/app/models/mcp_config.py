@@ -1,6 +1,6 @@
 """MCP configuration models (Pydantic)."""
 
-from typing import Any, Literal, TypedDict
+from typing import Literal, TypedDict
 
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 from pydantic import BaseModel
@@ -98,12 +98,12 @@ class McpUiResourceDetails(TypedDict):
     model here would silently stop emitting ``mcp_app`` events (Type Safety
     item 13). ``csp`` and ``permissions`` are whatever the MCP server put under
     ``_meta.ui`` — the MCP Apps spec fixes neither shape, and both are forwarded
-    to the client verbatim — so they stay ``Any`` (item 8).
+    to the client verbatim — so they stay ``object`` (item 8).
     """
 
     html: str
-    csp: Any
-    permissions: Any
+    csp: object
+    permissions: object
 
 
 class OAuthDiscovery(BaseModel):

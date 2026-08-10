@@ -171,7 +171,9 @@ async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Fe
                     user_id, feature_key, getattr(RateLimitPeriod, period.upper())
                 )
                 current_usage = await tiered_limiter.redis.get(redis_key)
-                current_usage = int(current_usage) if current_usage else 0
+                current_usage = (
+                    int(current_usage) if isinstance(current_usage, (int, float, str)) else 0
+                )
 
                 reset_time = get_reset_time(getattr(RateLimitPeriod, period.upper()))
                 periods[period] = FeaturePeriodUsage(

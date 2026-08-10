@@ -8,7 +8,6 @@ SSE, WebSocket, and stream paths are excluded — they are long-lived by design.
 """
 
 from collections.abc import MutableMapping
-from typing import Any
 
 import anyio
 from fastapi.responses import JSONResponse
@@ -57,7 +56,7 @@ class RequestTimeoutMiddleware:
 
         response_started = False
 
-        async def send_wrapper(message: MutableMapping[str, Any]) -> None:
+        async def send_wrapper(message: MutableMapping[str, object]) -> None:
             nonlocal response_started
             if message["type"] == "http.response.start":
                 response_started = True

@@ -1,9 +1,9 @@
 """Modularized helper functions for ChromaStore initialization."""
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 import hashlib
 import inspect
-from typing import Any, NotRequired, Protocol, TypedDict, cast
+from typing import NotRequired, Protocol, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
 from chromadb.api.types import Where
@@ -18,7 +18,7 @@ from app.db.chroma.chromadb import ChromaClient
 from app.db.redis import delete_cache, get_cache, set_cache
 from shared.py.wide_events import VectorContext, log
 
-from .chroma_store import ChromaStore
+from .chroma_store import ChromaStore, PutOpShape
 
 
 class IndexableTool(Protocol):
@@ -70,7 +70,7 @@ def _compute_tool_hash(tool: IndexableTool) -> str:
         # arbitrary BaseTool instance; at runtime this virtually always raises
         # TypeError (caught below) since tool objects aren't source-inspectable,
         # so this call falls through to the name/description hash in practice.
-        code_source = inspect.getsource(cast(Callable[..., Any], tool))
+        code_source = inspect.getsource(cast("type[object]", tool))
         code_source = code_source.strip()
         code_source = "\n".join(line.rstrip() for line in code_source.split("\n"))
         content = f"{tool.description}::{code_source}"
@@ -237,7 +237,7 @@ def _compute_tool_diff(
 def _build_put_operations(
     tools_to_upsert: list[tuple[str, IndexedToolEntry]],
     tools_to_delete: list[tuple[str, str]],
-) -> list[PutOp]:
+) -> list[PutOpShape]:
     """Build PutOp operations for upserting and deleting tools.
 
     Args:
@@ -249,7 +249,7 @@ def _build_put_operations(
     Returns:
         List of PutOp operations
     """
-    put_ops: list[PutOp] = []
+    put_ops: list[PutOpShape] = []
 
     # Add upsert operations
     for composite_key, tool_data in tools_to_upsert:
@@ -290,7 +290,7 @@ def _build_put_operations(
 
 
 async def _execute_batch_operations(
-    store: ChromaStore, put_ops: list[PutOp], batch_size: int = 50
+    store: ChromaStore, put_ops: list[PutOpShape], batch_size: int = 50
 ) -> None:
     """Execute put operations in batches.
 

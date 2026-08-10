@@ -7,7 +7,7 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 import json
-from typing import Any, cast
+from typing import Any
 
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
@@ -28,13 +28,14 @@ from app.utils.google_docs_utils import (
     extract_headings_from_document,
     generate_toc_text,
 )
+from app.utils.json_helpers import list_bag, text_opt_bag
 from shared.py.wide_events import log
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 DOCS_TOOLKIT = "GOOGLEDOCS"
 
 
-def _user_id(auth_credentials: dict[str, Any]) -> str:
+def _user_id(auth_credentials: dict[str, object]) -> str:
     user_id = auth_credentials.get("user_id")
     if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
@@ -49,8 +50,8 @@ def register_google_docs_custom_tools(composio: Composio[Any, Any]) -> list[str]
     def CUSTOM_SHARE_DOC(
         request: ShareDocInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Share a Google Doc with one or more recipients."""
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "share_doc"})
@@ -73,11 +74,12 @@ def register_google_docs_custom_tools(composio: Composio[Any, Any]) -> list[str]
                     },
                     query={"sendNotificationEmail": str(recipient.send_notification).lower()},
                 )
+                permission_id = result.get("id") if isinstance(result, dict) else None
                 shared.append(
                     {
                         "email": recipient.email,
                         "role": recipient.role,
-                        "permission_id": (result or {}).get("id"),
+                        "permission_id": permission_id,
                         "notification_sent": recipient.send_notification,
                     }
                 )
@@ -109,17 +111,17 @@ def register_google_docs_custom_tools(composio: Composio[Any, Any]) -> list[str]
     def CUSTOM_CREATE_TOC(
         request: CreateTOCInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "create_toc"})
         try:
             get_doc_result: ToolExecutionResponse = composio.tools.execute(
                 slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
                 arguments={"id": request.document_id},
-                version=auth_credentials.get("version"),
+                version=text_opt_bag(auth_credentials, "version"),
                 dangerously_skip_version_check=True,
-                user_id=auth_credentials.get("user_id"),
+                user_id=text_opt_bag(auth_credentials, "user_id"),
             )
         except TypeError as e:
             log.debug(f"{LogTag.TOOL} TypeError in execute", error_type=type(e).__name__)
@@ -131,7 +133,7 @@ def register_google_docs_custom_tools(composio: Composio[Any, Any]) -> list[str]
 
         # ToolExecutionResponse.data is typed as a plain Dict, but Composio can
         # return it stringified — widen the type here to keep that handling live.
-        doc_data = cast("dict[str, Any] | str", get_doc_result["data"])
+        doc_data: dict[str, object] | str = get_doc_result["data"]
         # Handle double wrapping if data is stringified JSON
         if isinstance(doc_data, str):
             try:
@@ -163,9 +165,9 @@ def register_google_docs_custom_tools(composio: Composio[Any, Any]) -> list[str]
                 "text": toc_text,
                 "insertion_index": request.insertion_index,
             },
-            version=auth_credentials.get("version"),
+            version=text_opt_bag(auth_credentials, "version"),
             dangerously_skip_version_check=True,
-            user_id=auth_credentials.get("user_id"),
+            user_id=text_opt_bag(auth_credentials, "user_id"),
         )
 
         # Unwrap response (ToolExecutionResponse format)
@@ -190,8 +192,8 @@ def register_google_docs_custom_tools(composio: Composio[Any, Any]) -> list[str]
     def CUSTOM_DELETE_DOC(
         request: DeleteDocInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Delete a file permanently using Drive API."""
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "delete_doc"})
@@ -221,8 +223,8 @@ def register_google_docs_custom_tools(composio: Composio[Any, Any]) -> list[str]
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Google Docs context snapshot: recently viewed/modified documents.
 
         Zero required parameters. Returns user's recently accessed Google Docs.
@@ -232,7 +234,7 @@ def register_google_docs_custom_tools(composio: Composio[Any, Any]) -> list[str]
         user_id = _user_id(auth_credentials)
 
         mime = "application/vnd.google-apps.document"
-        files: list[dict[str, Any]] = []
+        files: list[dict[str, object]] = []
         try:
             data = proxy_request_sync(
                 user_id=user_id,
@@ -248,12 +250,13 @@ def register_google_docs_custom_tools(composio: Composio[Any, Any]) -> list[str]
             )
             files = [
                 {
-                    "id": f.get("id"),
-                    "name": f.get("name"),
-                    "modified": f.get("modifiedTime"),
-                    "url": f.get("webViewLink"),
+                    "id": text_opt_bag(f, "id"),
+                    "name": text_opt_bag(f, "name"),
+                    "modified": text_opt_bag(f, "modifiedTime"),
+                    "url": text_opt_bag(f, "webViewLink"),
                 }
-                for f in (data or {}).get("files", [])
+                for f in list_bag(data if isinstance(data, dict) else {}, "files")
+                if isinstance(f, dict)
             ]
         except Exception as e:
             log.debug(f"{LogTag.TOOL} Google Docs fetch failed", error_type=type(e).__name__)

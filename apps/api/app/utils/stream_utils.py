@@ -16,7 +16,7 @@ It is an open bag by design, so a TypedDict would misdescribe it.
 """
 
 from datetime import UTC, datetime
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import ToolDataEntry
@@ -32,7 +32,7 @@ class SubagentGroup(TypedDict):
     subagent_id: str
     subagent_name: str
     agent_type: str
-    tool_calls: list[Any]
+    tool_calls: list[object]
     duration_ms: int | None
     token_count: int | None
     started_at: str

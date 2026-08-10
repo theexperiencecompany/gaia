@@ -2,19 +2,19 @@
 Service functions for handling contact-related operations.
 """
 
+from collections.abc import Sequence
 from email.utils import getaddresses
-from typing import Any
 
 
 def build_contact_index(
-    messages: list[Any],
+    messages: Sequence[object],
     filter_query: str | None = None,
 ) -> dict[str, object]:
     """Extract unique contacts from already-fetched Gmail message payloads.
 
-    ``messages`` items are typed ``Any``, not ``dict``, because they come from
-    an external Gmail proxy response — the isinstance guard below is real:
-    a malformed upstream entry is skipped, not impossible.
+    ``messages`` items are typed ``object``, not ``dict``, because they come
+    from an external Gmail proxy response — the isinstance guard below is
+    real: a malformed upstream entry is skipped, not impossible.
 
     Used by the Composio-proxy variant of GET_CONTACT_LIST: instead of relying
     on `googleapiclient` to fetch messages, callers fetch via the proxy and

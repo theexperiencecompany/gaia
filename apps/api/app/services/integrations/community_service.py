@@ -111,8 +111,8 @@ async def _browse_community_integrations(
     """Browse community integrations with caching."""
     cache_key = f"marketplace:community:{sort}:{category}:{limit}:{offset}"
     cached = await get_cache(cache_key)
-    if cached:
-        return CommunityListResponse(**cached)
+    if isinstance(cached, dict):
+        return CommunityListResponse.model_validate(cached)
 
     total = await integration_repository.count_community_browse(category)
     integrations = await integration_repository.community_browse(

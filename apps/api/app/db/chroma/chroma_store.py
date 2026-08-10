@@ -8,7 +8,7 @@ import asyncio
 from collections.abc import Iterable
 from datetime import UTC, datetime
 import pickle  # nosec B403 - Used for internal trusted data serialization only
-from typing import Any, cast
+from typing import Literal, Protocol, cast
 
 from chromadb.api import AsyncClientAPI
 from chromadb.api.models.AsyncCollection import AsyncCollection
@@ -21,9 +21,7 @@ from langgraph.store.base import (
     Item,
     ListNamespacesOp,
     MatchCondition,
-    Op,
     PutOp,
-    Result,
     SearchItem,
     SearchOp,
     ensure_embeddings,
@@ -33,11 +31,67 @@ from langgraph.store.base import (
 
 from app.constants.log_tags import LogTag
 from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import VectorContext, log
 
 # A filter value (or the item value it's compared against) is an arbitrary
 # JSON-like scalar/container pulled out of a MongoDB-style query filter dict.
-FilterValue = str | int | float | bool | None | dict[str, object] | list[Any]
+FilterValue = str | int | float | bool | None | dict[str, object] | list[object]
+
+
+class SearchOpShape(Protocol):
+    """Structural view of langgraph's ``SearchOp`` for the store's internals.
+
+    langgraph's NamedTuple carries ``filter: dict[str, Any]``, which trips
+    ``--disallow-any-explicit`` on every annotation that names it; this Protocol
+    declares the precise shape the store reads, and the concrete langgraph
+    ``SearchOp`` satisfies it structurally.
+    """
+
+    @property
+    def namespace_prefix(self) -> tuple[str, ...]: ...
+
+    @property
+    def filter(self) -> dict[str, object] | None: ...
+
+    @property
+    def limit(self) -> int: ...
+
+    @property
+    def offset(self) -> int: ...
+
+    @property
+    def query(self) -> str | None: ...
+
+
+class PutOpShape(Protocol):
+    """Structural view of langgraph's ``PutOp`` for the store's internals.
+
+    Same rationale as ``SearchOpShape``: langgraph's ``value`` field is
+    ``dict[str, Any] | None``, so annotations use this precise Protocol instead.
+    """
+
+    @property
+    def namespace(self) -> tuple[str, ...]: ...
+
+    @property
+    def key(self) -> str: ...
+
+    @property
+    def value(self) -> dict[str, object] | None: ...
+
+    @property
+    def index(self) -> Literal[False] | list[str] | None: ...
+
+    @property
+    def ttl(self) -> float | None: ...
+
+
+# The op union the store accepts, and the batch results it returns: the
+# langgraph shapes with any-typed fields replaced by their precise structural
+# views (the concrete langgraph op classes still satisfy them).
+_Op = GetOp | SearchOpShape | PutOpShape | ListNamespacesOp
+_Result = Item | list[Item] | list[SearchItem] | list[tuple[str, ...]] | None
 
 
 class ChromaStore(BaseStore):
@@ -150,7 +204,7 @@ class ChromaStore(BaseStore):
         ns = tuple(parts[:-1]) if parts[:-1] != ["default"] else tuple()
         return ns, key
 
-    def batch(self, ops: Iterable[Op]) -> list[Result]:
+    def batch(self, ops: Iterable[_Op]) -> list[_Result]:
         """Execute a batch of operations (sync wrapper)."""
         try:
             asyncio.get_running_loop()
@@ -162,7 +216,7 @@ class ChromaStore(BaseStore):
             )
         return asyncio.run(self.abatch(ops))
 
-    async def abatch(self, ops: Iterable[Op]) -> list[Result]:
+    async def abatch(self, ops: Iterable[_Op]) -> list[_Result]:
         """Execute a batch of operations (async version)."""
         collection = await self._get_collection()
         results, put_ops, search_ops, search_error = await self._prepare_ops(ops, collection)
@@ -185,11 +239,11 @@ class ChromaStore(BaseStore):
         return results
 
     async def _prepare_ops(
-        self, ops: Iterable[Op], collection: AsyncCollection
+        self, ops: Iterable[_Op], collection: AsyncCollection
     ) -> tuple[
-        list[Result],
-        dict[tuple[tuple[str, ...], str], PutOp],
-        dict[int, tuple[SearchOp, list[str]]],
+        list[_Result],
+        dict[tuple[tuple[str, ...], str], PutOpShape],
+        dict[int, tuple[SearchOpShape, list[str]]],
         Exception | None,
     ]:
         """Prepare operations for execution.
@@ -199,9 +253,9 @@ class ChromaStore(BaseStore):
         surfaces the error.
         """
         ops_list = list(ops)
-        results: list[Result] = [None] * len(ops_list)
-        put_ops: dict[tuple[tuple[str, ...], str], PutOp] = {}
-        search_ops: dict[int, tuple[SearchOp, list[str]]] = {}
+        results: list[_Result] = [None] * len(ops_list)
+        put_ops: dict[tuple[tuple[str, ...], str], PutOpShape] = {}
+        search_ops: dict[int, tuple[SearchOpShape, list[str]]] = {}
         search_error: Exception | None = None
 
         # Collect async operations to parallelize
@@ -287,7 +341,7 @@ class ChromaStore(BaseStore):
             )
             return None
 
-    async def _filter_items(self, op: SearchOp, collection: AsyncCollection) -> list[str]:
+    async def _filter_items(self, op: SearchOpShape, collection: AsyncCollection) -> list[str]:
         """Filter items by namespace prefix and filter conditions."""
         try:
             result = await collection.get(include=["metadatas", "documents"])
@@ -398,8 +452,8 @@ class ChromaStore(BaseStore):
 
     async def _batch_search(
         self,
-        ops: dict[int, tuple[SearchOp, list[str]]],
-        results: list[Result],
+        ops: dict[int, tuple[SearchOpShape, list[str]]],
+        results: list[_Result],
         collection: AsyncCollection,
     ) -> None:
         """Perform batch similarity search."""
@@ -425,9 +479,13 @@ class ChromaStore(BaseStore):
                     if op.filter:
                         # Combine namespace filter with op.filter if both exist
                         if where_filter:
-                            where_filter = {"$and": [where_filter, op.filter]}
+                            # ``op.filter`` is a plain filter dict; chromadb's
+                            # Where alias keys its operator dicts by a Literal
+                            # union, so the str-keyed merge needs the same stub
+                            # cast as the namespace filter above.
+                            where_filter = cast(Where, {"$and": [where_filter, op.filter]})
                         else:
-                            where_filter = op.filter
+                            where_filter = cast(Where, op.filter)
 
                     # Use ChromaDB's native query with where filter
                     search_result = await collection.query(
@@ -519,7 +577,7 @@ class ChromaStore(BaseStore):
 
     async def _apply_put_ops(
         self,
-        put_ops: dict[tuple[tuple[str, ...], str], PutOp],
+        put_ops: dict[tuple[tuple[str, ...], str], PutOpShape],
         collection: AsyncCollection,
     ) -> None:
         """Apply put operations to ChromaDB in parallel."""
@@ -579,7 +637,7 @@ class ChromaStore(BaseStore):
             )
             raise
 
-    async def _upsert_item(self, doc_id: str, op: PutOp, collection: AsyncCollection) -> None:
+    async def _upsert_item(self, doc_id: str, op: PutOpShape, collection: AsyncCollection) -> None:
         """Upsert a single item."""
         now = datetime.now(UTC)
         # Store namespace in metadata for efficient filtering
@@ -592,7 +650,7 @@ class ChromaStore(BaseStore):
 
         # Add tool_hash to metadata if provided in value
         if isinstance(op.value, dict) and "tool_hash" in op.value:
-            metadata["tool_hash"] = op.value["tool_hash"]
+            metadata["tool_hash"] = text_bag(op.value, "tool_hash")
 
         # Serialize value to document
         document = pickle.dumps(op.value).decode("latin1")

@@ -1,8 +1,11 @@
 """ChromaDB cleanup utilities for integration lifecycle management."""
 
+from typing import cast
+
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX, SUBAGENT_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
+from app.db.chroma.chroma_store import ChromaStore
 from app.db.chroma.chroma_tools_store import delete_tools_by_namespace
 from app.db.redis import delete_cache
 from app.helpers.namespace_utils import derive_integration_namespace
@@ -38,7 +41,7 @@ async def cleanup_integration_chroma_data(
 
     # 1. Delete subagent discovery entry
     try:
-        store = await providers.aget("chroma_tools_store")
+        store = cast(ChromaStore | None, await providers.aget("chroma_tools_store"))
         if store:
             await store.adelete(namespace=("subagents",), key=integration_id)
             results["subagent"] = True

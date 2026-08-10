@@ -31,6 +31,7 @@ import urllib.parse
 
 import httpx
 from langchain_core.tools import BaseTool
+from langgraph.store.base import BaseStore
 from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.client.session import MCPSession
 from pydantic import AnyHttpUrl, AnyUrl
@@ -236,7 +237,7 @@ async def _with_wide_event(coro: Awaitable[None], label: str) -> None:
         await coro
 
 
-def _spawn_background(coro: Awaitable[None], label: str) -> asyncio.Task[None] | None:
+def _spawn_background(coro: Awaitable[None], label: str) -> asyncio.Task[object] | None:
     """Spawn a fire-and-forget task that survives until completion.
 
     The coroutine runs inside a wide event boundary so its ``log.set()`` fields
@@ -250,7 +251,7 @@ def _spawn_background(coro: Awaitable[None], label: str) -> asyncio.Task[None] |
     except RuntimeError:
         return None
 
-    def _on_done(t: asyncio.Task[None]) -> None:
+    def _on_done(t: asyncio.Task[object]) -> None:
         if t.cancelled():
             return
         exc = t.exception()
@@ -1096,7 +1097,7 @@ class MCPClient:
 
         # Index as subagent for discovery via retrieve_tools
         try:
-            store = await providers.aget("chroma_tools_store")
+            store = cast(BaseStore | None, await providers.aget("chroma_tools_store"))
             if store:
                 resolved_name = name
                 resolved_description = description

@@ -7,8 +7,6 @@ guarded_tool_call`` in ``dynamic_tool_node.py``. Both ask the one canonical gate
 never executes, so a blocked call is one the handler is simply not asked to run.
 """
 
-from typing import Any
-
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
@@ -22,6 +20,6 @@ class HILApprovalMiddleware(AgentMiddleware):
 
     async def awrap_tool_call(
         self, request: ToolCallRequest, handler: Handler
-    ) -> ToolMessage | Command[Any]:
+    ) -> ToolMessage | Command[None]:
         blocked = await decide_tool_call(request)
         return blocked if blocked is not None else await handler(request)

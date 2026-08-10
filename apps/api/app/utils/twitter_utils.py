@@ -22,7 +22,7 @@ def _proxy(
     body: dict[str, object] | None = None,
     query: dict[str, object] | None = None,
 ) -> dict[str, object] | None:
-    response: dict[str, object] | None = proxy_request_sync(
+    response = proxy_request_sync(
         user_id=user_id,
         toolkit=TWITTER_TOOLKIT,
         endpoint=endpoint,
@@ -30,7 +30,7 @@ def _proxy(
         body=body,
         query=query,
     )
-    return response
+    return response if isinstance(response, dict) else None
 
 
 def get_my_user_id(user_id: str) -> str | None:
