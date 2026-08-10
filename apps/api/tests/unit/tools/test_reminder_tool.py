@@ -474,6 +474,29 @@ class TestUpdateReminderTool:
 
     @patch(f"{MODULE}.log")
     @patch(f"{MODULE}.reminder_scheduler")
+    async def test_stop_after_needing_substring_coercion_rejected(
+        self, mock_scheduler: MagicMock, mock_log: MagicMock
+    ) -> None:
+        """Only clean YYYY-MM-DD HH:MM:SS forms parse — a value that only
+        becomes valid after substring replacement is malformed and must be
+        rejected, not silently coerced into a schedule."""
+        from app.agents.tools.reminder_tool import update_reminder_tool
+
+        result = await update_reminder_tool.coroutine(  # type: ignore[attr-defined]
+            config=_cfg(), reminder_id="r1", stop_after="2026-06-01XX XX12:00:00"
+        )
+        assert result == {
+            "error": "Invalid stop_after format: 2026-06-01XX XX12:00:00. Use YYYY-MM-DD HH:MM:SS format."
+        }
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.TOOL} Invalid stop_after format",
+            stop_after="2026-06-01XX XX12:00:00",
+            error_type="ValueError",
+        )
+        mock_scheduler.update_reminder.assert_not_called()
+
+    @patch(f"{MODULE}.log")
+    @patch(f"{MODULE}.reminder_scheduler")
     async def test_service_error(self, mock_scheduler: MagicMock, mock_log: MagicMock) -> None:
         mock_scheduler.update_reminder = AsyncMock(side_effect=RuntimeError("err"))
 

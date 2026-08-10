@@ -91,6 +91,64 @@ async def test_store_canvas_embedding_uses_default_title_and_omits_labels() -> N
     )
 
 
+async def test_store_canvas_embedding_coerces_ids_to_str() -> None:
+    collection = AsyncMock()
+    with (
+        patch("app.utils.canvas_vector_utils.datetime") as mock_datetime,
+        patch(
+            "app.utils.canvas_vector_utils.ChromaClient.get_langchain_client",
+            new_callable=AsyncMock,
+            return_value=collection,
+        ),
+    ):
+        mock_datetime.now.return_value = FIXED_NOW
+        ok = await store_canvas_embedding(123, "canvas text", 456)
+
+    assert ok is True
+    collection.aadd_texts.assert_awaited_once_with(
+        texts=["canvas text"],
+        metadatas=[
+            {
+                "user_id": "456",
+                "todo_id": "123",
+                "title": "",
+                "updated_at": "2026-08-10T12:00:00+00:00",
+                "completed": False,
+            }
+        ],
+        ids=["canvas_123"],
+    )
+
+
+async def test_store_canvas_embedding_empty_labels_list_omits_labels_key() -> None:
+    collection = AsyncMock()
+    with (
+        patch("app.utils.canvas_vector_utils.datetime") as mock_datetime,
+        patch(
+            "app.utils.canvas_vector_utils.ChromaClient.get_langchain_client",
+            new_callable=AsyncMock,
+            return_value=collection,
+        ),
+    ):
+        mock_datetime.now.return_value = FIXED_NOW
+        ok = await store_canvas_embedding("todo-1", "canvas text", "user-1", labels=[])
+
+    assert ok is True
+    collection.aadd_texts.assert_awaited_once_with(
+        texts=["canvas text"],
+        metadatas=[
+            {
+                "user_id": "user-1",
+                "todo_id": "todo-1",
+                "title": "",
+                "updated_at": "2026-08-10T12:00:00+00:00",
+                "completed": False,
+            }
+        ],
+        ids=["canvas_todo-1"],
+    )
+
+
 async def test_store_canvas_embedding_failure_logs_and_returns_false() -> None:
     with (
         patch("app.utils.canvas_vector_utils.log") as mock_log,
@@ -268,7 +326,14 @@ async def test_update_canvas_embedding_proceeds_when_metadata_read_fails() -> No
 
 
 @pytest.mark.parametrize(
-    "existing", [None, {"metadatas": []}, {"metadatas": [{"title": "T"}]}]
+    "existing",
+    [
+        None,
+        {"metadatas": []},
+        {"metadatas": [{"title": "T"}]},
+        {"metadatas": [{}]},
+        {"ids": ["canvas_todo-1"]},
+    ],
 )
 async def test_update_canvas_embedding_without_metadata_skips_restore(
     existing: dict[str, object] | None,
@@ -532,6 +597,22 @@ async def test_search_canvas_context_returns_rounded_scores_and_defaults() -> No
         },
         {"todo_id": "", "title": "", "score": 1.5, "snippet": "", "completed": False},
     ]
+
+
+async def test_search_canvas_context_coerces_user_id_to_str() -> None:
+    collection = AsyncMock()
+    collection.asimilarity_search_with_score.return_value = []
+    with patch(
+        "app.utils.canvas_vector_utils.ChromaClient.get_langchain_client",
+        new_callable=AsyncMock,
+        return_value=collection,
+    ):
+        matches = await search_canvas_context("query", 456)
+
+    assert matches == []
+    collection.asimilarity_search_with_score.assert_awaited_once_with(
+        query="query", k=10, filter={"user_id": "456"}
+    )
 
 
 async def test_search_canvas_context_failure_logs_and_returns_empty() -> None:
