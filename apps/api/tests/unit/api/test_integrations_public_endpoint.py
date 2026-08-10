@@ -1,12 +1,15 @@
 """Tests for app/api/v1/endpoints/integrations/public.py"""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
+from app.api.v1.endpoints.integrations.public import get_related_workflows
+from app.constants.log_tags import LogTag
 from app.models.integration_models import (
     Integration,
     IntegrationWithCreator,
@@ -20,6 +23,19 @@ from app.models.workflow_models import PublicWorkflowRow
 BASE = "/api/v1/integrations"
 
 _PUBLIC = "app.api.v1.endpoints.integrations.public"
+
+
+@pytest.fixture
+def mock_log() -> Iterator[MagicMock]:
+    """The endpoint module's wide-event logger, patched so calls are assertable.
+
+    The wide-event contract is part of the endpoint behavior — a log.set/log.error
+    carrying the wrong operation/outcome/error is a broken observability path, so
+    successful paths pin their ``log.set`` calls and failure paths pin the exact
+    ``log.error`` call.
+    """
+    with patch(f"{_PUBLIC}.log") as m:
+        yield m
 
 # FAKE_USER.user_id from tests/conftest.py — the get_user_id dependency resolves
 # to it through the app's dependency override.
@@ -81,7 +97,9 @@ class TestGetPublicIntegration:
     """Tests for GET /integrations/public/{identifier}."""
 
     @pytest.mark.asyncio
-    async def test_native_integration_found(self, client: AsyncClient) -> None:
+    async def test_native_integration_found(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
         """Native platform integration returns the full platform-shaped body."""
         fake_native = MagicMock()
         fake_native.id = "googlecalendar"
@@ -90,7 +108,7 @@ class TestGetPublicIntegration:
         fake_native.category = "productivity"
         fake_native.managed_by = "self"
         fake_native.mcp_config = None
-        fake_native.content = None
+        fake_native.content = {"use_cases": ["Sync calendar events"]}
 
         with (
             patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", [fake_native]),
@@ -121,10 +139,22 @@ class TestGetPublicIntegration:
             "publishedAt": None,
             "source": "platform",
             "authType": "oauth",
-            "content": None,
+            "content": {
+                "useCases": ["Sync calendar events"],
+                "howItWorks": [],
+                "faqs": [],
+            },
         }
         mock_tools.assert_awaited_once_with("googlecalendar")
         mock_repo.get_public_by_slug.assert_not_awaited()
+        mock_log.set.assert_has_calls(
+            [
+                call(operation="get_public_integration", integration_id="googlecalendar"),
+                call(integration_name="Google Calendar"),
+                call(outcome="success"),
+            ]
+        )
+        mock_log.error.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_native_managed_by_composio_implies_oauth(self, client: AsyncClient) -> None:
@@ -190,6 +220,52 @@ class TestGetPublicIntegration:
         mock_tools.assert_awaited_once_with("mcp_tool")
 
     @pytest.mark.asyncio
+    async def test_native_without_auth_type_is_null(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
+        """A native integration with no mcp_config and no oauth-managed flag has null auth.
+
+        ``managed_by`` outside (self, composio) and no mcp_config leaves
+        ``auth_type`` at its initial None — pin the null (not an empty string)
+        so the assignment is observable.
+        """
+        fake_native = MagicMock()
+        fake_native.id = "native_plain"
+        fake_native.name = "Plain Native"
+        fake_native.description = "No auth"
+        fake_native.category = "custom"
+        fake_native.managed_by = "mcp"
+        fake_native.mcp_config = None
+        fake_native.content = None
+
+        with (
+            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", [fake_native]),
+            patch(
+                f"{_PUBLIC}.get_integration_tools",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as mock_tools,
+            patch(f"{_PUBLIC}.integration_repository") as mock_repo,
+        ):
+            mock_repo.get_public_by_slug = AsyncMock()
+            resp = await client.get(f"{BASE}/public/native_plain")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["authType"] is None
+        assert body["source"] == "platform"
+        assert body["cloneCount"] == 0
+        mock_tools.assert_awaited_once_with("native_plain")
+        mock_log.set.assert_has_calls(
+            [
+                call(operation="get_public_integration", integration_id="native_plain"),
+                call(integration_name="Plain Native"),
+                call(outcome="success"),
+            ]
+        )
+        mock_log.error.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_native_internal_integration_skipped(self, client: AsyncClient) -> None:
         """Internal integrations are not returned as native matches."""
         fake_native = MagicMock()
@@ -209,7 +285,9 @@ class TestGetPublicIntegration:
         mock_repo.get_public_by_slug.assert_awaited_once_with("internal_tool")
 
     @pytest.mark.asyncio
-    async def test_slug_lookup_found(self, client: AsyncClient) -> None:
+    async def test_slug_lookup_found(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
         """Custom integration found via slug returns the full custom-shaped body."""
         integration = _with_creator(
             "abc123",
@@ -262,6 +340,14 @@ class TestGetPublicIntegration:
         }
         mock_repo.get_public_by_slug.assert_awaited_once_with("my-tool")
         mock_parse.assert_not_called()
+        mock_log.set.assert_has_calls(
+            [
+                call(operation="get_public_integration", integration_id="my-tool"),
+                call(integration_name="My Tool"),
+                call(outcome="success"),
+            ]
+        )
+        mock_log.error.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_slug_lookup_computes_missing_slug(self, client: AsyncClient) -> None:
@@ -295,6 +381,29 @@ class TestGetPublicIntegration:
         assert resp.status_code == 200
         assert resp.json()["name"] == "Legacy Tool"
         mock_repo.get_public_by_slug.assert_awaited_once_with("legacy-abc123")
+        mock_repo.get_public_by_id_prefix.assert_awaited_once_with("abc123")
+
+    @pytest.mark.asyncio
+    async def test_legacy_hash_fallback_real_parse(self, client: AsyncClient) -> None:
+        """Legacy hash fallback works with the real ``parse_integration_slug``.
+
+        ``test_legacy_hash_fallback`` mocks the parser; this one exercises the
+        real one so a ``parse_integration_slug(None)`` regression (which would
+        crash on the real parser) is caught.
+        """
+        integration = _with_creator("abc123", "Legacy Tool")
+
+        with (
+            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", []),
+            patch(f"{_PUBLIC}.integration_repository") as mock_repo,
+        ):
+            mock_repo.get_public_by_slug = AsyncMock(return_value=None)
+            mock_repo.get_public_by_id_prefix = AsyncMock(return_value=integration)
+            resp = await client.get(f"{BASE}/public/tool-abc123")
+
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "Legacy Tool"
+        mock_repo.get_public_by_slug.assert_awaited_once_with("tool-abc123")
         mock_repo.get_public_by_id_prefix.assert_awaited_once_with("abc123")
 
     @pytest.mark.asyncio
@@ -343,8 +452,10 @@ class TestGetPublicIntegration:
         assert resp.json()["detail"] == "forbidden"
 
     @pytest.mark.asyncio
-    async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
-        """Unexpected exception maps to 500."""
+    async def test_unexpected_error_returns_500(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
+        """Unexpected exception maps to 500 and is logged with exact context."""
         with (
             patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", new=[]),
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
@@ -354,6 +465,12 @@ class TestGetPublicIntegration:
 
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Failed to fetch integration"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.INTEGRATION} Error fetching public integration",
+            identifier="bad",
+            error_type="TypeError",
+            error="boom",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -621,7 +738,9 @@ class TestAddPublicIntegration:
         )
 
     @pytest.mark.asyncio
-    async def test_successful_add_new_integration(self, client: AsyncClient) -> None:
+    async def test_successful_add_new_integration(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
         """New integration is added, clone count incremented, and connected."""
         original_doc = {
             "integration_id": "integ3",
@@ -693,6 +812,24 @@ class TestAddPublicIntegration:
             is_platform=False,
             bearer_token=None,
         )
+        mock_log.set.assert_has_calls(
+            [
+                call(
+                    operation="add_public_integration",
+                    integration_id="integ3",
+                    user={"id": FAKE_USER_ID},
+                    integration={"id": "integ3"},
+                ),
+                call(integration_name="New Integ"),
+                call(outcome="success"),
+            ]
+        )
+        mock_log.info.assert_any_call(
+            f"{LogTag.INTEGRATION} User added integration",
+            user_id=FAKE_USER_ID,
+            integration_id="integ3",
+        )
+        mock_log.error.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_successful_add_without_mcp_config(self, client: AsyncClient) -> None:
@@ -753,7 +890,9 @@ class TestAddPublicIntegration:
         )
 
     @pytest.mark.asyncio
-    async def test_re_attempt_connection(self, client: AsyncClient) -> None:
+    async def test_re_attempt_connection(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
         """Existing non-connected integration re-attempts connection."""
         original_doc = {
             "integration_id": "integ4",
@@ -806,6 +945,69 @@ class TestAddPublicIntegration:
         mock_add.assert_not_awaited()
         mock_repo.increment_clone_count.assert_not_awaited()
         mock_connect.assert_awaited_once()
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.INTEGRATION} User re-attempting integration connection",
+            user_id=FAKE_USER_ID,
+            integration_id="integ4",
+        )
+        mock_log.error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_connection_error_is_forwarded(self, client: AsyncClient) -> None:
+        """A non-None connection error is forwarded to the client response.
+
+        ``AddIntegrationResponse.error`` defaults to None in the model, so a
+        dropped or None-coerced ``connect_result.error`` is invisible unless the
+        value is actually set — pin the forward explicitly.
+        """
+        original_doc = {
+            "integration_id": "integ9",
+            "name": "Err Integ",
+            "is_public": True,
+            "mcp_config": None,
+        }
+
+        connect_result = MagicMock()
+        connect_result.status = "error"
+        connect_result.redirect_url = None
+        connect_result.tools_count = None
+        connect_result.message = "Connection failed"
+        connect_result.error = "server_unreachable"
+
+        with (
+            patch(f"{_PUBLIC}.integration_repository") as mock_repo,
+            patch(f"{_PUBLIC}.user_integration_repository") as mock_user_coll,
+            patch(f"{_PUBLIC}.add_user_integration", new_callable=AsyncMock),
+            patch(
+                f"{_PUBLIC}.connect_mcp_integration",
+                new_callable=AsyncMock,
+                return_value=connect_result,
+            ),
+        ):
+            mock_repo.get_public = AsyncMock(
+                return_value=Integration.model_validate(
+                    {
+                        **original_doc,
+                        "managed_by": "mcp",
+                        "description": "",
+                        "category": "custom",
+                        "source": "custom",
+                    }
+                )
+            )
+            mock_repo.increment_clone_count = AsyncMock()
+            mock_user_coll.get_for_user = AsyncMock(return_value=None)
+
+            resp = await client.post(
+                f"{BASE}/public/integ9/add",
+                json={"redirect_path": "/integrations"},
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "error"
+        assert body["error"] == "server_unreachable"
+        assert body["message"] == "Connection failed"
 
     @pytest.mark.asyncio
     async def test_add_user_integration_value_error_suppressed(self, client: AsyncClient) -> None:
@@ -949,7 +1151,9 @@ class TestAddPublicIntegration:
         assert resp.json()["detail"] == "conflict"
 
     @pytest.mark.asyncio
-    async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
+    async def test_unexpected_error_returns_500(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
         with patch(f"{_PUBLIC}.integration_repository") as mock_repo:
             mock_repo.get_public = AsyncMock(side_effect=RuntimeError("boom"))
             resp = await client.post(
@@ -958,6 +1162,13 @@ class TestAddPublicIntegration:
             )
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Failed to add integration"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.INTEGRATION} Error adding integration",
+            integration_id="bad",
+            user_id=FAKE_USER_ID,
+            error_type="RuntimeError",
+            error="boom",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -969,7 +1180,7 @@ class TestSearchIntegrations:
     """Tests for GET /integrations/search."""
 
     @pytest.mark.asyncio
-    async def test_empty_query(self, client: AsyncClient) -> None:
+    async def test_empty_query(self, client: AsyncClient, mock_log: MagicMock) -> None:
         with patch(
             f"{_PUBLIC}.search_public_integrations",
             new_callable=AsyncMock,
@@ -979,6 +1190,14 @@ class TestSearchIntegrations:
         assert resp.status_code == 200
         assert resp.json() == {"integrations": [], "query": ""}
         mock_search.assert_not_awaited()
+        mock_log.set.assert_has_calls(
+            [
+                call(operation="search_integrations"),
+                call(result_count=0),
+                call(outcome="success"),
+            ]
+        )
+        mock_log.error.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_whitespace_only_query(self, client: AsyncClient) -> None:
@@ -993,7 +1212,7 @@ class TestSearchIntegrations:
         mock_search.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_no_search_results(self, client: AsyncClient) -> None:
+    async def test_no_search_results(self, client: AsyncClient, mock_log: MagicMock) -> None:
         with patch(
             f"{_PUBLIC}.search_public_integrations",
             new_callable=AsyncMock,
@@ -1004,9 +1223,17 @@ class TestSearchIntegrations:
         assert resp.status_code == 200
         assert resp.json() == {"integrations": [], "query": "nonexistent"}
         mock_search.assert_awaited_once_with(query="nonexistent", limit=20)
+        mock_log.set.assert_has_calls(
+            [
+                call(operation="search_integrations"),
+                call(result_count=0),
+                call(outcome="success"),
+            ]
+        )
+        mock_log.error.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_search_with_results(self, client: AsyncClient) -> None:
+    async def test_search_with_results(self, client: AsyncClient, mock_log: MagicMock) -> None:
         search_results = [
             {"integration_id": "id1", "relevance_score": 0.95},
             {"integration_id": "id2", "relevance_score": 0.80},
@@ -1064,6 +1291,14 @@ class TestSearchIntegrations:
         }
         mock_search.assert_awaited_once_with(query="tool", limit=20)
         mock_repo.find_public_by_ids.assert_awaited_once_with(["id1", "id2"])
+        mock_log.set.assert_has_calls(
+            [
+                call(operation="search_integrations"),
+                call(result_count=2),
+                call(outcome="success"),
+            ]
+        )
+        mock_log.error.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_search_strips_whitespace_before_querying(self, client: AsyncClient) -> None:
@@ -1130,7 +1365,9 @@ class TestSearchIntegrations:
         assert body["integrations"][0]["relevanceScore"] == 0.5
 
     @pytest.mark.asyncio
-    async def test_search_unexpected_error(self, client: AsyncClient) -> None:
+    async def test_search_unexpected_error(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
         with patch(
             f"{_PUBLIC}.search_public_integrations",
             new_callable=AsyncMock,
@@ -1140,6 +1377,11 @@ class TestSearchIntegrations:
 
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Failed to search integrations"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.INTEGRATION} Error searching integrations",
+            error_type="RuntimeError",
+            error="db down",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1151,7 +1393,9 @@ class TestGetRelatedWorkflows:
     """Tests for GET /integrations/public/{identifier}/workflows."""
 
     @pytest.mark.asyncio
-    async def test_returns_formatted_workflows(self, client: AsyncClient) -> None:
+    async def test_returns_formatted_workflows(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
         row = _public_workflow(
             "wf-1",
             "First Workflow",
@@ -1192,6 +1436,14 @@ class TestGetRelatedWorkflows:
             "slack", limit=10, offset=0
         )
         mock_repo.count_public_by_step_category.assert_awaited_once_with("slack")
+        mock_log.set.assert_has_calls(
+            [
+                call(operation="get_related_workflows", integration_id="slack"),
+                call(result_count=1),
+                call(outcome="success"),
+            ]
+        )
+        mock_log.error.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_system_creator_falls_back_to_gaia_team(self, client: AsyncClient) -> None:
@@ -1245,6 +1497,40 @@ class TestGetRelatedWorkflows:
         ]
 
     @pytest.mark.asyncio
+    async def test_empty_step_category_falls_back_to_general(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
+        """An empty-string step category hits the ``or "general"`` fallback.
+
+        ``WorkflowStep.category`` defaults to "general" in the model, so rows
+        built through Pydantic never exercise the fallback — only an explicitly
+        empty string does (legacy/imported rows). Pin the fallback text exactly.
+        """
+        row = _public_workflow(
+            "wf-1",
+            "Empty Category",
+            steps=[{"title": "step 1", "description": "Step description", "category": ""}],
+        )
+
+        with patch(f"{_PUBLIC}.workflow_repository") as mock_repo:
+            mock_repo.find_public_by_step_category = AsyncMock(return_value=[row])
+            mock_repo.count_public_by_step_category = AsyncMock(return_value=1)
+            resp = await client.get(f"{BASE}/public/slack/workflows")
+
+        assert resp.status_code == 200
+        assert resp.json()["workflows"][0]["steps"] == [
+            {"id": "", "title": "step 1", "description": "Step description", "category": "general"}
+        ]
+        mock_log.set.assert_has_calls(
+            [
+                call(operation="get_related_workflows", integration_id="slack"),
+                call(result_count=1),
+                call(outcome="success"),
+            ]
+        )
+        mock_log.error.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_limit_offset_are_clamped(self, client: AsyncClient) -> None:
         with patch(f"{_PUBLIC}.workflow_repository") as mock_repo:
             mock_repo.find_public_by_step_category = AsyncMock(return_value=[])
@@ -1269,6 +1555,27 @@ class TestGetRelatedWorkflows:
         mock_repo.find_public_by_step_category.assert_awaited_once_with("slack", limit=1, offset=0)
 
     @pytest.mark.asyncio
+    async def test_default_limit_and_offset_are_used(self) -> None:
+        """Calling the handler without limit/offset applies the declared defaults (10/0).
+
+        The route registers the function signature, so these defaults are what
+        FastAPI exposes to clients when the query params are omitted. The HTTP
+        path always injects the params explicitly (from the registered
+        signature), which would mask a changed default — a direct call pins it.
+        """
+        with (
+            patch(f"{_PUBLIC}.workflow_repository") as mock_repo,
+            patch(f"{_PUBLIC}.log"),
+        ):
+            mock_repo.find_public_by_step_category = AsyncMock(return_value=[])
+            mock_repo.count_public_by_step_category = AsyncMock(return_value=0)
+            await get_related_workflows("slack")
+
+        mock_repo.find_public_by_step_category.assert_awaited_once_with(
+            "slack", limit=10, offset=0
+        )
+
+    @pytest.mark.asyncio
     async def test_empty_result(self, client: AsyncClient) -> None:
         with patch(f"{_PUBLIC}.workflow_repository") as mock_repo:
             mock_repo.find_public_by_step_category = AsyncMock(return_value=[])
@@ -1279,10 +1586,18 @@ class TestGetRelatedWorkflows:
         assert resp.json() == {"workflows": [], "total": 0}
 
     @pytest.mark.asyncio
-    async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
+    async def test_unexpected_error_returns_500(
+        self, client: AsyncClient, mock_log: MagicMock
+    ) -> None:
         with patch(f"{_PUBLIC}.workflow_repository") as mock_repo:
             mock_repo.find_public_by_step_category = AsyncMock(side_effect=RuntimeError("boom"))
             resp = await client.get(f"{BASE}/public/slack/workflows")
 
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Failed to fetch related workflows"
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.INTEGRATION} Error fetching related workflows",
+            identifier="slack",
+            error_type="RuntimeError",
+            error="boom",
+        )
