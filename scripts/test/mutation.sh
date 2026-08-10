@@ -300,10 +300,19 @@ if not orig_match:
     sys.exit(1)
 orig_name = orig_match.group(1)
 blocks = re.split(r"^(?:async )?def ", src, flags=re.MULTILINE)
+# Line coordinates must come from the ORIGINAL module, not the mutant
+# file: mutmut inserts every mutant def after its originals, so every
+# line in the mutant file is shifted by the inserted bodies. The original
+# module is copied into the workdir (app/ mirrors apps/api/app).
+orig_src = open(f"{workdir}/app/{module.removeprefix('app.').replace('.', '/')}.py").read()
+orig_blocks = re.split(r"^(?:async )?def ", orig_src, flags=re.MULTILINE)
+# The mutant file mangles names (x_<func>__mutmut_orig); the ORIGINAL file
+# holds the plain name, so strip the mutmut convention before searching.
+orig_func = orig_name.removeprefix("x_").removesuffix("__mutmut_orig")
 orig_line = None
-for i, block in enumerate(blocks):
-    if block.split("(", 1)[0].strip() == orig_name:
-        orig_line = sum(b.count("\n") for b in blocks[: i + 1])
+for i, block in enumerate(orig_blocks):
+    if block.split("(", 1)[0].strip() == orig_func:
+        orig_line = sum(b.count("\n") for b in orig_blocks[:i]) + 1
         break
 if orig_line is None:
     sys.exit(1)
@@ -331,8 +340,9 @@ if orig_lines == mut_lines:
 for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
     if a != b:
         ranges = json.loads(changed_ranges) if changed_ranges else []
-        in_changed = any(start <= orig_line + i <= end for start, end in ranges)
-        print(f"CHANGED:{orig_line + i}" if in_changed else f"UNCHANGED:{orig_line + i}")
+        coord = orig_line + 1 + i
+        in_changed = any(start <= coord <= end for start, end in ranges)
+        print(f"CHANGED:{coord}" if in_changed else f"UNCHANGED:{coord}")
         sys.exit(1)
 print("EQUIV")
 sys.exit(0)
