@@ -212,6 +212,14 @@ class TestPatchCanvasSection:
     def test_heading_preceded_by_other_line_content_is_not_matched(self):
         assert _patch_canvas_section("x\n## Notes\nold", "Notes", "new") == "x\n## Notes\nnew"
 
+    def test_immediately_adjacent_sibling_without_blank_line_is_replaced_through_end(self):
+        """A sibling heading that starts on the line right below this one (no
+        blank line in between) begins exactly at head_end — the next-section
+        scan searches from head_end + 1 and misses it, so the replacement runs
+        to the end of the canvas. Pins the exact shape: the sibling is not
+        preserved in this degenerate layout."""
+        assert _patch_canvas_section("## X\n## Y\nz", "X", "new") == "## X\nnew"
+
 
 # ---------------------------------------------------------------------------
 # _parse_iso_future_datetime / _build_scheduled_at_update — tz-naive crash bug
@@ -2001,6 +2009,40 @@ class TestUpdateTrackedTodoSuccess:
             "first fire is computed from the cron in your timezone."
         )
         mock_get_tz.assert_awaited_once_with("user-1")
+
+    async def test_multiple_notes_are_joined_with_bullet_separator(self):
+        """The Notes block joins every collected note with '\n  - '. The real
+        update path appends at most one note today (the recurrence validator
+        adds a single 'scheduled_at was ignored' note), so the note producer
+        is mocked to supply two — pinning the separator join itself."""
+
+        async def _two_notes(recurrence, scheduled_at, user_id, update_fields, notes):
+            notes.append("first note")
+            notes.append("second note")
+
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(priority=Priority.HIGH),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools._build_recurrence_update",
+                side_effect=_two_notes,
+            ),
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", priority="high"
+            )
+        assert result == (
+            "Updated tracked todo t1: priority\n"
+            "Notes:\n  - first note\n  - second note"
+        )
 
     async def test_references_are_appended_and_reported(self):
         with (
