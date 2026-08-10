@@ -5,6 +5,22 @@ platform, and hand the request to PlatformLinkService. These tests pin the
 full HTTP contract — exact response bodies, exact service/redis arguments,
 and the wide-event log lines — so a wrong argument, a missing audit line, or
 a malformed URL fails at the boundary instead of silently degrading.
+
+Mutation residue (provably equivalent — no test can kill these; the mutated
+value is never observable):
+- _require_user_id: create_error called without status_code=500 -> signature
+  default 500 (app/utils/errors.py) -> identical AppError.
+- link_platform: token_data.get("platform", "") default -> None/"XXXX" — only
+  consumed by `token_platform != platform` against a URL platform validated
+  to the Platform enum {discord, slack, telegram, whatsapp}; a missing
+  "platform" key takes the same mismatch branch for every default, and
+  token_platform never appears in the response or audit fields.
+- link_platform: token_data.get("platform_user_id", "") default -> None — only
+  read via `if not platform_user_id:` (falsy == None for the guard); the
+  audits that log resource=platform_user_id only run once it is truthy.
+- initiate_platform_connect: dropped instructions=None / action_link=None /
+  auth_url=None kwargs — all three fields default to None on the response
+  model -> identical serialized JSON.
 """
 
 from collections.abc import Iterator
