@@ -920,14 +920,21 @@ class TestCheckIntegrationsStatus:
         assert result == "Google Mail: ✅ Connected"
         mock_check.assert_awaited_once_with("gmail", FAKE_USER_ID)
 
+    @patch(
+        f"{MODULE}.check_single_integration_status",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [_make_integration("gmail", "Gmail", short_name="gm")])
-    async def test_not_found_exact_output(self) -> None:
+    async def test_not_found_exact_output(self, mock_check: AsyncMock) -> None:
+        """An unmatched name must never fall through to a status check."""
         from app.agents.tools.integration_tool import check_integrations_status
 
         result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["zzz"]
         )
         assert result == "❓ zzz: Not found"
+        mock_check.assert_not_awaited()
 
     @patch(
         f"{MODULE}.check_single_integration_status",
