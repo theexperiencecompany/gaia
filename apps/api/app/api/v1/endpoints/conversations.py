@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.general import MAX_PAGE_NUMBER
 from app.models.chat_models import (
     BatchSyncRequest,
     ConversationModel,
@@ -68,7 +69,13 @@ async def create_conversation_endpoint(
 @router.get("/conversations")
 async def get_conversations_endpoint(
     user: AuthenticatedUser = Depends(get_current_user),
-    page: int = Query(1, alias="page", ge=1, description="Page number (starting from 1)"),
+    page: int = Query(
+        1,
+        alias="page",
+        ge=1,
+        le=MAX_PAGE_NUMBER,
+        description="Page number (starting from 1)",
+    ),
     limit: int = Query(
         10,
         alias="limit",

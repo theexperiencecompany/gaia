@@ -78,7 +78,6 @@ async def _deliver(conv_source, *, comms_text="result text", result_text="raw"):
     return save, platform, ws
 
 
-@pytest.mark.unit
 class TestDeliverResultRouting:
     @pytest.mark.parametrize(
         "src",
@@ -121,7 +120,6 @@ class TestDeliverResultRouting:
         assert platform.await_args.args[2] == "raw executor output"
 
 
-@pytest.mark.unit
 class TestGetConversationSource:
     """The authoritative routing key: the conversation's persisted source.
 
@@ -155,7 +153,6 @@ class TestGetConversationSource:
             assert await rd._get_conversation_source("conv-1", "user-1") is None
 
 
-@pytest.mark.unit
 class TestPersistCancelledRun:
     """Cancelled self-owning runs: cards-only persist, no narration, no re-push.
 
@@ -203,7 +200,6 @@ class TestPersistCancelledRun:
             await rd.persist_cancelled_run(run)  # must not raise
 
 
-@pytest.mark.unit
 class TestDeliverResultToolDataOwnership:
     """deliver_result attaches drained cards only for self-owning runs, and
     keys queued messages on task_id so sync dedups against the placeholder."""

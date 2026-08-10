@@ -82,9 +82,10 @@ class TestCallExecutorComposition:
                 config=config,
             )
 
-        assert "Original request (verbatim):\nclear my inbox pls" in mock_dispatch.call_args.kwargs[
-            "task"
-        ]
+        assert (
+            "Original request (verbatim):\nclear my inbox pls"
+            in mock_dispatch.call_args.kwargs["task"]
+        )
 
 
 if __name__ == "__main__":

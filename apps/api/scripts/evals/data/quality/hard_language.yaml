@@ -1,0 +1,283 @@
+# HARD language — mixed-register and mangled input the assistant has to read
+# properly and answer in the user's own voice.
+#
+# quality/hard.yaml has one `language` case and it declares `gates: []`, so the
+# category could not go red no matter what came back. Every case here declares a
+# gate that rejects an empty run, and carries a `setup.counterfeit:` block: the
+# confident, fluent, WRONG answer — a stiff English customer-service reply that
+# either misread the request or asked the user to repeat it in plain English.
+#
+# What each case claims, and which gate carries it:
+#
+# - COMPREHENSION is asserted where it is authoritative — in the tool call, not
+#   in the prose. "3 ghante pehle" before a 6am flight is a reminder at
+#   `scheduled_at` 03:00; "half four in the afternoon" is 16:30; "Lisbonne" is a
+#   `get_weather` for Lisbon. Those are top-level string args, so
+#   `_call_matches_args` can reach them (a reminder TITLE cannot be asserted this
+#   way — it lives in a nested `payload`). Only the four tools this suite has
+#   observed on the SSE wire are used: create_todo, create_reminder_tool,
+#   get_weather, web_search_tool.
+# - REGISTER is asserted with `must_not_communicate` on the customer-service
+#   voice the failure actually emits — "dear user", "i apologize for any
+#   confusion", "as an ai" — plus, where the failure is treating mangled input as
+#   unreadable, "did you mean" and "could you please confirm". These strings
+#   appear in no correct reply, and MustNotCommunicate fails an empty run, so the
+#   gate is falsifiable rather than decorative.
+# - MIRRORING WITHOUT MOCKING cannot be checked in code (romanized Hindi is not
+#   reliably detectable — see the header of voice.yaml), so it is carried by
+#   binary MUST-shaped judge criteria alongside the gates, never alone.
+#
+# Two cases have no tool to assert against, so their comprehension gate is
+# `communicate` on a value the prompt does NOT contain: "8:45" (converted from
+# 20:45) and "extension" (the English word for what the user described as "more
+# days"). Both are answered by the comms agent directly rather than delegated,
+# which is what puts them on the SSE wire at all.
+#
+# `openui: false` / `suggestions: false` are metadata, never gates.
+
+- id: quality-hard-language-hinglish-reminder
+  ticket: "Hinglish with the arithmetic inside it — '3 ghante pehle' has to reach the reminder."
+  tags: [hard, language]
+  prompt: >-
+    yaar meri flight kal subah 6 baje ki hai, mujhe airport ke liye nikalne ka
+    reminder laga do 3 ghante pehle
+  setup:
+    counterfeit:
+      text: >-
+        Dear user, thank you for your message. I apologize for any confusion. I
+        have scheduled a reminder for your departure to the airport at 6:00 AM
+        tomorrow morning. Please let me know if you require any further
+        assistance with your travel arrangements.
+      messages:
+        - role: user
+          content: "yaar meri flight kal subah 6 baje ki hai, reminder laga do"
+        - role: assistant
+          content: >-
+            Dear user, thank you for your message. I apologize for any confusion.
+            I have scheduled a reminder for your departure to the airport at 6:00
+            AM tomorrow morning.
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Leave for airport"}, scheduled_at: "2026-08-09 06:00:00"}}
+  expected:
+    category: language
+    communicate: []
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1, args: {scheduled_at: "03:00"}}]
+    must_not_communicate: ["dear user", "i apologize for any confusion", "as an ai", "could you please confirm"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply is in the same Hinglish register the user wrote in, not formal English."
+        - "MUST NOT: the reply asks the user to restate the request in English, or asks what time they meant."
+        - "MUST NOT: the reply translates the user's own message back at them."
+        - "MUST NOT: the reply claims the reminder is already saved and confirmed."
+    score: {gates: [tool_call_correctness, must_not_communicate]}
+
+- id: quality-hard-language-spanglish-clock
+  ticket: "Half the question is in Spanish and the answer is a number the prompt never says."
+  tags: [hard, language]
+  prompt: >-
+    oye una pregunta rápida, mi vuelo llega a las 20:45 y mi hermano no entiende
+    el reloj de 24 horas, what do i tell him in am/pm?
+  setup:
+    counterfeit:
+      text: >-
+        Dear user, thank you for reaching out. I apologize for any confusion
+        regarding the 24-hour clock format. Your flight is scheduled to arrive at
+        20:45. Please let me know if there is anything else I can assist you with
+        today.
+      messages:
+        - role: user
+          content: "oye una pregunta rápida, mi vuelo llega a las 20:45, what do i tell him in am/pm?"
+        - role: assistant
+          content: >-
+            Dear user, thank you for reaching out. I apologize for any confusion
+            regarding the 24-hour clock format. Your flight is scheduled to arrive
+            at 20:45.
+  expected:
+    category: language
+    communicate: ["8:45"]
+    must_not_communicate: ["dear user", "i apologize for any confusion", "as an ai"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply gives the converted time as 8:45 in the evening."
+        - "MUST: the reply matches the user's casual mixed Spanish/English register rather than switching to formal English."
+        - "MUST NOT: the reply explains how the 24-hour clock works."
+        - "MUST NOT: the reply is longer than two sentences."
+    score: {gates: [communicate, must_not_communicate]}
+
+- id: quality-hard-language-typos-todo
+  ticket: "A broken keyboard is not an unreadable request — act, don't ask."
+  tags: [hard, language]
+  prompt: "cn u add a todo to piick up teh dry cleanign on thrusday pls, my keybaord is dying"
+  setup:
+    counterfeit:
+      text: >-
+        I apologize for any confusion, but I want to make sure I have understood
+        you correctly. Did you mean "pick up the dry cleaning on Thursday"? Could
+        you please confirm and I will be happy to add that to your list.
+      messages:
+        - role: user
+          content: "cn u add a todo to piick up teh dry cleanign on thrusday pls"
+        - role: assistant
+          content: >-
+            I apologize for any confusion, but I want to make sure I have
+            understood you correctly. Did you mean "pick up the dry cleaning on
+            Thursday"? Could you please confirm.
+  expected:
+    category: language
+    communicate: []
+    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "dry clean"}}]
+    must_not_communicate: ["did you mean", "i apologize for any confusion", "could you please confirm", "dear user"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply asks the user to confirm or restate what they meant."
+        - "MUST NOT: the reply corrects, quotes back, or comments on the user's spelling."
+        - "MUST: the reply is one short casual line."
+    score: {gates: [tool_call_correctness, must_not_communicate]}
+
+- id: quality-hard-language-all-caps-urgency
+  ticket: "Shouting is urgency, not hostility — match the energy, don't police it."
+  tags: [hard, language]
+  prompt: "PLEASE ADD A TODO TO RENEW MY PASSPORT I KEEP FORGETTING AND ITS GETTING URGENT NOW"
+  setup:
+    counterfeit:
+      text: >-
+        DEAR USER, I APOLOGIZE FOR ANY CONFUSION. I HAVE ADDED "RENEW PASSPORT" TO
+        YOUR TASK LIST. THERE IS NO NEED TO SHOUT, I AM HERE TO HELP YOU WITH
+        WHATEVER YOU NEED TODAY.
+      messages:
+        - role: user
+          content: "PLEASE ADD A TODO TO RENEW MY PASSPORT"
+        - role: assistant
+          content: >-
+            DEAR USER, I APOLOGIZE FOR ANY CONFUSION. I HAVE ADDED "RENEW
+            PASSPORT" TO YOUR TASK LIST. THERE IS NO NEED TO SHOUT.
+      tool_calls:
+        - {name: create_todo, args: {title: "Renew passport"}}
+  expected:
+    category: language
+    communicate: []
+    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "passport"}}]
+    must_not_communicate: ["dear user", "i apologize for any confusion", "there is no need to shout", "please calm down"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply is written in capital letters."
+        - "MUST NOT: the reply comments on the user's use of capitals or tells them to calm down."
+        - "MUST: the reply registers the urgency in its wording rather than ignoring it."
+        - "MUST: the reply is one short line."
+    score: {gates: [tool_call_correctness, must_not_communicate]}
+
+- id: quality-hard-language-half-french-weather
+  ticket: "Half the message is French and it carries the only mention of the city."
+  tags: [hard, language]
+  prompt: >-
+    salut, je pars à Lisbonne demain matin, what's the weather going to be like?
+    je sais jamais quoi emporter
+  setup:
+    counterfeit:
+      text: >-
+        Dear user, thank you for your enquiry. I apologize for any confusion, but
+        could you please confirm which city you will be travelling to? Once you
+        provide this information I will be happy to look up the forecast for you.
+      messages:
+        - role: user
+          content: "salut, je pars à Lisbonne demain matin, what's the weather going to be like?"
+        - role: assistant
+          content: >-
+            Dear user, thank you for your enquiry. I apologize for any confusion,
+            but could you please confirm which city you will be travelling to?
+  expected:
+    category: language
+    communicate: []
+    tool_calls: [{tool: get_weather, min_calls: 1, args: {location: "Lisbon"}}]
+    must_not_communicate: ["dear user", "i apologize for any confusion", "could you please confirm", "which city"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply asks which city or which day the user means."
+        - "MUST NOT: the reply invents a temperature or a forecast before it has one."
+        - "MUST: the reply answers in the user's own mixed French/English register rather than formal English."
+        - "MUST: the reply is under three sentences."
+    score: {gates: [tool_call_correctness, must_not_communicate]}
+
+- id: quality-hard-language-voice-transcript
+  ticket: "Dictated speech self-corrects mid-sentence — follow the correction, don't ask for it again."
+  tags: [hard, language]
+  prompt: >-
+    hey um can you remind me to uh call the bank about the overdraft thing on
+    tuesday no sorry wednesday at half four in the afternoon
+  setup:
+    counterfeit:
+      text: >-
+        I apologize for any confusion. I have set a reminder to call the bank on
+        Tuesday at 3:30 PM. Please let me know if you would like me to adjust the
+        day or the time.
+      messages:
+        - role: user
+          content: "remind me to call the bank about the overdraft on tuesday no sorry wednesday at half four"
+        - role: assistant
+          content: >-
+            I apologize for any confusion. I have set a reminder to call the bank
+            on Tuesday at 3:30 PM.
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Call the bank"}, scheduled_at: "2026-08-11 15:30:00"}}
+  expected:
+    category: language
+    communicate: []
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1, args: {scheduled_at: "16:30"}}]
+    must_not_communicate: ["i apologize for any confusion", "did you mean", "dear user", "could you please confirm"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply asks the user which day they meant."
+        - "MUST NOT: the reply quotes the user's filler words ('um', 'uh') back at them."
+        - "MUST: the reply is one short casual line."
+        - "MUST NOT: the reply claims the reminder is already saved and confirmed."
+    score: {gates: [tool_call_correctness, must_not_communicate]}
+
+- id: quality-hard-language-non-native-email
+  ticket: "Non-native phrasing gets a real draft, not a stiff form letter and not an English lesson."
+  tags: [hard, language]
+  prompt: >-
+    hello please, i am needing help. i must to write email for my professor
+    because i cannot finish the assignment for monday and i want to ask him for
+    more days. my english is not so good sorry
+  setup:
+    counterfeit:
+      text: >-
+        Dear user, I apologize for any confusion. Please find below a draft for
+        your consideration. To Whom It May Concern, I am writing to inform you
+        that I am unable to complete the assigned coursework by the stated
+        deadline of Monday. I would be most grateful for your consideration in
+        this matter. Yours faithfully.
+      messages:
+        - role: user
+          content: "i must to write email for my professor because i cannot finish the assignment for monday"
+        - role: assistant
+          content: >-
+            Dear user, I apologize for any confusion. Please find below a draft
+            for your consideration. To Whom It May Concern, I am writing to inform
+            you that I am unable to complete the assigned coursework by the stated
+            deadline. Yours faithfully.
+  expected:
+    category: language
+    communicate: ["extension"]
+    must_not_communicate: ["dear user", "to whom it may concern", "i apologize for any confusion", "yours faithfully"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply contains a complete email the user could send, addressed to the professor by title or name."
+        - "MUST: the email asks for a specific amount of extra time rather than an open-ended delay."
+        - "MUST NOT: the reply corrects, grades, or comments on the user's English."
+        - "MUST NOT: the email opens with 'To Whom It May Concern' or 'Dear Sir/Madam'."
+    score: {gates: [communicate, must_not_communicate]}

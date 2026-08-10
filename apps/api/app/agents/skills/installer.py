@@ -168,7 +168,7 @@ async def install_from_github(
     source_url = f"https://github.com/{owner}/{repo}/tree/main/{base_path}"
 
     log.set(user_id=user_id, skill=SkillContext(operation="install"))
-    log.info(f"{LogTag.SKILLS} Fetching from GitHub: {owner}/{repo}/{base_path}")
+    log.info(f"{LogTag.SKILLS} Fetching from GitHub", owner=owner, repo=repo, base_path=base_path)
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Fetch the directory contents
@@ -253,8 +253,10 @@ async def install_from_github(
     )
 
     log.info(
-        f"{LogTag.SKILLS} Installed '{metadata.name}' from GitHub "
-        f"({len(file_list)} files, target={target})"
+        f"{LogTag.SKILLS} Installed skill from GitHub",
+        skill_name=metadata.name,
+        file_count=len(file_list),
+        target=target,
     )
     return installed
 
@@ -368,7 +370,7 @@ async def install_from_inline(
         ),
     )
 
-    log.info(f"{LogTag.SKILLS} Created inline skill '{name}' (target={target})")
+    log.info(f"{LogTag.SKILLS} Created inline skill", skill_name=name, target=target)
     return installed
 
 
@@ -445,7 +447,7 @@ async def update_skill_inline(
         ),
     )
 
-    log.info(f"{LogTag.SKILLS} Updated inline skill '{skill.name}' (target={metadata.target})")
+    log.info(f"{LogTag.SKILLS} Updated inline skill", skill_name=skill.name, target=metadata.target)
     return updated
 
 
@@ -472,9 +474,16 @@ async def uninstall_skill_full(user_id: str, skill_id: str) -> bool:
     try:
         await delete_user_skill(user_id, skill.name)
     except JuiceFSUnavailable as e:
-        log.warning(f"{LogTag.SKILLS} storage cleanup skipped (mount unavailable): {e}")
+        log.warning(
+            f"{LogTag.SKILLS} storage cleanup skipped (mount unavailable)",
+            error_type=type(e).__name__,
+        )
     except Exception as e:
-        log.warning(f"{LogTag.SKILLS} storage cleanup failed for {skill_id}: {e}")
+        log.warning(
+            f"{LogTag.SKILLS} storage cleanup failed",
+            skill_id=skill_id,
+            error_type=type(e).__name__,
+        )
 
     # Remove from registry
     # uninstall_skill is wrapped in @CacheInvalidator, whose __call__ erases the

@@ -65,7 +65,6 @@ def mock_chroma_collection() -> AsyncMock:
     return AsyncMock()
 
 
-@pytest.mark.unit
 class TestSearchBySimilarity:
     """Tests for search_by_similarity."""
 
@@ -512,7 +511,6 @@ class TestSearchBySimilarity:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSearchNotesBySimilarity:
     """Tests for search_notes_by_similarity wrapper."""
 

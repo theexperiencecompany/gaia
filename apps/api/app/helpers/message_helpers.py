@@ -110,7 +110,9 @@ def build_current_time_message(
             local_now = Timezone.parse(user_timezone).now().strftime("%A, %B %d, %Y, %H:%M")
             parts.append(f"[User Local Time ({user_timezone}): {local_now}]")
         except Exception as e:
-            log.warning(f"Error formatting user local time: {e}")
+            log.warning(
+                "Error formatting user local time", error=str(e), error_type=type(e).__name__
+            )
     return HumanMessage(
         content="\n".join(parts),
         additional_kwargs={"time_context": True},
@@ -131,14 +133,16 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
     try:
         results = await memory_engine.recall(user_id, query, limit=5)
         if results.memories:
-            log.info(f"Added {len(results.memories)} memories to context")
+            log.info("Added memories to context", memories_count=len(results.memories))
             return (
                 "\n\nBased on our previous conversations (bracketed dates say when "
                 "something happened / was last mentioned):\n"
                 + "\n".join(f"- {entry_to_note(mem)}" for mem in results.memories)
             )
     except Exception as e:
-        log.warning(f"Error retrieving memories: {e}")
+        log.warning(
+            "Error retrieving memories", error=str(e), error_type=type(e).__name__, user_id=user_id
+        )
 
     return ""
 
@@ -153,7 +157,12 @@ async def _get_core_memory_section(user_id: str) -> str:
         if core_context:
             return f"What you remember about this user (memory core):\n{core_context}"
     except Exception as e:
-        log.warning(f"Error retrieving core memory context: {e}")
+        log.warning(
+            "Error retrieving core memory context",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
     return ""
 
@@ -176,12 +185,12 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     try:
         results = await gaia_knowledge_service.search_knowledge(query=query, limit=5)
         if results:
-            log.info(f"Added {len(results)} knowledge items to context")
+            log.info("Added knowledge items to context", results_count=len(results))
             return "\n\nAbout Gaia (your identity and capabilities):\n" + "\n".join(
                 f"- {result.content}" for result in results
             )
     except Exception as e:
-        log.warning(f"Error retrieving GAIA knowledge: {e}")
+        log.warning("Error retrieving GAIA knowledge", error=str(e), error_type=type(e).__name__)
 
     return ""
 
@@ -360,7 +369,12 @@ async def build_connected_integrations_manifest(
     try:
         items = await get_connected_integrations_named(user_id)
     except Exception as e:
-        log.warning(f"Error building connected-integrations manifest: {e}")
+        log.warning(
+            "Error building connected-integrations manifest",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return ""
     if not items:
         return ""
@@ -533,7 +547,12 @@ async def build_dynamic_context_messages(
         return DynamicContextMessages(stable=stable_msg, memory_recall=recall_msg)
 
     except Exception as e:
-        log.error(f"Error creating dynamic context messages: {e}")
+        log.error(
+            "Error creating dynamic context messages",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         # Return a byte-stable empty stable message so a persistent failure here
         # doesn't change the prompt prefix every minute and silently invalidate
         # the implicit prompt cache. The clock lives in a HumanMessage built by
@@ -594,7 +613,13 @@ async def format_workflow_execution_message(
         try:
             workflow = await WorkflowService.get_workflow(selected_workflow.id, user_id)
         except Exception as e:
-            log.error(f"Failed to fetch workflow {selected_workflow.id}: {e}")
+            log.error(
+                "Failed to fetch workflow",
+                id=selected_workflow.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
     # Use fresh database data if available, otherwise use passed data
     if workflow and workflow.steps:
@@ -729,7 +754,9 @@ async def get_onboarding_system_prompt_if_applicable(
             if message_count >= 7:
                 await user_repository.set_onboarding_phase(user_id, OnboardingPhase.COMPLETED)
                 log.info(
-                    f"[onboarding_prompt] Auto-completed onboarding for {user_id} after {message_count} messages"
+                    "[onboarding_prompt] Auto-completed onboarding for after messages",
+                    user_id=user_id,
+                    message_count=message_count,
                 )
                 return None
 
@@ -758,7 +785,13 @@ async def get_onboarding_system_prompt_if_applicable(
         )
 
     except Exception as e:
-        log.warning(f"[onboarding_prompt] Failed to check onboarding conversation: {e}")
+        log.warning(
+            "[onboarding_prompt] Failed to check onboarding conversation",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
         return None
 
 
@@ -791,6 +824,7 @@ def format_files_list(
         return ""
 
     lines: list[str] = []
+    any_on_disk = False
     for file in files:
         try:
             on_disk = safe_upload_filename(file.filename)
@@ -800,13 +834,28 @@ def format_files_list(
             path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
         else:
             path = f"./user-uploaded/{on_disk}"
-        lines.append(f"- {file.filename}  →  `{path}`")
+        # Only advertise the path when the file really reached the workspace.
+        # The mirror is best-effort (it needs JuiceFS), so on a native API — or
+        # any deployment where it failed — this path does not exist, and naming
+        # it anyway sends the executor into read/bash attempts that can only
+        # fail. `search_uploaded_files` needs no mount and is the honest route.
+        on_disk_available = file.sandbox_path is not None
+        any_on_disk = any_on_disk or on_disk_available
+        # The id is shown because `search_uploaded_files(file_id=...)` needs one;
+        # without it an agent scoping to a single file can only guess the
+        # filename, which matches nothing.
+        if on_disk_available:
+            lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
+        else:
+            lines.append(
+                f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
+            )
         if file.description:
             summary = file.description.strip()
             if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
                 summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
             lines.append(f"    summary: {summary}")
-            if conversation_id and include_processing_guide:
+            if conversation_id and include_processing_guide and on_disk_available:
                 lines.append(f"    full summary: `{path}.summary.md`")
 
     if not lines:
@@ -821,6 +870,16 @@ def format_files_list(
             "contents or any work on the files, delegate to the executor.\n"
         )
 
+    if not any_on_disk:
+        # Nothing was mirrored into the workspace, so every read/bash instruction
+        # below would send the agent at a path that does not exist.
+        return (
+            f"\n[Uploaded files]\n{file_block}\n\n"
+            "These files are not present in the workspace, so read/bash cannot "
+            "open them. Use `search_uploaded_files` to retrieve their extracted "
+            "content, and answer from what it returns.\n"
+        )
+
     return f"""
 [Uploaded files]
 {file_block}
@@ -828,7 +887,8 @@ def format_files_list(
 How to work with these files:
 - What is it? — the `summary` above already says; read the `full summary` file
   for the complete write-up.
-- Need the raw content? — read the file at its path with read/bash.
+- Need the raw content? — read the file at its path with read/bash. Files shown
+  without a path are not on disk; use `search_uploaded_files` for those.
 - Searching across several uploaded files? — use `search_uploaded_files`.
 The files live in `./user-uploaded/` (read-only). To process them: copy into
 `./scratch/`, do your work, and write user-visible output into `./artifacts/`

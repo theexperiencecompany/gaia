@@ -89,6 +89,33 @@ def get_models_configuration() -> list[dict[str, Any]]:
     """
     return [
         # Default model — available to all users, model selector is disabled.
+        # Prices are OpenRouter's published rates for this model; they are what
+        # the cost budgets meter against, so they must track the live catalog.
+        {
+            "model_id": "deepseek/deepseek-v4-flash-0731",
+            "name": "DeepSeek V4 Flash 0731",
+            "model_provider": ModelProvider.OPENROUTER.value,
+            "inference_provider": ModelProvider.OPENROUTER.value,
+            "provider_model_name": "deepseek/deepseek-v4-flash-0731",
+            "description": "DeepSeek's fast, low-cost model with a 1M-token context window",
+            "logo_url": "/images/icons/deepseek.webp",
+            "max_tokens": 1_000_000,
+            "supports_streaming": True,
+            "supports_function_calling": True,
+            # Text-only: tool results carrying images are captioned by the vision
+            # model instead (see agents/llm/vision/). Exempts it from the
+            # tool-result image gate in tests/model_onboarding.
+            "supports_tool_result_images": False,
+            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
+            "lowest_tier": PlanType.FREE.value,
+            "is_active": True,
+            "is_default": True,
+            "pricing_per_1k_input_tokens": 0.00009,
+            "pricing_per_1k_output_tokens": 0.00018,
+            "pricing_per_1k_cached_input_tokens": 0.000018,
+        },
+        # Superseded as the default; kept seeded so the direct-Gemini lane and
+        # the dev model menu still resolve pricing for it.
         {
             "model_id": "gemini-3.1-flash-lite",
             "name": "Gemini 3.1 Flash Lite",
@@ -103,7 +130,7 @@ def get_models_configuration() -> list[dict[str, Any]]:
             "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
             "lowest_tier": PlanType.FREE.value,
             "is_active": True,
-            "is_default": True,
+            "is_default": False,
             "pricing_per_1k_input_tokens": 0.0001,
             "pricing_per_1k_output_tokens": 0.0004,
             "pricing_per_1k_cached_input_tokens": 0.000025,

@@ -24,6 +24,7 @@ mis-imported, these fixtures (and every test using them) will fail.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -38,10 +39,49 @@ from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_no
 from app.core.lazy_loader import providers
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
-from tests.helpers import BindableToolsFakeModel
+from tests.helpers import BindableToolsFakeModel, skip_items_without_real_services
+from tests.integration.real.db_fixtures import (
+    hil_approvals_collection,
+    mongo_db,
+    mongodb_url,
+    postgres_url,
+    real_redis,
+    redis_url,
+)
 
-_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
+# Imported to register the fixtures for this directory; `__all__` marks them as
+# a deliberate re-export (same pattern as tests/integration/real/conftest.py).
+__all__ = [
+    "hil_approvals_collection",
+    "mongo_db",
+    "mongodb_url",
+    "postgres_url",
+    "real_redis",
+    "redis_url",
+]
+
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """HIL e2e files need real Mongo/Redis; skip them at collection otherwise.
+
+    These are the only e2e files that request the real-infra fixtures from
+    tests/integration/real/db_fixtures (verified by grep). Everything else in
+    this directory runs hermetic with MemorySaver + fake LLM.
+    """
+
+    real_infra_files = {"test_hil_barrier_e2e.py", "test_hil_spawn_e2e.py"}
+    dir_root = Path(__file__).resolve().parent
+    skip_items_without_real_services(
+        [
+            item
+            for item in items
+            if item.path.is_relative_to(dir_root) and item.path.name in real_infra_files
+        ],
+        reason="HIL e2e requires USE_REAL_SERVICES=1 (real Mongo/Redis)",
+    )
 
 
 def build_gaia_test_graph(
@@ -106,7 +146,7 @@ async def memory_saver():
             open=False,
         )
         await pool.open(wait=True, timeout=30)
-        checkpointer = AsyncPostgresSaver(conn=pool)  # type: ignore[call-arg]
+        checkpointer = AsyncPostgresSaver(conn=pool)
         await checkpointer.setup()
         yield checkpointer
         await pool.close()

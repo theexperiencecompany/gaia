@@ -74,8 +74,8 @@ def _log_event_timing(data: dict[str, Any], now_utc: datetime) -> None:
     )
     if abs(webhook_lag) > 300:
         log.warning(
-            f"{LogTag.TRIGGER} webhook fired far from expected time — "
-            f"lag={webhook_lag}s (positive = late, negative = early)",
+            f"{LogTag.TRIGGER} webhook fired far from expected time — lag=s (positive = late, negative = early)",
+            webhook_lag=webhook_lag,
         )
 
 
@@ -136,7 +136,7 @@ class TriggerHandler(ABC):
             True if all triggers were unregistered successfully
         """
         log.set(
-            service="trigger_handler",
+            component="trigger_handler",
             operation="unregister",
             user_id=user_id,
             trigger_count=len(trigger_ids),
@@ -154,9 +154,15 @@ class TriggerHandler(ABC):
                     composio.composio.triggers.delete,
                     trigger_id=trigger_id,
                 )
-                log.debug(f"{LogTag.TRIGGER} Deleted trigger: {trigger_id}")
+                log.debug(f"{LogTag.TRIGGER} Deleted trigger", trigger_id=trigger_id)
             except Exception as e:
-                log.error(f"{LogTag.TRIGGER} Failed to delete trigger {trigger_id}: {e}")
+                log.error(
+                    f"{LogTag.TRIGGER} Failed to delete trigger",
+                    trigger_id=trigger_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
                 success = False
 
         return success
@@ -224,7 +230,10 @@ class TriggerHandler(ABC):
                     config_description_fn(configs[i]) if config_description_fn else str(configs[i])
                 )
                 log.error(
-                    f"{LogTag.TRIGGER} Trigger registration failed for {config_desc}: {result}"
+                    f"{LogTag.TRIGGER} Trigger registration failed for",
+                    config_desc=config_desc,
+                    result=result,
+                    user_id=user_id,
                 )
             elif result is not None:
                 successful_ids.append(result)
@@ -233,13 +242,16 @@ class TriggerHandler(ABC):
         if has_failure:
             if successful_ids:
                 log.warning(
-                    f"{LogTag.TRIGGER} Rolling back {len(successful_ids)} triggers due to partial failure"
+                    f"{LogTag.TRIGGER} Rolling back triggers due to partial failure",
+                    successful_ids_count=len(successful_ids),
+                    user_id=user_id,
                 )
                 rollback_ok = await self.unregister(user_id, successful_ids)
                 if not rollback_ok:
                     log.error(
-                        f"{LogTag.TRIGGER} Rollback FAILED — orphaned Composio triggers: {successful_ids}. "
-                        "Manual cleanup may be required."
+                        f"{LogTag.TRIGGER} Rollback FAILED — orphaned Composio triggers: . Manual cleanup may be required.",
+                        successful_ids=successful_ids,
+                        user_id=user_id,
                     )
 
             raise TriggerRegistrationError(
@@ -329,7 +341,7 @@ class TriggerHandler(ABC):
         if trigger_id:
             trigger_ctx["trigger_id"] = trigger_id
         log.set(
-            service="trigger_handler",
+            component="trigger_handler",
             operation="process_event",
             event_type=event_type,
             trigger_id=trigger_id,

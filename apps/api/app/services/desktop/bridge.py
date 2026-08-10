@@ -126,7 +126,10 @@ async def request_desktop_action(
                 outcome = await _await_result(pubsub)
         except TimeoutError:
             log.warning(
-                f"{LogTag.DESKTOP} Desktop tool '{tool}' timed out after {DESKTOP_TOOL_TIMEOUT_SECONDS}s"
+                f"{LogTag.DESKTOP} Desktop tool timed out",
+                tool=tool,
+                desktop_tool_timeout_seconds=DESKTOP_TOOL_TIMEOUT_SECONDS,
+                user_id=user_id,
             )
             return DesktopToolOutcome(ok=False, error=ERROR_TIMEOUT)
 

@@ -49,7 +49,12 @@ async def build_google_oauth_url(
             if token:
                 existing_scopes = (token.get("scope") or "").split()
         except Exception as e:
-            log.debug(f"{LogTag.OAUTH} Could not get existing scopes for user {user_id}: {e}")
+            log.debug(
+                f"{LogTag.OAUTH} Could not get existing scopes for user",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     # Combine all scopes (base + existing + new), removing duplicates
     all_scopes = list(set(base_scopes + existing_scopes + integration_scopes))
@@ -95,8 +100,13 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
             log.error(f"{LogTag.OAUTH} Missing secure_url in Cloudinary upload response")
             raise HTTPException(status_code=500, detail="Invalid response from image service")
 
-        log.info(f"{LogTag.OAUTH} Image uploaded successfully. URL: {image_url}")
+        log.info(f"{LogTag.OAUTH} Image uploaded successfully. URL", image_url=image_url)
         return image_url
     except Exception as e:
-        log.error(f"{LogTag.OAUTH} Failed to upload image to Cloudinary: {e!s}", exc_info=True)
+        log.error(
+            f"{LogTag.OAUTH} Failed to upload image to Cloudinary",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Image upload failed")

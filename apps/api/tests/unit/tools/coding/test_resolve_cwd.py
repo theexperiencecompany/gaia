@@ -7,8 +7,6 @@ import pytest
 from app.agents.tools.coding.bash_tool import _resolve_cwd
 from app.agents.workspace.paths import WORKSPACE_ROOT, session_dir
 
-pytestmark = pytest.mark.unit
-
 
 def test_empty_cwd_with_session_defaults_to_session_root() -> None:
     # `pwd` with no cwd lands in the session ROOT (/workspace/sessions/<conv>),

@@ -95,11 +95,16 @@ def require_integration(
         except HTTPException:
             raise
         except Exception as e:
-            log.error(f"{LogTag.API} Error checking integration {integration_short_name}: {e}")
+            log.error(
+                f"{LogTag.API} Error checking integration",
+                integration=integration_short_name,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to verify integration permissions",
-            )
+            ) from e
 
     return wrapper
 

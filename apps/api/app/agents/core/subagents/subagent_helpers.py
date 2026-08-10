@@ -51,7 +51,7 @@ async def build_subagent_system_prompt(
         # Custom or public MCP fallback — universal prompt; no per-user injection.
         if integration_id:
             return base_system_prompt or CUSTOM_MCP_SUBAGENT_PROMPT
-        log.warning(f"{LogTag.AGENT} Integration {integration_id} not found")
+        log.warning(f"{LogTag.AGENT} Integration not found", integration_id=integration_id)
         return base_system_prompt or ""
 
     return base_system_prompt or subagent.config.system_prompt or ""
@@ -95,7 +95,11 @@ async def _fetch_provider_metadata_block(
             metadata = await get_provider_metadata(user_id, integration.provider)
         except Exception as e:
             log.warning(
-                f"{LogTag.AGENT} Failed to fetch provider metadata for {integration.provider}: {e}"
+                f"{LogTag.AGENT} Failed to fetch provider metadata",
+                provider=integration.provider,
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=str(e),
             )
             return ""
     if not metadata:
@@ -117,7 +121,13 @@ async def _fetch_instructions_block(integration_id: str | None, user_id: str | N
     try:
         content = await get_instructions(user_id, integration_id)
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Failed to fetch custom instructions for {integration_id}: {e}")
+        log.warning(
+            f"{LogTag.AGENT} Failed to fetch custom instructions",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return ""
     if not content:
         return ""
@@ -216,13 +226,19 @@ async def create_agent_context_message(
             results = await memory_engine.recall(user_id, query, limit=5)
             if results.memories:
                 log.info(
-                    f"{LogTag.AGENT} Added {len(results.memories)} memories to subagent context"
+                    f"{LogTag.AGENT} Added memories to subagent context",
+                    memory_count=len(results.memories),
                 )
                 return "\n\nBased on our previous conversations:\n" + "\n".join(
                     f"- {mem.content}" for mem in results.memories
                 )
         except Exception as e:
-            log.warning(f"{LogTag.AGENT} Error retrieving memories for subagent: {e}")
+            log.warning(
+                f"{LogTag.AGENT} Error retrieving memories for subagent",
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
         return ""
 
     async def _fetch_skills() -> str:
@@ -236,10 +252,18 @@ async def create_agent_context_message(
                 agent_for_skills = subagent_id or EXECUTOR_SUBAGENT_ID
                 text = await get_available_skills_text(user_id=user_id, agent_name=agent_for_skills)
                 if text:
-                    log.info(f"{LogTag.AGENT} Injected installable skills for {agent_for_skills}")
+                    log.info(
+                        f"{LogTag.AGENT} Injected installable skills",
+                        agent_name=agent_for_skills,
+                    )
                     block = text
             except Exception as e:
-                log.warning(f"{LogTag.AGENT} Error injecting installable skills: {e}")
+                log.warning(
+                    f"{LogTag.AGENT} Error injecting installable skills",
+                    user_id=user_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
 
         if subagent_id:
             # `subagent_id` carries the agent_name ("docgen_agent"), but

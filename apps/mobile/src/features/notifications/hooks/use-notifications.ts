@@ -71,6 +71,93 @@ function resolveNotificationRoute(
   return null;
 }
 
+type PushTokenResult =
+  | { token: string; error?: undefined }
+  | { token?: undefined; error: string };
+
+/** Run device/permission/config checks and fetch the Expo push token. */
+async function acquireExpoPushToken(): Promise<PushTokenResult> {
+  if (!Device.isDevice) {
+    return { error: "Push notifications require a physical device" };
+  }
+
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+  if (existingStatus !== "granted") {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== "granted") {
+    return { error: "Permission not granted for push notifications" };
+  }
+
+  const projectId =
+    Constants?.expoConfig?.extra?.eas?.projectId ??
+    Constants?.easConfig?.projectId;
+  if (!projectId) {
+    return { error: "Project ID not found in app config" };
+  }
+
+  const pushTokenData = await Notifications.getExpoPushTokenAsync({
+    projectId,
+  });
+  return { token: pushTokenData.data };
+}
+
+async function ensureAndroidChannel(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  await Notifications.setNotificationChannelAsync("gaia_channel", {
+    name: "GAIA Notifications",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: "#00bbff",
+    sound: "uwu",
+    enableVibrate: true,
+    enableLights: true,
+  });
+}
+
+async function isTokenAlreadyRegistered(token: string): Promise<boolean> {
+  const storedToken = await SecureStore.getItemAsync("expo_push_token");
+  return (
+    storedToken === token &&
+    (await SecureStore.getItemAsync("expo_push_token_registered")) === "true"
+  );
+}
+
+/** Persist and register the token with the backend; returns success. */
+async function registerTokenWithBackend(token: string): Promise<boolean> {
+  await SecureStore.setItemAsync("expo_push_token", token);
+  try {
+    await notificationsApi.registerDeviceToken({
+      token,
+      platform: Platform.OS as "ios" | "android",
+      device_id: Device.deviceName || undefined,
+    });
+    await SecureStore.setItemAsync("expo_push_token_registered", "true");
+    return true;
+  } catch (_backendError) {
+    await SecureStore.deleteItemAsync("expo_push_token_registered");
+    return false;
+  }
+}
+
+/** Determine registration state for a token, registering it if needed. */
+async function resolveRegistration(
+  token: string,
+): Promise<{ registered: boolean; error: string | null }> {
+  if (await isTokenAlreadyRegistered(token)) {
+    return { registered: true, error: null };
+  }
+  const registered = await registerTokenWithBackend(token);
+  return {
+    registered,
+    error: registered
+      ? null
+      : "Failed to register device for push notifications",
+  };
+}
+
 export function useNotifications(): UseNotificationsReturn {
   const router = useRouter();
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
@@ -100,17 +187,7 @@ export function useNotifications(): UseNotificationsReturn {
         }
 
         // Setup Android notification channel
-        if (Platform.OS === "android") {
-          await Notifications.setNotificationChannelAsync("gaia_channel", {
-            name: "GAIA Notifications",
-            importance: Notifications.AndroidImportance.MAX,
-            vibrationPattern: [0, 250, 250, 250],
-            lightColor: "#00bbff",
-            sound: "uwu",
-            enableVibrate: true,
-            enableLights: true,
-          });
-        }
+        await ensureAndroidChannel();
 
         // Interactive HIL approval actions — approve/deny straight from the
         // notification (iOS action buttons; Android shows them where supported).
@@ -123,84 +200,22 @@ export function useNotifications(): UseNotificationsReturn {
           },
         ]);
 
-        // Check if physical device
-        if (!Device.isDevice) {
-          const errorMsg = "Push notifications require a physical device";
-          setError(errorMsg);
+        const tokenResult = await acquireExpoPushToken();
+        if (tokenResult.error !== undefined) {
+          setError(tokenResult.error);
           setIsLoading(false);
           return;
         }
 
-        // Request permissions
-        const { status: existingStatus } =
-          await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-
-        if (existingStatus !== "granted") {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-
-        if (finalStatus !== "granted") {
-          const errorMsg = "Permission not granted for push notifications";
-          setError(errorMsg);
-          setIsLoading(false);
-          return;
-        }
-
-        // Get Expo push token
-        const projectId =
-          Constants?.expoConfig?.extra?.eas?.projectId ??
-          Constants?.easConfig?.projectId;
-
-        if (!projectId) {
-          const errorMsg = "Project ID not found in app config";
-          setError(errorMsg);
-          setIsLoading(false);
-          return;
-        }
-
-        const pushTokenData = await Notifications.getExpoPushTokenAsync({
-          projectId,
-        });
-
-        const token = pushTokenData.data;
-
+        const token = tokenResult.token;
         if (!isMounted) return;
 
         setExpoPushToken(token);
 
-        const storedToken = await SecureStore.getItemAsync("expo_push_token");
-        const isAlreadyRegistered =
-          storedToken === token &&
-          (await SecureStore.getItemAsync("expo_push_token_registered")) ===
-            "true";
-
-        if (isAlreadyRegistered) {
-          setIsRegistered(true);
-          setError(null);
-        } else {
-          // Store token and register with backend
-          await SecureStore.setItemAsync("expo_push_token", token);
-
-          try {
-            await notificationsApi.registerDeviceToken({
-              token,
-              platform: Platform.OS as "ios" | "android",
-              device_id: Device.deviceName || undefined,
-            });
-            await SecureStore.setItemAsync(
-              "expo_push_token_registered",
-              "true",
-            );
-            setIsRegistered(true);
-            setError(null);
-          } catch (_backendError) {
-            await SecureStore.deleteItemAsync("expo_push_token_registered");
-            setIsRegistered(false);
-            setError("Failed to register device for push notifications");
-          }
-        }
+        const { registered, error: regError } =
+          await resolveRegistration(token);
+        setIsRegistered(registered);
+        setError(regError);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         if (isMounted) {

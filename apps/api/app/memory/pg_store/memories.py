@@ -45,6 +45,15 @@ async def insert_memories(records: list[MemoryRecord]) -> list[MemoryRecord]:
     return records
 
 
+async def count_live_memories(user_id: str) -> int:
+    """Count live facts (latest, not forgotten, not expired) for plan-cap checks."""
+    async with memory_session() as session:
+        result = await session.execute(
+            select(func.count()).select_from(_active_memories_query(user_id).subquery())
+        )
+        return result.scalar_one()
+
+
 async def get_memory(memory_id: str, user_id: str) -> MemoryRecord | None:
     """Fetch one memory by id, scoped to its owner."""
     async with memory_session() as session:

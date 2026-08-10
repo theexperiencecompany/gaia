@@ -6,6 +6,7 @@ import { setRequestLocale } from "next-intl/server";
 import { type ReactNode, Suspense } from "react";
 import { defaultFont, getAllFontVariables } from "@/app/fonts";
 import { AgentationProvider } from "@/components/dev/AgentationProvider";
+import { ChunkErrorRecovery } from "@/components/shared/ChunkErrorRecovery";
 import { routing } from "@/i18n/routing";
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
 import RootProviders from "@/layouts/RootProviders";
@@ -202,6 +203,7 @@ export default async function LocaleLayout({ children, params }: Props) {
           {JSON.stringify(generateWebSiteSchema())}
         </Script>
 
+        <ChunkErrorRecovery />
         <AnalyticsLayout />
         <AgentationProvider />
       </body>

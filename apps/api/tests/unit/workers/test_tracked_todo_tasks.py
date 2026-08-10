@@ -42,8 +42,6 @@ from app.workers.tasks.tracked_todo_tasks import (
     safety_net_check_orphaned_todos,
 )
 
-pytestmark = pytest.mark.unit
-
 MODULE = "app.workers.tasks.tracked_todo_tasks"
 KOLKATA = ZoneInfo("Asia/Kolkata")
 NEW_YORK = ZoneInfo("America/New_York")
@@ -129,6 +127,10 @@ class TestExecuteTrackedTodoLock:
 
 
 class TestExecuteTodoWithRetryEarlyExits:
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
     async def _run(self, doc, *, pool=None):
         pool = pool or _pool()
         repo = MagicMock()
@@ -183,6 +185,10 @@ class TestExecuteTodoWithRetryEarlyExits:
 
 
 class TestExecuteTodoWithRetrySuccess:
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
     async def _run(self, doc, *, tz="UTC"):
         pool = _pool()
         repo = MagicMock()

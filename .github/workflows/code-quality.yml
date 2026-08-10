@@ -565,6 +565,119 @@ jobs:
           echo "::endgroup::"
           echo "pip-audit: informational — review CVEs above (does not fail CI)"
 
+  # --- Observability score (evlog map) ------------------------------------
+  # Python port of evlog's `map` (tools/evlog_map): scores every FastAPI/ARQ
+  # entry point on wide-event instrumentation, weighted so money/auth routes
+  # count double. Full-repo score goes to the job summary; on PRs the changed
+  # files are scored at the merge-base and at HEAD with the same scanner and
+  # the lane fails on regression (new files get a hard "good"-grade floor).
+  # The scanners themselves are stdlib-only; uv is installed only to run their
+  # test suites (first step).
+  observability:
+    name: Observability score (evlog map)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Node toolchain only for the bots scanner (TS compiler API needs
+      # node_modules); the Python scanner stays stdlib-only.
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      # This lane's verdict is only worth what its rules are worth, and those
+      # rules have been silently wrong (a discarded-error except matrix, route
+      # resolution that found 2 of 283 paths). Both still printed a score — so
+      # the tools are tested BEFORE they gate: tools/evlog_map (static) and
+      # tools/logcheck (black-box) run in ~1s, deliberately un-grouped so a
+      # failure traceback is the signal.
+      - name: Scanner self-tests
+        run: |
+          set -euo pipefail
+          uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
+          echo "scanner self-tests: OK (evlog map rules + log-contract invariants)"
+      # --min-score 100 gates BOTH quality and discovery: an empty map scores
+      # 0 (not 100), so a scanner that stops seeing entry points fails the
+      # gate instead of reporting a perfect score over nothing — no
+      # hand-maintained entry-count floor needed.
+      - name: Full observability score — API + voice-agent + bots (details in job summary)
+        run: |
+          set -euo pipefail
+          echo "evlog map — python surface (apps/api + apps/voice-agent)"
+          python3 tools/evlog_map --github-summary --no-write --min-score 100
+          echo "evlog map — bots surface (apps/bots + libs/shared/ts)"
+          node scripts/ci/evlog-map-bots.mjs --min-score 100
+          echo "observability: full scores above; per-entry detail in the job summary only"
+      - name: Changed-files regression gate (per-file, score must not drop)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ -z "$FILES" ]; then
+            echo "observability: OK (no changed Python files)"
+            exit 0
+          fi
+          if [ "$FILES" = "__FULL__" ]; then
+            echo "observability: OK (full run — covered by the full scan above)"
+            exit 0
+          fi
+          echo "::group::evlog map — changed files vs merge-base (per-file ratchet)"
+          scripts/ci/evlog-ratchet.sh
+          echo "::endgroup::"
+          echo "observability: OK (no per-file regression on changed Python files)"
+      - name: Bots regression gate (full surface, held at 100)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          BOT_FILES=$(scripts/ci/changed-files.sh ts)
+          if [ -z "$BOT_FILES" ]; then
+            echo "observability-bots: OK (no changed TypeScript files)"
+            exit 0
+          fi
+          if [ "$BOT_FILES" != "__FULL__" ] && ! grep -qE '^(apps/bots/|libs/shared/ts/)' <<< "$BOT_FILES"; then
+            echo "observability-bots: OK (no bot-surface files changed)"
+            exit 0
+          fi
+          # The bots surface is small and already at 100 — hold it there
+          # outright rather than baselining per file. An empty map scores 0
+          # (not 100), so --min-score also catches the scanner going blind.
+          echo "::group::evlog map — bots surface gate"
+          node scripts/ci/evlog-map-bots.mjs --min-score 100
+          echo "::endgroup::"
+          echo "observability-bots: OK (surface held at 100)"
+
+  # --- Wide-event cross-runtime conformance --------------------------------
+  # The Python services and the TypeScript bots must emit the SAME log shape,
+  # so one LogQL query spans both. This lane runs both logging stacks for real,
+  # captures the NDJSON each prints, and diffs the shapes against each other and
+  # against scripts/ci/wide-event-conformance/contract.json. A field renamed,
+  # retyped, or added on only one side fails here — which is the only thing that
+  # actually stops the two halves drifting apart between reviews.
+  wide-event-conformance:
+    name: Wide events have one shape across Python and TypeScript
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      - name: Emit real events from both runtimes and diff their shapes
+        run: |
+          echo "::group::wide-event conformance"
+          python3 scripts/ci/wide-event-conformance/run.py --show-capture
+          echo "::endgroup::"
+          echo "wide events: OK (Python and TypeScript emit one shape)"
+
   # --- Dead code detection (knip + vulture) — enforced ---------------------
   # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the
   # lane. The scan is tightened to drop systematic false positives (tests,
@@ -679,7 +792,16 @@ jobs:
   suppression-ratchet:
     name: "Suppression ratchet (no new # noqa / # type: ignore / biome-ignore)"
     needs: [changes]
-    if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
+    # The develop -> master promotion PR is exempt. Its diff is every commit
+    # since the last release, and each of those was already ratcheted against
+    # develop on the way in — re-measuring the whole range against master
+    # reports ~27 files of grandfathered suppressions as new, failing the
+    # release for work that was reviewed weeks ago. head_ref/base_ref are set
+    # only on pull_request, so pushes to develop/master stay ratcheted, as do
+    # all feature PRs into develop.
+    if: >-
+      (needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true')
+      && !(github.base_ref == 'master' && github.head_ref == 'develop')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -730,7 +852,83 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
+
+  # --- Python semgrep (SSRF / path traversal / injection) ------------------
+  # Dataflow SAST that bandit cannot do: follows user-controlled input into
+  # URL fetches / file paths / subprocesses. ENFORCED: the findings it was
+  # ratcheting against are burned down (apps/api/app is at 0 across 815 files),
+  # and it is a flat-enforced lane in the quality-gate LANES array.
+  #
+  # Deliberately a whole-directory scan rather than diff-scoped like ruff/mypy:
+  # a security lane that only looks at files a PR happens to touch stops
+  # noticing everything else.
+  #
+  # Rules come from the VENDORED pack, not `--config p/python`. The registry
+  # form re-resolves the ruleset on every run, so what CI enforces could change
+  # with no commit behind it and red an unrelated PR — the reason this lane sat
+  # informational. The digest pins the engine; tools/semgrep/p-python.yaml pins
+  # the rules (151, byte-identical to the registry pack it was fetched from), so
+  # both halves of the verdict are now reviewable. Refresh deliberately with
+  # tools/semgrep/refresh-p-python.sh.
+  semgrep:
+    name: Python security patterns (semgrep)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: semgrep scan (p/python over apps/api/app)
+        # docker form: returntocorp/semgrep-action is deprecated upstream; the
+        # image has no ENTRYPOINT, so the command must spell `semgrep`.
+        #
+        # Digest-pinned, not `:latest` (Sonar githubactions security rule, and
+        # the reason this lane cannot simply be flipped to enforced): a floating
+        # tag lets an upstream release change what every unrelated PR is
+        # scanned with. Note this pins the scanner, not the rules — `p/python`
+        # is still fetched from the registry per run.
+        uses: docker://semgrep/semgrep@sha256:b68f9b68483955b85042dac7b4533757779625a02dcf91e470da4c2df1b430be # v1.145.0
+        with:
+          args: semgrep scan --config tools/semgrep/p-python.yaml apps/api/app --error --metrics=off
+
   # --- Quality gate (single required status check) -------------------------
+  # --- Mutation testing (changed modules, self-contained) -----------------
+  # The "tests must have teeth" gate: every changed app module is mutated
+  # (one injected bug at a time, mutmut) and the module's own tests must
+  # catch every mutant. Fails on: changed app code with no test file
+  # anywhere, zero mutants (tests do not cover the changed lines), any
+  # surviving mutant, or the lane budget being exceeded.
+  #
+  # Self-contained by design: an earlier version fed the module list through
+  # a job output into a matrix (`include: ${{ fromJSON(needs.X.outputs.matrix) }}`)
+  # — the matrix job never materialized because output values containing
+  # quotes corrupt the expression context (verified with a minimal probe
+  # workflow: hardcoded include works, literal fromJSON works, fromJSON of a
+  # job output does not). One job that computes the list and runs the
+  # modules itself (xargs -P for bounded parallelism on the runner) has no
+  # such surface to break. mutation.sh is parallel-safe (per-invocation
+  # workdir), so concurrent runs never race on shared state.
+  test-mutation:
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    # A large changed module can carry hundreds of mutants (each running its
+    # covering tests once) — a 745-mutant module takes ~13 min. The xargs
+    # parallelism overlaps modules, so this is the per-module worst case.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      - name: Sync Python dependencies
+        run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Mutation check (zero survivors required, per changed module)
+        run: bash scripts/ci/mutation-check.sh
+
   quality-gate:
     name: Quality gate (required)
     if: always()
@@ -750,10 +948,14 @@ jobs:
       - python-interrogate
       - python-xenon
       - python-security
+      - observability
+      - wide-event-conformance
       - dead-code
       - alert-rules
       - suppression-ratchet
       - gitleaks
+      - semgrep
+      - test-mutation
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -776,10 +978,14 @@ jobs:
           PYTHON_INTERROGATE: ${{ needs.python-interrogate.result }}
           PYTHON_XENON: ${{ needs.python-xenon.result }}
           PYTHON_SECURITY: ${{ needs.python-security.result }}
+          OBSERVABILITY: ${{ needs.observability.result }}
+          WIDE_EVENT_CONFORMANCE: ${{ needs.wide-event-conformance.result }}
           DEAD_CODE: ${{ needs.dead-code.result }}
           ALERT_RULES: ${{ needs.alert-rules.result }}
           SUPPRESSION_RATCHET: ${{ needs.suppression-ratchet.result }}
           GITLEAKS: ${{ needs.gitleaks.result }}
+          SEMGREP: ${{ needs.semgrep.result }}
+          MUTATION: ${{ needs.test-mutation.result }}
         run: |
           # Lane skips are only trustworthy if change detection succeeded.
           if [[ "$CHANGES" != "success" ]]; then
@@ -802,54 +1008,44 @@ jobs:
             [python-interrogate]="$PYTHON_INTERROGATE"
             [python-xenon]="$PYTHON_XENON"
             [python-security]="$PYTHON_SECURITY"
+            [observability]="$OBSERVABILITY"
+            [wide-event-conformance]="$WIDE_EVENT_CONFORMANCE"
             [dead-code]="$DEAD_CODE"
             [alert-rules]="$ALERT_RULES"
             [suppression-ratchet]="$SUPPRESSION_RATCHET"
             [gitleaks]="$GITLEAKS"
+            [semgrep]="$SEMGREP"
+            [test-mutation]="$MUTATION"
           )
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
-                 dead-code alert-rules suppression-ratchet gitleaks)
-
-          # ---------------------------------------------------------------
-          # RATCHET: a lane is ENFORCED (can fail this gate) if the marker
-          # file .github/quality-gate/enforced/<lane> exists. Every other
-          # lane is reported but never blocks merge. Each resolution PR adds
-          # its own marker file — separate paths never merge-conflict the way
-          # editing one shared list does. When all 18 markers exist, the full
-          # strict rule set is enforced.
-          # ---------------------------------------------------------------
-          ENFORCED=()
-          if [ -d .github/quality-gate/enforced ]; then
-            for marker in .github/quality-gate/enforced/*; do
-              [ -e "$marker" ] || continue
-              ENFORCED+=("$(basename "$marker")")
-            done
-          fi
-          # ---------------------------------------------------------------
-
-          is_enforced() { local l; for l in "${ENFORCED[@]}"; do [[ "$l" == "$1" ]] && return 0; done; return 1; }
+                 observability wide-event-conformance \
+                 dead-code alert-rules suppression-ratchet gitleaks semgrep test-mutation)
 
           echo "::group::Per-lane results"
           for lane in "${LANES[@]}"; do
-            if is_enforced "$lane"; then tag="[enforced]"; else tag="[informational]"; fi
-            printf '  %-22s %-12s %s\n' "$lane:" "${RESULT[$lane]}" "$tag"
+            printf '  %-22s %-12s\n' "$lane:" "${RESULT[$lane]}"
           done
           echo "::endgroup::"
 
+          # Every lane is enforced: a lane that is neither success nor skipped
+          # (the changes job proved its language was untouched) fails the gate.
+          # The old marker-file ratchet is gone — the rollout it enabled is
+          # complete, and the two sources of truth had drifted
+          # (observability + wide-event-conformance were enforced but missing
+          # from LANES).
           failed=0
-          for lane in "${ENFORCED[@]}"; do
+          for lane in "${LANES[@]}"; do
             r="${RESULT[$lane]}"
-            # skipped = changes proved the lane's language wasn't touched
             if [[ "$r" != "success" && "$r" != "skipped" ]]; then
-              echo "::error::enforced lane '$lane' did not pass (result: $r)"
+              echo "::error::lane '$lane' did not pass (result: $r)"
               failed=$((failed + 1))
             fi
           done
 
           if [[ "$failed" -gt 0 ]]; then
-            echo "::error::Quality gate FAILED — $failed enforced lane(s) did not pass"
+            echo "::error::Quality gate FAILED — $failed lane(s) did not pass"
             exit 1
           fi
-          echo "Quality gate: PASSED — ${#ENFORCED[@]}/${#LANES[@]} lanes enforced; remainder informational (ratchet in progress)"
+          echo "Quality gate: PASSED — ${#LANES[@]} lanes enforced"

@@ -231,7 +231,11 @@ async def call_agent(
         return execute_graph_streaming(graph, initial_state, config)
 
     except Exception as exc:
-        log.error(f"{LogTag.AGENT} Error when calling agent: {exc}")
+        log.error(
+            f"{LogTag.AGENT} Error when calling agent",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         error_message = f"Error when calling agent: {exc!s}"
 
         async def error_generator() -> AsyncGenerator[str, None]:
@@ -311,7 +315,11 @@ async def call_agent_silent(
         return complete_message, tool_data
 
     except Exception as exc:
-        log.error(f"{LogTag.AGENT} Error when calling silent agent: {exc}")
+        log.error(
+            f"{LogTag.AGENT} Error when calling silent agent",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         return f"Error when calling silent agent: {exc!s}", {}
     finally:
         teardown_executor_capture(stream_id)

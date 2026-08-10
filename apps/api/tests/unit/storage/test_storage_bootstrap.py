@@ -41,8 +41,6 @@ from app.services.storage.bootstrap import (
     _mount_state,
 )
 
-pytestmark = pytest.mark.unit
-
 META = "postgres://gaia:secret@meta.example.com:5432/jfs"
 
 
@@ -972,6 +970,7 @@ async def test_bootstrap_restarts_once_the_previous_supervisor_has_finished(
     assert bootstrap._bootstrap_thread is not first
 
 
+@pytest.mark.slow
 async def test_an_unresponsive_mount_probe_still_starts_the_bootstrap(
     cfg: Path,
     juicefs_on_path: None,
@@ -984,7 +983,11 @@ async def test_an_unresponsive_mount_probe_still_starts_the_bootstrap(
     monkeypatch.setattr(bootstrap, "_MOUNT_PROBE_TIMEOUT_SECONDS", 0.05)
 
     def wedged(_path: Path) -> bool:
-        real_time.sleep(2)
+        # Block LONGER than the probe timeout (0.05s, set above) so the
+        # wait_for fires while this thread is still wedged — simulating a
+        # stat that never returns. 0.5s is enough; the loop joins this
+        # thread at close, so a long sleep is pure teardown cost.
+        real_time.sleep(0.5)
         return True
 
     monkeypatch.setattr(bootstrap, "_is_mounted", wedged)

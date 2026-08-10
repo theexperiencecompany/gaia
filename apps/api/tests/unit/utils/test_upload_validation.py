@@ -8,7 +8,6 @@ import pytest
 from app.utils.upload_validation import validate_upload, verify_webp_container
 
 
-@pytest.mark.unit
 class TestVerifyWebpContainer:
     def test_valid_webp_container_passes(self) -> None:
         verify_webp_container(b"RIFF\x10\x00\x00\x00WEBPVP8 ")
@@ -30,7 +29,6 @@ class TestVerifyWebpContainer:
         assert "does not match" in exc_info.value.detail
 
 
-@pytest.mark.unit
 class TestValidateUploadWebp:
     pytestmark = pytest.mark.asyncio
 
@@ -59,7 +57,6 @@ class TestValidateUploadWebp:
         assert "does not match" in exc_info.value.detail
 
 
-@pytest.mark.unit
 class TestValidateUploadExtraFormats:
     """The anydoc-extracted formats (RTF/EPUB/ODF/DOC) pass validation with their
     real magic bytes; a mislabeled payload is rejected."""

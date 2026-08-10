@@ -82,7 +82,7 @@ def processor() -> DocumentProcessor:
         patch("app.utils.file_utils.LlamaParse"),
         patch("app.utils.file_utils.get_default_llm", return_value=_mock_llm()),
     ):
-        proc = DocumentProcessor()
+        proc = DocumentProcessor(user_id="u-test")
     return proc
 
 
@@ -91,7 +91,6 @@ def processor() -> DocumentProcessor:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessFileRouting:
     """Verify that process_file routes to the correct sub-processor."""
 
@@ -189,7 +188,6 @@ class TestProcessFileRouting:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessImage:
     async def test_success_returns_description(self, processor: DocumentProcessor) -> None:
         with _mock_vision("A scenic mountain view"):
@@ -239,7 +237,6 @@ class TestProcessImage:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessDoc:
     """process_doc handles PDFs only -- DOCX/XLSX/PPTX/CSV go through process_office_document."""
 
@@ -361,7 +358,6 @@ class TestProcessDoc:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessOfficeDocument:
     """These tests mock only the anydoc boundary; the real _chunk_markdown runs,
     so chunking logic (including the heading-split path) gets real coverage."""
@@ -464,7 +460,6 @@ class TestProcessOfficeDocument:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSummarizeChunks:
     """Direct coverage of blank-filtering, truncation, and abatch wiring beyond
     what process_doc / process_office_document exercise incidentally."""
@@ -532,7 +527,6 @@ class TestSummarizeChunks:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestChunkMarkdown:
     """MarkdownTextSplitter owns the actual cut-point logic; these assert the
     invariants _chunk_markdown promises (size bound, content preservation),
@@ -573,7 +567,6 @@ class TestChunkMarkdown:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessText:
     async def test_success_returns_document_summary(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm(invoke_return="Text summary")
@@ -640,7 +633,6 @@ class TestProcessText:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateTextSummary:
     async def test_returns_string_summary(self, processor: DocumentProcessor) -> None:
         processor.llm = _mock_llm(invoke_return="A concise summary")
@@ -672,7 +664,6 @@ class TestGenerateTextSummary:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateFileSummary:
     @patch("app.utils.file_utils.DocumentProcessor")
     async def test_delegates_to_processor(self, mock_proc_cls: MagicMock) -> None:
@@ -684,6 +675,7 @@ class TestGenerateFileSummary:
             file_content=b"data",
             content_type="text/plain",
             filename="readme.txt",
+            user_id="u-test",
         )
 
         mock_instance.process_file.assert_awaited_once_with(
@@ -699,7 +691,7 @@ class TestGenerateFileSummary:
         mock_instance.process_file = AsyncMock(return_value="")
         mock_proc_cls.return_value = mock_instance
 
-        await generate_file_summary(b"a", "text/plain", "a.txt")
-        await generate_file_summary(b"b", "text/plain", "b.txt")
+        await generate_file_summary(b"a", "text/plain", "a.txt", user_id="u-test")
+        await generate_file_summary(b"b", "text/plain", "b.txt", user_id="u-test")
 
         assert mock_proc_cls.call_count == 2

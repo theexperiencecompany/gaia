@@ -53,7 +53,6 @@ def mock_redis_cache():
         yield
 
 
-@pytest.mark.unit
 class TestGetAllBlogs:
     async def test_returns_blog_posts(self, mock_blog_repo, mock_redis_cache):
         mock_blog_repo.list_page = AsyncMock(return_value=[_blog_post()])
@@ -85,7 +84,6 @@ class TestGetAllBlogs:
         assert await BlogService.get_all_blogs() == []
 
 
-@pytest.mark.unit
 class TestGetBlogBySlug:
     async def test_returns_blog_by_slug(self, mock_blog_repo, mock_redis_cache):
         mock_blog_repo.get_by_slug = AsyncMock(return_value=_blog_post(slug="test-blog"))
@@ -104,7 +102,6 @@ class TestGetBlogBySlug:
         assert exc_info.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestGetBlogCount:
     async def test_returns_repository_count(self, mock_blog_repo):
         mock_blog_repo.count = AsyncMock(return_value=42)
@@ -112,7 +109,6 @@ class TestGetBlogCount:
         assert await BlogService.get_blog_count() == 42
 
 
-@pytest.mark.unit
 class TestSearchBlogs:
     async def test_searches_by_query(self, mock_blog_repo):
         mock_blog_repo.search = AsyncMock(return_value=[_blog_post(category="Tech")])
@@ -138,7 +134,6 @@ class TestSearchBlogs:
         assert await BlogService.search_blogs("nonexistent") == []
 
 
-@pytest.mark.unit
 class TestSearchBlogsRegexEscaping:
     async def test_search_query_is_regex_escaped(self):
         """The repository must feed a literal (escaped) query into every $regex

@@ -34,7 +34,6 @@ def mock_redis_client():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIsSafeRedirectPath:
     def test_valid_simple_path(self):
         assert is_safe_redirect_path("/c") is True
@@ -124,7 +123,6 @@ class TestIsSafeRedirectPath:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateOAuthState:
     async def test_creates_state_with_valid_params(self, mock_redis_client):
         token = await create_oauth_state(
@@ -230,7 +228,6 @@ class TestCreateOAuthState:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestValidateAndConsumeOAuthState:
     async def test_valid_token_returns_state_data(self, mock_redis_client):
         mock_redis_client.hgetall = AsyncMock(

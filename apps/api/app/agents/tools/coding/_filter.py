@@ -122,7 +122,12 @@ async def run_file_filter(
         # Either the binary or the file is missing; the message says which.
         return f"Error: {e}"
     except Exception as e:
-        log.error(f"{LogTag.SANDBOX} {error_label} tool failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.SANDBOX} coding tool failed",
+            tool_name=error_label,
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return f"Error running {error_label}: {e}"
 
 
@@ -186,7 +191,9 @@ async def _read_bounded(proc: asyncio.subprocess.Process) -> tuple[bytes, bytes,
         nonlocal truncated
         chunks: list[bytes] = []
         total = 0
-        assert proc.stdout is not None
+        # stdout is always created when the subprocess is spawned with
+        # stdout=PIPE; assert is a dev guard, not a runtime check.
+        assert proc.stdout is not None  # nosec B101
         while True:
             chunk = await proc.stdout.read(_READ_CHUNK)
             if not chunk:

@@ -476,8 +476,10 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
                 # Profile context is still useful without recent tweets, so this
                 # returns a partial result rather than failing the whole tool.
                 log.warning(
-                    f"{LogTag.TOOL} Failed to fetch recent tweets for {twitter_user_id}, "
-                    f"returning profile without them: {e}"
+                    f"{LogTag.TOOL} Failed to fetch recent tweets, returning profile without them",
+                    twitter_user_id=twitter_user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
 
         return {

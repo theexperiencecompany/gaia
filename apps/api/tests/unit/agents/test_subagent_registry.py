@@ -144,7 +144,6 @@ def _restore_real_registry_after_each_test():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAllSubagents:
     def test_filters_integrations_with_subagent(self):
         _clear_registry_cache()
@@ -177,7 +176,6 @@ class TestAllSubagents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetSubagentById:
     def test_find_by_id(self):
         _clear_registry_cache()
@@ -259,7 +257,6 @@ class TestGetSubagentById:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFromOauth:
     def test_raises_when_subagent_config_is_none(self) -> None:
         integ = _make_real_oauth_integration(
@@ -306,7 +303,6 @@ class TestFromOauth:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAllSubagentsCachingAndOrdering:
     def test_includes_oauth_and_builtins_in_order(self) -> None:
         _clear_registry_cache()
@@ -390,7 +386,6 @@ class TestAllSubagentsCachingAndOrdering:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetSubagentByIdExtended:
     def test_finds_real_gaia_builtin(self) -> None:
         _clear_registry_cache()

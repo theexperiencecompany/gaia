@@ -62,7 +62,12 @@ async def get_model_pricing(model_name: str) -> ModelPricing:
         return DEFAULT_PRICING
 
     except Exception as e:
-        log.error(f"{LogTag.STARTUP} Error fetching pricing for model {model_name}: {e}")
+        log.error(
+            f"{LogTag.STARTUP} Error fetching pricing for model",
+            model_name=model_name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return DEFAULT_PRICING
 
 

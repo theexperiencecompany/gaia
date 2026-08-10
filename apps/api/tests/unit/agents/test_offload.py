@@ -23,8 +23,6 @@ from app.agents.workspace.offload import (
 )
 from app.constants.offload import GREP_TOOL_NAME, OFFLOAD_KEY, QUERY_JSON_TOOL_NAME
 
-pytestmark = pytest.mark.unit
-
 INFO = {"path": "/w/x.jsonl", "bytes": 10, "fmt": "jsonl", "producer": "p", "records": 3}
 
 

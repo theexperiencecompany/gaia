@@ -45,12 +45,19 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            // hotfix/* is the escape hatch for production defects that cannot
+            // wait for the develop backlog to be release-ready. It still gets
+            // the full quality gate — it only skips the promotion ordering.
+            // Every hotfix must be landed on develop too, or the next
+            // develop -> master merge ships a regression.
             const isAllowed = (ref) =>
-              ref === "develop" || ref.startsWith("release-please--");
+              ref === "develop" ||
+              ref.startsWith("release-please--") ||
+              ref.startsWith("hotfix/");
             const pr = context.payload.pull_request;
             if (pr.base.ref === "master" && !isAllowed(pr.head.ref)) {
               core.setFailed(
-                `PRs to master must come from develop or release-please. Got '${pr.head.ref}'.`
+                `PRs to master must come from develop, release-please, or hotfix/*. Got '${pr.head.ref}'.`
               );
             }
 
@@ -131,6 +138,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
       - uses: ./.github/actions/setup-python-test-env
       - name: Run Python tests
@@ -140,10 +148,53 @@ jobs:
         # full suite isn't paid for twice per PR; --cov-fail-under makes the
         # coverage floor a real gate, not an informational number.
         run: |
-          uv run --frozen pytest -n auto -m 'not composio' \
-            --tb=short -q --override-ini=addopts=--strict-markers \
-            --cov=app --cov-report=term-missing --cov-fail-under=80
+          # Flake gate: a test that passes only on rerun fails the build
+          # (CPython's --fail-rerun lesson) — flakiness is a defect, not a shrug.
+          # The gate strips coverage/junit from the rerun so they never gate a
+          # 2-test subset. --timeout is restored explicitly because
+          # --override-ini=addopts drops pytest.ini's `--timeout=300`.
+          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
+            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
+            --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80 \
+            --junitxml=test-results/pytest.xml --durations=50
           echo "Python tests: OK (full suite vs live services)"
+      - name: Schemathesis contract fuzz (isolated live-server run)
+        # Boots a real uvicorn server; must NOT share the parallel load that
+        # starves it. Runs serially after the main suite, excluded from it via
+        # the `schemathesis` marker.
+        #
+        # --override-ini is what actually makes it serial: pytest.ini's addopts
+        # carry `-n 4`, so without this the "isolated" run spun up four xdist
+        # workers that each paid the ~10s app import while one of them tried to
+        # boot uvicorn on the same two cores. The timeout is restored explicitly
+        # because overriding addopts drops pytest.ini's `--timeout=300`, which
+        # is now shorter than the server's own boot budget.
+        if: always()
+        working-directory: apps/api
+        run: |
+          USE_REAL_SERVICES=1 bash ../../scripts/ci/run-tests-flake-gate.sh \
+            uv run pytest tests/integration/real/test_schemathesis.py -q --tb=short -m schemathesis \
+            --override-ini=addopts=--strict-markers --timeout=600
+          echo "Schemathesis: OK"
+      - name: Summary of failed tests
+        if: always()
+        working-directory: apps/api
+        # PEP 723 script (defusedxml pinned inline) — uv builds its own env, so
+        # --no-project keeps it off the apps/api venv it happens to run inside.
+        run: uv run --no-project ../../scripts/ci/junit_failures.py test-results/pytest.xml || true
+      - name: Upload pytest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: apps/api/test-results/
+          retention-days: 7
+      - name: Diff coverage gate (changed lines must be covered)
+        if: github.event_name == 'pull_request'
+        working-directory: apps/api
+        run: |
+          uv tool run diff-cover coverage.xml --compare-branch=origin/develop --fail-under=90
+          echo "diff-cover: OK"
       - name: Run gaia-shared tests
         working-directory: apps/api
         # Separate step, not folded into the run above: these live outside
@@ -154,6 +205,39 @@ jobs:
           uv run --frozen pytest ../../libs/shared/py/tests \
             --tb=short -q --override-ini=addopts=--strict-markers
           echo "gaia-shared tests: OK"
+
+  # --- Test: Python fast lane (hermetic, no containers) -------------------
+  # The fast-suite invariant, enforced: the hermetic default selection (what
+  # `nx test api` runs locally) must finish inside the budget with NO service
+  # containers — real-infra tiers skip at collection when USE_REAL_SERVICES
+  # is unset. A regression that slows the default run fails this lane instead
+  # of silently degrading every contributor's feedback loop.
+  test-fast:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      - name: Sync Python dependencies
+        shell: bash
+        run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Run hermetic fast suite (budget-capped)
+        working-directory: apps/api
+        # No containers, no service env: USE_REAL_SERVICES is unset, so every
+        # real-infra tier skips at collection. The `timeout` cap IS the
+        # fast-suite budget — a slower suite is a failed build.
+        run: |
+          timeout ${FAST_SUITE_BUDGET_SECONDS:-300} bash ../../scripts/ci/run-tests-flake-gate.sh \
+            uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
+            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300
+          echo "Hermetic fast suite: OK (under budget)"
 
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
@@ -271,6 +355,30 @@ jobs:
           format: "table"
           scan-ref: "."
 
+  # --- Regression-proof: changed tests must FAIL on base -------------------
+  # FastAPI's lesson: run the PR's changed test files against origin/develop
+  # and report any that PASS there (the fix may no longer be needed).
+  # ENFORCED. It was informational because it checked EVERY changed test file,
+  # and gap-fill/restructure branches legitimately add tests for behavior the
+  # base already gets right — a guaranteed false positive. It is now scoped to
+  # tests that opt in with `@pytest.mark.regression`, which only a test claiming
+  # to pin a bug carries, so there is nothing left to false-positive on: a diff
+  # with no such tests passes trivially, and one that has them must prove them.
+  regression-proof:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-python-test-env
+      - name: Changed test files must fail on base
+        working-directory: apps/api
+        run: bash ../../scripts/ci/regression-proof.sh origin/develop
+
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     if: always()
@@ -280,6 +388,7 @@ jobs:
       - test-python
       - test-typescript
       - test-harness-tools
+      - regression-proof
       # static checks + dead-code live in code-quality.yml (its own gate)
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # trivy-scan deliberately excluded (non-blocking, pre-existing findings)
@@ -296,13 +405,15 @@ jobs:
           echo "  test-python:        ${{ needs.test-python.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
           echo "  test-harness-tools: ${{ needs.test-harness-tools.result }}"
+          echo "  regression-proof:   ${{ needs.regression-proof.result }}"
 
           for r in \
             "${{ needs.detect.result }}" \
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.test-typescript.result }}" \
-            "${{ needs.test-harness-tools.result }}"; do
+            "${{ needs.test-harness-tools.result }}" \
+            "${{ needs.regression-proof.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job result: $r"
               exit 1

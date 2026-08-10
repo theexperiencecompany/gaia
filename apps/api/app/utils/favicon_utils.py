@@ -110,7 +110,12 @@ async def _fetch_smithery_icon(server_url: str) -> str | None:
             icon_url = response.json().get("iconUrl")
             return icon_url if isinstance(icon_url, str) and icon_url else None
     except Exception as e:
-        log.debug(f"Smithery icon lookup failed for {qualified_name}: {e}")
+        log.debug(
+            "Smithery icon lookup failed for",
+            qualified_name=qualified_name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
 
 
@@ -197,7 +202,9 @@ async def _validate_favicon_url(url: str) -> bool:
             content_type = response.headers.get("content-type", "").lower()
             return "image" in content_type
     except Exception as e:
-        log.debug(f"Favicon validation failed for {url}: {e}")
+        log.debug(
+            "Favicon validation failed for", url=url, error=str(e), error_type=type(e).__name__
+        )
         return False
 
 
@@ -215,7 +222,9 @@ async def _try_html_link_parsing(url: str) -> str | None:
             return _select_best_icon(icons)
 
     except Exception as e:
-        log.debug(f"HTML link parsing failed for {url}: {e}")
+        log.debug(
+            "HTML link parsing failed for", url=url, error=str(e), error_type=type(e).__name__
+        )
     return None
 
 
@@ -235,7 +244,7 @@ async def _fetch_favicon_impl(server_url: str) -> str | None:
     placeholder (or nothing) for servers that don't customise their icon.
     """
     host_url = _get_host_url(server_url)
-    log.debug(f"Fetching favicon for host: {host_url}")
+    log.debug("Fetching favicon for host", host_url=host_url)
 
     smithery_icon = await _fetch_smithery_icon(server_url)
     if smithery_icon and await _validate_favicon_url(smithery_icon):
@@ -273,7 +282,12 @@ async def fetch_favicon_from_url(server_url: str) -> str | None:
         return result
 
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Failed to fetch favicon for {server_url}: {e}")
+        log.warning(
+            f"{LogTag.TOOL} Failed to fetch favicon for",
+            server_url=server_url,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
 
 

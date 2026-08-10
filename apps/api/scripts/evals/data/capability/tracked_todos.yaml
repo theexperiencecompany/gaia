@@ -1,0 +1,70 @@
+# Tracked todos family — the canvas flow (create/list/update via the
+# pre-bound tracked-todo tools; end_state verified in Mongo, tracked todos
+# carry the gaia-tracked label).
+
+- id: tracked-create-simple
+  ticket: "Start a tracked todo with a working canvas."
+  tags: [tracked_todos]
+  prompt: "I'm renovating my bathroom. Start a tracked todo for this project so you can keep notes on it."
+  expected:
+    category: tracked_todos
+    communicate: ["bathroom"]
+    tool_calls: [{tool: create_tracked_todo}]
+    end_state: {tracked_todos: [{title_contains: "bathroom"}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the tracked todo was created"
+        - "the reply explains what a tracked todo is used for"
+
+- id: tracked-create-with-due-date
+  ticket: "Create a tracked todo with a due date for a scheduled action."
+  tags: [tracked_todos]
+  prompt: "Track the apartment lease renewal: it's due on September 30. Keep a tracked todo with a due date."
+  expected:
+    category: tracked_todos
+    communicate: ["lease"]
+    tool_calls: [{tool: create_tracked_todo}]
+    end_state: {tracked_todos: [{title_contains: "lease"}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the tracked todo and its due date"
+
+- id: tracked-update-canvas
+  ticket: "Create a tracked todo and append notes to its canvas."
+  tags: [tracked_todos]
+  prompt: "Start a tracked todo for planning my summer vacation, then add this note to its canvas: 'budget is $3000'"
+  expected:
+    category: tracked_todos
+    communicate: ["budget"]
+    # `title` is an EXACT match, and the agent is free to name the initiative
+    # "Summer Vacation Planning" — which it did, so the lookup found nothing and
+    # `canvas_contains` came back null for a canvas that held "Budget: $3000".
+    # Matching on the subject fixes that. `update_tracked_todo_canvas` is also
+    # not demanded: writing the note in `initial_canvas` at creation puts it in
+    # the same place, and `canvas_contains` reads the stored canvas either way.
+    tool_calls: [{tool: create_tracked_todo}]
+    end_state: {tracked_todos: [{title_contains: "vacation", canvas_contains: "budget"}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the canvas note was saved"
+
+- id: tracked-list
+  ticket: "List tracked todos; the seeded title must be relayed."
+  tags: [tracked_todos]
+  setup:
+    turns:
+      - "Start a tracked todo: prepare tax documents"
+      - "List my tracked todos"
+  prompt: "Start a tracked todo: prepare tax documents"
+  expected:
+    category: tracked_todos
+    communicate: ["tax documents"]
+    tool_calls: [{tool: create_tracked_todo}, {tool: list_tracked_todos}]
+    end_state: {tracked_todos: [{title: "prepare tax documents", canvas_contains: null}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply lists the tracked todos including the tax documents one"

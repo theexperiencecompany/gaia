@@ -39,8 +39,6 @@ from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage import JuiceFSUnavailable
 
-pytestmark = pytest.mark.unit
-
 
 def _uid() -> str:
     return f"u-{uuid.uuid4().hex}"
@@ -527,6 +525,7 @@ async def test_connect_failure_returns_none_so_acquire_falls_through_to_a_fresh_
         assert await lifecycle._connect_sandbox("sbx-old") is None
 
 
+@pytest.mark.slow
 async def test_a_hung_control_plane_connect_is_bounded_instead_of_stalling_the_agent() -> None:
     # Without the wait_for, a wedged E2B control plane blocks the user's tool
     # call for the full SDK timeout with no output at all.

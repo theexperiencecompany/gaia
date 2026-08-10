@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.usage_models import CreditUsage, FeatureUsage, UsagePeriod, UserUsageSnapshot
+from app.models.usage_models import FeatureUsage, UsagePeriod, UserUsageSnapshot
 from app.services import usage_service as usage_service_module
 from app.services.usage_service import UsageService
 
@@ -36,7 +36,6 @@ def _snapshot(
         user_id=user_id,
         plan_type="pro",
         features=features if features is not None else [_feature("messages")],
-        credits=[CreditUsage(credits_used=1.5, period=UsagePeriod.MONTH, reset_time=NOW)],
     )
 
 
@@ -47,7 +46,6 @@ def mock_usage_repo():
         yield repo
 
 
-@pytest.mark.unit
 class TestSaveUsageSnapshot:
     async def test_delegates_to_upsert_hourly(self, mock_usage_repo):
         mock_usage_repo.upsert_hourly = AsyncMock(return_value="snap-id-1")
@@ -59,7 +57,6 @@ class TestSaveUsageSnapshot:
         mock_usage_repo.upsert_hourly.assert_awaited_once_with(snapshot)
 
 
-@pytest.mark.unit
 class TestGetUsageHistory:
     async def test_returns_all_snapshots_no_filter(self, mock_usage_repo):
         mock_usage_repo.history_for_user = AsyncMock(return_value=[_snapshot()])

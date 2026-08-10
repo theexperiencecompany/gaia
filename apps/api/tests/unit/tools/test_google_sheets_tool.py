@@ -37,8 +37,6 @@ from app.models.google_sheets_models import (
 from app.utils.errors import AppError
 from app.utils.google_sheets_utils import DRIVE_API_BASE, SHEETS_API_BASE
 
-pytestmark = pytest.mark.unit
-
 MODULE = "app.agents.tools.integrations.google_sheets_tool"
 UTILS = "app.utils.google_sheets_utils"
 AUTH: dict[str, Any] = {"user_id": "user-42"}

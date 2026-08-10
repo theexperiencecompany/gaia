@@ -267,7 +267,7 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     # R2 credentials ride in env (the JuiceFS CLI honours the standard AWS
     # variables when --access-key/--secret-key are absent), so they do not
     # appear in argv visible to `ps auxww` during the format window.
-    log.info(f"{LogTag.STORAGE} formatting filesystem against {_bucket_url()}")
+    log.info(f"{LogTag.STORAGE} formatting filesystem", bucket_url=_bucket_url())
     r2_key = (settings.R2_ACCESS_KEY or "").strip()
     r2_secret = (settings.R2_SECRET_KEY or "").strip()
     cmd: list[str] = [
@@ -333,7 +333,7 @@ def _mount(meta_url: str, mount_path: Path) -> str:
     Returns "ok" | "transient" | "fatal".
     """
     if _is_mounted(mount_path):
-        log.info(f"{LogTag.STORAGE} already mounted at {mount_path}")
+        log.info(f"{LogTag.STORAGE} already mounted at", mount_path=mount_path)
         return "ok"
 
     # If the directory exists but is a broken/stale FUSE mountpoint (left over
@@ -383,7 +383,9 @@ def _mount(meta_url: str, mount_path: Path) -> str:
     kind = _classify(detail)  # transient unless an explicit permanent error
     record_fs_op(FsOps.JUICEFS_MOUNT, duration_ms=elapsed_ms, outcome=kind)
     log.warning(
-        f"{LogTag.STORAGE} mount not ready within {timeout}s ({kind})",
+        f"{LogTag.STORAGE} mount not ready within s",
+        timeout=timeout,
+        kind=kind,
         meta=_mask_meta(meta_url),
         detail=_meta_err_tail(res.stderr),
     )
@@ -394,7 +396,7 @@ def _bootstrap_once() -> str:
     """One full attempt. Returns "ok" | "transient" | "skip" | "fatal"."""
     mount_path = Path(settings.JUICEFS_HOST_MOUNT_PATH)
     if _is_mounted(mount_path):
-        log.info(f"{LogTag.STORAGE} mount already healthy at {mount_path}")
+        log.info(f"{LogTag.STORAGE} mount already healthy at", mount_path=mount_path)
         return "ok"
     encrypt_key = _materialize_encryption_key()
     meta_url = _meta_url()
@@ -412,7 +414,11 @@ def _bootstrap_loop() -> None:
         try:
             result = _bootstrap_once()
         except Exception as e:  # noqa: BLE001 - never let the thread die silently
-            log.warning(f"{LogTag.STORAGE} bootstrap attempt errored: {e}")
+            log.warning(
+                f"{LogTag.STORAGE} bootstrap attempt errored",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             result = "transient"
         if result in ("ok", "skip", "fatal"):
             if result == "fatal":
@@ -431,8 +437,8 @@ def _bootstrap_loop() -> None:
             )
             time.sleep(delay)
     log.warning(
-        f"{LogTag.STORAGE} mount still unavailable after {attempts} attempts; "
-        "storage helpers will soft-fail (next app start retries)"
+        f"{LogTag.STORAGE} mount still unavailable after attempts; storage helpers will soft-fail (next app start retries)",
+        attempts=attempts,
     )
 
 
@@ -456,8 +462,8 @@ async def _bootstrap_needed(mount_path: Path) -> bool:
         )
     except TimeoutError:
         log.warning(
-            f"{LogTag.STORAGE} mount probe timed out after {_MOUNT_PROBE_TIMEOUT_SECONDS}s — "
-            "mount likely unresponsive; (re)starting bootstrap"
+            f"{LogTag.STORAGE} mount probe timed out — mount likely unresponsive; (re)starting bootstrap",
+            _mount_probe_timeout_seconds=_MOUNT_PROBE_TIMEOUT_SECONDS,
         )
         return True
 

@@ -54,7 +54,11 @@ class BaseAppSettings(BaseSettings):
         try:
             return cls(**kwargs)
         except Exception as e:
-            log.warning(f"{LogTag.STARTUP} Error creating settings: {e!s}")
+            log.warning(
+                f"{LogTag.STARTUP} Error creating settings",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
@@ -86,6 +90,11 @@ class CommonSettings(BaseAppSettings):
     # Where the scripted stub lives when sim mode is on; consumed only by
     # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
     OPENROUTER_BASE_URL: str | None = None
+    # Dev-only: lift every per-user rate limit (chat messages, uploads, ...).
+    # Eval harnesses drive thousands of legitimate requests per day against a
+    # free-plan dev user; without this they 429 at the free tier's 200/day.
+    # get_settings() refuses production boot when set (same guard as sim mode).
+    DEV_UNLIMITED_RATE_LIMITS: bool = False
 
     # ----------------------------------------------
     # Database Connections
@@ -361,7 +370,10 @@ class ProductionSettings(CommonSettings):
     R2_ACCESS_KEY: str
     R2_SECRET_KEY: str
     # Templated metadata URL: contains {shard} substituted at mount time.
-    # Example: "postgres://juicefs:pass@host:5432/gaia_juicefs_{shard}?sslmode=require"
+    # Redis (prod): "rediss://:pass@jfs-meta.heygaia.io:6380/{shard}" — {shard} is
+    # the DB number. Postgres: "postgres://juicefs:pass@host:5432/gaia_juicefs_{shard}".
+    # The password is split out into META_PASSWORD before reaching the sandbox
+    # (see _split_meta_url in services/sandbox/lifecycle.py).
     JUICEFS_META_URL_TEMPLATE: str
     JUICEFS_NUM_SHARDS: int = 1  # Phase 1: 1, Phase 2: 16
     # JuiceFS RSA-4096 private key in PEM form. Whole multi-line PEM stored as a
@@ -381,6 +393,7 @@ class ProductionSettings(CommonSettings):
     # Payment Processing
     # ----------------------------------------------
     DODO_PAYMENTS_API_KEY: str
+    DODO_PAYMENTS_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Monitoring & Analytics
@@ -440,6 +453,20 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     BOT_SESSION_TOKEN_SECRET: str  # Required: min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
+
+    @field_validator("DODO_PAYMENTS_BASE_URL", mode="after")
+    @classmethod
+    def _dodo_base_url_must_be_https(cls, v: str | None) -> str | None:
+        """Production must not send the Dodo API key over plain HTTP.
+
+        The override exists for pointing the Dodo client at a local stub or
+        sandbox mirror — a dev/test concern. Production traffic must use TLS,
+        so reject an explicit http:// override rather than silently leaking
+        the bearer token in cleartext. Unset (None) stays allowed.
+        """
+        if v is not None and v and not v.startswith("https://"):
+            raise ValueError("DODO_PAYMENTS_BASE_URL must use https:// in production")
+        return v
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -566,6 +593,7 @@ class DevelopmentSettings(CommonSettings):
     # Payment Processing
     # ----------------------------------------------
     DODO_PAYMENTS_API_KEY: str | None = None
+    DODO_PAYMENTS_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Monitoring & Analytics
@@ -665,7 +693,8 @@ def _ensure_infisical_loaded() -> None:
         infisical_start = time.time()
         inject_infisical_secrets()
         log.info(
-            f"{LogTag.STARTUP} Infisical secrets loaded in {(time.time() - infisical_start):.3f}s"
+            f"{LogTag.STARTUP} Infisical secrets loaded",
+            duration_seconds=round(time.time() - infisical_start, 3),
         )
         _infisical_secrets_loaded = True
 
@@ -688,7 +717,6 @@ def get_settings() -> Any:
     showed `from_env(**kwargs: object)` adds 4 more: `cls(**kwargs)` feeds
     per-field types (`ENV: Literal[...]`, `SHOW_MISSING_KEY_WARNINGS: bool`).
     """
-    log.set(service={"name": "gaia-api"})
     log.info(f"{LogTag.STARTUP} Starting settings initialization...")
 
     _ensure_infisical_loaded()
@@ -709,6 +737,17 @@ def get_settings() -> Any:
                 raise RuntimeError(
                     "DEV_AUTH_BYPASS_EMAIL is set but ENV=production — "
                     "the dev auth bypass must never be enabled in production."
+                )
+            if os.getenv("DEV_UNLIMITED_RATE_LIMITS", "").strip().lower() not in (
+                "",
+                "0",
+                "false",
+                "no",
+                "off",
+            ):
+                raise RuntimeError(
+                    "DEV_UNLIMITED_RATE_LIMITS is set but ENV=production — "
+                    "lifting rate limits in production is never allowed."
                 )
             # Same policy as the auth bypass: the OpenRouter base-URL override
             # redirects the model to a local scripted stub, so production must
@@ -748,7 +787,11 @@ def get_settings() -> Any:
         return settings_obj
 
     except Exception as e:
-        log.error(f"{LogTag.STARTUP} Error initializing settings: {e!s}")
+        log.error(
+            f"{LogTag.STARTUP} Error initializing settings",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         # In case of error, we still need to return a settings object
         # Use development settings with defaults as fallback
         if env == "development":

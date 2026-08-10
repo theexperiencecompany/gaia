@@ -18,7 +18,6 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
-import pytest
 
 from app.agents.core.nodes.manage_system_prompts import (
     _is_dynamic_context,
@@ -43,7 +42,6 @@ def _store() -> MagicMock:
     return MagicMock()
 
 
-@pytest.mark.unit
 class TestIsDynamicContext:
     def test_dynamic_context_marker(self) -> None:
         msg = SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True})
@@ -64,7 +62,6 @@ class TestIsDynamicContext:
         assert _is_dynamic_context(SystemMessage(content="plain")) is False
 
 
-@pytest.mark.unit
 class TestManageSystemPrompts:
     def test_keeps_latest_static_prompt(self) -> None:
         msgs = [
@@ -162,7 +159,8 @@ class TestManageSystemPrompts:
 
         mock_log.error.assert_called_once()
         logged = mock_log.error.call_args.args[0]
+        kwargs = mock_log.error.call_args.kwargs
         assert "manage system prompts node" in logged
-        assert "unexpected failure" in logged, (
-            f"The swallowed exception must be named in the log, got: {logged}"
+        assert "unexpected failure" in kwargs.get("error", ""), (
+            f"The swallowed exception must be named in the log, got: {kwargs}"
         )

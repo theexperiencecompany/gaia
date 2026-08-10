@@ -3,8 +3,6 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.utils.search.models import SearchResultItem, WebSearchResult
 
 # ---------------------------------------------------------------------------
@@ -30,7 +28,6 @@ def _writer_mock() -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFetchWebpages:
     """Tests for the fetch_webpages tool."""
 
@@ -172,7 +169,6 @@ class TestFetchWebpages:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWebSearchTool:
     """Tests for the web_search_tool tool."""
 

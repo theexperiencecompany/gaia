@@ -47,7 +47,11 @@ async def _generate_description_from_message(
 
         return response.get("response", "New Chat").replace('"', "").strip()
     except Exception as e:
-        log.error(f"{LogTag.CHAT} Failed to generate description: {e}")
+        log.error(
+            f"{LogTag.CHAT} Failed to generate description",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return "New Chat"
 
 
@@ -121,7 +125,12 @@ async def generate_and_update_description(
     try:
         await update_conversation_description(conversation_id, description, user)
     except Exception as e:
-        log.error(f"{LogTag.CHAT} Failed to persist description to DB for {conversation_id}: {e}")
+        log.error(
+            f"{LogTag.CHAT} Failed to persist description to DB for",
+            conversation_id=conversation_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return description
 

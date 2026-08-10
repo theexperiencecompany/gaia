@@ -12,7 +12,6 @@ can reach the endpoint logic.
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.calendar_models import (
     CalendarEventPageResponse,
@@ -43,7 +42,6 @@ UPDATE_PATCH = "app.api.v1.endpoints.calendar.update_calendar_event"
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetCalendarList:
     """GET /api/v1/calendar/list"""
 
@@ -80,7 +78,6 @@ class TestGetCalendarList:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestQueryEvents:
     """POST /api/v1/calendar/events/query"""
 
@@ -152,7 +149,6 @@ class TestQueryEvents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetEvents:
     """GET /api/v1/calendar/events"""
 
@@ -227,7 +223,6 @@ class TestGetEvents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetEventsByCalendar:
     """GET /api/v1/calendar/{calendar_id}/events"""
 
@@ -278,7 +273,6 @@ class TestGetEventsByCalendar:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateEvent:
     """POST /api/v1/calendar/event"""
 
@@ -336,7 +330,6 @@ class TestCreateEvent:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeleteEvent:
     """DELETE /api/v1/calendar/event"""
 
@@ -386,7 +379,6 @@ class TestDeleteEvent:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateEvent:
     """PUT /api/v1/calendar/event"""
 
@@ -432,7 +424,6 @@ class TestUpdateEvent:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetCalendarPreferences:
     """GET /api/v1/calendar/preferences"""
 
@@ -468,7 +459,6 @@ class TestGetCalendarPreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateCalendarPreferences:
     """PUT /api/v1/calendar/preferences"""
 
@@ -511,7 +501,6 @@ class TestUpdateCalendarPreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBatchCreateEvents:
     """POST /api/v1/calendar/events/batch"""
 
@@ -622,7 +611,6 @@ class TestBatchCreateEvents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBatchUpdateEvents:
     """PUT /api/v1/calendar/events/batch"""
 
@@ -684,7 +672,6 @@ class TestBatchUpdateEvents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBatchDeleteEvents:
     """DELETE /api/v1/calendar/events/batch"""
 
@@ -739,7 +726,6 @@ class TestBatchDeleteEvents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIntegrationNotConnected:
     """Verify endpoints return 403 when calendar integration is not connected."""
 

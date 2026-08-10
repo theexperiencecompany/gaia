@@ -71,7 +71,6 @@ def _make_todo_response(**overrides: Any) -> TodoResponse:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCreateTodoContentForEmbedding:
     """Pure-function tests — no mocking required."""
 
@@ -166,7 +165,6 @@ class TestCreateTodoContentForEmbedding:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestStoreTodoEmbedding:
     """Async tests — ChromaDB and log are mocked."""
 
@@ -286,7 +284,6 @@ class TestStoreTodoEmbedding:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestUpdateTodoEmbedding:
     async def test_calls_delete_then_store_returns_true(self) -> None:
         with (
@@ -340,7 +337,6 @@ class TestUpdateTodoEmbedding:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestDeleteTodoEmbedding:
     async def test_success_returns_true(self) -> None:
         mock_collection = MagicMock()
@@ -376,7 +372,6 @@ class TestDeleteTodoEmbedding:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestSemanticSearchTodos:
     @pytest.fixture(autouse=True)
     def _patch_deps(self) -> Generator[None, None, None]:
@@ -553,7 +548,6 @@ class TestSemanticSearchTodos:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestHybridSearchTodos:
     @pytest.fixture(autouse=True)
     def _patch_log(self) -> Generator[None, None, None]:

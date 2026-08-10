@@ -38,6 +38,46 @@ export interface UseModalFormReturn<T> {
   updateField: (field: keyof T, value: T[keyof T]) => void;
 }
 
+// Evaluate a single validation rule against a value, returning the first error
+// message or null when the value satisfies the rule.
+function checkRule<T>(
+  rule: ValidationRule<T>,
+  value: T[keyof T],
+  data: T,
+): string | null {
+  const { field } = rule;
+
+  if (rule.required && (!value || (typeof value === "string" && !value.trim())))
+    return rule.message || `${String(field)} is required`;
+
+  if (
+    rule.minLength &&
+    typeof value === "string" &&
+    value.length < rule.minLength
+  )
+    return (
+      rule.message ||
+      `${String(field)} must be at least ${rule.minLength} characters`
+    );
+
+  if (
+    rule.maxLength &&
+    typeof value === "string" &&
+    value.length > rule.maxLength
+  )
+    return (
+      rule.message ||
+      `${String(field)} must be no more than ${rule.maxLength} characters`
+    );
+
+  if (rule.pattern && typeof value === "string" && !rule.pattern.test(value))
+    return rule.message || `${String(field)} format is invalid`;
+
+  if (rule.custom) return rule.custom(value, data);
+
+  return null;
+}
+
 export function useModalForm<T extends object, R = void>({
   initialData,
   onSubmit,
@@ -65,51 +105,12 @@ export function useModalForm<T extends object, R = void>({
 
   const validateField = useCallback(
     (field: keyof T): string | null => {
-      if (!validate) return null;
+      if (!validate || !Array.isArray(validate)) return null;
 
-      if (Array.isArray(validate)) {
-        const rule = validate.find((r) => r.field === field);
-        if (!rule) return null;
+      const rule = validate.find((r) => r.field === field);
+      if (!rule) return null;
 
-        const value = formData[field];
-
-        if (
-          rule.required &&
-          (!value || (typeof value === "string" && !value.trim()))
-        )
-          return rule.message || `${String(field)} is required`;
-
-        if (
-          rule.minLength &&
-          typeof value === "string" &&
-          value.length < rule.minLength
-        )
-          return (
-            rule.message ||
-            `${String(field)} must be at least ${rule.minLength} characters`
-          );
-
-        if (
-          rule.maxLength &&
-          typeof value === "string" &&
-          value.length > rule.maxLength
-        )
-          return (
-            rule.message ||
-            `${String(field)} must be no more than ${rule.maxLength} characters`
-          );
-
-        if (
-          rule.pattern &&
-          typeof value === "string" &&
-          !rule.pattern.test(value)
-        )
-          return rule.message || `${String(field)} format is invalid`;
-
-        if (rule.custom) return rule.custom(value, formData);
-      }
-
-      return null;
+      return checkRule(rule, formData[field], formData);
     },
     [formData, validate],
   );

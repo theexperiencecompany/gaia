@@ -61,6 +61,11 @@ def _seeded_openrouter_models() -> list[str]:
         model["provider_model_name"]
         for model in get_models_configuration()
         if model["inference_provider"] == ModelProvider.OPENROUTER.value
+        # Text-only models are exempt BY DECLARATION, not by omission: they route
+        # tool media through the caption fallback, so asserting they see pixels
+        # would fail by design. The flag lives on the seed entry so a model can
+        # only skip this gate by saying so out loud.
+        and model.get("supports_tool_result_images", True)
     ]
 
 

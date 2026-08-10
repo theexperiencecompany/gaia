@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 import time
 from typing import Any
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import (
     WRITING_STYLE_EXAMPLE_PROMPT,
     WRITING_STYLE_PROMPT,
@@ -99,7 +99,10 @@ async def learn_writing_style(
             await on_status("Analyzing tone and phrasing")
         t_llm = time.monotonic()
         result_data: WritingStyleOutput = await ainvoke_structured(
-            WritingStyleOutput, prompt, label="onboarding_writing_style"
+            WritingStyleOutput,
+            prompt,
+            label="onboarding_writing_style",
+            config=metered_config(user_id),
         )
 
         profile = WritingStyleProfile(
@@ -136,6 +139,8 @@ async def learn_writing_style(
 
 async def regenerate_example_for_style(
     summary: str,
+    *,
+    user_id: str,
     profession: str = "",
 ) -> WritingStyleExampleBlocks | None:
     """Generate a new example email from an edited writing style summary."""
@@ -145,13 +150,18 @@ async def regenerate_example_for_style(
             profession=profession or "professional",
         )
         result_data: WritingStyleExampleOutput = await ainvoke_structured(
-            WritingStyleExampleOutput, prompt, label="onboarding_writing_style_example"
+            WritingStyleExampleOutput,
+            prompt,
+            label="onboarding_writing_style_example",
+            config=metered_config(user_id),
         )
         return result_data.example
 
     except Exception as e:
         log.error(
-            f"{LogTag.ONBOARDING} writing_style Failed to regenerate example: {e}",
+            f"{LogTag.ONBOARDING} writing_style Failed to regenerate example",
+            error=str(e),
+            error_type=type(e).__name__,
             exc_info=True,
         )
         return None
@@ -160,10 +170,10 @@ async def regenerate_example_for_style(
 async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
     """Persist a user-edited writing style summary as the canonical style."""
     await user_repository.set_writing_style_user_summary(user_id, edited_summary)
-    log.info(f"{LogTag.ONBOARDING} writing_style Saved user-edited summary for {user_id}")
+    log.info(f"{LogTag.ONBOARDING} writing_style Saved user-edited summary for", user_id=user_id)
 
 
 async def save_generated_example(user_id: str, example: WritingStyleExampleBlocks) -> None:
     """Persist a regenerated example email to MongoDB as structured blocks."""
     await user_repository.set_writing_style_and_triage(user_id, writing_style_example=example)
-    log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for {user_id}")
+    log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for", user_id=user_id)

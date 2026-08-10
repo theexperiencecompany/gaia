@@ -32,6 +32,7 @@ from app.config.rate_limits import (
     get_time_window_key,
 )
 from app.models.payment_models import PlanType
+from tests.helpers import effective_limit
 
 # ---------------------------------------------------------------------------
 # Tests: RateLimitPeriod
@@ -199,14 +200,12 @@ class TestFeatureLimits:
             assert isinstance(limits.info, FeatureInfo), f"{key}.info is not FeatureInfo"
 
     def test_pro_limits_gte_free_limits(self) -> None:
-        """Pro plan should always have limits >= free plan."""
+        """Pro is never more restrictive than Free (0 = unlimited when the tier has access)."""
         for key, limits in FEATURE_LIMITS.items():
-            assert limits.pro.day >= limits.free.day, (
-                f"{key}: pro day ({limits.pro.day}) < free day ({limits.free.day})"
-            )
-            assert limits.pro.month >= limits.free.month, (
-                f"{key}: pro month ({limits.pro.month}) < free month ({limits.free.month})"
-            )
+            for period in ("day", "month"):
+                free = effective_limit(limits.free, period)
+                pro = effective_limit(limits.pro, period)
+                assert pro >= free, f"{key}: pro {period} ({pro}) < free {period} ({free})"
 
     def test_monthly_limits_gte_daily_limits(self) -> None:
         """Monthly limits should be >= daily limits for both tiers."""
@@ -226,6 +225,11 @@ class TestFeatureLimits:
     # Features intentionally restricted to paid-only (free limits are 0).
     PAID_ONLY_FEATURES: ClassVar[set[str]] = {"voice_mode"}
 
+    # Cost-walled features: no daily message-count wall on free (free.day == 0)
+    # because the rolling daily COST budget is the real wall. The monthly count
+    # survives only as an extreme abuse backstop.
+    COST_WALLED_FEATURES: ClassVar[set[str]] = {"chat_messages"}
+
     def test_free_limits_are_positive(self) -> None:
         """Non-paid-only features should have at least some free tier allowance."""
         for key, limits in FEATURE_LIMITS.items():
@@ -233,15 +237,24 @@ class TestFeatureLimits:
                 # Paid-only features deliberately have free.day == free.month == 0
                 assert limits.free.day == 0, f"{key}: expected free day == 0 (paid-only)"
                 assert limits.free.month == 0, f"{key}: expected free month == 0 (paid-only)"
+            elif key in self.COST_WALLED_FEATURES:
+                # Daily count wall removed — the cost budget gates daily use.
+                # Month stays as an abuse backstop, so free.month must be set.
+                assert limits.free.day == 0, f"{key}: expected free day == 0 (cost-walled)"
+                assert limits.free.month > 0, f"{key}: expected free month backstop"
             else:
                 assert limits.free.day > 0, f"{key}: free day is 0"
                 assert limits.free.month > 0, f"{key}: free month is 0"
 
     def test_specific_chat_messages_limits(self) -> None:
         chat = FEATURE_LIMITS["chat_messages"]
-        assert chat.free.day == 200
-        assert chat.free.month == 5000
-        assert chat.pro.day == 3000
+        # No daily message-count wall on free — the rolling cost budget is the
+        # wall; the monthly count is only an extreme abuse backstop.
+        assert chat.free.day == 0
+        assert chat.free.month == 2000
+        # Pro also has no daily message count (0 = uncapped); only the monthly
+        # abuse backstop.
+        assert chat.pro.day == 0
         assert chat.pro.month == 60000
 
     def test_specific_generate_image_limits(self) -> None:
@@ -253,8 +266,8 @@ class TestFeatureLimits:
 
     def test_specific_deep_research_limits(self) -> None:
         dr = FEATURE_LIMITS["deep_research"]
-        assert dr.free.day == 5
-        assert dr.free.month == 30
+        assert dr.free.day == 1
+        assert dr.free.month == 5
         assert dr.pro.day == 100
         assert dr.pro.month == 2000
 

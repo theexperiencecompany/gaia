@@ -303,6 +303,10 @@ class AuthenticatedUser(TypedDict, total=False):
     memory_backfilled: datetime | None
     last_inactive_email_sent: datetime | None
     inactive_email_count: int | None
+    # Usage-limit upsell email dedupe + activity badge tier (usage system).
+    last_limit_email_sent: datetime | None
+    highest_activity_tier: str | None
+    highest_activity_tier_at: datetime | None
     # Nurture email sequence state (workers) — completed_steps + send history.
     nurture: dict[str, Any] | None
 
@@ -373,6 +377,12 @@ class UserDocument(MongoDocument):
     memory_backfilled: datetime | None = None
     last_inactive_email_sent: datetime | None = None
     inactive_email_count: int | None = None
+    # Usage-limit upsell email dedupe (1/week — see send_limit_reached_email).
+    last_limit_email_sent: datetime | None = None
+    # Best activity-badge tier ever reached (monotonic; drives first-time
+    # promotion emails — see usage_activity.sync_activity_tiers).
+    highest_activity_tier: str | None = None
+    highest_activity_tier_at: datetime | None = None
     # Nurture email sequence state (workers): completed_steps + send history.
     nurture: dict[str, Any] | None = None
 

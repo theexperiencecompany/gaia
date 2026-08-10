@@ -41,7 +41,10 @@ async def update_user_integration_status(
 
     if success:
         log.info(
-            f"{LogTag.INTEGRATION} Updated user {user_id} integration {integration_id} status to {status}"
+            f"{LogTag.INTEGRATION} Updated user integration status to",
+            user_id=user_id,
+            integration_id=integration_id,
+            status=status,
         )
         if status == "connected":
             # Reflect the new connected set in the user's workspace VFS.

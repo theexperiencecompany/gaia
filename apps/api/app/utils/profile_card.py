@@ -5,7 +5,7 @@ import random
 
 from bson import ObjectId
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
 from app.constants.log_tags import LogTag
 from app.constants.profession_bios import get_random_bio_for_profession
@@ -187,15 +187,29 @@ async def generate_holo_card_content(
             context_summary=context_summary[:10000],
         )
         result: HoloCardLLMOutput = await ainvoke_structured(
-            HoloCardLLMOutput, prompt, label="holo_card", temperature=1.0
+            HoloCardLLMOutput,
+            prompt,
+            label="holo_card",
+            temperature=1.0,
+            config=metered_config(user_id),
         )
         phrase = result.personality_phrase.strip().strip('"').strip("'")
         bio = result.user_bio.strip()
-        log.info(f"{LogTag.API} Generated holo card content for user {user_id}: phrase='{phrase}'")
+        log.info(
+            f"{LogTag.API} Generated holo card content for user : phrase",
+            user_id=user_id,
+            phrase=phrase,
+        )
         return phrase, bio, BioStatus.COMPLETED
 
     except Exception as e:
-        log.error(f"{LogTag.API} Error generating holo card content: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.API} Error generating holo card content",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            exc_info=True,
+        )
         return (
             _phrase_fallback(profession),
             get_random_bio_for_profession(name, profession or "other"),

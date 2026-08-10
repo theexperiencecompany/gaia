@@ -29,7 +29,7 @@ async def search_messages(query: str, user_id: str) -> SearchResultsResponse:
             "sources": ["messages", "conversations", "notes"],
         },
         user_id=user_id,
-        service="search_service",
+        component="search_service",
     )
     search_start = time.monotonic()
     escaped_query = re.escape(query)
@@ -77,7 +77,9 @@ async def search_messages(query: str, user_id: str) -> SearchResultsResponse:
             notes=notes_with_snippets,
         )
     except Exception as e:
-        log.error(f"Error in search_messages: {e}")
+        log.error(
+            "Error in search_messages", error=str(e), error_type=type(e).__name__, user_id=user_id
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to perform search: {e!s}",

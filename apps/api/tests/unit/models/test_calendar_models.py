@@ -29,11 +29,11 @@ from app.models.calendar_models import (
     SingleEventInput,
 )
 
-
 # ---------------------------------------------------------------------------
 # CalendarPreferencesUpdateRequest
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestCalendarPreferencesUpdateRequest:
     def test_valid(self):
         m = CalendarPreferencesUpdateRequest(selected_calendars=["cal1", "cal2"])
@@ -51,7 +51,8 @@ class TestCalendarPreferencesUpdateRequest:
 # ---------------------------------------------------------------------------
 # CalendarEventsQueryRequest
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestCalendarEventsQueryRequest:
     def test_valid_minimal(self):
         m = CalendarEventsQueryRequest(selected_calendars=["primary"])
@@ -110,7 +111,8 @@ class TestCalendarEventsQueryRequest:
 # ---------------------------------------------------------------------------
 # EventDeleteRequest
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestEventDeleteRequest:
     def test_valid_minimal(self):
         m = EventDeleteRequest(event_id="evt1")
@@ -131,7 +133,8 @@ class TestEventDeleteRequest:
 # ---------------------------------------------------------------------------
 # RecurrenceRule
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestRecurrenceRule:
     def test_valid_daily(self):
         m = RecurrenceRule(frequency="DAILY")
@@ -236,7 +239,8 @@ class TestRecurrenceRule:
 # ---------------------------------------------------------------------------
 # RecurrenceRule.to_rrule_string
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestRecurrenceRuleToRruleString:
     def test_simple_daily(self):
         m = RecurrenceRule(frequency="DAILY")
@@ -285,7 +289,8 @@ class TestRecurrenceRuleToRruleString:
 # ---------------------------------------------------------------------------
 # RecurrenceData
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestRecurrenceData:
     def test_valid(self):
         rule = RecurrenceRule(frequency="DAILY")
@@ -336,7 +341,8 @@ class TestRecurrenceData:
 # ---------------------------------------------------------------------------
 # EventUpdateRequest
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestEventUpdateRequest:
     def test_valid_minimal(self):
         m = EventUpdateRequest(event_id="evt1")
@@ -370,7 +376,8 @@ class TestEventUpdateRequest:
 # ---------------------------------------------------------------------------
 # BaseCalendarEvent
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestBaseCalendarEvent:
     def test_valid_minimal(self):
         m = BaseCalendarEvent(summary="Test")
@@ -394,7 +401,8 @@ class TestBaseCalendarEvent:
 # ---------------------------------------------------------------------------
 # EventCreateRequest
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestEventCreateRequest:
     def test_valid_timed(self):
         m = EventCreateRequest(
@@ -456,7 +464,8 @@ class TestEventCreateRequest:
 # ---------------------------------------------------------------------------
 # BatchEventCreateRequest / BatchEventUpdateRequest / BatchEventDeleteRequest
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestBatchRequests:
     def test_batch_create(self):
         event = EventCreateRequest(
@@ -484,7 +493,8 @@ class TestBatchRequests:
 # ---------------------------------------------------------------------------
 # SingleEventInput
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestSingleEventInput:
     def test_valid_minimal(self):
         m = SingleEventInput(summary="Test", start_datetime="2025-06-01T10:00:00")
@@ -533,7 +543,8 @@ class TestSingleEventInput:
 # ---------------------------------------------------------------------------
 # CreateEventInput
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestCreateEventInput:
     def test_valid(self):
         event = SingleEventInput(summary="A", start_datetime="2025-06-01T10:00:00")
@@ -554,7 +565,8 @@ class TestCreateEventInput:
 # ---------------------------------------------------------------------------
 # ListCalendarsInput
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestListCalendarsInput:
     def test_default(self):
         m = ListCalendarsInput()
@@ -568,7 +580,8 @@ class TestListCalendarsInput:
 # ---------------------------------------------------------------------------
 # FetchEventsInput
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestFetchEventsInput:
     def test_defaults(self):
         m = FetchEventsInput()
@@ -592,7 +605,8 @@ class TestFetchEventsInput:
 # ---------------------------------------------------------------------------
 # GetDaySummaryInput
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestGetDaySummaryInput:
     def test_date_is_unset_by_default(self):
         # Deliberately not datetime.now(): "today" depends on the user's home
@@ -608,7 +622,8 @@ class TestGetDaySummaryInput:
 # ---------------------------------------------------------------------------
 # FindEventInput
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestFindEventInput:
     def test_valid_minimal(self):
         m = FindEventInput(query="standup")
@@ -632,7 +647,8 @@ class TestFindEventInput:
 # ---------------------------------------------------------------------------
 # EventReference / GetEventInput / DeleteEventInput
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestEventReference:
     def test_valid_minimal(self):
         m = EventReference(event_id="evt1")
@@ -644,7 +660,6 @@ class TestEventReference:
         assert m.calendar_id == "work"
 
 
-@pytest.mark.unit
 class TestGetEventInput:
     def test_valid(self):
         ref = EventReference(event_id="evt1")
@@ -652,7 +667,6 @@ class TestGetEventInput:
         assert len(m.events) == 1
 
 
-@pytest.mark.unit
 class TestDeleteEventInput:
     def test_valid(self):
         ref = EventReference(event_id="evt1")
@@ -668,7 +682,8 @@ class TestDeleteEventInput:
 # ---------------------------------------------------------------------------
 # PatchEventInput
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestPatchEventInput:
     def test_valid_minimal(self):
         m = PatchEventInput(event_id="evt1")
@@ -695,7 +710,8 @@ class TestPatchEventInput:
 # ---------------------------------------------------------------------------
 # AddRecurrenceInput
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestAddRecurrenceInput:
     def test_valid_minimal(self):
         m = AddRecurrenceInput(event_id="evt1", frequency="DAILY")

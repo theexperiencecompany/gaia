@@ -27,8 +27,6 @@ from app.services.storage.sessions.meta import (
     write_session_meta,
 )
 
-pytestmark = pytest.mark.unit
-
 
 @pytest.fixture
 def meta(tmp_path: Path) -> Path:

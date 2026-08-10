@@ -25,7 +25,6 @@ def _reset_singleton() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRedisPoolManagerSingleton:
     def test_returns_same_instance(self) -> None:
         a = RedisPoolManager()
@@ -42,7 +41,6 @@ class TestRedisPoolManagerSingleton:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetPool:
     async def test_creates_pool_on_first_call(self) -> None:
         mock_pool = AsyncMock()

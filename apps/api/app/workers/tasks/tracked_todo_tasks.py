@@ -36,7 +36,8 @@ from app.services.user_service import get_user_by_id
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
-from shared.py.wide_events import log, wide_task
+from app.workers.queue import enqueue_worker_job
+from shared.py.wide_events import log
 
 MAX_RETRY_ATTEMPTS = 3
 RETRY_BACKOFF = [timedelta(hours=1), timedelta(hours=4)]
@@ -74,21 +75,21 @@ async def execute_tracked_todo(_ctx: dict[str, Any], todo_id: str) -> str:
     to the retry/execution helper. The lock is always released in the
     finally block.
     """
-    async with wide_task("execute_tracked_todo", todo_id=todo_id):
-        log.info("tracked_todo.execute_started", todo_id=todo_id)
+    log.set(todo_id=todo_id)
+    log.info("tracked_todo.execute_started", todo_id=todo_id)
 
-        pool = await RedisPoolManager.get_pool()
-        lock_key = f"gaia_todo_exec:{todo_id}"
+    pool = await RedisPoolManager.get_pool()
+    lock_key = f"gaia_todo_exec:{todo_id}"
 
-        acquired = await pool.set(lock_key, "1", nx=True, ex=LOCK_TTL_SECONDS)
-        if not acquired:
-            log.info("tracked_todo.execute_lock_held", todo_id=todo_id)
-            return f"skipped:{todo_id} (lock held)"
+    acquired = await pool.set(lock_key, "1", nx=True, ex=LOCK_TTL_SECONDS)
+    if not acquired:
+        log.info("tracked_todo.execute_lock_held", todo_id=todo_id)
+        return f"skipped:{todo_id} (lock held)"
 
-        try:
-            return await _execute_todo_with_retry(todo_id, pool)
-        finally:
-            await pool.delete(lock_key)
+    try:
+        return await _execute_todo_with_retry(todo_id, pool)
+    finally:
+        await pool.delete(lock_key)
 
 
 async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
@@ -152,7 +153,8 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
         )
 
         if next_run:
-            await pool.enqueue_job(
+            await enqueue_worker_job(
+                pool,
                 "execute_tracked_todo",
                 todo_id,
                 _defer_until=next_run,
@@ -188,7 +190,8 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
             user_id=user_id,
             update=TodoUpdate(gaia_retry_count=new_retry_count, scheduled_at=next_attempt),
         )
-        await pool.enqueue_job(
+        await enqueue_worker_job(
+            pool,
             "execute_tracked_todo",
             todo_id,
             _defer_until=next_attempt,
@@ -496,41 +499,31 @@ async def safety_net_check_orphaned_todos(_ctx: dict[str, Any]) -> str:
     For each, checks whether the execution lock already exists; if not,
     re-enqueues with a random 0–60 second jitter to spread load.
     """
-    async with wide_task("safety_net_check_orphaned_todos"):
-        now = datetime.now(UTC)
-        log.info("tracked_todo.safety_net_scan_started")
+    now = datetime.now(UTC)
 
-        candidates = await todo_repository.find_due_tracked_all_users(
-            now=now, max_retries=MAX_RETRY_ATTEMPTS, limit=100
-        )
+    candidates = await todo_repository.find_due_tracked_all_users(
+        now=now, max_retries=MAX_RETRY_ATTEMPTS, limit=100
+    )
+    log.set(tracked_todo={"candidates": len(candidates)})
 
-        pool = await RedisPoolManager.get_pool()
-        re_enqueued = 0
-        skipped = 0
+    pool = await RedisPoolManager.get_pool()
+    re_enqueued = 0
+    skipped = 0
 
-        for doc in candidates:
-            todo_id = doc.id
-            lock_key = f"gaia_todo_exec:{todo_id}"
+    for doc in candidates:
+        todo_id = doc.id
+        lock_key = f"gaia_todo_exec:{todo_id}"
 
-            lock_exists = await pool.exists(lock_key)
-            if lock_exists:
-                skipped += 1
-                continue
+        lock_exists = await pool.exists(lock_key)
+        if lock_exists:
+            skipped += 1
+            continue
 
-            # Random jitter: 0–60 seconds
-            jitter_seconds = random.randint(0, 60)  # nosec B311  # NOSONAR python:S2245 — non-crypto scheduling jitter
-            run_at = now + timedelta(seconds=jitter_seconds)
-            await pool.enqueue_job("execute_tracked_todo", todo_id, _defer_until=run_at)
-            re_enqueued += 1
-            log.info(
-                "tracked_todo.safety_net_re_enqueued",
-                todo_id=todo_id,
-                run_at=run_at.isoformat(),
-            )
+        # Random jitter: 0–60 seconds
+        jitter_seconds = random.randint(0, 60)  # nosec B311  # NOSONAR python:S2245 — non-crypto scheduling jitter
+        run_at = now + timedelta(seconds=jitter_seconds)
+        await enqueue_worker_job(pool, "execute_tracked_todo", todo_id, _defer_until=run_at)
+        re_enqueued += 1
 
-        log.info(
-            "tracked_todo.safety_net_done",
-            re_enqueued=re_enqueued,
-            skipped=skipped,
-        )
-        return f"re_enqueued:{re_enqueued} skipped:{skipped}"
+    log.set_ns("tracked_todo", re_enqueued=re_enqueued, skipped=skipped)
+    return f"re_enqueued:{re_enqueued} skipped:{skipped}"

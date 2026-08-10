@@ -641,9 +641,11 @@ export function OnboardingScreen() {
     setIsLoading(true);
 
     try {
-      await updateOnboardingPhase(step, true).catch(() => {
-        // Non-blocking: continue even if API fails
-      });
+      await updateOnboardingPhase(step, true);
+    } catch (err) {
+      // Non-blocking: onboarding phase is recoverable server-side bookkeeping,
+      // so we log the failure rather than trapping the user in onboarding.
+      console.error(`Failed to persist onboarding phase "${step}":`, err);
     } finally {
       setIsLoading(false);
     }
@@ -653,9 +655,9 @@ export function OnboardingScreen() {
     } else {
       // Mark complete and navigate
       try {
-        await updateOnboardingPhase("complete", true).catch(() => {
-          // Non-blocking: continue even if API fails
-        });
+        await updateOnboardingPhase("complete", true);
+      } catch (err) {
+        console.error("Failed to persist onboarding completion:", err);
       } finally {
         router.replace("/(app)/(tabs)");
       }
@@ -664,9 +666,14 @@ export function OnboardingScreen() {
 
   const handleSkip = useCallback(async () => {
     const step = STEPS[currentIndex];
-    await updateOnboardingPhase(step, false).catch(() => {
-      // Non-blocking: continue even if API fails
-    });
+    try {
+      await updateOnboardingPhase(step, false);
+    } catch (err) {
+      console.error(
+        `Failed to persist skipped onboarding phase "${step}":`,
+        err,
+      );
+    }
     if (currentIndex < STEPS.length - 1) {
       scrollToIndex(currentIndex + 1);
     } else {
@@ -675,12 +682,16 @@ export function OnboardingScreen() {
   }, [currentIndex, router, scrollToIndex]);
 
   const handleNavigateToWorkflows = useCallback(() => {
-    // Mark workflow step complete then navigate
-    updateOnboardingPhase("create_workflow", true).catch(() => {
-      // Non-blocking: continue even if API fails
+    // Mark workflow step complete then navigate. Fire-and-forget: navigation
+    // must not wait on recoverable bookkeeping, but failures are surfaced.
+    updateOnboardingPhase("create_workflow", true).catch((err) => {
+      console.error(
+        'Failed to persist onboarding phase "create_workflow":',
+        err,
+      );
     });
-    updateOnboardingPhase("complete", true).catch(() => {
-      // Non-blocking: continue even if API fails
+    updateOnboardingPhase("complete", true).catch((err) => {
+      console.error("Failed to persist onboarding completion:", err);
     });
     router.replace("/(app)/(tabs)/workflows");
   }, [router]);

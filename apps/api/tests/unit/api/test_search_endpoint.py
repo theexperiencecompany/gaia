@@ -7,7 +7,6 @@ to verify routing, status codes, response bodies, and validation.
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.chat_models import MessageModel
 from app.models.search_models import MessageSearchResult, SearchResultsResponse
@@ -16,7 +15,6 @@ from app.utils.search.models import SearchResultItem, WebSearchResult
 SEARCH_BASE = "/api/v1"
 
 
-@pytest.mark.unit
 class TestSearchMessages:
     """GET /api/v1/search"""
 
@@ -85,7 +83,6 @@ class TestSearchMessages:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestSearchEmail:
     """GET /api/v1/search/email"""
 
@@ -170,7 +167,6 @@ class TestSearchEmail:
         assert response.status_code == 422
 
 
-@pytest.mark.unit
 class TestFetchUrlMetadata:
     """POST /api/v1/fetch-url-metadata"""
 

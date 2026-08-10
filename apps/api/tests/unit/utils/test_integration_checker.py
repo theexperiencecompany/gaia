@@ -13,7 +13,6 @@ from app.utils.integration_checker import build_integration_connection_message
 _FAKE_FRONTEND = "https://app.example.com"
 
 
-@pytest.mark.unit
 class TestBuildIntegrationConnectionMessage:
     """The connect message is platform-aware: UI points at the card, non-UI
     embeds the connect URL inline so bot users can act on it."""

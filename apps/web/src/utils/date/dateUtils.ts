@@ -18,6 +18,52 @@ export default function fetchDate(): string {
   return new Date().toISOString();
 }
 
+// Exact relative time for recent dates (within 7 days), e.g. "2 hours 5 mins ago"
+function formatRecentRelative(diffInMs: number, formattedTime: string): string {
+  const seconds = Math.floor(diffInMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  let relativeTime = "";
+
+  if (days > 0) {
+    const remainingHours = hours % 24;
+    relativeTime = days === 1 ? "1 day" : `${days} days`;
+    if (remainingHours > 0) {
+      relativeTime +=
+        remainingHours === 1 ? " 1 hour" : ` ${remainingHours} hours`;
+    }
+  } else if (hours > 0) {
+    const remainingMinutes = minutes % 60;
+    relativeTime = hours === 1 ? "1 hour" : `${hours} hours`;
+    if (remainingMinutes > 0) {
+      relativeTime +=
+        remainingMinutes === 1 ? " 1 min" : ` ${remainingMinutes} mins`;
+    }
+  } else if (minutes > 0) {
+    relativeTime = minutes === 1 ? "1 min" : `${minutes} mins`;
+  } else {
+    relativeTime = "just now";
+  }
+
+  return relativeTime === "just now"
+    ? `${relativeTime} (${formattedTime})`
+    : `${relativeTime} ago (${formattedTime})`;
+}
+
+// Full date format for older dates, e.g. "10th Jun '25 (3:04 PM)"
+function formatOlderDate(date: Date, formattedTime: string): string {
+  const optionsMonth: Intl.DateTimeFormatOptions = { month: "short" };
+  const optionsYear: Intl.DateTimeFormatOptions = { year: "2-digit" };
+
+  const month = date.toLocaleString(navigator.language, optionsMonth);
+  const year = date.toLocaleString(navigator.language, optionsYear);
+  const day = date.getDate();
+
+  return `${day}${nth(day)} ${month} '${year} (${formattedTime})`;
+}
+
 export function parseDate(isoDateString: string): string {
   const date = new Date(isoDateString);
   const now = new Date();
@@ -33,50 +79,12 @@ export function parseDate(isoDateString: string): string {
     .toLocaleString(navigator.language, optionsTime)
     .toUpperCase();
 
-  // Show exact relative time for recent dates (within 7 days)
+  // Show exact relative time for recent dates (within 7 days = ms below)
   if (diffInMs < 7 * 24 * 60 * 60 * 1000) {
-    // 7 days in milliseconds
-    const seconds = Math.floor(diffInMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    let relativeTime = "";
-
-    if (days > 0) {
-      const remainingHours = hours % 24;
-      relativeTime = days === 1 ? "1 day" : `${days} days`;
-      if (remainingHours > 0) {
-        relativeTime +=
-          remainingHours === 1 ? " 1 hour" : ` ${remainingHours} hours`;
-      }
-    } else if (hours > 0) {
-      const remainingMinutes = minutes % 60;
-      relativeTime = hours === 1 ? "1 hour" : `${hours} hours`;
-      if (remainingMinutes > 0) {
-        relativeTime +=
-          remainingMinutes === 1 ? " 1 min" : ` ${remainingMinutes} mins`;
-      }
-    } else if (minutes > 0) {
-      relativeTime = minutes === 1 ? "1 min" : `${minutes} mins`;
-    } else {
-      relativeTime = "just now";
-    }
-
-    return relativeTime === "just now"
-      ? `${relativeTime} (${formattedTime})`
-      : `${relativeTime} ago (${formattedTime})`;
+    return formatRecentRelative(diffInMs, formattedTime);
   }
 
-  // For older dates, show the full date format
-  const optionsMonth: Intl.DateTimeFormatOptions = { month: "short" };
-  const optionsYear: Intl.DateTimeFormatOptions = { year: "2-digit" };
-
-  const month = date.toLocaleString(navigator.language, optionsMonth);
-  const year = date.toLocaleString(navigator.language, optionsYear);
-  const day = date.getDate();
-
-  return `${day}${nth(day)} ${month} '${year} (${formattedTime})`;
+  return formatOlderDate(date, formattedTime);
 }
 
 /**

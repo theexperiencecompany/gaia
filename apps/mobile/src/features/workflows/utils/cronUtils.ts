@@ -150,62 +150,86 @@ export const cronToHumanReadable = (expression: string): string => {
   }
 };
 
+function dailyRuns(
+  now: Date,
+  hour: number,
+  minute: number,
+  count: number,
+): Date[] {
+  const runs: Date[] = [];
+  const candidate = new Date(now);
+  candidate.setSeconds(0, 0);
+  candidate.setHours(hour, minute);
+  if (candidate <= now) {
+    candidate.setDate(candidate.getDate() + 1);
+  }
+  for (let i = 0; i < count; i++) {
+    runs.push(new Date(candidate));
+    candidate.setDate(candidate.getDate() + 1);
+  }
+  return runs;
+}
+
+function weeklyRuns(
+  now: Date,
+  hour: number,
+  minute: number,
+  targetDow: number,
+  count: number,
+): Date[] {
+  const runs: Date[] = [];
+  const candidate = new Date(now);
+  candidate.setSeconds(0, 0);
+  candidate.setHours(hour, minute);
+  while (runs.length < count) {
+    if (candidate.getDay() === targetDow && candidate > now) {
+      runs.push(new Date(candidate));
+    }
+    candidate.setDate(candidate.getDate() + 1);
+  }
+  return runs;
+}
+
+function monthlyRuns(
+  now: Date,
+  hour: number,
+  minute: number,
+  targetDom: number,
+  count: number,
+): Date[] {
+  const runs: Date[] = [];
+  let year = now.getFullYear();
+  let month = now.getMonth();
+
+  while (runs.length < count) {
+    const candidate = new Date(year, month, targetDom, hour, minute, 0, 0);
+    if (candidate > now) {
+      runs.push(candidate);
+    }
+    month += 1;
+    if (month > 11) {
+      month = 0;
+      year += 1;
+    }
+  }
+  return runs;
+}
+
 export const getNextRuns = (expression: string, count: number = 3): Date[] => {
   const schedule = parseCronExpression(expression);
   const now = new Date();
-  const runs: Date[] = [];
-
-  if (schedule.type === "custom") return runs;
 
   const hour = schedule.hour ?? 9;
   const minute = schedule.minute ?? 0;
 
-  if (schedule.type === "daily") {
-    let candidate = new Date(now);
-    candidate.setSeconds(0, 0);
-    candidate.setHours(hour, minute);
-    if (candidate <= now) {
-      candidate = new Date(candidate.getTime() + 24 * 60 * 60 * 1000);
-    }
-    for (let i = 0; i < count; i++) {
-      runs.push(new Date(candidate));
-      candidate = new Date(candidate.getTime() + 24 * 60 * 60 * 1000);
-    }
-    return runs;
+  switch (schedule.type) {
+    case "daily":
+      return dailyRuns(now, hour, minute, count);
+    case "weekly":
+      return weeklyRuns(now, hour, minute, schedule.dayOfWeek ?? 1, count);
+    case "monthly":
+      return monthlyRuns(now, hour, minute, schedule.dayOfMonth ?? 1, count);
+    default:
+      return [];
   }
-
-  if (schedule.type === "weekly") {
-    const targetDow = schedule.dayOfWeek ?? 1;
-    let candidate = new Date(now);
-    candidate.setSeconds(0, 0);
-    candidate.setHours(hour, minute);
-    while (runs.length < count) {
-      if (candidate.getDay() === targetDow && candidate > now) {
-        runs.push(new Date(candidate));
-      }
-      candidate = new Date(candidate.getTime() + 24 * 60 * 60 * 1000);
-    }
-    return runs;
-  }
-
-  if (schedule.type === "monthly") {
-    const targetDom = schedule.dayOfMonth ?? 1;
-    let year = now.getFullYear();
-    let month = now.getMonth();
-
-    while (runs.length < count) {
-      const candidate = new Date(year, month, targetDom, hour, minute, 0, 0);
-      if (candidate > now) {
-        runs.push(candidate);
-      }
-      month += 1;
-      if (month > 11) {
-        month = 0;
-        year += 1;
-      }
-    }
-    return runs;
-  }
-
-  return runs;
 };

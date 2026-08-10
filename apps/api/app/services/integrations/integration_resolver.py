@@ -94,8 +94,10 @@ class IntegrationResolver:
                 # Warn about inconsistencies and fix them
                 if doc_requires_auth != mcp_requires_auth:
                     log.info(
-                        f"{LogTag.INTEGRATION} Integration {integration_id}: syncing requires_auth "
-                        f"from {doc_requires_auth} to {mcp_requires_auth} (mcp_config is authoritative)"
+                        f"{LogTag.INTEGRATION} Integration : syncing requires_auth from to (mcp_config is authoritative)",
+                        integration_id=integration_id,
+                        doc_requires_auth=doc_requires_auth,
+                        mcp_requires_auth=mcp_requires_auth,
                     )
                     # Sync MongoDB document to match authoritative mcp_config
                     try:
@@ -104,7 +106,10 @@ class IntegrationResolver:
                         )
                     except Exception as sync_err:
                         log.warning(
-                            f"{LogTag.INTEGRATION} Failed to sync requires_auth for {integration_id}: {sync_err}"
+                            f"{LogTag.INTEGRATION} Failed to sync requires_auth for",
+                            integration_id=integration_id,
+                            error=str(sync_err),
+                            error_type=type(sync_err).__name__,
                         )
 
                 requires_auth = mcp_requires_auth

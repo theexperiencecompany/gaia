@@ -88,9 +88,9 @@ async def generate_follow_up_actions(
                 },
             ),
         )
-        return result.actions if result.actions else []
+        return result.actions or []
     except Exception as e:
-        log.debug(f"{LogTag.AGENT} Follow-up action generation failed: {e}")
+        log.debug(f"{LogTag.AGENT} Follow-up action generation failed", error_type=type(e).__name__)
         return []
 
 
@@ -102,11 +102,12 @@ async def follow_up_actions_node(state: State, config: RunnableConfig, store: Ba
     # Send completion marker as soon as follow-up actions start
     writer = get_stream_writer()
     try:
-        writer(MainResponseCompleteFrame(main_response_complete=True).model_dump())
+        writer(MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True))
     except Exception as write_error:
         # Stream is closed (user disconnected), no need to continue
         log.debug(
-            f"{LogTag.AGENT} Stream already closed when sending completion marker: {write_error}"
+            f"{LogTag.AGENT} Stream already closed when sending completion marker",
+            error_type=type(write_error).__name__,
         )
         return state
 
@@ -148,7 +149,10 @@ def _safe_write_actions(writer: StreamWriter, actions: list[str]) -> None:
     try:
         writer({"follow_up_actions": actions})
     except Exception as e:
-        log.debug(f"{LogTag.AGENT} Stream closed when sending follow-up actions: {e}")
+        log.debug(
+            f"{LogTag.AGENT} Stream closed when sending follow-up actions",
+            error_type=type(e).__name__,
+        )
 
 
 def _delegated_to_executor(messages: list[AnyMessage]) -> bool:

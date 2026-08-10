@@ -8,6 +8,9 @@ development behind the auth bypass — see ``create_app``.
 """
 
 import asyncio
+from typing import cast
+
+from fastapi import UploadFile
 
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.log_tags import LogTag
@@ -16,6 +19,7 @@ from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationModel, ConversationSource
+from app.models.files_models import FileDocument
 from app.models.todo_models import TodoModel
 from app.models.user_models import (
     BioStatus,
@@ -29,6 +33,7 @@ from app.schemas.dev_schemas import (
     SeedDevDataResponse,
 )
 from app.services.conversation_service import create_conversation_service
+from app.services.files import FileService
 from app.services.oauth.oauth_service import store_user_info
 from app.services.platform_link_service import Platform, PlatformLinkService
 from app.services.todos.todo_service import create_todo
@@ -69,6 +74,49 @@ async def mint_dev_user(email: str, name: str | None = None) -> UserDocument:
             status_code=500,
         )
     return user_doc
+
+
+async def attach_dev_file(
+    email: str,
+    conversation_id: str,
+    file: UploadFile,
+    content_length: int | None,
+) -> FileDocument:
+    """Ingest a file for a dev user's conversation through the real upload path.
+
+    Calls the same ``FileService.upload`` the production ``POST /api/v1/upload``
+    handler calls, so extraction (anydoc/pdf_inspector/vision), summarization,
+    Mongo metadata and the ChromaDB index are the shipped ones, not a copy. The
+    only production step skipped is the conversation-ownership check, which
+    guards against one user polluting another's session tree — meaningless here,
+    where the caller names the user and the router 404s outside development.
+
+    Pass the ``conversation_id`` that the subsequent ``POST /api/v1/dev/executor``
+    run uses: ``prepare_executor_execution`` reconstructs the conversation's
+    uploads from that id alone.
+    """
+    user = await require_dev_user(email)
+    # CacheInvalidator erases the wrapped function's return type; FileService.upload
+    # is declared -> FileDocument, so this is correct by construction.
+    document = cast(
+        FileDocument,
+        await FileService.upload(
+            file=file,
+            user_id=user.id,
+            conversation_id=conversation_id,
+            content_length=content_length,
+        ),
+    )
+    log.info(
+        f"{LogTag.DEV} attached file to dev conversation",
+        email=email,
+        user_id=user.id,
+        conversation_id=conversation_id,
+        file_id=document.file_id,
+        content_type=document.type,
+        extracted=document.page_wise_summary is not None,
+    )
+    return document
 
 
 async def seed_dev_data(

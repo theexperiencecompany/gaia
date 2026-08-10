@@ -2,8 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from app.models.trigger_config import TriggerConfig, WorkflowTriggerSchema
 from app.utils.trigger_utils import (
     get_integration_for_trigger,
@@ -57,7 +55,6 @@ class _FakeIntegration:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetIntegrationForTrigger:
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_match_returns_integration_id(self, mock_integrations: list[object]) -> None:

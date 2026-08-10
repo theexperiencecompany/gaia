@@ -35,6 +35,17 @@ LOGIN_METHOD_WORKOS = "workos"
 LOGIN_METHOD_GOOGLE = "google"
 LOGIN_METHOD_EMAIL = "email"
 
+# log.audit() actors for credential routes with no user session to name. Each
+# identifies the *caller class* that authenticated (mirroring the "dodo-webhook"
+# actor on the payment webhook); `resource`/`provider` name whose account was
+# acted on. Never the credential itself.
+# Self-authenticates with the pairing / refresh credential.
+AUDIT_ACTOR_DEVICE_DAEMON = "device-daemon"
+# Authenticated by the shared bot API key.
+AUDIT_ACTOR_BOT_API = "bot-api"
+# The presented credential resolved to no principal.
+AUDIT_ACTOR_UNAUTHENTICATED = "unauthenticated"
+
 # OAuth flow type identifiers (used in logging)
 OAUTH_FLOW_MOBILE = "mobile"
 OAUTH_FLOW_DESKTOP = "desktop"

@@ -44,7 +44,7 @@ dependencies = [
 [tool.taskipy.tasks]
 dev = "uv run --group backend --group voice_agent uvicorn app.main:app --port 8000 --reload --log-level warning"
 start = "uv run --group backend --group voice_agent fastapi run"
-arq = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings"
+arq = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG"
 worker = "task arq"
 lint = "uvx ruff check ."
 "lint.fix" = "uvx ruff check . --fix"
@@ -115,6 +115,12 @@ dev = [
   "fakeredis[aioredis]>=2.0.0",
   "pytest-xdist>=3.8.0",
   "pika>=1.4.1",
+  "pytest-randomly>=4.1.0",
+  "pytest-timeout>=2.4.0",
+  "time-machine>=3.3.1",
+  "schemathesis>=4.24.3",
+  "hypothesis>=6.165.2",
+  "mutmut>=3.7.0",
 ]
 
 backend = [
@@ -190,6 +196,7 @@ backend = [
   "litellm>=1.83.4,<1.90",
   "prometheus-fastapi-instrumentator>=7.0.0",
   "prometheus-client>=0.20.0",
+  "pyarrow>=25.0.0",
 ]
 
 [tool.uv.sources]
@@ -203,3 +210,22 @@ Homepage = "https://heygaia.io"
 Documentation = "https://docs.heygaia.io"
 Repository = "https://github.com/theexperiencecompany/gaia"
 Issues = "https://github.com/theexperiencecompany/gaia/issues"
+
+[tool.mutmut]
+# Mutation spot-checks (scripts/test/mutation.sh) — see that script for how
+# the pieces fit. Key repo integration points:
+# - Single-process pytest: the repo pytest.ini addopts carry -n 4 (xdist),
+#   but mutmut's trampoline stats are collected by in-process pytest plugins
+#   (pytest_runtest_teardown) — xdist workers run the tests where the
+#   collector does not exist, so no test ever associates with a mutant.
+# - also_copy: the mutants/ dir isolates mutated files, but tests/conftest
+#   imports the whole app at collection; a full copy keeps imports resolving.
+# - The script swaps source_paths + pytest_add_cli_args_test_selection to
+#   the module + its test file per run; stats then executes only that file.
+# - mutate_only_covered_lines is deliberately OFF everywhere: its coverage
+#   pass unloads every module imported during the stats run, and numpy (and
+#   other C extensions) cannot be re-imported in the same process.
+source_paths = ["app"]
+also_copy = ["app", "tests", "scripts"]
+pytest_add_cli_args_test_selection = []
+pytest_add_cli_args = ["-p", "no:xdist", "-o", 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300']

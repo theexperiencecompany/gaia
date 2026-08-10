@@ -7,7 +7,6 @@ import pytest
 from app.workers.tasks.memory_email_tasks import process_gmail_emails_to_memory
 
 
-@pytest.mark.unit
 class TestProcessGmailEmailsToMemory:
     """Tests for process_gmail_emails_to_memory ARQ task."""
 

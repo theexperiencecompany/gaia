@@ -3,8 +3,6 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 # Pre-import to break circular dependency chain:
 # workflow_tool -> workflow_utils -> workflow.subagent_output -> workflow.__init__ -> service -> workflow_utils
 import app.services.workflow.service  # noqa: F401
@@ -99,7 +97,6 @@ def _make_workflow_mock(**overrides: Any) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateWorkflow:
     """Tests for the create_workflow tool."""
 
@@ -272,7 +269,6 @@ class TestCreateWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWorkflow:
     """Tests for the get_workflow tool."""
 
@@ -341,7 +337,6 @@ class TestGetWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteWorkflow:
     """Tests for the execute_workflow tool."""
 
@@ -394,7 +389,6 @@ class TestExecuteWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSearchTriggers:
     """Tests for the search_triggers shared tool."""
 
@@ -440,7 +434,6 @@ class TestSearchTriggers:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListWorkflows:
     """Tests for the list_workflows shared tool."""
 

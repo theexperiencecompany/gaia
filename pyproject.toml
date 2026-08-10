@@ -58,6 +58,7 @@ ignore_decorators = [
   "@register_before_hook",
   "@register_after_hook",
   "@register_schema_modifier",
+  "@register_suite", # eval suite classes, resolved by name via SUITE_REGISTRY
   "@*.on",          # LiveKit event handlers (@session.on / @ctx.room.on)
   "@app.get",       # bare-FastAPI route handlers (embedding sidecar)
   "@app.post",      # bare-FastAPI route handlers (embedding sidecar)
@@ -69,6 +70,13 @@ ignore_names = [
   "__getattr__",    # module-level dunder called by Python's import machinery
   "wrap_tools",     # AgenticProvider abstract-method override (called by Composio SDK)
   "on_llm_end",     # LangChain BaseCallbackHandler override (called by the framework)
+  "build_from_config",  # chroma EmbeddingFunction contract: called dynamically via
+                        # chroma's registered-embedding-function map when a
+                        # collection config is reconstructed (see chroma_store.py)
+  "reindex_note",   # notes repair API consumed only by unit tests (vulture excludes tests)
+  "reclassify_all", # rescore CLI surface consumed only by unit tests (vulture excludes tests)
+  "render_by_suite",  # rescore report helper consumed only by unit tests (vulture excludes tests)
+  "contract_failures",  # prompt-contract API consumed only by test_prompt_contracts.py (vulture excludes tests)
 ]
 
 # ---------------------------------------------------------------------------
@@ -451,6 +459,17 @@ unfixable = [
 "apps/api/app/workers/tasks/memory_email_tasks.py" = ["ARG001"]
 # ARG001: ARQ injects the job context (`ctx`) into every task function; the
 # nurture task doesn't use it.
+# ANN401: ARQ's job API is dynamically typed — enqueue_worker_job forwards an
+# arbitrary per-task arg bag into pool.enqueue_job (typed *args: Any upstream in
+# arq's ArqRedis), and task_envelope's wrapper mirrors the registered task's own
+# signature, which ARQ calls positionally regardless of how the task is typed.
+"apps/api/app/workers/queue.py" = ["ANN401"]
+"apps/api/app/workers/task_envelope.py" = ["ANN401"]
+# ANN401: _iso() accepts an arbitrary decoded JSON value from a log line (a
+# field that is typed as JSON, so str/int/float/None are all reachable) and
+# str()-normalizes it before the ISO check — object would force a cast for
+# zero benefit.
+"tools/logcheck/logcheck.py" = ["ANN401"]
 "apps/api/app/workers/tasks/nurture_tasks.py" = ["ARG001"]
 # ANN401: recursively processes arbitrary JSON-serializable data (dict, list,
 # str, or scalar) for an MCP-UI iframe payload -- not dict-shaped.

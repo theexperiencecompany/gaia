@@ -17,7 +17,7 @@ import time
 
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import CLARIFY_QUESTIONS_PROMPT
 from app.constants.log_tags import LogTag
 from app.models.onboarding_models import (
@@ -85,6 +85,8 @@ async def generate_clarify_questions(
     name: str,
     profession: str,
     focus: str,
+    *,
+    user_id: str,
 ) -> list[ClarifyQuestion]:
     """Produce the 3-question follow-up set for the no-Gmail path."""
     t0 = time.monotonic()
@@ -101,7 +103,10 @@ async def generate_clarify_questions(
 
     try:
         parsed: _ClarifyQuestionList = await ainvoke_structured(
-            _ClarifyQuestionList, prompt, label="onboarding_clarify"
+            _ClarifyQuestionList,
+            prompt,
+            label="onboarding_clarify",
+            config=metered_config(user_id),
         )
 
         by_kind = {q.kind: q for q in parsed.questions}

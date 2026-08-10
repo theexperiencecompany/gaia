@@ -66,10 +66,19 @@ async def handle_workflow_error(
         from app.db.repositories.workflows import workflow_repository
 
         await workflow_repository.mark_error(workflow_id, user_id, deactivate=deactivate)
-        log.error(f"{LogTag.WORKFLOW} Workflow {workflow_id} error: {error}")
+        log.error(
+            f"{LogTag.WORKFLOW} Workflow error",
+            workflow_id=workflow_id,
+            error=error,
+            user_id=user_id,
+        )
     except Exception as update_error:
         log.error(
-            f"{LogTag.WORKFLOW} Failed to update workflow {workflow_id} error state: {update_error}"
+            f"{LogTag.WORKFLOW} Failed to update workflow error state",
+            workflow_id=workflow_id,
+            error=str(update_error),
+            error_type=type(update_error).__name__,
+            user_id=user_id,
         )
 
 
@@ -116,7 +125,7 @@ async def _partition_integration_ids(
     unknown: list[str] = []
     for iid, res in zip(seen, resolved, strict=True):
         if isinstance(res, BaseException):
-            log.warning(f"{LogTag.WORKFLOW} integration_id resolve failed for {iid!r}: {res}")
+            log.warning(f"{LogTag.WORKFLOW} integration_id resolve failed for", iid=iid, res=res)
             valid.append(iid)
         elif res is not None:
             valid.append(iid)
@@ -136,7 +145,7 @@ async def filter_existing_integration_ids(integration_ids: list[str] | None) -> 
     hallucinated id (a service that does not exist in GAIA, e.g. 'stripe') never persists."""
     valid, unknown = await _partition_integration_ids(integration_ids)
     for iid in unknown:
-        log.warning(f"{LogTag.WORKFLOW} Dropping unknown integration_id {iid!r} from workflow")
+        log.warning(f"{LogTag.WORKFLOW} Dropping unknown integration_id from workflow", iid=iid)
     return valid
 
 
@@ -236,7 +245,7 @@ async def create_workflow_directly(
 
         writer({"workflow_created": workflow_data})
 
-        log.info(f"{LogTag.WORKFLOW} Created workflow directly: {workflow.id}")
+        log.info(f"{LogTag.WORKFLOW} Created workflow directly", id=workflow.id)
 
         return success_response(
             {"status": "created", "workflow_id": workflow.id},
@@ -246,7 +255,12 @@ async def create_workflow_directly(
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        log.warning(f"{LogTag.WORKFLOW} Direct creation failed: {e}")
+        log.warning(
+            f"{LogTag.WORKFLOW} Direct creation failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None
 
 
@@ -402,7 +416,11 @@ async def apply_workflow_edit(
                 updated = regenerated
         except Exception as e:
             log.warning(
-                f"{LogTag.WORKFLOW} Step regeneration after edit failed for {workflow.id}: {e}"
+                f"{LogTag.WORKFLOW} Step regeneration after edit failed for",
+                id=workflow.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
             )
 
     writer({"workflow_data": {"action": "updated", "workflow": updated.model_dump()}})

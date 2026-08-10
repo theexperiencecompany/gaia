@@ -22,7 +22,6 @@ RESEND_PROVIDER = "app.services.email.providers.resend_provider"
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestSendWelcomeEmail:
     @patch(f"{SENDERS}.send_email")
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>Welcome</h1>")
@@ -55,7 +54,6 @@ class TestSendWelcomeEmail:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestAddMarketingContact:
     # add_contact exits early when RESEND_AUDIENCE_ID is empty (not configured).
     # All tests must patch settings so the guard passes and the real logic runs.
@@ -141,7 +139,6 @@ class TestAddMarketingContact:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestSendInactiveUserEmail:
     # Throttle policy lives in the check_inactive_users worker task, not here —
     # see tests/unit/workers/test_user_tasks.py.

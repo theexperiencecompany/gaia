@@ -24,7 +24,13 @@
  * 2. Extend BaseBotAdapter and implement the five lifecycle methods
  * 3. In index.ts: create adapter instance, call adapter.boot(allCommands)
  */
-export { BaseBotAdapter, BotServer, richMessageToMarkdown } from "./adapter";
+export {
+  BaseBotAdapter,
+  BotServer,
+  richMessageToMarkdown,
+  runBotProcess,
+} from "./adapter";
+
 export { GaiaApiError, GaiaClient } from "./api";
 export {
   allCommands,
@@ -41,13 +47,14 @@ export {
   workflowCommand,
 } from "./commands";
 export { injectInfisicalSecrets, loadConfig } from "./config";
+// Outbound envelope types/schema (zod-only — RN-safe). The full consumer
+// (`./consumer/outbound-consumer`) is NOT re-exported here: it imports amqplib
+// (Node-only), which Metro/React Native cannot resolve.
 export type {
   OutboundAttachment,
   OutboundMessageEnvelope,
 } from "./consumer/envelope";
-// Outbound envelope types/schema (zod-only — RN-safe). The full consumer
-// (`./consumer/outbound-consumer`) is NOT re-exported here: it imports amqplib
-// (Node-only), which Metro/React Native cannot resolve.
+
 export {
   outboundAttachmentSchema,
   outboundMessageEnvelopeSchema,
@@ -85,12 +92,16 @@ export type {
 export type {
   BotLogFields,
   BotLogger,
+  BotLogLevel,
+  BotWideEventFields,
   IncomingMedia,
   MediaKind,
   MediaOutcome,
   MessageEditor,
   NewMessageSender,
   StreamingOptions,
+  WideEventBoundaryFields,
+  WideEventEntry,
 } from "./utils";
 export {
   BOT_MEDIA_LIMITS,
@@ -104,6 +115,7 @@ export {
   createBotLogger,
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
+  emitBotLogLine,
   escapeHtml,
   escapeHtmlAttr,
   extensionForMime,
@@ -144,4 +156,7 @@ export {
   sanitizeErrorForLog,
   truncateResponse,
   unsupportedMediaMessage,
+  WIDE_EVENT_MESSAGE,
+  wideLog,
+  withWideEvent,
 } from "./utils";

@@ -24,21 +24,18 @@ BLOCKED_URLS = [
 ]
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize("url", BLOCKED_URLS)
 def test_create_request_rejects_unsafe_server_url(url: str) -> None:
     with pytest.raises(ValidationError):
         CreateCustomIntegrationRequest(name="evil", server_url=url)
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize("url", BLOCKED_URLS)
 def test_update_request_rejects_unsafe_server_url(url: str) -> None:
     with pytest.raises(ValidationError):
         UpdateCustomIntegrationRequest(server_url=url)
 
 
-@pytest.mark.unit
 def test_create_request_accepts_public_https_url() -> None:
     req = CreateCustomIntegrationRequest(
         name="hackernews", server_url="https://mcp.example.com/sse"
@@ -46,7 +43,6 @@ def test_create_request_accepts_public_https_url() -> None:
     assert req.server_url == "https://mcp.example.com/sse"
 
 
-@pytest.mark.unit
 def test_update_request_allows_omitting_server_url() -> None:
     # server_url is optional on update; None must skip the guard, not crash.
     req = UpdateCustomIntegrationRequest(name="renamed")

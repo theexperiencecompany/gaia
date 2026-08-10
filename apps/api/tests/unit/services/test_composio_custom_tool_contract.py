@@ -25,7 +25,6 @@ from app.services.composio.custom_tools.registry import CustomToolsRegistry
 # patches at import time, and the contracts asserted below depend on them.
 importlib.import_module("app.patches")
 
-pytestmark = pytest.mark.unit
 
 #: The signature the SDK calls a toolkit-bound custom tool with
 #: (``CustomTool.invoke_trusted``). A tool declaring anything else raises a

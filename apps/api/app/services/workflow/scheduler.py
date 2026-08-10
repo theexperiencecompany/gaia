@@ -92,7 +92,13 @@ class WorkflowScheduler(BaseSchedulerService):
                 return await workflow_repository.get_for_user(task_id, user_id)
             return await workflow_repository.get(task_id)
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error fetching workflow {task_id}: {e}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error fetching workflow",
+                task_id=task_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             return None
 
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
@@ -110,7 +116,7 @@ class WorkflowScheduler(BaseSchedulerService):
             from app.workers.tasks import execute_workflow_as_chat
 
             log.set(workflow={"id": workflow.id, "status": "executing"})
-            log.info(f"{LogTag.WORKFLOW} Executing workflow {workflow.id}")
+            log.info(f"{LogTag.WORKFLOW} Executing workflow", id=workflow.id)
 
             if not workflow.id:
                 raise ValueError("Workflow ID is required for execution")
@@ -124,7 +130,12 @@ class WorkflowScheduler(BaseSchedulerService):
                 message="Workflow executed via scheduler",
             )
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error executing workflow {task.id}: {e}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error executing workflow",
+                id=task.id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return TaskExecutionResult(success=False, message=f"Workflow execution failed: {e!s}")
 
     async def update_task_status(
@@ -160,13 +171,25 @@ class WorkflowScheduler(BaseSchedulerService):
 
             if matched:
                 log.set(workflow={"id": task_id, "status": status.value})
-                log.info(f"{LogTag.WORKFLOW} Updated workflow {task_id} status to {status.value}")
+                log.info(
+                    f"{LogTag.WORKFLOW} Updated workflow status to",
+                    task_id=task_id,
+                    status=status.value,
+                )
                 return True
-            log.warning(f"{LogTag.WORKFLOW} No workflow updated for {task_id}")
+            log.warning(
+                f"{LogTag.WORKFLOW} No workflow updated for", task_id=task_id, user_id=user_id
+            )
             return False
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error updating workflow {task_id}: {e}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error updating workflow",
+                task_id=task_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             return False
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
@@ -214,12 +237,20 @@ class WorkflowScheduler(BaseSchedulerService):
                     + (f" with repeat '{repeat}'" if repeat else "")
                 )
             else:
-                log.error(f"{LogTag.WORKFLOW} Failed to schedule workflow {workflow_id}")
+                log.error(
+                    f"{LogTag.WORKFLOW} Failed to schedule workflow",
+                    workflow_id=workflow_id,
+                )
 
             return success
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error scheduling workflow {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error scheduling workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
     async def reschedule_workflow(
@@ -242,7 +273,10 @@ class WorkflowScheduler(BaseSchedulerService):
             )
 
             if not db_success:
-                log.error(f"{LogTag.WORKFLOW} Failed to update workflow {workflow_id} in database")
+                log.error(
+                    f"{LogTag.WORKFLOW} Failed to update workflow in database",
+                    workflow_id=workflow_id,
+                )
                 return False
 
             # Actually reschedule in ARQ queue
@@ -250,17 +284,25 @@ class WorkflowScheduler(BaseSchedulerService):
 
             if arq_success:
                 log.info(
-                    f"{LogTag.WORKFLOW} Rescheduled workflow {workflow_id} for {new_scheduled_at}"
+                    f"{LogTag.WORKFLOW} Rescheduled workflow for",
+                    workflow_id=workflow_id,
+                    new_scheduled_at=new_scheduled_at,
                 )
             else:
                 log.error(
-                    f"{LogTag.WORKFLOW} Failed to reschedule workflow {workflow_id} in ARQ queue"
+                    f"{LogTag.WORKFLOW} Failed to reschedule workflow in ARQ queue",
+                    workflow_id=workflow_id,
                 )
 
             return arq_success
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error rescheduling workflow {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error rescheduling workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
     async def reap_stale_executing(self) -> int:
@@ -298,8 +340,10 @@ class WorkflowScheduler(BaseSchedulerService):
                 await self.reschedule_task(workflow_id, next_run)
 
             log.warning(
-                f"{LogTag.WORKFLOW} Reaped workflow {workflow_id} stuck in EXECUTING for {stuck_seconds}s; "
-                f"reset to SCHEDULED (next run {next_run})"
+                f"{LogTag.WORKFLOW} Reaped workflow stuck in EXECUTING; reset to SCHEDULED",
+                workflow_id=workflow_id,
+                stuck_seconds=stuck_seconds,
+                next_run=next_run,
             )
             reaped += 1
 

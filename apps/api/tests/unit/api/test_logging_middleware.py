@@ -63,7 +63,6 @@ def _build_test_app(skip_paths: frozenset | None = None):
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestLoggingMiddlewareSkipPaths:
     """Requests to skip paths should not be logged."""
 
@@ -92,7 +91,6 @@ class TestLoggingMiddlewareSkipPaths:
         mock_logger.bind.assert_not_called()
 
 
-@pytest.mark.unit
 class TestLoggingMiddlewareNormalRequests:
     """Normal requests should produce a structured log event."""
 
@@ -137,7 +135,6 @@ class TestLoggingMiddlewareNormalRequests:
         assert level == "ERROR"
 
 
-@pytest.mark.unit
 class TestLoggingMiddlewareTraceId:
     """x-trace-id header propagation."""
 
@@ -156,7 +153,6 @@ class TestLoggingMiddlewareTraceId:
         assert resp.headers.get("x-trace-id") == "trace-abc-123"
 
 
-@pytest.mark.unit
 class TestLoggingMiddlewareExceptionHandling:
     """Unhandled exceptions should still produce a log event."""
 
@@ -173,7 +169,6 @@ class TestLoggingMiddlewareExceptionHandling:
         assert mock_logger.bind.called
 
 
-@pytest.mark.unit
 class TestLoggingMiddlewareRequestSize:
     """Request size is captured from Content-Length header."""
 
@@ -211,7 +206,6 @@ class TestLoggingMiddlewareRequestSize:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestLogFunctionCallAsync:
     """Async function decoration."""
 
@@ -250,7 +244,6 @@ class TestLogFunctionCallAsync:
             assert "function failed" in mock_err.call_args[0][0]
 
 
-@pytest.mark.unit
 class TestLogFunctionCallSync:
     """Sync function decoration."""
 

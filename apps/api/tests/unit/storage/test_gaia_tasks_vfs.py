@@ -31,8 +31,6 @@ from app.services.storage.gaia_tasks_vfs import (
 )
 from app.services.storage.user_todos_vfs import materialize_user_todos
 
-pytestmark = pytest.mark.unit
-
 GUIDE = "# How to use gaia-tasks\n"
 
 # Real ObjectId hex. The first 8 chars are the 4-byte creation *timestamp*, so

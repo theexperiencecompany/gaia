@@ -67,3 +67,14 @@ No change is done until the surrounding area is clean. "Working" and "complete" 
 - Fix the thing you were asked to fix, and remove any related dead code you encounter in the process
 - Do not leave a file in worse shape than you found it
 - Lint and type-check passes are not optional — run them before considering a task done
+
+## Test Rules
+
+The full conventions doc for API tests is `apps/api/tests/CLAUDE.md`. The rules below apply everywhere tests exist.
+
+- **Quality bar** — a test must be able to fail (delete a line of product code and it goes red), assert behavior not implementation, cover the failure path, be deterministic, never mock the thing under test, and never assert on LLM-generated prose.
+- **Red first** — write the failing test before the fix and watch it fail. A test never observed red proves nothing; it only asserts what the code now happens to do.
+- **DRY applies to tests** — fixtures and factories live in the shared catalog (`tests/conftest.py`, `tests/helpers.py`, `tests/factories.py`). Search it before hand-rolling a fixture in a test file; never copy a fixture across files.
+- **One tier per purpose, one file per subject** — tests live with the code they test in the tier that catches the bug (unit for logic, integration for wiring, real-infra for real DBs, e2e for user journeys, stress for races/retries). No folder-per-test-type sprawl, no duplicate proof of a tier that already covers it.
+- **Bug regressions are named** — a bug's failing-then-passing test goes in the natural file, named `test_<subject>_<issue>.py`.
+- **Deletion over padding** — when a test can't be made to fail, delete or rework it. Padding that cannot fail is theater; a weakened assertion suppresses the bug instead of fixing it.

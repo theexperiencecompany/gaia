@@ -44,7 +44,6 @@ def _sniff(inline: InlineImage) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMimeIsSniffedNotDeclared:
     async def test_png_bytes_are_labelled_png_regardless_of_file_extension(self) -> None:
         """A PNG saved as `photo.jpg` must not be labelled image/jpeg.
@@ -100,7 +99,6 @@ class TestMimeIsSniffedNotDeclared:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDecodeFailuresAreTyped:
     async def test_truncated_image_on_the_transcode_path_raises_invalid_image(self) -> None:
         """verify() only reads the header; the full decode in _transcode is what fails.
@@ -137,7 +135,6 @@ class TestDecodeFailuresAreTyped:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBudgets:
     async def test_oversized_pixels_are_downscaled_even_when_bytes_are_tiny(self) -> None:
         """A flat 4000x4000 PNG compresses to almost nothing but bills as huge.
@@ -202,7 +199,6 @@ class TestBudgets:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMimeForPathAndBlock:
     @pytest.mark.parametrize(
         ("path", "expected"),

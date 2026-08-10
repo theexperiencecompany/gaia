@@ -9,7 +9,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from tests.conftest import FAKE_USER
 
@@ -77,7 +76,6 @@ def _create_payload(
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCreateReminder:
     """POST /api/v1/reminders"""
 
@@ -127,7 +125,6 @@ class TestCreateReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestGetReminder:
     """GET /api/v1/reminders/{reminder_id}"""
 
@@ -173,7 +170,6 @@ class TestGetReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestUpdateReminder:
     """PUT /api/v1/reminders/{reminder_id}"""
 
@@ -234,7 +230,6 @@ class TestUpdateReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCancelReminder:
     """DELETE /api/v1/reminders/{reminder_id}"""
 
@@ -277,7 +272,6 @@ class TestCancelReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestListReminders:
     """GET /api/v1/reminders"""
 
@@ -335,7 +329,6 @@ class TestListReminders:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestPauseReminder:
     """POST /api/v1/reminders/{reminder_id}/pause"""
 
@@ -385,7 +378,6 @@ class TestPauseReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestResumeReminder:
     """POST /api/v1/reminders/{reminder_id}/resume"""
 
@@ -442,7 +434,6 @@ class TestResumeReminder:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCronValidate:
     """GET /api/v1/reminders/cron/validate"""
 

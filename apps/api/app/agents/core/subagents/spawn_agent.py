@@ -145,8 +145,10 @@ async def _build_spawn_graph(
         # the decision can arrive hours later in another process. In-memory means
         # such a pause cannot be resumed, so this is a real degradation.
         log.warning(
-            f"{LogTag.AGENT} PostgreSQL checkpointer unavailable for spawned subagents: {e}. "
-            "Using InMemorySaver; HIL pauses inside a spawn will not survive a restart."
+            f"{LogTag.AGENT} PostgreSQL checkpointer unavailable for spawned subagents; "
+            "using InMemorySaver — HIL pauses inside a spawn will not survive a restart",
+            error_type=type(e).__name__,
+            error=str(e),
         )
         checkpointer = InMemorySaver()
 

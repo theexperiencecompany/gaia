@@ -57,7 +57,6 @@ def _get_agent_branch_ends(builder) -> dict:
     return merged
 
 
-@pytest.mark.unit
 class TestShouldContinueLogicViaCreateAgent:
     """
     Tests for the routing logic in create_agent's should_continue closure.
@@ -201,7 +200,6 @@ class TestShouldContinueLogicViaCreateAgent:
         )
 
 
-@pytest.mark.unit
 class TestShouldContinueBehavior:
     """
     Tests for the should_continue routing behavior via real compiled graph execution.

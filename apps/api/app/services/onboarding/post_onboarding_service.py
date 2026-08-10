@@ -47,19 +47,30 @@ async def save_personalization_data(
             overlay_opacity=overlay_opacity,
             workflow_ids=workflow_ids,
         )
-        log.info(f"{LogTag.ONBOARDING} Saved personalization data for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Saved personalization data for user", user_id=user_id)
 
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error saving personalization data: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} Error saving personalization data",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            exc_info=True,
+        )
 
 
 async def seed_initial_user_data(user_id: str) -> None:
     """Seed the onboarding todo. The welcome conversation is seeded by the
     intelligence pipeline, not here."""
     try:
-        log.info(f"{LogTag.ONBOARDING} Starting data seeding for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Starting data seeding for user", user_id=user_id)
         await seed_onboarding_todo(user_id)
-        log.info(f"{LogTag.ONBOARDING} Completed data seeding for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Completed data seeding for user", user_id=user_id)
 
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error in seed_initial_user_data for user {user_id}: {e}")
+        log.error(
+            f"{LogTag.ONBOARDING} Error in seed_initial_user_data for user",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )

@@ -15,7 +15,6 @@ from app.utils.oauth_utils import (
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBuildGoogleOAuthUrl:
     """Tests for building Google OAuth authorization URLs."""
 
@@ -214,7 +213,6 @@ class TestBuildGoogleOAuthUrl:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUploadUserPicture:
     """Tests for uploading user profile pictures to Cloudinary."""
 

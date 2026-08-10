@@ -1,5 +1,6 @@
 """Unit tests for context_utils: execute_tool, fetch_all_providers, resolve_providers."""
 
+from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -45,7 +46,6 @@ def _make_composio_service(result: dict[str, Any]) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteTool:
     """Tests for execute_tool (sync, calls Composio service)."""
 
@@ -150,7 +150,6 @@ class TestExecuteTool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFetchAllProviders:
     """Tests for fetch_all_providers (parallel execution with ThreadPoolExecutor)."""
 
@@ -190,26 +189,41 @@ class TestFetchAllProviders:
         assert result["good"] == {"ok": True}
         assert "bad" not in result
 
-    @patch("app.utils.context_utils.PROVIDER_TIMEOUT_SECONDS", 0.001)
-    @patch("app.utils.context_utils.execute_tool")
-    def test_timeout_on_one_provider_skipped(self, mock_execute: MagicMock) -> None:
+    def test_timeout_on_one_provider_skipped(self) -> None:
         """A provider that exceeds the timeout should be skipped."""
-        import time
 
-        def side_effect(slug: str, params: dict, uid: str) -> dict:
-            if slug == "SLOW_GATHER":
-                time.sleep(1)  # Well beyond the 0.001s timeout
-                return {"slow": True}
-            return {"fast": True}
+        class _ImmediateFuture:
+            """Future stub that returns a canned value or raises a timeout.
 
-        mock_execute.side_effect = side_effect
+            Drives fetch_all_providers' timeout branch without real threads or
+            sleeping — the timeout decision lives in future.result(timeout=...).
+            """
+
+            def __init__(self, outcome: tuple[str, dict[str, Any] | None] | type[FuturesTimeout]):
+                self._outcome = outcome
+
+            def result(self, timeout: float | None = None) -> tuple[str, dict[str, Any] | None]:
+                if self._outcome is FuturesTimeout:
+                    raise FuturesTimeout()
+                return self._outcome
+
+        def fake_submit(fn: Any, provider: str) -> _ImmediateFuture:
+            if provider == "slow_provider":
+                return _ImmediateFuture(FuturesTimeout)
+            return _ImmediateFuture(("fast_provider", {"fast": True}))
 
         provider_tools = {
             "fast_provider": "FAST_GATHER",
             "slow_provider": "SLOW_GATHER",
         }
 
-        result = fetch_all_providers(["fast_provider", "slow_provider"], provider_tools, "user_1")
+        with patch(
+            "app.utils.context_utils._CONTEXT_EXECUTOR.submit",
+            side_effect=fake_submit,
+        ):
+            result = fetch_all_providers(
+                ["fast_provider", "slow_provider"], provider_tools, "user_1"
+            )
 
         assert "fast_provider" in result
         assert result["fast_provider"] == {"fast": True}
@@ -274,7 +288,6 @@ class TestFetchAllProviders:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestResolveProviders:
     """Tests for resolve_providers (async, resolves which providers to query)."""

@@ -90,7 +90,7 @@ async def install_skill_from_github(
     except ValueError as e:
         return f"Failed to install skill: {e}"
     except Exception as e:
-        log.error(f"{LogTag.TOOL} GitHub install error: {e}")
+        log.error(f"{LogTag.TOOL} GitHub install error", error_type=type(e).__name__)
         return f"Error installing skill from GitHub: {e}"
 
 
@@ -153,7 +153,7 @@ async def create_skill(
     except ValueError as e:
         return f"Failed to create skill: {e}"
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Inline create error: {e}")
+        log.error(f"{LogTag.TOOL} Inline create error", error_type=type(e).__name__)
         return f"Error creating skill: {e}"
 
 
@@ -198,7 +198,7 @@ async def list_installed_skills(
 
         return "\n".join(lines)
     except Exception as e:
-        log.error(f"{LogTag.TOOL} List error: {e}")
+        log.error(f"{LogTag.TOOL} List error", error_type=type(e).__name__)
         return f"Error listing skills: {e}"
 
 
@@ -246,7 +246,7 @@ async def manage_skill(
         return f"Unknown action '{action}'. Use 'enable', 'disable', or 'uninstall'."
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Manage error: {e}")
+        log.error(f"{LogTag.TOOL} Manage error", error_type=type(e).__name__)
         return f"Error managing skill: {e}"
 
 

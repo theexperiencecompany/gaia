@@ -8,6 +8,7 @@ Sub-folders by domain:
 
 | Folder | What it covers |
 |--------|---------------|
+| `real/` | Real-database tests against live Redis/Postgres/MongoDB/ChromaDB (incl. the `memory/` sub-suite) — see its README |
 | `agents/` | Full LangGraph graph compilation and execution with fake LLMs |
 | `api/` | FastAPI endpoint request/response contracts with a real test client |
 | `db/` | Database client wrappers against in-memory or ephemeral backends |

@@ -85,7 +85,7 @@ Pre-model hooks in `app/agents/core/nodes/`:
 - No inline imports — all imports at the top of the file.
 - Use `ruff` for linting and formatting (not black/flake8/isort).
 - Raise `AppError` (from `app/utils/errors.py`) for domain errors — it serializes to a structured JSON response automatically.
-- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
+- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields to the request's wide event. `log.info(...)` emits a real-time line only and **never reaches the wide event**; `log.error(...)` / `log.warning(...)` emit a line *and* append to the event's `errors[]`/`warnings[]` — always with structured kwargs (`error_type=`, ids), not data interpolated into the message. `log.set(ns={...})` replaces the whole namespace dict — use `log.set_ns("ns", key=value)` for follow-up fields. Sensitive operations (auth, payments, PII writes) also call `log.audit(...)`. ARQ worker tasks do NOT open their own boundary — `arq_task` (`app/workers/task_envelope.py`), applied once per task in `app/worker.py`, wraps every registered task in a `wide_task()` carrying the propagated `trace_id` plus ARQ's `job_id`/`job_try`, so a task body just calls `log.set(...)`; enqueue through `enqueue_worker_job` (`app/workers/queue.py`), never `pool.enqueue_job` directly, or the job loses the caller's trace. Fire-and-forget background work is spawned with `spawn_logged_task("operation", coro(...))`, which gives it a `log_context()` boundary carrying the request's `trace_id`; without a boundary every `log.set()` inside that task is silently discarded. Write new fire-and-forget work that way, and move any `asyncio.create_task` call you touch over to it — `app/` still has ~42 bare `asyncio.create_task` call sites (plus several ad-hoc task sets keeping references alive) predating the helper, and they are being migrated incrementally rather than in one sweep. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
 
 ### Docstrings & Comments
 
@@ -141,8 +141,9 @@ async def create_todo(
 ) -> TodoResponse:
     log.set(user={"id": user["user_id"]}, todo={"operation": "create"})
     result = await create_todo_service(payload, user)
-    log.set(todo={"id": result.id})
-    return result
+    log.set_ns("todo", id=result["_id"])  # set_ns: set(todo={...}) would clobber step 1
+    return JSONResponse(content=result)
+
 ```
 
 - The return annotation defines the response schema. Don't also pass `response_model=` — it is redundant and trips SonarQube S8409.
@@ -414,6 +415,7 @@ A narrower type that's provably correct beats a "complete" one that required gue
 - No global mutable state — pass dependencies explicitly.
 - No monolithic service files spanning multiple domains.
 - No copying logic from `gaia-shared` into app code — import it.
+- No raw `asyncio.create_task(...)` for fire-and-forget work — call `spawn_background_task()` from `app/utils/background_tasks.py`. It strong-refs the task until it finishes so the event loop can't GC it mid-flight; a bare `create_task` can vanish before running. (Long-lived tasks you store and later `await`/`cancel` are not fire-and-forget — those keep their own reference.)
 
 ## Database
 
@@ -427,29 +429,33 @@ A narrower type that's provably correct beats a "complete" one that required gue
 
 ## Testing
 
-Tests run with `pytest-asyncio` in `asyncio_mode = auto` (all async tests work without `@pytest.mark.asyncio` on the function, but the class still needs the marker or `@pytest.mark.asyncio` on individual tests to satisfy strict mode).
+The single conventions doc — tiers, quality bar, run commands, naming — is **`tests/CLAUDE.md`**. Read it before writing any test. Copy-from-me scaffolds live in `tests/_template/`.
 
-Default `addopts`: `-m "not composio" --strict-markers -n 4` — four parallel workers, composio tests excluded.
+Tier summary (full table in `tests/CLAUDE.md`):
 
-**Test structure:**
+- `tests/unit/` — fast, hermetic, everything mocked. Mirrors `app/` (new service fn → `unit/services/`, new endpoint → `unit/api/`).
+- `tests/integration/` — real production code, mocked infra. Wiring between components.
+- `tests/integration/real/` — real Postgres/Redis/Mongo, `USE_REAL_SERVICES=1` + Docker (`nx run api:test:real`).
+- `tests/contracts/` — repository contracts against real Mongo + Redis (`nx run api:test:contracts`).
+- `tests/e2e/` — real compiled graphs, fake LLM via `_harness/` (`nx run api:test:e2e`).
+- `tests/stress/` / `tests/meta/` — race/retry battles, import-fence invariants (own targets).
+- `tests/composio/`, `tests/model_onboarding/` — live-credential, opt-in, excluded by default.
 
-- `tests/unit/` — no external deps, mock everything. Fast.
-- `tests/integration/` — compiles real LangGraph graphs or exercises the full FastAPI request cycle (mocked service layer, no real DBs).
-- `tests/e2e/` — marked `e2e`, require real or near-real services, not cached, run separately.
-- `tests/composio/` — require real Composio credentials, excluded by default.
+Never run a raw full `pytest` locally — use the nx targets (`nx test api`, `nx run api:test:*`); they pin the dirs, markers, and xdist settings.
+
+**Unmark the patch-away.** A caller mocking a service means that service's logic has never run — the mock is a permanent blind spot. When you see an endpoint test mocking a service it barely touches, or a service test mocking a repo call whose logic matters, prefer un-mocking: let the real component run against mocked seams one layer down. Same rule as "never mock the thing under test."
+
+Pytest mechanics: `asyncio_mode = auto` (async tests work without `@pytest.mark.asyncio`, but a class still needs `@pytest.mark.unit` etc. under `--strict-markers`). Default `addopts`: `-m "not composio and not model_onboarding" --strict-markers -n 4 --timeout=300`.
 
 **Root `conftest.py` gotchas:**
 
 - Sets `ENV=development` at import time before any app module loads. Must stay first.
-- Patches `inject_infisical_secrets` and `MongoDB.ping` globally so tests never hang on external connections.
-- Patches `tiered_limiter.check_and_increment` and `payment_service.get_user_subscription_status` globally.
+- Blanks every credential-looking env var via the `_hermetic_environment` session fixture — tests must never depend on a developer's `.env` values.
+- Patches `inject_infisical_secrets` and `MongoDB.ping` globally so tests never hang on external connections; patches `tiered_limiter.check_and_increment` and `payment_service.get_user_subscription_status` globally.
+- `USE_REAL_SERVICES` defaults to `0` — a bare local run stays offline. Set it to `1` only for the real-infra tiers.
 - Provides `client` (authenticated) and `unauthed_client` fixtures that use `ASGITransport` with a no-op lifespan.
 
 **Integration API tests** use a separate `conftest.py` in `tests/integration/api/` that provides `test_client` and `unauthenticated_client` fixtures with `_MockAuthMiddleware` / `_NoAuthMiddleware`. These are different from the root `client` fixture.
-
-Run composio tests (needs credentials): `uv run pytest tests/composio -v`
-
-Run e2e tests (needs live services): `nx run api:test:e2e`
 
 ## Native vs Dockered API (JuiceFS trade-off)
 
@@ -518,6 +524,7 @@ Related: `GAIA_SIM_MODE=1` (`mise dev --sim`) routes every LLM call to the local
 - The bypass user context carries `dev_bypass=True` for anything that needs to tell.
 - WorkOS is never called under the bypass, but `DevelopmentSettings` still requires the `WORKOS_*` keys — dummy values are fine locally.
 - On Windows with a native Redis (Memurai), use `REDIS_URL=redis://127.0.0.1:6379` — Memurai binds IPv4 only and `localhost` resolves to `::1` first, which makes the ARQ/lifespan services time out and startup fail.
+- A `dev_bypass_user` cookie overrides the configured email per request, so two browser profiles can act as different users against one API instance (test free vs pro side by side).
 
 ## Pre-commit Hooks & Security Scanners
 
@@ -557,7 +564,7 @@ nx run-many -t lint --projects=web,desktop
 - **Docs are disabled in production**: `/docs` and `/redoc` return 404 when `ENV=production`. Use `ENV=development` locally.
 - **`app/core/lazy_loader.py` `providers` is a global singleton** — unique provider names are critical. Use UUID suffixes in tests to avoid cross-test pollution (the registry is never reset between tests).
 - **LangGraph checkpointer**: Uses PostgreSQL (`langgraph-checkpoint-postgres`) in production, falls back to in-memory `InMemorySaver` if the checkpointer manager is unavailable.
-- **Background memory storage**: `store_user_message_memory()` is fire-and-forget in `_core_agent_logic()`. Use the `_background_tasks` set pattern to prevent garbage collection of running tasks.
+- **Background memory storage**: memory ingestion (`memory_node.py`) is fire-and-forget on the end-of-graph hook. Spawn it — and all fire-and-forget work — via `spawn_background_task()` (`app/utils/background_tasks.py`) so the task isn't garbage-collected mid-flight (see Anti-Patterns).
 - **`UJSONResponse`** is the default response class (faster JSON serialization). Custom error handlers in `app_factory.py` return plain `JSONResponse` to avoid double-serialization issues.
 - **`ENABLE_LAZY_LOADING=true`** (default) means startup blocks until services initialize. Setting it to `false` makes the server start immediately and warm up in the background — safe for requests because `LazyLoader` uses per-provider locks.
 - **Sandbox user has no `sudo`.** The `gaia-coder` template strips the sandbox user from the `sudo` and `wheel` groups (see `apps/api/scripts/build_e2b_template.py`). Drive root-needing operations (mount.sh, accesslog tail) through e2b's `sbx.commands.run(..., user="root")` parameter — never prefix shell commands with `sudo` in API code, the call will fail. JuiceFS itself runs under `/etc/gaia/jfs_launcher.py` which marks the daemon non-dumpable (`PR_SET_DUMPABLE=0`) so its `/proc/<pid>/{environ,cmdline}` are unreadable to the unprivileged user. `/proc` is mounted `hidepid=invisible` so even PID enumeration is denied. Verify after template rebuilds with `apps/api/scripts/verify_sandbox_hardening.sh`.

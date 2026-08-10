@@ -107,7 +107,13 @@ async def web_search_tool(
         elapsed_time = time.time() - start_time
         formatted_text = f"Web search completed in {elapsed_time:.2f} seconds. Found {len(web_results)} web results, {len(image_results)} images, and {len(video_results)} videos."
 
-        log.info(f"{LogTag.TOOL} {formatted_text}")
+        log.info(
+            f"{LogTag.TOOL} Web search completed",
+            duration_seconds=round(elapsed_time, 2),
+            web_result_count=len(web_results),
+            image_count=len(image_results),
+            video_count=len(video_results),
+        )
         writer({"progress": formatted_text})
 
         # Send search data to frontend via writer
@@ -154,7 +160,9 @@ async def web_search_tool(
         }
 
     except (TimeoutError, ConnectionError) as e:
-        log.error(f"{LogTag.TOOL} Network error in web search: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.TOOL} Network error in web search", error_type=type(e).__name__, exc_info=True
+        )
         return {
             "formatted_text": "\n\nConnection timed out during web search. Please try again later.",
             "error": str(e),
@@ -162,7 +170,9 @@ async def web_search_tool(
             "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
     except ValueError as e:
-        log.error(f"{LogTag.TOOL} Value error in web search: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.TOOL} Value error in web search", error_type=type(e).__name__, exc_info=True
+        )
         return {
             "formatted_text": "\n\nInvalid search parameters. Please try a different query.",
             "error": str(e),
@@ -170,7 +180,11 @@ async def web_search_tool(
             "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Unexpected error in web search: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.TOOL} Unexpected error in web search",
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return {
             "formatted_text": "\n\nError performing web search. Please try again later.",
             "error": str(e),

@@ -62,7 +62,7 @@ async def write(
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
-        log.error(f"{LogTag.SANDBOX} write tool failed: {e}", exc_info=True)
+        log.error(f"{LogTag.SANDBOX} write tool failed", error_type=type(e).__name__, exc_info=True)
         return f"Error writing file: {e}"
 
     safe_emit(

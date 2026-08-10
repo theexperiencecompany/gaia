@@ -12,7 +12,6 @@ from typing import Any, cast
 
 from chromadb.api import AsyncClientAPI
 from chromadb.api.models.AsyncCollection import AsyncCollection
-from chromadb.api.types import EmbeddingFunction, Embeddings as ChromaEmbeddings
 from langchain_core.embeddings import Embeddings
 from langgraph.store.base import (
     BaseStore,
@@ -32,35 +31,8 @@ from langgraph.store.base import (
 )
 
 from app.constants.log_tags import LogTag
+from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 from shared.py.wide_events import VectorContext, log
-
-
-class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
-    """Embedding function that bypasses model loading.
-
-    ChromaStore computes its own embeddings via ``self.embeddings`` and passes
-    them explicitly to ``collection.upsert(embeddings=...)``.  When no
-    embeddings are provided, ChromaDB falls back to its default ONNX-based
-    model which requires downloading and loading ``all-MiniLM-L6-v2``.
-
-    Registering this no-op function on the collection prevents ChromaDB from
-    ever attempting to load the ONNX model, avoiding failures in environments
-    where the model is unavailable (CI, minimal containers, etc.).
-    """
-
-    def __init__(self) -> None:
-        pass
-
-    def __call__(self, input: list[str]) -> ChromaEmbeddings:
-        # chromadb's own EmbeddingFunction.__call__ contract declares
-        # list[numpy.ndarray], but ChromaDB accepts plain float lists at
-        # runtime just fine — do NOT convert this to numpy arrays; that broke
-        # collection initialization previously. cast() only changes what the
-        # type checker sees, not the actual returned values.
-        return cast(ChromaEmbeddings, [[0.0] * 384 for _ in input])
-
-
-_NOOP_EF = _NoOpEmbeddingFunction()
 
 # A filter value (or the item value it's compared against) is an arbitrary
 # JSON-like scalar/container pulled out of a MongoDB-style query filter dict.
@@ -120,7 +92,7 @@ class ChromaStore(BaseStore):
     async def _get_collection(self) -> AsyncCollection:
         """Get or create the ChromaDB collection.
 
-        Uses ``_NOOP_EF`` as the collection-level embedding function so
+        Uses ``NoOpEmbeddingFunction`` as the collection-level embedding function so
         ChromaDB never attempts to load its default ONNX model.  ChromaStore
         manages embeddings itself via ``self.embeddings`` and always passes
         them explicitly to ``collection.upsert()``.
@@ -136,17 +108,20 @@ class ChromaStore(BaseStore):
                         collection=self.collection_name,
                     )
                 )
-                log.info(f"{LogTag.CHROMA} Creating ChromaDB collection: {self.collection_name}")
+                log.info(
+                    f"{LogTag.CHROMA} Creating ChromaDB collection",
+                    collection_name=self.collection_name,
+                )
                 self._collection_cache = await self.client.create_collection(
                     name=self.collection_name,
                     metadata={"hnsw:space": "cosine"},
-                    embedding_function=_NOOP_EF,
+                    embedding_function=NoOpEmbeddingFunction(),
                 )
             else:
                 try:
                     self._collection_cache = await self.client.get_collection(
                         name=self.collection_name,
-                        embedding_function=_NOOP_EF,
+                        embedding_function=NoOpEmbeddingFunction(),
                     )
                 except ValueError:
                     # ChromaDB 1.x rejects a new embedding function when one is
@@ -303,7 +278,12 @@ class ChromaStore(BaseStore):
                 else datetime.now(UTC),
             )
         except Exception as e:
-            log.error(f"{LogTag.CHROMA} Error getting item {doc_id}: {e}")
+            log.error(
+                f"{LogTag.CHROMA} Error getting item",
+                doc_id=doc_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return None
 
     async def _filter_items(self, op: SearchOp, collection: AsyncCollection) -> list[str]:
@@ -337,7 +317,12 @@ class ChromaStore(BaseStore):
                 try:
                     value = pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
                 except Exception as e:
-                    log.debug(f"{LogTag.CHROMA} Failed to deserialize document at index {idx}: {e}")
+                    log.debug(
+                        f"{LogTag.CHROMA} Failed to deserialize document at index",
+                        idx=idx,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
                     continue
                 if not isinstance(value, dict):
                     continue
@@ -349,7 +334,7 @@ class ChromaStore(BaseStore):
             # Re-raise so callers can tell an unreachable ChromaDB apart from an
             # empty namespace (same contract as the write path). Per-document
             # data issues are already handled item-by-item above.
-            log.error(f"{LogTag.CHROMA} Error filtering items: {type(e).__name__}: {e}")
+            log.error(f"{LogTag.CHROMA} Error filtering items", error_type=type(e).__name__)
             raise
 
     def _matches_namespace_prefix(
@@ -501,7 +486,9 @@ class ChromaStore(BaseStore):
                 except Exception as e:
                     # Re-raise so an unreachable ChromaDB doesn't masquerade as
                     # zero search hits (same contract as the write path).
-                    log.error(f"{LogTag.CHROMA} Error in vector search: {type(e).__name__}: {e}")
+                    log.error(
+                        f"{LogTag.CHROMA} Error in vector search", error_type=type(e).__name__
+                    )
                     raise
             else:
                 # No query, just return filtered items with pagination
@@ -557,15 +544,19 @@ class ChromaStore(BaseStore):
         ]
         succeeded = len(results) - len(failures)
         log.info(
-            f"{LogTag.CHROMA} _apply_put_ops completed: total={len(results)} succeeded={succeeded} "
-            f"failed={len(failures)}"
+            f"{LogTag.CHROMA} _apply_put_ops completed",
+            results_count=len(results),
+            succeeded=succeeded,
+            failures_count=len(failures),
         )
         if failures:
             # Show up to 3 distinct exception classes to make patterns obvious.
             sample = failures[: min(3, len(failures))]
             for d, exc in sample:
                 log.error(
-                    f"{LogTag.CHROMA} _apply_put_ops failure doc_id={d}: {type(exc).__name__}: {exc}"
+                    f"{LogTag.CHROMA} _apply_put_ops failure",
+                    doc_id=d,
+                    error_type=type(exc).__name__,
                 )
 
     async def _delete_item(self, doc_id: str, collection: AsyncCollection) -> None:
@@ -579,7 +570,9 @@ class ChromaStore(BaseStore):
         try:
             await collection.delete(ids=[doc_id])
         except Exception as e:
-            log.error(f"{LogTag.CHROMA} Error deleting item {doc_id}: {type(e).__name__}: {e}")
+            log.error(
+                f"{LogTag.CHROMA} Error deleting item", doc_id=doc_id, error_type=type(e).__name__
+            )
             raise
 
     async def _upsert_item(self, doc_id: str, op: PutOp, collection: AsyncCollection) -> None:
@@ -624,9 +617,11 @@ class ChromaStore(BaseStore):
                     embedding = await self.embeddings.aembed_query(" ".join(texts))
                 except Exception as embed_err:
                     log.error(
-                        f"{LogTag.CHROMA} _upsert_item embedding failed for doc_id={doc_id} "
-                        f"ns={namespace_str} text_len={sum(len(t) for t in texts)}: "
-                        f"{type(embed_err).__name__}: {embed_err}"
+                        f"{LogTag.CHROMA} _upsert_item embedding failed",
+                        doc_id=doc_id,
+                        namespace=namespace_str,
+                        text_len=sum(len(t) for t in texts),
+                        error_type=type(embed_err).__name__,
                     )
                     raise
 
@@ -640,7 +635,10 @@ class ChromaStore(BaseStore):
         except Exception as e:
             # Re-raise so _apply_put_ops's failure count is accurate.
             log.error(
-                f"{LogTag.CHROMA} Error upserting item {doc_id} (ns={namespace_str}): {type(e).__name__}: {e}"
+                f"{LogTag.CHROMA} Error upserting item",
+                doc_id=doc_id,
+                namespace=namespace_str,
+                error_type=type(e).__name__,
             )
             raise
 
@@ -672,7 +670,11 @@ class ChromaStore(BaseStore):
             sorted_namespaces = sorted(namespaces)
             return sorted_namespaces[op.offset : op.offset + op.limit]
         except Exception as e:
-            log.error(f"{LogTag.CHROMA} Error listing namespaces: {e}")
+            log.error(
+                f"{LogTag.CHROMA} Error listing namespaces",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
     def _does_match(self, match_condition: MatchCondition, key: tuple[str, ...]) -> bool:

@@ -37,7 +37,12 @@ async def search_uploaded_files(
             log.error(f"{LogTag.TOOL} Configurable is not set in the config.")
             raise ValueError("Configurable is not set in the config.")
 
-        conversation_id = configurable["thread_id"]
+        # NOT thread_id: this tool is bound to the executor, which runs on the
+        # derived `executor_<conversation_id>` thread, so thread_id scopes the
+        # lookup to a conversation that owns no files. build_agent_config keeps
+        # the true conversation id here precisely because it is unrecoverable
+        # from thread_id.
+        conversation_id = configurable["conversation_id"]
 
         similar_documents = await _get_similar_documents(
             query=query,
@@ -46,7 +51,9 @@ async def search_uploaded_files(
             user_id=configurable["user_id"],
         )
 
-        log.info(f"{LogTag.TOOL} Similar documents found: {similar_documents}")
+        log.info(
+            f"{LogTag.TOOL} Similar documents found", similar_document_count=len(similar_documents)
+        )
 
         document_ids = list(
             {
@@ -56,13 +63,13 @@ async def search_uploaded_files(
             }
         )
 
-        log.info(f"{LogTag.TOOL} Document IDs: {document_ids}")
+        log.info(f"{LogTag.TOOL} Document IDs resolved", document_count=len(document_ids))
 
         documents = await file_repository.find_by_ids_for_user(
             document_ids, configurable["user_id"]
         )
 
-        log.info(f"{LogTag.TOOL} Documents found: {documents}")
+        log.info(f"{LogTag.TOOL} Documents found", document_count=len(documents))
 
         return _construct_content(
             documents=documents,
@@ -70,7 +77,7 @@ async def search_uploaded_files(
         )
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error in querying document: {e!s}")
+        log.error(f"{LogTag.TOOL} Error in querying document", error_type=type(e).__name__)
         raise e
 
 
@@ -103,7 +110,14 @@ async def _get_similar_documents(
 
     if file_id is not None:
         if file_id not in conversation_file_ids:
-            return []
+            # Fail loud. An unknown id used to return "" — indistinguishable from
+            # "the file says nothing about that" — and the agent is never shown a
+            # file's id anywhere, so a guessed filename lands here every time.
+            raise ValueError(
+                f"No uploaded file with id {file_id!r} in this conversation. "
+                f"Available ids: {conversation_file_ids}. "
+                "Omit file_id to search across all of them."
+            )
         target_file_ids = [file_id]
     else:
         target_file_ids = conversation_file_ids
@@ -150,7 +164,7 @@ def _construct_content(
         )
 
         if not document:
-            log.error(f"{LogTag.TOOL} Document with ID {document_id} not found.")
+            log.error(f"{LogTag.TOOL} Document not found", document_id=document_id)
             continue
 
         document_content = document.page_wise_summary
@@ -174,6 +188,6 @@ def _construct_content(
             content += f"Document ID: {document_id}\n"
             content += f"Description: {document_content.get('data', {}).get('content', 'Description not available!')}\n\n"
 
-    log.info(f"{LogTag.TOOL} Constructed content: {content}")
+    log.info(f"{LogTag.TOOL} Constructed document content", content_length=len(content))
 
     return content

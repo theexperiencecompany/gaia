@@ -83,14 +83,23 @@ def wrap_tool_with_null_filter(
         filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
         log.set(operation="mcp_tool_call", tool_name=tool.name)
         log.debug(
-            f"{LogTag.MCP} MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}"
+            f"{LogTag.MCP} MCP tool call args filtered",
+            name=tool.name,
+            kwargs=kwargs,
+            filtered_kwargs=filtered_kwargs,
         )
         try:
             return await original_arun(**filtered_kwargs)
         except Exception as e:
             error_msg = str(e)
             error_lower = error_msg.lower()
-            log.error(f"{LogTag.MCP} MCP tool '{tool.name}' failed: {error_msg}")
+            log.error(
+                f"{LogTag.MCP} MCP tool failed",
+                name=tool.name,
+                error_msg=error_msg,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
             is_auth_error = "401" in error_msg or "unauthorized" in error_lower
             is_connection_error = any(pat in error_lower for pat in _CONNECTION_ERROR_PATTERNS)
@@ -105,20 +114,27 @@ def wrap_tool_with_null_filter(
                             "on_connection_error must be a synchronous callable, not a coroutine function"
                         )
                     log.warning(
-                        f"{LogTag.MCP} MCP tool '{tool.name}' session error, evicting session"
+                        f"{LogTag.MCP} MCP tool session error, evicting session",
+                        name=tool.name,
+                        error=str(e),
+                        error_type=type(e).__name__,
                     )
                     on_connection_error()
 
                 if reconnect_and_retry:
                     try:
                         log.warning(
-                            f"{LogTag.MCP} MCP tool '{tool.name}' attempting transparent reconnect-and-retry"
+                            f"{LogTag.MCP} MCP tool attempting transparent reconnect-and-retry",
+                            name=tool.name,
+                            error=str(e),
+                            error_type=type(e).__name__,
                         )
                         return await reconnect_and_retry(tool.name, filtered_kwargs)
                     except Exception as retry_err:
                         log.error(
-                            f"{LogTag.MCP} MCP tool '{tool.name}' reconnect-retry failed: "
-                            f"{type(retry_err).__name__}: {retry_err}"
+                            f"{LogTag.MCP} MCP tool reconnect-retry failed",
+                            tool_name=tool.name,
+                            error_type=type(retry_err).__name__,
                         )
                         # A 401 that survives a fresh token = server rejecting a valid
                         # token; surface it so the user can re-authenticate.

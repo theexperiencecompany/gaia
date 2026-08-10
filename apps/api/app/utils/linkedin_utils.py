@@ -74,7 +74,12 @@ def get_author_urn(user_id: str, organization_id: str | None = None) -> str:
         if info.sub:
             return f"urn:li:person:{info.sub}"
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error getting user info: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error getting user info",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
     raise ValueError("Could not determine author URN")
 
@@ -118,7 +123,12 @@ def upload_image_from_url(
         return image_urn
 
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error uploading image: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error uploading image",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None
 
 
@@ -161,5 +171,10 @@ def upload_document_from_url(
         return document_urn
 
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error uploading document: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error uploading document",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None

@@ -11,38 +11,15 @@ from collections.abc import Mapping, Sequence
 from typing import Any, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
-from chromadb.api.types import EmbeddingFunction, Embeddings, Metadata
+from chromadb.api.types import Metadata
 
 from app.constants.memory import (
     CHROMA_CONVERSATION_CHUNKS_COLLECTION,
     CHROMA_MEMORIES_COLLECTION,
     CHROMA_MEMORY_EPISODES_COLLECTION,
-    EMBEDDING_DIM,
 )
 from app.db.chroma.chromadb import ChromaClient
-
-
-class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
-    """Prevents ChromaDB from loading its default ONNX model.
-
-    Embeddings are always passed explicitly to upsert/query, so the
-    collection-level embedding function is never used for real. Defined
-    privately here (rather than imported) because the existing equivalent in
-    ``app.db.chroma.chroma_store`` is module-private to the LangGraph store.
-    """
-
-    def __init__(self) -> None:
-        # Intentionally empty: no state needed — the only purpose of this class
-        # is to satisfy ChromaDB's EmbeddingFunction protocol so it never
-        # attempts to load its default ONNX model. All embeddings are passed
-        # explicitly to upsert/query calls.
-        pass
-
-    def __call__(self, input: list[str]) -> Embeddings:
-        return cast(Embeddings, [[0.0] * EMBEDDING_DIM for _ in input])
-
-
-_NOOP_EF = _NoOpEmbeddingFunction()
+from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 
 # Collections are cached per event loop: an asyncio.Lock (and Chroma's async
 # client) binds to the loop that first uses it, so sharing one cache/lock
@@ -137,11 +114,13 @@ async def _get_collection(name: str) -> AsyncCollection:
             collection = await client.create_collection(
                 name=name,
                 metadata={"hnsw:space": "cosine"},
-                embedding_function=_NOOP_EF,
+                embedding_function=NoOpEmbeddingFunction(),
             )
         else:
             try:
-                collection = await client.get_collection(name=name, embedding_function=_NOOP_EF)
+                collection = await client.get_collection(
+                    name=name, embedding_function=NoOpEmbeddingFunction()
+                )
             except ValueError:
                 # ChromaDB 1.x rejects a new embedding function when one is
                 # already persisted in the collection config; embeddings are

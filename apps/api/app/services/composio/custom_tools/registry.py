@@ -176,7 +176,9 @@ class CustomToolsRegistry:
             custom_tools_names=tool_names,
         )
         log.info(
-            f"{LogTag.COMPOSIO} Registered {len(tool_names)} custom tools for {normalized_toolkit} toolkit"
+            f"{LogTag.COMPOSIO} Registered custom tools for toolkit",
+            tool_names_count=len(tool_names),
+            normalized_toolkit=normalized_toolkit,
         )
 
     def get_tool_names(self, toolkit: str) -> list[str]:

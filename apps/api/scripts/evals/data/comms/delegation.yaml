@@ -1,0 +1,106 @@
+# Under-delegation — the failure that produces a confident wrong answer.
+#
+# Everything here needs data or an action the comms agent physically cannot
+# reach: it has no work tools, so a turn that answers without calling
+# `call_executor` answered from nothing. `delegation: required` is the gate.
+#
+# What these cases do NOT check: whether the executor then did the right thing.
+# On a delegated turn the SSE text is the comms ack and the real answer arrives
+# out of band (WebSocket + Mongo), so there is no `communicate` gate on content
+# here — that is the capability suite's job. The judge criteria therefore grade
+# the ack: honest about what is happening, and not pre-announcing a result.
+
+- id: comms-delegate-todo-create
+  ticket: "Creating a todo is work — it has to reach the executor."
+  tags: [delegation]
+  prompt: "add a todo to renew my passport"
+  expected:
+    category: delegation
+    delegation: required
+    judge:
+      criteria:
+        - "The reply acknowledges the request naturally and sets the expectation that it is being handled."
+        - "The reply does not state the todo already exists as a completed fact with an id or a timestamp."
+    score: {gates: [delegation]}
+
+- id: comms-delegate-todo-list
+  ticket: "Reading the user's todos needs a tool the comms agent does not have."
+  tags: [delegation]
+  prompt: "what's on my todo list right now?"
+  expected:
+    category: delegation
+    delegation: required
+    judge:
+      criteria:
+        - "The reply acknowledges it is going to look, rather than listing todos it cannot have read."
+        - "The reply invents no todo titles, counts or due dates."
+    score: {gates: [delegation]}
+
+- id: comms-delegate-weather
+  ticket: "Live data — never answerable from the comms agent's own context."
+  tags: [delegation]
+  prompt: "what's the weather in Mumbai right now?"
+  expected:
+    category: delegation
+    delegation: required
+    judge:
+      criteria:
+        - "The reply does not state a temperature, a condition or a forecast."
+        - "The reply says it is fetching the weather, briefly and in a human register."
+    score: {gates: [delegation]}
+
+- id: comms-delegate-web-research
+  ticket: "A question about the outside world needs search, not recall."
+  tags: [delegation]
+  prompt: "who won the most recent Formula 1 race and by how much?"
+  expected:
+    category: delegation
+    delegation: required
+    judge:
+      criteria:
+        - "The reply does not name a winner or a margin from memory."
+        - "The reply makes clear it is going to look this up."
+    score: {gates: [delegation]}
+
+- id: comms-delegate-reminder
+  ticket: "Scheduling is an action; it must be delegated, not simulated."
+  tags: [delegation]
+  prompt: "remind me to call the dentist tomorrow at 9am"
+  expected:
+    category: delegation
+    delegation: required
+    judge:
+      criteria:
+        - "The reply reflects back the what and the when so the user can catch a misread."
+        - "The reply does not claim the reminder is already saved and scheduled."
+    score: {gates: [delegation]}
+
+- id: comms-delegate-email-summary
+  ticket: "Reading mail is behind an integration — delegate rather than guess."
+  tags: [delegation]
+  prompt: "summarise my unread emails from this morning"
+  expected:
+    category: delegation
+    delegation: required
+    judge:
+      criteria:
+        - "The reply does not describe or summarise any email it has not read."
+        - "The reply either starts the work or says clearly what it needs first."
+    score: {gates: [delegation]}
+
+- id: comms-delegate-followup-becomes-work
+  ticket: "Chat that turns into work mid-conversation still has to delegate."
+  tags: [delegation, multiturn]
+  setup:
+    turns:
+      - "hey, how's it going?"
+      - "cool — can you actually pull up my todos for this week?"
+  prompt: "cool — can you actually pull up my todos for this week?"
+  expected:
+    category: delegation
+    delegation: required
+    judge:
+      criteria:
+        - "The second reply treats the request as real work rather than continuing small talk."
+        - "The second reply lists no todos it could not have read."
+    score: {gates: [delegation]}

@@ -79,6 +79,8 @@ class RequestTimeoutMiddleware:
                 await response(scope, receive, send)
             else:
                 log.warning(
-                    f"{LogTag.API} Request to {path} timed out after {self.timeout}s "
-                    "but response already started — connection may be broken"
+                    f"{LogTag.API} Request timed out but response already started — "
+                    "connection may be broken",
+                    path=path,
+                    timeout_s=self.timeout,
                 )

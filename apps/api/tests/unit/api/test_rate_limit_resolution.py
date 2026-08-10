@@ -64,7 +64,6 @@ def _build_app() -> FastAPI:
     return app
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestRateLimitParamNameIndependence:
     @pytest.mark.parametrize(
@@ -114,7 +113,6 @@ class TestRateLimitParamNameIndependence:
             assert not fired.called
 
 
-@pytest.mark.unit
 def test_no_duplicate_decorator_remains() -> None:
     """The drifted second copy in the middleware module must stay deleted."""
     from app.api.v1.middleware import tiered_rate_limiter as middleware_mod
@@ -125,7 +123,6 @@ def test_no_duplicate_decorator_remains() -> None:
     )
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_route_without_an_auth_dependency_is_still_limited() -> None:
     """Auth comes from the middleware, not the handler's signature.
