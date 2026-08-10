@@ -118,6 +118,19 @@ class TestGetTextFromHtml:
     def test_exact_entities(self):
         assert _get_text_from_html("<p>5 &gt; 3 &amp; 2 &lt; 4</p>") == "5 > 3 & 2 < 4"
 
+    def test_pins_explicit_html_parser(self):
+        """The parser is pinned to stdlib html.parser.
+
+        ``BeautifulSoup`` with no features argument silently picks the best
+        available parser — on this stack that is lxml, which produces
+        different trees (and a GuessedAtParserWarning) for malformed markup.
+        The explicit ``"html.parser"`` argument is what keeps extraction
+        deterministic across environments; pin the exact call.
+        """
+        with patch("app.agents.templates.mail_templates.BeautifulSoup") as mock_bs:
+            _get_text_from_html("<p>Hello</p>")
+        assert mock_bs.call_args.args == ("<p>Hello</p>", "html.parser")
+
 
 # ---------------------------------------------------------------------------
 # _copy_headers
@@ -203,6 +216,32 @@ class TestSetDecodedContent:
         target = email.message.EmailMessage()
         _set_decoded_content(target, _part_with_body("//4A"), "text/plain")
         assert target.get_content() == "\x00\n"
+
+    def test_decodes_with_explicit_utf8_encoding(self):
+        """The base64 body is decoded with an explicit UTF-8 codec argument.
+
+        ``bytes.decode`` happens to default to UTF-8 and codec names are
+        case-insensitive, but the explicit argument is still contract: it is
+        what keeps this parser deterministic regardless of Python's defaults
+        or aliases. Pin the exact call so a dropped or respelled codec is
+        caught at the seam instead of silently passing through.
+        """
+        decode_calls: list[tuple[tuple, dict]] = []
+
+        class _RecordingBytes(bytes):
+            def decode(self, *args, **kwargs):
+                decode_calls.append((args, kwargs))
+                return super().decode(*args, **kwargs)
+
+        with patch(
+            "app.agents.templates.mail_templates.base64.urlsafe_b64decode",
+            return_value=_RecordingBytes(b"hi"),
+        ):
+            target = email.message.EmailMessage()
+            _set_decoded_content(target, _part_with_body(_b64_encode("hi")), "text/plain")
+
+        assert decode_calls == [(("utf-8",), {"errors": "ignore"})]
+        assert target.get_content() == "hi\n"
 
 
 # ---------------------------------------------------------------------------
@@ -970,6 +1009,22 @@ class TestThreadTemplate:
 
     def test_missing_id_uses_default(self):
         assert thread_template({"messages": []})["id"] == ""
+
+    def test_messages_request_full_untruncated_body(self):
+        """Thread messages must be rendered with their full body.
+
+        ``thread_template`` forwards ``short_body=False`` to each message;
+        pin that exact flag (a ``None`` or truthy value would silently change
+        the truncation contract).
+        """
+        with patch(
+            "app.agents.templates.mail_templates.minimal_message_template",
+            return_value={"id": "m1"},
+        ) as mock_minimal:
+            result = thread_template({"id": "t1", "messages": [{"id": "m1"}]})
+        assert result["messages"] == [{"id": "m1"}]
+        assert mock_minimal.call_args.kwargs["short_body"] is False
+        assert mock_minimal.call_args.kwargs["include_both_formats"] is True
 
     def test_empty_thread(self):
         assert thread_template({}) == {"id": "", "messages": [], "messageCount": 0}
