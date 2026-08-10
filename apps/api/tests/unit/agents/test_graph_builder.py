@@ -604,6 +604,11 @@ class TestBuildExecutorGraph:
             assert isinstance(call_kwargs["checkpointer"], InMemorySaver)
             store_mock = deps["mocks"][f"{_MOD}.get_tools_store"].return_value
             assert call_kwargs["store"] is store_mock
+            mock_log = deps["mocks"][f"{_MOD}.log"]
+            mock_log.info.assert_called_once_with(
+                "graph_compiled_in_memory", graph="comms", model="test-model"
+            )
+            mock_log.set.assert_called_once_with(agent={"model": "test-model"})
 
     async def test_executor_model_name_none_when_llm_has_no_attrs(self):
         """A model-less LLM (no model_name, no model) yields model=None —
@@ -646,9 +651,9 @@ class TestBuildExecutorGraph:
                 reason="checkpointer_manager_unavailable",
                 model="test-model",
             )
-            mock_log.info.assert_called_once_with(
-                "graph_compiled_in_memory", graph="comms", model="test-model"
-            )
+            # The in-memory info event belongs to the explicit in-memory path;
+            # the fallback path emits only the warning.
+            mock_log.info.assert_not_called()
             mock_log.set.assert_called_once_with(agent={"model": "test-model"})
 
     async def test_executor_postgres_logs_exact(self):
