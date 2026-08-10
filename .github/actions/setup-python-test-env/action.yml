@@ -18,6 +18,11 @@ runs:
       with:
         version: "0.8.17"
         enable-cache: true
+        # v9 flipped prune-cache's default from true to false; pin it
+        # explicitly so a future setup-uv bump can't silently let the cache
+        # grow unbounded and evict other repo caches (e.g. the Next.js
+        # compiler cache).
+        prune-cache: true
 
     - name: Sync Python dependencies
       shell: bash

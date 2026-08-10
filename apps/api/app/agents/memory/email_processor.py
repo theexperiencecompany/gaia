@@ -876,8 +876,8 @@ async def _discover_and_store_linked_profiles(
                 continue  # Skip same platform
 
             # Build regex pattern from URL template
-            url_template: str = config["url_template"]  # type: ignore[assignment]
-            regex_pattern: str = config["regex_pattern"]  # type: ignore[assignment]
+            url_template: str = config["url_template"]
+            regex_pattern: str = config["regex_pattern"]
 
             # Skip if same domain (e.g., github.com profile linking to github.com)
             platform_domain = url_template.split("/")[2]

@@ -297,6 +297,8 @@ services:
       - ../../apps/api/.env
     environment:
       - WORKER_TYPE=arq_worker
+      # Wide-event identity — must equal the Promtail label (see prod compose).
+      - GAIA_SERVICE_NAME=arq_worker
       - PYTHONPATH=/app/apps/api
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
@@ -352,6 +354,8 @@ services:
     profiles: ["backend", "worker", "all"]
     working_dir: /app/apps/api
     environment:
+      # Wide-event identity — must equal the Promtail label (see prod compose).
+      - GAIA_SERVICE_NAME=embedding-sidecar
       - PYTHONPATH=/app/apps/api
       - LOG_FORMAT=json
       - LOG_COLORIZE=false

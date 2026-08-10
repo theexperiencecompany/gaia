@@ -509,6 +509,25 @@ class TestRunChatStreamBackground:
         ):
             yield
 
+    @pytest.fixture(autouse=True)
+    def _no_live_artifact_forwarder(self) -> Iterator[None]:
+        """Force ``ArtifactForwarder`` onto its "Redis unavailable" fast path.
+
+        ``run_chat_stream_background`` spawns ``forward_artifact_events`` as a
+        background task for every turn with a ``user_id``. Its ``run()`` reads
+        the process-wide ``redis_cache`` singleton directly (not ``stream_manager``,
+        which the tests below already mock) — in a hermetic dev/test env
+        ``redis_cache.redis`` is ``None`` and it no-ops, but under CI's live-services
+        job (real Redis running, ``REDIS_URL`` pointing at it) it subscribes to a
+        real pub/sub channel and blocks in ``pubsub.listen()`` for the rest of the
+        turn, relying entirely on ``_finalize_stream``'s ``artifact_task.cancel()``
+        landing before test/CI timeouts to unblock it. ``tests/unit/`` must be fully
+        mocked and I/O-free (see ``tests/CLAUDE.md``), so pin the fast path here
+        instead of depending on ambient Redis connectivity/scheduling.
+        """
+        with patch("app.services.chat.artifact_forwarder.redis_cache.redis", None):
+            yield
+
     async def test_new_conversation_publishes_init_chunk(self, test_user, basic_body):
         """When conversation_id is None, an init chunk must be published first."""
 

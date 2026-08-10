@@ -147,7 +147,7 @@ async def _run(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=_SAFE_ENV,
-        preexec_fn=_apply_child_limits,  # noqa: PLW1509 — setrlimit only (sandboxing), no locks
+        preexec_fn=_apply_child_limits,
     )
     try:
         out, err, truncated = await asyncio.wait_for(

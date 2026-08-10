@@ -18,10 +18,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import no_service_classes  # noqa: E402
-import repository_boundaries  # noqa: E402
-import route_contract  # noqa: E402
-import wide_events_logging  # noqa: E402
+import no_service_classes
+import repository_boundaries
+import route_contract
+import wide_events_logging
 
 
 def _write(base: Path, rel: str, src: str) -> Path:

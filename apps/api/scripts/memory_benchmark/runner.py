@@ -151,7 +151,7 @@ async def run_scenario(scenario: dict) -> list[dict]:
                 }
             )
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # Capture harness errors as failed probes so the report stays complete.
         for probe in scenario["probes"]:
             results.append(

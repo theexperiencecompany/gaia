@@ -192,6 +192,8 @@ services:
       - ../../apps/api/.env
     environment:
       WORKER_TYPE: arq_worker
+      # Wide-event identity — must equal the Promtail label (see prod compose).
+      GAIA_SERVICE_NAME: arq_worker
       PYTHONPATH: /app/apps/api
       # Session/sandbox background tasks touch the workspace, so the worker
       # needs the same JuiceFS mount as the backend.

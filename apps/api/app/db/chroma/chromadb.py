@@ -115,7 +115,7 @@ class ChromaClient:
 
             # Ensure the collection exists using the synchronous constructor client
             try:
-                collections = constructor_client.list_collections()  # type: ignore[attr-defined]
+                collections = constructor_client.list_collections()
                 existing_names = [c.name for c in collections]
             except Exception:
                 existing_names = []
@@ -123,14 +123,14 @@ class ChromaClient:
             if collection_name not in existing_names:
                 if not create_if_not_exists:
                     raise RuntimeError(f"Collection '{collection_name}' not found")
-                constructor_client.create_collection(  # type: ignore[attr-defined]
+                constructor_client.create_collection(
                     name=collection_name,
                     metadata={"hnsw:space": "cosine"},
                 )
 
             return Chroma(
                 client=constructor_client,
-                collection_name=collection_name,  # type: ignore[arg-type]
+                collection_name=collection_name,
                 embedding_function=embedding_function,
             )
 

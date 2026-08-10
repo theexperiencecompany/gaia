@@ -176,14 +176,14 @@ class LazyLoader(Generic[T]):
 
         # Quick check without lock for already initialized instances
         if self.is_global_context and self._is_configured:
-            return True  # type: ignore[return-value]
+            return True
         if not self.is_global_context and self._instance is not None:
             return self._instance
 
         with self._lock:
             # Double-check locking pattern
             if self.is_global_context and self._is_configured:
-                return True  # type: ignore[return-value]
+                return True
             if not self.is_global_context and self._instance is not None:
                 return self._instance
 
@@ -193,7 +193,7 @@ class LazyLoader(Generic[T]):
         """Get the provider instance asynchronously. Works for both sync and async loader functions."""
         # Quick check without lock for already initialized instances
         if self.is_global_context and self._is_configured:
-            return True  # type: ignore[return-value]
+            return True
         if not self.is_global_context and self._instance is not None:
             return self._instance
 
@@ -205,7 +205,7 @@ class LazyLoader(Generic[T]):
             async with self._async_lock:
                 # Double-check locking pattern
                 if self.is_global_context and self._is_configured:
-                    return True  # type: ignore[return-value]
+                    return True
                 if not self.is_global_context and self._instance is not None:
                     return self._instance
 
@@ -215,7 +215,7 @@ class LazyLoader(Generic[T]):
             with self._lock:
                 # Double-check locking pattern
                 if self.is_global_context and self._is_configured:
-                    return True  # type: ignore[return-value]
+                    return True
                 if not self.is_global_context and self._instance is not None:
                     return self._instance
 
@@ -247,7 +247,7 @@ class LazyLoader(Generic[T]):
                     f"{LogTag.STARTUP} Successfully configured global provider",
                     provider_name=self.provider_name,
                 )
-                return True  # type: ignore[return-value]
+                return True
             # For instance-based providers, store and return the instance
             result = self.loader_func()
             if inspect.iscoroutine(result):
@@ -307,7 +307,7 @@ class LazyLoader(Generic[T]):
                     f"{LogTag.STARTUP} Successfully configured global provider",
                     provider_name=self.provider_name,
                 )
-                return True  # type: ignore[return-value]
+                return True
             # For instance-based providers, store and return the instance
             if self.is_async:
                 result = self.loader_func()

@@ -89,7 +89,7 @@ async def sync_stale_user_workspaces(
         try:
             await provision_user_workspace(user_id, await get_connected_integration_ids(user_id))
             synced += 1
-        except Exception as e:  # noqa: BLE001 — one bad user must not abort the batch
+        except Exception as e:  # one bad user must not abort the batch
             log.warning("workspace_sync.user_failed", user_id=user_id, error=str(e))
 
     log.info(

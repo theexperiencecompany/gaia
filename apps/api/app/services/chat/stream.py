@@ -326,7 +326,7 @@ async def _resolve_pending_approval_turn(
     try:
         history = _recent_history(body.messages)
         action = await resolve_pending_from_message(conversation_id, user_id, message, history)
-    except Exception as e:  # noqa: BLE001 — see below: chat must survive this
+    except Exception as e:  # see below: chat must survive this
         # This lookup sits on the critical path of EVERY chat message, for a feature most
         # users have switched off. If it fails, the only safe degradation is to run the
         # message as a normal turn: an approval the user answered stays pending (the sweep

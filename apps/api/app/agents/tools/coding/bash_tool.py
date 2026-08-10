@@ -99,7 +99,7 @@ def _record_bash_exit_code(code: int | None, *, timed_out: bool) -> None:
     """Increment the exit-code counter once per command completion. Non-fatal."""
     try:
         _BASH_EXIT_CODE_TOTAL.labels(exit_code=_bucket_exit_code(code, timed_out=timed_out)).inc()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning(
             "[metrics] bash exit_code inc failed",
             error_type=type(e).__name__,
