@@ -7,6 +7,7 @@ LangChain adapter schema sanitization, and resilient adapter retry/skip logic.
 """
 
 import asyncio
+import base64
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -30,6 +31,7 @@ from mcp.types import (
 from pydantic import AnyUrl
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.models.device import Device
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
@@ -46,6 +48,7 @@ from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.oauth_discovery import discover_oauth_config, probe_mcp_connection
 from app.services.mcp.resilient_adapter import ResilientLangChainAdapter
 from app.services.mcp.token_management import (
+    _endpoint_host,
     resolve_client_credentials,
     revoke_tokens,
     try_refresh_token,
@@ -95,6 +98,22 @@ def _make_oauth_discovery(
     }
     defaults.update(overrides)
     return OAuthDiscovery(**defaults)
+
+
+@asynccontextmanager
+async def _patched_http_client(response: Any = None, enter_side_effect: Exception | None = None):
+    """Patch ``token_management.httpx.AsyncClient``; yield the mock HTTP client.
+
+    ``response`` is what every ``post`` awaits; ``enter_side_effect`` raises
+    from the ``async with`` entry instead of yielding a client.
+    """
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=response)
+    mock_http = MagicMock()
+    mock_http.__aenter__ = AsyncMock(return_value=mock_client, side_effect=enter_side_effect)
+    mock_http.__aexit__ = AsyncMock()
+    with patch("app.services.mcp.token_management.httpx.AsyncClient", return_value=mock_http):
+        yield mock_client
 
 
 def _make_credential(**overrides: Any) -> MCPCredential:
@@ -1404,49 +1423,164 @@ class TestResolveClientCredentials:
             cid, _ = resolve_client_credentials(config)
             assert cid == "from_config"
 
+    def test_secret_config_takes_precedence_over_env(self):
+        config = _make_mcp_config(client_secret="from_config", client_secret_env="MY_ENV_SECRET")
+        with patch.dict("os.environ", {"MY_ENV_SECRET": "from_env"}):
+            _, csec = resolve_client_credentials(config)
+            assert csec == "from_config"
+
+    def test_env_fallback_returns_none_when_env_unset(self):
+        config = _make_mcp_config(
+            client_id_env="UNSET_CLIENT_ID_ENV", client_secret_env="UNSET_SECRET_ENV"
+        )
+        with patch.dict("os.environ", {}, clear=True):
+            cid, csec = resolve_client_credentials(config)
+        assert cid is None
+        assert csec is None
+
+    def test_mixed_config_and_env_fallback(self):
+        config = _make_mcp_config(client_id="cid", client_secret_env="MY_ENV_SECRET")
+        with patch.dict("os.environ", {"MY_ENV_SECRET": "env_s"}):
+            cid, csec = resolve_client_credentials(config)
+        assert cid == "cid"
+        assert csec == "env_s"
+
+
+class TestEndpointHost:
+    def test_none_returns_none(self):
+        assert _endpoint_host(None) is None
+
+    def test_empty_string_returns_none(self):
+        assert _endpoint_host("") is None
+
+    def test_returns_scheme_and_host(self):
+        assert _endpoint_host("https://auth.example.com/token") == "https://auth.example.com"
+
+    def test_preserves_port(self):
+        assert (
+            _endpoint_host("https://auth.example.com:8443/token") == "https://auth.example.com:8443"
+        )
+
+    def test_missing_scheme_returns_none(self):
+        assert _endpoint_host("auth.example.com/token") is None
+
+    def test_scheme_without_host_returns_none(self):
+        assert _endpoint_host("https://") is None
+
 
 class TestTryRefreshToken:
-    async def test_successful_refresh(self):
+    TOKEN_ENDPOINT = "https://auth.example.com/token"
+    REFRESH_OK_MSG = f"{LogTag.MCP} try_refresh_token: refreshed token"
+    NO_REFRESH_TOKEN_MSG = (
+        f"{LogTag.MCP} try_refresh_token: no refresh_token stored for user=; user must re-OAuth"
+    )
+    NO_CLIENT_ID_MSG = (
+        f"{LogTag.MCP} try_refresh_token: no client_id resolved "
+        "(no pre-configured creds, no DCR registration); user must re-authorize"
+    )
+    TOKEN_ERROR_MSG = f"{LogTag.MCP} try_refresh_token: token endpoint returned an error"
+    EMPTY_TOKEN_MSG = (
+        f"{LogTag.MCP} try_refresh_token: token endpoint returned an empty access_token for user"
+    )
+    REFRESH_EXC_MSG = f"{LogTag.MCP} try_refresh_token: exception during refresh"
+
+    def _make_token_store(
+        self, refresh_token: str | None = "refresh_tok", dcr: dict[str, str] | None = None
+    ) -> AsyncMock:
         token_store = AsyncMock(spec=MCPTokenStore)
         token_store.user_id = USER_ID
-        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
-        token_store.get_dcr_client = AsyncMock(return_value=None)
+        token_store.get_refresh_token = AsyncMock(return_value=refresh_token)
+        token_store.get_dcr_client = AsyncMock(return_value=dcr)
         token_store.store_oauth_tokens = AsyncMock()
+        return token_store
 
-        mcp_config = _make_mcp_config(client_id="cid", client_secret="csec", requires_auth=True)
-        oauth_config = _make_oauth_discovery()
-
+    def _make_response(self, status_code: int = 200, json_payload: Any = None) -> MagicMock:
         mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "access_token": "new_access",
-            "refresh_token": "new_refresh",
-            "expires_in": 3600,
+        mock_response.status_code = status_code
+        mock_response.json.return_value = json_payload
+        return mock_response
+
+    def _base_token_data(self) -> dict[str, str]:
+        return {
+            "grant_type": "refresh_token",
+            "refresh_token": "refresh_tok",
+            "resource": SERVER_URL,
         }
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_http.return_value.__aexit__ = AsyncMock()
+    def _base_headers(self) -> dict[str, str]:
+        return {"Content-Type": "application/x-www-form-urlencoded"}
 
-            result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
+    async def test_successful_refresh(self):
+        token_store = self._make_token_store()
+        mcp_config = _make_mcp_config(client_id="cid", client_secret="csec", requires_auth=True)
+        oauth_config = _make_oauth_discovery()
+        mock_response = self._make_response(
+            json_payload={
+                "access_token": "new_access",
+                "refresh_token": "new_refresh",
+                "expires_in": 3600,
+            }
+        )
+
+        with patch("app.services.mcp.token_management.log") as mock_log:
+            async with _patched_http_client(mock_response) as mock_client:
+                result = await try_refresh_token(
+                    token_store, INTEGRATION_ID, mcp_config, oauth_config
+                )
 
         assert result is True
+        expected_auth = f"Basic {base64.b64encode(b'cid:csec').decode()}"
+        mock_client.post.assert_awaited_once_with(
+            self.TOKEN_ENDPOINT,
+            data=self._base_token_data(),
+            headers={**self._base_headers(), "Authorization": expected_auth},
+            timeout=30,
+        )
+        token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        token_store.get_dcr_client.assert_not_awaited()
         token_store.store_oauth_tokens.assert_awaited_once()
+        stored = token_store.store_oauth_tokens.await_args.kwargs
+        assert stored["integration_id"] == INTEGRATION_ID
+        assert stored["access_token"] == "new_access"
+        assert stored["refresh_token"] == "new_refresh"
+        assert stored["expires_at"] is not None
+        assert abs(
+            (stored["expires_at"] - datetime.now(UTC)) - timedelta(seconds=3600)
+        ) < timedelta(seconds=5)
+        mock_log.set.assert_called_once_with(
+            token_refresh={
+                "integration_id": INTEGRATION_ID,
+                "user_id": USER_ID,
+                "phase": "start",
+            }
+        )
+        mock_log.info.assert_called_once()
+        info = mock_log.info.call_args.kwargs
+        assert mock_log.info.call_args.args[0] == self.REFRESH_OK_MSG
+        assert info["integration_id"] == INTEGRATION_ID
+        assert info["user_id"] == USER_ID
+        assert info["new_access_token_length"] == len("new_access")
+        assert info["refresh_token_rotated"] is True
+        assert info["expires_at"] == stored["expires_at"]
 
     async def test_no_refresh_token(self):
-        token_store = AsyncMock(spec=MCPTokenStore)
-        token_store.user_id = USER_ID
-        token_store.get_refresh_token = AsyncMock(return_value=None)
+        token_store = self._make_token_store(refresh_token=None)
 
-        result = await try_refresh_token(
-            token_store,
-            INTEGRATION_ID,
-            _make_mcp_config(),
-            {"token_endpoint": "https://auth.example.com/token"},
-        )
+        with patch("app.services.mcp.token_management.log") as mock_log:
+            result = await try_refresh_token(
+                token_store,
+                INTEGRATION_ID,
+                _make_mcp_config(),
+                {"token_endpoint": self.TOKEN_ENDPOINT},
+            )
         assert result is False
+        token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args[0] == self.NO_REFRESH_TOKEN_MSG
+        assert mock_log.warning.call_args.kwargs == {
+            "integration_id": INTEGRATION_ID,
+            "user_id": USER_ID,
+        }
 
     # test_no_token_endpoint was deleted: token_endpoint is a required field on
     # the SDK OAuthMetadata/OAuthDiscovery model, so a discovery result without a
@@ -1454,141 +1588,351 @@ class TestTryRefreshToken:
     # case is now structurally impossible and enforced by the model, not this code.
 
     async def test_no_client_id(self):
-        token_store = AsyncMock(spec=MCPTokenStore)
-        token_store.user_id = USER_ID
-        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
-        token_store.get_dcr_client = AsyncMock(return_value=None)
+        token_store = self._make_token_store()
 
-        result = await try_refresh_token(
-            token_store,
-            INTEGRATION_ID,
-            _make_mcp_config(),
-            _make_oauth_discovery(),
-        )
+        with patch("app.services.mcp.token_management.log") as mock_log:
+            result = await try_refresh_token(
+                token_store,
+                INTEGRATION_ID,
+                _make_mcp_config(),
+                _make_oauth_discovery(),
+            )
         assert result is False
+        token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args[0] == self.NO_CLIENT_ID_MSG
+        assert mock_log.warning.call_args.kwargs == {
+            "integration_id": INTEGRATION_ID,
+            "user_id": USER_ID,
+        }
 
     async def test_refresh_http_error(self):
-        token_store = AsyncMock(spec=MCPTokenStore)
-        token_store.user_id = USER_ID
-        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
-        token_store.get_dcr_client = AsyncMock(return_value=None)
-
+        token_store = self._make_token_store()
         mcp_config = _make_mcp_config(client_id="cid")
         oauth_config = _make_oauth_discovery()
+        mock_response = self._make_response(
+            status_code=400,
+            json_payload={"error": "invalid_grant", "error_description": "Token expired"},
+        )
 
-        mock_response = MagicMock()
-        mock_response.status_code = 400
-        mock_response.json.return_value = {
-            "error": "invalid_grant",
-            "error_description": "Token expired",
-        }
-
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_http.return_value.__aexit__ = AsyncMock()
-
-            result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
+        with patch("app.services.mcp.token_management.log") as mock_log:
+            async with _patched_http_client(mock_response) as mock_client:
+                result = await try_refresh_token(
+                    token_store, INTEGRATION_ID, mcp_config, oauth_config
+                )
         assert result is False
+        mock_client.post.assert_awaited_once_with(
+            self.TOKEN_ENDPOINT,
+            data={**self._base_token_data(), "client_id": "cid"},
+            headers=self._base_headers(),
+            timeout=30,
+        )
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args[0] == self.TOKEN_ERROR_MSG
+        warning = mock_log.warning.call_args.kwargs
+        assert warning["status_code"] == 400
+        assert warning["oauth_error"] == "invalid_grant"
+        assert warning["oauth_error_description"] == "Token expired"
+        assert warning["endpoint_host"] == "https://auth.example.com"
+        assert warning["integration_id"] == INTEGRATION_ID
+        assert warning["user_id"] == USER_ID
+
+    async def test_refresh_http_error_with_non_dict_body(self):
+        token_store = self._make_token_store()
+        mock_response = self._make_response(status_code=400, json_payload=["not", "a", "dict"])
+
+        with patch("app.services.mcp.token_management.log") as mock_log:
+            async with _patched_http_client(mock_response):
+                result = await try_refresh_token(
+                    token_store,
+                    INTEGRATION_ID,
+                    _make_mcp_config(client_id="cid"),
+                    _make_oauth_discovery(),
+                )
+        assert result is False
+        warning = mock_log.warning.call_args.kwargs
+        assert warning["oauth_error"] is None
+        assert warning["oauth_error_description"] is None
+
+    async def test_refresh_http_error_with_unparseable_body(self):
+        token_store = self._make_token_store()
+        mock_response = self._make_response(status_code=400, json_payload=None)
+        mock_response.json.side_effect = ValueError("not json")
+
+        with patch("app.services.mcp.token_management.log") as mock_log:
+            async with _patched_http_client(mock_response):
+                result = await try_refresh_token(
+                    token_store,
+                    INTEGRATION_ID,
+                    _make_mcp_config(client_id="cid"),
+                    _make_oauth_discovery(),
+                )
+        assert result is False
+        warning = mock_log.warning.call_args.kwargs
+        assert warning["oauth_error"] is None
+        assert warning["oauth_error_description"] is None
 
     async def test_refresh_exception(self):
-        token_store = AsyncMock(spec=MCPTokenStore)
-        token_store.user_id = USER_ID
-        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
-        token_store.get_dcr_client = AsyncMock(return_value=None)
+        token_store = self._make_token_store()
 
-        mcp_config = _make_mcp_config(client_id="cid")
-        oauth_config = _make_oauth_discovery()
-
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
-            mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
-            mock_http.return_value.__aexit__ = AsyncMock()
-
-            result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
+        with patch("app.services.mcp.token_management.log") as mock_log:
+            async with _patched_http_client(enter_side_effect=Exception("Network error")):
+                result = await try_refresh_token(
+                    token_store,
+                    INTEGRATION_ID,
+                    _make_mcp_config(client_id="cid"),
+                    _make_oauth_discovery(),
+                )
         assert result is False
-
-    async def test_uses_dcr_client_id(self):
-        token_store = AsyncMock(spec=MCPTokenStore)
-        token_store.user_id = USER_ID
-        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
-        token_store.get_dcr_client = AsyncMock(
-            return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
-        )
-        token_store.store_oauth_tokens = AsyncMock()
-
-        mcp_config = _make_mcp_config()
-        oauth_config = _make_oauth_discovery()
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "access_token": "new_tok",
-            "expires_in": 3600,
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args[0] == self.REFRESH_EXC_MSG
+        assert mock_log.warning.call_args.kwargs == {
+            "integration_id": INTEGRATION_ID,
+            "user_id": USER_ID,
+            "error_type": "Exception",
         }
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_http.return_value.__aexit__ = AsyncMock()
+    async def test_public_client_sends_client_id_in_body(self):
+        token_store = self._make_token_store()
+        mock_response = self._make_response(
+            json_payload={"access_token": "new_access", "expires_in": 3600}
+        )
 
-            result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
+        async with _patched_http_client(mock_response) as mock_client:
+            result = await try_refresh_token(
+                token_store,
+                INTEGRATION_ID,
+                _make_mcp_config(client_id="cid"),
+                _make_oauth_discovery(),
+            )
+        assert result is True
+        mock_client.post.assert_awaited_once_with(
+            self.TOKEN_ENDPOINT,
+            data={**self._base_token_data(), "client_id": "cid"},
+            headers=self._base_headers(),
+            timeout=30,
+        )
+
+    async def test_keeps_old_refresh_token_when_response_omits_new_one(self):
+        # RFC 6749 refresh responses may omit refresh_token; the stored refresh
+        # token must survive by falling back to the pre-refresh value.
+        token_store = self._make_token_store()
+        mock_response = self._make_response(
+            json_payload={"access_token": "new_access", "expires_in": 3600}
+        )
+
+        with patch("app.services.mcp.token_management.log") as mock_log:
+            async with _patched_http_client(mock_response):
+                result = await try_refresh_token(
+                    token_store,
+                    INTEGRATION_ID,
+                    _make_mcp_config(client_id="cid", client_secret="csec"),
+                    _make_oauth_discovery(),
+                )
+        assert result is True
+        stored = token_store.store_oauth_tokens.await_args.kwargs
+        assert stored["refresh_token"] == "refresh_tok"
+        assert mock_log.info.call_args.kwargs["refresh_token_rotated"] is False
+
+    async def test_uses_dcr_client_id(self):
+        token_store = self._make_token_store(
+            dcr={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
+        )
+        mock_response = self._make_response(
+            json_payload={"access_token": "new_tok", "expires_in": 3600}
+        )
+
+        async with _patched_http_client(mock_response) as mock_client:
+            result = await try_refresh_token(
+                token_store, INTEGRATION_ID, _make_mcp_config(), _make_oauth_discovery()
+            )
 
         assert result is True
+        token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
+        expected_auth = f"Basic {base64.b64encode(b'dcr_cid:dcr_sec').decode()}"
+        mock_client.post.assert_awaited_once_with(
+            self.TOKEN_ENDPOINT,
+            data=self._base_token_data(),
+            headers={**self._base_headers(), "Authorization": expected_auth},
+            timeout=30,
+        )
+        token_store.store_oauth_tokens.assert_awaited_once()
+
+    async def test_dcr_public_client_sends_client_id_in_body(self):
+        token_store = self._make_token_store(dcr={"client_id": "dcr_cid"})
+        mock_response = self._make_response(
+            json_payload={"access_token": "new_tok", "expires_in": 3600}
+        )
+
+        async with _patched_http_client(mock_response) as mock_client:
+            result = await try_refresh_token(
+                token_store, INTEGRATION_ID, _make_mcp_config(), _make_oauth_discovery()
+            )
+        assert result is True
+        token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
+        mock_client.post.assert_awaited_once_with(
+            self.TOKEN_ENDPOINT,
+            data={**self._base_token_data(), "client_id": "dcr_cid"},
+            headers=self._base_headers(),
+            timeout=30,
+        )
 
     async def test_refresh_returns_false_on_empty_access_token(self):
         # A 200 with an empty access_token must be rejected, not stored as a blank
         # credential (OAuthToken itself permits access_token="").
-        token_store = AsyncMock(spec=MCPTokenStore)
-        token_store.user_id = USER_ID
-        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
-        token_store.get_dcr_client = AsyncMock(return_value=None)
-        token_store.store_oauth_tokens = AsyncMock()
+        token_store = self._make_token_store()
+        mock_response = self._make_response(json_payload={"access_token": "", "expires_in": 3600})
 
-        mcp_config = _make_mcp_config(client_id="cid", requires_auth=True)
-        oauth_config = _make_oauth_discovery()
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"access_token": "", "expires_in": 3600}
-
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_http.return_value.__aexit__ = AsyncMock()
-
-            result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
+        with patch("app.services.mcp.token_management.log") as mock_log:
+            async with _patched_http_client(mock_response):
+                result = await try_refresh_token(
+                    token_store,
+                    INTEGRATION_ID,
+                    _make_mcp_config(client_id="cid", requires_auth=True),
+                    _make_oauth_discovery(),
+                )
 
         assert result is False
         token_store.store_oauth_tokens.assert_not_awaited()
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args[0] == self.EMPTY_TOKEN_MSG
+        assert mock_log.warning.call_args.kwargs == {
+            "integration_id": INTEGRATION_ID,
+            "user_id": USER_ID,
+        }
 
 
 class TestRevokeTokens:
-    async def test_revokes_both_tokens(self):
-        token_store = AsyncMock(spec=MCPTokenStore)
-        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
-        token_store.get_oauth_token = AsyncMock(return_value="access_tok")
-        token_store.get_dcr_client = AsyncMock(return_value=None)
+    REVOKE_ENDPOINT = "https://auth.example.com/revoke"
+    REVOKE_FAILED_MSG = f"{LogTag.MCP} Token revocation failed for"
 
-        mcp_config = _make_mcp_config(client_id="cid")
-        oauth_config = _make_oauth_discovery(
-            metadata_overrides={"revocation_endpoint": "https://auth.example.com/revoke"}
+    def _make_token_store(
+        self,
+        refresh_token: str | None = "refresh_tok",
+        access_token: str | None = "access_tok",
+        dcr: dict[str, str] | None = None,
+    ) -> AsyncMock:
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.get_refresh_token = AsyncMock(return_value=refresh_token)
+        token_store.get_oauth_token = AsyncMock(return_value=access_token)
+        token_store.get_dcr_client = AsyncMock(return_value=dcr)
+        return token_store
+
+    def _make_oauth_config(self) -> OAuthDiscovery:
+        return _make_oauth_discovery(
+            metadata_overrides={"revocation_endpoint": self.REVOKE_ENDPOINT}
         )
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock()
-            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_http.return_value.__aexit__ = AsyncMock()
+    async def test_revokes_both_tokens(self):
+        token_store = self._make_token_store()
+        mcp_config = _make_mcp_config(client_id="cid")
 
-            await revoke_tokens(token_store, INTEGRATION_ID, mcp_config, oauth_config)
+        async with _patched_http_client() as mock_client:
+            await revoke_tokens(token_store, INTEGRATION_ID, mcp_config, self._make_oauth_config())
 
-        assert mock_client.post.await_count == 2
+        calls = mock_client.post.await_args_list
+        assert len(calls) == 2
+        token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        token_store.get_oauth_token.assert_awaited_once_with(INTEGRATION_ID)
+        token_store.get_dcr_client.assert_not_awaited()
+        assert calls[0].args == (self.REVOKE_ENDPOINT,)
+        assert calls[0].kwargs == {
+            "data": {
+                "token": "refresh_tok",
+                "token_type_hint": "refresh_token",
+                "client_id": "cid",
+            },
+            "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+            "timeout": 10,
+        }
+        assert calls[1].args == (self.REVOKE_ENDPOINT,)
+        assert calls[1].kwargs == {
+            "data": {
+                "token": "access_tok",
+                "token_type_hint": "access_token",
+                "client_id": "cid",
+            },
+            "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+            "timeout": 10,
+        }
+
+    async def test_revokes_with_basic_auth_when_secret_present(self):
+        token_store = self._make_token_store()
+        mcp_config = _make_mcp_config(client_id="cid", client_secret="csec")
+
+        async with _patched_http_client() as mock_client:
+            await revoke_tokens(token_store, INTEGRATION_ID, mcp_config, self._make_oauth_config())
+
+        expected_auth = f"Basic {base64.b64encode(b'cid:csec').decode()}"
+        calls = mock_client.post.await_args_list
+        assert len(calls) == 2
+        for call in calls:
+            assert call.kwargs["headers"] == {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": expected_auth,
+            }
+            assert call.kwargs["data"]["client_id"] == "cid"
+
+    async def test_revokes_refresh_token_only_when_no_access_token(self):
+        token_store = self._make_token_store(access_token=None)
+        mcp_config = _make_mcp_config(client_id="cid")
+
+        async with _patched_http_client() as mock_client:
+            await revoke_tokens(token_store, INTEGRATION_ID, mcp_config, self._make_oauth_config())
+
+        mock_client.post.assert_awaited_once_with(
+            self.REVOKE_ENDPOINT,
+            data={"token": "refresh_tok", "token_type_hint": "refresh_token", "client_id": "cid"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=10,
+        )
+
+    async def test_revokes_access_token_only_when_no_refresh_token(self):
+        token_store = self._make_token_store(refresh_token=None)
+        mcp_config = _make_mcp_config(client_id="cid")
+
+        async with _patched_http_client() as mock_client:
+            await revoke_tokens(token_store, INTEGRATION_ID, mcp_config, self._make_oauth_config())
+
+        mock_client.post.assert_awaited_once_with(
+            self.REVOKE_ENDPOINT,
+            data={"token": "access_tok", "token_type_hint": "access_token", "client_id": "cid"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=10,
+        )
+
+    async def test_revokes_nothing_when_no_tokens_stored(self):
+        token_store = self._make_token_store(refresh_token=None, access_token=None)
+
+        async with _patched_http_client() as mock_client:
+            await revoke_tokens(
+                token_store,
+                INTEGRATION_ID,
+                _make_mcp_config(client_id="cid"),
+                self._make_oauth_config(),
+            )
+
+        mock_client.post.assert_not_awaited()
+        token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        token_store.get_oauth_token.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_uses_dcr_credentials_for_revocation(self):
+        token_store = self._make_token_store(
+            dcr={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
+        )
+        mcp_config = _make_mcp_config()
+
+        async with _patched_http_client() as mock_client:
+            await revoke_tokens(token_store, INTEGRATION_ID, mcp_config, self._make_oauth_config())
+
+        token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
+        expected_auth = f"Basic {base64.b64encode(b'dcr_cid:dcr_sec').decode()}"
+        for call in mock_client.post.await_args_list:
+            assert call.kwargs["headers"]["Authorization"] == expected_auth
+            assert call.kwargs["data"]["client_id"] == "dcr_cid"
 
     async def test_skips_when_no_endpoint(self):
-        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store = self._make_token_store()
         # Discovery with no revocation_endpoint advertised.
         await revoke_tokens(
             token_store, INTEGRATION_ID, _make_mcp_config(), _make_oauth_discovery()
@@ -1596,22 +1940,25 @@ class TestRevokeTokens:
         token_store.get_refresh_token.assert_not_awaited()
 
     async def test_handles_revocation_error(self):
-        token_store = AsyncMock(spec=MCPTokenStore)
-        token_store.get_refresh_token = AsyncMock(return_value="tok")
-        token_store.get_oauth_token = AsyncMock(return_value=None)
-        token_store.get_dcr_client = AsyncMock(return_value=None)
+        token_store = self._make_token_store()
 
-        mcp_config = _make_mcp_config(client_id="cid")
-        oauth_config = _make_oauth_discovery(
-            metadata_overrides={"revocation_endpoint": "https://auth.example.com/revoke"}
-        )
+        with patch("app.services.mcp.token_management.log") as mock_log:
+            async with _patched_http_client(enter_side_effect=Exception("Network")):
+                # Should not raise
+                await revoke_tokens(
+                    token_store,
+                    INTEGRATION_ID,
+                    _make_mcp_config(client_id="cid"),
+                    self._make_oauth_config(),
+                )
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
-            mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network"))
-            mock_http.return_value.__aexit__ = AsyncMock()
-
-            # Should not raise
-            await revoke_tokens(token_store, INTEGRATION_ID, mcp_config, oauth_config)
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args[0] == self.REVOKE_FAILED_MSG
+        assert mock_log.warning.call_args.kwargs == {
+            "integration_id": INTEGRATION_ID,
+            "error": "Network",
+            "error_type": "Exception",
+        }
 
 
 # ===========================================================================

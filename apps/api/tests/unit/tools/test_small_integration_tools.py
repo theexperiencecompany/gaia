@@ -587,7 +587,7 @@ class TestTrelloGatherContext:
 
     @patch(f"{TRELLO_MODULE}.execute_tool")
     def test_basic_success_list_format(self, mock_exec: MagicMock) -> None:
-        """Returns cards when data is a list."""
+        """Returns cards unchanged when data is a list."""
         mock_exec.return_value = [
             {"id": "c1", "name": "Card 1"},
             {"id": "c2", "name": "Card 2"},
@@ -597,25 +597,64 @@ class TestTrelloGatherContext:
         fn = captured["CUSTOM_GATHER_CONTEXT"]
         result = fn(GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY)
 
-        assert len(result["cards"]) == 2
+        assert result == {
+            "cards": [
+                {"id": "c1", "name": "Card 1"},
+                {"id": "c2", "name": "Card 2"},
+            ]
+        }
+        mock_exec.assert_called_once_with(
+            "TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER",
+            {"idMember": "me"},
+            FAKE_USER_ID,
+        )
 
     @patch(f"{TRELLO_MODULE}.execute_tool")
     def test_basic_success_dict_format(self, mock_exec: MagicMock) -> None:
-        """Returns cards when data is a dict with 'cards' key."""
+        """Returns cards from the 'cards' key when data is a dict."""
         mock_exec.return_value = {"cards": [{"id": "c1", "name": "Card 1"}]}
 
         captured = self._register()
         fn = captured["CUSTOM_GATHER_CONTEXT"]
         result = fn(GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY)
 
-        assert len(result["cards"]) == 1
+        assert result == {"cards": [{"id": "c1", "name": "Card 1"}]}
+        mock_exec.assert_called_once_with(
+            "TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER",
+            {"idMember": "me"},
+            FAKE_USER_ID,
+        )
+
+    @patch(f"{TRELLO_MODULE}.execute_tool")
+    def test_dict_without_cards_key_defaults_to_empty(self, mock_exec: MagicMock) -> None:
+        """Falls back to an empty list when a dict payload has no 'cards' key."""
+        mock_exec.return_value = {"some_other_key": "value"}
+
+        captured = self._register()
+        fn = captured["CUSTOM_GATHER_CONTEXT"]
+        result = fn(GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY)
+
+        assert result == {"cards": []}
+
+    @patch(f"{TRELLO_MODULE}.execute_tool")
+    def test_empty_list_input(self, mock_exec: MagicMock) -> None:
+        """Returns an empty cards list when data is an empty list."""
+        mock_exec.return_value = []
+
+        captured = self._register()
+        fn = captured["CUSTOM_GATHER_CONTEXT"]
+        result = fn(GatherContextInput(), EXECUTE_REQUEST, AUTH_CREDS_USER_ONLY)
+
+        assert result == {"cards": []}
 
     @patch(f"{TRELLO_MODULE}.execute_tool")
     def test_missing_user_id(self, mock_exec: MagicMock) -> None:
+        """Raises ValueError without calling execute_tool when user_id is missing."""
         captured = self._register()
         fn = captured["CUSTOM_GATHER_CONTEXT"]
-        with pytest.raises(ValueError, match="Missing user_id"):
+        with pytest.raises(ValueError, match=r"^Missing user_id in auth_credentials$"):
             fn(GatherContextInput(), EXECUTE_REQUEST, {})
+        mock_exec.assert_not_called()
 
 
 # =============================================================================
