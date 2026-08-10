@@ -27,6 +27,7 @@ from unittest.mock import AsyncMock, call, patch
 
 from fastapi import HTTPException
 from httpx import AsyncClient
+import pytest
 
 from app.agents.skills.github_discovery import DiscoveredSkill
 from app.agents.skills.models import Skill, SkillTarget

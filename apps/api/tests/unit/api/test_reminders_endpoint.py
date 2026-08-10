@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from httpx import AsyncClient
+import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.endpoints.reminders import _reminder_context
@@ -103,17 +104,11 @@ def _endpoint_error_logs(log_error: MagicMock, message: str) -> list:
     The app's exception-handler middleware also logs ``http_exception``
     through the same singleton, so filter for the endpoint's own message.
     """
-    return [
-        call
-        for call in log_error.call_args_list
-        if call.args and call.args[0] == message
-    ]
+    return [call for call in log_error.call_args_list if call.args and call.args[0] == message]
 
 
 @pytest.fixture
-def client_without_user_id(
-    client: AsyncClient, test_app: FastAPI
-) -> AsyncClient:
+def client_without_user_id(client: AsyncClient, test_app: FastAPI) -> AsyncClient:
     """Client whose principal dict has no user_id, exercising the 401 path.
 
     The endpoint (not just the auth dependency) must reject a user dict
@@ -215,9 +210,7 @@ class TestCreateReminder:
 
         get_reminder.assert_awaited_once_with("rem_new", user_id=USER_ID)
 
-        log_set.assert_any_call(
-            user={"id": USER_ID}, reminder={"operation": "create"}
-        )
+        log_set.assert_any_call(user={"id": USER_ID}, reminder={"operation": "create"})
         log_set.assert_any_call(
             reminder={
                 "operation": "create",
@@ -265,7 +258,9 @@ class TestCreateReminder:
             error="DB down",
         )
 
-    async def test_create_reminder_missing_user_id(self, client: AsyncClient, test_app: FastAPI) -> None:
+    async def test_create_reminder_missing_user_id(
+        self, client: AsyncClient, test_app: FastAPI
+    ) -> None:
         """A principal without user_id is rejected 401 before the body runs.
 
         For the create route the tiered_rate_limit decorator fires first with
@@ -293,9 +288,7 @@ class TestCreateReminder:
         assert resp.status_code == 422
 
     async def test_create_reminder_validation_invalid_cron(self, client: AsyncClient) -> None:
-        resp = await client.post(
-            API, json={**_create_payload(), "repeat": "not-a-cron"}
-        )
+        resp = await client.post(API, json={**_create_payload(), "repeat": "not-a-cron"})
         assert resp.status_code == 422
 
     async def test_create_reminder_validation_scheduled_at_in_past(
@@ -340,9 +333,7 @@ class TestGetReminder:
         assert resp.status_code == 200
         assert resp.json() == _expected_body("rem_1")
         get_reminder.assert_awaited_once_with("rem_1", user_id=USER_ID)
-        log_set.assert_any_call(
-            user={"id": USER_ID}, reminder={"operation": "get", "id": "rem_1"}
-        )
+        log_set.assert_any_call(user={"id": USER_ID}, reminder={"operation": "get", "id": "rem_1"})
         log_set.assert_any_call(
             reminder={
                 "operation": "get",
@@ -493,9 +484,7 @@ class TestUpdateReminder:
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Failed to update reminder"
         # A deliberate failure raise must not be logged as an exception.
-        assert (
-            _endpoint_error_logs(log_error, f"{LogTag.API} Error updating reminder") == []
-        )
+        assert _endpoint_error_logs(log_error, f"{LogTag.API} Error updating reminder") == []
 
     async def test_update_reminder_retrieve_failure(self, client: AsyncClient) -> None:
         """Updated but not retrievable is a distinct 500 — not the update 500."""
@@ -541,7 +530,9 @@ class TestUpdateReminder:
             error="DB down",
         )
 
-    async def test_update_reminder_missing_user_id(self, client_without_user_id: AsyncClient) -> None:
+    async def test_update_reminder_missing_user_id(
+        self, client_without_user_id: AsyncClient
+    ) -> None:
         resp = await client_without_user_id.put(
             f"{API}/rem_1",
             json={"payload": {"title": "X", "body": "Y"}},
@@ -597,9 +588,7 @@ class TestCancelReminder:
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Failed to cancel reminder"
         # A deliberate failure raise must not be logged as an exception.
-        assert (
-            _endpoint_error_logs(log_error, f"{LogTag.API} Error cancelling reminder") == []
-        )
+        assert _endpoint_error_logs(log_error, f"{LogTag.API} Error cancelling reminder") == []
 
     async def test_cancel_reminder_service_error(self, client: AsyncClient) -> None:
         with (
@@ -621,7 +610,9 @@ class TestCancelReminder:
             error="DB down",
         )
 
-    async def test_cancel_reminder_missing_user_id(self, client_without_user_id: AsyncClient) -> None:
+    async def test_cancel_reminder_missing_user_id(
+        self, client_without_user_id: AsyncClient
+    ) -> None:
         resp = await client_without_user_id.delete(f"{API}/rem_1")
         assert resp.status_code == 401
         assert resp.json()["detail"] == "User not authenticated"
@@ -656,9 +647,7 @@ class TestListReminders:
         list_user_reminders.assert_awaited_once_with(
             user_id=USER_ID, status=None, limit=100, skip=0
         )
-        log_set.assert_any_call(
-            user={"id": USER_ID}, reminder={"operation": "list"}
-        )
+        log_set.assert_any_call(user={"id": USER_ID}, reminder={"operation": "list"})
         log_set.assert_any_call(reminder={"operation": "list", "result_count": 2})
         log_set.assert_any_call(outcome="success")
 
@@ -668,9 +657,7 @@ class TestListReminders:
             new_callable=AsyncMock,
             return_value=[],
         ) as list_user_reminders:
-            resp = await client.get(
-                API, params={"status": "scheduled", "limit": 5, "skip": 2}
-            )
+            resp = await client.get(API, params={"status": "scheduled", "limit": 5, "skip": 2})
 
         assert resp.status_code == 200
         list_user_reminders.assert_awaited_once_with(
@@ -718,7 +705,9 @@ class TestListReminders:
             error="DB down",
         )
 
-    async def test_list_reminders_missing_user_id(self, client_without_user_id: AsyncClient) -> None:
+    async def test_list_reminders_missing_user_id(
+        self, client_without_user_id: AsyncClient
+    ) -> None:
         resp = await client_without_user_id.get(API)
         assert resp.status_code == 401
         assert resp.json()["detail"] == "User not authenticated"
@@ -777,9 +766,7 @@ class TestPauseReminder:
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Failed to pause reminder"
         # A deliberate failure raise must not be logged as an exception.
-        assert (
-            _endpoint_error_logs(log_error, f"{LogTag.API} Error pausing reminder") == []
-        )
+        assert _endpoint_error_logs(log_error, f"{LogTag.API} Error pausing reminder") == []
 
     async def test_pause_retrieve_failure(self, client: AsyncClient) -> None:
         with (
@@ -921,10 +908,7 @@ class TestResumeReminder:
             resp = await client.post(f"{API}/rem_1/resume")
 
         assert resp.status_code == 400
-        assert (
-            resp.json()["detail"]
-            == "Reminder rem_1 is not paused (current status: scheduled)"
-        )
+        assert resp.json()["detail"] == "Reminder rem_1 is not paused (current status: scheduled)"
 
     async def test_resume_not_found(self, client: AsyncClient) -> None:
         with patch(
@@ -956,9 +940,7 @@ class TestResumeReminder:
         assert resp.status_code == 500
         assert resp.json()["detail"] == "Failed to resume reminder"
         # A deliberate failure raise must not be logged as an exception.
-        assert (
-            _endpoint_error_logs(log_error, f"{LogTag.API} Error resuming reminder") == []
-        )
+        assert _endpoint_error_logs(log_error, f"{LogTag.API} Error resuming reminder") == []
 
     async def test_resume_retrieve_failure(self, client: AsyncClient) -> None:
         paused_reminder = _reminder_model("rem_1", status="paused")

@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException, status
 from httpx import AsyncClient
+import pytest
 
 from app.constants.log_tags import LogTag
 from app.models.notes_models import NoteModel

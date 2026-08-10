@@ -27,6 +27,7 @@ from mcp.types import (
     TextResourceContents,
 )
 from pydantic import AnyUrl
+import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
@@ -153,9 +154,7 @@ class TestProxyToolCall:
             error="conn refused",
         )
 
-    async def test_tool_call_http_exception_propagates_unchanged(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_tool_call_http_exception_propagates_unchanged(self, client: AsyncClient) -> None:
         with _patched_mcp() as (_, mock_client, mock_log):
             mock_client.call_tool_on_server.side_effect = HTTPException(
                 status_code=403, detail="Forbidden"
@@ -186,9 +185,7 @@ class TestProxyResourcesList:
 
     async def test_resources_list_success(self, client: AsyncClient) -> None:
         result = ListResourcesResult(
-            resources=[
-                Resource(uri=AnyUrl("file:///a.txt"), name="a.txt", mimeType="text/plain")
-            ],
+            resources=[Resource(uri=AnyUrl("file:///a.txt"), name="a.txt", mimeType="text/plain")],
             nextCursor="cur1",
         )
         with _patched_mcp() as (mock_get, mock_client, mock_log):
@@ -283,9 +280,7 @@ class TestProxyResourceTemplatesList:
     async def test_templates_list_success(self, client: AsyncClient) -> None:
         result = ListResourceTemplatesResult(
             resourceTemplates=[
-                ResourceTemplate(
-                    uriTemplate="file:///{path}", name="file", mimeType="text/plain"
-                )
+                ResourceTemplate(uriTemplate="file:///{path}", name="file", mimeType="text/plain")
             ],
             nextCursor="cur1",
         )

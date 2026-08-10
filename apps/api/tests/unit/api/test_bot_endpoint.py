@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from fastapi import HTTPException
 from httpx import AsyncClient
+import pytest
 
 from app.api.v1.endpoints.bot import (
     _bot_approval_payload,
