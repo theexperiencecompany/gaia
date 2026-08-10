@@ -9,12 +9,12 @@ args, timezone injection, and error handling — is asserted precisely.
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from httpx import AsyncClient
 import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.api.v1.endpoints.reminders import _reminder_context
+from app.api.v1.endpoints.reminders import _reminder_context, create_reminder_endpoint
 from app.constants.log_tags import LogTag
 from app.models.reminder_models import CreateReminderRequest, ReminderStatus, ReminderUpdate
 from tests.conftest import FAKE_USER
@@ -278,6 +278,27 @@ class TestCreateReminder:
                 test_app.dependency_overrides[get_current_user] = original
         assert resp.status_code == 401
         assert resp.json()["detail"] == "User ID not found"
+
+    async def test_create_reminder_endpoint_guard_direct(self) -> None:
+        """The endpoint's own 401 guard fires when the rate-limit wrapper is bypassed.
+
+        Through the router, tiered_rate_limit intercepts the missing-user-id
+        case before the endpoint runs ("User ID not found"), so the endpoint
+        guard — exact status 401 and "User not authenticated" detail — is only
+        reachable by invoking the raw function (``__wrapped__`` behind the
+        ``@wraps`` seam of the rate-limit decorator). Pin it here so a
+        weakened guard (dropped detail arg, wrong status, mangled message)
+        cannot slip through.
+        """
+        with pytest.raises(HTTPException) as exc_info:
+            await create_reminder_endpoint.__wrapped__(
+                reminder_data=CreateReminderRequest(**_create_payload()),
+                user_timezone="UTC",
+                user={"email": "nobody@example.com"},
+            )
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "User not authenticated"
 
     async def test_create_reminder_validation_missing_payload(self, client: AsyncClient) -> None:
         resp = await client.post(API, json={"agent": "static"})
