@@ -1,15 +1,32 @@
+import {
+  USAGE_DANGER_THRESHOLD,
+  USAGE_WARN_THRESHOLD,
+} from "@gaia/shared/constants/usage";
 import { Button, Card, Chip, Spinner } from "heroui-native";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type {
+  BudgetWindow,
   UsagePeriod,
   UsageSummary,
 } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
+import { colors } from "@/lib/design-tokens";
 import { useResponsive } from "@/lib/responsive";
 
 type PeriodKey = "day" | "month";
+
+/** Mobile usage-bar accent — its own blue, distinct from web's meter accent. */
+const USAGE_BAR_ACCENT = "#16c1ff";
+
+/** Fill color by percentage: shared warn/danger thresholds, mobile status hues. */
+function barColor(percentage: number): string {
+  const pct = Math.min(percentage, 100);
+  if (pct >= USAGE_DANGER_THRESHOLD) return colors.error;
+  if (pct >= USAGE_WARN_THRESHOLD) return colors.warning;
+  return USAGE_BAR_ACCENT;
+}
 
 interface UsageBarProps {
   title: string;
@@ -21,7 +38,6 @@ function UsageBar({ title, period }: UsageBarProps) {
   if (!period) return null;
 
   const pct = Math.min(period.percentage, 100);
-  const barColor = pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#16c1ff";
 
   return (
     <View style={{ gap: spacing.xs }}>
@@ -46,7 +62,7 @@ function UsageBar({ title, period }: UsageBarProps) {
             height: "100%",
             width: `${pct}%`,
             borderRadius: 3,
-            backgroundColor: barColor,
+            backgroundColor: barColor(period.percentage),
           }}
         />
       </View>
@@ -55,6 +71,57 @@ function UsageBar({ title, period }: UsageBarProps) {
         {period.remaining} remaining
         {period.reset_time
           ? ` · resets ${new Date(period.reset_time).toLocaleDateString()}`
+          : ""}
+      </Text>
+    </View>
+  );
+}
+
+interface BudgetBarProps {
+  title: string;
+  window: BudgetWindow | null | undefined;
+  periodLabel: string;
+}
+
+/** The primary feature's meter is its cost-budget percentage, not a message
+ * count — chat is priced by usage now, so a raw "N / limit" would be a lie. */
+function BudgetBar({ title, window, periodLabel }: BudgetBarProps) {
+  const { spacing, fontSize } = useResponsive();
+  if (!window) return null;
+
+  const pct = Math.min(window.percentage, 100);
+
+  return (
+    <View style={{ gap: spacing.xs }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <Text style={{ fontSize: fontSize.sm }}>{title}</Text>
+        <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+          {Math.round(window.percentage)}%
+        </Text>
+      </View>
+
+      <View
+        style={{
+          height: 6,
+          borderRadius: 3,
+          backgroundColor: "rgba(255,255,255,0.1)",
+          overflow: "hidden",
+        }}
+      >
+        <View
+          style={{
+            height: "100%",
+            width: `${pct}%`,
+            borderRadius: 3,
+            backgroundColor: barColor(window.percentage),
+          }}
+        />
+      </View>
+
+      <Text style={{ fontSize: fontSize.xs - 1, color: "#5a5a5e" }}>
+        of {periodLabel} allowance
+        {window.reset_time
+          ? ` · resets ${new Date(window.reset_time).toLocaleDateString()}`
           : ""}
       </Text>
     </View>
@@ -111,7 +178,13 @@ export function UsageSection() {
     );
   }
 
-  const featureEntries = Object.entries(summary.features);
+  const primaryKey = summary.primary_feature;
+  const primaryTitle = summary.features[primaryKey]?.title ?? "AI Usage";
+  const budgetWindow =
+    periodKey === "day" ? summary.budget?.daily : summary.budget?.monthly;
+  const featureEntries = Object.entries(summary.features).filter(
+    ([key, feature]) => key !== primaryKey && feature.periods[periodKey],
+  );
   const isPro = summary.plan_type !== "free";
 
   return (
@@ -174,83 +247,25 @@ export function UsageSection() {
 
       <Card variant="secondary" className="rounded-2xl bg-surface">
         <Card.Body className="gap-5 px-4 py-4">
-          {featureEntries.length === 0 ? (
+          <BudgetBar
+            title={primaryTitle}
+            window={budgetWindow}
+            periodLabel={periodKey === "day" ? "daily" : "monthly"}
+          />
+          {featureEntries.map(([key, feature]) => (
+            <UsageBar
+              key={key}
+              title={feature.title}
+              period={feature.periods[periodKey]}
+            />
+          ))}
+          {!budgetWindow && featureEntries.length === 0 && (
             <Text style={{ color: "#71717a", fontSize: fontSize.sm }}>
               No feature usage data.
             </Text>
-          ) : (
-            featureEntries.map(([key, feature]) => (
-              <UsageBar
-                key={key}
-                title={feature.title}
-                period={feature.periods[periodKey]}
-              />
-            ))
           )}
         </Card.Body>
       </Card>
-
-      {Object.entries(summary.token_usage).length > 0 && (
-        <View style={{ gap: spacing.sm }}>
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#71717a",
-              textTransform: "uppercase",
-              letterSpacing: 1,
-            }}
-          >
-            Token Usage
-          </Text>
-          <Card variant="secondary" className="rounded-2xl bg-surface">
-            <Card.Body className="gap-4 px-4 py-4">
-              {Object.entries(summary.token_usage).map(([key, tok]) => {
-                const period = tok.periods[periodKey];
-                if (!period) return null;
-                const pct = Math.min(period.percentage, 100);
-                return (
-                  <View key={key} style={{ gap: spacing.xs }}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <Text style={{ fontSize: fontSize.sm }}>{tok.title}</Text>
-                      <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-                        {period.total_tokens.toLocaleString()} /{" "}
-                        {period.limit.toLocaleString()}
-                      </Text>
-                    </View>
-                    <View
-                      style={{
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: "rgba(255,255,255,0.1)",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <View
-                        style={{
-                          height: "100%",
-                          width: `${pct}%`,
-                          borderRadius: 3,
-                          backgroundColor:
-                            pct >= 90
-                              ? "#ef4444"
-                              : pct >= 70
-                                ? "#f59e0b"
-                                : "#16c1ff",
-                        }}
-                      />
-                    </View>
-                  </View>
-                );
-              })}
-            </Card.Body>
-          </Card>
-        </View>
-      )}
     </ScrollView>
   );
 }

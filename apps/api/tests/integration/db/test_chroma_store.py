@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import chromadb
 from langgraph.store.base import GetOp, PutOp, SearchOp
@@ -39,7 +40,7 @@ from app.db.chroma.chroma_tools_store import (
     delete_tools_by_namespace,
 )
 
-_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 _CHROMA_HOST = os.environ.get("CHROMADB_HOST", "localhost")
 _CHROMA_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
 
@@ -58,10 +59,27 @@ class _NoOpEmbeddingFunction:
     ChromaStore already registers its own no-op EF on every collection
     (see chroma_store._NOOP_EF), but the wrapper also defaults to this
     for any collection created outside of ChromaStore's _get_collection.
+    Implements chroma 1.x's full EmbeddingFunction contract (name /
+    get_config / build_from_config / is_legacy) so the ephemeral client's
+    config serialization never falls into the legacy-warning path.
     """
 
     def __call__(self, input: list[str]) -> list[list[float]]:
         return [[0.0] * 384 for _ in input]
+
+    @staticmethod
+    def name() -> str:
+        return "test-noop"
+
+    def get_config(self) -> dict[str, str]:
+        return {"name": "test-noop"}
+
+    @staticmethod
+    def build_from_config(config: dict) -> _NoOpEmbeddingFunction:
+        return _NoOpEmbeddingFunction()
+
+    def is_legacy(self) -> bool:
+        return False
 
 
 _NOOP_EF = _NoOpEmbeddingFunction()
@@ -133,21 +151,37 @@ class _AsyncEphemeralWrapper:
 
 
 @pytest.fixture
-async def ephemeral_client():
+def collection_prefix() -> str:
+    """A per-test namespace for every collection this module creates.
+
+    Under USE_REAL_SERVICES the Chroma server is shared by the whole run, so
+    collection names must be unique per test: a plain fixed name collides with
+    the same test on another xdist worker, and the cleanup below must only
+    delete what this test made (deleting everything wipes collections other
+    workers — notably the memory suite's ``gaia_memories`` — are actively using).
+    """
+    return f"test_{uuid4().hex[:8]}_"
+
+
+@pytest.fixture
+async def ephemeral_client(collection_prefix: str):
     """Return a ChromaDB client per test.
 
     Uses real AsyncHttpClient against the chroma service when USE_REAL_SERVICES=1,
     otherwise falls back to the in-process _AsyncEphemeralWrapper.
-    Each test starts with a clean slate (all collections deleted before and after).
+    Each test starts with a clean slate (its own prefixed collections deleted
+    before and after).
     """
     if _USE_REAL_SERVICES:
         client = await chromadb.AsyncHttpClient(host=_CHROMA_HOST, port=_CHROMA_PORT)
-        # Wipe any collections left by a previous test
+        # Wipe any of this test's collections left by a previous run
         for col in await client.list_collections():
-            await client.delete_collection(col.name)
+            if col.name.startswith(collection_prefix):
+                await client.delete_collection(col.name)
         yield client
         for col in await client.list_collections():
-            await client.delete_collection(col.name)
+            if col.name.startswith(collection_prefix):
+                await client.delete_collection(col.name)
     else:
         client = _AsyncEphemeralWrapper()
         yield client
@@ -158,11 +192,11 @@ async def ephemeral_client():
 
 
 @pytest.fixture
-async def chroma_store(ephemeral_client):
+async def chroma_store(ephemeral_client, collection_prefix: str):
     """Return a ChromaStore backed by the ephemeral client, no embeddings."""
     store = ChromaStore(
         client=ephemeral_client,
-        collection_name="test_store",
+        collection_name=f"{collection_prefix}store",
         index=None,  # No embeddings needed for basic CRUD tests
     )
     return store
@@ -672,10 +706,10 @@ class TestGetExistingToolsFromChroma:
     """Test _get_existing_tools_from_chroma with a live ephemeral collection."""
 
     @pytest.fixture
-    async def collection_with_tools(self, ephemeral_client):
+    async def collection_with_tools(self, ephemeral_client, collection_prefix: str):
         """Create a collection and insert two tools manually."""
         col = await ephemeral_client.create_collection(
-            "test_tools", metadata={"hnsw:space": "cosine"}
+            f"{collection_prefix}tools", metadata={"hnsw:space": "cosine"}
         )
         # Supply pre-computed dummy embeddings so the client does not try to
         # download the 79 MB ONNX model to compute them.  Without embeddings
@@ -731,12 +765,12 @@ class TestGetExistingToolsFromChroma:
 class TestDeleteToolsByNamespace:
     """Test delete_tools_by_namespace with mocked lazy provider and Redis cache."""
 
-    async def test_deletes_tools_in_namespace(self, ephemeral_client):
+    async def test_deletes_tools_in_namespace(self, ephemeral_client, collection_prefix: str):
         """delete_tools_by_namespace should remove items and return count."""
         # Build a real store but wire it into the mocked provider
         store = ChromaStore(
             client=ephemeral_client,
-            collection_name="tools_col",
+            collection_name=f"{collection_prefix}tools_col",
         )
         # Seed with two tools in 'myns' and one in another namespace
         collection = await store._get_collection()
@@ -772,11 +806,13 @@ class TestDeleteToolsByNamespace:
         assert "myns::tool_a" not in remaining["ids"]
         assert "myns::tool_b" not in remaining["ids"]
 
-    async def test_returns_zero_when_namespace_empty(self, ephemeral_client):
+    async def test_returns_zero_when_namespace_empty(
+        self, ephemeral_client, collection_prefix: str
+    ):
         """delete_tools_by_namespace returns 0 when namespace has no tools."""
         store = ChromaStore(
             client=ephemeral_client,
-            collection_name="empty_col",
+            collection_name=f"{collection_prefix}empty_col",
         )
         await store._get_collection()  # create collection
 

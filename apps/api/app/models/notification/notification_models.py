@@ -3,7 +3,9 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.db.repositories.base import UserScopedDocument
 
 
 class NotificationType(str, Enum):
@@ -39,6 +41,7 @@ class NotificationSourceEnum(str, Enum):
     WORKFLOW_COMPLETED = "workflow_completed"
     WORKFLOW_FAILED = "workflow_failed"
     SYSTEM_WORKFLOWS_PROVISIONED = "system_workflows_provisioned"
+    USAGE_LIMIT = "usage_limit"
 
 
 class ActionType(str, Enum):
@@ -92,7 +95,7 @@ class ActionConfig(BaseModel):
     modal: ModalConfig | None = None
 
     @model_validator(mode="after")
-    def validate_single_config(self):
+    def validate_single_config(self) -> "ActionConfig":
         """Ensure only one action config is set"""
         configs = [self.redirect, self.api_call, self.modal]
         non_none_configs = [c for c in configs if c is not None]
@@ -167,7 +170,7 @@ class NotificationRequest(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @field_validator("priority", mode="before")
-    def validate_priority(cls, v):
+    def validate_priority(cls, v: int) -> int:
         """Reject priorities outside the inclusive 1–5 range."""
         if not 1 <= v <= 5:
             raise ValueError("Priority must be between 1 and 5")
@@ -185,8 +188,12 @@ class ChannelDeliveryStatus(BaseModel):
     skipped: bool = False
 
 
-class NotificationRecord(BaseModel):
-    """Persisted notification with its original request and per-channel statuses."""
+class NotificationRecord(UserScopedDocument):
+    """Persisted notification with its original request and per-channel statuses.
+
+    Identity is the UUID ``id`` (not Mongo's ``_id``); the notification repository
+    sets ``identity_field = "id"``.
+    """
 
     id: str
     user_id: str
@@ -218,6 +225,89 @@ class NotificationRecord(BaseModel):
             if action.id == action_id:
                 return action
         return None
+
+
+class NotificationActionView(BaseModel):
+    """A notification action as it appears on the wire (see ``NotificationView``)."""
+
+    id: str
+    type: ActionType
+    label: str
+    style: ActionStyle
+    requires_confirmation: bool
+    confirmation_message: str | None = None
+    config: ActionConfig | None = None
+    executed: bool
+    executed_at: str | None = None
+    disabled: bool
+
+
+class NotificationContentView(BaseModel):
+    """The ``content`` block of a ``NotificationView``."""
+
+    title: str
+    body: str
+    actions: list[NotificationActionView] = Field(default_factory=list)
+
+
+class NotificationChannelView(BaseModel):
+    """One channel's delivery outcome as it appears on the wire.
+
+    A narrower projection of ``ChannelDeliveryStatus``: ``retry_count`` is
+    internal and deliberately not serialized.
+    """
+
+    channel_type: str
+    status: NotificationStatus
+    skipped: bool
+    delivered_at: str | None = None
+    error_message: str | None = None
+
+
+class NotificationView(BaseModel):
+    """A notification flattened for API/tool consumers.
+
+    Distinct from ``NotificationRecord``: the record is the stored document (it
+    nests the whole ``original_request``), while this is the flat shape the web
+    and mobile clients actually read — ``content``/``source``/``type``/
+    ``metadata`` are lifted out of the request, and the channel entries are
+    projected. It mirrors ``NotificationRecord`` in the frontend's
+    ``notificationTypes.ts``.
+
+    Timestamps are ``str`` because the producer emits ISO strings and that is
+    the published contract; parsing them into ``datetime`` here would re-emit
+    them in Pydantic's own format.
+
+    Built by ``NotificationOrchestrator._serialize_notification``, which is
+    still the producer — this model is the named shape of what it returns.
+    """
+
+    id: str
+    user_id: str
+    status: NotificationStatus
+    created_at: str
+    delivered_at: str | None = None
+    read_at: str | None = None
+    content: NotificationContentView
+    source: NotificationSourceEnum
+    type: NotificationType
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    channels: list[NotificationChannelView] = Field(default_factory=list)
+
+
+class NotificationUpdate(BaseModel):
+    """Typed status/timestamp fields for a notification update.
+
+    Free-form patches (e.g. an action result's arbitrary field set) go through
+    the repository's ``update_fields`` instead.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: NotificationStatus | None = None
+    delivered_at: datetime | None = None
+    read_at: datetime | None = None
+    archived_at: datetime | None = None
 
 
 class ActionResult(BaseModel):

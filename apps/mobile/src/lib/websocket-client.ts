@@ -214,7 +214,7 @@ class WebSocketManager {
     if (state === "active") {
       // App came to foreground — reconnect if not already connected
       if (!this.isConnected && !this.isIntentionalClose) {
-        console.log("[WebSocketManager] App foregrounded, reconnecting...");
+        console.info("[WebSocketManager] App foregrounded, reconnecting...");
         this.connect();
       }
     } else if (state === "background" || state === "inactive") {
@@ -228,7 +228,7 @@ class WebSocketManager {
     if (!this.ws) return;
 
     this.ws.onopen = () => {
-      console.log("[WebSocketManager] Connected to:", this.wsUrl);
+      console.info("[WebSocketManager] Connected to:", this.wsUrl);
       this.reconnectAttempts = 0;
       this.startHeartbeat();
       this.connectionHandlers.forEach((handler) => handler());
@@ -275,7 +275,7 @@ class WebSocketManager {
     };
 
     this.ws.onclose = (event: WebSocketCloseEvent) => {
-      console.log(
+      console.info(
         "[WebSocketManager] Disconnected:",
         event.code,
         event.reason,
@@ -313,7 +313,7 @@ class WebSocketManager {
     const delay = this.baseReconnectDelay * 2 ** this.reconnectAttempts;
     this.reconnectAttempts++;
 
-    console.log(
+    console.info(
       `[WebSocketManager] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
     );
 

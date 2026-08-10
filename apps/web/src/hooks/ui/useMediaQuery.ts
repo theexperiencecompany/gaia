@@ -1,30 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 // Module-level cache: one MediaQueryList and one set of subscribers per query
 // string. This ensures only a single native listener exists regardless of how
 // many components call useMediaQuery with the same query (Rule 4.1).
 interface QueryEntry {
   mql: MediaQueryList;
-  subscribers: Set<(matches: boolean) => void>;
-  listener: (e: MediaQueryListEvent) => void;
+  subscribers: Set<() => void>;
+  listener: () => void;
 }
 
 const queryCache = new Map<string, QueryEntry>();
 
-function subscribeToQuery(
-  query: string,
-  callback: (matches: boolean) => void,
-): () => void {
-  if (typeof window === "undefined") return () => {};
+function subscribeToQuery(query: string, callback: () => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      /* SSR: no subscription to tear down */
+    };
+  }
 
   let entry = queryCache.get(query);
   if (!entry) {
     const mql = window.matchMedia(query);
-    const subscribers = new Set<(matches: boolean) => void>();
-    const listener = (e: MediaQueryListEvent) => {
-      for (const cb of subscribers) cb(e.matches);
+    const subscribers = new Set<() => void>();
+    const listener = () => {
+      for (const cb of subscribers) cb();
     };
     mql.addEventListener("change", listener);
     entry = { mql, subscribers, listener };
@@ -44,18 +45,26 @@ function subscribeToQuery(
   };
 }
 
+// The server (and the first, hydrating client render) always sees `false`.
+// useSyncExternalStore uses this for both SSR and hydration, so the server
+// render and the first client render always agree; the real viewport result is
+// applied only after hydration completes. This prevents React hydration
+// mismatches (error #418) on SSR pages that branch their markup on this hook.
+const getServerSnapshot = (): boolean => false;
+
 const useMediaQuery = (query: string): boolean => {
-  const [matches, setMatches] = useState<boolean>(() =>
-    typeof window !== "undefined" ? window.matchMedia(query).matches : false,
+  const subscribe = useCallback(
+    (callback: () => void) => subscribeToQuery(query, callback),
+    [query],
   );
 
-  useEffect(() => {
-    // Sync immediately in case the query result changed between SSR and mount
-    setMatches(window.matchMedia(query).matches);
-    return subscribeToQuery(query, setMatches);
-  }, [query]);
+  const getSnapshot = useCallback(
+    () =>
+      typeof window !== "undefined" ? window.matchMedia(query).matches : false,
+    [query],
+  );
 
-  return matches;
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 };
 
 export default useMediaQuery;

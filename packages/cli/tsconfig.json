@@ -11,7 +11,6 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noUncheckedIndexedAccess": true,
-    "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
   "exclude": ["dist", "node_modules"]

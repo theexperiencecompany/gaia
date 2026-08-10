@@ -6,14 +6,17 @@ and only updated when their configuration changes.
 """
 
 import hashlib
-from typing import Any
+from typing import cast
 
+from chromadb.api.models.AsyncCollection import AsyncCollection
 from langgraph.store.base import PutOp
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
+from app.models.oauth_models import OAuthIntegration
+from app.models.trigger_config import TriggerConfig
 from shared.py.wide_events import VectorContext, log
 
 from .chroma_store import ChromaStore
@@ -22,7 +25,7 @@ from .chroma_store import ChromaStore
 TRIGGERS_NAMESPACE = "workflow_triggers"
 
 
-def _compute_trigger_hash(integration_id: str, trigger: Any) -> str:
+def _compute_trigger_hash(integration_id: str, trigger: TriggerConfig) -> str:
     """Compute hash for a trigger based on its configuration.
 
     Args:
@@ -49,7 +52,7 @@ def _compute_trigger_hash(integration_id: str, trigger: Any) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def _build_trigger_description(integration: Any, trigger: Any) -> str:
+def _build_trigger_description(integration: OAuthIntegration, trigger: TriggerConfig) -> str:
     """Build description for semantic matching using native trigger info.
 
     Args:
@@ -97,7 +100,7 @@ def _get_current_triggers_with_hashes() -> dict[str, dict]:
     return current_triggers
 
 
-async def _get_existing_triggers_from_chroma(collection) -> dict[str, dict]:
+async def _get_existing_triggers_from_chroma(collection: AsyncCollection) -> dict[str, dict]:
     """Fetch existing triggers from ChromaDB collection.
 
     Args:
@@ -127,7 +130,9 @@ async def _get_existing_triggers_from_chroma(collection) -> dict[str, dict]:
                     }
     except Exception as e:
         log.warning(
-            f"{LogTag.CHROMA} Error fetching existing triggers: {e}, will register all triggers"
+            f"{LogTag.CHROMA} Error fetching existing triggers, will register all triggers",
+            error=str(e),
+            error_type=type(e).__name__,
         )
 
     return existing_triggers
@@ -230,11 +235,12 @@ async def _execute_batch_operations(
         batch = put_ops[i : i + batch_size]
         await store.abatch(batch)
         log.info(
-            f"{LogTag.CHROMA} Processed triggers batch {i // batch_size + 1}/"
-            f"{(total_ops + batch_size - 1) // batch_size}"
+            f"{LogTag.CHROMA} Processed triggers batch",
+            batch_index=i // batch_size + 1,
+            batch_total=(total_ops + batch_size - 1) // batch_size,
         )
 
-    log.info(f"{LogTag.CHROMA} Successfully updated {total_ops} triggers in ChromaDB")
+    log.info(f"{LogTag.CHROMA} Successfully updated triggers in ChromaDB", total_ops=total_ops)
 
 
 @lazy_provider(
@@ -279,7 +285,9 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
             collection="langgraph_triggers_store",
         )
     )
-    log.info(f"{LogTag.CHROMA} Found {len(current_triggers)} triggers to manage")
+    log.info(
+        f"{LogTag.CHROMA} Found triggers to manage", current_triggers_count=len(current_triggers)
+    )
 
     existing_triggers = await _get_existing_triggers_from_chroma(collection)
 
@@ -293,8 +301,9 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
         return store
 
     log.info(
-        f"{LogTag.CHROMA} Updating ChromaDB triggers store: {len(triggers_to_upsert)} to upsert, "
-        f"{len(triggers_to_delete)} to delete"
+        f"{LogTag.CHROMA} Updating ChromaDB triggers store: to upsert, to delete",
+        triggers_to_upsert_count=len(triggers_to_upsert),
+        triggers_to_delete_count=len(triggers_to_delete),
     )
 
     put_ops = _build_put_operations(triggers_to_upsert, triggers_to_delete)
@@ -312,4 +321,6 @@ async def get_triggers_store() -> ChromaStore:
     store = await providers.aget("chroma_triggers_store")
     if store is None:
         raise RuntimeError("Triggers store not initialized")
-    return store
+    # aget() is typed Any | None; "chroma_triggers_store" is always registered
+    # as a ChromaStore instance (see initialize_chroma_triggers_store above).
+    return cast(ChromaStore, store)

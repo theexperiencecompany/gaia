@@ -3,6 +3,7 @@
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
@@ -18,13 +19,14 @@ def register_hubspot_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="HUBSPOT")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get HubSpot CRM context snapshot: recent contacts and deals.
 
         Zero required parameters. Returns current CRM state for situational awareness.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "hubspot", "action": "gather_context"})
         user_id = auth_credentials.get("user_id")
         if not user_id:
@@ -48,7 +50,7 @@ def register_hubspot_custom_tools(composio: Composio) -> list[str]:
             )
             contacts = data.get("results", [])
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} HubSpot contacts fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} HubSpot contacts fetch failed", error_type=type(e).__name__)
 
         deals: list[dict[str, Any]] = []
         try:
@@ -68,7 +70,7 @@ def register_hubspot_custom_tools(composio: Composio) -> list[str]:
             )
             deals = data.get("results", [])
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} HubSpot deals fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} HubSpot deals fetch failed", error_type=type(e).__name__)
 
         recent_contacts = [
             {

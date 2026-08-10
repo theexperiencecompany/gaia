@@ -11,7 +11,7 @@ import aiohttp
 from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 
-from shared.py.wide_events import VoiceContext, log, wide_task
+from shared.py.wide_events import VoiceContext, get_trace_id, log, log_context, wide_task
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
     DONE_SENTINEL,
@@ -23,6 +23,7 @@ from src.constants import (
     RESPONSE_KEY,
     SENTENCE_ENDINGS,
     SSE_DATA_PREFIX,
+    TRACE_ID_HEADER,
     TTS_FINAL_MIN_CHARS,
     TTS_HARD_FLUSH_CHARS,
     TTS_MIN_EMIT_CHARS,
@@ -149,17 +150,41 @@ class CustomLLM(LLM):
         if text:
             await self.forward_stream_event_to_frontend(json.dumps({RESPONSE_KEY: text}))
 
-    def spawn_drain(self, resp: aiohttp.ClientResponse) -> None:
+    def spawn_drain(self, resp: aiohttp.ClientResponse, *, trace_id: str, turn_index: int) -> None:
         """Drain the rest of a comms turn's stream in the background.
 
         The comms turn (its chat() generator) ends as soon as the reply is done,
         so the ack plays immediately. The executor's UI events and narrated
         answer arrive later on the same still-open stream — this keeps reading
         them: forwarding tool cards to the screen and speaking each answer.
+
+        The drain deliberately outlives the turn, so it gets its own wide event
+        rather than writing into the turn's — that one has already been emitted
+        by the time the executor answers, and anything the drain logged into it
+        would be dropped. ``trace_id`` is the turn's, so the two events join.
         """
-        task = asyncio.create_task(self._drain(resp))
+        task = asyncio.create_task(self._drain_in_event(resp, trace_id, turn_index))
         self._drain_tasks.add(task)
         task.add_done_callback(self._drain_tasks.discard)
+
+    async def _drain_in_event(
+        self, resp: aiohttp.ClientResponse, trace_id: str, turn_index: int
+    ) -> None:
+        """Wide-event boundary for the background drain, correlated to its turn."""
+        async with log_context(
+            "voice_drain",
+            trace_id=trace_id or None,
+            user_id=self.user_id,
+            conversation_id=self.conversation_id,
+        ):
+            log.set(
+                voice=VoiceContext(
+                    operation="drain",
+                    room=self.room.name if self.room else None,
+                    turn_index=turn_index,
+                )
+            )
+            await self._drain(resp)
 
     async def _drain(self, resp: aiohttp.ClientResponse) -> None:
         """Forward the post-reply UI events and speak each executor answer.
@@ -220,10 +245,13 @@ class CustomLLM(LLM):
 
     # The base class declares chat() -> LLMStream, but the LiveKit pipeline calls it as
     # `async with llm.chat(...) as stream: async for chunk in stream:`, which is exactly
-    # what @asynccontextmanager + yield gen() provides
+    # what @asynccontextmanager + yield gen() provides.
+    # The pipeline also passes tools/tool_choice/conn_options (voice/agent.py), which
+    # this override does not use — the catch-all has to stay or those calls TypeError.
+    # `object`, not Any: nothing here ever reads them.
     @asynccontextmanager
     async def chat(  # type: ignore[override]
-        self, *, chat_ctx: ChatContext, **kwargs: Any
+        self, *, chat_ctx: ChatContext, **_kwargs: object
     ) -> AsyncGenerator[AsyncGenerator[ChatChunk, None], None]:
         """Stream SSE from the backend and yield ChatChunks for TTS."""
 
@@ -344,6 +372,13 @@ class _VoiceTurn:
             json=payload,
             timeout=aiohttp.ClientTimeout(sock_read=self.llm.request_timeout_s),
         )
+        # Adopt the backend's trace id so this turn's wide event correlates
+        # 1:1 with the backend's http_request event for the same turn.
+        backend_trace_id = resp.headers.get(TRACE_ID_HEADER)
+        if backend_trace_id:
+            # Rebinds the field AND the ContextVar, so get_trace_id() below
+            # hands the drain task the backend's id rather than this turn's.
+            log.set(trace_id=backend_trace_id)
         handed_off = False
         try:
             if resp.status >= 400:
@@ -365,7 +400,7 @@ class _VoiceTurn:
             # a background reader (which forwards tool cards and speaks each
             # answer) and end this turn now, so the ack plays immediately.
             if self.comms_complete and not self.stream_done:
-                self.llm.spawn_drain(resp)
+                self.llm.spawn_drain(resp, trace_id=get_trace_id(), turn_index=self.turn_index)
                 handed_off = True
 
             log.info(
@@ -675,7 +710,8 @@ class _VoiceTurn:
                 self.first_tts_flush_ms = ms_since(self.turn_start)
         if label:
             log.debug(
-                f"{LogTag.LLM} {label}",
+                f"{LogTag.LLM} TTS text sanitized",
+                label=label,
                 phase="tts_flush" if label == "TTS FLUSH" else "tts_final",
                 text_before_sanitize=raw,
                 text_after_sanitize=out,

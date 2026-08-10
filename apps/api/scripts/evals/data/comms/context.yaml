@@ -1,0 +1,131 @@
+# Follow-ups that only make sense given an earlier turn.
+#
+# Every deterministic gate here is on something the user NEVER wrote — a derived
+# number, or a constraint the later answer has to respect — because the transport
+# joins all assistant bubbles before matching, so a term the agent could have
+# echoed back in turn 1 would make the gate unfailable.
+#
+# The two numeric gates ("23", "73") are derived totals that appear in NEITHER
+# turn, so they cannot be satisfied by echoing the user. 12 was deliberately
+# avoided as a total because it collides with clock times a reply might mention.
+#
+# All but one case stays non-delegated on purpose: a delegated turn's SSE text is
+# the ack, so content gates there measure the ack's wording rather than whether
+# the context was carried. The one delegated case gates only on `delegation`.
+
+- id: comms-context-sum-across-turns
+  ticket: "Arithmetic over facts stated a turn earlier; the total is in neither turn."
+  tags: [context, multiturn]
+  setup:
+    turns:
+      - "I've got 6 meetings on Monday, 8 on Tuesday and 9 on Wednesday."
+      - "how many is that in total across those three days?"
+  prompt: "how many is that in total across those three days?"
+  expected:
+    category: context
+    delegation: forbidden
+    communicate: ["23"]
+    judge:
+      criteria:
+        - "The reply gives the total of 23 and does not ask the user to repeat the numbers."
+        - "The reply is brief and does not restate the whole schedule."
+    score: {gates: [communicate, delegation]}
+
+- id: comms-context-subtract-across-turns
+  ticket: "A derived remainder — proves the earlier turn was actually read."
+  tags: [context, multiturn]
+  setup:
+    turns:
+      - "I'm on page 47 of a 120 page book."
+      - "how many pages have I got left?"
+  prompt: "how many pages have I got left?"
+  expected:
+    category: context
+    delegation: forbidden
+    communicate: ["73"]
+    judge:
+      criteria:
+        - "The reply gives 73 pages remaining."
+        - "The reply does not ask the user for numbers they already gave."
+    score: {gates: [communicate, delegation]}
+
+- id: comms-context-dietary-constraint
+  ticket: "A constraint from turn 1 must bind turn 2's answer."
+  tags: [context, multiturn]
+  setup:
+    turns:
+      - "just so you know, I'm vegetarian."
+      - "give me three quick dinner ideas"
+  prompt: "give me three quick dinner ideas"
+  expected:
+    category: context
+    delegation: forbidden
+    # Unlike the allergy case below, the meat names ARE the right forbidden
+    # strings here. There is no "peanut-free" analogue a correct reply needs to
+    # say: three dinner ideas for a vegetarian have no reason to contain the
+    # word "chicken" at all, so naming one is the failure itself and this is the
+    # only check on the case that can discriminate (`delegation` alone cannot).
+    must_not_communicate: ["chicken", "beef", "pork", "bacon", "salmon"]
+    judge:
+      criteria:
+        - "All three dinner ideas are vegetarian."
+        - "The reply does not ask the user to restate a preference they already gave."
+    score: {gates: [must_not_communicate, delegation]}
+
+- id: comms-context-allergy-constraint
+  ticket: "A safety-relevant constraint from an earlier turn must not be dropped."
+  tags: [context, multiturn]
+  setup:
+    turns:
+      - "I'm badly allergic to peanuts."
+      - "what's a good snack to keep at my desk?"
+  prompt: "what's a good snack to keep at my desk?"
+  expected:
+    category: context
+    delegation: forbidden
+    # The allergen NAME cannot be the forbidden string: a reply that remembers
+    # the allergy says "peanut-free" and "check the label, some bars hide
+    # peanuts", and `says()` matches "peanut" inside both. Observed 2026-08-08 —
+    # a fully peanut-free answer scored 0 for warning about peanuts. Ban the
+    # peanut-based FOODS instead: naming one is the actual failure (the agent
+    # forgot turn 1), and no safe answer needs to suggest them.
+    must_not_communicate: ["peanut butter", "satay", "pb&j"]
+    judge:
+      criteria:
+        - "The suggestion is safe for someone with a peanut allergy."
+        - "The reply does not need the allergy repeated to it."
+    score: {gates: [must_not_communicate, delegation]}
+
+- id: comms-context-pronoun-across-turns
+  ticket: "'That one' resolves against the earlier turn, not against a guess."
+  tags: [context, multiturn]
+  setup:
+    turns:
+      - "I've got two side projects: one is a bike-repair blog, the other is a synth I'm building."
+      - "the hardware one — what should I do first?"
+  prompt: "the hardware one — what should I do first?"
+  expected:
+    category: context
+    delegation: forbidden
+    judge:
+      criteria:
+        - "The reply is clearly about the synth build, not the blog."
+        - "The reply does not ask which project the user means."
+    score: {gates: [delegation, bubble_boundary]}
+
+- id: comms-context-correction-then-work
+  ticket: "A correction in turn 2 changes the task; it still has to be delegated."
+  tags: [context, multiturn, delegation]
+  setup:
+    turns:
+      - "remind me to call the dentist at 6pm"
+      - "actually make it 7pm"
+  prompt: "actually make it 7pm"
+  expected:
+    category: context
+    delegation: required
+    judge:
+      criteria:
+        - "The final reply treats 7pm as the time, not 6pm, and does not create two reminders."
+        - "The final reply does not claim the reminder already exists at both times."
+    score: {gates: [delegation]}

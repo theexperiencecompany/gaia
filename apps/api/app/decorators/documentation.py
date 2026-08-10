@@ -4,8 +4,14 @@ Documentation decorators for functions and methods.
 This module provides decorators for applying documentation to functions.
 """
 
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar
 
-def with_doc(docstring):
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def with_doc(docstring: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorator that applies a docstring to a function.
 
@@ -21,7 +27,7 @@ def with_doc(docstring):
             return {"id": user_id, "name": "Sam"}
     """
 
-    def decorator(func):
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         func.__doc__ = docstring
         return func
 

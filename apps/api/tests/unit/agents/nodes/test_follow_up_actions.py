@@ -23,7 +23,6 @@ def _make_store():
     return MagicMock()
 
 
-@pytest.mark.unit
 class TestPrettyPrintMessages:
     def test_excludes_system_messages_by_default(self):
         messages = [
@@ -51,7 +50,6 @@ class TestPrettyPrintMessages:
         assert result == ""
 
 
-@pytest.mark.unit
 class TestFollowUpActionsNode:
     @pytest.mark.asyncio
     async def test_stream_closed_on_first_write_returns_state_immediately(self):

@@ -2,21 +2,24 @@
 Clean and lean workflow models for GAIA workflow system.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, TypedDict
 import uuid
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SerializeAsAny,
     field_serializer,
     field_validator,
     model_validator,
 )
 
-from app.models.scheduler_models import BaseScheduledTask
+from app.db.repositories.base import MongoDocument
+from app.models.scheduler_models import BaseScheduledTask, ScheduledTaskStatus
 from app.models.trigger_configs import TriggerConfigData
 from app.utils.cron_utils import get_next_run_time, validate_cron_expression
 from app.utils.timezone import Timezone
@@ -34,6 +37,13 @@ class TriggerType(str, Enum):
     MANUAL = "manual"
     SCHEDULE = "schedule"
     INTEGRATION = "integration"
+
+
+class IntegrationRef(BaseModel):
+    """Lightweight integration reference for workflow responses."""
+
+    id: str
+    name: str
 
 
 class WorkflowStep(BaseModel):
@@ -121,7 +131,7 @@ class TriggerConfig(BaseModel):
             schedule_tz = Timezone.parse(user_timezone or self.timezone)
             return get_next_run_time(self.cron_expression, base_time, schedule_tz)
         except Exception as e:
-            log.error(f"Error calculating next run time: {e}")
+            log.error("Error calculating next run time", error=str(e), error_type=type(e).__name__)
             return None
 
     def update_next_run(
@@ -134,12 +144,25 @@ class TriggerConfig(BaseModel):
 
     @field_validator("cron_expression")
     @classmethod
-    def validate_cron_expression(cls, v):
+    def validate_cron_expression(cls, v: str | None) -> str | None:
         """Validate cron expression if provided."""
         if v is not None:
             if not validate_cron_expression(v):
                 raise ValueError(f"Invalid cron expression: {v}")
         return v
+
+
+class WorkflowCreator(TypedDict):
+    """The public-facing creator card built by ``format_creator``.
+
+    A ``TypedDict``, not a model: it rides inside the untyped card dicts of
+    ``PublicWorkflowsResponse.workflows`` as well as ``Workflow.creator``, so it
+    has to stay a plain dict on the wire for both.
+    """
+
+    id: str | None
+    name: str
+    avatar: str | None
 
 
 class Workflow(BaseScheduledTask):
@@ -238,18 +261,31 @@ class Workflow(BaseScheduledTask):
         ),
     )
 
-    selected_integrations: list[str] | None = Field(
-        default=None,
-        description="Integration slugs the user picked to bias step generation.",
+    integration_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Integration ids this workflow uses — picked by the user or identified "
+            "from intent by the workflow assistant. Scopes the tool palette when "
+            "generating steps. Connection state is never stored here: "
+            "required/missing integrations are derived from the steps at read time."
+        ),
     )
 
-    creator: dict[str, Any] | None = Field(
+    creator: WorkflowCreator | None = Field(
         default=None,
         description="Creator info hydrated for public workflow lookups.",
     )
 
-    def __init__(self, **data):
-        """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields."""
+    def __init__(self, **data: Any) -> None:
+        """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields.
+
+        ``**data`` stays ``Any``. Measured, don't re-litigate: ``**data: object``
+        produces 4 errors on the ``super().__init__(**data)`` below, because
+        BaseScheduledTask's generated ``__init__`` declares per-field types
+        (``str``, ``datetime``, ``ScheduledTaskStatus``, ``int``) that a
+        ``dict[str, object]`` bag cannot satisfy. The two "before" validators in
+        this module were narrowed to ``object`` and did not need it.
+        """
         # Ensure user_id is provided (it's required by BaseScheduledTask)
         if "user_id" not in data:
             raise ValueError("user_id is required for workflow creation")
@@ -293,7 +329,7 @@ class Workflow(BaseScheduledTask):
 
     @model_validator(mode="before")
     @classmethod
-    def hydrate_legacy_prompt_and_description(cls, data):
+    def hydrate_legacy_prompt_and_description(cls, data: Any) -> Any:
         """Ensure legacy records still expose prompt and non-null description."""
         if isinstance(data, dict):
             description = data.get("description") or ""
@@ -309,6 +345,21 @@ class Workflow(BaseScheduledTask):
 
 
 # Request/Response models for API
+
+
+class WorkflowWithIntegrations(Workflow):
+    """Read-time view of a workflow: the persisted `Workflow` plus its computed
+    integration requirements. Never persisted — the storage model is `Workflow`;
+    these fields are populated by the service on read paths only."""
+
+    required_integrations: list[IntegrationRef] | None = Field(
+        default=None,
+        description="Integration IDs required by the workflow's steps.",
+    )
+    missing_integrations: list[IntegrationRef] | None = Field(
+        default=None,
+        description="Required integrations the user has not connected yet.",
+    )
 
 
 class CreateWorkflowRequest(BaseModel):
@@ -333,9 +384,12 @@ class CreateWorkflowRequest(BaseModel):
         default=True,
         description="Whether GAIA sends the automatic completion notification when a run finishes.",
     )
-    selected_integrations: list[str] | None = Field(
+    integration_ids: list[str] | None = Field(
         default=None,
-        description="Integration slugs selected by the user to hint step generation.",
+        description=(
+            "Integration ids this workflow uses — picked by the user or identified "
+            "from intent. Scopes the tool palette when generating steps."
+        ),
     )
 
     # System workflow fields — set by provisioner, not by regular API users
@@ -354,7 +408,7 @@ class CreateWorkflowRequest(BaseModel):
 
     @field_validator("title", "prompt")
     @classmethod
-    def validate_non_empty_strings(cls, v):
+    def validate_non_empty_strings(cls, v: str) -> str:
         """Require non-blank title/prompt and strip surrounding whitespace."""
         if not v or not v.strip():
             raise ValueError("Field cannot be empty or contain only whitespace")
@@ -362,11 +416,25 @@ class CreateWorkflowRequest(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def validate_optional_description(cls, v):
+    def validate_optional_description(cls, v: str | None) -> str | None:
         """Normalize an optional description, coercing blank values to None/empty."""
         if v is not None and not v.strip():
             return ""
         return v.strip() if v else None
+
+
+class CreateWorkflowFromTodoRequest(BaseModel):
+    """Request model for the todo → workflow migration helper.
+
+    ``todo_id``/``todo_title`` are optional at the schema level on purpose: the
+    endpoint rejects a payload missing either with a 400, and declaring them
+    required here would turn that into FastAPI's 422 — a change to the contract
+    the web client already codes against, not a typing fix.
+    """
+
+    todo_id: str | None = None
+    todo_title: str | None = None
+    todo_description: str | None = None
 
 
 class UpdateWorkflowRequest(BaseModel):
@@ -379,11 +447,11 @@ class UpdateWorkflowRequest(BaseModel):
     trigger_config: TriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
     notify_on_completion: bool | None = Field(default=None)
-    selected_integrations: list[str] | None = Field(default=None)
+    integration_ids: list[str] | None = Field(default=None)
 
     @field_validator("title", "prompt")
     @classmethod
-    def validate_optional_non_empty_strings(cls, v):
+    def validate_optional_non_empty_strings(cls, v: str | None) -> str | None:
         """Strip provided title/prompt updates and reject blank-only values."""
         if v is not None:
             if not v.strip():
@@ -393,7 +461,7 @@ class UpdateWorkflowRequest(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def validate_optional_update_description(cls, v):
+    def validate_optional_update_description(cls, v: str | None) -> str | None:
         """Normalize a description update, coercing blank values to None."""
         if v is None:
             return None
@@ -404,14 +472,19 @@ class UpdateWorkflowRequest(BaseModel):
 class WorkflowResponse(BaseModel):
     """Response model for workflow operations."""
 
-    workflow: Workflow
+    # SerializeAsAny so a WorkflowWithIntegrations (from read paths) serializes
+    # its extra integration fields; plain Workflow instances still validate.
+    workflow: SerializeAsAny[Workflow]
     message: str = Field(description="Success or status message")
 
 
 class WorkflowListResponse(BaseModel):
     """Response model for listing workflows."""
 
-    workflows: list[Workflow]
+    # Sequence (not list) because list is invariant: the read path hands us
+    # list[WorkflowWithIntegrations]. SerializeAsAny keeps the subclass's extra
+    # integration fields in the payload while still accepting a plain Workflow.
+    workflows: Sequence[SerializeAsAny[Workflow]]
 
 
 class WorkflowExecutionRequest(BaseModel):
@@ -450,19 +523,41 @@ class RegenerateStepsRequest(BaseModel):
     force_different_tools: bool = Field(
         default=False, description="Force the use of different tools"
     )
-    selected_integrations: list[str] | None = Field(
+    integration_ids: list[str] | None = Field(
         default=None,
-        description="Integration slugs to bias regeneration; falls back to persisted selection.",
+        description="Integration ids to scope regeneration; falls back to the workflow's own.",
     )
 
 
 class PublicWorkflowsResponse(BaseModel):
     """Response model for listing public workflows."""
 
+    # Deliberately left as untyped card dicts. Three endpoints build these — the
+    # community and explore lists here plus /public/{id}/workflows in
+    # integrations/public.py — and each emits a different key set (explore adds
+    # categories + total_executions, related adds total_executions). Modelling
+    # them as a card base + subclasses means every construction site must hand
+    # over a model instead of a dict, or Pydantic silently drops the subclass-only
+    # keys from the payload; that reaches outside this flow's files and changes
+    # what a frontend consumer receives if it is done partially (Type Safety
+    # item 14). Typed together with that endpoint, not before.
     workflows: list[dict[str, Any]] = Field(
         description="List of public workflows with creator info"
     )
     total: int = Field(description="Total number of public workflows")
+
+
+class ResetWorkflowResponse(BaseModel):
+    """Response model for resetting a system workflow to its default definition."""
+
+    success: bool = Field(description="Whether the workflow was reset")
+    message: str = Field(description="Success or status message")
+
+
+class WorkflowMessageResponse(BaseModel):
+    """Acknowledgement for a workflow mutation that returns no entity."""
+
+    message: str = Field(description="Human-readable outcome")
 
 
 class PublishWorkflowResponse(BaseModel):
@@ -473,16 +568,31 @@ class PublishWorkflowResponse(BaseModel):
     slug: str | None = Field(default=None, description="Public URL slug for the workflow")
 
 
+class PromptTriggerHint(BaseModel):
+    """The subset of a trigger config the magic-prompt generator reads.
+
+    The workflow editor posts whatever it currently holds in the trigger form, so
+    every field is optional and unknown keys are ignored — this is a hint for the
+    LLM, never a trigger that gets persisted. ``type`` defaults to ``"manual"``
+    but is nullable, matching the ``.get("type", "manual")`` this replaced: an
+    omitted type means manual, an explicitly null one stays unset.
+    """
+
+    type: str | None = "manual"
+    cron_expression: str | None = None
+    trigger_name: str | None = None
+
+
 class GenerateWorkflowPromptRequest(BaseModel):
     """Request model for AI-generated workflow instructions."""
 
     title: str | None = None
     description: str | None = None
-    trigger_config: dict[str, Any] | None = None
+    trigger_config: PromptTriggerHint | None = None
     existing_prompt: str | None = None  # non-empty → improve mode
-    selected_integrations: list[str] | None = Field(
+    integration_ids: list[str] | None = Field(
         default=None,
-        description="Integration slugs the user picked, used to bias the suggestion.",
+        description="Integration ids the user picked, used to bias the suggestion.",
     )
 
 
@@ -546,3 +656,95 @@ class GenerateWorkflowPromptResponse(BaseModel):
 
     prompt: str
     suggested_trigger: SuggestedTrigger | None = None
+
+
+class GeneratedPromptResult(TypedDict):
+    """What ``generate_workflow_prompt`` hands back to its two callers.
+
+    A ``TypedDict``, not the response model above (Type Safety item 6): the value
+    never crosses a validation boundary — the endpoint builds the response model
+    from it, and onboarding's ``_build_one_workflow`` reads the same two keys
+    off the dict. Being a plain dict at runtime keeps both call sites working
+    untouched while mypy starts checking the keys.
+    """
+
+    prompt: str
+    suggested_trigger: SuggestedTrigger | None
+
+
+# Repository persistence models (Wave E migration)
+
+
+class WorkflowDocument(Workflow, MongoDocument):
+    """A workflow as stored in MongoDB.
+
+    Identity is the string business key ``id`` (persisted as ``_id``; the two are
+    equal ``wf_…`` UUIDs). Extends ``Workflow`` so it doubles as the read model —
+    the service wraps it in ``WorkflowWithIntegrations`` only to attach computed
+    integration fields. ``extra="ignore"`` (from ``MongoDocument``) tolerates
+    legacy stray fields; the ISO-string ``created_at``/``scheduled_at`` values a
+    handful of legacy rows still carry are coerced to tz-aware datetimes by the
+    inherited ``BaseScheduledTask`` validators.
+    """
+
+    # Resolve the ``Workflow.id`` (``str | None``, alias ``_id``) vs
+    # ``MongoDocument.id`` (``str``) diamond: a persisted workflow always has its
+    # ``wf_…`` id, so the stored document is non-optional. The repository keys on
+    # ``_id`` directly, so no alias is needed here.
+    id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
+
+
+class WorkflowCreatorInfo(BaseModel):
+    """One creator row hydrated by the ``creator_lookup_stage`` ``$lookup`` — the
+    projected ``{name, email, picture}`` subset of the joined user document. All
+    optional because the join yields no match for a non-user creator (the literal
+    ``"system"``) or a legacy row whose user was deleted."""
+
+    name: str | None = None
+    email: str | None = None
+    picture: str | None = None
+
+
+class PublicWorkflowRow(WorkflowDocument):
+    """A workflow read from a public-marketplace aggregation: the persisted
+    ``WorkflowDocument`` plus the joined ``creator_info`` array.
+
+    ``creator_info`` and ``use_case_categories`` are ``exclude``d from
+    serialization so a row handed straight back as a ``WorkflowResponse.workflow``
+    (the single ``get_public`` path) emits exactly the ``Workflow`` shape — the
+    join scaffolding never leaks into the response. The list paths
+    (community/explore/related) read these attributes to hand-build their dict
+    payloads and never serialize the row itself.
+    """
+
+    creator_info: list[WorkflowCreatorInfo] = Field(default_factory=list, exclude=True)
+    # Explore-only curation field; absent on community/related rows (defaults to
+    # ``["featured"]`` there, matching the legacy ``.get(..., ["featured"])`` read).
+    use_case_categories: list[str] = Field(default_factory=lambda: ["featured"], exclude=True)
+
+
+class WorkflowUpdate(BaseModel):
+    """Partial ``$set`` update for a workflow — the flat, top-level fields the
+    owned-CRUD paths mutate. Nested (``trigger_config.*``) and operator
+    (``$inc`` stats, atomic status claim) writes are named repository methods that
+    use the raw-update seam, not this model.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    description: str | None = None
+    prompt: str | None = None
+    steps: list[WorkflowStep] | None = None
+    trigger_config: TriggerConfig | None = None
+    activated: bool | None = None
+    notify_on_completion: bool | None = None
+    integration_ids: list[str] | None = None
+    status: ScheduledTaskStatus | None = None
+    scheduled_at: datetime | None = None
+    repeat: str | None = None
+    error_message: str | None = None
+    current_step_index: int | None = None
+    is_public: bool | None = None
+    slug: str | None = None
+    created_by: str | None = None

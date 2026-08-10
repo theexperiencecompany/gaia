@@ -32,7 +32,7 @@ def execute_tool(
     """Execute a Composio tool directly (bypasses hook pipeline) and return its data dict.
 
     Args:
-        tool_name: Composio tool name, e.g. "GMAIL_FETCH_EMAILS".
+        tool_name: Composio tool name, e.g. "GMAIL_FETCH_MESSAGES".
         params: Parameters to pass to the tool.
         user_id: User ID used for authentication.
         output_model: Optional Pydantic model to validate the response data.
@@ -64,7 +64,13 @@ def execute_tool(
             validated = output_model.model_validate(data)
             return validated.model_dump()
         except Exception as e:
-            log.warning(f"{LogTag.AGENT} Schema validation warning for {tool_name}: {e}")
+            log.warning(
+                f"{LogTag.AGENT} Schema validation warning for",
+                tool_name=tool_name,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             return data
 
     return data
@@ -78,15 +84,26 @@ def fetch_all_providers(
     provider_tools: dict[str, str],
     user_id: str,
 ) -> dict[str, Any]:
-    """Fetch all providers in parallel by calling each CUSTOM_GATHER_CONTEXT tool."""
+    """Fetch all providers in parallel by calling each CUSTOM_GATHER_CONTEXT tool.
 
-    def fetch_one(provider: str) -> tuple:
+    Values stay ``dict[str, Any]``: each is a provider's raw
+    ``CUSTOM_GATHER_CONTEXT`` payload, whose shape is the provider's own and
+    differs per integration (Type Safety item 8).
+    """
+
+    def fetch_one(provider: str) -> tuple[str, dict[str, Any] | None]:
         tool_slug = provider_tools[provider]
         try:
             data = execute_tool(tool_slug, {}, user_id)
             return provider, data
         except Exception as e:
-            log.warning(f"{LogTag.AGENT} Provider {provider} ({tool_slug}) failed: {e}")
+            log.warning(
+                f"{LogTag.AGENT} Provider failed",
+                provider=provider,
+                tool_slug=tool_slug,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return provider, None
 
     results: dict[str, Any] = {}
@@ -101,10 +118,16 @@ def fetch_all_providers(
                 results[provider] = data
         except FuturesTimeout:
             provider = futures[future]
-            log.warning(f"{LogTag.AGENT} Provider {provider} timed out")
+            log.warning(f"{LogTag.AGENT} Provider timed out", provider=provider, user_id=user_id)
         except Exception as e:
             provider = futures[future]
-            log.error(f"{LogTag.AGENT} Unexpected error for {provider}: {e}")
+            log.error(
+                f"{LogTag.AGENT} Unexpected error for",
+                provider=provider,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
     return results
 
 
@@ -137,13 +160,20 @@ async def resolve_providers(
     try:
         connected = await get_user_available_tool_namespaces(user_id)
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Could not get connected namespaces: {e}")
+        log.warning(
+            f"{LogTag.AGENT} Could not get connected namespaces",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
     if connected:
         filtered = [p for p, slug in provider_tools.items() if namespace_fn(slug) in connected]
         if filtered:
             log.info(
-                f"{LogTag.AGENT} Auto-selected {len(filtered)} connected providers: {filtered}"
+                f"{LogTag.AGENT} Auto-selected connected providers",
+                filtered_count=len(filtered),
+                filtered=filtered,
             )
             return filtered
 

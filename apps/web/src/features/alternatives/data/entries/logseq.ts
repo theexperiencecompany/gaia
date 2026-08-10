@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No proactive AI or automation for capturing information automatically",
     "Requires manual maintenance to keep the graph useful",
   ],
-  metaTitle: "Best Logseq Alternative in 2026 | GAIA",
+  metaTitle: "Best Logseq Alternative in 2026",
   metaDescription:
     "Logseq requires manual note maintenance and has no proactive AI. GAIA is a proactive AI assistant with built-in graph memory. Free tier + open-source self-hosting.",
   keywords: [

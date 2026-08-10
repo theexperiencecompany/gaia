@@ -12,7 +12,6 @@ import pytest
 from app.agents.workspace import skill_loader as sl
 
 
-@pytest.mark.unit
 class TestParseFrontmatter:
     def test_parses_scalar_keys_and_strips_quotes(self) -> None:
         raw = (
@@ -39,7 +38,6 @@ class TestParseFrontmatter:
         assert meta == {"name": "x", "target": "y"}
 
 
-@pytest.mark.unit
 class TestTargetToSubagent:
     @pytest.mark.parametrize(
         "target,expected",
@@ -55,7 +53,6 @@ class TestTargetToSubagent:
         assert sl.target_to_subagent(target) == expected
 
 
-@pytest.mark.unit
 class TestLoadResources:
     def test_collects_text_siblings_and_excludes_skill_md(self, tmp_path: Path) -> None:
         (tmp_path / "SKILL.md").write_text("---\nname: x\n---\nbody", encoding="utf-8")
@@ -95,7 +92,6 @@ class TestLoadResources:
         assert rels == ["scripts/build.sh"]
 
 
-@pytest.mark.unit
 class TestLoadOne:
     def test_returns_none_without_skill_md(self, tmp_path: Path) -> None:
         (tmp_path / "reference.md").write_text("ref", encoding="utf-8")

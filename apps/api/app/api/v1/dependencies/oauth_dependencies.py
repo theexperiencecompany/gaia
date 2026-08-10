@@ -1,36 +1,47 @@
-import asyncio
-from datetime import UTC, datetime
-from typing import Any
+from datetime import datetime
+from typing import Any, cast
 
-from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
+from app.config.settings import settings
+from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
+from app.models.user_models import AuthenticatedUser, UserUpdate, user_to_legacy_dict
+from app.utils.auth_utils import (
+    authenticate_workos_session,
+    build_user_context,
+    resolve_dev_bypass_user,
+)
 from app.utils.timezone import Timezone, TimezoneSource, resolve_home_timezone
-from shared.py.wide_events import log
-
-_TIMEZONE_BACKFILL_TASKS: set[asyncio.Task[Any]] = set()
+from shared.py.wide_events import log, spawn_logged_task
 
 
 async def _backfill_user_timezone(user_id: str, tz: str) -> None:
     """Fire-and-forget write-through of the browser-reported timezone."""
     try:
-        await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": {"timezone": tz, "updated_at": datetime.now(UTC)}},
-        )
+        await user_repository.update(user_id, UserUpdate(timezone=tz))
         log.info(
             f"{LogTag.OAUTH} Backfilled user.timezone from x-timezone header",
             user_id=user_id,
             timezone=tz,
         )
     except Exception as e:
-        log.warning(f"{LogTag.OAUTH} Failed to backfill user.timezone for {user_id}: {e}")
+        log.warning(
+            f"{LogTag.OAUTH} Failed to backfill user.timezone",
+            user_id=user_id,
+            timezone=tz,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
 
 
-async def get_current_user(request: Request):
+# NOSONAR justification: FastAPI dispatches a `def` dependency to a threadpool and
+# an `async def` one on the event loop. This reads request.state and nothing else,
+# so `async def` is deliberately the cheaper of the two — and it runs on every
+# authenticated request. Dropping `async` would add a threadpool hop per request.
+async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR python:S7503
     """
     Retrieves the current user from request state.
     Authentication is handled by the WorkOSAuthMiddleware.
@@ -63,7 +74,9 @@ async def get_current_user(request: Request):
             },
         )
 
-    user = request.state.user
+    # request.state is Starlette's untyped bag (Any); WorkOSAuthMiddleware always
+    # sets .user to the dict built by build_user_context() when authenticated=True.
+    user = cast(dict[str, Any], request.state.user)
     log.set(
         auth={
             "user_id": user.get("user_id"),
@@ -72,10 +85,16 @@ async def get_current_user(request: Request):
             "is_agent_token": bool(user.get("is_agent_token", False)),
         }
     )
-    return user
+    # request.state is untyped by Starlette; the middleware only ever puts an
+    # AuthenticatedUser there (see WorkOSAuthMiddleware).
+    return cast(AuthenticatedUser, user)
 
 
-async def get_user_id(user: dict = Depends(get_current_user)) -> str:
+# NOSONAR justification: same as get_current_user above — a FastAPI dependency that
+# only unwraps one field stays on the event loop rather than paying a threadpool hop.
+async def get_user_id(  # NOSONAR python:S7503
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> str:
     """Extract user_id from authenticated user or raise 400."""
     user_id = user.get("user_id")
     if not user_id:
@@ -83,7 +102,7 @@ async def get_user_id(user: dict = Depends(get_current_user)) -> str:
     return str(user_id)
 
 
-async def get_current_user_ws(websocket: WebSocket):
+async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
     """
     Authenticate a user from a WebSocket connection using cookies.
     This is a special version of get_current_user for WebSocket connections.
@@ -103,7 +122,25 @@ async def get_current_user_ws(websocket: WebSocket):
     Raises:
         WebSocketException: Connection will be closed on auth failure
     """
-    from app.utils.auth_utils import authenticate_workos_session
+    # Dev auth bypass — WebSockets never pass through WorkOSAuthMiddleware
+    # (BaseHTTPMiddleware only handles HTTP), so the bypass is mirrored here,
+    # including the X-Dev-User per-request impersonation header. get_settings()
+    # hard-fails if this is set in production.
+    if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
+        target_email, user_data = await resolve_dev_bypass_user(
+            websocket.headers, websocket.cookies
+        )
+        if user_data is not None:
+            return build_user_context(
+                user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True
+            )
+        log.error(
+            f"{LogTag.OAUTH} Dev bypass target has no Mongo user",
+            target_email=target_email,
+            fix=DEV_USER_MISSING_HINT,
+        )
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return {}
 
     # Extract the session cookie from WebSocket
     wos_session = websocket.cookies.get("wos_session")
@@ -129,7 +166,7 @@ async def get_current_user_ws(websocket: WebSocket):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
 
-    return user_info
+    return cast(AuthenticatedUser, user_info)
 
 
 GET_USER_TZ_TYPE = tuple[str, datetime]
@@ -147,12 +184,12 @@ def get_user_timezone(
     """
     tz = Timezone.parse(x_timezone)
     now = tz.now()
-    log.debug(f"{LogTag.OAUTH} User timezone: {tz.value}, Current time: {now}")
+    log.debug(f"{LogTag.OAUTH} Resolved user timezone", timezone=tz.value, now=str(now))
     return tz.value, now
 
 
 async def get_user_timezone_from_preferences(
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     x_timezone: str = Header(
         default="", alias="x-timezone", description="Browser timezone fallback"
     ),
@@ -196,13 +233,21 @@ async def get_user_timezone_from_preferences(
             )
 
         if resolved.should_heal and user_id:
-            task = asyncio.create_task(_backfill_user_timezone(user_id, resolved.timezone.value))
-            _TIMEZONE_BACKFILL_TASKS.add(task)
-            task.add_done_callback(_TIMEZONE_BACKFILL_TASKS.discard)
+            spawn_logged_task(
+                "timezone_backfill",
+                _backfill_user_timezone(user_id, resolved.timezone.value),
+                user={"id": user_id},
+                timezone=resolved.timezone.value,
+            )
 
         return resolved.timezone.value
 
     except Exception as e:
-        log.warning(f"{LogTag.OAUTH} Error resolving user timezone: {e}", user_id=user_id)
+        log.warning(
+            f"{LogTag.OAUTH} Error resolving user timezone",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         log.set(timezone_source=TimezoneSource.FALLBACK_UTC.value, user_timezone="UTC")
         return "UTC"

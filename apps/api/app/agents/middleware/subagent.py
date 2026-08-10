@@ -1,16 +1,15 @@
-"""
-SubagentMiddleware - Provides spawn_subagent tool for lightweight parallel task execution.
+"""SubagentMiddleware - Provides spawn_subagent tool for lightweight parallel task execution.
 
-Spawned subagents run a simple tool-calling loop (no full graph/checkpointer).
-When a tool_registry + store are configured, subagents get `retrieve_tools`
-for dynamic discovery instead of binding all tools upfront.
+A spawned subagent is a real compiled graph (see
+``app/agents/core/subagents/spawn_agent.py``), run imperatively on a disposable
+thread of its own. That is what gives it the full middleware stack — including
+the HIL gate, so a gated tool inside a spawn pauses for the user's approval and
+bubbles that pause up to the parent, exactly as ``handoff`` does.
 """
 
-import asyncio
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 import time
-from typing import Annotated, Any, cast
-from uuid import uuid4
+from typing import Annotated, Any, Protocol
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -19,38 +18,63 @@ from langchain.agents.middleware.types import (
 )
 from langchain.tools import InjectedToolCallId
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_core.messages.tool import ToolCall
+from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import BaseTool, StructuredTool, tool
+from langchain_core.tools import BaseTool, tool
 from langgraph.config import get_stream_writer
+from langgraph.errors import GraphBubbleUp
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm, is_default_model_config
-from app.agents.llm.exceptions import LLMNotConfiguredError
-from app.agents.middleware.compaction import compact_tool_output, estimate_context_usage
+from app.agents.core.subagents.subagent_runner import (
+    SubagentExecutionContext,
+    SubagentOutcome,
+    build_initial_messages,
+    execute_subagent_stream,
+    recover_from_checkpoint,
+    resume_for_gate,
+    subagent_row_id,
+)
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
 )
-from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from app.constants.general import FINISH_TASK_NAME
-from app.constants.llm import DEFAULT_MAX_TOKENS, SUBAGENT_RECURSION_LIMIT
+from app.constants.general import SPAWN_AGENT_NAME, SPAWN_THREAD_PREFIX
+from app.constants.hil import HIL_RESUME_CONFIG_KEY
+from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
-from app.constants.summarization import COMPACTION_THRESHOLD, MAX_OUTPUT_CHARS
-from app.core.stream_manager import stream_manager
+from app.helpers.agent_helpers import build_agent_config
+from app.models.agent_models import AnyAgentMiddleware, agent_configurable
 from app.utils.agent_utils import (
     StreamWriterCallable,
-    emit_subagent_tool_calls,
     format_subagent_end_event,
     format_subagent_start_event,
 )
 from shared.py.wide_events import log
 
-_RETRIEVE_TOOLS_NAME = "retrieve_tools"
+
+class SpawnGraphProvider(Protocol):
+    """Compiles the graph a spawn runs on.
+
+    A Protocol rather than ``Callable[..., ...]`` because this is an injection
+    seam: every call site passes these six by keyword, and an erased signature
+    turns a renamed or dropped argument into a runtime ``TypeError`` instead of a
+    type error. Satisfied by ``core.subagents.spawn_agent.get_spawn_graph``,
+    which is injected rather than imported (see :meth:`set_spawn_graph_provider`).
+    """
+
+    async def __call__(
+        self,
+        llm: LanguageModelLike,
+        registry: Mapping[str, BaseTool],
+        excluded_tool_names: set[str],
+        tool_space: str,
+        runtime: ToolRuntimeConfig,
+        middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
+    ) -> CompiledStateGraph: ...
 
 
 class SubagentState(AgentState[Any]):
@@ -75,9 +99,15 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         tool_space: str = "general",
         store: BaseStore | None = None,
         tool_runtime_config: ToolRuntimeConfig | None = None,
-    ):
+        spawn_middleware_factory: Callable[[str], Sequence[AnyAgentMiddleware]] | None = None,
+    ) -> None:
         super().__init__()
         self._llm = llm
+        self._spawn_middleware_factory = spawn_middleware_factory
+        # Injected by whoever builds the parent graph (see set_spawn_graph_provider):
+        # the builder imports create_agent, which imports this package, so this
+        # module cannot reach the graph builder itself.
+        self._spawn_graph_provider: SpawnGraphProvider | None = None
         self._available_tools = available_tools or []
         self._tool_registry = tool_registry
         self._max_turns = max_turns
@@ -98,7 +128,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         self.tools = [self._create_spawn_subagent_tool()]
 
-    def _create_spawn_subagent_tool(self):
+    def _create_spawn_subagent_tool(self) -> BaseTool:
         middleware = self
 
         @tool(description=SPAWN_SUBAGENT_DESCRIPTION)
@@ -124,62 +154,13 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 )
 
             try:
-                # Emit subagent_start/end events for the UI
-                sa_id = str(uuid4())
-                configurable = config.get("configurable", {})
-                parent_sa_id = configurable.get("subagent_id")
-
-                # Surface the task as the subagent's name so the UI shows
-                # what's running, not three identical "Subagent" rows.
-                spawn_name = (task[:40].rstrip() + "…") if len(task) > 40 else (task or "Subagent")
-                try:
-                    writer = get_stream_writer()
-                    writer(
-                        {
-                            "subagent_start": format_subagent_start_event(
-                                subagent_name=spawn_name,
-                                agent_type="spawned",
-                                subagent_id=sa_id,
-                                tool_category="spawn_subagent",
-                                parent_subagent_id=parent_sa_id,
-                            )
-                        }
-                    )
-                except Exception:
-                    writer = None  # type: ignore[assignment]
-
-                start_time = time.monotonic()
-                try:
-                    result = await middleware._execute_subagent(
-                        task,
-                        context,
-                        config,
-                        inherited_tool_names=selected_tool_ids,
-                        stream_writer=writer,
-                        subagent_id=sa_id,
-                    )
-                finally:
-                    # Always terminate the UI's subagent row — a failed spawn must
-                    # not leave it spinning forever. Best-effort like the start
-                    # emission above: a writer failure here must not mask the real
-                    # execution result/exception this finally is unwinding.
-                    if writer is not None:
-                        duration_ms = int((time.monotonic() - start_time) * 1000)
-                        try:
-                            writer(
-                                {
-                                    "subagent_end": format_subagent_end_event(
-                                        subagent_id=sa_id,
-                                        duration_ms=duration_ms,
-                                    )
-                                }
-                            )
-                        except Exception as emit_error:
-                            log.error(
-                                f"{LogTag.AGENT} Failed to emit subagent_end",
-                                error=str(emit_error),
-                            )
-
+                result = await middleware._run_spawn(
+                    task=task,
+                    context=context,
+                    config=config,
+                    tool_call_id=tool_call_id,
+                    inherited_tool_names=selected_tool_ids,
+                )
                 return Command(
                     update={
                         "messages": [
@@ -190,10 +171,13 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         ]
                     }
                 )
-            except asyncio.CancelledError:
+            except GraphBubbleUp:
+                # The HIL gate's interrupt bubbling up from the spawned graph.
+                # Control flow, not a failure — converting it to a tool error
+                # would drop the user's approval request on the floor.
                 raise
             except Exception as e:
-                log.error(f"{LogTag.AGENT} Subagent execution failed: {e}")
+                log.error(f"{LogTag.AGENT} Subagent execution failed", error_type=type(e).__name__)
                 return Command(
                     update={
                         "messages": [
@@ -208,362 +192,189 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         return spawn_subagent
 
-    def _build_retrieve_tool(
-        self,
-        config: RunnableConfig,
-    ) -> StructuredTool | None:
-        """Build a retrieve_tools StructuredTool with pre-bound store/config.
-
-        Returns None if store is not configured.
-        """
-        if not self._tool_runtime_config.enable_retrieve_tools or self._store is None:
-            return None
-
-        store = self._store
-        inner_fn = get_retrieve_tools_function(
-            tool_space=self._tool_space,
-            include_subagents=self._tool_runtime_config.include_subagents_in_retrieve,
-        )
-
-        async def retrieve_tools(
-            query: str | None = None,
-            exact_tool_names: list[str] | None = None,
-        ):
-            return await inner_fn(
-                store=store,
-                config=config,
-                query=query,
-                exact_tool_names=exact_tool_names,
-            )
-
-        retrieve_tools.__doc__ = inner_fn.__doc__
-
-        return StructuredTool.from_function(
-            coroutine=retrieve_tools,
-            name=_RETRIEVE_TOOLS_NAME,
-        )
-
-    def _collect_tools(self) -> list[BaseTool]:
-        """Collect all eligible tools from available_tools and tool_registry."""
-        tools: list[BaseTool] = []
-
-        for t in self._available_tools:
-            if hasattr(t, "name") and t.name not in self._excluded_tools:
-                tools.append(t)
-
-        if self._tool_registry:
-            for name, registry_tool in self._tool_registry.items():
-                if name not in self._excluded_tools:
-                    tools.append(registry_tool)
-
-        return tools
-
-    def _bind_tools_from_registry(
-        self,
-        names: list[str],
-        tools_by_name: dict[str, BaseTool],
-        bound_tool_names: set[str],
-    ) -> list[str]:
-        """Resolve tool names from registry into tools_by_name. Returns newly bound names."""
-        newly_bound: list[str] = []
-        if not self._tool_registry:
-            return newly_bound
-
-        for name in names:
-            if name in bound_tool_names or name in self._excluded_tools:
-                continue
-            tool_instance = self._tool_registry.get(name)
-            if tool_instance is not None:
-                tools_by_name[name] = tool_instance
-                bound_tool_names.add(name)
-                newly_bound.append(name)
-
-        return newly_bound
-
-    async def _execute_subagent(
+    async def _run_spawn(
         self,
         task: str,
         context: str,
         config: RunnableConfig,
-        inherited_tool_names: list[str] | None = None,
-        stream_writer: StreamWriterCallable | None = None,
-        subagent_id: str | None = None,
+        tool_call_id: str,
+        inherited_tool_names: list[str] | None,
     ) -> str:
-        """Run a lightweight tool-calling loop for the subagent."""
-        if self._llm is None:
-            raise ValueError("LLM not configured for subagent execution")
+        """Run one spawned subagent to completion, pausing the parent for approvals."""
+        configurable = agent_configurable(config)
+        # A fresh spawn has a brand-new tool_call_id, so nothing can already exist on
+        # its thread — only a resume replay can, which is why the checkpoint probe is
+        # gated on it and effectively every spawn skips that Postgres read.
+        replaying = bool(configurable.get(HIL_RESUME_CONFIG_KEY))
 
-        model_configurations = config.get("configurable", {})
-        user_id = model_configurations.get("user_id")
-        conversation_id = model_configurations.get("vfs_session_id") or model_configurations.get(
-            "thread_id"
+        ctx = await self._build_context(task, context, config, tool_call_id, inherited_tool_names)
+
+        # Stable across replays so an approval pause reuses the same UI row instead of
+        # orphaning the paused one and opening a duplicate on resume.
+        sa_id = subagent_row_id(tool_call_id)
+        # Surface the task as the subagent's name so the UI shows what's running,
+        # not three identical "Subagent" rows.
+        spawn_name = (task[:40].rstrip() + "…") if len(task) > 40 else (task or "Subagent")
+        writer = get_stream_writer()
+        writer(
+            {
+                "subagent_start": format_subagent_start_event(
+                    subagent_name=spawn_name,
+                    agent_type="spawned",
+                    subagent_id=sa_id,
+                    tool_category="spawn_subagent",
+                    parent_subagent_id=configurable.get("subagent_id"),
+                )
+            }
         )
-        stream_id = model_configurations.get("stream_id")
-        llm: Any = self._llm.with_config(configurable=model_configurations)
+        start_time = time.monotonic()
 
-        tools_by_name, dynamic, retrieve_tool = self._build_child_toolset(
-            config=config,
-            inherited_tool_names=inherited_tool_names,
-        )
-        bound_tool_names: set[str] = set(tools_by_name.keys())
-
-        llm_with_tools = llm.bind_tools(list(tools_by_name.values())) if tools_by_name else llm
-
-        # Same failure policy as the main model node (create_agent): fall back to
-        # the default model on a provider failure instead of erroring the whole
-        # spawn. Lazy factory — binds the subagent's current tool set only if the
-        # primary actually fails; None when the subagent already runs the default
-        # model or Google isn't configured.
+        paused = False
         try:
-            fallback_llm: Any = (
-                None if is_default_model_config(model_configurations) else get_default_llm()
-            )
-        except LLMNotConfiguredError:
-            fallback_llm = None
-
-        def _fallback():
-            if fallback_llm is None:
-                return None
-            return (
-                fallback_llm.bind_tools(list(tools_by_name.values()))
-                if tools_by_name
-                else fallback_llm
-            )
-
-        # Build initial messages
-        messages: list[Any] = [SystemMessage(content=self._system_prompt)]
-        user_content = f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
-        messages.append(HumanMessage(content=user_content))
-
-        # Names of the tools the subagent has called, most-recent last. Surfaced
-        # in the max-turns fallback so the parent learns what it was attempting.
-        called_tool_names: list[str] = []
-
-        # Tool-calling loop
-        for _turn in range(self._max_turns):
-            # Honor a user Stop mid-loop, same as the main graph driver polls
-            # StreamManager between steps. A hard task cancel re-raises below;
-            # this catches the soft cancel path the Stop button actually uses.
-            if stream_id and await stream_manager.is_cancelled(stream_id):
-                log.info(f"{LogTag.AGENT} Subagent stream {stream_id} cancelled by user")
-                return f"Subagent cancelled by the user while working on: {task[:200].rstrip()}"
-
-            response = cast(
-                AIMessage,
-                await ainvoke_llm(
-                    llm_with_tools,
-                    messages,
-                    fallback=_fallback,
-                    config=config,
-                    label="subagent",
-                ),
-            )
-            messages.append(response)
-
-            if not response.tool_calls:
-                return response.text or "Task completed."
-
-            for tc in response.tool_calls:
-                if tc["name"] == FINISH_TASK_NAME:
-                    args = tc.get("args", {})
-                    result = args.get("result")
-                    if result is None:
-                        return "Task completed."
-                    return str(result)
-
-            regular_calls: list[ToolCall] = []
-            for tc in response.tool_calls:
-                name = tc["name"]
-                tc_id = tc["id"]
-
-                if name == _RETRIEVE_TOOLS_NAME and dynamic and retrieve_tool is not None:
-                    try:
-                        result = await retrieve_tool.ainvoke(tc["args"])
-                        newly_bound = self._bind_tools_from_registry(
-                            result.get("tools_to_bind", []),
-                            tools_by_name,
-                            bound_tool_names,
+            outcome = await self._drive(ctx, writer, sa_id, probe_parked=replaying)
+        except GraphBubbleUp:
+            paused = True
+            raise
+        finally:
+            # A pause is not an ending — the row stays live until the user decides
+            # and the resumed run closes it. Every other exit terminates it, so a
+            # failed spawn never leaves the UI spinning.
+            if not paused:
+                writer(
+                    {
+                        "subagent_end": format_subagent_end_event(
+                            subagent_id=sa_id,
+                            duration_ms=int((time.monotonic() - start_time) * 1000),
                         )
-                        if newly_bound:
-                            log.info(
-                                f"{LogTag.AGENT} Subagent bound {len(newly_bound)} tools: {newly_bound}"
-                            )
-                        content = "\n".join(result.get("response", [])) or "No tools found."
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as e:
-                        log.error(f"{LogTag.AGENT} Subagent retrieve_tools error: {e}")
-                        content = f"retrieve_tools error: {e}"
-
-                    called_tool_names.append(name)
-                    messages.append(ToolMessage(content=content, tool_call_id=tc_id, name=name))
-                    # Rebind LLM with updated tool set
-                    llm_with_tools = llm.bind_tools(list(tools_by_name.values()))
-                else:
-                    regular_calls.append(tc)
-
-            if not regular_calls:
-                continue
-
-            called_tool_names.extend(tc["name"] for tc in regular_calls)
-
-            # Emit tool_data for each call so the frontend can show them in the
-            # spawned subagent's row before results arrive.
-            if stream_writer and subagent_id:
-                await emit_subagent_tool_calls(
-                    stream_writer, subagent_id, regular_calls, user_id=user_id
+                    }
                 )
 
-            # Context fraction before this turn's tool results are appended —
-            # matches the compaction middleware, which measures state prior to
-            # inserting the new tool output.
-            context_usage = estimate_context_usage(messages, DEFAULT_MAX_TOKENS)
+        # The thread deliberately outlives the run: a later sibling in this same AI
+        # message can still pause, which replays the tool node from the top, and the
+        # checkpoint is what tells the replay this spawn already finished instead of
+        # redoing its whole task. The nightly sweep reclaims it once it is stale.
+        return outcome.text
 
-            async def _invoke_tool(tc: ToolCall) -> ToolMessage:
-                name = tc["name"]
-                tc_id = tc["id"]
-                if name not in tools_by_name:
-                    hint = (
-                        " Use retrieve_tools to discover and bind tools first." if dynamic else ""
-                    )
-                    return ToolMessage(
-                        content=f"Unknown tool: {name}.{hint}",
-                        tool_call_id=tc_id,
-                        name=name,
-                        status="error",
-                    )
-                try:
-                    # Invoking with a tool_call returns a ToolMessage; the raw
-                    # output is its .content (str(ToolMessage) would leak the
-                    # message repr into the model's context).
-                    result = await tools_by_name[name].ainvoke(
-                        {**tc, "type": "tool_call"}, config=config
-                    )
-                    raw_content = result.content if isinstance(result, ToolMessage) else result
-                    tool_status = result.status if isinstance(result, ToolMessage) else "success"
-                    # Spill oversized outputs to the workspace before they enter
-                    # the subagent's context — same canonical path the main loop's
-                    # compaction middleware uses. None means keep the raw output.
-                    compacted = await compact_tool_output(
-                        content=raw_content,
-                        tool_name=name,
-                        tool_call_id=tc_id or "",
-                        tool_args=tc.get("args", {}),
-                        user_id=user_id,
-                        conversation_id=conversation_id,
-                        context_usage=context_usage,
-                        max_output_chars=MAX_OUTPUT_CHARS,
-                        compaction_threshold=COMPACTION_THRESHOLD,
-                        status=tool_status,
-                    )
-                    tool_message = (
-                        compacted
-                        if compacted is not None
-                        else ToolMessage(
-                            content=str(raw_content),
-                            tool_call_id=tc_id,
-                            name=name,
-                            status=tool_status,
-                        )
-                    )
-                    if stream_writer and subagent_id:
-                        stream_writer(
-                            {
-                                "tool_output": {
-                                    "tool_call_id": tc_id or "",
-                                    "output": str(tool_message.content),
-                                    "subagent_id": subagent_id,
-                                }
-                            }
-                        )
-                    return tool_message
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    log.exception(
-                        f"{LogTag.AGENT} Subagent tool invocation failed for tool '{name}' (tool_call_id={tc_id})",
-                    )
-                    return ToolMessage(
-                        content="Tool error: internal failure while executing tool.",
-                        tool_call_id=tc_id,
-                        name=name,
-                        status="error",
-                    )
-
-            semaphore = asyncio.Semaphore(8)
-
-            async def _invoke_tool_limited(tc: ToolCall) -> ToolMessage:
-                async with semaphore:
-                    return await _invoke_tool(tc)
-
-            tool_messages: list[ToolMessage] = await asyncio.gather(
-                *[_invoke_tool_limited(tc) for tc in regular_calls]
-            )
-            messages.extend(tool_messages)
-
-        # Max turns reached — get final answer without tools. The fallback binds
-        # no tools here (none are needed for the final answer).
-        final = await ainvoke_llm(
-            llm,
-            messages,
-            fallback=lambda: fallback_llm,
-            config=config,
-            label="subagent_final",
-        )
-
-        # If the model still produces no answer, tell the parent what the
-        # subagent was attempting instead of a bare "Max turns reached." — the
-        # task and the tools it recently reached for are what the parent needs
-        # to decide the next step.
-        recent = called_tool_names[-5:]
-        tools_note = f" Recent tools: {', '.join(recent)}." if recent else ""
-        max_turns_note = (
-            f"Subagent reached its {self._max_turns}-turn limit without finishing. "
-            f"Task: {task[:200].rstrip()}.{tools_note}"
-        )
-        if isinstance(final, AIMessage):
-            # .text flattens only text blocks — a reasoning-only (or empty) final
-            # message yields "", so fall back to the note instead of leaking an
-            # AIMessage repr via str(final).
-            return final.text or max_turns_note
-        return str(final) if final else max_turns_note
-
-    def _build_child_toolset(
+    async def _drive(
         self,
+        ctx: SubagentExecutionContext,
+        writer: StreamWriterCallable,
+        sa_id: str,
+        probe_parked: bool,
+    ) -> SubagentOutcome:
+        """Run the graph, bubbling every HIL pause up to the parent.
+
+        The spawn is invoked imperatively, so its GraphInterrupt never reaches the
+        parent's runtime — each pause is re-raised here with ``interrupt()``. A LOOP,
+        not an if: one task can gate several destructive calls in sequence, and each
+        must suspend the parent again. ``resume_for_gate`` raises on the first pass and
+        returns that gate's own decision on the replay (matching the recovered park, not
+        an earlier gate's already-applied decision).
+        """
+        recovered = await recover_from_checkpoint(ctx) if probe_parked else None
+        outcome = recovered or await execute_subagent_stream(
+            ctx=ctx, stream_writer=writer, subagent_id=sa_id
+        )
+        while outcome.paused:
+            decision = resume_for_gate(outcome.interrupt)
+            outcome = await execute_subagent_stream(
+                ctx=ctx,
+                stream_writer=writer,
+                subagent_id=sa_id,
+                resume=Command(resume=decision),
+            )
+        return outcome
+
+    async def _build_context(
+        self,
+        task: str,
+        context: str,
         config: RunnableConfig,
-        inherited_tool_names: list[str] | None = None,
-    ) -> tuple[dict[str, BaseTool], bool, StructuredTool | None]:
-        """Build child subagent tool map from runtime config and parent state."""
-        retrieve_tool = self._build_retrieve_tool(config)
-        dynamic = retrieve_tool is not None and self._tool_registry is not None
+        tool_call_id: str,
+        inherited_tool_names: list[str] | None,
+    ) -> SubagentExecutionContext:
+        if self._llm is None:
+            raise ValueError("LLM not configured for subagent execution")
+        if self._spawn_middleware_factory is None or self._spawn_graph_provider is None:
+            raise ValueError("Spawn graph not configured for subagent execution")
 
-        tools_by_name: dict[str, BaseTool] = {}
-        bound_tool_names: set[str] = set()
+        configurable = agent_configurable(config)
+        user_id = configurable.get("user_id")
+        conversation_id = str(configurable.get("conversation_id") or "")
 
-        # Bind configured initial tools first (regular tools, not special behavior tools).
-        self._bind_tools_from_registry(
-            self._tool_runtime_config.initial_tool_names,
-            tools_by_name,
-            bound_tool_names,
+        middleware_factory = self._spawn_middleware_factory
+        tool_space = self._tool_space
+        graph = await self._spawn_graph_provider(
+            llm=self._llm,
+            registry=self._tool_registry or {t.name: t for t in self._available_tools},
+            excluded_tool_names=self._excluded_tools,
+            tool_space=tool_space,
+            runtime=self._tool_runtime_config,
+            middleware_factory=lambda: middleware_factory(tool_space),
         )
 
-        # Inherit tools currently bound by the parent agent in this turn.
-        if inherited_tool_names:
-            self._bind_tools_from_registry(
-                inherited_tool_names,
-                tools_by_name,
-                bound_tool_names,
-            )
+        # One thread per spawn call, never reused. ``tool_call_id`` is unique per call
+        # AND stable across node replays (it lives in the checkpointed AI message),
+        # which is what lets a resumed spawn find its own run — parked or finished —
+        # instead of starting a second one. The ``spawn_`` prefix is what
+        # workers/tasks/checkpoint_retention_tasks.py selects on to reclaim these once
+        # stale; the conversation uuid keeps them collectable with the conversation.
+        thread_id = f"{SPAWN_THREAD_PREFIX}{conversation_id}_{tool_call_id}"
 
-        if dynamic and retrieve_tool is not None:
-            tools_by_name[_RETRIEVE_TOOLS_NAME] = retrieve_tool
+        spawn_config = build_agent_config(
+            conversation_id=conversation_id,
+            user={
+                "user_id": user_id,
+                "email": configurable.get("email"),
+                "name": configurable.get("user_name"),
+            },
+            agent_name=SPAWN_AGENT_NAME,
+            thread_id=thread_id,
+            base_configurable=configurable,
+            subagent_id=SPAWN_AGENT_NAME,
+            recursion_limit=self._max_turns,
+        )
+        new_configurable = agent_configurable(spawn_config)
 
-        # If nothing resolved (defensive fallback), bind all eligible tools.
-        if not tools_by_name:
-            all_tools = self._collect_tools()
-            tools_by_name = {t.name: t for t in all_tools}
+        user_content = f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
+        messages = await build_initial_messages(
+            system_message=SystemMessage(content=self._system_prompt),
+            agent_name=SPAWN_AGENT_NAME,
+            configurable=new_configurable,
+            task=user_content,
+            user_id=user_id,
+            retrieval_query=task,
+        )
 
-        return tools_by_name, dynamic, retrieve_tool
+        return SubagentExecutionContext(
+            subagent_graph=graph,
+            agent_name=SPAWN_AGENT_NAME,
+            config=spawn_config,
+            configurable=new_configurable,
+            integration_id="spawn",
+            initial_state={
+                "messages": messages,
+                "todos": [],
+                # Inherit whatever the parent has bound this turn. acall_model
+                # unions initial_tool_ids with state["selected_tool_ids"], so
+                # seeding the channel here is what carries the inheritance over.
+                "selected_tool_ids": [
+                    name
+                    for name in (inherited_tool_names or [])
+                    if name not in self._excluded_tools
+                ],
+            },
+            user_id=user_id,
+            stream_id=configurable.get("stream_id"),
+        )
+
+    def set_spawn_graph_provider(self, provider: SpawnGraphProvider) -> None:
+        """Wire the builder that compiles the graph a spawn runs on.
+
+        Injected rather than imported: the graph builder pulls in ``create_agent``,
+        which imports this package, so importing it from here would close a cycle.
+        """
+        self._spawn_graph_provider = provider
 
     def set_llm(self, llm: LanguageModelLike) -> None:
         self._llm = llm

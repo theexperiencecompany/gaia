@@ -2,30 +2,21 @@
 Service module for handling search operations and URL metadata fetching.
 """
 
+import re
 import time
 
 from fastapi import HTTPException, status
 
-from app.db.mongodb.collections import (
-    conversations_collection,
-    notes_collection,
-)
-from app.db.utils import serialize_document
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.notes import note_repository
+from app.models.search_models import MessageSearchResult, NoteSearchResult, SearchResultsResponse
 from app.utils.general_utils import get_context_window
-from app.utils.tool_data_utils import convert_legacy_tool_data
 from shared.py.wide_events import log
 
 
-async def search_messages(query: str, user_id: str) -> dict:
+async def search_messages(query: str, user_id: str) -> SearchResultsResponse:
     """
     Search for messages, conversations, and notes for a given user that match the query.
-
-    Args:
-        query (str): The search text.
-        user_id (str): The ID of the authenticated user.
-
-    Returns:
-        dict: A dictionary containing lists of matched messages, conversations, and notes.
 
     Raises:
         HTTPException: If an error occurs during the search process.
@@ -38,96 +29,37 @@ async def search_messages(query: str, user_id: str) -> dict:
             "sources": ["messages", "conversations", "notes"],
         },
         user_id=user_id,
-        service="search_service",
+        component="search_service",
     )
     search_start = time.monotonic()
+    escaped_query = re.escape(query)
     try:
-        results = await conversations_collection.aggregate(
-            [
-                {"$match": {"user_id": user_id}},
-                {
-                    "$facet": {
-                        "messages": [
-                            {"$unwind": "$messages"},
-                            {
-                                "$match": {
-                                    "$or": [
-                                        {
-                                            "messages.response": {
-                                                "$regex": query,
-                                                "$options": "i",
-                                            }
-                                        },
-                                    ]
-                                }
-                            },
-                            {
-                                "$project": {
-                                    "_id": 0,
-                                    "conversation_id": 1,
-                                    "message": "$messages",
-                                }
-                            },
-                        ],
-                        "conversations": [
-                            {
-                                "$match": {
-                                    "description": {"$regex": query, "$options": "i"},
-                                }
-                            },
-                            {
-                                "$project": {
-                                    "_id": 0,
-                                    "conversation_id": 1,
-                                    "description": 1,
-                                    "conversation": "$conversations",
-                                }
-                            },
-                        ],
-                    }
-                },
-            ]
-        ).to_list(None)
+        conversation_results = await conversation_repository.search(user_id, pattern=escaped_query)
+        note_hits = await note_repository.search_by_plaintext(user_id, pattern=escaped_query)
 
-        notes_results = await notes_collection.aggregate(
-            [
-                {
-                    "$match": {
-                        "user_id": user_id,
-                        "plaintext": {"$regex": query, "$options": "i"},
-                    }
-                },
-                {
-                    "$project": {
-                        "id": {"$toString": "$_id"},
-                        "note_id": 1,
-                        "plaintext": 1,
-                    }
-                },
-            ]
-        ).to_list(None)
-
-        messages = results[0]["messages"] if results else []
-        conversations = results[0]["conversations"] if results else []
-
-        for message in messages:
-            # Convert legacy tool data in the message
-            if "message" in message:
-                message["message"] = convert_legacy_tool_data(message["message"])
-                # Add snippet for search highlighting
-                message["snippet"] = get_context_window(
-                    message["message"]["response"], query, chars_before=30
-                )
-
-        notes_with_snippets = [
-            {
-                **serialize_document(note),
-                "snippet": get_context_window(note["plaintext"], query, chars_before=30),
-            }
-            for note in notes_results
+        messages = [
+            MessageSearchResult(
+                conversation_id=hit.conversation_id,
+                message=hit.message,
+                # Snippet for search highlighting, centered on the matched response.
+                snippet=get_context_window(hit.message.response, query, chars_before=30),
+            )
+            for hit in conversation_results.messages
         ]
 
-        result_count = len(messages) + len(conversations) + len(notes_with_snippets)
+        notes_with_snippets = [
+            NoteSearchResult(
+                id=hit.id,
+                note_id=hit.note_id,
+                plaintext=hit.plaintext,
+                snippet=get_context_window(hit.plaintext, query, chars_before=30),
+            )
+            for hit in note_hits
+        ]
+
+        result_count = (
+            len(messages) + len(conversation_results.conversations) + len(notes_with_snippets)
+        )
         duration_ms = int((time.monotonic() - search_start) * 1000)
         log.set(
             search={
@@ -139,13 +71,15 @@ async def search_messages(query: str, user_id: str) -> dict:
                 "duration_ms": duration_ms,
             }
         )
-        return {
-            "messages": messages,
-            "conversations": conversations,
-            "notes": notes_with_snippets,
-        }
+        return SearchResultsResponse(
+            messages=messages,
+            conversations=conversation_results.conversations,
+            notes=notes_with_snippets,
+        )
     except Exception as e:
-        log.error(f"Error in search_messages: {e}")
+        log.error(
+            "Error in search_messages", error=str(e), error_type=type(e).__name__, user_id=user_id
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to perform search: {e!s}",

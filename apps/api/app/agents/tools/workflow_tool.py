@@ -3,18 +3,18 @@ Workflow tools for the executor and workflow subagent.
 
 Provides tools for:
 - Searching for integration triggers (with config_fields embedded)
-- Creating workflows (new or from_conversation mode)
-- Managing workflows (list, get, execute)
+- Creating and editing workflows (via the workflow assistant)
+- Managing workflows (list, get, execute, pause, resume)
 
-The create_workflow tool invokes WorkflowSubagentRunner which handles
-the subagent execution and returns structured JSON for streaming.
+The create_workflow and edit_workflow tools invoke WorkflowSubagentRunner which
+handles the subagent execution and returns structured JSON for streaming.
 
 Direct creation: For simple, unambiguous workflows (manual/scheduled triggers),
 we can create them directly without user confirmation. Integration triggers
 always require confirmation due to config_fields (calendar_ids, channel_ids, etc).
 """
 
-from typing import Annotated, Literal
+from typing import Annotated, Any
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
@@ -27,14 +27,15 @@ from app.agents.tools.workflow_shared_tools import (
 )
 from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
+from app.models.agent_models import agent_configurable
 from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow import WorkflowService
-from app.services.workflow.context_extractor import WorkflowContextExtractor
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
 from app.utils.timezone import home_timezone_from_config
 from app.utils.workflow_utils import (
-    build_from_conversation_task,
+    apply_workflow_edit,
+    build_edit_workflow_task,
     build_new_workflow_task,
     can_create_directly,
     create_workflow_directly,
@@ -56,22 +57,14 @@ async def create_workflow(
         str,
         "The user's exact words describing what workflow they want. Pass verbatim.",
     ],
-    mode: Annotated[
-        Literal["new", "from_conversation"],
-        "Mode: 'new' for creating from description, 'from_conversation' to save current session as workflow",
-    ] = "new",
-) -> dict:
+) -> dict[str, Any]:
     """
-    Start workflow creation. Delegates to the workflow assistant.
+    Create a workflow from the user's description. Delegates to the workflow assistant.
 
     IMPORTANT: Pass the user's request EXACTLY as stated. Do not interpret,
     parse schedules, extract steps, or determine trigger types yourself.
 
-    MODES:
-    - mode="new": User wants to create a workflow from a description
-    - mode="from_conversation": User wants to save current session as a reusable workflow
-
-    The workflow assistant will handle everything:
+    The workflow assistant handles everything:
     - Understanding user intent
     - Searching for triggers (scheduled, integration-based)
     - Asking clarifying questions when needed
@@ -80,16 +73,10 @@ async def create_workflow(
     EXAMPLES:
 
     User: "Create a workflow that checks my email every morning"
-    -> create_workflow(user_request="checks my email every morning", mode="new")
+    -> create_workflow(user_request="checks my email every morning")
 
     User: "I want a workflow that notifies me on Slack when I get a GitHub PR"
-    -> create_workflow(user_request="notifies me on Slack when I get a GitHub PR", mode="new")
-
-    User: "Save this as a workflow"
-    -> create_workflow(user_request="save this as a workflow", mode="from_conversation")
-
-    User: "Turn what we just did into an automation that runs every Monday"
-    -> create_workflow(user_request="runs every Monday", mode="from_conversation")
+    -> create_workflow(user_request="notifies me on Slack when I get a GitHub PR")
 
     DO NOT:
     - Parse cron expressions
@@ -98,7 +85,8 @@ async def create_workflow(
     - Generate titles or descriptions
     - Fill in any other parameters
 
-    Just pass user_request and mode. The workflow assistant handles everything else.
+    Just pass user_request. The workflow assistant handles everything else. To
+    change an existing workflow, use edit_workflow instead.
     """
     log.set(tool={"name": "create_workflow", "action": "create"})
     writer = get_stream_writer()
@@ -106,40 +94,19 @@ async def create_workflow(
     try:
         user_id = get_user_id(config)
         thread_id = get_thread_id(config) or ""
-        user_name = config.get("configurable", {}).get("user_name")
+        user_name: str | None = agent_configurable(config).get("user_name")
         # Home timezone (IANA, e.g. Asia/Kolkata) for the new workflow's schedule
         # default and the subagent's "now".
         user_timezone = home_timezone_from_config(config).value
 
-        # Build task description based on mode
-        if mode == "new":
-            if not user_request or not user_request.strip():
-                return error_response(
-                    "missing_request",
-                    "user_request is required. Pass the user's words describing what workflow they want.",
-                )
-            task_description = build_new_workflow_task(user_request.strip())
-
-        elif mode == "from_conversation":
-            if not thread_id:
-                return error_response("no_context", "No conversation context available")
-
-            context = await WorkflowContextExtractor.extract_from_thread(thread_id)
-
-            if not context or not context.workflow_steps:
-                return error_response(
-                    "extraction_failed",
-                    "Could not extract workflow steps from conversation. Try describing what you want instead.",
-                )
-
-            task_description = build_from_conversation_task(context, user_request)
-        else:
+        if not user_request or not user_request.strip():
             return error_response(
-                "invalid_mode",
-                f"Unknown mode: {mode}. Use 'new' or 'from_conversation'.",
+                "missing_request",
+                "user_request is required. Pass the user's words describing what workflow they want.",
             )
+        task_description = build_new_workflow_task(user_request.strip())
 
-        log.info(f"{LogTag.TOOL} create_workflow: Executing with mode={mode}")
+        log.info(f"{LogTag.TOOL} create_workflow: Executing")
 
         # Execute workflow subagent
         subagent_response = await WorkflowSubagentRunner.execute(
@@ -149,11 +116,12 @@ async def create_workflow(
             user_name=user_name,
             user_timezone=user_timezone,
             stream_writer=writer,
+            base_configurable=agent_configurable(config),
         )
 
         # Parse the response
         result = parse_subagent_response(subagent_response)
-        log.info(f"{LogTag.TOOL} create_workflow: Parsed mode={result.mode}")
+        log.info(f"{LogTag.TOOL} create_workflow: parsed mode", mode=result.mode)
 
         if result.mode == "finalized" and result.draft:
             draft = result.draft
@@ -161,7 +129,8 @@ async def create_workflow(
             # Check if we can create directly (simple, unambiguous workflows)
             if can_create_directly(draft):
                 log.info(
-                    f"{LogTag.TOOL} create_workflow: Attempting direct creation for: {draft.title}"
+                    f"{LogTag.TOOL} create_workflow: attempting direct creation",
+                    draft_title=draft.title,
                 )
 
                 # Try to create the workflow directly
@@ -183,10 +152,12 @@ async def create_workflow(
 
             # Stream workflow draft to frontend for user confirmation
             writer(result.draft.to_stream_payload())
-            log.info(f"{LogTag.TOOL} create_workflow: Streamed draft: {result.draft.title}")
+            log.info(
+                f"{LogTag.TOOL} create_workflow: streamed draft", draft_title=result.draft.title
+            )
 
             return success_response(
-                {"status": "draft_sent", "mode": mode},
+                {"status": "draft_sent"},
                 "Workflow draft sent to user for confirmation.",
             )
 
@@ -198,7 +169,6 @@ async def create_workflow(
             return success_response(
                 {
                     "status": "clarifying",
-                    "mode": mode,
                     "question": question,
                 },
                 f"The workflow assistant needs clarification from the user: {question}",
@@ -207,7 +177,9 @@ async def create_workflow(
         if result.mode == "parse_error":
             # Subagent returned something we couldn't parse.
             # Let the executor know so it can inform the user or retry.
-            log.warning(f"{LogTag.TOOL} create_workflow: Parse error: {result.parse_error}")
+            log.warning(
+                f"{LogTag.TOOL} create_workflow: parse error", parse_error=result.parse_error
+            )
             return error_response(
                 "parse_error",
                 f"Failed to process the workflow assistant's response: {result.parse_error}. "
@@ -215,12 +187,14 @@ async def create_workflow(
             )
 
         return success_response(
-            {"status": "completed", "mode": mode},
+            {"status": "completed"},
             "Workflow creation completed.",
         )
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} create_workflow: Exception: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.TOOL} create_workflow: exception", error_type=type(e).__name__, exc_info=True
+        )
         return error_response("subagent_failed", str(e))
 
 
@@ -229,7 +203,7 @@ async def create_workflow(
 async def get_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to retrieve"],
-) -> dict:
+) -> dict[str, Any]:
     """Get detailed information about a specific workflow."""
     try:
         log.set(tool={"name": "get_workflow", "action": "get"})
@@ -244,7 +218,11 @@ async def get_workflow(
         return success_response(workflow.model_dump())
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error getting workflow {workflow_id}: {e}")
+        log.error(
+            f"{LogTag.TOOL} Error getting workflow",
+            workflow_id=workflow_id,
+            error_type=type(e).__name__,
+        )
         return error_response("fetch_failed", str(e))
 
 
@@ -253,7 +231,7 @@ async def get_workflow(
 async def execute_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to execute"],
-) -> dict:
+) -> dict[str, Any]:
     """Execute a workflow immediately (run now)."""
     try:
         log.set(tool={"name": "execute_workflow", "action": "execute"})
@@ -274,8 +252,170 @@ async def execute_workflow(
         return success_response(data)
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error executing workflow {workflow_id}: {e}")
+        log.error(
+            f"{LogTag.TOOL} Error executing workflow",
+            workflow_id=workflow_id,
+            error_type=type(e).__name__,
+        )
         return error_response("execution_failed", str(e))
+
+
+@tool
+@with_rate_limiting("workflow_operations")
+async def pause_workflow(
+    config: RunnableConfig,
+    workflow_id: Annotated[str, "The ID of the workflow to pause"],
+) -> dict[str, Any]:
+    """Pause (deactivate) a workflow so its schedule and integration triggers stop firing.
+
+    Reversible with resume_workflow. Use list_workflows or get_workflow first to
+    find the workflow_id. Returns not_found if the workflow does not belong to the
+    current user.
+    """
+    try:
+        log.set(tool={"name": "pause_workflow", "action": "pause"})
+        user_id = get_user_id(config)
+        workflow = await WorkflowService.deactivate_workflow(workflow_id, user_id)
+        if not workflow:
+            return error_response("not_found", f"Workflow {workflow_id} not found")
+
+        writer = get_stream_writer()
+        writer({"workflow_data": {"action": "paused", "workflow": workflow.model_dump()}})
+
+        return success_response(
+            {"workflow_id": workflow.id, "title": workflow.title, "activated": workflow.activated}
+        )
+
+    except Exception as e:
+        log.error(
+            f"{LogTag.TOOL} Error pausing workflow",
+            workflow_id=workflow_id,
+            error_type=type(e).__name__,
+        )
+        return error_response("pause_failed", str(e))
+
+
+@tool
+@with_rate_limiting("workflow_operations")
+async def resume_workflow(
+    config: RunnableConfig,
+    workflow_id: Annotated[str, "The ID of the workflow to resume"],
+) -> dict[str, Any]:
+    """Resume (reactivate) a paused workflow so its trigger fires again.
+
+    Recomputes the next scheduled run from the cron. For integration triggers the
+    underlying integration must be connected, or this returns an error explaining
+    what to connect. Returns not_found if the workflow does not belong to the
+    current user.
+    """
+    try:
+        log.set(tool={"name": "resume_workflow", "action": "resume"})
+        user_id = get_user_id(config)
+        user_timezone = home_timezone_from_config(config).value
+        workflow = await WorkflowService.activate_workflow(
+            workflow_id, user_id, user_timezone=user_timezone
+        )
+        if not workflow:
+            return error_response("not_found", f"Workflow {workflow_id} not found")
+
+        writer = get_stream_writer()
+        writer({"workflow_data": {"action": "resumed", "workflow": workflow.model_dump()}})
+
+        return success_response(
+            {"workflow_id": workflow.id, "title": workflow.title, "activated": workflow.activated}
+        )
+
+    except Exception as e:
+        log.error(
+            f"{LogTag.TOOL} Error resuming workflow",
+            workflow_id=workflow_id,
+            error_type=type(e).__name__,
+        )
+        return error_response("resume_failed", str(e))
+
+
+@tool
+@with_rate_limiting("workflow_operations")
+async def edit_workflow(
+    config: RunnableConfig,
+    workflow_id: Annotated[str, "The ID of the workflow to edit"],
+    user_request: Annotated[
+        str, "The user's change request in their words. Pass verbatim — do not parse it yourself."
+    ],
+) -> dict[str, Any]:
+    """Edit an existing workflow's behavior, schedule, or trigger.
+
+    Delegates to the workflow assistant: pass the user's change request EXACTLY as
+    stated. Use list_workflows or get_workflow first to resolve the workflow_id.
+    Returns 'updated' on success, 'clarifying' if the assistant needs more info,
+    or not_found if the workflow does not belong to the current user.
+
+    Changing an integration trigger's config (which channels/repos/calendars) is
+    done by the user in the app's workflow editor, not here.
+    """
+    log.set(tool={"name": "edit_workflow", "action": "edit"})
+    writer = get_stream_writer()
+
+    try:
+        user_id = get_user_id(config)
+        thread_id = get_thread_id(config) or ""
+        user_name: str | None = agent_configurable(config).get("user_name")
+        user_timezone = home_timezone_from_config(config).value
+
+        if not user_request or not user_request.strip():
+            return error_response(
+                "missing_request",
+                "user_request is required — pass the user's change in their words.",
+            )
+
+        workflow = await WorkflowService.get_workflow(workflow_id, user_id)
+        if not workflow:
+            return error_response("not_found", f"Workflow {workflow_id} not found")
+
+        task_description = build_edit_workflow_task(workflow, user_request.strip())
+        subagent_response = await WorkflowSubagentRunner.execute(
+            task=task_description,
+            user_id=user_id,
+            thread_id=thread_id,
+            user_name=user_name,
+            user_timezone=user_timezone,
+            stream_writer=writer,
+        )
+
+        result = parse_subagent_response(subagent_response)
+        log.info(f"{LogTag.TOOL} edit_workflow: parsed mode", mode=result.mode)
+
+        if result.mode == "finalized" and result.draft:
+            return await apply_workflow_edit(
+                draft=result.draft,
+                workflow=workflow,
+                user_id=user_id,
+                writer=writer,
+                user_timezone=user_timezone,
+            )
+
+        if result.mode == "clarifying":
+            question = result.message or "The workflow assistant needs more information."
+            return success_response(
+                {"status": "clarifying", "question": question},
+                f"The workflow assistant needs clarification from the user: {question}",
+            )
+
+        if result.mode == "parse_error":
+            log.warning(f"{LogTag.TOOL} edit_workflow: parse error", parse_error=result.parse_error)
+            return error_response(
+                "parse_error",
+                f"Failed to process the workflow assistant's response: {result.parse_error}. "
+                "Please try again or rephrase the change.",
+            )
+
+        return success_response({"status": "completed"}, "Workflow edit completed.")
+
+    except Exception as e:
+        log.error(
+            f"{LogTag.TOOL} edit_workflow: exception", error_type=type(e).__name__, exc_info=True
+        )
+        return error_response("edit_failed", str(e))
 
 
 # Tools for the executor - directly accessible
@@ -285,6 +425,9 @@ EXECUTOR_WORKFLOW_TOOLS = [
     list_workflows,
     get_workflow,
     execute_workflow,
+    pause_workflow,
+    resume_workflow,
+    edit_workflow,
 ]
 
 # Default export for registry

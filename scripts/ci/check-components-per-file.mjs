@@ -103,16 +103,27 @@ for (const file of getFiles()) {
 if (violations.length > 0) {
   violations.sort((a, b) => b.components.length - a.components.length);
   console.error(
-    `\n❌ ${violations.length} file(s) export more than ${MAX_PER_FILE} components:\n`,
+    `\n❌ components-per-file gate FAILED — ${violations.length} file(s) export more than ${MAX_PER_FILE} React components:\n`,
   );
   for (const v of violations) {
-    console.error(`  ${v.file} (${v.components.length})`);
+    console.error(`  ${v.file} (${v.components.length} components)`);
     for (const name of v.components) console.error(`    - ${name}`);
   }
   console.error(
-    `\nSplit each component into its own file. If a sub-component is private,`,
+    "\nWhy: many components in one file couples unrelated UI, bloats the file," +
+      " and makes each component harder to find, test, and reuse.",
   );
-  console.error("don't export it. Allowlist in scripts/ci/check-components-per-file.mjs.\n");
+  console.error(
+    "\nFix: for each file above, move every component past the first" +
+      ` ${MAX_PER_FILE} into its own file named after the component, and update` +
+      " imports. If a sub-component is only used locally, keep it in-file but stop" +
+      " exporting it (only exported PascalCase functions/consts are counted here).",
+  );
+  console.error(
+    '\nRule: .claude/rules/general.md § "File Size & Single Responsibility" and' +
+      ' apps/web/CLAUDE.md § "React Components". A genuine exception goes in the' +
+      " allowlist in scripts/ci/check-components-per-file.mjs, not around the gate.",
+  );
   process.exit(1);
 }
 

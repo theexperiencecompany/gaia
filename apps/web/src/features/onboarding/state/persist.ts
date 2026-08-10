@@ -19,6 +19,8 @@ interface PersistedShape {
   clarifyCustomDrafts: Record<string, string>;
   clarifyOtherSelected: Record<string, boolean>;
   clarifySubmitted: boolean;
+  integrationSelectDone: boolean;
+  selectedIntegrations: string[];
   // todoExecutionMessage is deliberately omitted — persisting it re-sends on reload.
   todoExecutionStarted: boolean;
   todoExecutionConvoId: string | null;
@@ -46,6 +48,8 @@ function pick(state: OnboardingState): PersistedShape {
     clarifyCustomDrafts: state.clarifyCustomDrafts,
     clarifyOtherSelected: state.clarifyOtherSelected,
     clarifySubmitted: state.clarifySubmitted,
+    integrationSelectDone: state.integrationSelectDone,
+    selectedIntegrations: state.selectedIntegrations,
     todoExecutionStarted: state.todoExecutionStarted,
     todoExecutionConvoId: state.todoExecutionConvoId,
     todoExecutionTodo: state.todoExecutionTodo,
@@ -75,6 +79,8 @@ export function loadPersisted(): Partial<OnboardingState> | null {
       clarifyCustomDrafts: parsed.clarifyCustomDrafts ?? {},
       clarifyOtherSelected: parsed.clarifyOtherSelected ?? {},
       clarifySubmitted: parsed.clarifySubmitted ?? false,
+      integrationSelectDone: parsed.integrationSelectDone ?? false,
+      selectedIntegrations: parsed.selectedIntegrations ?? [],
       todoExecutionStarted: parsed.todoExecutionStarted ?? false,
       todoExecutionConvoId: parsed.todoExecutionConvoId ?? null,
       todoExecutionTodo: parsed.todoExecutionTodo ?? null,
@@ -88,12 +94,16 @@ export function savePersisted(state: OnboardingState): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(pick(state)));
-  } catch {}
+  } catch {
+    // localStorage unavailable (private mode, quota, etc.) — persistence is best-effort.
+  }
 }
 
 export function clearPersisted(): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(STORAGE_KEY);
-  } catch {}
+  } catch {
+    // localStorage unavailable (private mode, quota, etc.) — persistence is best-effort.
+  }
 }

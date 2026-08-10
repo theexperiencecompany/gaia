@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Otter.ai automatically transcribes meetings, generates summaries, and identifies action items from calls. GAIA is a proactive AI assistant that goes further by connecting meeting outcomes to your tasks, calendar, and entire tool stack.",
   metaTitle:
-    "Otter.ai Alternative That Acts on Meeting Outcomes | GAIA vs Otter.ai",
+    "Otter.ai Alternative That Acts on Meeting Outcomes — GAIA vs Otter.ai",
   metaDescription:
     "Otter.ai transcribes meetings but won't create tasks or update your tools. GAIA is an open-source alternative that manages your full workflow — prep, transcription, follow-ups, and task automation across 50+ integrations.",
   keywords: [

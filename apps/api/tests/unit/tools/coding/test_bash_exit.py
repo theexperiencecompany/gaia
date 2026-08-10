@@ -16,8 +16,6 @@ import pytest
 
 from app.agents.tools.coding.bash_tool import _run_foreground
 
-pytestmark = pytest.mark.unit
-
 
 def _sbx_with_run(run_mock: AsyncMock) -> AsyncMock:
     sbx = AsyncMock()

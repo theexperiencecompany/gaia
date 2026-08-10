@@ -267,7 +267,6 @@ class TestStreamMetadata:
                 received.append(chunk)
 
         sub_task = asyncio.create_task(subscriber())
-        await asyncio.sleep(0.05)
 
         await StreamManager.set_error(sid, "LLM rate limit exceeded")
 
@@ -366,24 +365,26 @@ class TestStreamKeepalive:
         await StreamManager.start_stream(sid, "conv-ka", "user-ka")
 
         received: list[str] = []
+        first_keepalive_seen = asyncio.Event()
 
         async def subscriber():
             async for chunk in StreamManager.subscribe_stream(sid, keepalive_interval=0.3):
                 received.append(chunk)
                 # After receiving first keepalive, stop
                 if '{"keepalive":true}' in chunk:
+                    first_keepalive_seen.set()
                     break
 
-        async def delayed_complete():
-            # Wait longer than the keepalive interval, then complete
-            await asyncio.sleep(0.6)
+        async def complete_after_keepalive():
+            # Complete only once the keepalive has actually been observed, so
+            # the assertion never races the keepalive interval.
+            await first_keepalive_seen.wait()
             await StreamManager.complete_stream(sid)
 
         sub_task = asyncio.create_task(subscriber())
-        complete_task = asyncio.create_task(delayed_complete())
+        complete_task = asyncio.create_task(complete_after_keepalive())
 
-        await asyncio.wait_for(sub_task, timeout=5)
-        complete_task.cancel()
+        await asyncio.wait_for(asyncio.gather(sub_task, complete_task), timeout=5)
 
         # Should have received at least one keepalive
         keepalives = [c for c in received if '{"keepalive":true}' in c]
@@ -402,8 +403,13 @@ class TestMultipleSubscribers:
 
         chunks = [_sse_chunk(f"multi-{i}") for i in range(3)]
 
+        subscribers_attached = asyncio.Event()
+        attached: list[bool] = [False, False]
+
         async def publisher():
-            await asyncio.sleep(0.1)
+            # Publish only once both subscribers are attached, so attachment is
+            # proven rather than raced with a settle sleep.
+            await subscribers_attached.wait()
             for chunk in chunks:
                 await StreamManager.publish_chunk(sid, chunk)
                 await asyncio.sleep(0.01)
@@ -412,14 +418,18 @@ class TestMultipleSubscribers:
         received_1: list[str] = []
         received_2: list[str] = []
 
-        async def subscriber(dest: list[str]):
+        async def subscriber(dest: list[str], idx: int):
             async for chunk in StreamManager.subscribe_stream(sid, keepalive_interval=5):
+                if not attached[idx]:
+                    attached[idx] = True
+                    if all(attached):
+                        subscribers_attached.set()
                 dest.append(chunk)
 
         tasks = [
             asyncio.create_task(publisher()),
-            asyncio.create_task(subscriber(received_1)),
-            asyncio.create_task(subscriber(received_2)),
+            asyncio.create_task(subscriber(received_1, 0)),
+            asyncio.create_task(subscriber(received_2, 1)),
         ]
 
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=10)

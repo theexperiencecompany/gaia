@@ -14,6 +14,7 @@ Tests cover:
 """
 
 from datetime import UTC, datetime
+from typing import ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -31,6 +32,7 @@ from app.config.rate_limits import (
     get_time_window_key,
 )
 from app.models.payment_models import PlanType
+from tests.helpers import effective_limit
 
 # ---------------------------------------------------------------------------
 # Tests: RateLimitPeriod
@@ -146,7 +148,7 @@ class TestFeatureLimits:
     """Tests for the FEATURE_LIMITS configuration dictionary."""
 
     # All feature keys that should be present (keep in sync with FEATURE_LIMITS in rate_limits.py)
-    EXPECTED_FEATURES = [
+    EXPECTED_FEATURES: ClassVar[list[str]] = [
         "chat_messages",
         "voice_mode",
         "file_upload",
@@ -159,6 +161,7 @@ class TestFeatureLimits:
         "document_generation",
         "web_search",
         "webpage_fetch",
+        "download",
         "workflow_operations",
         "trigger_workflow_executions",
         "todo_operations",
@@ -172,6 +175,8 @@ class TestFeatureLimits:
         "workspace_read",
         "workspace_write",
         "workspace_edit",
+        "workspace_query_json",
+        "workspace_grep",
         "flowchart_creation",
         "weather_checks",
         "notification_operations",
@@ -195,14 +200,12 @@ class TestFeatureLimits:
             assert isinstance(limits.info, FeatureInfo), f"{key}.info is not FeatureInfo"
 
     def test_pro_limits_gte_free_limits(self) -> None:
-        """Pro plan should always have limits >= free plan."""
+        """Pro is never more restrictive than Free (0 = unlimited when the tier has access)."""
         for key, limits in FEATURE_LIMITS.items():
-            assert limits.pro.day >= limits.free.day, (
-                f"{key}: pro day ({limits.pro.day}) < free day ({limits.free.day})"
-            )
-            assert limits.pro.month >= limits.free.month, (
-                f"{key}: pro month ({limits.pro.month}) < free month ({limits.free.month})"
-            )
+            for period in ("day", "month"):
+                free = effective_limit(limits.free, period)
+                pro = effective_limit(limits.pro, period)
+                assert pro >= free, f"{key}: pro {period} ({pro}) < free {period} ({free})"
 
     def test_monthly_limits_gte_daily_limits(self) -> None:
         """Monthly limits should be >= daily limits for both tiers."""
@@ -220,7 +223,12 @@ class TestFeatureLimits:
             assert limits.info.description, f"{key} has empty description"
 
     # Features intentionally restricted to paid-only (free limits are 0).
-    PAID_ONLY_FEATURES = {"voice_mode"}
+    PAID_ONLY_FEATURES: ClassVar[set[str]] = {"voice_mode"}
+
+    # Cost-walled features: no daily message-count wall on free (free.day == 0)
+    # because the rolling daily COST budget is the real wall. The monthly count
+    # survives only as an extreme abuse backstop.
+    COST_WALLED_FEATURES: ClassVar[set[str]] = {"chat_messages"}
 
     def test_free_limits_are_positive(self) -> None:
         """Non-paid-only features should have at least some free tier allowance."""
@@ -229,15 +237,24 @@ class TestFeatureLimits:
                 # Paid-only features deliberately have free.day == free.month == 0
                 assert limits.free.day == 0, f"{key}: expected free day == 0 (paid-only)"
                 assert limits.free.month == 0, f"{key}: expected free month == 0 (paid-only)"
+            elif key in self.COST_WALLED_FEATURES:
+                # Daily count wall removed — the cost budget gates daily use.
+                # Month stays as an abuse backstop, so free.month must be set.
+                assert limits.free.day == 0, f"{key}: expected free day == 0 (cost-walled)"
+                assert limits.free.month > 0, f"{key}: expected free month backstop"
             else:
                 assert limits.free.day > 0, f"{key}: free day is 0"
                 assert limits.free.month > 0, f"{key}: free month is 0"
 
     def test_specific_chat_messages_limits(self) -> None:
         chat = FEATURE_LIMITS["chat_messages"]
-        assert chat.free.day == 200
-        assert chat.free.month == 5000
-        assert chat.pro.day == 3000
+        # No daily message-count wall on free — the rolling cost budget is the
+        # wall; the monthly count is only an extreme abuse backstop.
+        assert chat.free.day == 0
+        assert chat.free.month == 2000
+        # Pro also has no daily message count (0 = uncapped); only the monthly
+        # abuse backstop.
+        assert chat.pro.day == 0
         assert chat.pro.month == 60000
 
     def test_specific_generate_image_limits(self) -> None:
@@ -249,8 +266,8 @@ class TestFeatureLimits:
 
     def test_specific_deep_research_limits(self) -> None:
         dr = FEATURE_LIMITS["deep_research"]
-        assert dr.free.day == 5
-        assert dr.free.month == 30
+        assert dr.free.day == 1
+        assert dr.free.month == 5
         assert dr.pro.day == 100
         assert dr.pro.month == 2000
 
@@ -499,41 +516,41 @@ class TestGetFeatureInfo:
 
     def test_known_feature_returns_configured_info(self) -> None:
         result = get_feature_info("chat_messages")
-        assert result["title"] == "Chat Messages"
-        assert result["description"] == "Send messages to AI assistants"
+        assert result.title == "Chat Messages"
+        assert result.description == "Send messages to AI assistants"
 
     def test_known_feature_returns_dict(self) -> None:
         result = get_feature_info("generate_image")
-        assert isinstance(result, dict)
-        assert "title" in result
-        assert "description" in result
+        assert isinstance(result, FeatureInfo)
+        assert result.title
+        assert result.description
 
     def test_unknown_feature_returns_generated_info(self) -> None:
         result = get_feature_info("some_unknown_feature")
-        assert result["title"] == "Some Unknown Feature"
-        assert "some_unknown_feature" in result["description"]
+        assert result.title == "Some Unknown Feature"
+        assert "some_unknown_feature" in result.description
 
     def test_unknown_feature_title_formatting(self) -> None:
         result = get_feature_info("multi_word_feature_name")
-        assert result["title"] == "Multi Word Feature Name"
+        assert result.title == "Multi Word Feature Name"
 
     def test_unknown_feature_description_format(self) -> None:
         result = get_feature_info("xyz_action")
-        assert result["description"] == "Usage for xyz_action"
+        assert result.description == "Usage for xyz_action"
 
     def test_all_configured_features_have_info(self) -> None:
         for key in FEATURE_LIMITS:
             result = get_feature_info(key)
-            assert result["title"], f"{key} has empty title"
-            assert result["description"], f"{key} has empty description"
+            assert result.title, f"{key} has empty title"
+            assert result.description, f"{key} has empty description"
 
     def test_deep_research_info(self) -> None:
         result = get_feature_info("deep_research")
-        assert result["title"] == "Deep Research"
-        assert "research" in result["description"].lower()
+        assert result.title == "Deep Research"
+        assert "research" in result.description.lower()
 
     def test_empty_string_feature_returns_generated_info(self) -> None:
         result = get_feature_info("")
-        assert isinstance(result, dict)
-        assert "title" in result
-        assert "description" in result
+        assert isinstance(result, FeatureInfo)
+        assert result.title == ""
+        assert result.description == "Usage for "

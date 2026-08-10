@@ -12,7 +12,7 @@ def convert_markdown_to_html(markdown_text: str) -> str:
     """Convert markdown text to HTML."""
     log.set(operation="convert_markdown_to_html", input_length=len(markdown_text))
     try:
-        html = markdown2.markdown(
+        html: str = markdown2.markdown(
             markdown_text,
             extras=[
                 "fenced-code-blocks",
@@ -25,7 +25,11 @@ def convert_markdown_to_html(markdown_text: str) -> str:
         )
         return html
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error converting markdown to HTML: {e}")
+        log.error(
+            f"{LogTag.TOOL} Error converting markdown to HTML",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return markdown_text
 
 

@@ -46,7 +46,6 @@ def _code_from_url(url: str | None) -> str:
     return url.rsplit("/", 1)[1]
 
 
-@pytest.mark.unit
 class TestConnectLinkCode:
     async def test_mint_then_resolve_returns_user_and_integration(
         self, fake_store: dict[str, object]

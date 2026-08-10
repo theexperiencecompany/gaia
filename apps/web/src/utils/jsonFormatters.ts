@@ -124,104 +124,104 @@ export function formatJsonLikeString(str: string): string {
   return result;
 }
 
+interface NormalizedValue {
+  data: unknown;
+  isStructured: boolean;
+}
+
+/**
+ * Normalize an extracted text payload: parse it as JSON when possible, else
+ * treat JSON-looking text as preformatted, otherwise return it as plain text.
+ */
+function normalizeExtractedText(text: string): NormalizedValue {
+  const parsed = safeJsonParse(text);
+  if (parsed !== null && (isPlainObject(parsed) || Array.isArray(parsed))) {
+    return { data: parsed, isStructured: true };
+  }
+  // Even if not valid JSON, if it looks like JSON, show as preformatted
+  if (looksLikeJson(text)) {
+    return { data: text, isStructured: true };
+  }
+  return { data: text, isStructured: false };
+}
+
+function normalizeArray(value: unknown[]): NormalizedValue {
+  if (value.length === 0) {
+    return { data: [], isStructured: true };
+  }
+  // Check if it's an array of TextContent-like objects (must have type="text" AND text property)
+  if (isPlainObject(value[0]) && isTextContentObject(value[0])) {
+    const texts = value
+      .map((item) =>
+        isPlainObject(item) && isTextContentObject(item)
+          ? String(item.text)
+          : String(item),
+      )
+      .join("\n");
+    // The extracted text might be JSON
+    return normalizeExtractedText(texts);
+  }
+  // Regular array - return as structured data
+  return { data: value, isStructured: true };
+}
+
+function normalizeObject(value: Record<string, unknown>): NormalizedValue {
+  // If it's a TextContent-like object (type="text" + text property), extract the text
+  if (isTextContentObject(value)) {
+    return normalizeExtractedText(value.text as string);
+  }
+  // Regular object - return as structured data
+  return { data: value, isStructured: true };
+}
+
+function normalizeString(value: string): NormalizedValue {
+  // Try to parse as JSON first
+  const parsed = safeJsonParse(value);
+  if (parsed !== null && (isPlainObject(parsed) || Array.isArray(parsed))) {
+    return { data: parsed, isStructured: true };
+  }
+
+  // Handle Python TextContent string format: [TextContent(type='text', text='...')]
+  const textContentMatch = value.match(
+    /\[TextContent\([^)]*text='([\s\S]*)'\s*(?:,\s*\w+=\w+)*\)\]/,
+  );
+  if (textContentMatch) {
+    const extracted = textContentMatch[1]
+      .replace(/''/g, "'")
+      .replace(/\\'/g, "'");
+    return normalizeExtractedText(extracted);
+  }
+
+  // Even without TextContent wrapper, if it looks like JSON, show as preformatted
+  if (looksLikeJson(value)) {
+    return { data: value, isStructured: true };
+  }
+
+  return { data: value, isStructured: false };
+}
+
 /**
  * Normalize any value to a displayable format
  * Returns { data, isStructured } where:
  * - data: the normalized value (object/array for structured, string for text)
  * - isStructured: true if it should be displayed as preformatted/code
  */
-export function normalizeValue(value: unknown): {
-  data: unknown;
-  isStructured: boolean;
-} {
+export function normalizeValue(value: unknown): NormalizedValue {
   // Handle null/undefined
   if (value == null) {
     return { data: "", isStructured: false };
   }
 
-  // Handle arrays
   if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return { data: [], isStructured: true };
-    }
-    // Check if it's an array of TextContent-like objects (must have type="text" AND text property)
-    if (isPlainObject(value[0]) && isTextContentObject(value[0])) {
-      const texts = value
-        .map((item) =>
-          isPlainObject(item) && isTextContentObject(item)
-            ? String(item.text)
-            : String(item),
-        )
-        .join("\n");
-      // The extracted text might be JSON
-      const parsed = safeJsonParse(texts);
-      if (parsed !== null && (isPlainObject(parsed) || Array.isArray(parsed))) {
-        return { data: parsed, isStructured: true };
-      }
-      // Even if not valid JSON, if it looks like JSON, show as preformatted
-      if (looksLikeJson(texts)) {
-        return { data: texts, isStructured: true };
-      }
-      return { data: texts, isStructured: false };
-    }
-    // Regular array - return as structured data
-    return { data: value, isStructured: true };
+    return normalizeArray(value);
   }
 
-  // Handle plain objects
   if (isPlainObject(value)) {
-    // If it's a TextContent-like object (type="text" + text property), extract the text
-    if (isTextContentObject(value)) {
-      const parsed = safeJsonParse(value.text as string);
-      if (parsed !== null && (isPlainObject(parsed) || Array.isArray(parsed))) {
-        return { data: parsed, isStructured: true };
-      }
-      // Even if not valid JSON, if it looks like JSON, show as preformatted
-      if (looksLikeJson(value.text as string)) {
-        return { data: value.text, isStructured: true };
-      }
-      return { data: value.text, isStructured: false };
-    }
-    // Regular object - return as structured data
-    return { data: value, isStructured: true };
+    return normalizeObject(value);
   }
 
-  // Handle strings
   if (typeof value === "string") {
-    // Try to parse as JSON first
-    const parsed = safeJsonParse(value);
-    if (parsed !== null && (isPlainObject(parsed) || Array.isArray(parsed))) {
-      return { data: parsed, isStructured: true };
-    }
-
-    // Handle Python TextContent string format: [TextContent(type='text', text='...')]
-    const textContentMatch = value.match(
-      /\[TextContent\([^)]*text='([\s\S]*)'\s*(?:,\s*\w+=\w+)*\)\]/,
-    );
-    if (textContentMatch) {
-      const extracted = textContentMatch[1]
-        .replace(/''/g, "'")
-        .replace(/\\'/g, "'");
-      const innerParsed = safeJsonParse(extracted);
-      if (
-        innerParsed !== null &&
-        (isPlainObject(innerParsed) || Array.isArray(innerParsed))
-      ) {
-        return { data: innerParsed, isStructured: true };
-      }
-      // Even if not valid JSON (e.g., truncated), if it looks like JSON, show as preformatted
-      if (looksLikeJson(extracted)) {
-        return { data: extracted, isStructured: true };
-      }
-      return { data: extracted, isStructured: false };
-    }
-
-    // Even without TextContent wrapper, if it looks like JSON, show as preformatted
-    if (looksLikeJson(value)) {
-      return { data: value, isStructured: true };
-    }
-
-    return { data: value, isStructured: false };
+    return normalizeString(value);
   }
 
   // Fallback for other types (numbers, booleans, etc.)

@@ -11,11 +11,12 @@ This handler is used by system workflows that should poll Gmail on a schedule
 rather than fire on every single incoming email.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
+from app.db.repositories.workflows import workflow_repository
 from app.models.trigger_configs import GmailPollInboxConfig
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import log
@@ -31,10 +32,10 @@ class GmailPollTriggerHandler(TriggerHandler):
     workflows. This avoids overwriting the event routing in the registry.
     """
 
-    SUPPORTED_TRIGGERS = ["gmail_poll_inbox"]
-    SUPPORTED_EVENTS: set[str] = set()
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = ["gmail_poll_inbox"]
+    SUPPORTED_EVENTS: ClassVar[set[str]] = set()
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "gmail_poll_inbox": "GMAIL_NEW_GMAIL_MESSAGE",
     }
 
@@ -49,7 +50,7 @@ class GmailPollTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -87,7 +88,7 @@ class GmailPollTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, _data: dict[str, Any]
     ) -> list[Workflow]:
         """Find workflows matching this polling trigger event.
 
@@ -95,20 +96,16 @@ class GmailPollTriggerHandler(TriggerHandler):
         """
         log.set_ns("trigger", integration_id="gmail", trigger_type=event_type)
         try:
-            query = {
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.enabled": True,
-                "trigger_config.composio_trigger_ids": trigger_id,
-            }
-            return await self._load_workflows_from_query(
-                query,
-                log_context=f"gmail_poll trigger_id={trigger_id}",
-            )
+            workflows: list[Workflow] = []
+            workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
+            return workflows
 
         except Exception as e:
             log.error(
-                f"{LogTag.TRIGGER} Error finding workflows for gmail_poll trigger {trigger_id}: {e}"
+                f"{LogTag.TRIGGER} Error finding workflows for gmail_poll trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return []
 

@@ -48,7 +48,6 @@ def service(mock_collection):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRegisterDeviceToken:
     async def test_register_new_token(self, service, mock_collection):
         mock_collection.update_one = AsyncMock(return_value=MagicMock(upserted_id="new_id"))
@@ -101,7 +100,6 @@ class TestRegisterDeviceToken:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUserDeviceCount:
     async def test_returns_count(self, service, mock_collection):
         mock_collection.count_documents = AsyncMock(return_value=3)
@@ -124,7 +122,6 @@ class TestGetUserDeviceCount:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestVerifyTokenOwnership:
     async def test_returns_true_when_owned(self, service, mock_collection):
         mock_collection.find_one = AsyncMock(return_value={"token": "tok", "user_id": "user1"})
@@ -153,7 +150,6 @@ class TestVerifyTokenOwnership:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUnregisterDeviceToken:
     async def test_unregister_success(self, service, mock_collection):
         mock_collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
@@ -216,7 +212,6 @@ class TestUnregisterDeviceToken:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetDeviceTokenServiceFactory:
     def test_creates_service_on_first_call(self):
         with (

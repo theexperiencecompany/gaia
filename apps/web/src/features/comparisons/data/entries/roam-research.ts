@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "A note-taking tool for networked thought",
   description:
     "Roam Research is a networked outliner and personal knowledge management tool built around bidirectional links, block references, and daily notes. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and workflows — acting on your behalf before you ask.",
-  metaTitle: "Roam Research Alternative with Proactive AI | GAIA vs Roam",
+  metaTitle: "Roam Research Alternative with Proactive AI — GAIA vs Roam",
   metaDescription:
     "Roam Research is a powerful networked outliner but stays passive and note-focused. GAIA is an open-source Roam Research alternative with proactive AI that manages your inbox, calendar, tasks, and automations across 50+ integrations — turning knowledge into action.",
   keywords: [

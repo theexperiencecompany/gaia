@@ -5,9 +5,11 @@ These models define the expected input for integration API endpoints.
 Re-exported from the original location for backwards compatibility.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.utils.url_safety import assert_safe_url_shape
 
 
 class AddUserIntegrationRequest(BaseModel):
@@ -28,8 +30,19 @@ class CreateCustomIntegrationRequest(BaseModel):
     is_public: bool = Field(False)
     bearer_token: str | None = Field(None)
 
+    @field_validator("server_url")
+    @classmethod
+    def validate_server_url(cls, v: str) -> str:
+        """Block SSRF: reject non-HTTP(S) or literal-private ``server_url`` values.
+
+        Cheap shape check only — the DNS-resolving guard runs on the async
+        probe/connect path so request parsing never blocks on a DNS lookup.
+        """
+        assert_safe_url_shape(v)
+        return v
+
     @model_validator(mode="after")
-    def validate_auth_type(self):
+    def validate_auth_type(self) -> Self:
         """Require an explicit ``auth_type`` whenever ``requires_auth`` is set."""
         if self.requires_auth and not self.auth_type:
             raise ValueError("auth_type must be specified when requires_auth is True")
@@ -45,6 +58,19 @@ class UpdateCustomIntegrationRequest(BaseModel):
     requires_auth: bool | None = None
     auth_type: Literal["none", "oauth", "bearer"] | None = None
     is_public: bool | None = None
+
+    @field_validator("server_url")
+    @classmethod
+    def validate_server_url(cls, v: str | None) -> str | None:
+        """Block SSRF: reject non-HTTP(S) or literal-private ``server_url`` values.
+
+        Cheap shape check only — the DNS-resolving guard runs on the async
+        probe/connect path so request parsing never blocks on a DNS lookup.
+        """
+        if v is None:
+            return v
+        assert_safe_url_shape(v)
+        return v
 
 
 class ConnectIntegrationRequest(BaseModel):

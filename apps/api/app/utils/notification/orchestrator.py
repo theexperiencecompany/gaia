@@ -15,11 +15,15 @@ from app.models.notification.notification_models import (
     ActionResult,
     BulkActions,
     ChannelDeliveryStatus,
+    NotificationActionView,
+    NotificationChannelView,
+    NotificationContentView,
     NotificationRecord,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
+    NotificationView,
 )
 from app.utils.notification.actions import (
     ActionHandler,
@@ -33,6 +37,7 @@ from app.utils.notification.channels import (
     DiscordChannelAdapter,
     InAppChannelAdapter,
     SlackChannelAdapter,
+    TContent,
     TelegramChannelAdapter,
     WhatsAppChannelAdapter,
 )
@@ -46,9 +51,12 @@ class NotificationOrchestrator:
     """Core notification engine: creation, multi-channel delivery, actions,
     bulk operations, and status management."""
 
-    def __init__(self, storage=None) -> None:
+    def __init__(self, storage: MongoDBNotificationStorage | None = None) -> None:
         self.storage = storage or MongoDBNotificationStorage()
-        self.channel_adapters: dict[str, ChannelAdapter] = {}
+        # Erased element type: the registry is heterogeneous by design (each
+        # adapter has its own payload shape). ``_deliver_via_channel`` rebinds
+        # the real one per adapter, so transform → deliver stays checked.
+        self.channel_adapters: dict[str, ChannelAdapter[Any]] = {}
         self.action_handlers: dict[str, ActionHandler] = {}
 
         # Register default components
@@ -69,22 +77,28 @@ class NotificationOrchestrator:
         self.register_action_handler(RedirectActionHandler())
         self.register_action_handler(ModalActionHandler())
 
-    def register_channel_adapter(self, adapter: ChannelAdapter) -> None:
+    def register_channel_adapter(self, adapter: ChannelAdapter[Any]) -> None:
         """Register a new channel adapter"""
         self.channel_adapters[adapter.channel_type] = adapter
-        log.info(f"{LogTag.NOTIFICATION} Registered channel adapter: {adapter.channel_type}")
+        log.info(
+            f"{LogTag.NOTIFICATION} Registered channel adapter", channel_type=adapter.channel_type
+        )
 
     def register_action_handler(self, handler: ActionHandler) -> None:
         """Register a new action handler"""
         self.action_handlers[handler.action_type] = handler
-        log.info(f"{LogTag.NOTIFICATION} Registered action handler: {handler.action_type}")
+        log.info(
+            f"{LogTag.NOTIFICATION} Registered action handler", action_type=handler.action_type
+        )
 
     # NOTIFICATION CREATION & MANAGEMENT
     async def create_notification(self, request: NotificationRequest) -> NotificationRecord | None:
         """Create, store, and deliver a new notification."""
         log.set(notification=NotificationContext(operation="send", notification_id=request.id))
         log.info(
-            f"{LogTag.NOTIFICATION} Creating notification {request.id} for user {request.user_id}"
+            f"{LogTag.NOTIFICATION} Creating notification for user",
+            id=request.id,
+            user_id=request.user_id,
         )
 
         # Create notification record
@@ -107,7 +121,7 @@ class NotificationOrchestrator:
     # NOTIFICATION DELIVERY SYSTEM
     async def _deliver_notification(self, notification: NotificationRecord) -> None:
         """Deliver a notification through all configured channels."""
-        log.info(f"{LogTag.NOTIFICATION} Delivering notification {notification.id}")
+        log.info(f"{LogTag.NOTIFICATION} Delivering notification", id=notification.id)
 
         delivery_tasks = []
         explicitly_requested = {ch.channel_type for ch in notification.original_request.channels}
@@ -124,7 +138,9 @@ class NotificationOrchestrator:
             for platform in ALL_AUTO_INJECTED_CHANNELS:
                 if platform != CHANNEL_TYPE_INAPP and not channel_prefs.get(platform, True):
                     log.info(
-                        f"{LogTag.NOTIFICATION} Skipping {platform} delivery for {notification.user_id}: disabled by preference"
+                        f"{LogTag.NOTIFICATION} Skipping delivery: disabled by preference",
+                        platform=platform,
+                        user_id=notification.user_id,
                     )
                     continue
                 adapter = self.channel_adapters.get(platform)
@@ -141,7 +157,7 @@ class NotificationOrchestrator:
                 if isinstance(result, ChannelDeliveryStatus):
                     channel_statuses.append(result)
                 elif isinstance(result, Exception):
-                    log.error(f"{LogTag.NOTIFICATION} Delivery failed: {result}")
+                    log.error(f"{LogTag.NOTIFICATION} Delivery failed", result=result)
 
             # Compute overall status: DELIVERED only if at least one channel
             # actually succeeded (i.e. not failed and not skipped).
@@ -184,11 +200,15 @@ class NotificationOrchestrator:
                 notification.user_id,
                 {
                     "type": "notification.delivered",
-                    "notification": await self._serialize_notification(notification),
+                    # The socket frame is JSON, so the view is dumped in json mode —
+                    # enums as their values, matching what REST clients receive.
+                    "notification": self._serialize_notification(notification).model_dump(
+                        mode="json"
+                    ),
                 },
             )
 
-    async def _get_channel_prefs(self, user_id: str) -> dict:
+    async def _get_channel_prefs(self, user_id: str) -> dict[str, bool]:
         """Fetch user's notification channel preferences from DB.
 
         On a transient read failure, fall back to the SAME defaults a user with
@@ -204,19 +224,31 @@ class NotificationOrchestrator:
             return await fetch_channel_preferences(user_id)
         except Exception as e:
             log.warning(
-                f"{LogTag.NOTIFICATION} Failed to fetch channel prefs for {user_id}, using defaults: {e}"
+                f"{LogTag.NOTIFICATION} Failed to fetch channel prefs, using defaults",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return dict(DEFAULT_CHANNEL_PREFERENCES)
 
     async def _deliver_via_channel(
-        self, notification: NotificationRecord, adapter: ChannelAdapter
+        self, notification: NotificationRecord, adapter: ChannelAdapter[TContent]
     ) -> ChannelDeliveryStatus:
-        """Deliver a notification via a specific channel adapter."""
+        """Deliver a notification via a specific channel adapter.
+
+        ``TContent`` binds to this adapter's own payload type, so the value
+        flowing from ``transform`` into ``deliver`` is checked per adapter even
+        though the registry itself is erased.
+        """
         try:
             content = await adapter.transform(notification.original_request)
             return await adapter.deliver(content, notification.user_id)
         except Exception as e:
-            log.error(f"{LogTag.NOTIFICATION} Channel delivery failed: {e}")
+            log.error(
+                f"{LogTag.NOTIFICATION} Channel delivery failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return ChannelDeliveryStatus(
                 channel_type=adapter.channel_type,
                 status=NotificationStatus.PENDING,
@@ -238,7 +270,9 @@ class NotificationOrchestrator:
             notification=NotificationContext(operation="dispatch", notification_id=notification_id),
         )
         log.info(
-            f"{LogTag.NOTIFICATION} Executing action {action_id} for notification {notification_id}"
+            f"{LogTag.NOTIFICATION} Executing action for notification",
+            action_id=action_id,
+            notification_id=notification_id,
         )
 
         # Get notification
@@ -294,7 +328,9 @@ class NotificationOrchestrator:
         if result.update_notification:
             await self.storage.update_notification(notification_id, result.update_notification)
             log.info(
-                f"{LogTag.NOTIFICATION} Broadcasting notification {notification.id} to user {notification.user_id}"
+                f"{LogTag.NOTIFICATION} Broadcasting notification to user",
+                id=notification.id,
+                user_id=notification.user_id,
             )
             # Broadcast update to user via websocket
             await websocket_manager.broadcast_to_user(
@@ -316,7 +352,9 @@ class NotificationOrchestrator:
             return None
 
         log.info(
-            f"{LogTag.NOTIFICATION} Marking notification {notification_id} as read for user {user_id}"
+            f"{LogTag.NOTIFICATION} Marking notification as read for user",
+            notification_id=notification_id,
+            user_id=user_id,
         )
 
         await self.storage.update_notification(
@@ -344,7 +382,9 @@ class NotificationOrchestrator:
             return False
 
         log.info(
-            f"{LogTag.NOTIFICATION} Archiving notification {notification_id} for user {user_id}"
+            f"{LogTag.NOTIFICATION} Archiving notification for user",
+            notification_id=notification_id,
+            user_id=user_id,
         )
 
         await self.storage.update_notification(
@@ -367,19 +407,19 @@ class NotificationOrchestrator:
         channel_type: str | None = None,
         notification_type: NotificationType | None = None,
         source: NotificationSourceEnum | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[NotificationView]:
         """Get a user's notifications with optional filtering and pagination."""
         notifications = await self.storage.get_user_notifications(
             user_id, status, limit, offset, channel_type, notification_type, source
         )
-        return [await self._serialize_notification(n) for n in notifications]
+        return [self._serialize_notification(n) for n in notifications]
 
-    async def get_notification(self, notification_id: str, user_id: str) -> dict[str, Any] | None:
+    async def get_notification(self, notification_id: str, user_id: str) -> NotificationView | None:
         """Get a specific notification by ID for a user."""
         notification = await self.storage.get_notification(notification_id, user_id)
         if not notification:
             return None
-        return await self._serialize_notification(notification)
+        return self._serialize_notification(notification)
 
     # BULK OPERATIONS
     async def bulk_actions(
@@ -395,60 +435,69 @@ class NotificationOrchestrator:
                     success = result is not None
                 elif action == BulkActions.ARCHIVE:
                     success = await self.archive_notification(notification_id, user_id)
-                else:
-                    success = False
 
                 results[notification_id] = success
             except Exception as e:
-                log.error(f"{LogTag.NOTIFICATION} Bulk action failed for {notification_id}: {e}")
+                log.error(
+                    f"{LogTag.NOTIFICATION} Bulk action failed for",
+                    notification_id=notification_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
                 results[notification_id] = False
 
         return results
 
     # UTILITY & SERIALIZATION METHODS
-    async def _serialize_notification(self, notification: NotificationRecord) -> dict[str, Any]:
-        """Serialize a notification record for API responses."""
-        return {
-            "id": notification.id,
-            "user_id": notification.user_id,
-            "status": notification.status.value,
-            "created_at": notification.created_at.isoformat(),
-            "delivered_at": (
+    def _serialize_notification(self, notification: NotificationRecord) -> NotificationView:
+        """Flatten a stored record into the view API/tool consumers read.
+
+        Timestamps are emitted as ISO strings because ``NotificationView`` publishes
+        them as ``str`` — that is the established wire contract.
+        """
+        request = notification.original_request
+        return NotificationView(
+            id=notification.id,
+            user_id=notification.user_id,
+            status=notification.status,
+            created_at=notification.created_at.isoformat(),
+            delivered_at=(
                 notification.delivered_at.isoformat() if notification.delivered_at else None
             ),
-            "read_at": (notification.read_at.isoformat() if notification.read_at else None),
-            "content": {
-                "title": notification.original_request.content.title,
-                "body": notification.original_request.content.body,
-                "actions": [
-                    {
-                        "id": action.id,
-                        "type": action.type.value,
-                        "label": action.label,
-                        "style": action.style.value,
-                        "requires_confirmation": action.requires_confirmation,
-                        "confirmation_message": action.confirmation_message,
-                        "config": action.config.model_dump() if action.config else None,
-                        "executed": action.executed,
-                        "executed_at": (
+            read_at=(notification.read_at.isoformat() if notification.read_at else None),
+            content=NotificationContentView(
+                title=request.content.title,
+                body=request.content.body,
+                actions=[
+                    NotificationActionView(
+                        id=action.id,
+                        type=action.type,
+                        label=action.label,
+                        style=action.style,
+                        requires_confirmation=action.requires_confirmation,
+                        confirmation_message=action.confirmation_message,
+                        config=action.config,
+                        executed=action.executed,
+                        executed_at=(
                             action.executed_at.isoformat() if action.executed_at else None
                         ),
-                        "disabled": action.disabled,
-                    }
-                    for action in (notification.original_request.content.actions or [])
+                        disabled=action.disabled,
+                    )
+                    for action in (request.content.actions or [])
                 ],
-            },
-            "source": notification.original_request.source,
-            "type": notification.original_request.type.value,
-            "metadata": notification.original_request.metadata,
-            "channels": [
-                {
-                    "channel_type": ch.channel_type,
-                    "status": ch.status.value,
-                    "skipped": ch.skipped,
-                    "delivered_at": (ch.delivered_at.isoformat() if ch.delivered_at else None),
-                    "error_message": ch.error_message,
-                }
+            ),
+            source=request.source,
+            type=request.type,
+            metadata=request.metadata,
+            channels=[
+                NotificationChannelView(
+                    channel_type=ch.channel_type,
+                    status=ch.status,
+                    skipped=ch.skipped,
+                    delivered_at=(ch.delivered_at.isoformat() if ch.delivered_at else None),
+                    error_message=ch.error_message,
+                )
                 for ch in notification.channels
             ],
-        }
+        )

@@ -16,6 +16,23 @@ LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql"
 LINEAR_TOOLKIT = "LINEAR"
 
 
+def history_label_names(raw: object) -> list[str]:
+    """Label names off an issue-history entry's ``addedLabels``/``removedLabels``.
+
+    Accepts both a plain ``[{id, name}]`` list and a ``{"nodes": [...]}``
+    connection. ``QUERY_ISSUE_HISTORY`` selects ``addedLabels { id name }``,
+    which implies a list — a connection would need ``{ nodes { ... } }`` — but
+    Linear's published schema could not be confirmed for this field, so both
+    shapes are handled rather than one guessed at. Anything else yields no
+    labels instead of raising.
+    """
+    if isinstance(raw, dict):
+        raw = raw.get("nodes")
+    if not isinstance(raw, list):
+        return []
+    return [name for item in raw if isinstance(item, dict) and (name := item.get("name"))]
+
+
 def graphql_request(
     query: str,
     variables: dict[str, Any] | None,
@@ -55,9 +72,7 @@ def graphql_request(
 
     if isinstance(result, dict) and "errors" in result:
         error_messages = [e.get("message", str(e)) for e in result["errors"]]
-        log.error(
-            f"{LogTag.INTEGRATION} GraphQL Errors: {error_messages} Query: {query} Variables: {variables}"
-        )
+        log.error(f"{LogTag.INTEGRATION} GraphQL errors", error_messages=error_messages)
         raise Exception(f"GraphQL errors: {'; '.join(error_messages)}")
 
     return result.get("data", {}) if isinstance(result, dict) else {}

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nrwl/nx/refs/heads/master/packages/nx/schemas/nx-schema.json",
   "installation": {
-    "version": "latest",
+    "version": "22.7.7",
     "plugins": {
       "sources": []
     }
@@ -119,5 +119,10 @@
       }
     }
   },
-  "analytics": false
+  "analytics": false,
+  "pluginsConfig": {
+    "@nx/js": {
+      "analyzeSourceFiles": false
+    }
+  }
 }

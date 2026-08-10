@@ -43,6 +43,7 @@ import {
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
+  withWideEvent,
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
 import { Bot, type Context, GrammyError, InputFile } from "grammy";
@@ -194,9 +195,30 @@ export class TelegramAdapter extends BaseBotAdapter {
     this.token = token;
 
     this.bot = new Bot(this.token);
-    this.bot.catch((err) => {
-      this.adapterLogger.error("bot_runtime_error", undefined, err);
-    });
+    // grammY's terminal error handler: anything a middleware throws and nobody
+    // caught ends here. It is a unit of work like any other — the update that
+    // blew up, who sent it, and why — so it gets its own canonical event
+    // instead of a lone error line with no trace_id.
+    this.bot.catch((err) =>
+      withWideEvent(
+        "bot_runtime_error",
+        {
+          platform: this.platform,
+          component: "adapter",
+          user_hash: hashLogIdentifier(err.ctx?.from?.id),
+          channel_hash: hashLogIdentifier(err.ctx?.chat?.id),
+          update_id: err.ctx?.update?.update_id,
+        },
+        async () => {
+          // Re-thrown so the boundary marks the event failed and records the
+          // real error in errors[]; a handler-reports-success event here would
+          // hide every middleware crash.
+          throw err.error;
+        },
+        // This IS the last-resort handler — the error is already emitted, and
+        // letting it escape would take the bot process down.
+      ).catch(() => undefined),
+    );
     // Cache the bot username upfront to avoid calling getMe() on every message
     const botInfo = await this.bot.api.getMe();
     this.botUsername = botInfo.username;
@@ -280,7 +302,7 @@ export class TelegramAdapter extends BaseBotAdapter {
       const isPrivate = ctx.chat.type === "private";
       this.adapterLogger.info("message_received", {
         user_hash: hashLogIdentifier(userId),
-        chat_hash: hashLogIdentifier(ctx.chat.id),
+        channel_hash: hashLogIdentifier(ctx.chat.id),
         chat_type: ctx.chat.type,
         is_private: isPrivate,
       });
@@ -355,7 +377,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           startWithRetry(35_000);
         } else {
           this.adapterLogger.error("long_poll_fatal", undefined, err);
-          void this.shutdown()
+          void this.shutdown("long_poll_fatal")
             .catch((shutdownErr) =>
               this.adapterLogger.error(
                 "shutdown_failed",
@@ -494,12 +516,6 @@ export class TelegramAdapter extends BaseBotAdapter {
         return;
       }
 
-      this.adapterLogger.info("slash_command_received", {
-        command: "gaia",
-        user_hash: hashLogIdentifier(userId),
-        chat_hash: hashLogIdentifier(ctx.chat?.id),
-      });
-
       await this.handleTelegramStreaming(ctx, userId, message);
     });
   }
@@ -518,12 +534,6 @@ export class TelegramAdapter extends BaseBotAdapter {
   ): Promise<void> {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
-
-    this.adapterLogger.info("streaming_started", {
-      user_hash: hashLogIdentifier(userId),
-      chat_hash: hashLogIdentifier(chatId),
-      message_length: message.length,
-    });
 
     const loading = await ctx.reply("Thinking...");
     let currentMessageId = loading.message_id;
@@ -557,7 +567,10 @@ export class TelegramAdapter extends BaseBotAdapter {
             (e) =>
               this.adapterLogger.error(
                 "edit_message_text_failed",
-                { chat_id: chatId, message_id: currentMessageId },
+                {
+                  channel_hash: hashLogIdentifier(chatId),
+                  message_id: currentMessageId,
+                },
                 e,
               ),
           );
@@ -576,7 +589,10 @@ export class TelegramAdapter extends BaseBotAdapter {
               (e) =>
                 this.adapterLogger.error(
                   "edit_message_text_failed",
-                  { chat_id: chatId, message_id: newMessage.message_id },
+                  {
+                    channel_hash: hashLogIdentifier(chatId),
+                    message_id: newMessage.message_id,
+                  },
                   e,
                 ),
             );
@@ -611,7 +627,10 @@ export class TelegramAdapter extends BaseBotAdapter {
                 (e) =>
                   this.adapterLogger.error(
                     "auth_message_failed",
-                    { chat_id: chatId, user_id: userId },
+                    {
+                      channel_hash: hashLogIdentifier(chatId),
+                      user_hash: hashLogIdentifier(userId),
+                    },
                     e,
                   ),
               );
@@ -619,7 +638,10 @@ export class TelegramAdapter extends BaseBotAdapter {
           } catch (e) {
             this.adapterLogger.error(
               "auth_message_failed",
-              { chat_id: chatId, user_id: userId },
+              {
+                channel_hash: hashLogIdentifier(chatId),
+                user_hash: hashLogIdentifier(userId),
+              },
               e,
             );
             // DM failed (privacy settings) — update group message with fallback
@@ -631,7 +653,10 @@ export class TelegramAdapter extends BaseBotAdapter {
             } catch (fallbackErr) {
               this.adapterLogger.error(
                 "auth_fallback_message_failed",
-                { chat_id: chatId, user_id: userId },
+                {
+                  channel_hash: hashLogIdentifier(chatId),
+                  user_hash: hashLogIdentifier(userId),
+                },
                 fallbackErr,
               );
             }
@@ -646,7 +671,10 @@ export class TelegramAdapter extends BaseBotAdapter {
             (e) =>
               this.adapterLogger.error(
                 "edit_message_text_failed",
-                { chat_id: chatId, message_id: currentMessageId },
+                {
+                  channel_hash: hashLogIdentifier(chatId),
+                  message_id: currentMessageId,
+                },
                 e,
               ),
           );
@@ -690,13 +718,6 @@ export class TelegramAdapter extends BaseBotAdapter {
       caption = stripTelegramMention(caption, this.botUsername) || undefined;
     }
 
-    this.adapterLogger.info("media_message_received", {
-      user_hash: hashLogIdentifier(userId),
-      chat_hash: hashLogIdentifier(ctx.chat?.id),
-      media_kind: extracted.kind,
-      is_voice_note: extracted.isVoiceNote,
-    });
-
     const media: IncomingMedia = {
       kind: extracted.kind,
       isVoiceNote: extracted.isVoiceNote,
@@ -719,7 +740,9 @@ export class TelegramAdapter extends BaseBotAdapter {
 
     try {
       await ctx.api.sendChatAction(chatId, "typing");
-    } catch {}
+    } catch {
+      /* typing action is best-effort */
+    }
 
     try {
       const outcome = await this.resolveIncomingMedia(
@@ -741,14 +764,16 @@ export class TelegramAdapter extends BaseBotAdapter {
     } catch (err) {
       this.adapterLogger.error(
         "media_message_failed",
-        { chat_id: chatId, media_kind: media.kind },
+        { channel_hash: hashLogIdentifier(chatId), media_kind: media.kind },
         err,
       );
       try {
         await ctx.reply(
           friendlyMediaError(media.kind, err, this.gaia.getPricingUrl()),
         );
-      } catch {}
+      } catch {
+        /* the error notice itself failing is not actionable */
+      }
     }
   }
 
@@ -811,7 +836,10 @@ export class TelegramAdapter extends BaseBotAdapter {
           (e) =>
             this.adapterLogger.error(
               "edit_message_text_failed",
-              { chat_id: targetChat, message_id: messageId },
+              {
+                channel_hash: hashLogIdentifier(targetChat),
+                message_id: messageId,
+              },
               e,
             ),
         ),
@@ -867,7 +895,10 @@ export class TelegramAdapter extends BaseBotAdapter {
       },
 
       startTyping: async () => {
-        if (!chatId) return () => {};
+        if (!chatId)
+          return () => {
+            /* no chat to type into */
+          };
         return this.startTypingIndicator(
           () => api.sendChatAction(chatId, "typing"),
           TELEGRAM_TYPING_REFRESH_INTERVAL_MS,

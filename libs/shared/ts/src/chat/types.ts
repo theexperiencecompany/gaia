@@ -721,6 +721,12 @@ export interface RateLimitData {
   feature: string;
   plan_required?: string;
   reset_time?: string;
+  /** The user's actual plan (e.g. "free", "pro"). Lets a card suppress the
+   *  upgrade pitch for a user already on the top tier. */
+  current_plan?: string;
+  /** Backend-provided explanation; overrides the card's generic copy (used
+   *  when a feature is capped rather than plan-gated, e.g. the memory cap). */
+  message?: string;
 }
 
 // ---------------------------------------------------------------------------

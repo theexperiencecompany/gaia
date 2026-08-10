@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "The best calendar app you've ever seen",
   description:
     "Fantastical is a premium Apple-ecosystem calendar and tasks app known for its natural language event creation and polished design. GAIA goes far beyond calendar management to orchestrate your entire digital workflow across email, tasks, integrations, and more.",
-  metaTitle: "Fantastical Alternative with AI Automation | GAIA vs Fantastical",
+  metaTitle: "Fantastical Alternative with AI Automation — GAIA vs Fantastical",
   metaDescription:
     "Fantastical is a premium Apple calendar but doesn't manage your inbox or automate workflows. GAIA is an open-source Fantastical alternative with AI automation across email, calendar, and 50+ tools — on every platform, with a free tier.",
   keywords: [

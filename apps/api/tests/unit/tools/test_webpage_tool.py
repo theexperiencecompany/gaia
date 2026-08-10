@@ -3,7 +3,7 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+from app.utils.search.models import SearchResultItem, WebSearchResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,7 +28,6 @@ def _writer_mock() -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFetchWebpages:
     """Tests for the fetch_webpages tool."""
 
@@ -170,7 +169,6 @@ class TestFetchWebpages:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWebSearchTool:
     """Tests for the web_search_tool tool."""
 
@@ -184,14 +182,12 @@ class TestWebSearchTool:
         """Successful web search returns structured results."""
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
-        mock_search.return_value = {
-            "web": [{"title": "Result 1", "url": "https://r1.com"}],
-            "images": [],
-            "videos": [],
-            "answer": "Quick answer",
-            "response_time": 0.5,
-            "request_id": "req-123",
-        }
+        mock_search.return_value = WebSearchResult(
+            web=[SearchResultItem(title="Result 1", url="https://r1.com")],
+            images=[],
+            answer="Quick answer",
+            query="test query",
+        )
 
         from app.agents.tools.webpage_tool import web_search_tool
 
@@ -200,7 +196,9 @@ class TestWebSearchTool:
             config=_make_config(),
         )
 
-        assert result["web"] == [{"title": "Result 1", "url": "https://r1.com"}]
+        assert result["web"] == [
+            SearchResultItem(title="Result 1", url="https://r1.com").model_dump()
+        ]
         assert "instructions" in result
         mock_search.assert_awaited_once_with(query="test query", count=10)
 
@@ -277,14 +275,12 @@ class TestWebSearchTool:
         """Verifies search_results are streamed to the frontend."""
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
-        mock_search.return_value = {
-            "web": [{"title": "R1"}],
-            "images": [{"url": "img.png"}],
-            "videos": [],
-            "answer": "",
-            "response_time": 0.3,
-            "request_id": "r1",
-        }
+        mock_search.return_value = WebSearchResult(
+            web=[SearchResultItem(title="R1", url="https://r1.com")],
+            images=["img.png"],
+            answer="",
+            query="hello",
+        )
 
         from app.agents.tools.webpage_tool import web_search_tool
 

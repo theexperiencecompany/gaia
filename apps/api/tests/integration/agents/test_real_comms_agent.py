@@ -196,7 +196,7 @@ def _apply_all_patches(
         yield
 
 
-@pytest.fixture()
+@pytest.fixture
 async def comms_graph_simple():
     """
     Build the REAL comms agent graph with:
@@ -216,7 +216,7 @@ async def comms_graph_simple():
             yield graph
 
 
-@pytest.fixture()
+@pytest.fixture
 async def comms_graph_with_tool_call():
     """
     Build the REAL comms agent graph whose fake LLM first returns a tool call
@@ -808,7 +808,7 @@ class TestRealCommsAgent:
             f"Expected ToolMessage for malformed_call_001; got IDs: {ids_seen}"
         )
 
-    async def test_comms_agent_timeout_handling(self):
+    async def test_comms_agent_timeout_handling(self, no_model_fallback):
         """
         When the LLM call raises asyncio.TimeoutError, the exception must
         propagate to the caller with the original TimeoutError type intact —

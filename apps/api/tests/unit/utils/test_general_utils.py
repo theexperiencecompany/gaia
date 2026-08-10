@@ -19,7 +19,6 @@ from app.utils.general_utils import (
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetContextWindow:
     """Tests for get_context_window — returns a substring of *text* centred
     around *query* with configurable padding and ellipsis markers."""
@@ -112,7 +111,6 @@ class TestGetContextWindow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTransformGmailMessage:
     """Tests for transform_gmail_message — normalises both Composio and
     Gmail API message formats into a unified frontend-friendly dict."""
@@ -327,7 +325,6 @@ class TestTransformGmailMessage:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDecodeMessageBody:
     """Tests for decode_message_body — extracts and base64-decodes the body
     from a Gmail API message payload."""
@@ -493,7 +490,6 @@ class TestDecodeMessageBody:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetProjectInfo:
     """Tests for get_project_info — reads pyproject.toml and returns
     project metadata, falling back to defaults on error."""
@@ -566,7 +562,6 @@ name = "custom-name"
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDescribeStructure:
     """Tests for describe_structure — recursively describes the shape of a
     nested dict/list structure as a flat list of dotted-path strings."""

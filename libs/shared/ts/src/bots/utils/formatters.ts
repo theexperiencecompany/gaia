@@ -17,10 +17,9 @@ import type {
   BotWorkflow,
   PlatformName,
 } from "../types";
-import { createBotLogger, getHttpStatus } from "./logger";
+import { getHttpStatus } from "./logger";
 import { isTableRow, isTableSeparator } from "./text";
-
-const logger = createBotLogger("shared", "formatters");
+import { wideLog } from "./wide-events";
 
 /**
  * Formats a workflow for display in a bot message.
@@ -572,6 +571,6 @@ export function formatBotError(error: unknown): string {
     return "⚠️ Response was incomplete. Please try again.";
   }
 
-  logger.error("unhandled_bot_error", undefined, error);
+  wideLog.error("unhandled_bot_error", undefined, error);
   return "❌ Something went wrong. Please try again later.";
 }

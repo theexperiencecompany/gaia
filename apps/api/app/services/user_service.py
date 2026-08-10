@@ -1,23 +1,27 @@
-from datetime import UTC, datetime
+from typing import Any
 
-from bson import ObjectId
 from fastapi import HTTPException
 
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
+from app.models.user_models import UserUpdate, UserUpdateResponse, user_to_legacy_dict
 from app.utils.oauth_utils import upload_user_picture
 from shared.py.wide_events import log
 
 
-async def get_user_by_id(user_id: str) -> dict | None:
-    """Get user by ID from database."""
-    log.set(service="user_service", user_id=user_id)
+async def get_user_by_id(user_id: str) -> dict[str, Any] | None:
+    """Get user by ID from database.
+
+    Returns the ``user_to_legacy_dict`` bridge shape — a raw-style dict with a
+    string ``_id`` — because its consumers (agent tools, workflow/todo workers)
+    mutate it and pass it on as a plain dict. Typing it as ``UserDocument`` is
+    the real fix and belongs with retiring that bridge, not here.
+    """
+    log.set(component="user_service", user_id=user_id)
     try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        if user:
-            user["_id"] = str(user["_id"])
-        return user
+        user = await user_repository.get(user_id)
+        return user_to_legacy_dict(user) if user else None
     except Exception as e:
-        log.error(f"Error fetching user {user_id}: {e}")
+        log.error("Error fetching user", user_id=user_id, error=str(e), error_type=type(e).__name__)
         raise HTTPException(status_code=404, detail="User not found")
 
 
@@ -25,62 +29,69 @@ async def update_user_profile(
     user_id: str,
     name: str | None = None,
     picture_data: bytes | None = None,
-    data: dict | None = None,
-) -> dict:
+) -> UserUpdateResponse:
     """Update user profile information."""
     log.set(
-        service="user_service",
+        component="user_service",
         user_id=user_id,
         operation="update_profile",
         has_picture=picture_data is not None,
     )
     try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        user = await user_repository.get(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        update_data: dict = (
-            {"updated_at": datetime.now(UTC), **data} if data else {"updated_at": datetime.now(UTC)}
-        )
+        update_fields: dict[str, str] = {}
 
         # Update name if provided
         if name is not None and name.strip():
-            update_data["name"] = name.strip()
+            update_fields["name"] = name.strip()
 
         # Update picture if provided
         if picture_data:
             try:
                 # Generate public_id for Cloudinary
-                user_email = user.get("email", "")
+                user_email = user.email or ""
                 public_id = f"user_{user_email.replace('@', '_at_').replace('.', '_dot_')}"
 
                 # Upload to Cloudinary
-                picture_url = await upload_user_picture(picture_data, public_id)
-                update_data["picture"] = picture_url
+                update_fields["picture"] = await upload_user_picture(picture_data, public_id)
 
             except Exception as e:
-                log.error(f"Error uploading profile picture: {e}")
+                log.error(
+                    "Error uploading profile picture",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
                 raise HTTPException(status_code=500, detail="Failed to upload profile picture")
 
-        # Update database
-        await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": update_data})
-
-        # Fetch and return updated user
-        updated_user = await get_user_by_id(user_id)
+        # Only write (and bump updated_at) when something actually changed.
+        updated_user = (
+            await user_repository.update(user_id, UserUpdate(**update_fields))
+            if update_fields
+            else user
+        )
 
         if not updated_user:
             raise HTTPException(status_code=404, detail="User not found after update")
 
-        return {
-            "user_id": updated_user["_id"],
-            "name": updated_user.get("name"),
-            "email": updated_user.get("email"),
-            "picture": updated_user.get("picture"),
-            "updated_at": updated_user.get("updated_at"),
-        }
+        return UserUpdateResponse(
+            user_id=updated_user.id,
+            name=updated_user.name,
+            email=updated_user.email,
+            picture=updated_user.picture,
+            updated_at=updated_user.updated_at,
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error updating user profile: {e}")
+        log.error(
+            "Error updating user profile",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         raise HTTPException(status_code=500, detail="Failed to update profile")

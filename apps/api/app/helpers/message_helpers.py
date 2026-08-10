@@ -1,8 +1,7 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Literal, NamedTuple
+from typing import Any, Literal, NamedTuple
 
-from bson import ObjectId
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agents.prompts.onboarding_prompts import (
@@ -23,12 +22,11 @@ from app.agents.workspace.paths import (
     safe_upload_filename,
     session_dir,
 )
-from app.db.mongodb.collections import (
-    conversations_collection,
-    todos_collection,
-    users_collection,
-)
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
 from app.db.redis import get_cache, set_cache
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.message_models import (
@@ -37,11 +35,13 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
+from app.utils.artifact_utils import artifact_url_base
 from app.utils.timezone import Timezone
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
@@ -110,7 +110,9 @@ def build_current_time_message(
             local_now = Timezone.parse(user_timezone).now().strftime("%A, %B %d, %Y, %H:%M")
             parts.append(f"[User Local Time ({user_timezone}): {local_now}]")
         except Exception as e:
-            log.warning(f"Error formatting user local time: {e}")
+            log.warning(
+                "Error formatting user local time", error=str(e), error_type=type(e).__name__
+            )
     return HumanMessage(
         content="\n".join(parts),
         additional_kwargs={"time_context": True},
@@ -131,14 +133,16 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
     try:
         results = await memory_engine.recall(user_id, query, limit=5)
         if results.memories:
-            log.info(f"Added {len(results.memories)} memories to context")
+            log.info("Added memories to context", memories_count=len(results.memories))
             return (
                 "\n\nBased on our previous conversations (bracketed dates say when "
                 "something happened / was last mentioned):\n"
                 + "\n".join(f"- {entry_to_note(mem)}" for mem in results.memories)
             )
     except Exception as e:
-        log.warning(f"Error retrieving memories: {e}")
+        log.warning(
+            "Error retrieving memories", error=str(e), error_type=type(e).__name__, user_id=user_id
+        )
 
     return ""
 
@@ -153,7 +157,12 @@ async def _get_core_memory_section(user_id: str) -> str:
         if core_context:
             return f"What you remember about this user (memory core):\n{core_context}"
     except Exception as e:
-        log.warning(f"Error retrieving core memory context: {e}")
+        log.warning(
+            "Error retrieving core memory context",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
     return ""
 
@@ -176,12 +185,12 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     try:
         results = await gaia_knowledge_service.search_knowledge(query=query, limit=5)
         if results:
-            log.info(f"Added {len(results)} knowledge items to context")
+            log.info("Added knowledge items to context", results_count=len(results))
             return "\n\nAbout Gaia (your identity and capabilities):\n" + "\n".join(
                 f"- {result.content}" for result in results
             )
     except Exception as e:
-        log.warning(f"Error retrieving GAIA knowledge: {e}")
+        log.warning("Error retrieving GAIA knowledge", error=str(e), error_type=type(e).__name__)
 
     return ""
 
@@ -231,20 +240,29 @@ BACKGROUND_EXECUTION_BANNER = (
 
 
 def build_workspace_session_banner(session_id: str) -> str:
-    """State the absolute path of the agent's own session directory.
+    """State the agent's own session directory and the public artifact URL base.
 
     The agent never otherwise learns its conversation/session id, so a prompt
     that asks it to report an absolute ``/workspace/sessions/<id>/...`` path
     forces it to guess — and a weak model fabricates one, writing the
     deliverable outside the session the artifact watcher scans, where it is
     silently lost. Stating the real path removes the guess.
+
+    The agent also knows a file's workspace path but not the URL the browser
+    fetches it from, so it cannot link or embed an artifact (in an HTML page it
+    generates, an email body, etc.). Stating the public URL base gives it the
+    one fact it is missing.
     """
-    return f"Session directory: {session_dir(session_id)}"
+    return (
+        f"Session directory: {session_dir(session_id)}\n"
+        f"Public artifact URL: a file at `artifacts/<name>` is served at "
+        f"{artifact_url_base(session_id)}/<name>"
+    )
 
 
-def _format_active_todo_banner(todo: dict) -> str:
-    title = todo.get("title", "Untitled")
-    todo_id = str(todo.get("_id") or todo.get("id") or "")
+def _format_active_todo_banner(todo: TodoDocument) -> str:
+    title = todo.title or "Untitled"
+    todo_id = todo.id
     return (
         "🎯 ACTIVE TODO (this run is bound to this todo)\n"
         f"   id: {todo_id}\n"
@@ -261,7 +279,7 @@ async def _build_active_todo_banner(user_id: str, active_todo_id: str | None) ->
     if not active_todo_id:
         return ""
     try:
-        doc = await todos_collection.find_one({"_id": ObjectId(active_todo_id), "user_id": user_id})
+        doc = await todo_repository.get(active_todo_id, user_id=user_id)
         if not doc:
             return ""
         return _format_active_todo_banner(doc)
@@ -351,7 +369,12 @@ async def build_connected_integrations_manifest(
     try:
         items = await get_connected_integrations_named(user_id)
     except Exception as e:
-        log.warning(f"Error building connected-integrations manifest: {e}")
+        log.warning(
+            "Error building connected-integrations manifest",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return ""
     if not items:
         return ""
@@ -367,8 +390,8 @@ async def build_dynamic_context_messages(
     query: str | None,
     user_name: str | None = None,
     user_timezone: str | None = None,
-    user_preferences: dict | None = None,
-    writing_style: dict | None = None,
+    user_preferences: dict[str, Any] | None = None,
+    writing_style: dict[str, Any] | None = None,
     source: str | None = None,
     include_openui: bool = False,
     memories_text: str | None = None,
@@ -524,7 +547,12 @@ async def build_dynamic_context_messages(
         return DynamicContextMessages(stable=stable_msg, memory_recall=recall_msg)
 
     except Exception as e:
-        log.error(f"Error creating dynamic context messages: {e}")
+        log.error(
+            "Error creating dynamic context messages",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         # Return a byte-stable empty stable message so a persistent failure here
         # doesn't change the prompt prefix every minute and silently invalidate
         # the implicit prompt cache. The clock lives in a HumanMessage built by
@@ -573,7 +601,9 @@ Execute immediately without asking for clarification."""
 async def format_workflow_execution_message(
     selected_workflow: SelectedWorkflowData,
     user_id: str | None = None,
-    trigger_context: dict | None = None,
+    # Open by construction: schedulers spread arbitrary provider trigger data
+    # through this alongside the agent's own keys, so there is no fixed shape.
+    trigger_context: dict[str, Any] | None = None,
     existing_content: str = "",
 ) -> str:
     """Format workflow execution message, handling both manual and automated triggers."""
@@ -583,7 +613,13 @@ async def format_workflow_execution_message(
         try:
             workflow = await WorkflowService.get_workflow(selected_workflow.id, user_id)
         except Exception as e:
-            log.error(f"Failed to fetch workflow {selected_workflow.id}: {e}")
+            log.error(
+                "Failed to fetch workflow",
+                id=selected_workflow.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
     # Use fresh database data if available, otherwise use passed data
     if workflow and workflow.steps:
@@ -704,11 +740,8 @@ async def get_onboarding_system_prompt_if_applicable(
 ) -> str | None:
     """Return the onboarding system prompt for onboarding/demo turns, else ``None``."""
     try:
-        conv = await conversations_collection.find_one(
-            {"conversation_id": conversation_id},
-            {"is_onboarding_conversation": 1, "messages": 1},
-        )
-        is_tagged_onboarding = bool(conv and conv.get("is_onboarding_conversation"))
+        probe = await conversation_repository.get_onboarding_probe(conversation_id)
+        is_tagged_onboarding = bool(probe and probe.is_onboarding_conversation)
         is_run_now_demo = bool(
             latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
         )
@@ -717,30 +750,26 @@ async def get_onboarding_system_prompt_if_applicable(
             return None
 
         if is_tagged_onboarding:
-            message_count = len(conv.get("messages", [])) if conv else 0
+            message_count = probe.message_count if probe else 0
             if message_count >= 7:
-                await users_collection.update_one(
-                    {"_id": ObjectId(user_id)},
-                    {"$set": {"onboarding.phase": OnboardingPhase.COMPLETED}},
-                )
+                await user_repository.set_onboarding_phase(user_id, OnboardingPhase.COMPLETED)
                 log.info(
-                    f"[onboarding_prompt] Auto-completed onboarding for {user_id} after {message_count} messages"
+                    "[onboarding_prompt] Auto-completed onboarding for after messages",
+                    user_id=user_id,
+                    message_count=message_count,
                 )
                 return None
 
-        user_doc = await users_collection.find_one(
-            {"_id": ObjectId(user_id)},
-            {"onboarding.phase": 1, "name": 1, "onboarding.preferences": 1},
-        )
+        user_doc = await user_repository.get(user_id)
         if not user_doc:
             return None
 
-        phase = user_doc.get("onboarding", {}).get("phase", "initial")
+        onboarding = user_doc.onboarding or {}
+        phase = onboarding.get("phase", "initial")
         if phase == OnboardingPhase.COMPLETED:
             return None
 
-        name = user_doc.get("name", "there")
-        onboarding = user_doc.get("onboarding", {})
+        name = user_doc.name or "there"
         profession = onboarding.get("preferences", {}).get("profession", "")
         triage_summary = onboarding.get("triage_summary", "")
 
@@ -756,7 +785,13 @@ async def get_onboarding_system_prompt_if_applicable(
         )
 
     except Exception as e:
-        log.warning(f"[onboarding_prompt] Failed to check onboarding conversation: {e}")
+        log.warning(
+            "[onboarding_prompt] Failed to check onboarding conversation",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
         return None
 
 
@@ -764,14 +799,22 @@ def format_files_list(
     files_data: list[FileData] | None,
     file_ids: list[str] | None = None,
     conversation_id: str | None = None,
+    *,
+    include_processing_guide: bool = True,
 ) -> str:
-    """Surface uploaded files to the agent as concrete FS paths.
+    """Surface uploaded files to an agent with path and summary.
 
-    The agent reads/writes files via bash/read/write/edit; the upload
-    pipeline mirrors every attachment into the session's read-only
-    `user-uploaded/` dir. Tell the agent the on-disk path explicitly and
-    point at the session GUIDE for the action conventions — no
-    `query_files` tool indirection, no path guessing.
+    Each attachment is shown with its on-disk path and a truncated summary (so
+    the reader knows what the file is without a tool call). The summary text is
+    enriched server-side by the caller; this helper only formats. Pure — no
+    DB/FS access.
+
+    ``include_processing_guide`` controls the audience:
+    - ``True`` (executor): adds the `full summary` sidecar pointer and the full
+      read/bash/scratch/artifacts how-to — the executor holds those tools.
+    - ``False`` (comms): a lean block — name, path, summary, and a single line
+      telling it to delegate real file work. Comms has no file tools; the
+      executor-voice how-to only baits it into over-delegating.
     """
     if not files_data or (file_ids is not None and not file_ids):
         return ""
@@ -781,6 +824,7 @@ def format_files_list(
         return ""
 
     lines: list[str] = []
+    any_on_disk = False
     for file in files:
         try:
             on_disk = safe_upload_filename(file.filename)
@@ -790,20 +834,65 @@ def format_files_list(
             path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
         else:
             path = f"./user-uploaded/{on_disk}"
-        lines.append(f"- {file.filename}  →  `{path}`")
+        # Only advertise the path when the file really reached the workspace.
+        # The mirror is best-effort (it needs JuiceFS), so on a native API — or
+        # any deployment where it failed — this path does not exist, and naming
+        # it anyway sends the executor into read/bash attempts that can only
+        # fail. `search_uploaded_files` needs no mount and is the honest route.
+        on_disk_available = file.sandbox_path is not None
+        any_on_disk = any_on_disk or on_disk_available
+        # The id is shown because `search_uploaded_files(file_id=...)` needs one;
+        # without it an agent scoping to a single file can only guess the
+        # filename, which matches nothing.
+        if on_disk_available:
+            lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
+        else:
+            lines.append(
+                f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
+            )
+        if file.description:
+            summary = file.description.strip()
+            if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
+                summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
+            lines.append(f"    summary: {summary}")
+            if conversation_id and include_processing_guide and on_disk_available:
+                lines.append(f"    full summary: `{path}.summary.md`")
 
     if not lines:
         return ""
 
     file_block = "\n".join(lines)
+
+    if not include_processing_guide:
+        return (
+            f"\n[Uploaded files]\n{file_block}\n\n"
+            "Answer simple questions from these summaries directly; for the full "
+            "contents or any work on the files, delegate to the executor.\n"
+        )
+
+    if not any_on_disk:
+        # Nothing was mirrored into the workspace, so every read/bash instruction
+        # below would send the agent at a path that does not exist.
+        return (
+            f"\n[Uploaded files]\n{file_block}\n\n"
+            "These files are not present in the workspace, so read/bash cannot "
+            "open them. Use `search_uploaded_files` to retrieve their extracted "
+            "content, and answer from what it returns.\n"
+        )
+
     return f"""
-[Attached files for this turn]
+[Uploaded files]
 {file_block}
 
-These files are on the conversation filesystem in `./user-uploaded/`
-(read-only). To process them: copy into `./scratch/`, do your work,
-and write any user-visible output into `./artifacts/` — files written
-there render as cards in the chat immediately.
+How to work with these files:
+- What is it? — the `summary` above already says; read the `full summary` file
+  for the complete write-up.
+- Need the raw content? — read the file at its path with read/bash. Files shown
+  without a path are not on disk; use `search_uploaded_files` for those.
+- Searching across several uploaded files? — use `search_uploaded_files`.
+The files live in `./user-uploaded/` (read-only). To process them: copy into
+`./scratch/`, do your work, and write user-visible output into `./artifacts/`
+— files written there render as cards in the chat immediately.
 
 See `/workspace/sessions/{conversation_id or "<conv>"}/GUIDE.md` for the
 full layout and conventions, and `/workspace/INDEX.md` for the top level.

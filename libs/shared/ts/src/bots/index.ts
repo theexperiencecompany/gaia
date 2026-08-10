@@ -24,13 +24,139 @@
  * 2. Extend BaseBotAdapter and implement the five lifecycle methods
  * 3. In index.ts: create adapter instance, call adapter.boot(allCommands)
  */
-export * from "./adapter";
-export * from "./api";
-export * from "./commands";
-export * from "./config";
+export {
+  BaseBotAdapter,
+  BotServer,
+  richMessageToMarkdown,
+  runBotProcess,
+} from "./adapter";
+
+export { GaiaApiError, GaiaClient } from "./api";
+export {
+  allCommands,
+  authCommand,
+  conversationsCommand,
+  gaiaCommand,
+  helpCommand,
+  newCommand,
+  settingsCommand,
+  statusCommand,
+  stopCommand,
+  todoCommand,
+  unlinkCommand,
+  workflowCommand,
+} from "./commands";
+export { injectInfisicalSecrets, loadConfig } from "./config";
 // Outbound envelope types/schema (zod-only — RN-safe). The full consumer
 // (`./consumer/outbound-consumer`) is NOT re-exported here: it imports amqplib
 // (Node-only), which Metro/React Native cannot resolve.
-export * from "./consumer/envelope";
-export * from "./types";
-export * from "./utils";
+export type {
+  OutboundAttachment,
+  OutboundMessageEnvelope,
+} from "./consumer/envelope";
+
+export {
+  outboundAttachmentSchema,
+  outboundMessageEnvelopeSchema,
+} from "./consumer/envelope";
+export type {
+  AuthenticatedSettingsResponse,
+  AuthStatus,
+  BotCommand,
+  BotCommandOption,
+  BotConfig,
+  BotConversation,
+  BotConversationListResponse,
+  BotCreateTodoRequest,
+  BotFileData,
+  BotSubcommand,
+  BotTodo,
+  BotTodoListResponse,
+  BotUserContext,
+  BotWorkflow,
+  BotWorkflowExecutionRequest,
+  BotWorkflowExecutionResponse,
+  BotWorkflowListResponse,
+  ChatRequest,
+  CommandContext,
+  CommandExecuteParams,
+  IntegrationInfo,
+  MessageTarget,
+  PlatformName,
+  RichMessage,
+  RichMessageTarget,
+  SentMessage,
+  SettingsResponse,
+  UnauthenticatedSettingsResponse,
+} from "./types";
+export type {
+  BotLogFields,
+  BotLogger,
+  BotLogLevel,
+  BotWideEventFields,
+  IncomingMedia,
+  MediaKind,
+  MediaOutcome,
+  MessageEditor,
+  NewMessageSender,
+  StreamingOptions,
+  WideEventBoundaryFields,
+  WideEventEntry,
+} from "./utils";
+export {
+  BOT_MEDIA_LIMITS,
+  buildAuthLinkMessage,
+  COMMAND_HELP,
+  chunkResponse,
+  convertToDiscordMarkdown,
+  convertToSlackMrkdwn,
+  convertToTelegramHtml,
+  convertToWhatsAppMarkdown,
+  createBotLogger,
+  dispatchTodoSubcommand,
+  dispatchWorkflowSubcommand,
+  emitBotLogLine,
+  escapeHtml,
+  escapeHtmlAttr,
+  extensionForMime,
+  extractSubcommandArgs,
+  formatBotError,
+  formatConversation,
+  formatConversationList,
+  formatTodo,
+  formatTodoList,
+  formatWorkflow,
+  formatWorkflowList,
+  friendlyMediaError,
+  getHttpStatus,
+  handleConversationList,
+  handleNewConversation,
+  handleStreamingChat,
+  handleTodoComplete,
+  handleTodoCreate,
+  handleTodoDelete,
+  handleTodoList,
+  handleWorkflowCreate,
+  handleWorkflowDelete,
+  handleWorkflowExecute,
+  handleWorkflowGet,
+  handleWorkflowList,
+  hashLogIdentifier,
+  htmlToPlainText,
+  isTableRow,
+  isTableSeparator,
+  mediaKindFromMime,
+  OUTBOUND_FILE_LIMITS,
+  PLATFORM_LIMITS,
+  PLATFORM_MARKDOWN,
+  parseTextArgs,
+  processBotMedia,
+  renderForPlatform,
+  STREAMING_DEFAULTS,
+  sanitizeErrorForLog,
+  truncateResponse,
+  unsupportedMediaMessage,
+  WIDE_EVENT_MESSAGE,
+  wideLog,
+  withWideEvent,
+} from "./utils";

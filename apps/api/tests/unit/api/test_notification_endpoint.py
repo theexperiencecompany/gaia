@@ -4,12 +4,56 @@ Tests the notification endpoints with mocked service layer to verify
 routing, status codes, response bodies, auth, and validation.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
+
+from app.models.notification.notification_models import (
+    NotificationContent,
+    NotificationContentView,
+    NotificationRecord,
+    NotificationRequest,
+    NotificationSourceEnum,
+    NotificationStatus,
+    NotificationType,
+    NotificationView,
+)
 
 NOTIF_BASE = "/api/v1/notifications"
+
+FAKE_USER_ID = "507f1f77bcf86cd799439011"
+
+
+def _make_view(notification_id: str = "n1", title: str = "Hello") -> NotificationView:
+    """The flattened shape ``get_user_notifications`` / ``get_notification`` return."""
+    return NotificationView(
+        id=notification_id,
+        user_id=FAKE_USER_ID,
+        status=NotificationStatus.DELIVERED,
+        created_at="2026-01-01T00:00:00+00:00",
+        content=NotificationContentView(title=title, body="Body"),
+        source=NotificationSourceEnum.AI_AGENT,
+        type=NotificationType.INFO,
+    )
+
+
+def _make_record(
+    notification_id: str = "n1", status: NotificationStatus = NotificationStatus.READ
+) -> NotificationRecord:
+    """The stored record ``mark_as_read`` returns (not the flattened view)."""
+    return NotificationRecord(
+        id=notification_id,
+        user_id=FAKE_USER_ID,
+        status=status,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        original_request=NotificationRequest(
+            user_id=FAKE_USER_ID,
+            source=NotificationSourceEnum.AI_AGENT,
+            type=NotificationType.INFO,
+            content=NotificationContent(title="Hello", body="Body"),
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -17,7 +61,6 @@ NOTIF_BASE = "/api/v1/notifications"
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNotifications:
     """GET /api/v1/notifications"""
 
@@ -35,13 +78,15 @@ class TestGetNotifications:
         mock_count: AsyncMock,
         client: AsyncClient,
     ):
-        mock_get.return_value = [{"id": "n1", "title": "Hello"}]
+        mock_get.return_value = [_make_view()]
         mock_count.return_value = 1
         response = await client.get(NOTIF_BASE)
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
         assert len(data["notifications"]) == 1
+        assert data["notifications"][0]["id"] == "n1"
+        assert data["notifications"][0]["content"]["title"] == "Hello"
 
     @patch(
         "app.api.v1.endpoints.notification.notification_service.get_user_notifications_count",
@@ -96,7 +141,6 @@ class TestGetNotifications:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetChannelPreferences:
     """GET /api/v1/notifications/preferences/channels"""
 
@@ -134,7 +178,6 @@ class TestGetChannelPreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateChannelPreferences:
     """PUT /api/v1/notifications/preferences/channels"""
 
@@ -142,14 +185,16 @@ class TestUpdateChannelPreferences:
         "app.api.v1.endpoints.notification.fetch_channel_preferences",
         new_callable=AsyncMock,
     )
-    @patch("app.api.v1.endpoints.notification.users_collection")
+    @patch(
+        "app.api.v1.endpoints.notification.user_repository.set_channel_preferences",
+        new_callable=AsyncMock,
+    )
     async def test_update_channel_preferences_success(
         self,
-        mock_users: MagicMock,
+        mock_set_prefs: AsyncMock,
         mock_fetch: AsyncMock,
         client: AsyncClient,
     ):
-        mock_users.update_one = AsyncMock()
         mock_fetch.return_value = {
             "telegram": False,
             "discord": True,
@@ -169,14 +214,17 @@ class TestUpdateChannelPreferences:
         "app.api.v1.endpoints.notification.fetch_channel_preferences",
         new_callable=AsyncMock,
     )
-    @patch("app.api.v1.endpoints.notification.users_collection")
+    @patch(
+        "app.api.v1.endpoints.notification.user_repository.set_channel_preferences",
+        new_callable=AsyncMock,
+    )
     async def test_update_channel_preferences_error(
         self,
-        mock_users: MagicMock,
+        mock_set_prefs: AsyncMock,
         mock_fetch: AsyncMock,
         client: AsyncClient,
     ):
-        mock_users.update_one = AsyncMock(side_effect=Exception("db fail"))
+        mock_set_prefs.side_effect = Exception("db fail")
         response = await client.put(
             f"{NOTIF_BASE}/preferences/channels",
             json={"telegram": True},
@@ -189,7 +237,6 @@ class TestUpdateChannelPreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteAction:
     """POST /api/v1/notifications/{id}/actions/{aid}/execute"""
 
@@ -235,7 +282,6 @@ class TestExecuteAction:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMarkAsRead:
     """POST /api/v1/notifications/{id}/read"""
 
@@ -244,10 +290,13 @@ class TestMarkAsRead:
         new_callable=AsyncMock,
     )
     async def test_mark_as_read_success(self, mock_mark: AsyncMock, client: AsyncClient):
-        mock_mark.return_value = {"id": "n1", "status": "read"}
+        mock_mark.return_value = _make_record()
         response = await client.post(f"{NOTIF_BASE}/n1/read")
         assert response.status_code == 200
-        assert response.json()["success"] is True
+        body = response.json()
+        assert body["success"] is True
+        assert body["data"]["id"] == "n1"
+        assert body["data"]["status"] == "read"
 
     @patch(
         "app.api.v1.endpoints.notification.notification_service.mark_as_read",
@@ -273,7 +322,6 @@ class TestMarkAsRead:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBulkActions:
     """POST /api/v1/notifications/bulk-actions"""
 
@@ -323,7 +371,6 @@ class TestBulkActions:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRegisterDevice:
     """POST /api/v1/notifications/register-device"""
 
@@ -393,7 +440,6 @@ class TestRegisterDevice:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUnregisterDevice:
     """POST /api/v1/notifications/unregister-device"""
 
@@ -442,7 +488,6 @@ class TestUnregisterDevice:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNotification:
     """GET /api/v1/notifications/{id}"""
 
@@ -451,11 +496,13 @@ class TestGetNotification:
         new_callable=AsyncMock,
     )
     async def test_get_notification_success(self, mock_get: AsyncMock, client: AsyncClient):
-        mock_get.return_value = {"id": "n1", "title": "Hello"}
+        mock_get.return_value = _make_view()
         response = await client.get(f"{NOTIF_BASE}/n1")
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
+        assert data["data"]["id"] == "n1"
+        assert data["data"]["content"]["title"] == "Hello"
 
     @patch(
         "app.api.v1.endpoints.notification.notification_service.get_notification",

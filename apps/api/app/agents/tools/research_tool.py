@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Annotated, Any
+from typing import Annotated, Any, TypedDict, cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -32,6 +32,34 @@ from app.utils.webpage_fetch import fetch_with_httpx
 from shared.py.wide_events import log
 
 
+class ResearchResult(TypedDict):
+    """The ``research_data`` frame — also what gets cached and what the tool
+    returns (plus ``cached``/``instructions``, added per call site).
+
+    ``sources`` entries stay open dicts: each one is a ranked-URL record from
+    ``rank_and_deduplicate_urls`` (built by spreading a search provider's own
+    result item) with ``content``/``fetch_error`` layered on, so the provider —
+    not this module — owns their shape.
+    """
+
+    query: str
+    scope: str
+    focus_areas: list[str]
+    sub_queries: list[str]
+    sources: list[dict[str, Any]]
+    source_count: int
+    authoritative_urls: list[str]
+    depth: int
+    elapsed_seconds: float
+    failed_sources: int
+    error: str | None
+    integrity_note: str
+
+
+# The return stays dict[str, Any]: the five exit branches return genuinely
+# different key sets, and the cache-hit branch spreads a Redis-deserialized
+# payload — there is no single shape to name without guessing (Type Safety
+# item 14). ResearchResult above names the one branch that is fully built here.
 @tool
 @with_rate_limiting("deep_research")
 @with_doc(DEEP_RESEARCH)
@@ -95,8 +123,11 @@ async def deep_research(
         # ── Phase 2: Parallel searches ────────────────────────────────────────
         writer({"progress": f"Running {len(sub_queries)} parallel searches..."})
 
-        async def _resilient_search(q: str) -> dict:
-            return await search_for_research(q, count=5)
+        async def _resilient_search(q: str) -> dict[str, Any]:
+            # search_for_research is @Cacheable-wrapped, which types its return
+            # Awaitable[Any] (app/decorators/caching.py); the wrapped function's
+            # own declared return is dict[str, Any].
+            return cast("dict[str, Any]", await search_for_research(q, count=5))
 
         search_results = await asyncio.gather(
             *[_resilient_search(q) for q in sub_queries],
@@ -190,9 +221,7 @@ async def deep_research(
                 fetch_counter += 1
                 snippet = url_info.get("snippet", "").strip()
                 if snippet:
-                    log.warning(
-                        f"{LogTag.TOOL} All fetchers failed for {url[:60]}, using search snippet"
-                    )
+                    log.warning(f"{LogTag.TOOL} All fetchers failed, using search snippet", url=url)
                     return {
                         **url_info,
                         "content": f"[Snippet only — full page unavailable]\n\n{snippet}",
@@ -219,7 +248,7 @@ async def deep_research(
         # ── Build result ─────────────────────────────────────────────────────
         # Include the authoritative list of real URLs so the LLM cannot fabricate others
         authoritative_urls = [s["url"] for s in valid_sources]
-        result: dict[str, Any] = {
+        result: ResearchResult = {
             "query": query,
             "scope": scope,
             "focus_areas": focus_areas,
@@ -250,5 +279,5 @@ async def deep_research(
         }
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Deep research error: {e}", exc_info=True)
+        log.error(f"{LogTag.TOOL} Deep research error", error_type=type(e).__name__, exc_info=True)
         return {"error": str(e), "query": query, "data": None}

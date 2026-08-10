@@ -1,0 +1,36 @@
+{
+  "suite": "longmemeval",
+  "run_id": "longmemeval-20260808-162931-0e786c",
+  "app_version": "api-v0.17.0-345-gad824912a-dirty",
+  "baseline_accuracy": 0.8617,
+  "graded": 470,
+  "errored": 0,
+  "per_category": {
+    "knowledge-update": [
+      66,
+      72
+    ],
+    "multi-session": [
+      93,
+      121
+    ],
+    "single-session-assistant": [
+      56,
+      56
+    ],
+    "single-session-preference": [
+      25,
+      30
+    ],
+    "single-session-user": [
+      62,
+      64
+    ],
+    "temporal-reasoning": [
+      103,
+      127
+    ]
+  },
+  "provisional": null,
+  "captured_at": "2026-08-08"
+}

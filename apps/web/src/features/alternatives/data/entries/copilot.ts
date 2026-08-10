@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Privacy concerns around Microsoft processing enterprise data",
     "Less effective for users not deeply embedded in the Microsoft stack",
   ],
-  metaTitle: "Best Microsoft Copilot Alternative in 2026 | GAIA",
+  metaTitle: "Best Microsoft Copilot Alternative in 2026",
   metaDescription:
     "Not on Microsoft 365? GAIA is a proactive AI assistant that works with Gmail, Google Calendar, and 50+ tools — no Microsoft subscription required. Free tier available.",
   keywords: [

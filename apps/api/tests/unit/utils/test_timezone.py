@@ -33,7 +33,6 @@ IST = timezone(timedelta(hours=5, minutes=30))
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTimezoneParse:
     @pytest.mark.parametrize(
         "name", ["America/New_York", "Asia/Kolkata", "Europe/London", "Asia/Tokyo", "US/Pacific"]
@@ -106,7 +105,6 @@ class TestTimezoneParse:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTimezoneTryParse:
     @pytest.mark.parametrize("blank", [None, "", "   "])
     def test_blank_returns_none(self, blank: str | None) -> None:
@@ -132,7 +130,6 @@ class TestTimezoneTryParse:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTimezoneProperties:
     def test_is_utc_only_for_utc_value(self) -> None:
         assert Timezone.parse("UTC").is_utc
@@ -141,7 +138,6 @@ class TestTimezoneProperties:
         assert not Timezone.parse("+00:00").is_utc
 
 
-@pytest.mark.unit
 class TestTimezoneEquality:
     def test_equal_by_value(self) -> None:
         assert Timezone.parse("Asia/Kolkata") == Timezone.parse("Asia/Kolkata")
@@ -158,7 +154,6 @@ class TestTimezoneEquality:
         assert len(zones) == 2
 
 
-@pytest.mark.unit
 class TestTimezoneNowLocalizeFormat:
     def test_now_is_aware_in_zone(self) -> None:
         now = Timezone.parse("Asia/Kolkata").now()
@@ -186,7 +181,6 @@ class TestTimezoneNowLocalizeFormat:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIsValidTimezone:
     @pytest.mark.parametrize("ok", ["Asia/Kolkata", "UTC", "+05:30", "-08:00"])
     def test_valid(self, ok: str) -> None:
@@ -202,7 +196,6 @@ class TestIsValidTimezone:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestResolveHomeTimezone:
     def test_real_stored_zone_wins_no_heal(self) -> None:
         r = resolve_home_timezone("America/New_York", "Asia/Kolkata")
@@ -270,7 +263,6 @@ class TestResolveHomeTimezone:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHomeTimezoneFromConfig:
     def test_reads_user_timezone(self) -> None:
         tz = home_timezone_from_config({"configurable": {"user_timezone": "+05:30"}})
@@ -288,7 +280,6 @@ class TestHomeTimezoneFromConfig:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFormatLocalTime:
     def test_iana_zone(self) -> None:
         instant = datetime(2026, 6, 13, 0, 0, tzinfo=UTC)  # 05:30 IST
@@ -307,7 +298,6 @@ class TestFormatLocalTime:
         assert "12:00 PM" in format_local_time(instant, None)
 
 
-@pytest.mark.unit
 class TestIsWithinLocalDaytime:
     def test_inside_window(self) -> None:
         instant = datetime(2026, 6, 13, 6, 0, tzinfo=UTC)  # 11:30 IST
@@ -327,7 +317,6 @@ class TestIsWithinLocalDaytime:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestModuleConstants:
     def test_utc_constant_is_builtin_utc(self) -> None:
         assert TIMEZONE_UTC is UTC

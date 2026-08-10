@@ -22,11 +22,13 @@ _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
 _obj_marker = "-_object_-"
 
 
-def _clean_reserved_keyword(keyword: str):
+def _clean_reserved_keyword(keyword: str) -> str:
     return f"{keyword}_rs"
 
 
-def _substitute_reserved_python_keywords(schema: dict) -> tuple[dict, dict]:
+def _substitute_reserved_python_keywords(
+    schema: dict[str, t.Any],
+) -> tuple[dict[str, t.Any], dict[str, t.Any]]:
     if "properties" not in schema:
         return schema, {}
 
@@ -48,7 +50,9 @@ def _substitute_reserved_python_keywords(schema: dict) -> tuple[dict, dict]:
     return schema, keywords
 
 
-def _reinstate_reserved_python_keywords(request: dict, keywords: dict) -> dict:
+def _reinstate_reserved_python_keywords(
+    request: dict[str, t.Any], keywords: dict[str, t.Any]
+) -> dict[str, t.Any]:
     for clean_key in sorted(list(keywords), reverse=True):
         subkeys = None
         if clean_key.endswith(_obj_marker):
@@ -71,7 +75,7 @@ def _reinstate_reserved_python_keywords(request: dict, keywords: dict) -> dict:
 class StructuredTool(BaseStructuredTool):
     """StructuredTool that returns a structured failure instead of raising on invalid args."""
 
-    def run(self, *args, **kwargs):
+    def run(self, *args: t.Any, **kwargs: t.Any) -> t.Any:
         """Run the tool, converting argument validation errors into a failure result."""
         try:
             return super().run(*args, **kwargs)
@@ -93,12 +97,12 @@ class LangchainProvider(
         self,
         tool: str,
         description: str,
-        schema_params: dict,
+        schema_params: dict[str, t.Any],
         execute_tool: AgenticProviderExecuteFn,
-        keywords: dict,
+        keywords: dict[str, t.Any],
         toolkit: str | None = None,
-    ):
-        def function(**kwargs: t.Any) -> dict:
+    ) -> types.FunctionType:
+        def function(**kwargs: t.Any) -> dict[str, t.Any]:
             """Wrapper function for composio action."""
 
             # Discarding other data except metadata from __runnable_config__
@@ -149,17 +153,26 @@ class LangchainProvider(
                     )
                     if looks_like_dead_account:
                         log.warning(
-                            f"{LogTag.COMPOSIO} composio tool {tool} (toolkit={toolkit}) likely "
-                            f"dead account for user={user_id}: error={err_preview!r}"
+                            f"{LogTag.COMPOSIO} composio tool failed — likely a dead connected account",
+                            tool=tool,
+                            toolkit=toolkit,
+                            user_id=user_id,
+                            err_preview=err_preview,
                         )
                     else:
                         log.info(
-                            f"{LogTag.COMPOSIO} composio tool {tool} (toolkit={toolkit}) returned "
-                            f"successful=False for user={user_id}: error={err_preview!r}"
+                            f"{LogTag.COMPOSIO} composio tool returned successful=False",
+                            tool=tool,
+                            toolkit=toolkit,
+                            user_id=user_id,
+                            err_preview=err_preview,
                         )
             except Exception as obs_err:  # noqa: BLE001 - observability must not break tool
                 log.debug(
-                    f"{LogTag.COMPOSIO} composio invocation log skipped for {tool}: {obs_err}"
+                    f"{LogTag.COMPOSIO} composio invocation log skipped for",
+                    tool=tool,
+                    error=str(obs_err),
+                    error_type=type(obs_err).__name__,
                 )
 
             return result
@@ -181,7 +194,9 @@ class LangchainProvider(
             name=tool,
             closure=function.__closure__,
         )
-        action_func.__signature__ = Signature(parameters=parameters)  # type: ignore
+        # typeshed does not declare __signature__ on FunctionType, but inspect.signature()
+        # honours it at runtime — that is how the tool's schema is advertised to LangChain.
+        action_func.__signature__ = Signature(parameters=parameters)  # type: ignore[attr-defined]
         action_func.__doc__ = description
 
         # Create __annotations__ only for __runnable_config__

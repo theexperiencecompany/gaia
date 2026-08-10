@@ -9,7 +9,7 @@ Docker Compose configuration for all GAIA environments.
 | `docker-compose.yml` | Local development — profile-gated app services, infra always on |
 | `docker-compose.prod.yml` | Production — pulls pre-built images from ghcr.io |
 | `docker-compose.selfhost.yml` | Self-hosting — builds from source, includes web frontend |
-| `observability/` | Config files for Prometheus, Loki, Promtail, Grafana, Blackbox |
+| `observability/` | Config files for Prometheus, Loki, Promtail, Grafana, Blackbox — see `observability/CLAUDE.md` before adding or editing an alert rule |
 
 ## Port Mappings (defaults, overridable via .env)
 
@@ -19,6 +19,7 @@ Docker Compose configuration for all GAIA environments.
 | ChromaDB | 8080 | 8000 | `CHROMADB_HOST_PORT` |
 | PostgreSQL | 5432 | 5432 | `POSTGRES_HOST_PORT` |
 | Redis | 6379 | 6379 | `REDIS_HOST_PORT` |
+| JuiceFS metadata Redis | 6380 | 6379 | `JFS_META_REDIS_HOST_PORT` |
 | MongoDB | 27017 | 27017 | `MONGO_HOST_PORT` |
 | RabbitMQ AMQP | 5672 | 5672 | `RABBITMQ_HOST_PORT` |
 | RabbitMQ Management UI | 15672 | 15672 | `RABBITMQ_MGMT_PORT` |
@@ -72,13 +73,13 @@ Services gated by profile (not started by default):
 - `observability` — `loki`, `promtail`, `grafana`
 - `all` — everything above
 
-Infrastructure services (postgres, redis, mongo, chromadb, rabbitmq) start without any profile. Observability stack (loki/promtail/grafana) is opt-in — set `COMPOSE_PROFILES=observability` in `infra/docker/.env` or run `docker compose --profile observability up -d`.
+Infrastructure services (postgres, redis, jfs-meta-redis, mongo, chromadb, rabbitmq) start without any profile. Observability stack (loki/promtail/grafana) is opt-in — set `COMPOSE_PROFILES=observability` in `infra/docker/.env` or run `docker compose --profile observability up -d`.
 
 ## Service Dependencies
 
 ```
-gaia-backend → chromadb, postgres, redis, mongo (all healthy)
-arq_worker   → redis, mongo (healthy)
+gaia-backend → chromadb, postgres, redis, jfs-meta-redis, mongo (all healthy)
+arq_worker   → redis, jfs-meta-redis, mongo (healthy)
 bots         → gaia-backend (healthy)
 voice-agent  → (no hard deps in dev; depends on gaia-backend in prod)
 grafana      → loki (healthy)

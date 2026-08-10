@@ -129,12 +129,21 @@ def _clear_registry_cache() -> None:
     all_subagents.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _restore_real_registry_after_each_test():
+    """Without this, a test that patches OAUTH_INTEGRATIONS/BUILTIN_SUBAGENTS and
+    populates the cache under the patch leaves that fake result cached for the
+    rest of the process — every other test in the suite that calls
+    all_subagents()/get_subagent_by_id() afterward would see the fake data."""
+    yield
+    all_subagents.cache_clear()
+
+
 # ---------------------------------------------------------------------------
 # all_subagents — OAuth-derived filtering
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAllSubagents:
     def test_filters_integrations_with_subagent(self):
         _clear_registry_cache()
@@ -167,7 +176,6 @@ class TestAllSubagents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetSubagentById:
     def test_find_by_id(self):
         _clear_registry_cache()
@@ -249,7 +257,6 @@ class TestGetSubagentById:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFromOauth:
     def test_raises_when_subagent_config_is_none(self) -> None:
         integ = _make_real_oauth_integration(
@@ -296,7 +303,6 @@ class TestFromOauth:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAllSubagentsCachingAndOrdering:
     def test_includes_oauth_and_builtins_in_order(self) -> None:
         _clear_registry_cache()
@@ -380,7 +386,6 @@ class TestAllSubagentsCachingAndOrdering:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetSubagentByIdExtended:
     def test_finds_real_gaia_builtin(self) -> None:
         _clear_registry_cache()

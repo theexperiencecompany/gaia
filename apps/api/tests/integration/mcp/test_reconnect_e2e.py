@@ -118,8 +118,8 @@ def _patch_post_connect_side_effects():
             new=AsyncMock(),
         ),
         patch(
-            "app.services.mcp.mcp_client.get_mcp_tools_store",
-            return_value=MagicMock(store_tools=AsyncMock()),
+            "app.services.mcp.mcp_client.store_mcp_tools",
+            new=AsyncMock(),
         ),
         patch(
             "app.services.mcp.mcp_client.MCPClient._index_platform_mcp_tools",

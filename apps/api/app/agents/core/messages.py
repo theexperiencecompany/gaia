@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
@@ -20,22 +20,26 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.user_models import AuthenticatedUser
+from app.services.files import FileService
 
 
 async def construct_langchain_messages(
     messages: list[MessageDict],
     files_data: list[FileData] | None = None,
-    currently_uploaded_file_ids: list[str] | None = [],
+    currently_uploaded_file_ids: list[str] | None = None,
     user_id: str | None = None,
     user_name: str | None = None,
-    user_dict: dict | None = None,
+    user_dict: AuthenticatedUser | None = None,
     query: str | None = None,
     selected_tool: str | None = None,
     tool_category: str | None = None,
     selected_workflow: SelectedWorkflowData | None = None,
     selected_calendar_event: SelectedCalendarEventData | None = None,
     reply_to_message: ReplyToMessageData | None = None,
-    trigger_context: dict | None = None,
+    # Open by construction: schedulers spread arbitrary provider trigger data
+    # through this alongside the agent's own keys, so there is no fixed shape.
+    trigger_context: dict[str, Any] | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
     active_todo_id: str | None = None,
     execution_mode: Literal["interactive", "background"] = "interactive",
@@ -145,9 +149,23 @@ async def construct_langchain_messages(
     if reply_to_message:
         content = format_reply_context(reply_to_message, content)
 
-    # Append file context if files are uploaded
+    # Append file context if files are uploaded. The summary is read server-side
+    # from MongoDB (authoritative) — never trusted from the inbound request — in
+    # a single batched query, then surfaced inline so comms knows each file's
+    # content without a tool round-trip.
+    if currently_uploaded_file_ids and files_data and user_id:
+        descriptions = await FileService.get_descriptions(currently_uploaded_file_ids, user_id)
+        for file in files_data:
+            if file.fileId in descriptions:
+                file.description = descriptions[file.fileId]
+
     if currently_uploaded_file_ids and (
-        files_str := format_files_list(files_data, currently_uploaded_file_ids, conversation_id)
+        files_str := format_files_list(
+            files_data,
+            currently_uploaded_file_ids,
+            conversation_id,
+            include_processing_guide=False,
+        )
     ):
         content += f"\n\n{files_str}"
 

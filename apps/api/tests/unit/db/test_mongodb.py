@@ -68,7 +68,12 @@ class TestMongoDBInit:
         error_calls = [c for c in mock_log.set.call_args_list if "error" in str(c)]
         assert len(error_calls) >= 1
         mock_log.error.assert_called_once()
-        assert "conn error" in mock_log.error.call_args[0][0]
+        # The message is a constant identifier; the exception rides in kwargs,
+        # so one event name stays queryable instead of sharding into thousands.
+        message, kwargs = mock_log.error.call_args[0][0], mock_log.error.call_args[1]
+        assert "conn error" not in message
+        assert kwargs["error"] == "conn error"
+        assert kwargs["error_type"] == "Exception"
 
 
 # ---------------------------------------------------------------------------
@@ -327,84 +332,67 @@ class TestCollectionsLazyLoading:
             assert result_a is col_a
             assert result_b is col_b
 
-    @patch("app.db.mongodb.collections._sync_client", None)
-    @patch("app.db.mongodb.collections._sync_db", None)
-    @patch("app.db.mongodb.collections.log")
-    def test_get_sync_db_initializes(self, mock_log: MagicMock) -> None:
-        """_get_sync_db should create a PyMongo client and database."""
-        mock_sync_client = MagicMock()
-        mock_sync_db = MagicMock()
-        mock_sync_client.get_database.return_value = mock_sync_db
-
-        with patch(
-            "app.db.mongodb.collections.pymongo.MongoClient",
-            return_value=mock_sync_client,
-        ):
-            from app.db.mongodb.collections import _get_sync_db
-
-            result = _get_sync_db()
-            assert result is mock_sync_db
-
-    @patch("app.db.mongodb.collections._sync_collections_cache", {})
-    @patch("app.db.mongodb.collections.log")
-    def test_get_sync_collection_creates_and_caches(self, mock_log: MagicMock) -> None:
-        """get_sync_collection should lazy-create and cache sync collections."""
-        mock_db = MagicMock()
-        mock_col = MagicMock()
-        mock_db.get_collection.return_value = mock_col
-
-        with patch("app.db.mongodb.collections._get_sync_db", return_value=mock_db):
-            from app.db.mongodb.collections import get_sync_collection
-
-            first = get_sync_collection("todos")
-            second = get_sync_collection("todos")
-
-            assert first is mock_col
-            assert second is mock_col
-            mock_db.get_collection.assert_called_once_with("todos")
-
 
 # ---------------------------------------------------------------------------
-# Collections module — __getattr__
+# Collections module — get_async_collection
 # ---------------------------------------------------------------------------
 
 
-class TestCollectionsGetattr:
-    """Tests for module-level __getattr__ that enables lazy imports."""
+class TestGetAsyncCollection:
+    """The single supported accessor — the named per-collection module
+    attributes were removed once every domain moved behind a repository."""
 
-    def test_getattr_known_collection_name(self) -> None:
-        """Importing a known collection name should return via _get_collection."""
+    def test_resolves_by_mongo_name(self) -> None:
         with patch("app.db.mongodb.collections._get_collection") as mock_get:
             mock_get.return_value = MagicMock()
 
-            from app.db.mongodb.collections import __getattr__
+            from app.db.mongodb.collections import get_async_collection
 
-            __getattr__("users_collection")
+            get_async_collection("users")
             mock_get.assert_called_once_with("users")
 
-    def test_getattr_unknown_name_raises(self) -> None:
-        """Accessing an unknown attribute should raise AttributeError."""
-        from app.db.mongodb.collections import __getattr__
+    def test_named_collection_attributes_are_gone(self) -> None:
+        from app.db.mongodb import collections as collections_mod
 
-        with pytest.raises(AttributeError, match="has no attribute"):
-            __getattr__("nonexistent_collection")
-
-    def test_getattr_all_collection_mappings(self) -> None:
-        """All entries in _COLLECTION_MAPPINGS should be resolvable."""
-        from app.db.mongodb.collections import _COLLECTION_MAPPINGS, __getattr__
-
-        with patch("app.db.mongodb.collections._get_collection") as mock_get:
-            mock_get.return_value = MagicMock()
-
-            for attr_name, coll_name in _COLLECTION_MAPPINGS.items():
-                mock_get.reset_mock()
-                __getattr__(attr_name)
-                mock_get.assert_called_once_with(coll_name)
+        for attr in ("users_collection", "todos_collection", "workflows_collection"):
+            with pytest.raises(AttributeError):
+                getattr(collections_mod, attr)
 
 
 # ---------------------------------------------------------------------------
 # Indexes — create_all_indexes
 # ---------------------------------------------------------------------------
+
+# Must mirror the tasks gathered by create_all_indexes(). Any creator missing
+# here is left unpatched and runs against the real MongoDB, which makes these
+# tests order- and environment-dependent.
+_INDEX_CREATORS = [
+    "create_user_indexes",
+    "create_conversation_indexes",
+    "create_todo_indexes",
+    "create_project_indexes",
+    "create_note_indexes",
+    "create_file_indexes",
+    "create_mail_indexes",
+    "create_calendar_indexes",
+    "create_blog_indexes",
+    "create_notification_indexes",
+    "create_reminder_indexes",
+    "create_workflow_indexes",
+    "create_payment_indexes",
+    "create_processed_webhook_indexes",
+    "create_usage_indexes",
+    "create_ai_models_indexes",
+    "create_integration_indexes",
+    "create_user_integration_indexes",
+    "create_integration_instructions_indexes",
+    "create_device_token_indexes",
+    "create_installed_skills_indexes",
+    "create_workflow_execution_indexes",
+    "create_bot_session_indexes",
+    "create_e2b_sandbox_indexes",
+    "create_hil_approvals_indexes",
+]
 
 
 class TestCreateAllIndexes:
@@ -414,35 +402,8 @@ class TestCreateAllIndexes:
     async def test_create_all_indexes_success(self, mock_log: MagicMock) -> None:
         """All index creators succeeding should report full success."""
         # Patch all individual creators to be no-op coroutines
-        index_creators = [
-            "create_user_indexes",
-            "create_conversation_indexes",
-            "create_todo_indexes",
-            "create_project_indexes",
-            "create_note_indexes",
-            "create_file_indexes",
-            "create_mail_indexes",
-            "create_calendar_indexes",
-            "create_blog_indexes",
-            "create_notification_indexes",
-            "create_reminder_indexes",
-            "create_workflow_indexes",
-            "create_payment_indexes",
-            "create_processed_webhook_indexes",
-            "create_usage_indexes",
-            "create_ai_models_indexes",
-            "create_integration_indexes",
-            "create_user_integration_indexes",
-            "create_integration_instructions_indexes",
-            "create_device_token_indexes",
-            "create_installed_skills_indexes",
-            "create_workflow_execution_indexes",
-            "create_bot_session_indexes",
-            "create_e2b_sandbox_indexes",
-        ]
-
         patches = {}
-        for name in index_creators:
+        for name in _INDEX_CREATORS:
             patches[name] = patch(
                 f"app.db.mongodb.indexes.{name}",
                 new_callable=AsyncMock,
@@ -473,35 +434,8 @@ class TestCreateAllIndexes:
     @patch("app.db.mongodb.indexes.log")
     async def test_create_all_indexes_partial_failure(self, mock_log: MagicMock) -> None:
         """Some index creators failing should be reported as exceptions, not crash."""
-        index_creators = [
-            "create_user_indexes",
-            "create_conversation_indexes",
-            "create_todo_indexes",
-            "create_project_indexes",
-            "create_note_indexes",
-            "create_file_indexes",
-            "create_mail_indexes",
-            "create_calendar_indexes",
-            "create_blog_indexes",
-            "create_notification_indexes",
-            "create_reminder_indexes",
-            "create_workflow_indexes",
-            "create_payment_indexes",
-            "create_processed_webhook_indexes",
-            "create_usage_indexes",
-            "create_ai_models_indexes",
-            "create_integration_indexes",
-            "create_user_integration_indexes",
-            "create_integration_instructions_indexes",
-            "create_device_token_indexes",
-            "create_installed_skills_indexes",
-            "create_workflow_execution_indexes",
-            "create_bot_session_indexes",
-            "create_e2b_sandbox_indexes",
-        ]
-
         patches_dict = {}
-        for name in index_creators:
+        for name in _INDEX_CREATORS:
             patches_dict[name] = patch(
                 f"app.db.mongodb.indexes.{name}",
                 new_callable=AsyncMock,
@@ -520,12 +454,14 @@ class TestCreateAllIndexes:
             await create_all_indexes()
 
             # Should log the failure for users
-            error_msgs = [c[0][0] for c in mock_log.error.call_args_list]
-            assert any("users" in m for m in error_msgs)
+            failed_collections = [
+                c.kwargs["collection_name"] for c in mock_log.error.call_args_list
+            ]
+            assert failed_collections == ["users"]
 
-            # Should also log warning about failed collections
-            warning_msgs = [c[0][0] for c in mock_log.warning.call_args_list]
-            assert any("Failed" in m for m in warning_msgs)
+            # Should also log a warning summarising every failed collection
+            mock_log.warning.assert_called_once()
+            assert mock_log.warning.call_args.kwargs["failed_collections"] == ["users"]
         finally:
             for p in patches_dict.values():
                 p.stop()
@@ -614,7 +550,7 @@ class TestIndividualIndexCreators:
         mock_collection = AsyncMock()
 
         with (
-            patch("app.db.mongodb.indexes.users_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import create_user_indexes
@@ -630,7 +566,7 @@ class TestIndividualIndexCreators:
         mock_collection.create_index.side_effect = RuntimeError("timeout")
 
         with (
-            patch("app.db.mongodb.indexes.users_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import create_user_indexes
@@ -643,7 +579,7 @@ class TestIndividualIndexCreators:
         mock_collection = AsyncMock()
 
         with (
-            patch("app.db.mongodb.indexes.todos_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import create_todo_indexes
@@ -663,7 +599,7 @@ class TestIndividualIndexCreators:
         mock_collection = AsyncMock()
 
         with (
-            patch("app.db.mongodb.indexes.processed_webhooks_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import create_processed_webhook_indexes
@@ -695,7 +631,7 @@ class TestBackfillIntegrationSlugs:
         mock_collection.find.return_value = mock_cursor
 
         with (
-            patch("app.db.mongodb.indexes.integrations_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import _backfill_integration_slugs
@@ -718,14 +654,11 @@ class TestBackfillIntegrationSlugs:
         mock_collection.find.side_effect = [mock_cursor_with_docs, mock_cursor_empty]
 
         with (
-            patch("app.db.mongodb.indexes.integrations_collection", mock_collection),
-            patch(
-                "app.db.mongodb.indexes.generate_unique_integration_slug",
-                new_callable=AsyncMock,
-                return_value="my-tool-productivity",
-            ),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
+            patch("app.db.mongodb.indexes.integration_repository") as mock_repo,
             patch("app.db.mongodb.indexes.log"),
         ):
+            mock_repo.ensure_unique_slug = AsyncMock(return_value="my-tool-productivity")
             from app.db.mongodb.indexes import _backfill_integration_slugs
 
             await _backfill_integration_slugs()
@@ -738,7 +671,7 @@ class TestBackfillIntegrationSlugs:
         mock_collection.find.side_effect = RuntimeError("query failed")
 
         with (
-            patch("app.db.mongodb.indexes.integrations_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log") as mock_log,
         ):
             from app.db.mongodb.indexes import _backfill_integration_slugs

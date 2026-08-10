@@ -1,19 +1,13 @@
 """Publish/unpublish service for community marketplace."""
 
-from datetime import UTC, datetime
-from typing import Any
-
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import (
     index_public_integration,
     remove_public_integration,
 )
-from app.db.mongodb.collections import (
-    integrations_collection,
-    user_integrations_collection,
-)
 from app.db.redis import delete_cache_by_pattern
-from app.helpers.integration_helpers import generate_unique_integration_slug
+from app.db.repositories.integrations import integration_repository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.services.integrations.integration_inference_service import (
     infer_integration_category,
     infer_integration_content,
@@ -42,98 +36,81 @@ async def publish_custom_integration(
     Raises PublishError on failure.
     """
     log.set(integration={"provider": integration_id, "action": "publish"})
-    integration = await integrations_collection.find_one({"integration_id": integration_id})
+    integration = await integration_repository.get(integration_id)
     if not integration:
         raise PublishError("Integration not found", 404)
 
-    if integration.get("created_by") != user_id:
+    if integration.created_by != user_id:
         raise PublishError("You can only publish integrations you created", 403)
 
-    if integration.get("source") != "custom":
+    if integration.source != "custom":
         raise PublishError("Only custom integrations can be published")
 
-    user_integration = await user_integrations_collection.find_one(
-        {"user_id": user_id, "integration_id": integration_id}
-    )
-    if not user_integration or user_integration.get("status") != "connected":
+    if not await user_integration_repository.is_connected(user_id, integration_id):
         raise PublishError("Integration must be connected before publishing")
 
-    tools = integration.get("tools", [])
+    tools = [t.model_dump() for t in integration.tools]
     if not tools:
         raise PublishError("Integration must be connected with tools before publishing")
 
+    server_url = integration.mcp_config.server_url if integration.mcp_config else ""
+
     validation_errors = await PublishIntegrationValidator.validate_for_publish(
-        name=integration.get("name", ""),
-        description=integration.get("description"),
+        name=integration.name,
+        description=integration.description,
         tools=tools,
     )
     if validation_errors:
         raise PublishError("; ".join(validation_errors))
 
     category = await infer_integration_category(
-        name=integration.get("name", ""),
-        description=integration.get("description", ""),
+        name=integration.name,
+        description=integration.description,
         tools=tools,
-        server_url=integration.get("mcp_config", {}).get("server_url", ""),
+        server_url=server_url,
     )
 
     content = await infer_integration_content(
-        name=integration.get("name", ""),
-        description=integration.get("description", ""),
+        user_id=user_id,
+        name=integration.name,
+        description=integration.description,
         tools=tools,
-        server_url=integration.get("mcp_config", {}).get("server_url", ""),
+        server_url=server_url,
         category=category,
     )
 
-    slug = await generate_unique_integration_slug(
-        name=integration.get("name", ""),
+    slug = await integration_repository.ensure_unique_slug(
+        name=integration.name,
         category=category,
         integration_id=integration_id,
-        collection=integrations_collection,
     )
 
-    now = datetime.now(UTC)
-    update_fields: dict[str, Any] = {
-        "is_public": True,
-        "published_at": now,
-        "category": category,
-        "clone_count": integration.get("clone_count", 0),
-        "slug": slug,
-        # Explicitly null on regeneration failure so a republish never serves
-        # stale copy left over from a previous publish — the frontend falls back
-        # to its generic content instead.
-        "content": content.model_dump() if content is not None else None,
-    }
-
-    update_result = await integrations_collection.update_one(
-        {
-            "integration_id": integration_id,
-            "created_by": user_id,
-            "source": "custom",
-            "is_public": {"$ne": True},
-        },
-        {"$set": update_fields},
+    published = await integration_repository.publish(
+        integration_id,
+        created_by=user_id,
+        category=category,
+        slug=slug,
+        content=content,
+        clone_count=integration.clone_count,
     )
 
-    if update_result.modified_count == 0:
-        existing = await integrations_collection.find_one(
-            {"integration_id": integration_id, "created_by": user_id}
-        )
-        if existing and existing.get("is_public"):
+    if not published:
+        existing = await integration_repository.get_by_creator(integration_id, user_id)
+        if existing and existing.is_public:
             raise PublishError("Integration is already published")
         raise PublishError("Integration not found", 404)
 
     await index_public_integration(
         integration_id=integration_id,
-        name=integration.get("name", ""),
-        description=integration.get("description", ""),
+        name=integration.name,
+        description=integration.description,
         tools=tools,
     )
 
     await delete_cache_by_pattern("marketplace:community:*")
     # is_public / published_at feed the creator's MyIntegrationItem (tools:user:*:my).
     await invalidate_user_integration_caches(user_id)
-    log.info(f"{LogTag.INTEGRATION} Published integration {integration_id}")
+    log.info(f"{LogTag.INTEGRATION} Published integration", integration_id=integration_id)
 
     return {
         "integration_id": integration_id,
@@ -151,30 +128,22 @@ async def unpublish_custom_integration(
     Raises PublishError on failure.
     """
     log.set(integration={"provider": integration_id, "action": "unpublish"})
-    integration = await integrations_collection.find_one({"integration_id": integration_id})
+    integration = await integration_repository.get(integration_id)
     if not integration:
         raise PublishError("Integration not found", 404)
 
-    if integration.get("created_by") != user_id:
+    if integration.created_by != user_id:
         raise PublishError("You can only unpublish integrations you created", 403)
 
-    if not integration.get("is_public"):
+    if not integration.is_public:
         raise PublishError("Integration is not currently published")
 
-    update_result = await integrations_collection.update_one(
-        {"integration_id": integration_id},
-        {
-            "$set": {"is_public": False},
-            "$unset": {"published_at": ""},
-        },
-    )
-
-    if update_result.modified_count == 0:
+    if not await integration_repository.unpublish(integration_id):
         raise PublishError("Failed to update integration", 500)
 
     await remove_public_integration(integration_id)
     await delete_cache_by_pattern("marketplace:community:*")
     await invalidate_user_integration_caches(user_id)
-    log.info(f"{LogTag.INTEGRATION} Unpublished integration {integration_id}")
+    log.info(f"{LogTag.INTEGRATION} Unpublished integration", integration_id=integration_id)
 
     return {"integration_id": integration_id}

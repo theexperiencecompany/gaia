@@ -1,0 +1,90 @@
+# Everyday assistant behavior — warm, concise, human replies.
+#
+# Scoring notes (verified against the live SSE stream, Aug 2026):
+# - `suggestions: true` gates on the follow_up_actions SSE frame, which the
+#   comms agent emits ONLY for non-delegated turns. Turns that delegate to the
+#   executor (reminders, todos, search) deliver suggestions out-of-band
+#   (WebSocket + Mongo), so delegated cases here set suggestions: false.
+# - `openui: false` everywhere: the SSE-visible reply text must never carry a
+#   stray :::openui fence (a fence in the comms ack would render a broken card).
+# - `communicate` strings are chosen from what the SSE response frames actually
+#   carry: for delegated turns that is the comms ack, not the final answer.
+
+- id: quality-everyday-greeting
+  ticket: "Everyday greeting — warm, casual, human; no robotic boilerplate."
+  tags: [everyday]
+  prompt: "hey! what's up?"
+  expected:
+    category: everyday
+    communicate: []
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "The reply sounds human: warm, uses contractions and casual phrasing, no robotic boilerplate like 'I'm sorry to hear that' or 'As an AI'."
+        - "The reply is concise (under 3 sentences) and matches the casual tone of the greeting."
+        - "The reply does not invent facts or capabilities, and does not mention being an AI."
+    score: {gates: [suggestion]}
+
+- id: quality-everyday-thanks
+  ticket: "Appreciation — humble, brief, no gushing. Suggestion gate disabled: the follow-up generator returns an empty frame after pure appreciation (observed on two runs), and 3-4 canned actions after 'you're the best' would be the robotic behavior this suite exists to catch — the case's signal is warmth."
+  tags: [everyday]
+  prompt: "thanks for all your help today, you're the best!"
+  setup:
+    counterfeit:
+      text: "As an AI assistant I'm always glad to be of service! Let me pull together a summary of everything we got through today so you have it to hand."
+      messages:
+        - {role: user, content: "thanks for all your help today, you're the best!"}
+        - {role: assistant, content: "As an AI assistant I'm always glad to be of service! Let me pull together a summary of everything we got through today so you have it to hand."}
+      tool_calls: [{name: call_executor, args: {task: "summarise today's conversation for the user"}}]
+  expected:
+    category: everyday
+    communicate: []
+    # The real claim of this case: a pleasantry is answered by the comms agent
+    # itself. Handing "thanks!" to the executor spends a model call and several
+    # seconds of latency on nothing, and DelegationGate fails a run that
+    # produced nothing, so `forbidden` is a gate that can actually go red.
+    delegation: forbidden
+    must_not_communicate: ["as an ai", "as an assistant", "glad to be of service"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply hand the turn off to do work — no offer to summarise, look anything up, or prepare anything the user did not ask for."
+        - "MUST: the reply be warm without gushing — no flattery returned, no exclamation-stacked praise."
+        - "MUST NOT: the reply be longer than two sentences."
+        - "MUST NOT: the reply mention being an AI or read like a customer-support script."
+    score: {gates: [delegation, must_not_communicate]}
+
+- id: quality-everyday-reminder
+  ticket: "Everyday request — delegates, runs the reminder tool, and the visible ack stays human. No communicate gate: the comms ack is generic ('on it, setting that up') and only sometimes parrots the time (verified: one run said '6pm', another didn't) — the stable signals are the tool call and the judge."
+  tags: [everyday]
+  prompt: "remind me to call mom tomorrow at 6pm"
+  expected:
+    category: everyday
+    communicate: []
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply acknowledges the request and sets expectations, without robotic boilerplate like 'I'm sorry to hear that' or 'As an AI'."
+        - "The reply sounds human: warm, uses contractions, concise (under 3 sentences)."
+        - "The reply does not over-promise (no fake confirmation of a completed action it cannot see yet)."
+    score: {gates: [tool_call_correctness]}
+
+- id: quality-everyday-tired
+  ticket: "Everyday empathy — kind, brief, no pity script."
+  tags: [everyday]
+  prompt: "i'm so tired, it's been a long week"
+  expected:
+    category: everyday
+    communicate: []
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "The reply is empathetic and kind without being saccharine or resorting to canned phrases like 'I'm sorry to hear that'."
+        - "The reply is concise (under 3 sentences) and conversational, with a natural human register."
+        - "The reply does not mention being an AI and does not try to fix the user's feelings with a list of tips."
+    score: {gates: [suggestion]}

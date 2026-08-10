@@ -18,9 +18,7 @@ class KnowledgeItem(BaseModel):
     """Schema for a single knowledge item."""
 
     content: str = Field(..., min_length=1, description="Knowledge content to store")
-    metadata: dict[str, Any] | None = Field(
-        default_factory=lambda: {}, description="Optional metadata"
-    )
+    metadata: dict[str, Any] | None = Field(default_factory=dict, description="Optional metadata")
 
     @field_validator("content")
     @classmethod
@@ -49,7 +47,7 @@ class GaiaKnowledgeService:
     async def search_knowledge(self, query: str, limit: int = 5) -> list[KnowledgeResult]:
         """Search the GAIA knowledge base using semantic similarity."""
         log.set(
-            service="gaia_knowledge_service",
+            component="gaia_knowledge_service",
             operation="search_knowledge",
             query_preview=query[:50],
             limit=limit,
@@ -73,17 +71,17 @@ class GaiaKnowledgeService:
                 for doc, score in results
             ]
 
-            log.info(f"Found {len(knowledge_results)} knowledge results for query: {query[:50]}...")
+            log.info("Found knowledge results for query", result_count=len(knowledge_results))
             return knowledge_results
 
         except Exception as e:
-            log.error(f"Error searching GAIA knowledge: {e}")
+            log.error("Error searching GAIA knowledge", error=str(e), error_type=type(e).__name__)
             return []
 
     async def add_knowledge_batch(self, items: list[KnowledgeItem]) -> int:
         """Add multiple knowledge items in batch. Returns the number added."""
         log.set(
-            service="gaia_knowledge_service",
+            component="gaia_knowledge_service",
             operation="add_knowledge_batch",
             item_count=len(items),
         )
@@ -103,11 +101,16 @@ class GaiaKnowledgeService:
             # Add documents in batch
             await client.aadd_texts(texts=texts, metadatas=metadatas)
 
-            log.info(f"Added {len(items)} knowledge items to ChromaDB")
+            log.info("Added knowledge items to ChromaDB", items_count=len(items))
             return len(items)
 
         except Exception as e:
-            log.error(f"Error adding knowledge batch: {e}", exc_info=True)
+            log.error(
+                "Error adding knowledge batch",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
             return 0
 
     async def clear_knowledge(self) -> bool:
@@ -118,18 +121,18 @@ class GaiaKnowledgeService:
 
             # Delete and recreate collection
             await async_client.delete_collection(name=self.collection_name)
-            log.info(f"Cleared knowledge collection: {self.collection_name}")
+            log.info("Cleared knowledge collection", collection_name=self.collection_name)
 
             # Recreate empty collection
             await async_client.create_collection(
                 name=self.collection_name, metadata={"hnsw:space": "cosine"}
             )
-            log.info(f"Recreated empty collection: {self.collection_name}")
+            log.info("Recreated empty collection", collection_name=self.collection_name)
 
             return True
 
         except Exception as e:
-            log.error(f"Error clearing knowledge: {e}")
+            log.error("Error clearing knowledge", error=str(e), error_type=type(e).__name__)
             return False
 
 

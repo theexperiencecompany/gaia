@@ -13,13 +13,17 @@ import json
 from typing import Any
 
 from langchain.agents.middleware import SummarizationMiddleware
+from langchain.agents.middleware.summarization import ContextSize, TriggerClause
 from langchain.agents.middleware.types import AgentState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
+from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
 from app.constants.log_tags import LogTag
+from app.models.agent_models import agent_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
 
@@ -35,11 +39,14 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         self,
         model: str | BaseChatModel,
         *,
-        trigger=("fraction", 0.85),
-        keep=("messages", 15),
+        trigger: ContextSize | TriggerClause | list[ContextSize | TriggerClause] | None = (
+            "fraction",
+            0.85,
+        ),
+        keep: ContextSize = ("messages", 15),
         enable_archive: bool = True,
         excluded_tools: set[str] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__(model=model, trigger=trigger, keep=keep, **kwargs)
         self.enable_archive = enable_archive
@@ -51,11 +58,14 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         archive_path: str | None = None
         if self.enable_archive and self._should_trigger_summarization(state):
             try:
-                archive_path = await self._archive(state, runtime)
+                archive_path = await self._archive(state)
             except JuiceFSUnavailable as e:
-                log.warning(f"{LogTag.AGENT} Archive skipped (workspace unavailable): {e}")
+                log.warning(
+                    f"{LogTag.AGENT} Archive skipped (workspace unavailable)",
+                    error_type=type(e).__name__,
+                )
             except Exception as e:
-                log.error(f"{LogTag.AGENT} Archive failed: {e}")
+                log.error(f"{LogTag.AGENT} Archive failed", error_type=type(e).__name__)
 
         result = await super().abefore_model(state, runtime)
         if result is not None and archive_path:
@@ -63,41 +73,31 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         return result
 
     def _should_trigger_summarization(self, state: AgentState[Any]) -> bool:
-        messages = state.get("messages", [])
-        if not messages:
-            return False
+        """Whether the archive should be written before ``super().abefore_model`` runs.
+
+        Delegates the threshold decision to the parent's ``_should_summarize`` so
+        the archive gate fires in exact lockstep with summarization. Re-deriving
+        the thresholds here drifted from the parent in four ways (strict ``>``
+        instead of ``>=`` at the boundary, and no support for list, mapping, or
+        provider-reported-token triggers), each of which summarized history away
+        with no archive to recover it from.
+        """
         filtered = [
             m
-            for m in messages
+            for m in state.get("messages", [])
             if not (isinstance(m, ToolMessage) and getattr(m, "name", None) in self.excluded_tools)
         ]
-        if not filtered:
-            return False
-        try:
-            token_count = self.token_counter(filtered)
-            if isinstance(self.trigger, tuple):
-                trigger_type, trigger_value = self.trigger
-                if trigger_type == "fraction":
-                    # Resolve the window exactly like the parent trigger
-                    # (SummarizationMiddleware._should_summarize) so the archive
-                    # gate fires in lockstep with summarization. __init__ already
-                    # rejects fraction triggers when the model has no profile.
-                    max_tokens = self._get_profile_limits()
-                    if max_tokens is None:
-                        return False
-                    return token_count > max_tokens * trigger_value
-                if trigger_type == "tokens":
-                    return token_count > trigger_value
-                if trigger_type == "messages":
-                    return len(filtered) > trigger_value
-        except Exception:
-            return False
-        return False
+        return self._should_summarize(filtered, self.token_counter(filtered))
 
-    async def _archive(self, state: AgentState[Any], runtime: Runtime[Any]) -> str:
+    async def _archive(self, state: AgentState[Any]) -> str:
         messages = state.get("messages", [])
-        config: dict[str, Any] = getattr(runtime, "config", {}) or {}
-        configurable = config.get("configurable", {})
+        # The `runtime` handed to a middleware hook carries no config — LangGraph's
+        # `Runtime` deliberately omits it (see its class docstring). Reading it from
+        # there yielded an empty configurable on every real run, so the archive
+        # raised "requires 'user_id'" and was swallowed by the caller's handler:
+        # no history was ever archived. `get_config()` is the supported accessor,
+        # and is what LLMAccountingMiddleware already uses for the same reason.
+        configurable = agent_configurable(get_config())
         user_id = configurable.get("user_id")
         thread_id = configurable.get("thread_id")
         conversation_id = configurable.get("vfs_session_id") or thread_id
@@ -117,16 +117,23 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             content=json.dumps(history, indent=2, default=str),
         )
         log.info(
-            f"{LogTag.AGENT} Archived {len(messages)} messages to {sandbox_path} before summarization"
+            f"{LogTag.AGENT} Archived messages before summarization",
+            message_count=len(messages),
+            sandbox_path=sandbox_path,
         )
         return sandbox_path
 
     def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, Any]]:
         history: list[dict[str, Any]] = []
         for msg in messages:
+            # Text-extract so inline media never lands base64 in the archive —
+            # the archive is a text record of the conversation, and a single
+            # image block would add ~1.4 MB of base64 to the JSON.
             entry: dict[str, Any] = {
                 "type": type(msg).__name__,
-                "content": msg.content if hasattr(msg, "content") else str(msg),
+                "content": extract_text_content(msg.content)
+                if hasattr(msg, "content")
+                else str(msg),
             }
             tool_calls = getattr(msg, "tool_calls", None)
             if tool_calls:

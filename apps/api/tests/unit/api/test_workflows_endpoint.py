@@ -26,12 +26,15 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
-import pytest
+from pymongo.errors import DuplicateKeyError
 
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
+    PublicWorkflowRow,
     PublicWorkflowsResponse,
     Workflow,
+    WorkflowCreatorInfo,
+    WorkflowDocument,
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
 )
@@ -41,27 +44,10 @@ BASE_URL = "/api/v1/workflows"
 # Patch targets
 _WF_SERVICE = "app.api.v1.endpoints.workflows.WorkflowService"
 _WF_GEN_SERVICE = "app.api.v1.endpoints.workflows.WorkflowGenerationService"
-_WF_COLLECTION = "app.api.v1.endpoints.workflows.workflows_collection"
+_WF_REPO = "app.api.v1.endpoints.workflows.workflow_repository"
 _GET_EXECUTIONS = "app.api.v1.endpoints.workflows.get_executions"
 _GEN_SLUG = "app.api.v1.endpoints.workflows.generate_unique_workflow_slug"
 _RESET_DEFAULT = "app.api.v1.endpoints.workflows.reset_system_workflow_to_default"
-
-
-def _async_iter(items: list):
-    """Return a Mongo-cursor-shaped async iterator over the given items."""
-
-    class _Cursor:
-        def __init__(self, docs):
-            self._docs = list(docs)
-
-        def __aiter__(self):
-            return self._gen()
-
-        async def _gen(self):
-            for d in self._docs:
-                yield d
-
-    return _Cursor(items)
 
 
 def _make_workflow(**overrides) -> Workflow:
@@ -94,6 +80,13 @@ def _make_workflow(**overrides) -> Workflow:
     return Workflow(**base)
 
 
+def _make_workflow_doc(**overrides) -> WorkflowDocument:
+    """Build a WorkflowDocument stand-in for repository mock returns (the typed
+    seam the endpoints read from)."""
+    wf = _make_workflow(**overrides)
+    return WorkflowDocument(**wf.model_dump())
+
+
 def _create_workflow_payload(**overrides) -> dict:
     base: dict = {
         "title": "My Workflow",
@@ -109,16 +102,22 @@ def _create_workflow_payload(**overrides) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateWorkflow:
     """Tests for the create workflow endpoint."""
 
     async def test_create_workflow_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow()
-        with patch(
-            f"{_WF_SERVICE}.create_workflow",
-            new_callable=AsyncMock,
-            return_value=mock_wf,
+        with (
+            patch(
+                "app.api.v1.endpoints.workflows.get_all_integrations_status",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                return_value=mock_wf,
+            ),
         ):
             response = await client.post(BASE_URL, json=_create_workflow_payload())
 
@@ -154,10 +153,17 @@ class TestCreateWorkflow:
         assert response.status_code == 422
 
     async def test_create_workflow_value_error_returns_400(self, client: AsyncClient):
-        with patch(
-            f"{_WF_SERVICE}.create_workflow",
-            new_callable=AsyncMock,
-            side_effect=ValueError("Invalid trigger config"),
+        with (
+            patch(
+                "app.api.v1.endpoints.workflows.get_all_integrations_status",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                side_effect=ValueError("Invalid trigger config"),
+            ),
         ):
             response = await client.post(BASE_URL, json=_create_workflow_payload())
 
@@ -179,7 +185,6 @@ class TestCreateWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListWorkflows:
     """Tests for the list workflows endpoint."""
 
@@ -187,7 +192,7 @@ class TestListWorkflows:
         with patch(
             f"{_WF_SERVICE}.list_workflows",
             new_callable=AsyncMock,
-            return_value=[_make_workflow()],
+            return_value=([_make_workflow()], 1),
         ):
             response = await client.get(BASE_URL)
 
@@ -197,7 +202,7 @@ class TestListWorkflows:
         with patch(
             f"{_WF_SERVICE}.list_workflows",
             new_callable=AsyncMock,
-            return_value=[],
+            return_value=([], 0),
         ):
             response = await client.get(BASE_URL)
 
@@ -219,7 +224,6 @@ class TestListWorkflows:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteWorkflow:
     """Tests for the execute workflow endpoint."""
 
@@ -280,7 +284,6 @@ class TestExecuteWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWorkflowExecutions:
     """Tests for the get workflow executions endpoint."""
 
@@ -334,7 +337,6 @@ class TestGetWorkflowExecutions:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWorkflowStatus:
     """Tests for the get workflow status endpoint."""
 
@@ -384,7 +386,6 @@ class TestGetWorkflowStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestActivateWorkflow:
     """Tests for the activate workflow endpoint."""
 
@@ -426,7 +427,6 @@ class TestActivateWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeactivateWorkflow:
     """Tests for the deactivate workflow endpoint."""
 
@@ -468,7 +468,6 @@ class TestDeactivateWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRegenerateSteps:
     """Tests for the regenerate workflow steps endpoint."""
 
@@ -529,7 +528,6 @@ class TestRegenerateSteps:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateWorkflowFromTodo:
     """Tests for the create workflow from todo endpoint."""
 
@@ -585,27 +583,14 @@ class TestCreateWorkflowFromTodo:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestPublishWorkflow:
     """Tests for the publish workflow endpoint."""
 
     async def test_publish_returns_200(self, client: AsyncClient):
-        mock_doc = {
-            "_id": "wf_abc123",
-            "user_id": "507f1f77bcf86cd799439011",
-            "title": "My Public Workflow",
-            "slug": None,
-        }
+        doc = _make_workflow_doc(title="My Public Workflow", slug=None)
         with (
-            patch(
-                f"{_WF_COLLECTION}.find_one",
-                new_callable=AsyncMock,
-                return_value=mock_doc,
-            ),
-            patch(
-                f"{_WF_COLLECTION}.update_one",
-                new_callable=AsyncMock,
-            ),
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.publish", new_callable=AsyncMock, return_value=doc),
             patch(
                 _GEN_SLUG,
                 new_callable=AsyncMock,
@@ -617,20 +602,48 @@ class TestPublishWorkflow:
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "Workflow published successfully"
+        assert data["slug"] == "my-public-workflow-abc123"
+
+    async def test_publish_keeps_existing_slug(self, client: AsyncClient):
+        """A workflow that already has a slug re-publishes with it — no regen."""
+        doc = _make_workflow_doc(slug="already-set-abcdef")
+        gen = AsyncMock()
+        with (
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.publish", new_callable=AsyncMock, return_value=doc) as publish,
+            patch(_GEN_SLUG, gen),
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/publish")
+
+        assert response.status_code == 200
+        assert response.json()["slug"] == "already-set-abcdef"
+        gen.assert_not_awaited()
+        assert publish.await_args.kwargs["slug"] == "already-set-abcdef"
+
+    async def test_publish_retries_on_duplicate_slug(self, client: AsyncClient):
+        """A generated-slug collision retries with a fresh slug (the unique-index race)."""
+        doc = _make_workflow_doc(slug=None)
+        publish = AsyncMock(side_effect=[DuplicateKeyError("dup"), doc])
+        with (
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.publish", publish),
+            patch(_GEN_SLUG, new_callable=AsyncMock, side_effect=["slug-1", "slug-2"]),
+        ):
+            response = await client.post(f"{BASE_URL}/wf_abc123/publish")
+
+        assert response.status_code == 200
+        assert publish.await_count == 2
+        assert response.json()["slug"] == "slug-2"
 
     async def test_publish_not_found_returns_404(self, client: AsyncClient):
-        with patch(
-            f"{_WF_COLLECTION}.find_one",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
+        with patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=None):
             response = await client.post(f"{BASE_URL}/wf_nonexist/publish")
 
         assert response.status_code == 404
 
     async def test_publish_service_error_returns_500(self, client: AsyncClient):
         with patch(
-            f"{_WF_COLLECTION}.find_one",
+            f"{_WF_REPO}.get_for_user",
             new_callable=AsyncMock,
             side_effect=RuntimeError("DB error"),
         ):
@@ -644,26 +657,14 @@ class TestPublishWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUnpublishWorkflow:
     """Tests for the unpublish workflow endpoint."""
 
     async def test_unpublish_returns_200(self, client: AsyncClient):
-        mock_doc = {
-            "_id": "wf_abc123",
-            "user_id": "507f1f77bcf86cd799439011",
-            "is_public": True,
-        }
+        doc = _make_workflow_doc(is_public=True)
         with (
-            patch(
-                f"{_WF_COLLECTION}.find_one",
-                new_callable=AsyncMock,
-                return_value=mock_doc,
-            ),
-            patch(
-                f"{_WF_COLLECTION}.update_one",
-                new_callable=AsyncMock,
-            ),
+            patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc),
+            patch(f"{_WF_REPO}.unpublish", new_callable=AsyncMock, return_value=doc),
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/unpublish")
 
@@ -671,11 +672,7 @@ class TestUnpublishWorkflow:
         assert response.json()["message"] == "Workflow unpublished successfully"
 
     async def test_unpublish_not_found_returns_404(self, client: AsyncClient):
-        with patch(
-            f"{_WF_COLLECTION}.find_one",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
+        with patch(f"{_WF_REPO}.get_for_user", new_callable=AsyncMock, return_value=None):
             response = await client.post(f"{BASE_URL}/wf_nonexist/unpublish")
 
         assert response.status_code == 404
@@ -686,7 +683,6 @@ class TestUnpublishWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExploreWorkflows:
     """Tests for the explore workflows endpoint."""
 
@@ -717,7 +713,6 @@ class TestExploreWorkflows:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCommunityWorkflows:
     """Tests for the community workflows endpoint."""
 
@@ -748,43 +743,36 @@ class TestCommunityWorkflows:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetPublicWorkflow:
     """Tests for the get public workflow endpoint."""
 
     async def test_get_public_workflow_by_id_returns_200(self, client: AsyncClient):
-        mock_doc = {
-            "_id": "wf_abc123",
-            "user_id": "507f1f77bcf86cd799439011",
-            "title": "Public Workflow",
-            "description": "A shared workflow",
-            "prompt": "Do things",
-            "steps": [],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "activated": True,
-            "is_public": True,
-            # slug present → ensure_public_workflow_slug short-circuits (no DB write)
-            "slug": "public-workflow",
-            "creator_info": [{"name": "Test User", "picture": None}],
-        }
-        with (
-            patch(
-                f"{_WF_COLLECTION}.aggregate",
-                return_value=_async_iter([mock_doc]),
-            ),
-            patch(
-                "app.api.v1.endpoints.workflows.transform_workflow_document",
-                return_value=mock_doc,
-            ),
+        # slug present → ensure_public_workflow_slug short-circuits (no repo write).
+        row = PublicWorkflowRow(
+            **_make_workflow(
+                title="Public Workflow", is_public=True, slug="public-workflow"
+            ).model_dump(),
+            creator_info=[WorkflowCreatorInfo(name="Test User")],
+        )
+        with patch(
+            f"{_WF_REPO}.get_public_with_creator",
+            new_callable=AsyncMock,
+            return_value=row,
         ):
             response = await client.get(f"{BASE_URL}/public/wf_abc123")
 
         assert response.status_code == 200
+        data = response.json()["workflow"]
+        assert data["id"] == "wf_abc123"
+        assert data["creator"]["name"] == "Test User"
+        # the join scaffolding must not leak into the response
+        assert "creator_info" not in data
 
     async def test_get_public_workflow_not_found_returns_404(self, client: AsyncClient):
         with patch(
-            f"{_WF_COLLECTION}.aggregate",
-            return_value=_async_iter([]),
+            f"{_WF_REPO}.get_public_with_creator",
+            new_callable=AsyncMock,
+            return_value=None,
         ):
             response = await client.get(f"{BASE_URL}/public/nonexistent-slug")
 
@@ -796,7 +784,6 @@ class TestGetPublicWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGeneratePrompt:
     """Tests for the generate workflow prompt endpoint."""
 
@@ -860,7 +847,6 @@ class TestGeneratePrompt:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWorkflow:
     """Tests for the get workflow by ID endpoint."""
 
@@ -902,7 +888,6 @@ class TestGetWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateWorkflow:
     """Tests for the update workflow endpoint."""
 
@@ -960,7 +945,6 @@ class TestUpdateWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestResetWorkflowToDefault:
     """Tests for the reset workflow to default endpoint."""
 
@@ -1001,7 +985,6 @@ class TestResetWorkflowToDefault:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeleteWorkflow:
     """Tests for the delete workflow endpoint."""
 

@@ -3,6 +3,7 @@
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
@@ -16,13 +17,14 @@ def register_github_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="GITHUB")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get GitHub context snapshot: assigned issues, PRs, review requests, notifications.
 
         Zero required parameters. Returns current GitHub state for situational awareness.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "github", "action": "gather_context"})
         user_id = auth_credentials.get("user_id", "")
         if not user_id:
@@ -46,7 +48,9 @@ def register_github_custom_tools(composio: Composio) -> list[str]:
             )
             review_requests = reviews_data.get("items", [])
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} GitHub review requests fetch skipped: {e}")
+            log.debug(
+                f"{LogTag.TOOL} GitHub review requests fetch skipped", error_type=type(e).__name__
+            )
 
         notifications: list[dict[str, Any]] = []
         try:
@@ -58,7 +62,9 @@ def register_github_custom_tools(composio: Composio) -> list[str]:
             raw = notif_data.get("notifications", notif_data)
             notifications = raw if isinstance(raw, list) else []
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} GitHub notifications fetch skipped: {e}")
+            log.debug(
+                f"{LogTag.TOOL} GitHub notifications fetch skipped", error_type=type(e).__name__
+            )
 
         return {
             "assigned_issues": actual_issues,

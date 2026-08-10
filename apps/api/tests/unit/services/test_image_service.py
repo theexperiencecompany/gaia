@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import HTTPException, UploadFile
 import pytest
 
+from app.models.chat_models import ImageData
 from app.services.image_service import (
     api_generate_image,
     generate_image_stream,
@@ -18,7 +19,6 @@ from app.services.image_service import (
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGeneratePublicId:
     def test_basic_slug_generation(self):
         result = generate_public_id("A beautiful sunset")
@@ -65,7 +65,6 @@ class TestGeneratePublicId:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestApiGenerateImage:
     async def test_generates_image_with_improved_prompt(self):
         with (
@@ -86,9 +85,9 @@ class TestApiGenerateImage:
         ):
             result = await api_generate_image("sunset", improve_prompt=True)
 
-        assert result["url"] == "https://cdn.example.com/image.png"
-        assert result["prompt"] == "sunset"
-        assert result["improved_prompt"] is not None
+        assert result.url == "https://cdn.example.com/image.png"
+        assert result.prompt == "sunset"
+        assert result.improved_prompt is not None
 
     async def test_generates_image_without_prompt_improvement(self):
         with (
@@ -104,26 +103,9 @@ class TestApiGenerateImage:
         ):
             result = await api_generate_image("a cat", improve_prompt=False)
 
-        assert result["url"] == "https://cdn.example.com/img.png"
-        assert result["prompt"] == "a cat"
-        assert result["improved_prompt"] is None
-
-    async def test_handles_dict_return_with_image_key(self):
-        image_dict = {"image": b"raw_bytes_data"}
-        with (
-            patch(
-                "app.services.image_service.generate_image",
-                new_callable=AsyncMock,
-                return_value=image_dict,
-            ),
-            patch(
-                "app.services.image_service.cloudinary.uploader.upload",
-                return_value={"secure_url": "https://cdn.example.com/dict.png"},
-            ),
-        ):
-            result = await api_generate_image("test", improve_prompt=False)
-
-        assert result["url"] == "https://cdn.example.com/dict.png"
+        assert result.url == "https://cdn.example.com/img.png"
+        assert result.prompt == "a cat"
+        assert result.improved_prompt is None
 
     async def test_raises_500_on_invalid_dict_return(self):
         with (
@@ -200,7 +182,7 @@ class TestApiGenerateImage:
             # which equals original, so improved_prompt should be None
             result = await api_generate_image("hello", improve_prompt=True)
 
-        assert result["improved_prompt"] is None
+        assert result.improved_prompt is None
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +190,6 @@ class TestApiGenerateImage:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestImageToTextEndpoint:
     async def test_converts_image_to_text(self):
         mock_file = MagicMock(spec=UploadFile)
@@ -221,7 +202,7 @@ class TestImageToTextEndpoint:
         ):
             result = await image_to_text_endpoint("Describe this image", mock_file)
 
-        assert result["response"] == "A photo of a cat"
+        assert result.response == "A photo of a cat"
 
     async def test_raises_500_on_conversion_error(self):
         mock_file = MagicMock(spec=UploadFile)
@@ -242,14 +223,13 @@ class TestImageToTextEndpoint:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateImageStream:
     async def test_yields_generating_status_and_image_data(self):
-        image_result = {
-            "url": "https://cdn.example.com/img.png",
-            "prompt": "sunset",
-            "improved_prompt": "golden sunset",
-        }
+        image_result = ImageData(
+            url="https://cdn.example.com/img.png",
+            prompt="sunset",
+            improved_prompt="golden sunset",
+        )
         with patch(
             "app.services.image_service.api_generate_image",
             new_callable=AsyncMock,
@@ -265,7 +245,11 @@ class TestGenerateImageStream:
         assert first_data["status"] == "generating_image"
         # Second chunk: image data
         second_data = json.loads(chunks[1].replace("data: ", "").strip())
-        assert second_data["image_data"] == image_result
+        assert second_data["image_data"] == {
+            "url": "https://cdn.example.com/img.png",
+            "prompt": "sunset",
+            "improved_prompt": "golden sunset",
+        }
         # Third chunk: DONE
         assert "[DONE]" in chunks[2]
 

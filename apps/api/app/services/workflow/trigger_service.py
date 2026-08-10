@@ -5,15 +5,13 @@ Provides high-level trigger operations that delegate to provider-specific handle
 Handles Composio trigger reference counting to prevent premature deletion.
 """
 
-from typing import Any
-
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
-from app.models.workflow_models import TriggerConfig, TriggerType
+from app.db.repositories.workflows import workflow_repository
+from app.models.trigger_config import WorkflowTriggerResponse
+from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
 from app.utils.exceptions import TriggerRegistrationError
-from app.utils.workflow_utils import ensure_trigger_config_object
 from shared.py.wide_events import log
 
 
@@ -25,7 +23,7 @@ class TriggerService:
     """
 
     @staticmethod
-    async def get_all_workflow_triggers() -> list[dict[str, Any]]:
+    async def get_all_workflow_triggers() -> list[WorkflowTriggerResponse]:
         """
         Get all available workflow triggers from OAuth integrations.
 
@@ -38,25 +36,15 @@ class TriggerService:
                 if trigger_config.workflow_trigger_schema:
                     schema = trigger_config.workflow_trigger_schema
                     triggers.append(
-                        {
-                            "slug": schema.slug,
-                            "composio_slug": schema.composio_slug,
-                            "name": schema.name,
-                            "description": schema.description,
-                            "provider": integration.provider,
-                            "integration_id": integration.id,
-                            "config_schema": {
-                                field_name: {
-                                    "type": field_schema.type,
-                                    "default": field_schema.default,
-                                    "min": field_schema.min,
-                                    "max": field_schema.max,
-                                    "options_endpoint": field_schema.options_endpoint,
-                                    "description": field_schema.description,
-                                }
-                                for field_name, field_schema in schema.config_schema.items()
-                            },
-                        }
+                        WorkflowTriggerResponse(
+                            slug=schema.slug,
+                            composio_slug=schema.composio_slug,
+                            name=schema.name,
+                            description=schema.description,
+                            provider=integration.provider,
+                            integration_id=integration.id,
+                            config_schema=schema.config_schema,
+                        )
                     )
 
         return triggers
@@ -75,24 +63,24 @@ class TriggerService:
 
         for trigger_id in trigger_ids:
             try:
-                # Build query to count references
-                query: dict[str, Any] = {"trigger_config.composio_trigger_ids": trigger_id}
-
-                # Exclude the current workflow if provided
-                if excluding_workflow_id:
-                    query["_id"] = {"$ne": excluding_workflow_id}
-
-                count = await workflows_collection.count_documents(query)
+                count = await workflow_repository.count_trigger_references(
+                    trigger_id, excluding_workflow_id=excluding_workflow_id
+                )
 
                 if count == 0:
                     safe_to_delete.append(trigger_id)
                 else:
                     log.debug(
-                        f"{LogTag.WORKFLOW} Trigger {trigger_id} still referenced by {count} other workflow(s), skipping deletion"
+                        f"{LogTag.WORKFLOW} Trigger still referenced by other workflow(s), skipping deletion",
+                        trigger_id=trigger_id,
+                        count=count,
                     )
             except Exception as e:
                 log.error(
-                    f"{LogTag.WORKFLOW} Error checking trigger references for {trigger_id}: {e}"
+                    f"{LogTag.WORKFLOW} Error checking trigger references for",
+                    trigger_id=trigger_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
                 # Don't delete if we can't verify - safer to leave orphaned triggers
                 continue
@@ -116,7 +104,7 @@ class TriggerService:
         handler = get_handler_by_name(trigger_name)
         if not handler:
             error_msg = f"No handler found for trigger: {trigger_name}"
-            log.error(f"{LogTag.WORKFLOW} {error_msg}")
+            log.error(f"{LogTag.WORKFLOW} No handler found for trigger", trigger_name=trigger_name)
             if raise_on_failure:
                 raise TriggerRegistrationError(error_msg, trigger_name)
             return []
@@ -127,15 +115,21 @@ class TriggerService:
             return trigger_ids
         except TypeError as e:
             # Re-raise TypeError for type validation failures
-            log.error(f"{LogTag.WORKFLOW} Type validation error registering triggers: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Type validation error registering triggers",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                workflow_id=workflow_id,
+            )
             raise
         except TriggerRegistrationError:
             # Re-raise our custom exception
             raise
         except Exception as e:
             error_msg = f"Error registering triggers: {type(e).__name__}: {e!s}"
-            log.error(f"{LogTag.WORKFLOW} {error_msg}")
-            log.exception(f"{LogTag.WORKFLOW} Full traceback:")
+            log.error(f"{LogTag.WORKFLOW} Error registering triggers", error_type=type(e).__name__)
+            log.exception(f"{LogTag.WORKFLOW} Full traceback")
             if raise_on_failure:
                 raise TriggerRegistrationError(error_msg, trigger_name)
             return []
@@ -159,7 +153,12 @@ class TriggerService:
 
         handler = get_handler_by_name(trigger_name)
         if not handler:
-            log.error(f"{LogTag.WORKFLOW} No handler found for trigger: {trigger_name}")
+            log.error(
+                f"{LogTag.WORKFLOW} No handler found for trigger",
+                trigger_name=trigger_name,
+                user_id=user_id,
+                workflow_id=workflow_id,
+            )
             return False
 
         try:
@@ -170,20 +169,27 @@ class TriggerService:
 
             if not safe_to_delete:
                 log.info(
-                    f"{LogTag.WORKFLOW} No triggers safe to delete - all {len(trigger_ids)} trigger(s) "
-                    "are still referenced by other workflows"
+                    f"{LogTag.WORKFLOW} No triggers safe to delete - all trigger(s) are still referenced by other workflows",
+                    trigger_ids_count=len(trigger_ids),
                 )
                 return True
 
             if len(safe_to_delete) < len(trigger_ids):
                 log.info(
-                    f"{LogTag.WORKFLOW} Only {len(safe_to_delete)} of {len(trigger_ids)} triggers "
-                    "are safe to delete (others still referenced)"
+                    f"{LogTag.WORKFLOW} Only of triggers are safe to delete (others still referenced)",
+                    safe_to_delete_count=len(safe_to_delete),
+                    trigger_ids_count=len(trigger_ids),
                 )
 
             return await handler.unregister(user_id, safe_to_delete)
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error unregistering triggers: {e}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error unregistering triggers",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                workflow_id=workflow_id,
+            )
             return False
 
     @staticmethod
@@ -199,16 +205,11 @@ class TriggerService:
         """
         if not trigger_names:
             return
-        query = {
-            "user_id": user_id,
-            "activated": True,
-            "trigger_config.type": TriggerType.INTEGRATION,
-            "trigger_config.enabled": True,
-            "trigger_config.trigger_name": {"$in": trigger_names},
-        }
-        async for doc in workflows_collection.find(query):
-            workflow_id = doc["_id"]
-            tc = ensure_trigger_config_object(doc.get("trigger_config") or {})
+        for workflow in await workflow_repository.find_active_integration_workflows(
+            user_id, trigger_names
+        ):
+            workflow_id = workflow.id
+            tc = workflow.trigger_config
             if not tc.trigger_name:
                 continue
             old_ids = tc.composio_trigger_ids or []
@@ -218,23 +219,27 @@ class TriggerService:
                 )
             except Exception as e:
                 log.error(
-                    f"{LogTag.WORKFLOW} Trigger resync failed for workflow {workflow_id} "
-                    f"({tc.trigger_name}): {e}"
+                    f"{LogTag.WORKFLOW} Trigger resync failed for workflow",
+                    workflow_id=workflow_id,
+                    trigger_name=tc.trigger_name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
                 )
                 continue
             # Account-level triggers (e.g. gmail_new_message) return no ids — nothing to repoint.
             if not new_ids or set(new_ids) == set(old_ids):
                 continue
-            await workflows_collection.update_one(
-                {"_id": workflow_id},
-                {"$set": {"trigger_config.composio_trigger_ids": new_ids}},
-            )
+            await workflow_repository.set_composio_trigger_ids(workflow_id, new_ids)
             stale_ids = [i for i in old_ids if i not in new_ids]
             if stale_ids:
                 await TriggerService.unregister_triggers(
                     user_id, tc.trigger_name, stale_ids, workflow_id
                 )
             log.info(
-                f"{LogTag.WORKFLOW} Resynced triggers for workflow {workflow_id} "
-                f"({tc.trigger_name}): {old_ids} -> {new_ids}"
+                f"{LogTag.WORKFLOW} Resynced triggers for workflow",
+                workflow_id=workflow_id,
+                trigger_name=tc.trigger_name,
+                old_ids=old_ids,
+                new_ids=new_ids,
             )

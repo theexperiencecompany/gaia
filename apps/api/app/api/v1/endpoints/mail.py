@@ -2,20 +2,47 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
-from app.api.v1.dependencies.google_scope_dependencies import require_integration
+from app.api.v1.dependencies.google_scope_dependencies import (
+    require_integration,
+    require_integration_user_id,
+)
+from app.constants.log_tags import LogTag
 from app.decorators import tiered_rate_limit
 from app.models.mail_models import (
     ApplyLabelRequest,
+    ArchiveEmailsResponse,
+    BulkEmailImportanceSummariesResponse,
     ComposedEmailOutput,
+    DraftMutationResponse,
     DraftRequest,
     EmailActionRequest,
+    EmailImportanceSummariesResponse,
+    EmailImportanceSummaryResponse,
     EmailReadStatusRequest,
     EmailRequest,
-    EmailSummaryRequest,
+    GmailDeletionResponse,
+    GmailDraftResource,
+    GmailDraftsResponse,
+    GmailLabelResource,
+    GmailLabelsResponse,
+    GmailMessageResponse,
+    GmailMessagesResponse,
+    GmailThreadResponse,
     LabelRequest,
+    MarkAsReadResponse,
+    MarkAsUnreadResponse,
+    ModifyLabelsResponse,
+    MoveToInboxResponse,
+    SendDraftResponse,
     SendEmailRequest,
+    SendEmailResponse,
+    SendEmailWithAttachmentsResponse,
+    StarEmailsResponse,
+    TrashEmailsResponse,
+    UnstarEmailsResponse,
+    UntrashEmailsResponse,
 )
 from app.services.mail.email_importance_service import (
     get_bulk_email_importance_summaries as get_bulk_importance_summaries_service,
@@ -57,48 +84,37 @@ router = APIRouter()
 
 @router.get("/gmail/labels", summary="List Gmail Labels")
 async def list_labels(
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> GmailLabelsResponse:
+    log.set(operation="get_labels")
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+        result = await list_labels_service(user_id=user_id)
 
-        # Use the list_labels service function
-        result = await list_labels_service(user_id=str(user_id))
-
-        if result.get("success"):
+        if result.success:
             log.set(
                 operation="get_labels",
-                result_count=result.get("count", 0),
+                result_count=result.count,
                 outcome="success",
             )
-            return {
-                "labels": result.get("labels", []),
-                "count": result.get("count", 0),
-            }
-        raise HTTPException(status_code=500, detail=result.get("error", "Failed to list labels"))
+            return GmailLabelsResponse(labels=result.labels, count=result.count)
+        raise HTTPException(status_code=500, detail=result.error or "Failed to list labels")
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/messages")
 async def list_messages(
     max_results: int = 20,
     pageToken: str | None = None,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> GmailMessagesResponse:
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Use the new search_messages function with inbox filter
-        search_results = await search_messages(
-            user_id=str(user_id),
+        response = await search_messages(
+            user_id=user_id,
             query="in:inbox",
             max_results=max_results,
             page_token=pageToken,
@@ -106,47 +122,41 @@ async def list_messages(
 
         log.set(
             operation="list_emails",
-            result_count=len(search_results.get("messages", [])),
+            result_count=len(response.messages),
             folder="inbox",
             outcome="success",
         )
-        return {
-            "messages": search_results.get("messages", []),
-            "nextPageToken": search_results.get("nextPageToken"),
-        }
+        return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/message/{message_id}", summary="Get Gmail Message by ID")
 async def get_email_by_id(
     message_id: str,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> GmailMessageResponse:
     """
     Get a Gmail message by its ID.
 
     - **message_id**: The ID of the Gmail message to retrieve
     """
+    log.set(operation="get_email", email_id=message_id)
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Use the get_email_by_id service function
-        result = await get_email_by_id_service(user_id=str(user_id), message_id=message_id)
+        result = await get_email_by_id_service(user_id=user_id, message_id=message_id)
 
-        if result.get("success"):
+        if result.success:
             log.set(
                 operation="get_email",
                 email_id=message_id,
                 outcome="success",
             )
-            return {
-                "message": result.get("message"),
-                "status": "Message retrieved successfully",
-            }
-        error_msg = result.get("error", "Failed to retrieve message")
+            return GmailMessageResponse(
+                message=result.message,
+                status="Message retrieved successfully",
+            )
+        error_msg = result.error or "Failed to retrieve message"
         if "not found" in error_msg.lower():
             raise HTTPException(status_code=404, detail=error_msg)
         raise HTTPException(status_code=500, detail=error_msg)
@@ -154,7 +164,7 @@ async def get_email_by_id(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/search", summary="Advanced search for Gmail messages")
@@ -171,8 +181,8 @@ async def search_emails(
     is_read: bool | None = None,
     max_results: int = 20,
     page_token: str | None = None,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> GmailMessagesResponse:
     """
     Search Gmail messages with advanced query parameters.
     Note: max_results is capped at 20 to avoid Composio payload size limits.
@@ -193,11 +203,6 @@ async def search_emails(
     Returns a list of messages matching the search criteria and a next page token if more results are available.
     """
     try:
-        # Get user_id
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Cap max_results to avoid Composio 413 payload-too-large errors
         max_results = min(max_results, 20)
 
@@ -228,8 +233,8 @@ async def search_emails(
         # Combine all query parts
         gmail_query = " ".join(query_parts)
 
-        search_results = await search_messages(
-            user_id=str(user_id),
+        response = await search_messages(
+            user_id=user_id,
             query=gmail_query,
             max_results=max_results,
             page_token=page_token,
@@ -237,26 +242,28 @@ async def search_emails(
 
         log.set(
             operation="search_emails",
-            result_count=len(search_results.get("messages", [])),
+            result_count=len(response.messages),
             has_attachment=has_attachment,
             label=label,
             outcome="success",
         )
-        return search_results
+        return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/mail/ai/compose")
 @tiered_rate_limit("mail_actions")
 async def process_email(
     request: EmailRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-) -> Any:
+    current_user: dict[str, Any] = Depends(require_integration("gmail")),
+) -> ComposedEmailOutput:
+    log.set(mail={"operation": "compose"})
     try:
         user_id = current_user.get("user_id")
         if user_id is None:
             raise HTTPException(status_code=401, detail="User ID is required")
+        log.set(user={"id": str(user_id)})
 
         notes = await search_notes_by_similarity(input_text=request.prompt, user_id=str(user_id))
 
@@ -270,15 +277,23 @@ async def process_email(
             writing_style=request.writingStyle or "Professional",
             content_length=request.contentLength or "None",
             clarity_option=request.clarityOption or "None",
-            notes="- ".join(notes) if notes else "No relevant notes found.",
+            notes=(
+                "- ".join(note.get("content", "") for note in notes)
+                if notes
+                else "No relevant notes found."
+            ),
             prompt=request.prompt,
             learned_writing_style=learned_style_block,
         )
 
-        composed = await ainvoke_structured(ComposedEmailOutput, prompt, label="mail_compose")
-        return {"subject": composed.subject, "body": composed.body}
+        return await ainvoke_structured(
+            ComposedEmailOutput,
+            prompt,
+            label="mail_compose",
+            config=metered_config(str(user_id)),
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/gmail/send", summary="Send an email using Gmail API")
@@ -291,8 +306,8 @@ async def send_email_route(
     cc: str | None = Form(None),
     bcc: str | None = Form(None),
     attachments: list[UploadFile] | None = File(None),
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> SendEmailWithAttachmentsResponse:
     """
     Send an email using the Gmail API.
 
@@ -304,10 +319,6 @@ async def send_email_route(
     - **attachments**: Optional files to attach to the email
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Parse recipients
         to_list = [email.strip() for email in to.split(",") if email.strip()]
         cc_list = [email.strip() for email in cc.split(",")] if cc else None
@@ -315,7 +326,7 @@ async def send_email_route(
 
         # Send the email using the new async function
         sent_message = await send_email(
-            user_id=str(user_id),
+            user_id=user_id,
             to=to_list[0],
             extra_recipients=to_list[1:],
             subject=subject,
@@ -326,6 +337,12 @@ async def send_email_route(
             thread_id=thread_id,
         )
 
+        if not sent_message.successful:
+            raise HTTPException(
+                status_code=500,
+                detail=sent_message.error or "Failed to send email",
+            )
+
         log.set(
             operation="send_email",
             thread_id=thread_id,
@@ -333,21 +350,28 @@ async def send_email_route(
             attachments_count=len(attachments) if attachments else 0,
             outcome="success",
         )
-        return {
-            "message_id": sent_message.get("id"),
-            "status": "Email sent successfully",
-            "attachments_count": len(attachments) if attachments else 0,
-        }
+        # Gmail owns the schema of the Composio envelope's ``data``; this is the boundary read.
+        return SendEmailWithAttachmentsResponse(
+            message_id=(sent_message.data or {}).get("id"),
+            status="Email sent successfully",
+            attachments_count=len(attachments) if attachments else 0,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}") from e
 
 
-@router.post("/gmail/send-json", summary="Send an email using JSON payload")
+@router.post(
+    "/gmail/send-json",
+    summary="Send an email using JSON payload",
+    responses={500: {"description": "Gmail rejected the send, or the send failed upstream"}},
+)
 @tiered_rate_limit("mail_actions")
 async def send_email_json(
     request: SendEmailRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> SendEmailResponse:
     """
     Send an email using the Gmail API with JSON payload (no attachments).
 
@@ -358,13 +382,9 @@ async def send_email_json(
     - **bcc**: Optional list of BCC recipients
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Send the email using the new async function
         sent_message = await send_email(
-            user_id=str(user_id),
+            user_id=user_id,
             to=request.to[0],
             extra_recipients=request.to[1:],
             subject=request.subject,
@@ -374,56 +394,33 @@ async def send_email_json(
             attachments=None,
         )
 
+        if not sent_message.successful:
+            raise HTTPException(
+                status_code=500,
+                detail=sent_message.error or "Failed to send email",
+            )
+
         log.set(
             operation="send_email",
             has_attachment=False,
             outcome="success",
         )
-        return {
-            "message_id": sent_message.get("id"),
-            "status": "Email sent successfully",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}")
-
-
-@router.post("/gmail/summarize", summary="Summarize an email using LLM")
-async def summarize_email(
-    request: EmailSummaryRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-) -> Any:
-    """
-    Summarize an email using the LLM service.
-
-    - **message_id**: The Gmail message ID to summarize
-    - **include_key_points**: Whether to include key points in the summary
-    - **include_action_items**: Whether to include action items in the summary
-    - **max_length**: Maximum length of the summary in words
-
-    Returns a summary of the email with optional key points and action items.
-    """
-    try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
-        # Note: Getting email by ID for summarization would need a dedicated Composio tool
-        # For now, return a placeholder response or implement with available tools
-        # This endpoint needs to be implemented based on available Composio Gmail tools
-        raise HTTPException(
-            status_code=501,
-            detail="Email summarization not yet implemented with Composio tools",
+        return SendEmailResponse(
+            message_id=(sent_message.data or {}).get("id"),
+            status="Email sent successfully",
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to summarize email: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}") from e
 
 
 @router.post("/gmail/mark-as-read", summary="Mark emails as read")
 @tiered_rate_limit("mail_actions")
 async def mark_as_read(
     request: EmailReadStatusRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> MarkAsReadResponse:
     """
     Mark Gmail messages as read by removing the UNREAD label.
 
@@ -432,13 +429,9 @@ async def mark_as_read(
     Returns a list of IDs that were successfully marked as read.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Mark messages as read using the new async function
         modified_messages = await mark_messages_as_read(
-            user_id=str(user_id), message_ids=request.message_ids
+            user_id=user_id, message_ids=request.message_ids
         )
 
         log.set(
@@ -446,22 +439,24 @@ async def mark_as_read(
             result_count=len(modified_messages),
             outcome="success",
         )
-        return {
-            "success": True,
-            "marked_as_read": [msg["id"] for msg in modified_messages],
-            "count": len(modified_messages),
-            "status": "Messages marked as read",
-        }
+        return MarkAsReadResponse(
+            success=True,
+            marked_as_read=[msg.id for msg in modified_messages],
+            count=len(modified_messages),
+            status="Messages marked as read",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to mark messages as read: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to mark messages as read: {e!s}"
+        ) from e
 
 
 @router.post("/gmail/mark-as-unread", summary="Mark emails as unread")
 @tiered_rate_limit("mail_actions")
 async def mark_as_unread(
     request: EmailReadStatusRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> MarkAsUnreadResponse:
     """
     Mark Gmail messages as unread by adding the UNREAD label.
 
@@ -470,13 +465,9 @@ async def mark_as_unread(
     Returns a list of IDs that were successfully marked as unread.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Mark messages as unread using the new async function
         modified_messages = await mark_messages_as_unread(
-            user_id=str(user_id), message_ids=request.message_ids
+            user_id=user_id, message_ids=request.message_ids
         )
 
         log.set(
@@ -484,22 +475,24 @@ async def mark_as_unread(
             result_count=len(modified_messages),
             outcome="success",
         )
-        return {
-            "success": True,
-            "marked_as_unread": [msg["id"] for msg in modified_messages],
-            "count": len(modified_messages),
-            "status": "Messages marked as unread",
-        }
+        return MarkAsUnreadResponse(
+            success=True,
+            marked_as_unread=[msg.id for msg in modified_messages],
+            count=len(modified_messages),
+            status="Messages marked as unread",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to mark messages as unread: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to mark messages as unread: {e!s}"
+        ) from e
 
 
 @router.post("/gmail/star", summary="Star emails")
 @tiered_rate_limit("mail_actions")
 async def star_emails(
     request: EmailActionRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> StarEmailsResponse:
     """
     Star Gmail messages by adding the STARRED label.
 
@@ -508,36 +501,30 @@ async def star_emails(
     Returns a list of IDs that were successfully starred.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Star messages using the new async function
-        modified_messages = await star_messages(
-            user_id=str(user_id), message_ids=request.message_ids
-        )
+        modified_messages = await star_messages(user_id=user_id, message_ids=request.message_ids)
 
         log.set(
             operation="star_emails",
             result_count=len(modified_messages),
             outcome="success",
         )
-        return {
-            "success": True,
-            "starred": [msg["id"] for msg in modified_messages],
-            "count": len(modified_messages),
-            "status": "Messages starred",
-        }
+        return StarEmailsResponse(
+            success=True,
+            starred=[msg.id for msg in modified_messages],
+            count=len(modified_messages),
+            status="Messages starred",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to star messages: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to star messages: {e!s}") from e
 
 
 @router.post("/gmail/unstar", summary="Unstar emails")
 @tiered_rate_limit("mail_actions")
 async def unstar_emails(
     request: EmailActionRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> UnstarEmailsResponse:
     """
     Unstar Gmail messages by removing the STARRED label.
 
@@ -546,36 +533,30 @@ async def unstar_emails(
     Returns a list of IDs that were successfully unstarred.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Unstar messages using the new async function
-        modified_messages = await unstar_messages(
-            user_id=str(user_id), message_ids=request.message_ids
-        )
+        modified_messages = await unstar_messages(user_id=user_id, message_ids=request.message_ids)
 
         log.set(
             operation="unstar_emails",
             result_count=len(modified_messages),
             outcome="success",
         )
-        return {
-            "success": True,
-            "unstarred": [msg["id"] for msg in modified_messages],
-            "count": len(modified_messages),
-            "status": "Messages unstarred",
-        }
+        return UnstarEmailsResponse(
+            success=True,
+            unstarred=[msg.id for msg in modified_messages],
+            count=len(modified_messages),
+            status="Messages unstarred",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to unstar messages: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to unstar messages: {e!s}") from e
 
 
 @router.post("/gmail/trash", summary="Move emails to trash")
 @tiered_rate_limit("mail_actions")
 async def trash_emails(
     request: EmailActionRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> TrashEmailsResponse:
     """
     Move Gmail messages to trash.
 
@@ -584,36 +565,32 @@ async def trash_emails(
     Returns a list of IDs that were successfully moved to trash.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Trash messages using the new async function
-        modified_messages = await trash_messages(
-            user_id=str(user_id), message_ids=request.message_ids
-        )
+        modified_messages = await trash_messages(user_id=user_id, message_ids=request.message_ids)
 
         log.set(
             operation="delete_email",
             result_count=len(modified_messages),
             outcome="success",
         )
-        return {
-            "success": True,
-            "trashed": [msg["id"] for msg in modified_messages],
-            "count": len(modified_messages),
-            "status": "Messages moved to trash",
-        }
+        return TrashEmailsResponse(
+            success=True,
+            trashed=[msg["id"] for msg in modified_messages],
+            count=len(modified_messages),
+            status="Messages moved to trash",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to move messages to trash: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to move messages to trash: {e!s}"
+        ) from e
 
 
 @router.post("/gmail/untrash", summary="Restore emails from trash")
 @tiered_rate_limit("mail_actions")
 async def untrash_emails(
     request: EmailActionRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> UntrashEmailsResponse:
     """
     Restore Gmail messages from trash.
 
@@ -622,36 +599,32 @@ async def untrash_emails(
     Returns a list of IDs that were successfully restored from trash.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Restore messages using the new async function
-        modified_messages = await untrash_messages(
-            user_id=str(user_id), message_ids=request.message_ids
-        )
+        modified_messages = await untrash_messages(user_id=user_id, message_ids=request.message_ids)
 
         log.set(
             operation="untrash_emails",
             result_count=len(modified_messages),
             outcome="success",
         )
-        return {
-            "success": True,
-            "restored": [msg["id"] for msg in modified_messages],
-            "count": len(modified_messages),
-            "status": "Messages restored from trash",
-        }
+        return UntrashEmailsResponse(
+            success=True,
+            restored=[msg["id"] for msg in modified_messages],
+            count=len(modified_messages),
+            status="Messages restored from trash",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to restore messages from trash: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to restore messages from trash: {e!s}"
+        ) from e
 
 
 @router.post("/gmail/archive", summary="Archive emails")
 @tiered_rate_limit("mail_actions")
 async def archive_emails(
     request: EmailActionRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> ArchiveEmailsResponse:
     """
     Archive Gmail messages by removing the INBOX label.
 
@@ -660,36 +633,30 @@ async def archive_emails(
     Returns a list of IDs that were successfully archived.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Archive messages using the new async function
-        modified_messages = await archive_messages(
-            user_id=str(user_id), message_ids=request.message_ids
-        )
+        modified_messages = await archive_messages(user_id=user_id, message_ids=request.message_ids)
 
         log.set(
             operation="archive_email",
             result_count=len(modified_messages),
             outcome="success",
         )
-        return {
-            "success": True,
-            "archived": [msg["id"] for msg in modified_messages],
-            "count": len(modified_messages),
-            "status": "Messages archived",
-        }
+        return ArchiveEmailsResponse(
+            success=True,
+            archived=[msg.id for msg in modified_messages],
+            count=len(modified_messages),
+            status="Messages archived",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to archive messages: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to archive messages: {e!s}") from e
 
 
 @router.post("/gmail/move-to-inbox", summary="Move emails to inbox")
 @tiered_rate_limit("mail_actions")
 async def move_emails_to_inbox(
     request: EmailActionRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> MoveToInboxResponse:
     """
     Move Gmail messages to inbox by adding the INBOX label.
 
@@ -698,14 +665,8 @@ async def move_emails_to_inbox(
     Returns a list of IDs that were successfully moved to inbox.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Move messages to inbox using the new async function
-        modified_messages = await move_to_inbox(
-            user_id=str(user_id), message_ids=request.message_ids
-        )
+        modified_messages = await move_to_inbox(user_id=user_id, message_ids=request.message_ids)
 
         log.set(
             operation="move_email",
@@ -713,18 +674,22 @@ async def move_emails_to_inbox(
             result_count=len(modified_messages),
             outcome="success",
         )
-        return {
-            "success": True,
-            "moved_to_inbox": [msg["id"] for msg in modified_messages],
-            "count": len(modified_messages),
-            "status": "Messages moved to inbox",
-        }
+        return MoveToInboxResponse(
+            success=True,
+            moved_to_inbox=[msg.id for msg in modified_messages],
+            count=len(modified_messages),
+            status="Messages moved to inbox",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to move messages to inbox: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to move messages to inbox: {e!s}"
+        ) from e
 
 
 @router.get("/gmail/thread/{thread_id}", summary="Get complete email thread")
-async def get_thread(thread_id: str, current_user: dict = Depends(require_integration("gmail"))):
+async def get_thread(
+    thread_id: str, user_id: str = Depends(require_integration_user_id("gmail"))
+) -> GmailThreadResponse:
     """
     Fetch a complete email thread with all messages.
 
@@ -733,34 +698,31 @@ async def get_thread(thread_id: str, current_user: dict = Depends(require_integr
     Returns the thread with all its messages in chronological order.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Get thread using the new async function
-        thread = await fetch_thread(user_id=str(user_id), thread_id=thread_id)
+        thread = await fetch_thread(user_id=user_id, thread_id=thread_id)
+        messages_count = len(thread.messages or [])
 
         log.set(
             operation="get_thread",
             thread_id=thread_id,
-            result_count=len(thread.get("messages", [])),
+            result_count=messages_count,
             outcome="success",
         )
-        return {
-            "thread_id": thread_id,
-            "messages_count": len(thread.get("messages", [])),
-            "thread": thread,
-        }
+        return GmailThreadResponse(
+            thread_id=thread_id,
+            messages_count=messages_count,
+            thread=thread.as_payload(),
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch email thread: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch email thread: {e!s}") from e
 
 
 @router.post("/gmail/labels", summary="Create a new Gmail label")
 @tiered_rate_limit("mail_actions")
 async def create_label_route(
     request: LabelRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> GmailLabelResource:
     """
     Create a new Gmail label.
 
@@ -770,16 +732,12 @@ async def create_label_route(
     - **background_color**: Background color of the label (hex code)
     - **text_color**: Text color of the label (hex code)
 
-    Returns the created label data.
+    Returns the created label data — the Gmail payload verbatim.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Create label using the new async function
         new_label = await create_label(
-            user_id=str(user_id),
+            user_id=user_id,
             name=request.name,
             label_list_visibility=request.label_list_visibility or "labelShow",
             message_list_visibility=request.message_list_visibility or "show",
@@ -789,9 +747,9 @@ async def create_label_route(
             label=request.name,
             outcome="success",
         )
-        return new_label
+        return GmailLabelResource.model_validate(new_label.as_payload())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/gmail/labels/{label_id}", summary="Update an existing Gmail label")
@@ -799,8 +757,8 @@ async def create_label_route(
 async def update_label_route(
     label_id: str,
     request: LabelRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> GmailLabelResource:
     """
     Update an existing Gmail label.
 
@@ -811,16 +769,12 @@ async def update_label_route(
     - **background_color**: Background color of the label (hex code)
     - **text_color**: Text color of the label (hex code)
 
-    Returns the updated label data.
+    Returns the updated label data — the Gmail payload verbatim.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Update label using the new async function
         updated_label = await update_label(
-            user_id=str(user_id),
+            user_id=user_id,
             label_id=label_id,
             name=request.name,
             label_list_visibility=request.label_list_visibility,
@@ -831,16 +785,16 @@ async def update_label_route(
             label=label_id,
             outcome="success",
         )
-        return updated_label
+        return GmailLabelResource.model_validate(updated_label.as_payload())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/gmail/labels/{label_id}", summary="Delete a Gmail label")
 @tiered_rate_limit("mail_actions")
 async def delete_label_route(
-    label_id: str, current_user: dict = Depends(require_integration("gmail"))
-):
+    label_id: str, user_id: str = Depends(require_integration_user_id("gmail"))
+) -> GmailDeletionResponse:
     """
     Delete a Gmail label.
 
@@ -848,27 +802,27 @@ async def delete_label_route(
 
     Returns a success message.
     """
+    log.set(operation="delete_label", label=label_id)
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Delete label using the new async function
-        success = await delete_label(user_id=str(user_id), label_id=label_id)
+        success = await delete_label(user_id=user_id, label_id=label_id)
         if success:
             log.set(operation="delete_label", label=label_id, outcome="success")
-            return {"status": "success", "message": "Label deleted successfully"}
-        return {"status": "error", "message": "Failed to delete label"}
+            return GmailDeletionResponse(status="success", message="Label deleted successfully")
+        # Reported as a 200 to the client, so log.error is the only trace this failure leaves.
+        log.error(f"{LogTag.MAIL} Label deletion reported failure", label=label_id)
+        log.set(outcome="failed")
+        return GmailDeletionResponse(status="error", message="Failed to delete label")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/gmail/messages/apply-label", summary="Apply labels to messages")
 @tiered_rate_limit("mail_actions")
 async def apply_labels_route(
     request: ApplyLabelRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> ModifyLabelsResponse:
     """
     Apply one or more labels to specified messages.
 
@@ -878,13 +832,9 @@ async def apply_labels_route(
     Returns a list of modified messages.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Apply labels using the new async function
         modified_messages = await apply_labels(
-            user_id=str(user_id),
+            user_id=user_id,
             message_ids=request.message_ids,
             label_ids=request.label_ids,
         )
@@ -894,22 +844,22 @@ async def apply_labels_route(
             result_count=len(modified_messages),
             outcome="success",
         )
-        return {
-            "success": True,
-            "modified_messages": [msg["id"] for msg in modified_messages],
-            "count": len(modified_messages),
-            "status": "Labels applied successfully",
-        }
+        return ModifyLabelsResponse(
+            success=True,
+            modified_messages=[msg.id for msg in modified_messages],
+            count=len(modified_messages),
+            status="Labels applied successfully",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/gmail/messages/remove-label", summary="Remove labels from messages")
 @tiered_rate_limit("mail_actions")
 async def remove_labels_route(
     request: ApplyLabelRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> ModifyLabelsResponse:
     """
     Remove one or more labels from specified messages.
 
@@ -919,13 +869,9 @@ async def remove_labels_route(
     Returns a list of modified messages.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Remove labels using the new async function
         modified_messages = await remove_labels(
-            user_id=str(user_id),
+            user_id=user_id,
             message_ids=request.message_ids,
             label_ids=request.label_ids,
         )
@@ -935,22 +881,22 @@ async def remove_labels_route(
             result_count=len(modified_messages),
             outcome="success",
         )
-        return {
-            "success": True,
-            "modified_messages": [msg["id"] for msg in modified_messages],
-            "count": len(modified_messages),
-            "status": "Labels removed successfully",
-        }
+        return ModifyLabelsResponse(
+            success=True,
+            modified_messages=[msg.id for msg in modified_messages],
+            count=len(modified_messages),
+            status="Labels removed successfully",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/gmail/drafts", summary="Create a new draft email")
 @tiered_rate_limit("mail_actions")
 async def create_draft_route(
     request: DraftRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> DraftMutationResponse:
     """
     Create a new Gmail draft email.
 
@@ -963,40 +909,37 @@ async def create_draft_route(
     Returns the created draft data.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Create draft using the new async function
         draft = await create_draft(
-            user_id=str(user_id),
+            user_id=user_id,
             to_list=request.to,
             subject=request.subject,
             body=request.body,
             cc_list=request.cc,
             bcc_list=request.bcc,
         )
+        message_id = (draft.message or {}).get("id")
 
         log.set(
             operation="create_draft",
-            email_id=draft.get("message", {}).get("id"),
+            email_id=message_id,
             outcome="success",
         )
-        return {
-            "draft_id": draft.get("id"),
-            "message_id": draft.get("message", {}).get("id"),
-            "status": "Draft created successfully",
-        }
+        return DraftMutationResponse(
+            draft_id=draft.id,
+            message_id=message_id,
+            status="Draft created successfully",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/drafts", summary="List all draft emails")
 async def list_drafts_route(
     max_results: int = 20,
     page_token: str | None = None,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> GmailDraftsResponse:
     """
     List all Gmail draft emails.
 
@@ -1006,54 +949,46 @@ async def list_drafts_route(
     Returns a list of drafts and a next page token if more results are available.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # List drafts using the new async function
         drafts = await list_drafts(
-            user_id=str(user_id),
+            user_id=user_id,
             max_results=max_results,
             page_token=page_token,
         )
 
         log.set(
             operation="list_drafts",
-            result_count=len(drafts.get("drafts", [])) if isinstance(drafts, dict) else 0,
+            result_count=len(drafts.drafts),
             outcome="success",
         )
         return drafts
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/drafts/{draft_id}", summary="Get a specific draft email")
 async def get_draft_route(
-    draft_id: str, current_user: dict = Depends(require_integration("gmail"))
-):
+    draft_id: str, user_id: str = Depends(require_integration_user_id("gmail"))
+) -> GmailDraftResource:
     """
     Get a specific Gmail draft email.
 
     - **draft_id**: ID of the draft to retrieve
 
-    Returns the draft data with message details.
+    Returns the draft data with message details — the Gmail payload verbatim.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Get draft using the new async function
-        draft = await get_draft(user_id=str(user_id), draft_id=draft_id)
+        draft = await get_draft(user_id=user_id, draft_id=draft_id)
 
         log.set(
             operation="get_draft",
             email_id=draft_id,
             outcome="success",
         )
-        return draft
+        return GmailDraftResource.model_validate(draft.as_payload())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/gmail/drafts/{draft_id}", summary="Update a draft email")
@@ -1061,8 +996,8 @@ async def get_draft_route(
 async def update_draft_route(
     draft_id: str,
     request: DraftRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-):
+    user_id: str = Depends(require_integration_user_id("gmail")),
+) -> DraftMutationResponse:
     """
     Update an existing Gmail draft email.
 
@@ -1076,13 +1011,9 @@ async def update_draft_route(
     Returns the updated draft data.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Update draft using the new async function
         updated_draft = await update_draft(
-            user_id=str(user_id),
+            user_id=user_id,
             draft_id=draft_id,
             to_list=request.to,
             subject=request.subject,
@@ -1096,20 +1027,20 @@ async def update_draft_route(
             email_id=draft_id,
             outcome="success",
         )
-        return {
-            "draft_id": updated_draft.get("id"),
-            "message_id": updated_draft.get("message", {}).get("id"),
-            "status": "Draft updated successfully",
-        }
+        return DraftMutationResponse(
+            draft_id=updated_draft.id,
+            message_id=(updated_draft.message or {}).get("id"),
+            status="Draft updated successfully",
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/gmail/drafts/{draft_id}", summary="Delete a draft email")
 @tiered_rate_limit("mail_actions")
 async def delete_draft_route(
-    draft_id: str, current_user: dict = Depends(require_integration("gmail"))
-):
+    draft_id: str, user_id: str = Depends(require_integration_user_id("gmail"))
+) -> GmailDeletionResponse:
     """
     Delete a Gmail draft email.
 
@@ -1117,27 +1048,27 @@ async def delete_draft_route(
 
     Returns a success message.
     """
+    log.set(operation="delete_draft", email_id=draft_id)
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Delete draft using the new async function
-        success = await delete_draft(user_id=str(user_id), draft_id=draft_id)
+        success = await delete_draft(user_id=user_id, draft_id=draft_id)
 
         if success:
             log.set(operation="delete_draft", email_id=draft_id, outcome="success")
-            return {"status": "success", "message": "Draft deleted successfully"}
-        return {"status": "error", "message": "Failed to delete draft"}
+            return GmailDeletionResponse(status="success", message="Draft deleted successfully")
+        # Reported as a 200 to the client, so log.error is the only trace this failure leaves.
+        log.error(f"{LogTag.MAIL} Draft deletion reported failure", email_id=draft_id)
+        log.set(outcome="failed")
+        return GmailDeletionResponse(status="error", message="Failed to delete draft")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/gmail/drafts/{draft_id}/send", summary="Send a draft email")
 @tiered_rate_limit("mail_actions")
 async def send_draft_route(
-    draft_id: str, current_user: dict = Depends(require_integration("gmail"))
-):
+    draft_id: str, user_id: str = Depends(require_integration_user_id("gmail"))
+) -> SendDraftResponse:
     """
     Send an existing Gmail draft email.
 
@@ -1145,41 +1076,40 @@ async def send_draft_route(
 
     Returns the sent message data.
     """
+    log.set(operation="send_draft", email_id=draft_id)
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         # Send draft using the new async function
-        sent_message = await send_draft(user_id=str(user_id), draft_id=draft_id)
+        sent_message = await send_draft(user_id=user_id, draft_id=draft_id)
 
-        if sent_message.get("successful", True):
+        if sent_message.successful:
+            thread_id = sent_message.thread_id or ""
             log.set(
                 operation="send_draft",
                 email_id=draft_id,
-                thread_id=sent_message.get("threadId", ""),
+                thread_id=thread_id,
                 outcome="success",
             )
-            return {
-                "message_id": sent_message.get("id", ""),
-                "thread_id": sent_message.get("threadId", ""),
-                "status": "Draft sent successfully",
-                "successful": True,
-            }
+            return SendDraftResponse(
+                message_id=sent_message.id or "",
+                thread_id=thread_id,
+                status="Draft sent successfully",
+                successful=True,
+            )
+        log.set(outcome="failed")
         raise HTTPException(
             status_code=500,
-            detail=sent_message.get("error", "Failed to send draft"),
+            detail=sent_message.error or "Failed to send draft",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/gmail/importance-summaries", summary="Get email importance summaries")
 async def get_email_importance_summaries(
     limit: int = 50,
     important_only: bool = False,
-    current_user: dict = Depends(require_integration("gmail")),
-) -> dict:
+    current_user: dict[str, Any] = Depends(require_integration("gmail")),
+) -> EmailImportanceSummariesResponse:
     """
     Get email importance summaries for the current user.
 
@@ -1202,7 +1132,9 @@ async def get_email_importance_summaries(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving email summaries: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving email summaries: {e!s}"
+        ) from e
 
 
 @router.get(
@@ -1210,8 +1142,8 @@ async def get_email_importance_summaries(
     summary="Get single email importance summary",
 )
 async def get_single_email_importance_summary(
-    message_id: str, current_user: dict = Depends(require_integration("gmail"))
-) -> dict:
+    message_id: str, current_user: dict[str, Any] = Depends(require_integration("gmail"))
+) -> EmailImportanceSummaryResponse:
     """
     Get importance summary for a specific email.
 
@@ -1239,14 +1171,14 @@ async def get_single_email_importance_summary(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving email summary: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving email summary: {e!s}") from e
 
 
 @router.post("/gmail/importance-summaries/bulk", summary="Get bulk email importance summaries")
 async def get_bulk_email_importance_summaries(
     request: EmailActionRequest,
-    current_user: dict = Depends(require_integration("gmail")),
-) -> dict:
+    current_user: dict[str, Any] = Depends(require_integration("gmail")),
+) -> BulkEmailImportanceSummariesResponse:
     """
     Get importance summaries for multiple emails in bulk.
 
@@ -1268,4 +1200,6 @@ async def get_bulk_email_importance_summaries(
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving bulk email summaries: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving bulk email summaries: {e!s}"
+        ) from e

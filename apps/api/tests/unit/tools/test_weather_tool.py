@@ -55,7 +55,6 @@ def _writer_mock() -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWeather:
     """Tests for the get_weather tool."""
 

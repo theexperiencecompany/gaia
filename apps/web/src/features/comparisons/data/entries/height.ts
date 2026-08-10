@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "The autonomous project management tool",
   description:
     "Height was an AI-powered project management tool for product teams that focused on autonomous task automation like bug triage and backlog pruning. GAIA takes a broader approach as a proactive personal AI assistant that manages email, calendar, tasks, and workflows across your entire digital life.",
-  metaTitle: "Height App Alternative with AI Productivity | GAIA vs Height",
+  metaTitle: "Height App Alternative with AI Productivity — GAIA vs Height",
   metaDescription:
     "Height focused on AI project management for teams but didn't manage your inbox or calendar. GAIA is an open-source Height alternative with full AI productivity — email, calendar, tasks, and workflow automation across 50+ tools — free to self-host.",
   keywords: [

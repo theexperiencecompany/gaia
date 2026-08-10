@@ -14,12 +14,33 @@ from __future__ import annotations
 import contextlib
 import json
 import time
-from typing import Any
+from typing import Literal, NotRequired, TypedDict
 
 from app.db.redis import redis_cache
 from app.services.storage import ArtifactInfo, ensure_safe_path_id
 
 ARTIFACT_CHANNEL_PREFIX = "artifacts:"
+
+
+class ArtifactFileEvent(TypedDict):
+    """A file appeared or changed — `upsert` from the sandbox, `upload` host-side."""
+
+    event: Literal["upsert", "upload"]
+    session_id: str
+    path: str
+    size_bytes: int
+    mtime: float
+    content_type: str | None
+    body: NotRequired[str]
+
+
+class ArtifactRemoveEvent(TypedDict):
+    event: Literal["remove"]
+    session_id: str
+    path: str
+
+
+ArtifactEvent = ArtifactFileEvent | ArtifactRemoveEvent
 
 
 def artifact_channel(user_id: str) -> str:
@@ -37,7 +58,9 @@ def artifact_channel(user_id: str) -> str:
     return f"{ARTIFACT_CHANNEL_PREFIX}{user_id}"
 
 
-def upsert_event(session_id: str, info: ArtifactInfo, *, body: str | None = None) -> dict[str, Any]:
+def upsert_event(
+    session_id: str, info: ArtifactInfo, *, body: str | None = None
+) -> ArtifactFileEvent:
     """An `artifacts/` file was created or changed.
 
     `body` is the UTF-8 file contents inlined for small textual artifacts —
@@ -46,7 +69,7 @@ def upsert_event(session_id: str, info: ArtifactInfo, *, body: str | None = None
     instantly without a follow-up fetch and the value survives a reload via
     the persisted conversation. Omitted for large or binary files.
     """
-    payload: dict[str, Any] = {
+    payload: ArtifactFileEvent = {
         "event": "upsert",
         "session_id": session_id,
         "path": info.path,
@@ -59,7 +82,7 @@ def upsert_event(session_id: str, info: ArtifactInfo, *, body: str | None = None
     return payload
 
 
-def remove_event(session_id: str, path: str) -> dict[str, Any]:
+def remove_event(session_id: str, path: str) -> ArtifactRemoveEvent:
     """A `artifacts/` file was removed or renamed away."""
     return {"event": "remove", "session_id": session_id, "path": path}
 
@@ -71,7 +94,7 @@ def upload_event(
     size_bytes: int,
     content_type: str | None,
     mtime: float | None = None,
-) -> dict[str, Any]:
+) -> ArtifactFileEvent:
     """A user upload landed in `user-uploaded/` (host-side, cross-mount)."""
     return {
         "event": "upload",
@@ -83,7 +106,7 @@ def upload_event(
     }
 
 
-async def publish_artifact_event(user_id: str, payload: dict[str, Any]) -> None:
+async def publish_artifact_event(user_id: str, payload: ArtifactEvent) -> None:
     """Stamp user_id + ts and publish to `artifacts:{user_id}`.
 
     No-ops if Redis is unavailable and never raises — artifact delivery is a

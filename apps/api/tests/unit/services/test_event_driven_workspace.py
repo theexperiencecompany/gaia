@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.user_models import UserDocument
+
 WS = "app.services.workspace_sync"
 IFS = "app.services.integrations_fs"
 UINT = "app.services.integrations.user_integrations"
@@ -273,15 +275,11 @@ async def test_get_connected_integration_ids_filter(docs, expected):
 # ---------------------------------------------------------------------------
 
 
-def _update_result(*, modified=1, upserted=None, matched=1):
-    return SimpleNamespace(modified_count=modified, upserted_id=upserted, matched_count=matched)
-
-
 async def test_connect_schedules_sync():
-    coll = MagicMock()
-    coll.update_one = AsyncMock(return_value=_update_result())
+    repo = MagicMock()
+    repo.set_status = AsyncMock(return_value=True)
     with (
-        patch(f"{USTATUS}.user_integrations_collection", coll),
+        patch(f"{USTATUS}.user_integration_repository", repo),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
         from app.services.integrations.user_integration_status import update_user_integration_status
@@ -292,10 +290,10 @@ async def test_connect_schedules_sync():
 
 
 async def test_created_status_does_not_schedule_sync():
-    coll = MagicMock()
-    coll.update_one = AsyncMock(return_value=_update_result())
+    repo = MagicMock()
+    repo.set_status = AsyncMock(return_value=True)
     with (
-        patch(f"{USTATUS}.user_integrations_collection", coll),
+        patch(f"{USTATUS}.user_integration_repository", repo),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
         from app.services.integrations.user_integration_status import update_user_integration_status
@@ -304,42 +302,28 @@ async def test_created_status_does_not_schedule_sync():
     sched.assert_not_called()
 
 
-async def test_failed_update_does_not_schedule_sync():
-    coll = MagicMock()
-    coll.update_one = AsyncMock(return_value=_update_result(modified=0, upserted=None, matched=0))
-    with (
-        patch(f"{USTATUS}.user_integrations_collection", coll),
-        patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
-    ):
-        from app.services.integrations.user_integration_status import update_user_integration_status
-
-        ok = await update_user_integration_status("u", "gmail", "connected")
-    assert ok is False
-    sched.assert_not_called()
-
-
 # ---------------------------------------------------------------------------
 # registration-path wiring: oauth_service.store_user_info
 # ---------------------------------------------------------------------------
 
 
-def _oauth_patches(coll, sched):
+def _oauth_patches(repo, sched):
     return (
-        patch(f"{OAUTH}.users_collection", coll),
+        patch(f"{OAUTH}.user_repository", repo),
         patch(f"{OAUTH}.schedule_user_provision", sched),
         patch(f"{OAUTH}.track_login", MagicMock()),
         patch(f"{OAUTH}.track_signup", MagicMock()),
         patch(f"{OAUTH}.send_welcome_email", new_callable=AsyncMock),
-        patch(f"{OAUTH}.add_contact_to_resend", new_callable=AsyncMock),
+        patch(f"{OAUTH}.add_marketing_contact", new_callable=AsyncMock),
     )
 
 
 async def test_new_user_provisions_workspace():
-    coll = MagicMock()
-    coll.find_one = AsyncMock(return_value=None)  # no existing user
-    coll.insert_one = AsyncMock(return_value=SimpleNamespace(inserted_id="NEW123"))
+    repo = MagicMock()
+    repo.get_by_email = AsyncMock(return_value=None)  # no existing user
+    repo.create = AsyncMock(return_value=UserDocument(id="NEW123", name="Ada", email="ada@x.com"))
     sched = MagicMock()
-    p = _oauth_patches(coll, sched)
+    p = _oauth_patches(repo, sched)
     with p[0], p[1], p[2], p[3], p[4], p[5]:
         from app.services.oauth.oauth_service import store_user_info
 
@@ -349,11 +333,13 @@ async def test_new_user_provisions_workspace():
 
 
 async def test_existing_user_does_not_provision():
-    coll = MagicMock()
-    coll.find_one = AsyncMock(return_value={"_id": "EXISTING", "picture": "p.png"})
-    coll.update_one = AsyncMock()
+    repo = MagicMock()
+    repo.get_by_email = AsyncMock(
+        return_value=UserDocument(id="EXISTING", name="Ada", email="ada@x.com", picture="p.png")
+    )
+    repo.update = AsyncMock()
     sched = MagicMock()
-    p = _oauth_patches(coll, sched)
+    p = _oauth_patches(repo, sched)
     with p[0], p[1], p[2], p[3], p[4], p[5]:
         from app.services.oauth.oauth_service import store_user_info
 

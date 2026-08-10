@@ -1,5 +1,4 @@
 import io
-from typing import cast
 from urllib.parse import urlencode
 
 import cloudinary
@@ -50,7 +49,12 @@ async def build_google_oauth_url(
             if token:
                 existing_scopes = (token.get("scope") or "").split()
         except Exception as e:
-            log.debug(f"{LogTag.OAUTH} Could not get existing scopes for user {user_id}: {e}")
+            log.debug(
+                f"{LogTag.OAUTH} Could not get existing scopes for user",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     # Combine all scopes (base + existing + new), removing duplicates
     all_scopes = list(set(base_scopes + existing_scopes + integration_scopes))
@@ -91,63 +95,18 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
             public_id=public_id,
             overwrite=True,
         )
-        image_url = upload_result.get("secure_url")
+        image_url: str | None = upload_result.get("secure_url")
         if not image_url:
             log.error(f"{LogTag.OAUTH} Missing secure_url in Cloudinary upload response")
             raise HTTPException(status_code=500, detail="Invalid response from image service")
 
-        log.info(f"{LogTag.OAUTH} Image uploaded successfully. URL: {image_url}")
+        log.info(f"{LogTag.OAUTH} Image uploaded successfully. URL", image_url=image_url)
         return image_url
     except Exception as e:
-        log.error(f"{LogTag.OAUTH} Failed to upload image to Cloudinary: {e!s}", exc_info=True)
+        log.error(
+            f"{LogTag.OAUTH} Failed to upload image to Cloudinary",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Image upload failed")
-
-
-async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
-    log.set(operation="get_tokens_by_user_id", user_id=user_id, provider="google")
-    """
-    Get valid access and refresh tokens for the user by user ID.
-    Uses the token repository to fetch and refresh tokens.
-
-    Args:
-        user_id: The user's ID
-
-    Returns:
-        tuple: (access_token, refresh_token, success_flag)
-    """
-    try:
-        # Get token from repository
-        token = await token_repository.get_token(user_id, "google")
-
-        if not token:
-            log.error(f"{LogTag.OAUTH} No token found in repository for user: {user_id}")
-            return "", "", False
-
-        # Check if token needs refresh
-        access_token = cast(str, token.get("access_token", ""))
-        refresh_token = cast(str, token.get("refresh_token", ""))
-
-        if not refresh_token:
-            log.error(f"{LogTag.OAUTH} Missing refresh token for user: {user_id}")
-            return "", "", False
-
-        # Check if token needs to be refreshed
-        if not token.is_expired():
-            # Token is still valid, return it
-            return access_token, refresh_token, True
-
-        # Token is expired, try to refresh it
-        refreshed_token = await token_repository.refresh_token(user_id, "google")
-
-        if not refreshed_token:
-            log.error(f"{LogTag.OAUTH} Failed to refresh token for user: {user_id}")
-            return "", refresh_token, False
-
-        new_access_token = cast(str, refreshed_token.get("access_token", ""))
-        new_refresh_token = cast(str, refreshed_token.get("refresh_token", ""))
-
-        return new_access_token, new_refresh_token, True
-
-    except Exception as e:
-        log.error(f"{LogTag.OAUTH} Error getting tokens for user {user_id}: {e!s}")
-        return "", "", False

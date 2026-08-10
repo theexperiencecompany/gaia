@@ -1,133 +1,126 @@
 ---
 name: logging-best-practices
-description: Logging best practices focused on wide events (canonical log lines) for powerful debugging and analytics
-license: MIT
+description: GAIA's wide-event logging - how to instrument code with log.set/set_ns/audit, wide_task boundaries, and the traps that silently lose context
 metadata:
-  author: boristane
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
-# Logging Best Practices Skill
+# GAIA Logging Best Practices
 
-Version: 1.0.0
+GAIA already ships a complete wide-event (canonical log line) system — **do not
+build one**. The middleware and task boundaries own the event lifecycle; your
+only job in application code is to attach context to the event that will be
+emitted for you. This skill documents the API and, more importantly, the traps.
 
-## Purpose
+The philosophy (one context-rich event per unit of work; high cardinality; high
+dimensionality; business context on every event — loggingsucks.com, Stripe's
+canonical log lines) is implemented as infrastructure:
 
-This skill provides guidelines for implementing effective logging in applications. It focuses on **wide events** (also called canonical log lines) - a pattern where you emit a single, context-rich event per request per service, enabling powerful debugging and analytics.
+| Unit of work | Who emits the event | Emitted line |
+|---|---|---|
+| HTTP request | `LoggingMiddleware` (`apps/api/app/api/v1/middleware/logging.py`) | `http_request` |
+| ARQ worker task | `wide_task("task_name", ...)` context manager | `worker_task` |
+| Background asyncio work | `log_context("operation", ...)` context manager | `background_task` |
+| Bot interaction (TypeScript) | `withWideEvent(...)` (`libs/shared/ts/src/bots/utils/wide-events.ts`) | `bot_event` |
 
-## When to Apply
+The rest of this skill covers the Python facade; the bots use the TS analogue
+(`wideLog.set`/`setNs`/`warning`/`error`/`audit`) with the same semantics and
+its own scanner, `scripts/ci/evlog-map-bots.mjs`.
 
-Apply these guidelines when:
+`trace_id`, `task`, `duration_ms`, `outcome` and `final_level` are stamped by
+the boundary; `env`/`service`/`commit` by the JSON sink, on every line. The
+middleware also attaches `user.id`/`user.email` from the authenticated request.
 
-- Writing or reviewing logging code
-- Adding console.log, logger.info, or similar
-- Designing logging strategy for new services
-- Setting up logging infrastructure
+Setting any of those keys yourself does not work and is not silent: the sink
+re-emits a colliding field as `ctx_<key>`, and the `wide-events-logging` lint
+rejects it at commit time.
 
-## Core Principles
+## The API (`from shared.py.wide_events import log`)
 
-### 1. Wide Events (CRITICAL)
+```python
+# Attach context — this is 90% of what you should write:
+log.set(user={"id": user_id}, todo={"operation": "create"})   # merge top-level keys
+log.set_ns("todo", id=result_id)      # merge INTO a namespace (see trap 2)
 
-Emit **one context-rich event per request per service**. Instead of scattering log lines throughout your handler, consolidate everything into a single structured event emitted at request completion.
+# Record problems — these land on the event AND emit a real-time line:
+log.warning("rate limited", provider="google", retry_in_s=30)  # -> warnings[]
+log.error("sync failed", error_type=type(e).__name__, error=str(e),  # -> errors[]
+          account_id=aid)   # error_type + error is THE exception vocabulary,
+                            # identical on the TypeScript bots (contract.json)
 
-```typescript
-const wideEvent: Record<string, unknown> = {
-  method: "POST",
-  path: "/checkout",
-  requestId: c.get("requestId"),
-  timestamp: new Date().toISOString(),
-};
+# Audit trail for sensitive ACTIONS (auth, payments, PII writes) — required
+# by the evlog-map `audit` check on money/auth routes:
+log.audit("subscription cancelled", actor=user_id, resource=sub_id)  # -> audit[]
 
-try {
-  const user = await getUser(c.get("userId"));
-  wideEvent.user = { id: user.id, subscription: user.subscription };
+# Real-time narration only — NEVER reaches the wide event (trap 1):
+log.info(f"{LogTag.SANDBOX} mounted")
 
-  const cart = await getCart(user.id);
-  wideEvent.cart = { total_cents: cart.total, item_count: cart.items.length };
-
-  wideEvent.status_code = 200;
-  wideEvent.outcome = "success";
-  return c.json({ success: true });
-} catch (error) {
-  wideEvent.status_code = 500;
-  wideEvent.outcome = "error";
-  wideEvent.error = { message: error.message, type: error.name };
-  throw error;
-} finally {
-  wideEvent.duration_ms = Date.now() - startTime;
-  logger.info(wideEvent);
-}
+# Domain errors that explain themselves:
+raise create_error(message="Payment failed", why="card declined",
+                   fix="try another card", status_code=402)
 ```
 
-### 2. High Cardinality & Dimensionality (CRITICAL)
+Use the canonical namespaces from `WideEventFields`
+(`libs/shared/py/wide_events.py`) — `user`, `chat`, `todo`, `payment`,
+`memory`, `device`, … — so dashboards and LogQL queries work uniformly. Don't
+invent top-level keys when a namespace fits; if a new domain genuinely needs
+one, add a TypedDict to the schema (the evlog-map `context` check reads it
+live).
 
-Include fields with high cardinality (user IDs, request IDs - millions of unique values) and high dimensionality (many fields per event). This enables querying by specific users and answering questions you haven't anticipated yet.
+## The five traps (each has burned someone)
 
-### 3. Business Context (CRITICAL)
+1. **`log.info()` never reaches the wide event.** It is real-time narration
+   only. If a fact matters for debugging later, it belongs in `log.set()`.
+   Narrating steps with `log.info` instead of accumulating fields is the #1
+   anti-pattern in this codebase (flagged by evlog-map as `info-noise`).
+2. **`log.set(ns={...})` replaces the whole namespace.** A second
+   `log.set(todo={...})` wipes the first one's keys. Follow-up fields go
+   through `log.set_ns("todo", key=value)`.
+3. **No boundary, no event.** Code outside an HTTP request (ARQ tasks,
+   `asyncio.create_task` work, post-OAuth callbacks) has no middleware; without
+   a boundary every `log.set()` is silently discarded. ARQ tasks wrap in
+   `wide_task()`; fire-and-forget work is spawned with
+   `spawn_logged_task("operation", coro(...))` (never bare
+   `asyncio.create_task`) — it opens a `log_context()` carrying the spawning
+   request's `trace_id` and keeps the task GC-safe.
+4. **Structured data goes in kwargs, never interpolated into the message.**
+   `log.error(f"failed: {e}")` is unqueryable prose (and if kwargs are also
+   passed, braces in `str(e)` can break loguru's formatting). The one
+   sanctioned f-string is the `LogTag` message prefix for greppability.
+5. **`log.bind()` is not loguru's `bind()`.** It merges into the wide event; it
+   does NOT tag subsequent real-time lines (so `bind(performance=True)` cannot
+   route to the performance sink).
 
-Always include business context: user subscription tier, cart value, feature flags, account age. The goal is to know "a premium customer couldn't complete a $2,499 purchase" not just "checkout failed."
+## The mechanical contract
 
-### 4. Environment Characteristics (CRITICAL)
+- Route handlers: `log.set()` what you know at entry (user, operation, ids) →
+  delegate to the service → `log.set_ns()` result ids/counts. Enforced by the
+  `route-contract` lint; scored by `python3 tools/evlog_map` (CI `observability`
+  lane fails PRs that regress a file's score).
+- Every `except` must log (`log.error`/`log.warning` with `error_type=`),
+  re-raise, or return an error response — never swallow silently. Genuinely
+  intentional swallows carry an `# evlog-map-disable-next-line error-handling
+  -- <reason>` directive so the decision is visible.
+- Only the `log` facade in `app/` — stdlib `logging` and bare `loguru` are
+  banned by the `wide-events-logging` lint. The one deliberate exception is
+  `app/config/sentry.py`, which is allowlisted so it can install the Loguru →
+  Sentry sink directly; nowhere else may touch Loguru/logging.
 
-Include environment and deployment info in every event: commit hash, service version, region, instance ID. This enables correlating issues with deployments and identifying region-specific problems.
+## Querying what you logged
 
-### 5. Single Logger (HIGH)
+See `docs/developers/logging.mdx` (LogQL primer + recipes) and the
+`reading-gaia-logs` skill. The one-liner: labels select the stream
+(`{service="gaia-backend"}`), everything else is `| json | field = "value"`.
 
-Use one logger instance configured at startup and import it everywhere. This ensures consistent formatting and automatic environment context.
+**The arrays are the exception.** `errors[]` / `warnings[]` / `audit[]` are
+absent (not empty) when nothing was recorded, and bare `| json` **drops arrays
+entirely** — so `| errors != "[]"` matches every line, including clean 200s.
+Use an explicit JSON expression:
 
-### 6. Middleware Pattern (HIGH)
+```logql
+{service="gaia-backend"} | json | message="http_request"
+  | json first_error="errors[0].msg" | first_error != ""
+```
 
-Use middleware to handle wide event infrastructure (timing, status, environment, emission). Handlers should only add business context.
-
-### 7. Structure & Consistency (HIGH)
-
-- Use JSON format consistently
-- Maintain consistent field names across services
-- Simplify to two log levels: `info` and `error`
-- Never log unstructured strings
-
-## Anti-Patterns to Avoid
-
-1. **Scattered logs**: Multiple console.log() calls per request
-2. **Multiple loggers**: Different logger instances in different files
-3. **Missing environment context**: No commit hash or deployment info
-4. **Missing business context**: Logging technical details without user/business data
-5. **Unstructured strings**: `console.log('something happened')` instead of structured data
-6. **Inconsistent schemas**: Different field names across services
-
-## Guidelines
-
-### Wide Events (`rules/wide-events.md`)
-
-- Emit one wide event per service hop
-- Include all relevant context
-- Connect events with request ID
-- Emit at request completion in finally block
-
-### Context (`rules/context.md`)
-
-- Support high cardinality fields (user_id, request_id)
-- Include high dimensionality (many fields)
-- Always include business context
-- Always include environment characteristics (commit_hash, version, region)
-
-### Structure (`rules/structure.md`)
-
-- Use a single logger throughout the codebase
-- Use middleware for consistent wide events
-- Use JSON format
-- Maintain consistent schema
-- Simplify to info and error levels
-- Never log unstructured strings
-
-### Common Pitfalls (`rules/pitfalls.md`)
-
-- Avoid multiple log lines per request
-- Design for unknown unknowns
-- Always propagate request IDs across services
-
-References:
-
-- [Logging Sucks](https://loggingsucks.com)
-- [Observability Wide Events 101](https://boristane.com/blog/observability-wide-events-101/)
-- [Stripe - Canonical Log Lines](https://stripe.com/blog/canonical-log-lines)
+For "show me failed requests" prefer `| final_level =~ "ERROR|CRITICAL"` — it
+folds in the HTTP status, so it also catches a 5xx that logged nothing.

@@ -21,7 +21,6 @@ def _make_mock_tool(name: str) -> BaseTool:
     return tool
 
 
-@pytest.mark.unit
 class TestToolCategory:
     def test_add_tool(self):
         category = ToolCategory(name="test_cat")
@@ -86,7 +85,6 @@ class TestToolCategory:
         assert category.get_core_tools() == []
 
 
-@pytest.mark.unit
 class TestDynamicToolDict:
     def _make_registry_with_tools(self, tool_names: list[str]) -> ToolRegistry:
         registry = ToolRegistry()
@@ -178,7 +176,6 @@ class TestDynamicToolDict:
         assert isinstance(dtd, Mapping)
 
 
-@pytest.mark.unit
 class TestToolRegistry:
     def test_add_category(self):
         registry = ToolRegistry()
@@ -286,7 +283,6 @@ class TestToolRegistry:
         assert "ignore" not in result
 
 
-@pytest.mark.unit
 class TestToolWrapper:
     def test_tool_defaults_name_from_base_tool(self):
         base = _make_mock_tool("auto_name")
@@ -354,14 +350,13 @@ def _patch_index_category_tools():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestToolRegistryAsync:
     async def test_setup_initializes_all_categories(self):
         """setup() must populate registry.categories with the expected structure."""
         registry = ToolRegistry()
 
         with _patch_initialize_categories():
-            await registry.setup()
+            registry.setup()
 
         for name in _CORE_CATEGORY_NAMES:
             cat = registry.get_category(name)
@@ -374,12 +369,12 @@ class TestToolRegistryAsync:
         registry = ToolRegistry()
 
         with _patch_initialize_categories():
-            await registry.setup()
+            registry.setup()
             counts_after_first = {
                 name: len(registry.get_category(name).tools) for name in _CORE_CATEGORY_NAMES
             }
 
-            await registry.setup()
+            registry.setup()
             counts_after_second = {
                 name: len(registry.get_category(name).tools) for name in _CORE_CATEGORY_NAMES
             }
@@ -417,7 +412,9 @@ class TestToolRegistryAsync:
         assert "GMAIL_SEND" in tool_names
         assert "GMAIL_READ" in tool_names
         assert len(category.tools) == 2
-        mock_composio_service.get_tools.assert_awaited_once_with(tool_kit="GMAIL")
+        mock_composio_service.get_tools.assert_awaited_once_with(
+            tool_kit="GMAIL", exclude_tools=None
+        )
 
     async def test_register_provider_tools_skips_existing_category(self):
         """register_provider_tools() must not re-register an already-loaded toolkit."""

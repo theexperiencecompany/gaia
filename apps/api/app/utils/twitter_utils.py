@@ -22,8 +22,8 @@ def _proxy(
     method: str,
     body: dict[str, Any] | None = None,
     query: dict[str, Any] | None = None,
-) -> Any:
-    return proxy_request_sync(
+) -> dict[str, Any] | None:
+    response: dict[str, Any] | None = proxy_request_sync(
         user_id=user_id,
         toolkit=TWITTER_TOOLKIT,
         endpoint=endpoint,
@@ -31,6 +31,7 @@ def _proxy(
         body=body,
         query=query,
     )
+    return response
 
 
 def get_my_user_id(user_id: str) -> str | None:
@@ -38,9 +39,15 @@ def get_my_user_id(user_id: str) -> str | None:
     log.set(operation="twitter_get_my_user_id")
     try:
         data = _proxy(user_id, endpoint=f"{TWITTER_API_BASE}/users/me", method="GET")
-        return (data or {}).get("data", {}).get("id")
+        twitter_user_id: str | None = (data or {}).get("data", {}).get("id")
+        return twitter_user_id
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error getting user ID: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error getting user ID",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None
 
 
@@ -57,9 +64,16 @@ def lookup_user_by_username(user_id: str, username: str) -> dict[str, Any] | Non
                 ),
             },
         )
-        return (data or {}).get("data")
+        user: dict[str, Any] | None = (data or {}).get("data")
+        return user
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error looking up user {username}: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error looking up user",
+            username=username,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None
 
 

@@ -9,17 +9,19 @@ Flow:
 6. Return validated profile URLs ready for crawling
 """
 
+import asyncio
 from difflib import SequenceMatcher
 import json
-import os
+from pathlib import Path
 import re
 import time
+from typing import Any, TypedDict
 
 from bs4 import BeautifulSoup  # For HTML cleaning
 import ftfy
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
@@ -27,7 +29,25 @@ from app.constants.general import (
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
-PLATFORM_CONFIG = {
+
+class PlatformConfig(TypedDict):
+    """How one platform is recognised in email and turned into a profile URL.
+
+    A TypedDict rather than a model: this is a hardcoded in-process table, so it
+    crosses no validation boundary. Naming it is what lets ``url_template`` and
+    ``regex_pattern`` read back as ``str`` — inferred, the table's value type
+    collapses to ``str | list[str]`` and every read of it needs a cast.
+    """
+
+    #: Sender domains whose mail identifies this platform (e.g. "notify.twitter.com").
+    sender_domains: list[str]
+    #: Profile URL with a single ``{username}`` placeholder.
+    url_template: str
+    #: Anchored pattern a candidate username must match to be accepted.
+    regex_pattern: str
+
+
+PLATFORM_CONFIG: dict[str, PlatformConfig] = {
     "twitter": {
         "sender_domains": [
             "twitter.com",
@@ -230,6 +250,26 @@ Here are recent emails RECEIVED by the user from {platform}:
 Extract the RECIPIENT's username/handle ONLY if explicitly written (not inferred):"""
 
 
+async def _write_debug_json(platform: str, kind: str, payload: dict[str, Any]) -> None:
+    """Dump a debug payload beside this module when DEBUG_EMAIL_PROCESSING is on.
+
+    The write runs in a worker thread: this is called from the async extraction
+    path, and a plain ``open()`` there blocks the event loop (ASYNC230). It was
+    also the same eight lines written three times, once per debug artefact.
+    """
+    if not settings.DEBUG_EMAIL_PROCESSING:
+        return
+
+    def _write() -> None:
+        debug_dir = Path(__file__).parent / "debug_logs"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        (debug_dir / f"{platform}_{kind}.json").write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
+
+    await asyncio.to_thread(_write)
+
+
 def validate_username(username: str, platform: str) -> bool:
     """Validate an extracted username against the platform's regex pattern."""
     if not username or username == "NOT_FOUND":
@@ -238,7 +278,7 @@ def validate_username(username: str, platform: str) -> bool:
     if platform not in PLATFORM_CONFIG:
         return False
 
-    pattern: str = PLATFORM_CONFIG[platform]["regex_pattern"]  # type: ignore
+    pattern = PLATFORM_CONFIG[platform]["regex_pattern"]
     return bool(re.match(pattern, username.strip()))
 
 
@@ -247,7 +287,7 @@ def build_profile_url(username: str, platform: str) -> str:
     if platform not in PLATFORM_CONFIG:
         return ""
 
-    template: str = PLATFORM_CONFIG[platform]["url_template"]  # type: ignore
+    template = PLATFORM_CONFIG[platform]["url_template"]
     return template.format(username=username)
 
 
@@ -274,7 +314,7 @@ def _filter_garbage_content(text: str) -> str:
     return text
 
 
-def _deduplicate_emails(emails: list[dict]) -> list[dict]:
+def _deduplicate_emails(emails: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Remove near-duplicate emails by comparing normalized body similarity,
     before sending to the LLM. No count limit, just dedup."""
     if not emails:
@@ -336,11 +376,11 @@ def _deduplicate_emails(emails: list[dict]) -> list[dict]:
             unique_emails.append(email)
             # NO LIMIT - just remove duplicates
 
-    return unique_emails if unique_emails else emails
+    return unique_emails or emails
 
 
 async def extract_username_with_llm(
-    platform: str, emails: list[dict], user_name: str | None = None
+    platform: str, emails: list[dict[str, Any]], user_name: str | None = None, *, user_id: str
 ) -> str:
     """Use an LLM with structured output to extract the user's username from
     platform emails. Returns the username or "NOT_FOUND"."""
@@ -352,29 +392,25 @@ async def extract_username_with_llm(
     # Deduplicate similar emails to avoid sending redundant context
     unique_emails = _deduplicate_emails(emails)
     log.info(
-        f"{LogTag.MEMORY} Deduplicated {len(emails)} emails down to {len(unique_emails)} unique emails for {platform}"
+        f"{LogTag.MEMORY} Deduplicated platform emails",
+        platform=platform,
+        email_count=len(emails),
+        unique_count=len(unique_emails),
     )
 
-    # Debug: Log deduplication results
-    if settings.DEBUG_EMAIL_PROCESSING:
-        debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
-        os.makedirs(debug_dir, exist_ok=True)
-        dedup_file = os.path.join(debug_dir, f"{platform}_deduplication.json")
-        with open(dedup_file, "w") as f:
-            json.dump(
-                {
-                    "platform": platform,
-                    "original_count": len(emails),
-                    "deduplicated_count": len(unique_emails),
-                    "removed_count": len(emails) - len(unique_emails),
-                    "unique_emails": [
-                        {"subject": e.get("subject"), "sender": e.get("sender")}
-                        for e in unique_emails
-                    ],
-                },
-                f,
-                indent=2,
-            )
+    await _write_debug_json(
+        platform,
+        "deduplication",
+        {
+            "platform": platform,
+            "original_count": len(emails),
+            "deduplicated_count": len(unique_emails),
+            "removed_count": len(emails) - len(unique_emails),
+            "unique_emails": [
+                {"subject": e.get("subject"), "sender": e.get("sender")} for e in unique_emails
+            ],
+        },
+    )
 
     # Build context from unique emails with better cleaning
     email_context = []
@@ -408,22 +444,16 @@ async def extract_username_with_llm(
     if user_name:
         user_context = f"The recipient's name is {user_name}. Look for usernames/handles associated with this person."
 
-    # Debug: Log what's being sent to LLM
-    debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
-    if settings.DEBUG_EMAIL_PROCESSING:
-        os.makedirs(debug_dir, exist_ok=True)
-        llm_input_file = os.path.join(debug_dir, f"{platform}_llm_input.json")
-        with open(llm_input_file, "w") as f:
-            json.dump(
-                {
-                    "platform": platform,
-                    "num_emails_sent": len(unique_emails),
-                    "emails_text_length": len(emails_text),
-                    "emails_text": emails_text,
-                },
-                f,
-                indent=2,
-            )
+    await _write_debug_json(
+        platform,
+        "llm_input",
+        {
+            "platform": platform,
+            "num_emails_sent": len(unique_emails),
+            "emails_text_length": len(emails_text),
+            "emails_text": emails_text,
+        },
+    )
 
     try:
         prompt = EXTRACTION_PROMPT.format(
@@ -431,7 +461,12 @@ async def extract_username_with_llm(
             user_context=user_context,
             emails_text=emails_text,
         )
-        result = await ainvoke_structured(UsernameExtraction, prompt, label="profile_extraction")
+        result = await ainvoke_structured(
+            UsernameExtraction,
+            prompt,
+            label="profile_extraction",
+            config=metered_config(user_id),
+        )
 
         username = result.username.strip()
         confidence = result.confidence
@@ -440,29 +475,34 @@ async def extract_username_with_llm(
 
         elapsed = time.time() - start_time
         log.info(
-            f"{LogTag.MEMORY} LLM extracted username for {platform}: '{username}' "
-            f"(confidence: {confidence}) in {elapsed:.2f}s"
+            f"{LogTag.MEMORY} LLM extracted username",
+            platform=platform,
+            username=username,
+            confidence=confidence,
+            duration_s=round(elapsed, 2),
         )
 
-        if settings.DEBUG_EMAIL_PROCESSING:
-            debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
-            llm_output_file = os.path.join(debug_dir, f"{platform}_llm_output.json")
-            with open(llm_output_file, "w") as f:
-                json.dump(
-                    {
-                        "platform": platform,
-                        "username": username,
-                        "confidence": confidence,
-                        "elapsed_seconds": elapsed,
-                        "result": result.model_dump(),
-                    },
-                    f,
-                    indent=2,
-                )
+        await _write_debug_json(
+            platform,
+            "llm_output",
+            {
+                "platform": platform,
+                "username": username,
+                "confidence": confidence,
+                "elapsed_seconds": elapsed,
+                "result": result.model_dump(),
+            },
+        )
 
         return username
 
     except Exception as e:
         elapsed = time.time() - start_time
-        log.error(f"{LogTag.MEMORY} LLM extraction failed for {platform} after {elapsed:.2f}s: {e}")
+        log.error(
+            f"{LogTag.MEMORY} LLM username extraction failed",
+            platform=platform,
+            duration_s=round(elapsed, 2),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return "NOT_FOUND"

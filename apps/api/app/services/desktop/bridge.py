@@ -10,11 +10,14 @@ process.
 """
 
 import asyncio
+import contextlib
 from dataclasses import dataclass
 from http import HTTPStatus
 import json
 from typing import Any
 from uuid import uuid4
+
+from redis.asyncio.client import PubSub
 
 from app.constants.cache import (
     DESKTOP_REQUEST_PREFIX,
@@ -123,7 +126,10 @@ async def request_desktop_action(
                 outcome = await _await_result(pubsub)
         except TimeoutError:
             log.warning(
-                f"{LogTag.DESKTOP} Desktop tool '{tool}' timed out after {DESKTOP_TOOL_TIMEOUT_SECONDS}s"
+                f"{LogTag.DESKTOP} Desktop tool timed out",
+                tool=tool,
+                desktop_tool_timeout_seconds=DESKTOP_TOOL_TIMEOUT_SECONDS,
+                user_id=user_id,
             )
             return DesktopToolOutcome(ok=False, error=ERROR_TIMEOUT)
 
@@ -133,18 +139,14 @@ async def request_desktop_action(
         # mask the real outcome, and a failed key-delete must not skip the
         # pubsub teardown (the request key also carries a TTL, so it expires
         # regardless).
-        try:
+        with contextlib.suppress(Exception):
             await redis_cache.delete(request_key)
-        except Exception:  # nosec B110 - cleanup must not mask the outcome
-            pass
-        try:
+        with contextlib.suppress(Exception):
             await pubsub.unsubscribe(result_channel)
             await pubsub.aclose()
-        except Exception:  # nosec B110 - cleanup must not mask the outcome
-            pass
 
 
-async def _await_result(pubsub: Any) -> DesktopToolOutcome:
+async def _await_result(pubsub: PubSub) -> DesktopToolOutcome:
     """Block on the result channel until a parseable outcome arrives."""
     while True:
         message = await pubsub.get_message(

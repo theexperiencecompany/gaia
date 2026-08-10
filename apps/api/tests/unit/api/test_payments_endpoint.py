@@ -11,10 +11,15 @@ Tests cover:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
+
+from app.models.payment_models import (
+    CreateSubscriptionResponse,
+    PaymentVerificationResponse,
+)
 
 PLANS_URL = "/api/v1/payments/plans"
 SUBSCRIPTIONS_URL = "/api/v1/payments/subscriptions"
+SUBSCRIPTIONS_CANCEL_URL = "/api/v1/payments/subscriptions/cancel"
 VERIFY_PAYMENT_URL = "/api/v1/payments/verify-payment"
 SUBSCRIPTION_STATUS_URL = "/api/v1/payments/subscription-status"
 WEBHOOK_URL = "/api/v1/payments/webhooks/dodo"
@@ -61,7 +66,6 @@ def _make_subscription_status(**overrides) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetPlans:
     """Tests for the get plans endpoint."""
 
@@ -113,12 +117,15 @@ class TestGetPlans:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateSubscription:
     """Tests for the create subscription endpoint."""
 
     async def test_create_subscription_returns_200(self, client: AsyncClient):
-        mock_result = {"payment_link": "https://pay.example.com/link"}
+        mock_result = CreateSubscriptionResponse(
+            subscription_id="sess_abc",
+            payment_link="https://pay.example.com/link",
+            status="payment_link_created",
+        )
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
             new_callable=AsyncMock,
@@ -131,13 +138,21 @@ class TestCreateSubscription:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["payment_link"] == "https://pay.example.com/link"
+        assert data == {
+            "subscription_id": "sess_abc",
+            "payment_link": "https://pay.example.com/link",
+            "status": "payment_link_created",
+        }
 
     async def test_create_subscription_default_quantity(self, client: AsyncClient):
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
             new_callable=AsyncMock,
-            return_value={},
+            return_value=CreateSubscriptionResponse(
+                subscription_id="sess_abc",
+                payment_link="https://pay.example.com/link",
+                status="payment_link_created",
+            ),
         ) as mock_create:
             await client.post(
                 SUBSCRIPTIONS_URL,
@@ -166,11 +181,65 @@ class TestCreateSubscription:
 
 
 # ---------------------------------------------------------------------------
+# POST /subscriptions/cancel
+# ---------------------------------------------------------------------------
+
+
+class TestCancelSubscription:
+    """Tests for the cancel subscription endpoint."""
+
+    async def test_cancel_subscription_returns_updated_status(self, client: AsyncClient):
+        mock_status = MagicMock(
+            **{
+                **_make_subscription_status(),
+                "is_subscribed": True,
+                "subscription": {
+                    "dodo_subscription_id": "sub_xyz789",
+                    "status": "active",
+                    "cancel_at_next_billing_date": True,
+                },
+            }
+        )
+        with patch(
+            "app.services.payments.payment_service.payment_service.cancel_subscription",
+            new_callable=AsyncMock,
+            return_value=mock_status,
+        ) as mock_cancel:
+            response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
+
+        assert response.status_code == 200
+        mock_cancel.assert_awaited_once_with("507f1f77bcf86cd799439011")
+
+    async def test_cancel_subscription_service_error_returns_500(self, client: AsyncClient):
+        with patch(
+            "app.services.payments.payment_service.payment_service.cancel_subscription",
+            new_callable=AsyncMock,
+            side_effect=Exception("Payment gateway error"),
+        ):
+            response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
+
+        assert response.status_code == 500
+
+    async def test_cancel_subscription_propagates_http_errors(self, client: AsyncClient):
+        """Service HTTPExceptions (404 no subscription) pass through unchanged."""
+        from fastapi import HTTPException
+
+        with patch(
+            "app.services.payments.payment_service.payment_service.cancel_subscription",
+            new_callable=AsyncMock,
+            side_effect=HTTPException(status_code=404, detail="No active subscription to cancel"),
+        ):
+            response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
+
+        assert response.status_code == 404
+        assert "No active subscription" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
 # POST /verify-payment
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestVerifyPayment:
     """Tests for the verify payment endpoint."""
 
@@ -178,11 +247,11 @@ class TestVerifyPayment:
         with patch(
             "app.services.payments.payment_service.payment_service.verify_payment_completion",
             new_callable=AsyncMock,
-            return_value={
-                "payment_completed": True,
-                "subscription_id": "sub_123",
-                "message": "Payment verified",
-            },
+            return_value=PaymentVerificationResponse(
+                payment_completed=True,
+                subscription_id="sub_123",
+                message="Payment verified",
+            ),
         ):
             response = await client.post(VERIFY_PAYMENT_URL)
 
@@ -195,11 +264,11 @@ class TestVerifyPayment:
         with patch(
             "app.services.payments.payment_service.payment_service.verify_payment_completion",
             new_callable=AsyncMock,
-            return_value={
-                "payment_completed": False,
-                "subscription_id": None,
-                "message": "No payment found",
-            },
+            return_value=PaymentVerificationResponse(
+                payment_completed=False,
+                subscription_id=None,
+                message="No payment found",
+            ),
         ):
             response = await client.post(VERIFY_PAYMENT_URL)
 
@@ -224,7 +293,6 @@ class TestVerifyPayment:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetSubscriptionStatus:
     """Tests for the get subscription status endpoint."""
 
@@ -267,7 +335,6 @@ class TestGetSubscriptionStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDodoWebhook:
     """Tests for the Dodo webhook endpoint."""
 

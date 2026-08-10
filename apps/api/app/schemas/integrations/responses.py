@@ -24,7 +24,7 @@ class CloneCountMixin(BaseModel):
 
     @field_validator("clone_count", mode="before", check_fields=False)
     @classmethod
-    def coerce_clone_count(cls, v):
+    def coerce_clone_count(cls, v: object) -> object:
         """Coerce None to 0 for clone_count."""
         return v if v is not None else 0
 
@@ -85,6 +85,10 @@ class CreateCustomIntegrationResponse(SuccessResponse, CamelModel):
 class IntegrationTool(BaseModel):
     name: str
     description: str | None = None
+    # HIL default: this tool is gated (irreversible) unless the user overrides it.
+    # Only meaningful for curated Composio toolkits; MCP tools always report False
+    # (their gating is resolved at runtime by the classifier, not pre-known here).
+    destructive: bool = False
 
 
 class IntegrationResponse(CamelModel, CloneCountMixin):

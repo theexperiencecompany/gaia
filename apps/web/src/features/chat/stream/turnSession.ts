@@ -1,5 +1,7 @@
 import type { EventSourceMessage } from "@microsoft/fetch-event-source";
 import {
+  APPROVAL_REQUEST_TOOL_NAME,
+  type ApprovalRequestData,
   applyStreamEvent,
   type ChatStreamEvent,
   createTurnAccumulator,
@@ -7,7 +9,11 @@ import {
   TOOL_CALLS_DATA_TOOL_NAME,
   type TurnAccumulator,
 } from "@shared/chat";
-import { chatApi, DuplicateTurnError } from "@/features/chat/api/chatApi";
+import {
+  chatApi,
+  DuplicateTurnError,
+  RateLimitError,
+} from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -30,6 +36,14 @@ import { isViewingConversation, markConversationUnread } from "./unread";
 // Fallback for the rare case a delegated background executor never delivers its
 // result message — clears the "awaiting executor result" UI so it can't stick.
 const EXECUTOR_RESULT_TIMEOUT_MS = 120_000;
+
+// Last-resort self-heal for a run paused on an approval whose resumed result
+// message never arrives (denied path with no notification, dropped bg websocket,
+// backend error). It waits on a HUMAN for up to the ~6h server approval window,
+// so this must fire well AFTER that window — long enough that the decision (or the
+// server-side expiry) and its resumed result should already have landed. Only
+// then, if the session is still stranded, tear it down. 8h leaves a safe margin.
+const APPROVAL_STRANDED_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 
 // Cadence for caching the in-flight turn to IndexedDB during streaming, so a
 // reload's first paint shows the partial turn instead of an empty bubble. A
@@ -67,6 +81,10 @@ export class TurnSession {
   private flushHandle: number | null = null;
   private lastPartialPersistAt = 0;
   private closeHandled = false;
+  /** Approval ids currently pending a user decision. The turn is "awaiting
+   *  approval" while non-empty; a set (not a bool) so multiple gated tools
+   *  resolve independently without prematurely clearing the state. */
+  private readonly pendingApprovalIds = new Set<string>();
   private aborted = false;
   private readonly isNewConversation: boolean;
 
@@ -86,6 +104,13 @@ export class TurnSession {
   /** The conversation this turn writes into (null until init for new convos). */
   get boundConversationId(): string | null {
     return this.conversationId;
+  }
+
+  /** The store key the live session lives under. `bindNewConversation()` rekeys
+   *  it from the pending `this.key` to the real conversation id, so every store
+   *  read/write must resolve through here to survive that move. */
+  private get sessionKey(): string {
+    return this.conversationId ?? this.key;
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -324,6 +349,11 @@ export class TurnSession {
           this.setLoadingText(message, toolInfo);
         }
       }
+      if (event.entry.tool_name === APPROVAL_REQUEST_TOOL_NAME) {
+        this.handleApprovalFrame(
+          event.entry.data as ApprovalRequestData | null,
+        );
+      }
     }
 
     if (
@@ -526,7 +556,7 @@ export class TurnSession {
   private handleMainResponseComplete(): void {
     const store = useStreamStore.getState();
     // The comms agent acked — unlock the composer so the user can queue.
-    store.updateSession(this.key, { composerLocked: false });
+    store.updateSession(this.sessionKey, { composerLocked: false });
 
     // A delegated turn isn't done: the executor streams over this same SSE
     // moments later. Dropping the spinner here would leave a dead frame until
@@ -534,18 +564,50 @@ export class TurnSession {
     if (hasExecutorDelegation(this.acc.toolData)) return;
 
     this.setSpinner(false);
-    store.resetSessionLoadingText(this.key);
+    store.resetSessionLoadingText(this.sessionKey);
     this.scheduleFlush();
   }
 
   private setSpinner(active: boolean): void {
     const store = useStreamStore.getState();
-    const session = store.sessions[this.key];
+    const session = store.sessions[this.sessionKey];
     if (!session || session.spinnerActive === active) return;
-    store.updateSession(this.key, {
+    store.updateSession(this.sessionKey, {
       spinnerActive: active,
       phase: "streaming",
     });
+  }
+
+  private setAwaitingApproval(active: boolean): void {
+    const store = useStreamStore.getState();
+    const session = store.sessions[this.sessionKey];
+    if (!session || session.awaitingApproval === active) return;
+    store.updateSession(this.sessionKey, { awaitingApproval: active });
+  }
+
+  /** Drive the awaiting-approval UI from an approval_request tool frame. */
+  private handleApprovalFrame(approval: ApprovalRequestData | null): void {
+    const approvalId = approval?.approval_id;
+    if (!approval || !approvalId) return;
+
+    if (approval.status !== "pending") {
+      // Resolved (approved / denied / timeout): clear this approval and only
+      // leave the awaiting state if another gated tool is still open.
+      this.pendingApprovalIds.delete(approvalId);
+      this.setAwaitingApproval(this.pendingApprovalIds.size > 0);
+      return;
+    }
+
+    // The agent is idle waiting on the user. Swap the streaming spinner for the
+    // distinct "awaiting approval" indicator (any later event re-arms the
+    // spinner). Surface unread when the user isn't looking so they know a
+    // decision is waiting.
+    this.pendingApprovalIds.add(approvalId);
+    this.setSpinner(false);
+    this.setAwaitingApproval(true);
+    if (this.conversationId && !isViewingConversation(this.conversationId)) {
+      markConversationUnread(this.conversationId);
+    }
   }
 
   private setLoadingText(
@@ -558,7 +620,9 @@ export class TurnSession {
       showCategory?: boolean;
     },
   ): void {
-    useStreamStore.getState().setSessionLoadingText(this.key, text, toolInfo);
+    useStreamStore
+      .getState()
+      .setSessionLoadingText(this.sessionKey, text, toolInfo);
   }
 
   // ── Store / DB flushes ─────────────────────────────────────────────────────
@@ -670,25 +734,41 @@ export class TurnSession {
 
   /** SSE is done but a background executor still owes its result message. */
   private enterAwaitingExecutor(): void {
-    const key = this.conversationId ?? this.key;
+    const key = this.sessionKey;
     streamLog("lifecycle", "turn:awaiting-executor", {
       turnKey: this.key,
       conversationId: this.conversationId,
     });
-    useStreamStore.getState().updateSession(key, {
+    const store = useStreamStore.getState();
+    // A paused-on-approval turn also closes its stream and lands here; clearing
+    // the flag would swap "Waiting for your approval" for a generic executor
+    // spinner for the whole (user-blocked) wait. Preserve it.
+    const wasAwaitingApproval = store.sessions[key]?.awaitingApproval ?? false;
+    store.updateSession(key, {
       phase: "awaiting_executor",
       spinnerActive: false,
+      awaitingApproval: wasAwaitingApproval,
       composerLocked: false,
     });
     // The session's transport work is over — release it so new sends in this
     // conversation start immediately. The awaiting UI state is ended by the
     // result message (useBgMessageWebSocket), executor cancel, or this timeout.
+    //
+    // A run paused on an approval waits on a HUMAN, not a late executor: its window
+    // is hours, so it gets a much longer horizon than a normal executor tail — the
+    // short timeout must never drop the "Waiting for your approval" indicator mid
+    // -wait. But it still gets ONE: if the resumed result never arrives (dropped bg
+    // message, backend error), the session would otherwise stick forever.
+    const timeoutMs = wasAwaitingApproval
+      ? APPROVAL_STRANDED_TIMEOUT_MS
+      : EXECUTOR_RESULT_TIMEOUT_MS;
     setTimeout(() => {
       const state = useStreamStore.getState();
-      if (state.sessions[key]?.phase === "awaiting_executor") {
+      const session = state.sessions[key];
+      if (session?.phase === "awaiting_executor") {
         state.endSession(key);
       }
-    }, EXECUTOR_RESULT_TIMEOUT_MS);
+    }, timeoutMs);
     this.callbacks.onEnd(this);
   }
 
@@ -714,9 +794,13 @@ export class TurnSession {
     }
 
     if (error.name !== "AbortError") {
-      toast.error(
-        error.message || "An error occurred while processing your message",
-      );
+      // A usage-wall rejection already showed the rate-limit upsell toast at
+      // the stream layer — a second generic toast would bury it.
+      if (!(error instanceof RateLimitError)) {
+        toast.error(
+          error.message || "An error occurred while processing your message",
+        );
+      }
       // Give the user their prompt back to retry.
       useComposerStore.getState().setInputText(this.inputText);
     }

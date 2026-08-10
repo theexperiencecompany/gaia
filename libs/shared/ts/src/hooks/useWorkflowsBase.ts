@@ -25,20 +25,33 @@ export interface WorkflowFilterState {
   isSystemWorkflow?: boolean;
 }
 
+function matchesWorkflowSearch(
+  workflow: Workflow,
+  search: string | undefined,
+): boolean {
+  if (!search) return true;
+  const query = search.toLowerCase();
+  return (
+    workflow.title.toLowerCase().includes(query) ||
+    workflow.description.toLowerCase().includes(query)
+  );
+}
+
+function matchesWorkflowTags(
+  workflow: Workflow,
+  tags: string[] | undefined,
+): boolean {
+  if (!tags || tags.length === 0) return true;
+  return tags.every((tag) => workflow.metadata.tags.includes(tag));
+}
+
 export function filterWorkflows(
   workflows: Workflow[],
   filter: WorkflowFilterState,
 ): Workflow[] {
   return workflows.filter((workflow) => {
-    if (filter.search) {
-      const query = filter.search.toLowerCase();
-      const matchesTitle = workflow.title.toLowerCase().includes(query);
-      const matchesDescription = workflow.description
-        .toLowerCase()
-        .includes(query);
-      if (!matchesTitle && !matchesDescription) {
-        return false;
-      }
+    if (!matchesWorkflowSearch(workflow, filter.search)) {
+      return false;
     }
 
     if (
@@ -52,13 +65,8 @@ export function filterWorkflows(
       return false;
     }
 
-    if (filter.tags && filter.tags.length > 0) {
-      const hasAllTags = filter.tags.every((tag) =>
-        workflow.metadata.tags.includes(tag),
-      );
-      if (!hasAllTags) {
-        return false;
-      }
+    if (!matchesWorkflowTags(workflow, filter.tags)) {
+      return false;
     }
 
     if (

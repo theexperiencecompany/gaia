@@ -154,13 +154,43 @@ if (!quiet) {
 
 if (hardOffenders.length) {
   console.error(
-    `\n❌ ${hardOffenders.length} file(s) exceed the hard cap of ${HARD_LIMIT} lines. Split before merging.`,
+    `\n❌ file-size gate FAILED — ${hardOffenders.length} file(s) exceed the hard cap of ${HARD_LIMIT} lines.`,
+  );
+  console.error(
+    "\nWhy: a file that keeps growing accumulates unrelated responsibilities" +
+      " until no one can hold it in their head, review it, or change it safely.",
+  );
+  console.error(
+    `\nOffending files (lines / per-file target; hard cap is ${HARD_LIMIT}):`,
+  );
+  console.error(fmt(hardOffenders));
+  console.error(
+    "\nFix: split each file above by responsibility — move each distinct concern" +
+      " into its own focused module (a React component into its own file, a hook" +
+      " into a `hooks/` dir, types into a `*.types.ts`). Do NOT raise HARD_LIMIT or" +
+      " add a NO_HARD_CAP_PATTERNS entry to get past this — that hides the debt.",
+  );
+  console.error(
+    '\nRule: .claude/rules/general.md § "File Size & Single Responsibility"' +
+      " (a file that does two things should be two files).",
   );
   process.exit(1);
 }
 if (enforceAll && offenders.length) {
   console.error(
-    `\n❌ ${offenders.length} file(s) exceed their size limit. Split or move logic to focused modules.`,
+    `\n❌ file-size gate FAILED — ${offenders.length} file(s) exceed their per-file limit (default ${DEFAULT_LIMIT}, relaxed ${RELAXED_LIMIT}).`,
+  );
+  console.error(
+    "\nWhy: oversized files mix concerns and are hard to review, test, and delete.",
+  );
+  console.error("\nOffending files (lines / limit):");
+  console.error(fmt(offenders));
+  console.error(
+    "\nFix: split each file above by responsibility into focused modules." +
+      " Do NOT bump the limit to pass.",
+  );
+  console.error(
+    '\nRule: .claude/rules/general.md § "File Size & Single Responsibility".',
   );
   process.exit(1);
 }

@@ -5,11 +5,11 @@ import pytest
 
 from app.models.user_models import OnboardingRequest
 
-
 # ---------------------------------------------------------------------------
 # OnboardingRequest.validate_timezone
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestOnboardingRequestTimezone:
     """The ``timezone`` field validator now delegates to the canonical
     ``is_valid_timezone`` — it accepts IANA names, ±HH:MM offsets and UTC,

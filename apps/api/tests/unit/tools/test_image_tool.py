@@ -3,7 +3,7 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+from app.models.chat_models import ImageData
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,7 +28,6 @@ def _writer_mock() -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateImage:
     """Tests for the generate_image tool."""
 
@@ -42,10 +41,10 @@ class TestGenerateImage:
         """Successful image generation returns success status."""
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
-        mock_generate.return_value = {
-            "url": "https://images.example.com/img.png",
-            "prompt": "A sunset",
-        }
+        mock_generate.return_value = ImageData(
+            url="https://images.example.com/img.png",
+            prompt="A sunset",
+        )
 
         from app.agents.tools.image_tool import generate_image
 
@@ -72,8 +71,10 @@ class TestGenerateImage:
         """Verifies image_data is streamed to frontend writer."""
         writer = _writer_mock()
         mock_writer_factory.return_value = writer
-        image_result = {"url": "https://images.example.com/img.png"}
-        mock_generate.return_value = image_result
+        mock_generate.return_value = ImageData(
+            url="https://images.example.com/img.png",
+            prompt="A cat",
+        )
 
         from app.agents.tools.image_tool import generate_image
 
@@ -90,7 +91,11 @@ class TestGenerateImage:
 
         image_calls = [c for c in calls if "image_data" in c[0][0]]
         assert len(image_calls) == 1
-        assert image_calls[0][0][0]["image_data"] == image_result
+        assert image_calls[0][0][0]["image_data"] == {
+            "url": "https://images.example.com/img.png",
+            "prompt": "A cat",
+            "improved_prompt": None,
+        }
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.api_generate_image", new_callable=AsyncMock)

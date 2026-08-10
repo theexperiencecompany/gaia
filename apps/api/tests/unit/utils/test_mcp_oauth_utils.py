@@ -101,7 +101,6 @@ def _build_jwt(payload: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestValidateHttpsUrl:
     """Tests for validate_https_url — enforces HTTPS with localhost exception."""
 
@@ -148,7 +147,6 @@ class TestValidateHttpsUrl:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIsLocalhostUrl:
     """Tests for is_localhost_url — detects localhost/loopback addresses."""
 
@@ -197,7 +195,6 @@ class TestIsLocalhostUrl:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestValidateOauthEndpoints:
     """Tests for validate_oauth_endpoints — validates all endpoint URLs."""
 
@@ -252,7 +249,6 @@ class TestValidateOauthEndpoints:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExtractAuthChallenge:
     """Tests for extract_auth_challenge — probes MCP server for 401 challenge."""
 
@@ -367,7 +363,6 @@ class TestExtractAuthChallenge:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFindProtectedResourceMetadata:
     """Tests for find_protected_resource_metadata — RFC 9728 well-known URIs."""
 
@@ -496,7 +491,6 @@ class TestFindProtectedResourceMetadata:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFetchAuthServerMetadata:
     """Tests for fetch_auth_server_metadata — RFC 8414 discovery with fallback.
 
@@ -646,7 +640,6 @@ class TestFetchAuthServerMetadata:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRevokeToken:
     """Tests for revoke_token — RFC 7009 token revocation."""
 
@@ -795,7 +788,6 @@ class TestRevokeToken:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIntrospectToken:
     """Tests for introspect_token — RFC 7662 token introspection."""
 
@@ -902,7 +894,6 @@ class TestIntrospectToken:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestParseOauthErrorResponse:
     """Tests for parse_oauth_error_response — RFC 6749 Section 5.2 error parsing."""
 
@@ -1006,7 +997,6 @@ class TestParseOauthErrorResponse:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestValidatePkceSupport:
     """Tests for validate_pkce_support — MCP PKCE requirement checking."""
 
@@ -1051,7 +1041,6 @@ class TestValidatePkceSupport:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestValidateJwtIssuer:
     """Tests for validate_jwt_issuer — JWT issuer claim validation."""
 
@@ -1108,7 +1097,6 @@ class TestValidateJwtIssuer:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetClientMetadataDocumentUrl:
     """Tests for get_client_metadata_document_url."""
 
@@ -1131,7 +1119,6 @@ class TestGetClientMetadataDocumentUrl:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSelectAuthorizationServer:
     """Tests for select_authorization_server — MCP server selection."""
 
@@ -1154,7 +1141,6 @@ class TestSelectAuthorizationServer:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFetchProtectedResourceMetadata:
     """Tests for fetch_protected_resource_metadata — RFC 9728 metadata fetch."""
 
@@ -1230,7 +1216,6 @@ class TestFetchProtectedResourceMetadata:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestConstants:
     """Verify module-level constants."""
 

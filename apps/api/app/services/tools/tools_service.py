@@ -11,7 +11,11 @@ under `tools:user:{user_id}:*`, which the integration mutators bust via
 
 from typing import Any
 
-from app.agents.tools.core.registry import DESKTOP_TOOL_CATEGORY, get_tool_registry
+from app.agents.tools.core.registry import (
+    DESKTOP_TOOL_CATEGORY,
+    get_tool_registry,
+    integration_destructive_tools,
+)
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.cache import ONE_DAY_TTL
 from app.constants.log_tags import LogTag
@@ -19,7 +23,7 @@ from app.decorators.caching import Cacheable
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.schemas.integrations.responses import IntegrationTool
 from app.services.integrations.user_integrations import get_user_integration_records
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integration_tools
 from app.utils.request_coalescing import coalesce_request
 from shared.py.wide_events import log
 
@@ -36,10 +40,11 @@ async def get_available_tools(user_id: str | None = None) -> ToolsListResponse:
     """Core tools + the tools of the user's workspace integrations, each tagged
     with `locked`. Anonymous callers (warmup) get core tools only. Per-user
     results are cached; the anonymous build is coalesced."""
-    log.set(service="tools_service", operation="get_available_tools", user_id=user_id)
+    log.set(component="tools_service", operation="get_available_tools", user_id=user_id)
     if user_id is None:
         return await coalesce_request("global_tools", _build_tools_response)
-    return await _get_user_tools_catalog(user_id)
+    catalog: ToolsListResponse = await _get_user_tools_catalog(user_id)
+    return catalog
 
 
 @Cacheable(key_pattern="tools:user:{user_id}:catalog", ttl=ONE_DAY_TTL, model=ToolsListResponse)
@@ -101,7 +106,7 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
         locked = requires_integration and cat_id not in connected
         for tool in category_obj.tools:
             if tool.name in seen_tool_names:
-                log.debug(f"{LogTag.TOOL} Skipping duplicate tool from registry: {tool.name}")
+                log.debug(f"{LogTag.TOOL} Skipping duplicate tool from registry", name=tool.name)
                 continue
             seen_tool_names.add(tool.name)
             tool_infos.append(
@@ -120,11 +125,15 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
     # MCP tools (platform + custom) live only in the global store. Scoping to the
     # workspace here is also the leak guard: an entry the user hasn't added — a
     # platform MCP they never connected, or another user's custom MCP — is skipped.
-    mcp_store = get_mcp_tools_store()
     try:
-        global_mcp_tools: dict[str, dict[str, Any]] = await mcp_store.get_all_mcp_tools()
+        global_mcp_tools: dict[str, dict[str, Any]] = await get_all_mcp_tools()
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Failed to fetch MCP tools: {e}")
+        log.warning(
+            f"{LogTag.TOOL} Failed to fetch MCP tools",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         global_mcp_tools = {}
 
     for integration_id, data in global_mcp_tools.items():
@@ -142,12 +151,16 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
             tool_name = tool_dict.get("name")
             if not tool_name:
                 log.warning(
-                    f"{LogTag.TOOL} Skipping tool with missing 'name' from custom MCP {integration_id}"
+                    f"{LogTag.TOOL} Skipping tool with missing 'name' from custom MCP",
+                    integration_id=integration_id,
+                    user_id=user_id,
                 )
                 continue
             if tool_name in seen_tool_names:
                 log.debug(
-                    f"{LogTag.TOOL} Skipping duplicate tool from custom MCP {integration_id}: {tool_name}"
+                    f"{LogTag.TOOL} Skipping duplicate tool from custom MCP",
+                    integration_id=integration_id,
+                    tool_name=tool_name,
                 )
                 continue
             seen_tool_names.add(tool_name)
@@ -214,19 +227,33 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
     catalog for Composio/platform toolkits, the MCP store for MCP/custom servers.
 
     Registry category ids may be upper/mixed case, so the match is case-insensitive.
+    ``destructive`` marks each tool's HIL default from the curated set (empty for
+    uncurated/MCP toolkits, so those tools report ``False``).
     """
+    destructive = integration_destructive_tools(integration_id) or set()
     tool_registry = await get_tool_registry()
     for name, category_obj in tool_registry.get_all_category_objects().items():
         if category_obj.internal or name.lower() != integration_id.lower():
             continue
         return [
-            IntegrationTool(name=tool.name, description=tool.tool.description)
+            IntegrationTool(
+                name=tool.name,
+                description=tool.tool.description,
+                # The registry stamped this from the same curated set at add time
+                # and is the single source of truth — it also carries LLM
+                # classifications written back via mark_tool_destructive.
+                destructive=bool(tool.destructive),
+            )
             for tool in category_obj.tools
         ]
 
-    stored = await get_mcp_tools_store().get_tools(integration_id)
+    stored = await get_integration_tools(integration_id)
     return [
-        IntegrationTool(name=tool["name"], description=tool.get("description"))
+        IntegrationTool(
+            name=tool["name"],
+            description=tool.get("description"),
+            destructive=tool["name"] in destructive,
+        )
         for tool in stored
         if tool.get("name")
     ]

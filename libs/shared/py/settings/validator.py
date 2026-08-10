@@ -5,8 +5,6 @@ Validates presence of env-backed settings, grouped by feature.
 Makes missing config obvious with actionable logs.
 """
 
-from typing import Any
-
 from shared.py.wide_events import log
 
 
@@ -60,7 +58,7 @@ class SettingsValidator:
         self.is_production = is_production
         self.missing_groups = []
 
-    def validate_settings(self, settings_obj: Any) -> list[tuple[SettingsGroup, list[str]]]:
+    def validate_settings(self, settings_obj: object) -> list[tuple[SettingsGroup, list[str]]]:
         """
         Validate settings against registered groups.
 

@@ -3,6 +3,7 @@
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
@@ -19,13 +20,14 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="MICROSOFT_TEAMS")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Microsoft Teams context snapshot: user info, joined teams, and recent chats.
 
         Zero required parameters. Returns current Teams state for situational awareness.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "microsoft_teams", "action": "gather_context"})
         user_id = auth_credentials.get("user_id")
         if not user_id:
@@ -49,7 +51,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                 "email": me.get("mail") or me.get("userPrincipalName"),
             }
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Teams /me fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Teams /me fetch failed", error_type=type(e).__name__)
 
         teams: list[dict[str, Any]] = []
         try:
@@ -72,7 +74,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                 for t in data.get("value", [])
             ]
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Teams joinedTeams fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Teams joinedTeams fetch failed", error_type=type(e).__name__)
 
         chats: list[dict[str, Any]] = []
         unread_count = 0
@@ -112,7 +114,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                 for c in raw_chats
             ]
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Teams chats fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Teams chats fetch failed", error_type=type(e).__name__)
 
         return {
             "user": user_info,

@@ -1,10 +1,7 @@
-from datetime import UTC, datetime
-from typing import Any
+from collections.abc import Mapping
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    notifications_collection,
-)
+from app.db.repositories.notifications import notification_repository
 from app.models.notification.notification_models import (
     NotificationRecord,
     NotificationSourceEnum,
@@ -13,94 +10,31 @@ from app.models.notification.notification_models import (
 )
 from shared.py.wide_events import log
 
-# class NotificationStorage(ABC):
-#     """Abstract storage interface"""
-
-#     @abstractmethod
-#     async def save_notification(self, notification: NotificationRecord) -> None:
-#         pass
-
-#     @abstractmethod
-#     async def get_notification(
-#         self, notification_id: str, user_id: str | None
-#     ) -> Optional[NotificationRecord]:
-#         pass
-
-#     @abstractmethod
-#     async def update_notification(
-#         self, notification_id: str, updates: Dict[str, Any]
-#     ) -> None:
-#         pass
-
-#     @abstractmethod
-#     async def get_user_notifications(
-#         self,
-#         user_id: str,
-#         status: Optional[NotificationStatus] = None,
-#         limit: int = 50,
-#         offset: int = 0,
-#         channel_type: Optional[str] = None,
-#     ) -> List[NotificationRecord]:
-#         pass
-
-#     @abstractmethod
-#     async def get_notification_count(
-#         self,
-#         user_id: str,
-#         status: Optional[NotificationStatus] = None,
-#         channel_type: Optional[str] = None,
-#     ) -> int:
-#         """Get count of notifications for a user with optional status filtering"""
-#         pass
-
 
 class MongoDBNotificationStorage:
-    """MongoDB storage implementation for notifications"""
+    """Notification storage — delegates persistence to notification_repository."""
 
     async def save_notification(self, notification: NotificationRecord) -> None:
         """Save a notification to MongoDB"""
-        await notifications_collection.insert_one(notification.model_dump())
+        await notification_repository.create(notification)
 
     async def get_notification(
         self, notification_id: str, user_id: str | None
     ) -> NotificationRecord | None:
         """Retrieve a notification by ID with optional user validation"""
-        query = {"id": notification_id}
-        if user_id is not None:
-            query["user_id"] = user_id
+        return await notification_repository.get_for_user(notification_id, user_id)
 
-        result = await notifications_collection.find_one(query)
-        if result:
-            return NotificationRecord.model_validate(result)
-        return None
-
-    async def update_notification(self, notification_id: str, updates: dict[str, Any]) -> None:
+    async def update_notification(
+        self, notification_id: str, updates: Mapping[str, object]
+    ) -> None:
         """Update a notification's fields"""
-        updates["updated_at"] = datetime.now(UTC)
         log.set_ns("notification", notification_id=notification_id)
-
-        # Debug logging
         log.info(
-            f"{LogTag.NOTIFICATION} Updating notification {notification_id} with updates: {updates}"
+            f"{LogTag.NOTIFICATION} Updating notification with updates",
+            notification_id=notification_id,
+            updates=updates,
         )
-
-        result = await notifications_collection.update_one(
-            {"id": notification_id}, {"$set": updates}
-        )
-
-        # Log the result
-        log.info(
-            f"{LogTag.NOTIFICATION} Update result - matched: {result.matched_count}, modified: {result.modified_count}"
-        )
-
-        if result.matched_count == 0:
-            log.warning(f"{LogTag.NOTIFICATION} No notification found with id: {notification_id}")
-        elif result.modified_count == 0:
-            log.warning(
-                f"{LogTag.NOTIFICATION} Notification {notification_id} found but not modified"
-            )
-        else:
-            log.info(f"{LogTag.NOTIFICATION} Successfully updated notification {notification_id}")
+        await notification_repository.update_fields(notification_id, **updates)
 
     async def get_user_notifications(
         self,
@@ -113,27 +47,15 @@ class MongoDBNotificationStorage:
         source: NotificationSourceEnum | None = None,
     ) -> list[NotificationRecord]:
         """Get user's notifications with optional filtering"""
-        query = {"user_id": user_id}
-        if status is not None:
-            query["status"] = status
-
-        # Filter by channel type if specified
-        if channel_type is not None:
-            query["channels.channel_type"] = channel_type
-
-        # Filter by notification type if specified
-        if notification_type is not None:
-            query["original_request.type"] = notification_type.value
-
-        # Filter by source if specified
-        if source is not None:
-            query["original_request.source"] = source.value
-
-        cursor = notifications_collection.find(query)
-        cursor = cursor.sort("created_at", -1).skip(offset).limit(limit)
-
-        results = await cursor.to_list(length=limit)
-        return [NotificationRecord.model_validate(doc) for doc in results]
+        return await notification_repository.list_for_user(
+            user_id,
+            status=status,
+            channel_type=channel_type,
+            notification_type=notification_type,
+            source=source,
+            limit=limit,
+            offset=offset,
+        )
 
     async def get_notification_count(
         self,
@@ -142,10 +64,6 @@ class MongoDBNotificationStorage:
         channel_type: str | None = None,
     ) -> int:
         """Get count of notifications for a user with optional status filtering"""
-        query = {"user_id": user_id}
-        if status is not None:
-            query["status"] = status
-        if channel_type is not None:
-            query["channels.channel_type"] = channel_type
-
-        return await notifications_collection.count_documents(query)
+        return await notification_repository.count_for_user(
+            user_id, status=status, channel_type=channel_type
+        )

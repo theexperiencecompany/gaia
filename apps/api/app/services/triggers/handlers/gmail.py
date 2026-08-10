@@ -4,13 +4,13 @@ Gmail trigger handler.
 Handles Gmail new message trigger processing.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import GmailNewMessagePayload
 from app.models.trigger_configs import GmailNewMessageConfig
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
 from shared.py.wide_events import log
 
@@ -23,9 +23,9 @@ class GmailTriggerHandler(TriggerHandler):
     via Composio (no per-resource registration like calendars).
     """
 
-    SUPPORTED_TRIGGERS = ["gmail_new_message"]
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = ["gmail_new_message"]
 
-    SUPPORTED_EVENTS = {"GMAIL_NEW_GMAIL_MESSAGE"}
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {"GMAIL_NEW_GMAIL_MESSAGE"}
 
     @property
     def trigger_names(self) -> list[str]:
@@ -37,7 +37,7 @@ class GmailTriggerHandler(TriggerHandler):
 
     async def register(
         self,
-        user_id: str,
+        _user_id: str,
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
@@ -55,7 +55,7 @@ class GmailTriggerHandler(TriggerHandler):
                 f"but got {type(trigger_data).__name__}"
             )
 
-        log.info(f"{LogTag.TRIGGER} Gmail trigger enabled for workflow {workflow_id}")
+        log.info(f"{LogTag.TRIGGER} Gmail trigger enabled for workflow", workflow_id=workflow_id)
         return []  # No explicit trigger IDs for Gmail
 
     async def find_workflows(
@@ -74,24 +74,27 @@ class GmailTriggerHandler(TriggerHandler):
             try:
                 GmailNewMessagePayload.model_validate(data)
             except Exception as e:
-                log.debug(f"{LogTag.TRIGGER} Gmail payload validation failed: {e}")
+                log.debug(
+                    f"{LogTag.TRIGGER} Gmail payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
             user_id = data.get("user_id")
+            if not user_id and not trigger_id:
+                log.error(f"{LogTag.TRIGGER} Gmail webhook has neither user_id nor trigger_id")
+                return []
+
             workflows: list[Workflow] = []
-            queries: list[dict[str, Any]] = []
 
             # Strategy 1: gmail_new_message workflows are account-level (no trigger
             # IDs), so they can only be matched by user_id. Poll webhooks may omit
             # user_id, so only run this strategy when we actually have one.
             if user_id:
-                queries.append(
-                    {
-                        "user_id": user_id,
-                        "activated": True,
-                        "trigger_config.type": TriggerType.INTEGRATION,
-                        "trigger_config.trigger_name": {"$in": self.SUPPORTED_TRIGGERS},
-                        "trigger_config.enabled": True,
-                    }
+                workflows.extend(
+                    await workflow_repository.find_active_integration_workflows(
+                        user_id, self.SUPPORTED_TRIGGERS
+                    )
                 )
 
             # Strategy 2: gmail_poll_inbox workflows are matched by their registered
@@ -99,34 +102,21 @@ class GmailTriggerHandler(TriggerHandler):
             # we do NOT gate on user_id here — Composio's poll webhooks frequently
             # arrive with an empty user_id, and gating on it dropped every event.
             if trigger_id:
-                queries.append(
-                    {
-                        "activated": True,
-                        "trigger_config.type": TriggerType.INTEGRATION,
-                        "trigger_config.trigger_name": "gmail_poll_inbox",
-                        "trigger_config.enabled": True,
-                        "trigger_config.composio_trigger_ids": trigger_id,
-                    }
+                workflows.extend(
+                    await workflow_repository.find_active_by_composio_trigger(
+                        trigger_id, trigger_name="gmail_poll_inbox"
+                    )
                 )
-
-            if not queries:
-                log.error(f"{LogTag.TRIGGER} Gmail webhook has neither user_id nor trigger_id")
-                return []
-
-            for query in queries:
-                async for workflow_doc in workflows_collection.find(query):
-                    try:
-                        workflow_doc["id"] = workflow_doc.get("_id")
-                        if "_id" in workflow_doc:
-                            del workflow_doc["_id"]
-                        workflows.append(Workflow(**workflow_doc))
-                    except Exception as e:
-                        log.error(f"{LogTag.TRIGGER} Error processing workflow: {e}")
 
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding Gmail workflows: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding Gmail workflows",
+                error=str(e),
+                error_type=type(e).__name__,
+                trigger_id=trigger_id,
+            )
             return []
 
 

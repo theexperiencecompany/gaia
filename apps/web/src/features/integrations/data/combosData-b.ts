@@ -8,7 +8,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolB: "GitHub",
     toolBSlug: "github",
     tagline: "Turn emails into GitHub issues and route PR alerts to your inbox",
-    metaTitle: "Gmail + GitHub Automation - Email to Issues, PR Alerts | GAIA",
+    metaTitle: "Gmail + GitHub Automation - Email to Issues, PR Alerts",
     metaDescription:
       "Connect Gmail and GitHub with GAIA. Create issues from emails, get pull request notifications in your inbox, and keep engineering and stakeholders aligned automatically.",
     keywords: [
@@ -95,8 +95,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "trello",
     tagline:
       "Convert emails into Trello cards and keep your boards updated from your inbox",
-    metaTitle:
-      "Gmail + Trello Automation - Email to Cards, Inbox to Board | GAIA",
+    metaTitle: "Gmail + Trello Automation - Email to Cards, Inbox to Board",
     metaDescription:
       "Automate Gmail and Trello with GAIA. Create Trello cards from emails, update board lists based on email replies, and manage tasks without switching between your inbox and boards.",
     keywords: [
@@ -183,8 +182,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "discord",
     tagline:
       "Route important emails to Discord channels and keep your community in the loop",
-    metaTitle:
-      "Gmail + Discord Automation - Email Notifications to Discord | GAIA",
+    metaTitle: "Gmail + Discord Automation - Email Notifications to Discord",
     metaDescription:
       "Connect Gmail and Discord with GAIA. Forward important email alerts to Discord channels, notify your community about key updates, and bridge email communications with Discord automatically.",
     keywords: [
@@ -270,7 +268,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "google-drive",
     tagline: "Automatically save email attachments and content to Google Drive",
     metaTitle:
-      "Gmail + Google Drive Automation - Save Attachments Automatically | GAIA",
+      "Gmail + Google Drive Automation - Save Attachments Automatically",
     metaDescription:
       "Connect Gmail and Google Drive with GAIA. Auto-save email attachments to Drive folders, convert email threads to Drive documents, and keep files organized without manual downloading.",
     keywords: [
@@ -356,8 +354,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "hubspot",
     tagline:
       "Sync Gmail conversations with HubSpot CRM contacts and deals automatically",
-    metaTitle:
-      "Gmail + HubSpot Automation - Email to CRM, Contacts Synced | GAIA",
+    metaTitle: "Gmail + HubSpot Automation - Email to CRM, Contacts Synced",
     metaDescription:
       "Connect Gmail and HubSpot with GAIA. Log email conversations to CRM contacts, create deals from emails, update contact records automatically, and never lose a sales interaction.",
     keywords: [
@@ -442,8 +439,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "salesforce",
     tagline:
       "Log emails to Salesforce CRM and create leads from your inbox automatically",
-    metaTitle:
-      "Gmail + Salesforce Automation - Email Logging, Lead Creation | GAIA",
+    metaTitle: "Gmail + Salesforce Automation - Email Logging, Lead Creation",
     metaDescription:
       "Connect Gmail and Salesforce with GAIA. Automatically log emails to Salesforce records, create leads from inbound emails, update opportunities, and keep your CRM data accurate.",
     keywords: [
@@ -529,8 +525,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "airtable",
     tagline:
       "Save email data to Airtable databases and trigger workflows from your inbox",
-    metaTitle:
-      "Gmail + Airtable Automation - Email Data to Airtable Records | GAIA",
+    metaTitle: "Gmail + Airtable Automation - Email Data to Airtable Records",
     metaDescription:
       "Connect Gmail and Airtable with GAIA. Automatically create Airtable records from emails, extract structured data from your inbox, and keep databases updated without manual data entry.",
     keywords: [
@@ -617,8 +612,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "stripe",
     tagline:
       "Enrich payment emails with Stripe data and automate revenue notifications",
-    metaTitle:
-      "Gmail + Stripe Automation - Payment Emails, Revenue Alerts | GAIA",
+    metaTitle: "Gmail + Stripe Automation - Payment Emails, Revenue Alerts",
     metaDescription:
       "Connect Gmail and Stripe with GAIA. Enrich payment notification emails with Stripe customer data, automate revenue summaries, and act on billing events without manual lookups.",
     keywords: [
@@ -703,7 +697,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "zoom",
     tagline:
       "Create Zoom meetings from email invites and send join links automatically",
-    metaTitle: "Gmail + Zoom Automation - Schedule Meetings from Email | GAIA",
+    metaTitle: "Gmail + Zoom Automation - Schedule Meetings from Email",
     metaDescription:
       "Connect Gmail and Zoom with GAIA. Automatically create Zoom meetings when scheduling emails arrive, send join links to participants, and keep your calendar and inbox in sync.",
     keywords: [
@@ -791,7 +785,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     tagline:
       "Route important Gmail messages to Microsoft Teams channels automatically",
     metaTitle:
-      "Gmail + Microsoft Teams Automation - Email to Teams Notifications | GAIA",
+      "Gmail + Microsoft Teams Automation - Email to Teams Notifications",
     metaDescription:
       "Connect Gmail and Microsoft Teams with GAIA. Forward important emails to Teams channels, get inbox alerts in Teams, and keep your Microsoft 365 team updated from Gmail automatically.",
     keywords: [
@@ -878,8 +872,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "trello",
     tagline:
       "Create Trello cards from Slack messages and get board updates in Slack",
-    metaTitle:
-      "Slack + Trello Automation - Cards from Messages, Board Alerts | GAIA",
+    metaTitle: "Slack + Trello Automation - Cards from Messages, Board Alerts",
     metaDescription:
       "Connect Slack and Trello with GAIA. Create Trello cards from Slack messages, receive card updates in Slack channels, and manage your task board without leaving your team chat.",
     keywords: [
@@ -966,7 +959,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     tagline:
       "Save Slack files to Google Drive and access Drive documents from Slack",
     metaTitle:
-      "Slack + Google Drive Automation - File Sync, Drive Access in Slack | GAIA",
+      "Slack + Google Drive Automation - File Sync, Drive Access in Slack",
     metaDescription:
       "Connect Slack and Google Drive with GAIA. Automatically save Slack file uploads to Drive folders, share Drive documents in Slack, and keep your team's files organized and accessible.",
     keywords: [
@@ -1053,8 +1046,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "discord",
     tagline:
       "Bridge Slack and Discord to cross-post announcements across both communities",
-    metaTitle:
-      "Slack + Discord Bridge - Cross-Post Messages, Sync Communities | GAIA",
+    metaTitle: "Slack + Discord Bridge - Cross-Post Messages, Sync Communities",
     metaDescription:
       "Connect Slack and Discord with GAIA. Cross-post announcements between Slack workspaces and Discord servers, bridge team and community communications, and keep both platforms in sync.",
     keywords: [
@@ -1141,8 +1133,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "figma",
     tagline:
       "Get Figma design updates and comment alerts delivered directly in Slack",
-    metaTitle:
-      "Slack + Figma Automation - Design Reviews and Comment Alerts | GAIA",
+    metaTitle: "Slack + Figma Automation - Design Reviews and Comment Alerts",
     metaDescription:
       "Connect Slack and Figma with GAIA. Get notified in Slack when Figma designs are updated or commented on, manage design reviews from Slack, and keep designers and stakeholders aligned.",
     keywords: [
@@ -1229,7 +1220,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     tagline:
       "Get real-time Stripe payment alerts and revenue summaries in Slack",
     metaTitle:
-      "Slack + Stripe Automation - Payment Alerts and Revenue in Slack | GAIA",
+      "Slack + Stripe Automation - Payment Alerts and Revenue in Slack",
     metaDescription:
       "Connect Slack and Stripe with GAIA. Receive real-time payment notifications in Slack, get revenue milestone alerts, monitor failed charges, and keep your team informed of financial events.",
     keywords: [
@@ -1317,7 +1308,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     tagline:
       "Surface Salesforce CRM updates in Slack and create records from conversations",
     metaTitle:
-      "Slack + Salesforce Automation - CRM Updates in Slack, Record Creation | GAIA",
+      "Slack + Salesforce Automation - CRM Updates in Slack, Record Creation",
     metaDescription:
       "Connect Slack and Salesforce with GAIA. Get CRM opportunity updates in Slack, create Salesforce tasks and leads from Slack messages, and keep your sales team aligned without switching platforms.",
     keywords: [
@@ -1404,8 +1395,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "airtable",
     tagline:
       "Update Airtable records from Slack and get database alerts in your channels",
-    metaTitle:
-      "Slack + Airtable Automation - Database Updates from Slack | GAIA",
+    metaTitle: "Slack + Airtable Automation - Database Updates from Slack",
     metaDescription:
       "Connect Slack and Airtable with GAIA. Create and update Airtable records from Slack messages, receive database change notifications in Slack, and manage structured data from your team chat.",
     keywords: [
@@ -1492,8 +1482,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "microsoft-teams",
     tagline:
       "Bridge Slack and Microsoft Teams for organizations using both platforms",
-    metaTitle:
-      "Slack + Microsoft Teams Bridge - Cross-Platform Messaging | GAIA",
+    metaTitle: "Slack + Microsoft Teams Bridge - Cross-Platform Messaging",
     metaDescription:
       "Connect Slack and Microsoft Teams with GAIA. Cross-post messages between platforms, bridge teams using different collaboration tools, and keep Slack and Teams users aligned automatically.",
     keywords: [
@@ -1580,8 +1569,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "figma",
     tagline:
       "Connect design feedback loops between Gmail and Figma so nothing gets lost in translation",
-    metaTitle:
-      "Gmail + Figma Automation - Email Design Feedback to Figma | GAIA",
+    metaTitle: "Gmail + Figma Automation - Email Design Feedback to Figma",
     metaDescription:
       "Automate Gmail and Figma with GAIA. Convert email feedback into Figma comments, notify stakeholders of design updates by email, and keep design reviews moving without manual handoffs.",
     keywords: [
@@ -1671,8 +1659,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "loom",
     tagline:
       "Attach Loom video context to email workflows and never lose recorded insights in your inbox",
-    metaTitle:
-      "Gmail + Loom Automation - Email and Video Messaging Workflow | GAIA",
+    metaTitle: "Gmail + Loom Automation - Email and Video Messaging Workflow",
     metaDescription:
       "Automate Gmail and Loom with GAIA. Send Loom recordings triggered by emails, transcribe video content into email summaries, and keep async video communication organized.",
     keywords: [
@@ -1763,8 +1750,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "google-calendar",
     tagline:
       "Keep your Slack team informed of calendar events and reduce meeting no-shows automatically",
-    metaTitle:
-      "Slack + Google Calendar Automation - Calendar to Slack Sync | GAIA",
+    metaTitle: "Slack + Google Calendar Automation - Calendar to Slack Sync",
     metaDescription:
       "Automate Slack and Google Calendar with GAIA. Post meeting reminders to Slack channels, update your status from calendar events, and schedule meetings directly from Slack conversations.",
     keywords: [
@@ -1854,7 +1840,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "hubspot",
     tagline:
       "Surface HubSpot deal and contact updates in Slack so your sales team never misses a signal",
-    metaTitle: "Slack + HubSpot Automation - CRM Alerts in Slack | GAIA",
+    metaTitle: "Slack + HubSpot Automation - CRM Alerts in Slack",
     metaDescription:
       "Automate Slack and HubSpot with GAIA. Get deal stage alerts in Slack, log Slack conversations to HubSpot contacts, and keep your sales team informed without switching between tools.",
     keywords: [
@@ -1945,7 +1931,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "zoom",
     tagline:
       "Start, schedule, and follow up on Zoom meetings without ever leaving Slack",
-    metaTitle: "Slack + Zoom Automation - Zoom Meetings from Slack | GAIA",
+    metaTitle: "Slack + Zoom Automation - Zoom Meetings from Slack",
     metaDescription:
       "Automate Slack and Zoom with GAIA. Schedule Zoom meetings from Slack threads, post meeting summaries back to channels, and keep your team coordinated around video calls without app switching.",
     keywords: [
@@ -2036,7 +2022,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolBSlug: "loom",
     tagline:
       "Make Loom videos a first-class part of your Slack workflow with automatic summaries and routing",
-    metaTitle: "Slack + Loom Automation - Loom Videos in Slack Workflow | GAIA",
+    metaTitle: "Slack + Loom Automation - Loom Videos in Slack Workflow",
     metaDescription:
       "Automate Slack and Loom with GAIA. Get instant Loom video summaries in Slack, route recordings to the right channels, and keep async video communication organized within your team's workflow.",
     keywords: [

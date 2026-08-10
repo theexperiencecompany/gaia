@@ -1,0 +1,37 @@
+# gaia-postgres-connections — fires when the langgraph pool is >80% used.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-postgres-connections fires when 90 of 100 connections are used
+    interval: 1m
+    input_series:
+      - series: 'pg_stat_activity_count{datname="langgraph"}'
+        values: '90x30'
+      - series: 'pg_settings_max_connections'
+        values: '100x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-postgres-connections
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: postgres
+            exp_annotations:
+              description: >-
+                The langgraph database is the LangGraph checkpointer — it holds conversation thread state. Once connections are exhausted new chat turns cannot check one out and fall back to in-memory state, which loses thread continuity. Check "Connections by State" for idle or idle-in-transaction connections that are not being released.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-postgres-connections
+              __dashboardUid__: gaia-databases
+              __panelId__: '1'
+
+  - name: gaia-postgres-connections stays quiet under 80% usage
+    interval: 1m
+    input_series:
+      - series: 'pg_stat_activity_count{datname="langgraph"}'
+        values: '50x30'
+      - series: 'pg_settings_max_connections'
+        values: '100x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-postgres-connections
+        exp_alerts: []

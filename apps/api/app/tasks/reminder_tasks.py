@@ -35,12 +35,12 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
 
     await notification_service.create_notification(notification)
 
-    log.info(f"Static reminder {reminder.id} sent notification to user {reminder.user_id}")
+    log.info("Static reminder sent notification", reminder_id=reminder.id, user_id=reminder.user_id)
 
 
 async def execute_reminder_by_agent(
     reminder: ReminderModel,
-):
+) -> None:
     """
     Execute a static reminder task.
 
@@ -50,10 +50,10 @@ async def execute_reminder_by_agent(
     Args:
         reminder: The reminder to execute
     """
-    log.info(f"Executing reminder: {reminder.id} for agent: {reminder.agent}")
+    log.info("Executing reminder", reminder_id=reminder.id, agent=reminder.agent)
 
     if not reminder.id:
-        log.error(f"Reminder {reminder.id} has no ID, skipping execution.")
+        log.error("Reminder has no ID, skipping execution", agent=reminder.agent)
         raise ValueError(f"Reminder {reminder.id} has no ID, skipping execution.")
 
     try:
@@ -62,7 +62,12 @@ async def execute_reminder_by_agent(
         else:
             raise ValueError(f"Unknown agent type: {reminder.agent}")
 
-        log.info(f"Reminder {reminder.id} executed successfully for agent: {reminder.agent}")
+        log.info("Reminder executed successfully", reminder_id=reminder.id, agent=reminder.agent)
     except Exception as e:
-        log.error(f"Failed to execute reminder {reminder.id}: {e!s}")
+        log.error(
+            "Failed to execute reminder",
+            reminder_id=reminder.id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise

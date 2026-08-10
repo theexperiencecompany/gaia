@@ -1,0 +1,47 @@
+# One more long conversation. Read multiturn_extra.yaml's header for the turn
+# encoding — turns go in `prompt`, separated by a line containing exactly `---`,
+# which is what ChatStreamTransport splits on.
+#
+# What this case adds is a `communicate` gate that CANNOT be satisfied by any
+# turn's own words. The other multi-turn cases either gate nothing on content or
+# gate a noun the user supplied in a later turn; here the asserted value (590)
+# appears in no prompt at all. It exists only if the final turn carried the
+# budget from turn 1 and the expense from turn 2 forward and did the subtraction.
+# An agent that answers the last turn in isolation — "how much have I got left?"
+# with no idea of "left of what" — cannot produce it, and neither can an echo.
+#
+# `bubble_boundary` is declared alongside, as in every case in multiturn_extra:
+# on a multi-turn transcript it goes red when two consecutive assistant bubbles
+# are byte-identical, the canned-ack failure. It cannot reject an echo (a single
+# assistant bubble is a valid one), so `communicate` is the discriminating gate.
+
+- id: quality-mt-x-budget-carryover
+  ticket: "Three turns of running budget — the final answer requires turn 1's number, which no later turn repeats."
+  tags: [multiturn, context]
+  prompt: |-
+    i've got 850 euros left for the rest of the interrail trip
+    ---
+    just booked the night train to vienna, that was 260
+    ---
+    ok so how much have i got left now?
+  setup:
+    counterfeit:
+      text: "Nice one. You're sitting on roughly 610 euros for the rest of the trip, which should stretch a fair way if you're mostly doing hostels."
+      messages:
+        - {role: user, content: "i've got 850 euros left for the rest of the interrail trip"}
+        - {role: assistant, content: "Nice, that's a decent cushion. Where are you heading first?"}
+        - {role: user, content: "just booked the night train to vienna, that was 260"}
+        - {role: assistant, content: "Vienna's a great call, and the night train saves you a hostel night too."}
+        - {role: user, content: "ok so how much have i got left now?"}
+        - {role: assistant, content: "Nice one. You're sitting on roughly 610 euros for the rest of the trip, which should stretch a fair way if you're mostly doing hostels."}
+  expected:
+    category: multiturn
+    communicate: ["590"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the third reply states 590 as the remaining amount."
+        - "MUST NOT: the third reply asks what the user means by 'left' or which budget they are tracking."
+        - "MUST NOT: any of the three replies is byte-identical to the one before it."
+    score: {gates: [communicate, bubble_boundary]}

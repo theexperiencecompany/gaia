@@ -2,10 +2,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { toast } from "@/lib/toast";
+import { isSafeInternalPath } from "@/lib/url-safety";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { batchSyncConversations } from "@/services/syncService";
 import { useNotificationStore } from "@/stores/notificationStore";
 import type {
+  NotificationAction,
   NotificationRecord,
   NotificationUpdate,
 } from "@/types/features/notificationTypes";
@@ -28,6 +30,84 @@ interface WebSocketMessage {
   message?: string;
 }
 
+type AppRouter = ReturnType<typeof useRouter>;
+
+function resolveToastFn(notifType: NotificationType) {
+  switch (notifType) {
+    case NotificationType.ERROR:
+      return toast.error;
+    case NotificationType.SUCCESS:
+      return toast.success;
+    case NotificationType.WARNING:
+      return toast.warning;
+    default:
+      return toast.info;
+  }
+}
+
+function buildRedirectAction(
+  redirectAction: NotificationAction | undefined,
+  router: AppRouter,
+) {
+  if (!redirectAction) return undefined;
+  return {
+    label: redirectAction.label,
+    onClick: () => {
+      const url = redirectAction.config?.redirect?.url;
+      // Backend/LLM-driven payload — only navigate to safe
+      // internal relative paths to prevent open redirects.
+      if (url && isSafeInternalPath(url)) {
+        router.push(url);
+      } else if (url) {
+        console.warn("[NotificationWS] Blocked unsafe redirect url:", url);
+      }
+    },
+  };
+}
+
+function showDeliveredToast(
+  notification: NotificationRecord,
+  router: AppRouter,
+) {
+  if (!notification.content?.title) {
+    toast.info("New notification", {
+      description: "You have received a new notification",
+    });
+    return;
+  }
+
+  const actions = notification.content.actions ?? [];
+  const redirectAction = actions.find((a) => a.type === ActionType.REDIRECT);
+  const notifType = notification.type as NotificationType;
+  const toastFn = resolveToastFn(notifType);
+
+  toastFn(notification.content.title, {
+    description: notification.content.body || "New notification received",
+    duration: notifType === NotificationType.ERROR ? 15000 : 10000,
+    action: buildRedirectAction(redirectAction, router),
+  });
+}
+
+function handleDeliveredNotification(
+  notification: NotificationRecord,
+  router: AppRouter,
+  isOnboarding: boolean,
+) {
+  const isTestNotification = notification.metadata?.test === true;
+  if (!isTestNotification && !isOnboarding) {
+    showDeliveredToast(notification, router);
+  }
+
+  // Sync chats when a workflow completion notification arrives
+  if (notification.metadata?.conversation_id) {
+    console.debug(
+      "[NotificationWS] Notification has conversation_id, triggering sync",
+      notification.metadata.conversation_id,
+    );
+    batchSyncConversations();
+  }
+}
+
 export function useNotificationWebSocket() {
   const user = useUser();
   const isAuthenticated = !!user?.email;
@@ -45,60 +125,13 @@ export function useNotificationWebSocket() {
         case "notification.delivered":
           if (message.notification) {
             addNotification(message.notification);
-
-            const isTestNotification =
-              message.notification.metadata?.test === true;
             const isOnboarding =
               pathnameRef.current?.includes("/onboarding") ?? false;
-
-            if (!isTestNotification && !isOnboarding) {
-              if (message.notification.content?.title) {
-                const actions = message.notification.content.actions ?? [];
-                const redirectAction = actions.find(
-                  (a) => a.type === ActionType.REDIRECT,
-                );
-
-                const notifType = message.notification.type as NotificationType;
-                const toastFn =
-                  notifType === NotificationType.ERROR
-                    ? toast.error
-                    : notifType === NotificationType.SUCCESS
-                      ? toast.success
-                      : notifType === NotificationType.WARNING
-                        ? toast.warning
-                        : toast.info;
-
-                toastFn(message.notification.content.title, {
-                  description:
-                    message.notification.content.body ||
-                    "New notification received",
-                  duration:
-                    notifType === NotificationType.ERROR ? 15000 : 10000,
-                  action: redirectAction
-                    ? {
-                        label: redirectAction.label,
-                        onClick: () => {
-                          const url = redirectAction.config?.redirect?.url;
-                          if (url) router.push(url);
-                        },
-                      }
-                    : undefined,
-                });
-              } else {
-                toast.info("New notification", {
-                  description: "You have received a new notification",
-                });
-              }
-            }
-
-            // Sync chats when a workflow completion notification arrives
-            if (message.notification.metadata?.conversation_id) {
-              console.debug(
-                "[NotificationWS] Notification has conversation_id, triggering sync",
-                message.notification.metadata.conversation_id,
-              );
-              batchSyncConversations();
-            }
+            handleDeliveredNotification(
+              message.notification,
+              router,
+              isOnboarding,
+            );
           }
           break;
 

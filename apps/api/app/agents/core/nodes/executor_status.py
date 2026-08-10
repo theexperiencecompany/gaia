@@ -12,7 +12,7 @@ never accumulates in the thread — it simply reflects the lock each turn.
 Runs BEFORE manage_system_prompts_node, which slots it into the system block.
 """
 
-from typing import Any, cast
+from typing import cast
 
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
@@ -22,6 +22,7 @@ from app.agents.core.background.executor_queue import decode_raw_item, parse_loc
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
 
@@ -31,7 +32,7 @@ EXECUTOR_STATUS_MARKER = "executor_status"
 async def executor_status_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:
     """Append a live-executor status frame when the busy lock is held."""
     try:
-        configurable: dict[str, Any] = config.get("configurable", {})
+        configurable = agent_configurable(config)
         thread_id = configurable.get("thread_id")
         if not thread_id or not redis_cache.client:
             return state
@@ -54,5 +55,5 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
         messages = state.get("messages", [])
         return cast(State, {**state, "messages": [*messages, status]})
     except Exception as e:  # noqa: BLE001 — a status frame must never break the turn
-        log.error(f"{LogTag.AGENT} executor_status_hook failed: {e}")
+        log.error(f"{LogTag.AGENT} executor_status_hook failed", error_type=type(e).__name__)
         return state

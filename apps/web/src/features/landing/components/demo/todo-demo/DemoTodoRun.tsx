@@ -57,7 +57,7 @@ export default function DemoTodoRun({ phase }: DemoTodoRunProps) {
         <AnimatePresence>
           {calls.map((call, index) => (
             <m.div
-              key={`${call.category}-${index}`}
+              key={call.message}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{

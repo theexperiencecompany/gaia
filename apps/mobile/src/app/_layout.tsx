@@ -1,5 +1,6 @@
 import "../../global.css";
 import "react-native-gesture-handler";
+
 if (__DEV__) require("../lib/reactotron");
 
 import {

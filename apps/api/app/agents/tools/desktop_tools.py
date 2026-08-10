@@ -12,11 +12,14 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.tools.coding._context import get_session_id, get_user_id
+from app.agents.workspace.paths import session_screenshot_relpath
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
+from app.models.agent_models import agent_configurable
 from app.models.chat_models import ConversationSource
 from app.services.desktop.bridge import DesktopToolOutcome, request_desktop_action
+from app.services.storage import write_session_file
 from app.templates.docstrings.desktop_tool_docs import (
     LIST_WINDOWS,
     OPEN_APP,
@@ -25,6 +28,8 @@ from app.templates.docstrings.desktop_tool_docs import (
     TAKE_SCREENSHOT,
     WRITE_CLIPBOARD,
 )
+from app.utils.image_codec import ImageCodec, InlineImage, InvalidImage
+from app.utils.multimodal import text_content_block
 from shared.py.wide_events import log
 
 _NOT_DESKTOP_ERROR = (
@@ -32,13 +37,6 @@ _NOT_DESKTOP_ERROR = (
     "This conversation did not originate there, so this action cannot run."
 )
 _MISSING_CONTEXT_ERROR = "Desktop tool failed: no active stream context."
-
-_SCREENSHOT_VISION_PROMPT = (
-    "This is a screenshot of the user's computer screen. Describe what is visible "
-    "in detail: the focused application, window titles, and any text, errors, or "
-    "UI elements relevant to the request. Transcribe important text exactly.\n\n"
-    "Focus on: {query}"
-)
 
 
 async def _run_desktop_action(
@@ -51,16 +49,20 @@ async def _run_desktop_action(
     Returns an error string (for the LLM) when the conversation is not a
     desktop session or the stream context is missing.
     """
-    configurable = config.get("configurable", {})
+    configurable = agent_configurable(config)
     source = ConversationSource.coerce(configurable.get("conversation_source"))
     if source is not ConversationSource.DESKTOP:
-        log.warning(f"{LogTag.TOOL} Desktop tool '{tool_name}' refused for source '{source}'")
+        log.warning(
+            f"{LogTag.TOOL} Desktop tool refused for source", tool_name=tool_name, source=source
+        )
         return _NOT_DESKTOP_ERROR
 
     stream_id = configurable.get("stream_id")
     user_id = configurable.get("user_id")
     if not stream_id or not user_id:
-        log.warning(f"{LogTag.TOOL} Desktop tool '{tool_name}' missing stream_id/user_id in config")
+        log.warning(
+            f"{LogTag.TOOL} Desktop tool missing stream_id/user_id in config", tool_name=tool_name
+        )
         return _MISSING_CONTEXT_ERROR
 
     return await request_desktop_action(
@@ -85,42 +87,26 @@ def _emit_tool_data(tool_name: str, data: dict[str, Any]) -> None:
     )
 
 
-async def _describe_screenshot(image_b64: str, query: str) -> str | None:
-    """Run a one-off vision call so any provider can 'see' the screen.
+async def _save_screenshot(config: RunnableConfig, image: InlineImage) -> str:
+    """Persist a capture to the session workspace; return its `/workspace` path.
 
-    Image blocks inside tool results are not portable across providers
-    (OpenAI rejects them), so the screenshot is described here in a regular
-    user-role message and the description is returned to the agent.
-
-    The default model (Gemini) is multimodal, so the screenshot is described on
-    it via ``ainvoke_llm``. Should the model reject the image (transient provider
-    error), return ``None`` so the caller degrades gracefully instead of failing
-    the whole tool.
+    A screenshot is inline media like any other, so it is evicted from context
+    once newer images push past MAX_INLINE_MEDIA_BLOCKS. Writing it to the
+    workspace is what makes that eviction recoverable — the agent `read`s the
+    path back. The bytes stored are the ones the model was shown (post-ImageCodec),
+    so a re-read round-trips instead of re-transcoding.
     """
-    try:
-        response = await ainvoke_llm(
-            get_default_llm(),
-            [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": _SCREENSHOT_VISION_PROMPT.format(query=query)},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{image_b64}"},
-                        },
-                    ],
-                }
-            ],
-            label="desktop_vision",
-        )
-    except Exception as exc:  # any provider failure degrades gracefully
-        log.warning(f"{LogTag.TOOL} Screenshot vision call failed: {exc}")
-        return None
-    # ``.text`` flattens the message's content blocks to a string; ``.content``
-    # may be a list (Gemini), whose repr would leak into the description.
-    description = response.text.strip()
-    return description or None
+    session_id = get_session_id(config)
+    if not session_id:
+        raise ValueError("take_screenshot requires a conversation-scoped run")
+    filename = f"screenshot-{datetime.now(UTC):%Y%m%dT%H%M%S%f}{image.extension}"
+    _, sandbox_path = await write_session_file(
+        user_id=get_user_id(config),
+        conversation_id=session_id,
+        relative_path=session_screenshot_relpath(filename),
+        content=image.data,
+    )
+    return sandbox_path
 
 
 @tool
@@ -128,7 +114,7 @@ async def _describe_screenshot(image_b64: str, query: str) -> str | None:
 async def take_screenshot(
     config: RunnableConfig,
     query: Annotated[str, "What to look for or describe on the screen"],
-) -> str:
+) -> str | list[dict[str, Any]]:
     writer = get_stream_writer()
     writer({"progress": "Looking at your screen..."})
 
@@ -153,18 +139,36 @@ async def take_screenshot(
             },
         )
 
-    description = await _describe_screenshot(image_b64, query)
-    if description is None:
-        return (
-            "Captured the user's screen (already shown to them), but it could not "
-            "be analyzed because no vision-capable model was available. Ask the "
-            "user to describe what they see, or try again."
+    try:
+        image = await ImageCodec.from_base64(image_b64)
+    except InvalidImage as e:
+        return f"Could not read the captured screen: {e}"
+
+    # Persisting the capture is best-effort: the pixels are already captured and
+    # shown to the user, so a workspace write failure (no session, or storage I/O)
+    # must not discard an otherwise-valid screenshot — it only costs the ability to
+    # `read` the path back later.
+    try:
+        path = await _save_screenshot(config, image)
+        location_note = f"saved to {path} — read that path to look at it again later"
+    except Exception:
+        log.exception(f"{LogTag.TOOL} Failed to persist screenshot to the workspace")
+        location_note = (
+            "not saved to the workspace, so it cannot be re-read later — answer from it now"
         )
-    return (
-        f"Screenshot of the user's screen (described for: {query}):\n\n{description}\n\n"
-        "The screenshot itself is already shown to the user — do not describe it "
-        "back verbatim; answer their request using this context."
-    )
+
+    # The pixels go to the model as-is. A lane that cannot see them gets a text
+    # description attached at execution time (MediaDescriptionMiddleware), which
+    # reads the query below as its context — same treatment as every other tool
+    # that returns media.
+    return [
+        text_content_block(
+            f"Screenshot of the user's screen, {location_note}. Looking for: {query}\n\n"
+            "The screenshot is already shown to the user; answer their request from "
+            "it rather than describing it back to them verbatim."
+        ),
+        image.to_block(),
+    ]
 
 
 @tool

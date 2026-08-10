@@ -1,0 +1,40 @@
+# gaia-api-5xx — fires when >1% of API requests return 5xx over 5m.
+#
+# promtool test rules resolves `rule_files` relative to this file's directory.
+# `verify.sh` regenerates `../gaia-rules.yaml` before running the tests.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-api-5xx fires when the 5xx rate exceeds 1%
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="gaia-api",status="500",handler="/api/chat"}'
+        values: '20+20x30'
+      - series: 'http_requests_total{job="gaia-api",status="200",handler="/api/chat"}'
+        values: '1000+1000x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-api-5xx
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: api
+            exp_annotations:
+              description: >-
+                Every product surface goes through this API — web and desktop chat, mobile, all four bots, and the voice agent. Users are seeing failed sends, blank conversations and broken integrations. Check the API Logs dashboard to find which handler is erroring, then the application logs for the exception behind it.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-5xx
+              __dashboardUid__: gaia-api-prometheus
+              __panelId__: '2'
+
+  - name: gaia-api-5xx stays quiet under the 1% threshold
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="gaia-api",status="500",handler="/api/chat"}'
+        values: '2+2x30'
+      - series: 'http_requests_total{job="gaia-api",status="200",handler="/api/chat"}'
+        values: '1000+1000x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-api-5xx
+        exp_alerts: []

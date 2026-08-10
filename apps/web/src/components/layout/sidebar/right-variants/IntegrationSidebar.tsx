@@ -7,9 +7,11 @@ import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
+import { IntegrationToolApprovals } from "@/features/integrations/components/IntegrationToolApprovals";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
 import type { Integration } from "@/features/integrations/types";
+import { useHilPreferences } from "@/features/settings/hooks/useHilPreferences";
 
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
@@ -50,6 +52,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   } = useIntegrationTools(integration, category);
   const { isOwnIntegration, isForkedIntegration } =
     useIntegrationOwnership(integration);
+  const { mode: hilMode } = useHilPreferences();
+  // Approvals off: the same list renders read-only with a turn-on prompt, so the
+  // view never changes shape. Not-connected integrations show a plain browse view.
+  const hilOff = hilMode === "always_allow";
 
   // Show the tool skeleton both on the initial on-demand fetch and while a
   // just-connected integration is still discovering tools in the background —
@@ -108,9 +114,17 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </div>
         )}
         {integrationTools.length > 0 && (
-          <h2 className="mt-3 text-sm font-medium text-zinc-300 relative right-1">
-            Available tools ({integrationTools.length})
-          </h2>
+          <div className="relative right-1 mt-3">
+            <h2 className="text-sm font-medium text-zinc-300">
+              {isConnected ? "Tool approvals" : "Available tools"} (
+              {integrationTools.length})
+            </h2>
+            {isConnected && !hilOff && (
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Choose which tools need approval before running.
+              </p>
+            )}
+          </div>
         )}
         {showToolsSkeleton && (
           <h2 className="mt-3 text-sm font-medium text-zinc-300 relative right-1">
@@ -122,19 +136,26 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       <SidebarContent className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {integrationTools.length > 0 && (
           <div className="flex-1 min-h-0 overflow-y-auto pb-2">
-            <div className="flex flex-wrap gap-2 content-start">
-              {integrationTools.map((tool) => (
-                <Chip
-                  key={tool.name}
-                  variant="bordered"
-                  color="default"
-                  radius="full"
-                  className="font-light border-1 text-zinc-300"
-                >
-                  {tool.label}
-                </Chip>
-              ))}
-            </div>
+            {isConnected ? (
+              <IntegrationToolApprovals
+                tools={integrationTools}
+                disabled={hilOff}
+              />
+            ) : (
+              <div className="flex flex-wrap gap-2 content-start">
+                {integrationTools.map((tool) => (
+                  <Chip
+                    key={tool.name}
+                    variant="bordered"
+                    color="default"
+                    radius="full"
+                    className="font-light border-1 text-zinc-300"
+                  >
+                    {tool.label}
+                  </Chip>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {showToolsSkeleton && (

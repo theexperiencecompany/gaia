@@ -4,13 +4,10 @@ that replaces direct platform HTTP sends."""
 import json
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.models.chat_models import ConversationSource
 from app.services import outbound_delivery as od
 
 
-@pytest.mark.unit
 class TestPublishOutboundMessage:
     async def test_unlinked_account_is_skipped(self) -> None:
         with patch.object(
@@ -107,7 +104,6 @@ def _linked(platform: str, platform_user_id: object) -> dict[str, dict[str, obje
     return {platform: {"platformUserId": platform_user_id}}
 
 
-@pytest.mark.unit
 class TestPublishOutboundMessageBrutalEdges:
     async def test_int_destination_is_coerced_to_string_in_envelope(self) -> None:
         # Telegram stores chat_id as an int. The envelope field is a str, so the
@@ -173,7 +169,6 @@ class TestPublishOutboundMessageBrutalEdges:
         assert publisher.publish_outbound.await_count == 1
 
 
-@pytest.mark.unit
 class TestPublishOutboundFile:
     """publish_outbound_file enqueues an *attachment* envelope (not text) and is
     best-effort: every can't-deliver path returns False without raising."""

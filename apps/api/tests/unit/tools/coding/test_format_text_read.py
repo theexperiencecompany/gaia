@@ -7,11 +7,7 @@ only). The footer/total must be consistent.
 
 from __future__ import annotations
 
-import pytest
-
 from app.agents.tools.coding.read_tool import _format_text_read
-
-pytestmark = pytest.mark.unit
 
 
 def _numbered_lines(out: str) -> list[str]:

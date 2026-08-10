@@ -17,6 +17,7 @@ export const metadata: Metadata = generatePageMetadata({
     "Free AI Assistant",
     "Get Started",
   ],
+  noIndex: true,
 });
 
 // Redirect to the OAuth signup endpoint directly

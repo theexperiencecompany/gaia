@@ -15,11 +15,9 @@ JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 from datetime import UTC, datetime
 import re
 
-from bson import ObjectId
-
 from app.constants.todos import GAIA_TRACKED_LABEL
-from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import Priority, TodoModel, TodoResponse
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse, TodoUpdate
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.todo_canvas_storage import (
     append_log,
@@ -34,6 +32,7 @@ from app.utils.canvas_vector_utils import (
     update_canvas_embedding,
 )
 from app.utils.redis_utils import RedisPoolManager
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 CANVAS_TEMPLATE = """# {title}
@@ -58,12 +57,12 @@ CANVAS_TEMPLATE = """# {title}
 """
 
 
-def _pin_active_todo(docs: list[dict], active_todo_id: str | None) -> None:
+def _pin_active_todo(docs: list[TodoDocument], active_todo_id: str | None) -> None:
     """Move the matching todo to the front of `docs` in-place (no-op if not found)."""
     if not active_todo_id:
         return
     for i, d in enumerate(docs):
-        if str(d["_id"]) == active_todo_id and i > 0:
+        if d.id == active_todo_id and i > 0:
             docs.insert(0, docs.pop(i))
             return
 
@@ -85,17 +84,12 @@ _KEY_DETAILS_RE = re.compile(r"## Key Details\n((?:(?!\n## ).)*)", re.DOTALL)
 _KEY_DETAILS_MAX_LINES = 5
 
 
-async def _extract_canvas_key_details(doc: dict, user_id: str) -> str:
+async def _extract_canvas_key_details(doc: TodoDocument, user_id: str) -> str:
     """Pull the Key Details section text from a tracked todo's canvas (empty on miss)."""
-    todo_id = str(doc["_id"])
     try:
-        canvas = await read_canvas(todo_id, user_id)
+        canvas = await read_canvas(doc.id, user_id)
     except Exception as e:
-        log.warning(
-            "tracked_todo.canvas_read_failed",
-            todo_id=todo_id,
-            error=str(e),
-        )
+        log.warning("tracked_todo.canvas_read_failed", todo_id=doc.id, error=str(e))
         return ""
     if not canvas:
         return ""
@@ -103,32 +97,28 @@ async def _extract_canvas_key_details(doc: dict, user_id: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def _format_signal_entry(doc: dict, key_details: str) -> str:
+def _format_signal_entry(doc: TodoDocument, key_details: str) -> str:
     """Render one tracked todo as a signal-matching context bullet (+ indented key details)."""
-    labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
+    labels = [lbl for lbl in doc.labels if lbl != GAIA_TRACKED_LABEL]
     labels_str = f" [{', '.join(labels)}]" if labels else ""
-    entry = (
-        f'- "{doc.get("title", "")}"{labels_str} '
-        f"(ID: {doc['_id']!s}, vfs: {doc.get('vfs_path', '')})"
-    )
+    entry = f'- "{doc.title}"{labels_str} (ID: {doc.id}, vfs: {doc.vfs_path or ""})'
     if key_details:
         for dl in key_details.split("\n")[:_KEY_DETAILS_MAX_LINES]:
             entry += f"\n    {dl.strip()}"
     return entry
 
 
-def _format_tracked_todo_line(doc: dict, now: datetime, active_todo_id: str | None) -> str:
+def _format_tracked_todo_line(doc: TodoDocument, now: datetime, active_todo_id: str | None) -> str:
     """Format one tracked-todo doc as a context-injection summary line."""
-    age_days = (now - doc.get("created_at", now)).days
-    last_update = (now - doc.get("updated_at", now)).days
-    labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
+    age_days = (now - (doc.created_at or now)).days
+    last_update = (now - (doc.updated_at or now)).days
+    labels = [lbl for lbl in doc.labels if lbl != GAIA_TRACKED_LABEL]
     labels_str = f" [{', '.join(labels)}]" if labels else ""
-    todo_id = str(doc["_id"])
-    prefix = "⭐ ACTIVE " if todo_id == active_todo_id else ""
+    prefix = "⭐ ACTIVE " if doc.id == active_todo_id else ""
     return (
-        f'  {prefix}"{doc["title"]}"{labels_str}{_format_due_string(doc.get("due_date"), now)}'
+        f'  {prefix}"{doc.title}"{labels_str}{_format_due_string(doc.due_date, now)}'
         f" — {age_days}d old, updated {last_update}d ago"
-        f" | ID: {todo_id} | VFS: {doc.get('vfs_path', 'none')}"
+        f" | ID: {doc.id} | VFS: {doc.vfs_path or 'none'}"
     )
 
 
@@ -153,16 +143,14 @@ class TrackedTodoService:
         """Create a todo with VFS canvas and ChromaDB indexing.
 
         1. Creates a regular todo with 'gaia-tracked' label
-        2. Initializes VFS directory with canvas.md + log.md
+        2. Initializes the canvas + log on the todo doc
         3. Sets vfs_path on the todo document
         4. Indexes canvas in ChromaDB
         """
-        # Ensure gaia-tracked label is present
         all_labels = list(labels or [])
         if GAIA_TRACKED_LABEL not in all_labels:
             all_labels.append(GAIA_TRACKED_LABEL)
 
-        # Create the todo
         todo = TodoModel(
             title=title,
             description=description,
@@ -174,7 +162,6 @@ class TrackedTodoService:
         result = await TodoService.create_todo(todo, user_id)
         todo_id = result.id
 
-        # Persist canvas + log + display label on the todo doc itself.
         vfs_path = build_vfs_label(user_id, todo_id)
         canvas_content = initial_canvas or CANVAS_TEMPLATE.format(title=title)
         now = datetime.now(UTC)
@@ -185,18 +172,14 @@ class TrackedTodoService:
             f"- Labels: {', '.join(all_labels)}\n"
         )
 
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id},
-            {
-                "$set": {
-                    "vfs_path": vfs_path,
-                    "canvas_content": canvas_content,
-                    "log_content": log_content,
-                }
-            },
+        await todo_repository.update(
+            todo_id,
+            user_id=user_id,
+            update=TodoUpdate(
+                vfs_path=vfs_path, canvas_content=canvas_content, log_content=log_content
+            ),
         )
 
-        # Index canvas in ChromaDB
         await store_canvas_embedding(
             todo_id=todo_id,
             canvas_content=canvas_content,
@@ -205,9 +188,7 @@ class TrackedTodoService:
             labels=all_labels,
         )
 
-        # Update result with vfs_path
         result.vfs_path = vfs_path
-
         log.info(
             "tracked_todo.created",
             todo_id=todo_id,
@@ -221,18 +202,17 @@ class TrackedTodoService:
     @staticmethod
     async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
         """Complete a tracked todo: append completion to log, mark done, archive label."""
-        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
+        doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             return False
 
         # Guard against double-completion
-        if doc.get("completed"):
+        if doc.completed:
             return True
 
-        vfs_path = doc.get("vfs_path") or build_vfs_label(user_id, todo_id)
+        vfs_path = doc.vfs_path or build_vfs_label(user_id, todo_id)
         now = datetime.now(UTC)
 
-        # Append completion to log
         await append_log(
             todo_id,
             user_id,
@@ -242,36 +222,17 @@ class TrackedTodoService:
         # Switch the display label to the archived form (purely cosmetic).
         archive_path = vfs_path.replace("/todos/", "/todos/archive/")
 
-        # Update todo
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id},
-            {
-                "$set": {
-                    "completed": True,
-                    "completed_at": now,
-                    "vfs_path": archive_path,
-                    "updated_at": now,
-                }
-            },
-        )
-
-        # Invalidate Redis cache so the frontend reflects completion immediately
-        await TodoService._invalidate_cache(
+        # The repository refreshes the entity cache and bumps the generation, so
+        # the frontend reflects completion immediately — no manual invalidation.
+        await todo_repository.update(
+            todo_id,
             user_id=user_id,
-            project_id=str(doc["project_id"]) if doc.get("project_id") else None,
-            todo_id=todo_id,
-            operation="update",
+            update=TodoUpdate(completed=True, completed_at=now, vfs_path=archive_path),
         )
 
-        # Mark as completed in ChromaDB (keep embedding but mark completed)
         await mark_canvas_completed(todo_id)
 
-        log.info(
-            "tracked_todo.completed",
-            todo_id=todo_id,
-            user_id=user_id,
-            summary=summary,
-        )
+        log.info("tracked_todo.completed", todo_id=todo_id, user_id=user_id, summary=summary)
         schedule_gaia_tasks_sync(user_id)
         return True
 
@@ -283,14 +244,7 @@ class TrackedTodoService:
         an ⭐ ACTIVE marker so the agent can quickly identify the run's
         bound canvas.
         """
-        cursor = todos_collection.find(
-            {
-                "user_id": user_id,
-                "labels": GAIA_TRACKED_LABEL,
-                "completed": False,
-            }
-        ).sort("updated_at", -1)
-        docs = await cursor.to_list(length=15)
+        docs = await todo_repository.list_active_tracked(user_id, limit=15)
         if not docs:
             return ""
 
@@ -314,9 +268,7 @@ class TrackedTodoService:
             current = await read_canvas(todo_id, user_id) or ""
         except Exception as e:
             log.warning(
-                "tracked_todo.canvas_read_for_timeline_failed",
-                todo_id=todo_id,
-                error=str(e),
+                "tracked_todo.canvas_read_for_timeline_failed", todo_id=todo_id, error=str(e)
             )
             return False
         if not current:
@@ -327,7 +279,6 @@ class TrackedTodoService:
         heading_pos = current.find(f"\n{heading}")
 
         if heading_pos == -1:
-            # No Timeline section — append a new one at the end.
             new_canvas = current.rstrip() + f"\n\n{heading}\n{line}\n"
         else:
             insert_pos = heading_pos + len(f"\n{heading}")
@@ -336,11 +287,7 @@ class TrackedTodoService:
         try:
             await write_canvas(todo_id, user_id, new_canvas)
         except Exception as e:
-            log.warning(
-                "tracked_todo.canvas_timeline_write_failed",
-                todo_id=todo_id,
-                error=str(e),
-            )
+            log.warning("tracked_todo.canvas_timeline_write_failed", todo_id=todo_id, error=str(e))
             return False
         return True
 
@@ -364,14 +311,7 @@ class TrackedTodoService:
         Includes key IDs (thread_ids, email addresses, event_ids) so the
         agent can match incoming signals to relevant todos.
         """
-        cursor = todos_collection.find(
-            {
-                "user_id": user_id,
-                "labels": GAIA_TRACKED_LABEL,
-                "completed": False,
-            }
-        ).sort("updated_at", -1)
-        docs = await cursor.to_list(length=15)
+        docs = await todo_repository.list_active_tracked(user_id, limit=15)
         if not docs:
             return ""
 
@@ -386,11 +326,11 @@ class TrackedTodoService:
     @staticmethod
     async def reindex_canvas(todo_id: str, user_id: str) -> bool:
         """Re-index a todo's canvas in ChromaDB after the agent writes to it."""
-        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
+        doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             return False
 
-        canvas_content = doc.get("canvas_content")
+        canvas_content = doc.canvas_content
         if not canvas_content:
             return False
 
@@ -398,8 +338,8 @@ class TrackedTodoService:
             todo_id=todo_id,
             canvas_content=canvas_content,
             user_id=user_id,
-            title=doc.get("title", ""),
-            labels=doc.get("labels"),
+            title=doc.title,
+            labels=doc.labels,
         )
 
     @staticmethod
@@ -410,7 +350,8 @@ class TrackedTodoService:
         """
         try:
             pool = await RedisPoolManager.get_pool()
-            await pool.enqueue_job(
+            await enqueue_worker_job(
+                pool,
                 "execute_tracked_todo",
                 todo_id,
                 _defer_until=scheduled_at,

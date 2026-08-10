@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Enterprise project and issue tracking for software teams",
   description:
     "Jira is Atlassian's enterprise-grade issue tracker built for software engineering teams. GAIA is a proactive AI personal assistant that manages your entire digital workflow across email, calendar, tasks, and 50+ integrations.",
-  metaTitle: "Jira Alternative for Personal Productivity | GAIA vs Jira",
+  metaTitle: "Jira Alternative for Personal Productivity — GAIA vs Jira",
   metaDescription:
     "Jira is built for engineering teams — not personal productivity. GAIA is an open-source Jira alternative that manages your email, calendar, and tasks as a proactive AI assistant, with native Jira integration and a free tier.",
   keywords: [

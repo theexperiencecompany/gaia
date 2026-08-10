@@ -75,6 +75,10 @@ const ModelFallbackFrameSchema = z.object({
 const KeepaliveFrameSchema = z.object({ keepalive: z.literal(true) });
 const MainResponseCompleteFrameSchema = z.object({
   main_response_complete: z.literal(true),
+  // The API emits `usage: null` when no metadata was measured
+  // (stream.py: `state.usage_metadata or None`), so the field is nullable
+  // as well as optional.
+  usage: z.record(z.string(), z.unknown()).nullish(),
 });
 const FollowUpActionsFrameSchema = z.object({
   follow_up_actions: z.array(z.string()),

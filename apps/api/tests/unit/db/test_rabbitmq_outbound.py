@@ -31,7 +31,6 @@ def connected_publisher() -> tuple[RabbitMQPublisher, MagicMock]:
     return pub, channel
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestPublishWithRetry:
     async def test_publish_outbound_does_not_declare_the_queue(self, connected_publisher) -> None:
@@ -62,7 +61,6 @@ class TestPublishWithRetry:
         channel.declare_queue.assert_awaited_once()  # declare=True branch
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestDeclareOutboundTopology:
     async def test_declares_dlx_work_queues_and_bound_dlqs(self, connected_publisher) -> None:
@@ -98,7 +96,6 @@ class TestDeclareOutboundTopology:
         assert queue_mock.bind.await_count == len(OUTBOUND_QUEUES)
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestLazyOutboundTopologyDeclare:
     """The first publish_outbound declares the topology lazily so a message

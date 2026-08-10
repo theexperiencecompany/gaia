@@ -1,36 +1,49 @@
-"""E2E test: GAIA graph lifecycle — compile, invoke, checkpoint, and state integrity.
+"""E2E tests: workflow execution, plus the agent-graph lifecycle it runs on.
+
+Sibling: ``tests/integration/test_workflow_execution.py`` covers the workflow
+service layer in isolation (mocked I/O); this file drives the real compiled
+agent graphs end to end.
 
 WHAT THIS TESTS (REAL GAIA CODE):
-- ``build_comms_graph`` from ``app.agents.core.graph_builder.build_graph``
-  can be constructed with in_memory_checkpointer=True (uses InMemorySaver
-  instead of PostgreSQL — a production flag).
+- ``execute_workflow_by_id`` / ``execute_workflow_as_chat`` from
+  ``app.workers.tasks.workflow_tasks`` — the real entry point a workflow fire
+  goes through — together with ``app.services.workflow.execution_service``:
+  a step that fails partway through a multi-step workflow must surface as a
+  ``failed`` execution record naming the failing step plus a user notification,
+  never as a silent success.
+- ``build_comms_graph`` / ``build_executor_graph`` from
+  ``app.agents.core.graph_builder.build_graph`` compile with the REAL middleware
+  stack (``create_comms_middleware`` / ``create_executor_middleware``) and that
+  stack is reachable at runtime: its hooks run and its tools are bound.
 - The GAIA ``State`` schema from ``app.override.langgraph_bigtool.utils``
-  contains the ``todos`` channel, ``selected_tool_ids``, and ``messages``.
+  contains the ``todos`` channel and ``selected_tool_ids``.
 - ``MemorySaver`` checkpointing accumulates state across multiple graph turns.
 - Graph thread isolation: separate thread_ids produce independent state.
-- ``create_agent`` (real GAIA override) compiles a graph that uses the
-  GAIA ``State`` TypedDict, not the generic LangGraph ``MessagesState``.
 
-Mock surfaces:
-- LLM: FakeMessagesListChatModel
-- store: InMemoryStore (no ChromaDB, no real tool indexing)
-- Checkpointer: MemorySaver (no PostgreSQL)
-- External API calls (memory service, tool registry): mocked via patch
-
-DELETE ``app/agents/core/graph_builder/build_graph.py`` → these tests FAIL.
-DELETE ``app/override/langgraph_bigtool/utils.py`` → these tests FAIL.
-DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
+Mock surfaces (I/O edges only):
+- LLM: FakeMessagesListChatModel / a scripted stand-in for the agent turn
+- store: InMemoryStore (no ChromaDB), checkpointer: MemorySaver (no PostgreSQL)
+- Mongo repositories, Redis-backed scheduler, notification delivery
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph.message import add_messages
 from langgraph.store.memory import InMemoryStore
 import pytest
 
+from app.models.workflow_execution_models import (
+    WorkflowExecutionDocument,
+    WorkflowExecutionUpdate,
+)
+from app.models.workflow_models import (
+    TriggerConfig,
+    TriggerType,
+    Workflow,
+    WorkflowStep,
+)
 from app.override.langgraph_bigtool.utils import _replace_todos, dedupe_str_list
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel
@@ -77,29 +90,6 @@ class TestWorkflowExecution:
             "dedupe_str_list must remove duplicates while preserving first-seen order."
         )
         assert len(result) == 3
-
-    def test_messages_channel_accumulates(self):
-        """The 'messages' channel must accumulate across successive updates.
-
-        add_messages is the LangGraph reducer used by the messages channel in
-        State (inherited from MessagesState). Applying it twice must grow the
-        total message count — i.e., messages are appended, not replaced.
-
-        This exercises the same accumulation contract relied on by the
-        multi-turn checkpointing test below.
-        """
-        first_batch = [HumanMessage(content="Hello")]
-        second_batch = [AIMessage(content="Hi there")]
-
-        after_first = add_messages([], first_batch)
-        after_second = add_messages(after_first, second_batch)
-
-        assert len(after_second) == 2, (
-            "add_messages must accumulate: two successive applications "
-            "must produce a list with both messages."
-        )
-        assert after_second[0].content == "Hello"
-        assert after_second[1].content == "Hi there"
 
     async def test_compiled_graph_returns_gaia_state_on_invoke(
         self, thread_config, in_memory_store, memory_saver
@@ -267,36 +257,37 @@ class TestWorkflowExecution:
             f"Thread B must NOT contain thread A's sentinel. Got: {all_content_b!r}"
         )
 
-    async def test_build_comms_graph_accepts_in_memory_checkpointer_flag(self):
-        """build_comms_graph must compile with in_memory_checkpointer=True.
+    async def test_comms_graph_runs_its_real_middleware_stack(self):
+        """build_comms_graph must wire the REAL comms middleware, and it must run.
 
-        This exercises the real build_comms_graph function from build_graph.py.
-        When in_memory_checkpointer=True, it should use InMemorySaver instead of
-        the PostgreSQL checkpointer — which is exactly what tests need.
-
-        If build_graph.py is deleted, this test fails immediately on import.
+        The middleware stack is core orchestration, not an I/O edge, so it is
+        deliberately NOT mocked here: ``create_comms_middleware`` builds the real
+        stack and the graph is invoked for real. A spy that delegates to the real
+        ``LLMAccountingMiddleware.aafter_model`` proves the stack is actually
+        reached during the turn rather than merely constructed — replacing the
+        middleware list with ``[]`` (or dropping the MiddlewareExecutor wiring in
+        ``create_agent``) makes this test fail.
         """
-
-        # Import the real build_comms_graph from production code
         from app.agents.core.graph_builder.build_graph import build_comms_graph
+        from app.agents.middleware.accounting import LLMAccountingMiddleware
 
         fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="Comms agent response.")])
 
-        async def _noop_follow_up(  # NOSONAR — async required for LangGraph hook interface
-            state, config, store
-        ):
+        async def _noop_hook(state, config, store):  # NOSONAR — LangGraph hook interface
             return state
 
-        # Patch at the build_graph module namespace (where names are imported)
+        agents_that_ran_middleware: list[str] = []
+        real_aafter_model = LLMAccountingMiddleware.aafter_model
+
+        async def _spy_aafter_model(self, *args, **kwargs):
+            agents_that_ran_middleware.append(self.agent_name)
+            return await real_aafter_model(self, *args, **kwargs)
+
         with (
             patch(
                 "app.agents.core.graph_builder.build_graph.get_tools_store",
                 new_callable=AsyncMock,
                 return_value=InMemoryStore(),
-            ),
-            patch(
-                "app.agents.core.graph_builder.build_graph.create_comms_middleware",
-                return_value=[],
             ),
             patch(
                 "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
@@ -305,47 +296,125 @@ class TestWorkflowExecution:
             ),
             patch(
                 "app.agents.core.graph_builder.build_graph.follow_up_actions_node",
-                new=_noop_follow_up,
+                new=_noop_hook,
             ),
+            patch("app.agents.core.graph_builder.build_graph.memory_node", new=_noop_hook),
+            patch.object(LLMAccountingMiddleware, "aafter_model", _spy_aafter_model),
         ):
             async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
-                # The graph must be a compiled LangGraph object
-                assert graph is not None
-                assert hasattr(graph, "ainvoke"), (
-                    "build_comms_graph must return a compiled graph with ainvoke()"
-                )
-                assert hasattr(graph, "astream"), (
-                    "build_comms_graph must return a compiled graph with astream()"
-                )
-
-                # Invoke the graph to prove it actually runs, not just compiles
-                thread_id = str(uuid4())
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content="Hello from comms graph test")]},
                     config={
                         "configurable": {
-                            "thread_id": thread_id,
+                            "thread_id": str(uuid4()),
                             "user_id": str(uuid4()),
                         }
                     },
                 )
-                assert isinstance(result, dict), "ainvoke must return a dict of state values"
-                assert "messages" in result, "Comms graph result must contain 'messages' key"
 
-    async def test_build_executor_graph_accepts_in_memory_checkpointer_flag(self):
-        """build_executor_graph must compile with in_memory_checkpointer=True.
+        assert "messages" in result, "Comms graph result must contain 'messages' key"
+        assert agents_that_ran_middleware == ["comms_agent"], (
+            "The real comms middleware stack must run exactly once for a one-turn "
+            f"comms invocation. Middleware runs observed: {agents_that_ran_middleware!r}"
+        )
 
-        If build_graph.py is deleted, this test fails immediately on import.
+    async def test_comms_graph_binds_its_memory_tools(self):
+        """The comms agent's memory tools must be bound, not rejected as unbound.
+
+        ``search_memory`` is one of the three tools the comms agent is allowed to
+        call. If it were dropped from the registry / initial_tool_ids, the real
+        ``reject_unbound_tools`` node would answer the call with an "is not bound"
+        error instead of running it — which is what this asserts against.
+        """
+        from app.agents.core.graph_builder.build_graph import build_comms_graph
+
+        fake_llm = BindableToolsFakeModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {"name": "search_memory", "args": {"query": "birthday"}, "id": "call-1"}
+                    ],
+                ),
+                AIMessage(content="Nothing found."),
+            ]
+        )
+
+        async def _noop_hook(state, config, store):  # NOSONAR — LangGraph hook interface
+            return state
+
+        with (
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_tools_store",
+                new_callable=AsyncMock,
+                return_value=InMemoryStore(),
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.follow_up_actions_node",
+                new=_noop_hook,
+            ),
+            patch("app.agents.core.graph_builder.build_graph.memory_node", new=_noop_hook),
+        ):
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
+                result = await graph.ainvoke(
+                    {"messages": [HumanMessage(content="What did I say about birthdays?")]},
+                    config={
+                        "configurable": {
+                            "thread_id": str(uuid4()),
+                            "user_id": str(uuid4()),
+                        }
+                    },
+                )
+
+        tool_messages = [
+            m
+            for m in result["messages"]
+            if isinstance(m, ToolMessage) and m.name == "search_memory"
+        ]
+        assert tool_messages, "search_memory must produce a ToolMessage — the comms graph ran it"
+        assert "is not bound" not in tool_messages[0].text, (
+            "search_memory must be bound on the comms agent, but reject_unbound_tools "
+            f"rejected it: {tool_messages[0].text!r}"
+        )
+
+    async def test_executor_graph_binds_the_real_subagent_middleware_tool(self):
+        """build_executor_graph must wire the REAL executor middleware stack.
+
+        ``spawn_subagent`` exists only because ``create_executor_middleware``
+        contributes a ``SubagentMiddleware`` whose tools ``create_agent`` binds.
+        Mocking the middleware factory to ``[]`` (as this test used to) hides that
+        wiring completely: the model's ``spawn_subagent`` call then falls through
+        to ``reject_unbound_tools``. Asserting the call is NOT rejected proves the
+        real middleware stack is present and its tool is reachable.
         """
         import ast
         import inspect
 
+        from langchain_core.tools import tool as lc_tool
+
         from app.agents.core.graph_builder.build_graph import build_executor_graph
         from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 
-        fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="Executor agent response.")])
-
-        from langchain_core.tools import tool as lc_tool
+        fake_llm = BindableToolsFakeModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "spawn_subagent",
+                            "args": {"task": "summarize the inbox"},
+                            "id": "call-1",
+                        }
+                    ],
+                ),
+                AIMessage(content="Executor agent response."),
+            ]
+        )
 
         def _make_stub(name: str):
             async def _stub(input: str = "") -> str:  # noqa: A002
@@ -387,10 +456,6 @@ class TestWorkflowExecution:
                 return_value=InMemoryStore(),
             ),
             patch(
-                "app.agents.core.graph_builder.build_graph.create_executor_middleware",
-                return_value=[],
-            ),
-            patch(
                 "app.agents.core.graph_builder.build_graph.get_retrieve_tools_function",
                 return_value=_fake_retrieve_tools,
             ),
@@ -403,21 +468,312 @@ class TestWorkflowExecution:
             async with build_executor_graph(
                 chat_llm=fake_llm, in_memory_checkpointer=True
             ) as graph:
-                assert graph is not None
-                assert hasattr(graph, "ainvoke"), (
-                    "build_executor_graph must return a compiled graph with ainvoke()"
-                )
-
-                # Invoke the graph to prove it actually runs, not just compiles
-                thread_id = str(uuid4())
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content="Hello from executor graph test")]},
                     config={
                         "configurable": {
-                            "thread_id": thread_id,
+                            "thread_id": str(uuid4()),
                             "user_id": str(uuid4()),
                         }
                     },
                 )
-                assert isinstance(result, dict), "ainvoke must return a dict of state values"
-                assert "messages" in result, "Executor graph result must contain 'messages' key"
+
+        assert "messages" in result, "Executor graph result must contain 'messages' key"
+        spawn_results = [
+            m
+            for m in result["messages"]
+            if isinstance(m, ToolMessage) and m.name == "spawn_subagent"
+        ]
+        assert spawn_results, (
+            "spawn_subagent must produce a ToolMessage — the executor graph must route "
+            "the call to the SubagentMiddleware tool."
+        )
+        assert "is not bound" not in spawn_results[0].text, (
+            "spawn_subagent must be bound via the real SubagentMiddleware, but "
+            f"reject_unbound_tools rejected it: {spawn_results[0].text!r}"
+        )
+
+
+class _InMemoryExecutionRecords:
+    """Stand-in for the Mongo side of ``workflow_executions_repository``.
+
+    Only the three base CRUD primitives are replaced, so the repository's own
+    ``complete()`` (status/duration/error-message assembly) and both execution
+    service functions still run for real.
+    """
+
+    def __init__(self) -> None:
+        self.records: dict[str, WorkflowExecutionDocument] = {}
+
+    async def create(self, document: WorkflowExecutionDocument) -> WorkflowExecutionDocument:
+        self.records[document.execution_id] = document
+        return document
+
+    async def get(self, execution_id: str, **_: object) -> WorkflowExecutionDocument | None:
+        return self.records.get(execution_id)
+
+    async def update(
+        self, execution_id: str, update: WorkflowExecutionUpdate
+    ) -> WorkflowExecutionDocument | None:
+        existing = self.records.get(execution_id)
+        if existing is None:
+            return None
+        updated = existing.model_copy(update=update.model_dump(exclude_unset=True))
+        self.records[execution_id] = updated
+        return updated
+
+    def only(self) -> WorkflowExecutionDocument:
+        assert len(self.records) == 1, f"Expected exactly one execution, got {self.records!r}"
+        return next(iter(self.records.values()))
+
+
+def _make_multi_step_workflow(user_id: str) -> Workflow:
+    return Workflow(
+        user_id=user_id,
+        title="Morning briefing",
+        description="Summarize overnight mail and post it to Slack.",
+        prompt="Summarize overnight mail and post it to Slack.",
+        trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
+        steps=[
+            WorkflowStep(id="s1", title="Read overnight email", category="gmail", description="a"),
+            WorkflowStep(
+                id="s2", title="Summarize the thread", category="general", description="b"
+            ),
+            WorkflowStep(id="s3", title="Post to Slack", category="slack", description="c"),
+        ],
+    )
+
+
+@pytest.mark.e2e
+class TestWorkflowExecutionFailurePropagation:
+    """E2E tests for the real workflow-execution path.
+
+    Drives ``execute_workflow_by_id`` — the function an actual workflow fire
+    (manual "run now", a schedule, or an integration trigger) lands on — through
+    ``execute_workflow_as_chat`` and ``app.services.workflow.execution_service``.
+    Only I/O edges are replaced: the Redis-backed scheduler, the Mongo side of the
+    execution/workflow repositories, notification delivery, and the agent turn
+    that stands in for the LLM.
+    """
+
+    @pytest.fixture
+    def workflow_execution_env(self, monkeypatch):
+        """Patch every I/O edge of the execution path and expose the observable ones."""
+        from app.api.v1.middleware import tiered_rate_limiter
+        from app.db.repositories.workflow_executions import workflow_executions_repository
+        from app.db.repositories.workflows import workflow_repository
+        from app.services.workflow.scheduler import WorkflowScheduler
+        from app.workers.tasks import workflow_tasks
+
+        records = _InMemoryExecutionRecords()
+        monkeypatch.setattr(workflow_executions_repository, "create", records.create)
+        monkeypatch.setattr(workflow_executions_repository, "get", records.get)
+        monkeypatch.setattr(workflow_executions_repository, "update", records.update)
+
+        recorded_stats: list[bool] = []
+
+        async def _record_execution(_workflow_id, _user_id, *, successful):
+            recorded_stats.append(successful)
+            return True
+
+        monkeypatch.setattr(workflow_repository, "record_execution", _record_execution)
+
+        notifications: list[object] = []
+
+        async def _create_notification(request):
+            notifications.append(request)
+
+        monkeypatch.setattr(
+            workflow_tasks.notification_service, "create_notification", _create_notification
+        )
+
+        monkeypatch.setattr(WorkflowScheduler, "initialize", AsyncMock())
+        monkeypatch.setattr(WorkflowScheduler, "close", AsyncMock())
+        monkeypatch.setattr(
+            workflow_tasks,
+            "get_or_create_workflow_conversation",
+            AsyncMock(return_value="conv-workflow-1"),
+        )
+        monkeypatch.setattr(
+            workflow_tasks, "add_workflow_execution_messages", AsyncMock(return_value=None)
+        )
+        monkeypatch.setattr(
+            workflow_tasks, "get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})
+        )
+        monkeypatch.setattr(
+            tiered_rate_limiter.tiered_limiter, "check_and_increment", AsyncMock(return_value={})
+        )
+
+        return {
+            "records": records,
+            "recorded_stats": recorded_stats,
+            "notifications": notifications,
+        }
+
+    @staticmethod
+    def _install_stepwise_agent(monkeypatch, failing_step_title: str | None) -> list[str]:
+        """Replace the agent turn with one that walks the workflow's steps in order.
+
+        Returns the list the stand-in appends each completed step title to, so a
+        test can prove the run stopped *partway* rather than after every step.
+        """
+        from app.agents.core import agent as agent_module
+
+        completed: list[str] = []
+
+        async def _run_steps(request, conversation_id, user, trigger_context):
+            for step in request.selectedWorkflow.steps:
+                if step["title"] == failing_step_title:
+                    raise RuntimeError(
+                        f"Step '{step['title']}' failed: Gmail API returned 503 Service Unavailable"
+                    )
+                completed.append(step["title"])
+
+        monkeypatch.setattr(agent_module, "call_agent_silent", _run_steps)
+        return completed
+
+    async def test_step_failure_records_a_failed_execution_naming_the_step(
+        self, monkeypatch, workflow_execution_env
+    ):
+        """A step that fails partway through must surface as a failed execution.
+
+        The user-visible outcome of a broken workflow run is its execution record
+        and the failure notification. Both must say the run failed and carry the
+        failing step's identity — a swallowed step error (``execute_workflow_as_chat``
+        returning instead of re-raising) would silently record 'success'.
+        """
+        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+
+        workflow = _make_multi_step_workflow(user_id=str(uuid4()))
+        completed = self._install_stepwise_agent(
+            monkeypatch, failing_step_title="Summarize the thread"
+        )
+
+        from app.services.workflow.scheduler import WorkflowScheduler
+
+        monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
+
+        result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
+
+        assert completed == ["Read overnight email"], (
+            "Execution must stop at the failing step — steps after it must not run. "
+            f"Completed: {completed!r}"
+        )
+
+        execution = workflow_execution_env["records"].only()
+        assert execution.status == "failed", (
+            f"A failed step must record status 'failed', got {execution.status!r}. "
+            "A step failure that reaches the completion record as 'success' means the "
+            "error was swallowed somewhere on the way up."
+        )
+        assert execution.error_message is not None
+        assert "Summarize the thread" in execution.error_message, (
+            "The execution record must name the step that failed, otherwise the user "
+            f"cannot tell what broke. Got: {execution.error_message!r}"
+        )
+        assert "503" in execution.error_message, (
+            f"The underlying cause must survive into the record. Got: {execution.error_message!r}"
+        )
+        assert execution.summary is None, "A failed run must not carry a success summary"
+        assert execution.completed_at is not None and execution.duration_seconds is not None
+
+        assert workflow_execution_env["recorded_stats"] == [False], (
+            "The run must be counted as an unsuccessful execution exactly once, got "
+            f"{workflow_execution_env['recorded_stats']!r}"
+        )
+
+        notifications = workflow_execution_env["notifications"]
+        assert len(notifications) == 1, f"Expected one failure notification, got {notifications!r}"
+        assert notifications[0].user_id == workflow.user_id
+        assert workflow.title in notifications[0].content.title
+        assert notifications[0].metadata["workflow_id"] == workflow.id
+
+        assert "Error executing workflow" in result, (
+            f"The task's return value must report the failure, got {result!r}"
+        )
+
+    async def test_all_steps_succeeding_records_a_successful_execution(
+        self, monkeypatch, workflow_execution_env
+    ):
+        """Control for the failure test: an uneventful run must record success.
+
+        Without this, a mutation that hard-codes 'failed' everywhere would still
+        leave the failure test green.
+        """
+        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+
+        workflow = _make_multi_step_workflow(user_id=str(uuid4()))
+        completed = self._install_stepwise_agent(monkeypatch, failing_step_title=None)
+
+        from app.services.workflow.scheduler import WorkflowScheduler
+
+        monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
+
+        result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
+
+        assert completed == [
+            "Read overnight email",
+            "Summarize the thread",
+            "Post to Slack",
+        ], f"Every step must run when none fails. Completed: {completed!r}"
+
+        execution = workflow_execution_env["records"].only()
+        assert execution.status == "success"
+        assert execution.error_message is None
+        assert execution.conversation_id == "conv-workflow-1", (
+            "A successful run must link the conversation holding its messages"
+        )
+        assert workflow_execution_env["recorded_stats"] == [True]
+        assert workflow_execution_env["notifications"] == [], (
+            "A successful run must not raise a failure notification"
+        )
+        assert "executed successfully" in result
+
+    async def test_execution_record_is_completed_even_when_notification_delivery_fails(
+        self, monkeypatch, workflow_execution_env
+    ):
+        """Notification delivery is best-effort; it must not lose the failure record.
+
+        If the notification service is down, the user still needs the execution
+        history to show the run failed.
+        """
+        from app.workers.tasks import workflow_tasks
+        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+
+        workflow = _make_multi_step_workflow(user_id=str(uuid4()))
+        self._install_stepwise_agent(monkeypatch, failing_step_title="Post to Slack")
+
+        from app.services.workflow.scheduler import WorkflowScheduler
+
+        monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
+        monkeypatch.setattr(
+            workflow_tasks.notification_service,
+            "create_notification",
+            AsyncMock(side_effect=RuntimeError("notification backend unreachable")),
+        )
+
+        result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
+
+        execution = workflow_execution_env["records"].only()
+        assert execution.status == "failed"
+        assert "Post to Slack" in (execution.error_message or "")
+        assert workflow_execution_env["recorded_stats"] == [False]
+        assert "Error executing workflow" in result
+
+    async def test_missing_workflow_creates_no_execution_record(
+        self, monkeypatch, workflow_execution_env
+    ):
+        """A fire for a deleted workflow must not leave a dangling 'running' record."""
+        from app.services.workflow.scheduler import WorkflowScheduler
+        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+
+        monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=None))
+
+        result = await execute_workflow_by_id({}, "wf_deleted", {"trigger_type": "manual"})
+
+        assert result == "Workflow wf_deleted not found"
+        assert workflow_execution_env["records"].records == {}, (
+            "No execution record may be created for a workflow that no longer exists"
+        )
+        assert workflow_execution_env["recorded_stats"] == []
+        assert workflow_execution_env["notifications"] == []

@@ -78,7 +78,9 @@ export function AgentControlBar({
   const handleMicPress = React.useCallback(() => {
     // Every mic-toggle click is a user gesture — reuse it to (re)unlock
     // audio playback too, so sound and mic both recover from one tap.
-    room?.startAudio().catch(() => {});
+    room?.startAudio().catch(() => {
+      /* best-effort unlock: mic toggle still proceeds regardless */
+    });
     microphoneToggle.toggle();
   }, [room, microphoneToggle.toggle]);
 
