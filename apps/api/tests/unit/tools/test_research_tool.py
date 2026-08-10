@@ -528,8 +528,11 @@ class TestDeepResearch:
     ) -> None:
         mock_decompose.return_value = ["sub-q1"]
         mock_ddg.return_value = {"results": [{"url": "https://a.com"}]}
-        # No "snippet" key at all — the empty-string default must kick in.
-        mock_rank.return_value = [{"url": "https://a.com"}]
+        # No "snippet" key at all — the empty-string default must kick in. The
+        # entry also carries a truthy "content" field: the no-snippet branch
+        # must STILL force content=None (overriding anything the ranked entry
+        # carried), so the source is dropped either way.
+        mock_rank.return_value = [{"url": "https://a.com", "content": "provider content"}]
         mock_batch_crawl4ai.return_value = ({}, {"https://a.com": "fail"})
         mock_httpx.side_effect = Exception("fail")
 
@@ -540,8 +543,9 @@ class TestDeepResearch:
             config=_make_config(),
         )
         assert result["error"] is None
-        # No valid sources (content is None), so source_count = 0, the entry is
-        # filtered out of `sources`, and nothing is cached.
+        # No valid sources (content is None — the entry's own "content" field
+        # was overridden), so source_count = 0, the entry is filtered out of
+        # `sources`, and nothing is cached.
         assert result["sources"] == []
         assert result["source_count"] == 0
         assert result["failed_sources"] == 1
