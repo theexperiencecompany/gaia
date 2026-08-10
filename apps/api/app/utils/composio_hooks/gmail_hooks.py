@@ -7,7 +7,7 @@ for customizing tool descriptions and defaults.
 """
 
 from collections.abc import Sequence
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
@@ -337,7 +337,7 @@ def gmail_compose_before_hook(
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
 def gmail_message_detail_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process single message response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -359,7 +359,7 @@ def gmail_message_detail_after_hook(
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_THREAD_ID"])
 def gmail_thread_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process thread response and send data to frontend."""
     try:
         writer = get_stream_writer()
@@ -370,10 +370,13 @@ def gmail_thread_after_hook(
         # Process the raw thread response
         processed_response = process_get_thread_response(response["data"])
 
-        if writer is not None and processed_response.get("messages"):
+        messages = processed_response.get("messages")
+        if writer is not None and isinstance(messages, list):
             # Transform to EmailThreadData format for frontend
             thread_messages = []
-            for msg in processed_response["messages"]:
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
                 thread_messages.append(
                     {
                         "id": msg.get("id", ""),
@@ -411,7 +414,7 @@ def gmail_thread_after_hook(
 @register_after_hook(tools=["GMAIL_LIST_DRAFTS"])
 def gmail_drafts_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process drafts list response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -433,7 +436,7 @@ def gmail_drafts_after_hook(
 @register_after_hook(tools=["GMAIL_GET_DRAFT"])
 def gmail_draft_detail_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process single draft response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -727,7 +730,7 @@ def gmail_search_people_before_hook(
 @register_after_hook(tools=["GMAIL_FETCH_EMAIL_BY_ID"])
 def gmail_fetch_by_id_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process single email fetch response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -749,7 +752,7 @@ def gmail_fetch_by_id_after_hook(
 @register_after_hook(tools=["GMAIL_SEND_DRAFT"])
 def gmail_send_draft_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process draft sending response."""
     try:
         writer = get_stream_writer()
@@ -792,7 +795,7 @@ def gmail_send_draft_after_hook(
 @register_after_hook(tools=["GMAIL_GET_CONTACTS"])
 def gmail_get_contacts_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process contacts list response to minimize raw data."""
     try:
         writer = get_stream_writer()
@@ -837,7 +840,7 @@ def gmail_get_contacts_after_hook(
 @register_after_hook(tools=["GMAIL_SEARCH_PEOPLE"])
 def gmail_search_people_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process people search response to minimize raw data."""
     try:
         writer = get_stream_writer()

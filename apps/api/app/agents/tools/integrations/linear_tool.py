@@ -94,11 +94,11 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_RESOLVE_CONTEXT(
         request: ResolveContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Resolve fuzzy names to Linear IDs."""
         del execute_request  # unused: framework-mandated custom-tool signature
-        result: dict[str, Any] = {}
+        result: dict[str, object] = {}
 
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
         viewer = viewer_data.get("viewer", {})
@@ -152,8 +152,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GET_MY_TASKS(
         request: GetMyTasksInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get the current user's assigned issues."""
         del execute_request  # unused: framework-mandated custom-tool signature
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
@@ -208,7 +208,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             else:
                 filtered.append(issue)
 
-        def sort_key(issue: dict[str, Any]) -> tuple[Any, ...]:
+        def sort_key(issue: dict[str, object]) -> tuple[Any, ...]:
             p = issue.get("priority", 99)
             due = issue.get("dueDate") or "9999-12-31"
             return (p, due)
@@ -227,8 +227,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_SEARCH_ISSUES(
         request: SearchIssuesInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Search issues using natural language queries."""
         del execute_request  # unused: framework-mandated custom-tool signature
         issues_data = graphql_request(
@@ -275,8 +275,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GET_ISSUE_FULL_CONTEXT(
         request: GetIssueFullContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get complete issue details in one call."""
         del execute_request  # unused: framework-mandated custom-tool signature
         if not request.issue_id and not request.issue_identifier:
@@ -402,12 +402,12 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_CREATE_ISSUE(
         request: CreateIssueInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Create an issue with full field support and optional sub-issues."""
         del execute_request  # unused: framework-mandated custom-tool signature
         # Build input data
-        input_data: dict[str, Any] = {
+        input_data: dict[str, object] = {
             "teamId": request.team_id,
             "title": request.title,
         }
@@ -440,7 +440,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             raise RuntimeError("Failed to create issue")
 
         created = create_result.get("issue", {})
-        response: dict[str, Any] = {
+        response: dict[str, object] = {
             "issue": {
                 "id": created.get("id"),
                 "identifier": created.get("identifier"),
@@ -456,7 +456,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             errors = []
 
             for sub in request.sub_issues:
-                sub_input: dict[str, Any] = {
+                sub_input: dict[str, object] = {
                     "teamId": request.team_id,
                     "title": sub.title,
                     "parentId": parent_id,
@@ -495,8 +495,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_CREATE_SUB_ISSUES(
         request: CreateSubIssuesInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Create multiple sub-issues under a parent issue."""
         del execute_request  # unused: framework-mandated custom-tool signature
         parent_id = request.parent_issue_id
@@ -536,7 +536,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         errors = []
 
         for sub_issue in request.sub_issues:
-            input_data: dict[str, Any] = {
+            input_data: dict[str, object] = {
                 "teamId": team_id,
                 "title": sub_issue.title,
                 "parentId": parent_id,
@@ -573,8 +573,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_CREATE_ISSUE_RELATION(
         request: CreateIssueRelationInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Create a relationship between two issues."""
         del execute_request  # unused: framework-mandated custom-tool signature
         type_mapping = {
@@ -614,8 +614,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GET_ISSUE_ACTIVITY(
         request: GetIssueActivityInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get the change history for an issue."""
         del execute_request  # unused: framework-mandated custom-tool signature
         issue_id = request.issue_id
@@ -689,8 +689,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GET_ACTIVE_SPRINT(
         request: GetActiveSprintInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get the current/active sprint context."""
         del execute_request  # unused: framework-mandated custom-tool signature
         data = graphql_request(QUERY_ACTIVE_CYCLES, None, auth_credentials)
@@ -703,7 +703,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         sprints = []
         for cycle in cycles:
             issues = cycle.get("issues", {}).get("nodes", [])
-            by_state: dict[str, list[dict[str, Any]]] = {
+            by_state: dict[str, list[dict[str, object]]] = {
                 "backlog": [],
                 "unstarted": [],
                 "started": [],
@@ -748,14 +748,14 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_BULK_UPDATE_ISSUES(
         request: BulkUpdateIssuesInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Batch update multiple issues at once."""
         del execute_request  # unused: framework-mandated custom-tool signature
         if not request.issue_ids:
             raise ValueError("No issue IDs provided")
 
-        input_data: dict[str, Any] = {}
+        input_data: dict[str, object] = {}
         if request.state_id is not None:
             input_data["stateId"] = request.state_id
         if request.priority is not None:
@@ -794,8 +794,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GET_NOTIFICATIONS(
         request: GetNotificationsInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get the current user's notifications."""
         del execute_request  # unused: framework-mandated custom-tool signature
         data = graphql_request(
@@ -836,8 +836,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GET_WORKSPACE_CONTEXT(
         request: GetWorkspaceContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get full workspace context for session initialization."""
         del request, execute_request  # unused: framework-mandated custom-tool signature
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
@@ -911,8 +911,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Linear workspace context snapshot: current user, teams, and urgent items.
 
         Zero required parameters. Returns full workspace state for session initialization.

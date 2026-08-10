@@ -8,14 +8,14 @@ dispatcher; :func:`extract_tool_data`, :func:`normalize_custom_event`, and
 LangGraph stream processor in ``stream_utils``, and the legacy
 ``call_agent_silent`` path in ``agent_utils``.
 
-Two shapes here stay ``dict[str, Any]`` on purpose (Type Safety item 14):
+Two shapes here stay ``dict[str, object]`` on purpose (Type Safety item 14):
 
 * the chunk payloads themselves — an agent chunk is arbitrary JSON emitted by
   whichever tool/hook wrote it, and ``normalize_custom_event`` passes anything
   it does not recognise straight through, so there is no closed shape to name;
 * :func:`extract_tool_data`'s ``{tool_data?, other_data?, tool_output?}``
   envelope — it is consumed by ``utils/stream_publishers`` and
-  ``utils/agent_utils``, both of which declare it as a plain ``dict[str, Any]``
+  ``utils/agent_utils``, both of which declare it as a plain ``dict[str, object]``
   parameter, so naming it would have to retype those in the same pass.
 """
 
@@ -26,6 +26,7 @@ from typing import Any, cast
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
 from app.models.stream_events import TodoProgressFrame
+from app.utils.json_helpers import dict_bag, text_bag
 from app.utils.stream_publishers import (
     accumulate_todo_progress,
     publish_other_data,
@@ -37,9 +38,9 @@ from app.utils.stream_publishers import (
 async def process_data_chunk(
     stream_id: str,
     chunk: str,
-    tool_data: dict[str, Any],
+    tool_data: dict[str, object],
     tool_outputs: dict[str, str],
-    todo_progress_accumulated: dict[str, Any],
+    todo_progress_accumulated: dict[str, object],
     follow_up_actions: list[str],
     *,
     forward_subagents: bool = False,
@@ -89,7 +90,7 @@ async def process_data_chunk(
     if chunk_json and "todo_progress" in chunk_json:
         await stream_manager.publish_chunk(
             stream_id,
-            f"data: {json.dumps(TodoProgressFrame(todo_progress=chunk_json['todo_progress']).model_dump())}\n\n",
+            f"data: {json.dumps(TodoProgressFrame(todo_progress=dict_bag(chunk_json, 'todo_progress')).model_dump())}\n\n",
         )
 
     response_text = extract_response_text(chunk)
@@ -102,7 +103,7 @@ async def process_data_chunk(
 
 
 async def _forward_subagent_lifecycle(
-    stream_id: str, chunk_json: dict[str, Any], tool_data: dict[str, Any]
+    stream_id: str, chunk_json: dict[str, object], tool_data: dict[str, object]
 ) -> bool:
     """Forward subagent start/end events to the client and accumulate them.
 
@@ -112,7 +113,12 @@ async def _forward_subagent_lifecycle(
     forwarded = False
     if "subagent_start" in chunk_json:
         start = chunk_json["subagent_start"]
-        tool_data.setdefault("subagent_starts", {})[start["subagent_id"]] = start
+        if isinstance(start, dict):
+            starts = tool_data.get("subagent_starts")
+            if not isinstance(starts, dict):
+                starts = {}
+                tool_data["subagent_starts"] = starts
+            starts[text_bag(start, "subagent_id")] = start
         await stream_manager.publish_chunk(
             stream_id,
             f"data: {json.dumps({'subagent_start': start})}\n\n",
@@ -120,7 +126,12 @@ async def _forward_subagent_lifecycle(
         forwarded = True
     if "subagent_end" in chunk_json:
         end = chunk_json["subagent_end"]
-        tool_data.setdefault("subagent_ends", {})[end["subagent_id"]] = end
+        if isinstance(end, dict):
+            ends = tool_data.get("subagent_ends")
+            if not isinstance(ends, dict):
+                ends = {}
+                tool_data["subagent_ends"] = ends
+            ends[text_bag(end, "subagent_id")] = end
         await stream_manager.publish_chunk(
             stream_id,
             f"data: {json.dumps({'subagent_end': end})}\n\n",
@@ -129,10 +140,10 @@ async def _forward_subagent_lifecycle(
     return forwarded
 
 
-def _parse_chunk_json(chunk_payload: str) -> dict[str, Any] | None:
+def _parse_chunk_json(chunk_payload: str) -> dict[str, object] | None:
     """Parse a chunk payload as JSON, returning ``None`` on malformed input."""
     try:
-        return cast(dict[str, Any], json.loads(chunk_payload))
+        return cast(dict[str, object], json.loads(chunk_payload))
     except json.JSONDecodeError:
         return None
 
@@ -148,7 +159,7 @@ def extract_response_text(chunk: str) -> str:
     return ""
 
 
-def normalize_custom_event(payload: dict[str, Any]) -> dict[str, Any]:
+def normalize_custom_event(payload: dict[str, object]) -> dict[str, object]:
     """Normalize any tool payload dict into the unified tool_data format.
 
     Hooks emit raw field payloads like {"email_compose_data": [...]} via
@@ -167,11 +178,16 @@ def normalize_custom_event(payload: dict[str, Any]) -> dict[str, Any]:
     timestamp = datetime.now(UTC).isoformat()
     entries: list[ToolDataEntry] = []
     for field_name in tool_fields:
-        if payload.get(field_name) is not None:
+        raw_value = payload.get(field_name)
+        if raw_value is not None:
             entries.append(
                 {
                     "tool_name": field_name,
-                    "data": payload[field_name],
+                    # The payload writers are typed to produce exactly this JSON
+                    # shape; the guard above excludes None. Bridged, not assumed.
+                    "data": cast(
+                        dict[str, object] | list[Any] | str | int | float | bool, raw_value
+                    ),
                     "timestamp": timestamp,
                 }
             )
@@ -190,7 +206,7 @@ def normalize_custom_event(payload: dict[str, Any]) -> dict[str, Any]:
     return {**other_keys, "tool_data": tool_data_value}
 
 
-def extract_tool_data(json_str: str) -> dict[str, Any]:
+def extract_tool_data(json_str: str) -> dict[str, object]:
     """Parse and extract structured tool output from an agent JSON chunk.
 
     Converts individual tool fields (e.g. ``calendar_options``, ``search_results``)
@@ -209,7 +225,7 @@ def extract_tool_data(json_str: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
 
-    other_data: dict[str, Any] = {}
+    other_data: dict[str, object] = {}
     if data.get("follow_up_actions") is not None:
         other_data["follow_up_actions"] = data["follow_up_actions"]
 
@@ -217,9 +233,14 @@ def extract_tool_data(json_str: str) -> dict[str, Any]:
     tool_data_entries: list[ToolDataEntry] = []
     if "tool_data" in normalized:
         td = normalized["tool_data"]
-        tool_data_entries = td if isinstance(td, list) else [td]
+        if isinstance(td, list):
+            # The wire payload was validated as JSON dicts; ToolDataEntry is the
+            # declared shape of those dicts (checked, then bridged).
+            tool_data_entries = [cast(ToolDataEntry, t) for t in td if isinstance(t, dict)]
+        elif isinstance(td, dict):
+            tool_data_entries = [cast(ToolDataEntry, td)]
 
-    result: dict[str, Any] = {}
+    result: dict[str, object] = {}
     if tool_data_entries:
         result["tool_data"] = tool_data_entries
     if other_data:

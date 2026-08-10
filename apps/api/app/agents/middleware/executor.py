@@ -40,6 +40,7 @@ from app.agents.middleware.runtime_adapter import (
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentMiddlewareStack
 from app.override.langgraph_bigtool.utils import State, messages_delta_reducer
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 # The handler chains built below. LangChain's hooks accept a wider return union
@@ -49,7 +50,7 @@ ModelCallHandler = Callable[[ModelRequest], Awaitable[ModelResponse]]
 ToolCallHandler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
 
 
-def _apply_state_update(current_state: dict[str, Any], update: Mapping[str, Any]) -> None:
+def _apply_state_update(current_state: dict[str, object], update: Mapping[str, Any]) -> None:
     """Merge a middleware hook's return into ``current_state``, in place.
 
     A hook returns a LangGraph *state update* — channel writes the graph
@@ -68,8 +69,13 @@ def _apply_state_update(current_state: dict[str, Any], update: Mapping[str, Any]
     """
     for key, value in update.items():
         if key == "messages":
+            # The bag read is object-typed; the reducer's contract is the message
+            # list. Bridged with a checked container guard — elements pass through
+            # unfiltered (RemoveMessage tombstones drive summarization deletion).
+            raw_messages = current_state.get("messages", [])
             current_state["messages"] = messages_delta_reducer(
-                current_state.get("messages", []), [value]
+                cast(list[AnyMessage], raw_messages if isinstance(raw_messages, list) else []),
+                [value],
             )
         else:
             current_state[key] = value
@@ -180,7 +186,7 @@ class MiddlewareExecutor:
             return state
 
         runtime = self._create_runtime(config, store)
-        current_state: dict[str, Any] = dict(state)
+        current_state: dict[str, object] = dict(state)
 
         for mw in self.middleware:
             try:
@@ -231,7 +237,7 @@ class MiddlewareExecutor:
             return state
 
         runtime = self._create_runtime(config, store)
-        current_state: dict[str, Any] = dict(state)
+        current_state: dict[str, object] = dict(state)
 
         for mw in self.middleware:
             try:
@@ -264,7 +270,7 @@ class MiddlewareExecutor:
         state: State,
         config: RunnableConfig,
         store: BaseStore | None,
-        tools: list[BaseTool | dict[str, Any]],
+        tools: list[BaseTool | dict[str, object]],
         invoke_fn: Callable[..., Awaitable[AIMessage]],
     ) -> AIMessage:
         """
@@ -355,7 +361,7 @@ class MiddlewareExecutor:
 
     async def wrap_tool_invocation(
         self,
-        tool_call: dict[str, Any],
+        tool_call: dict[str, object],
         tool: BaseTool | None,
         state: State,
         config: RunnableConfig,
@@ -380,7 +386,7 @@ class MiddlewareExecutor:
             The tool result, or a ``Command`` when a middleware replaces the
             result with a graph update (e.g. workspace compaction).
         """
-        tool_name = tool_call.get("name", "unknown")
+        tool_name = text_bag(tool_call, "name", "unknown")
         runtime = self._create_tool_runtime(config, store, tool_name)
         request = create_tool_call_request(tool_call, tool, state, runtime)
 

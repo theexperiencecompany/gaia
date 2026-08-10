@@ -1,6 +1,6 @@
 import asyncio
+from collections.abc import Mapping
 import json
-from typing import Any
 
 from fastapi import UploadFile
 from langchain_core.tools import StructuredTool
@@ -44,7 +44,7 @@ def get_gmail_tool(tool_name: str, user_id: str) -> StructuredTool | None:
 
 
 async def invoke_gmail_tool(
-    user_id: str, tool_name: str, parameters: dict[str, Any]
+    user_id: str, tool_name: str, parameters: Mapping[str, object]
 ) -> GmailToolResult:
     """Invoke a specific Gmail tool with the given parameters.
 
@@ -57,7 +57,7 @@ async def invoke_gmail_tool(
         if not tool:
             return GmailToolResult(error=f"Tool {tool_name} not found", successful=False)
 
-        result = await tool.ainvoke(parameters)
+        result = await tool.ainvoke(dict(parameters))
         # BaseTool.ainvoke is typed Any (arbitrary tool output); this is the
         # provider boundary, so validate Composio's response before it travels on.
         return GmailToolResult.model_validate(result)
@@ -119,7 +119,7 @@ async def send_email(
         # normalises body → HTML and sets is_html=True for every compose tool,
         # so callers can hand us either Markdown or HTML and Gmail will render
         # consistently.
-        parameters: dict[str, Any] = {
+        parameters: dict[str, object] = {
             "recipient_email": to,
             "extra_recipients": extra_recipients or [],
             body_param: body,
@@ -253,7 +253,7 @@ async def unstar_messages(user_id: str, message_ids: list[str]) -> list[GmailMes
     return await modify_message_labels(user_id, message_ids, remove_labels=["STARRED"])
 
 
-async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
+async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, object]]:
     """Move Gmail messages to trash.
 
     Each entry is the raw Composio envelope, not a Gmail message resource, so it
@@ -262,7 +262,7 @@ async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str,
     what the route receives, so that mismatch is left for a deliberate fix.
     """
     log.info(f"{LogTag.MAIL} Moving messages to trash", message_ids_count=len(message_ids))
-    results: list[dict[str, Any]] = []
+    results: list[dict[str, object]] = []
 
     for message_id in message_ids:
         try:
@@ -288,10 +288,10 @@ async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str,
     return results
 
 
-async def untrash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
+async def untrash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, object]]:
     """Restore Gmail messages from trash — entries are raw envelopes, see ``trash_messages``."""
     log.info(f"{LogTag.MAIL} Restoring messages from trash", message_ids_count=len(message_ids))
-    results: list[dict[str, Any]] = []
+    results: list[dict[str, object]] = []
 
     for message_id in message_ids:
         try:
@@ -384,7 +384,7 @@ async def search_messages(
     """
     log.set(user={"id": user_id}, mail=MailContext(operation="fetch", provider="gmail"))
     try:
-        parameters: dict[str, Any] = {
+        parameters: dict[str, object] = {
             "query": query or "",
             "max_results": max_results,
         }
@@ -553,7 +553,7 @@ async def create_draft(
     """
     log.info(f"{LogTag.MAIL} Creating draft email", to=to_list)
     try:
-        parameters: dict[str, Any] = {
+        parameters: dict[str, object] = {
             "to": to_list,
             "subject": subject,
             "body": body,
@@ -582,7 +582,7 @@ async def list_drafts(
     """List Gmail draft messages."""
     log.info(f"{LogTag.MAIL} Listing drafts, max_results", max_results=max_results)
     try:
-        parameters: dict[str, Any] = {
+        parameters: dict[str, object] = {
             "max_results": max_results,
         }
         if page_token:
@@ -737,7 +737,7 @@ async def list_labels(user_id: str) -> GmailLabelsResult:
     """List all Gmail labels."""
     log.info(f"{LogTag.MAIL} Listing Gmail labels for user", user_id=user_id)
     try:
-        parameters: dict[str, Any] = {}  # No parameters needed for listing labels
+        parameters: dict[str, object] = {}  # No parameters needed for listing labels
         result = await invoke_gmail_tool(user_id, "GMAIL_LIST_LABELS", parameters)
 
         if result.successful:

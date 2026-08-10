@@ -4,11 +4,10 @@ These helpers wrap Twitter API v2 calls behind Composio's proxy. The proxy
 attaches the user's OAuth token server-side; callers only supply `user_id`.
 """
 
-from typing import Any
-
 from app.constants.log_tags import LogTag
 from app.services.composio.proxy_client import proxy_request_sync
 from app.utils.errors import AppError
+from app.utils.json_helpers import dict_bag, text_opt_bag
 from shared.py.wide_events import log
 
 TWITTER_API_BASE = "https://api.twitter.com/2"
@@ -20,10 +19,10 @@ def _proxy(
     *,
     endpoint: str,
     method: str,
-    body: dict[str, Any] | None = None,
-    query: dict[str, Any] | None = None,
-) -> dict[str, Any] | None:
-    response: dict[str, Any] | None = proxy_request_sync(
+    body: dict[str, object] | None = None,
+    query: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    response: dict[str, object] | None = proxy_request_sync(
         user_id=user_id,
         toolkit=TWITTER_TOOLKIT,
         endpoint=endpoint,
@@ -39,7 +38,7 @@ def get_my_user_id(user_id: str) -> str | None:
     log.set(operation="twitter_get_my_user_id")
     try:
         data = _proxy(user_id, endpoint=f"{TWITTER_API_BASE}/users/me", method="GET")
-        twitter_user_id: str | None = (data or {}).get("data", {}).get("id")
+        twitter_user_id: str | None = text_opt_bag(dict_bag(data or {}, "data"), "id")
         return twitter_user_id
     except Exception as e:
         log.error(
@@ -51,7 +50,7 @@ def get_my_user_id(user_id: str) -> str | None:
         return None
 
 
-def lookup_user_by_username(user_id: str, username: str) -> dict[str, Any] | None:
+def lookup_user_by_username(user_id: str, username: str) -> dict[str, object] | None:
     """Look up a user by username."""
     try:
         data = _proxy(
@@ -64,7 +63,8 @@ def lookup_user_by_username(user_id: str, username: str) -> dict[str, Any] | Non
                 ),
             },
         )
-        user: dict[str, Any] | None = (data or {}).get("data")
+        raw_user = dict_bag(data or {}, "data")
+        user: dict[str, object] | None = raw_user if raw_user else None
         return user
     except Exception as e:
         log.error(
@@ -77,7 +77,7 @@ def lookup_user_by_username(user_id: str, username: str) -> dict[str, Any] | Non
         return None
 
 
-def follow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str, Any]:
+def follow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str, object]:
     """Follow a user by ID."""
     try:
         data = _proxy(
@@ -96,7 +96,7 @@ def follow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str,
         return {"success": False, "error": str(e)}
 
 
-def unfollow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str, Any]:
+def unfollow_user(user_id: str, my_user_id: str, target_user_id: str) -> dict[str, object]:
     """Unfollow a user by ID."""
     try:
         data = _proxy(
@@ -120,10 +120,10 @@ def create_tweet(
     reply_to_tweet_id: str | None = None,
     media_ids: list[str] | None = None,
     quote_tweet_id: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Create a tweet."""
     try:
-        body: dict[str, Any] = {"text": text}
+        body: dict[str, object] = {"text": text}
         if reply_to_tweet_id:
             body["reply"] = {"in_reply_to_tweet_id": reply_to_tweet_id}
         if media_ids:
@@ -146,7 +146,7 @@ def search_tweets(
     user_id: str,
     query: str,
     max_results: int = 10,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Search recent tweets."""
     log.set(operation="twitter_search_tweets", search_query=query, max_results=max_results)
     try:

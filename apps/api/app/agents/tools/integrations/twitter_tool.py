@@ -37,6 +37,7 @@ from app.templates.docstrings.twitter_tool_docs import (
     CUSTOM_SCHEDULE_TWEET_DOC,
     CUSTOM_SEARCH_USERS_DOC,
 )
+from app.utils.json_helpers import dict_bag, int_bag, list_bag, text_bag, text_opt_bag
 from app.utils.twitter_utils import (
     TWITTER_API_BASE,
     TWITTER_TOOLKIT,
@@ -50,7 +51,7 @@ from app.utils.twitter_utils import (
 from shared.py.wide_events import log
 
 
-def _user_id(auth_credentials: dict[str, Any]) -> str:
+def _user_id(auth_credentials: dict[str, object]) -> str:
     user_id = auth_credentials.get("user_id")
     if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
@@ -65,8 +66,8 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_BATCH_FOLLOW(
         request: BatchFollowInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Follow multiple Twitter users at once."""
         del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
@@ -79,11 +80,11 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         if not request.usernames and not request.user_ids:
             raise ValueError("Either usernames or user_ids must be provided")
 
-        results: list[dict[str, Any]] = []
+        results: list[dict[str, object]] = []
         success_count = 0
         failed_count = 0
 
-        user_ids_to_process: list[dict[str, Any]] = []
+        user_ids_to_process: list[dict[str, object]] = []
 
         if request.user_ids:
             for uid in request.user_ids:
@@ -115,7 +116,7 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             writer({"progress": f"Following {total} users..."})
 
         for i, user_info in enumerate(user_ids_to_process):
-            result = follow_user(user_id, my_user_id, user_info["user_id"])
+            result = follow_user(user_id, my_user_id, text_bag(user_info, "user_id"))
 
             if result["success"]:
                 results.append(
@@ -154,8 +155,8 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_BATCH_UNFOLLOW(
         request: BatchUnfollowInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Unfollow multiple Twitter users at once. DESTRUCTIVE - requires user consent."""
         del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
@@ -168,11 +169,11 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         if not request.usernames and not request.user_ids:
             raise ValueError("Either usernames or user_ids must be provided")
 
-        results: list[dict[str, Any]] = []
+        results: list[dict[str, object]] = []
         success_count = 0
         failed_count = 0
 
-        user_ids_to_process: list[dict[str, Any]] = []
+        user_ids_to_process: list[dict[str, object]] = []
 
         if request.user_ids:
             for uid in request.user_ids:
@@ -203,7 +204,7 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             writer({"progress": f"Unfollowing {total} users..."})
 
         for i, user_info in enumerate(user_ids_to_process):
-            result = unfollow_user(user_id, my_user_id, user_info["user_id"])
+            result = unfollow_user(user_id, my_user_id, text_bag(user_info, "user_id"))
 
             if result["success"]:
                 results.append(
@@ -242,8 +243,8 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_CREATE_THREAD(
         request: CreateThreadInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Create a Twitter thread (multiple connected tweets)."""
         del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
@@ -277,7 +278,7 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                     f"Partial tweet IDs: {tweet_ids}"
                 )
 
-            tweet_id = result["data"].get("id")
+            tweet_id = text_opt_bag(dict_bag(result, "data"), "id")
             if not tweet_id:
                 raise RuntimeError(
                     f"No ID returned for tweet {i + 1}. Partial tweet IDs: {tweet_ids}"
@@ -328,8 +329,8 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_SEARCH_USERS(
         request: SearchUsersInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Search for Twitter users by name, bio, or keywords."""
         del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
@@ -344,12 +345,14 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         if not result["success"]:
             raise RuntimeError(f"Search failed: {result.get('error')}")
 
-        data = result["data"]
-        includes = data.get("includes", {})
-        api_users = includes.get("users", [])
+        data = dict_bag(result, "data")
+        includes = dict_bag(data, "includes")
+        api_users = list_bag(includes, "users")
 
-        users_map: dict[str, dict[str, Any]] = {}
+        users_map: dict[str, dict[str, object]] = {}
         for user in api_users:
+            if not isinstance(user, dict):
+                continue
             twitter_user_id = user.get("id")
             if twitter_user_id and twitter_user_id not in users_map:
                 users_map[twitter_user_id] = {
@@ -375,8 +378,8 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                     "id": u["id"],
                     "username": u.get("username"),
                     "name": u.get("name"),
-                    "description": u.get("description", "")[:150],
-                    "followers": u.get("public_metrics", {}).get("followers_count", 0),
+                    "description": text_bag(u, "description")[:150],
+                    "followers": int_bag(dict_bag(u, "public_metrics"), "followers_count"),
                     "verified": u.get("verified", False),
                 }
                 for u in unique_users
@@ -389,8 +392,8 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_SCHEDULE_TWEET(
         request: ScheduleTweetInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Schedule a tweet for later posting (creates a draft with scheduled time).
 
         Note: Twitter API doesn't support scheduled tweets directly for free tier.
@@ -422,8 +425,8 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Twitter/X context snapshot: profile info and recent tweets.
 
         Zero required parameters. Returns authenticated user's profile and recent activity.
@@ -445,7 +448,7 @@ def register_twitter_custom_tools(composio: Composio[Any, Any]) -> list[str]:
         twitter_user_id = me_data.get("id")
         metrics = me_data.get("public_metrics", {})
 
-        tweets: list[dict[str, Any]] = []
+        tweets: list[dict[str, object]] = []
         if twitter_user_id:
             try:
                 tweets_data = (

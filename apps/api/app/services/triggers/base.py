@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
-from typing import Any, Literal, TypedDict
+from typing import Literal, TypedDict
 
 from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup
@@ -33,7 +33,7 @@ class TriggerEventResult(TypedDict):
     message: str
 
 
-def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
+def _parse_event_start_utc(data: dict[str, object]) -> datetime | None:
     """Best-effort extraction of an event's start time as a UTC datetime.
 
     Handles Composio/Google payloads that may ship `start_time` as an ISO-8601
@@ -52,7 +52,7 @@ def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _log_event_timing(data: dict[str, Any], now_utc: datetime) -> None:
+def _log_event_timing(data: dict[str, object], now_utc: datetime) -> None:
     """Attach event-start and webhook-lag instrumentation to the log context."""
     event_start_utc = _parse_event_start_utc(data)
     if event_start_utc is None:
@@ -171,9 +171,9 @@ class TriggerHandler(ABC):
         self,
         user_id: str,
         trigger_name: str,
-        configs: list[dict[str, Any]],
+        configs: list[dict[str, object]],
         composio_slug: str,
-        config_description_fn: Callable[[dict[str, Any]], str] | None = None,
+        config_description_fn: Callable[[dict[str, object]], str] | None = None,
     ) -> list[str]:
         """Register multiple triggers in parallel with automatic rollback on failure.
 
@@ -199,7 +199,7 @@ class TriggerHandler(ABC):
 
         composio = get_composio_service()
 
-        async def register_single(config: dict[str, Any]) -> str | None:
+        async def register_single(config: dict[str, object]) -> str | None:
             """Register a single trigger and return trigger_id."""
             result = await asyncio.to_thread(
                 composio.composio.triggers.create,
@@ -264,7 +264,7 @@ class TriggerHandler(ABC):
 
     @abstractmethod
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows that match an incoming webhook event.
 
@@ -315,7 +315,7 @@ class TriggerHandler(ABC):
         event_type: str,
         trigger_id: str | None,
         user_id: str | None,
-        data: dict[str, Any],
+        data: dict[str, object],
     ) -> TriggerEventResult:
         """Process an incoming webhook event and queue matching workflows.
 
@@ -386,7 +386,7 @@ class TriggerHandler(ABC):
     async def _queue_one_workflow(
         self,
         workflow: Workflow,
-        data: dict[str, Any],
+        data: dict[str, object],
         signal_context_by_user: dict[str, str],
         event_type: str,
         trigger_id: str | None,
@@ -401,7 +401,7 @@ class TriggerHandler(ABC):
                 )
                 return False
             # Enrich context with tracked todos for signal matching
-            context: dict[str, Any] = {"trigger_data": data}
+            context: dict[str, object] = {"trigger_data": data}
             if workflow.user_id not in signal_context_by_user:
                 try:
                     signal_context_by_user[

@@ -1,7 +1,6 @@
 import asyncio
 from collections import defaultdict
 import datetime
-from typing import Any
 
 import httpx
 
@@ -9,14 +8,15 @@ from app.config.settings import settings
 from app.constants.cache import ONE_HOUR_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
+from app.utils.json_helpers import dict_bag, float_bag, int_bag, list_bag, text_bag
 from shared.py.wide_events import log
 
 http_async_client = httpx.AsyncClient()
 
 
 async def prepare_weather_data(
-    lat: float, lon: float, location_info: dict[str, Any], api_key: str
-) -> dict[str, Any]:
+    lat: float, lon: float, location_info: dict[str, object], api_key: str
+) -> dict[str, object]:
     """
     Fetch and prepare weather data for a location.
 
@@ -43,13 +43,14 @@ async def prepare_weather_data(
     # Ensure required fields exist in 'sys' object to avoid validation errors
     if "sys" in current_weather:
         # Make sure the country field is present in the sys object
-        if "country" not in current_weather["sys"]:
+        sys_data = dict_bag(current_weather, "sys")
+        if "country" not in sys_data:
             # If we have country information from geolocation, use it
             if country:
-                current_weather["sys"]["country"] = country
+                sys_data["country"] = country
             else:
                 # Otherwise set it to an empty string to meet model requirements
-                current_weather["sys"]["country"] = ""
+                sys_data["country"] = ""
     else:
         # Create a minimal sys object if it doesn't exist
         current_weather["sys"] = {
@@ -78,7 +79,7 @@ async def prepare_weather_data(
 
 async def fetch_weather_data(
     lat: float, lon: float, api_key: str
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, object], dict[str, object]]:
     """
     Fetch weather and forecast data in parallel using asyncio.
 
@@ -108,7 +109,7 @@ async def fetch_weather_data(
 
 async def get_location_data(
     ip_address: str | None = None, location_name: str | None = None
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """
     Get location data either from a location name (via geocoding) or an IP address.
 
@@ -135,7 +136,7 @@ async def get_location_data(
 
         # If city is None but we have a display name, try to extract city from it
         if not city and location_data.get("display_name"):
-            parts = location_data["display_name"].split(", ")
+            parts = text_bag(location_data, "display_name").split(", ")
             city = parts[0] if parts else location_name
     else:
         # Create a cache key for the IP address
@@ -165,7 +166,7 @@ async def get_location_data(
     }
 
 
-async def user_weather(location_name: str | None = None) -> dict[str, Any] | str:
+async def user_weather(location_name: str | None = None) -> dict[str, object] | str:
     """
     Fetch weather data for a specified location.
 
@@ -189,9 +190,9 @@ async def user_weather(location_name: str | None = None) -> dict[str, Any] | str
 
         try:
             location_data = await get_location_data(location_name=location_name)
-            cache_key = location_data["cache_key"]
+            cache_key = text_bag(location_data, "cache_key")
 
-            cached_weather: dict[str, Any] | None = await get_cache(cache_key)
+            cached_weather: dict[str, object] | None = await get_cache(cache_key)
             if cached_weather:
                 log.debug(
                     f"{LogTag.TOOL} Using cached weather data for location",
@@ -200,7 +201,10 @@ async def user_weather(location_name: str | None = None) -> dict[str, Any] | str
                 return cached_weather
 
             weather = await prepare_weather_data(
-                location_data["lat"], location_data["lon"], location_data, api_key
+                float_bag(location_data, "lat"),
+                float_bag(location_data, "lon"),
+                location_data,
+                api_key,
             )
 
             await set_cache(cache_key, weather, ONE_HOUR_TTL)
@@ -223,7 +227,15 @@ async def user_weather(location_name: str | None = None) -> dict[str, Any] | str
         return f"Failed to fetch weather: {e!s}"
 
 
-def process_forecast_data(forecast_data: dict[str, Any]) -> list[dict[str, Any]]:
+def _first_weather(item: dict[str, object]) -> dict[str, object]:
+    """The first weather entry of a forecast item, or {} (checked, not assumed)."""
+    for w in list_bag(item, "weather"):
+        if isinstance(w, dict):
+            return w
+    return {}
+
+
+def process_forecast_data(forecast_data: dict[str, object]) -> list[dict[str, object]]:
     """
     Process raw forecast data from OpenWeatherMap API into daily summaries.
 
@@ -236,9 +248,12 @@ def process_forecast_data(forecast_data: dict[str, Any]) -> list[dict[str, Any]]
 
     daily_data = defaultdict(list)
 
-    for item in forecast_data.get("list", []):
+    for raw_item in list_bag(forecast_data, "list"):
+        if not isinstance(raw_item, dict):
+            continue
+        item = raw_item
         # Convert timestamp to date string (YYYY-MM-DD)
-        dt_txt = item.get("dt_txt", "")
+        dt_txt = text_bag(item, "dt_txt")
         if dt_txt:
             date = dt_txt.split(" ")[0]  # Extract date part
             daily_data[date].append(item)
@@ -249,15 +264,18 @@ def process_forecast_data(forecast_data: dict[str, Any]) -> list[dict[str, Any]]
     for date, items in daily_data.items():
         if not items:
             continue
+        items = [i for i in items if isinstance(i, dict)]
+        if not items:
+            continue
 
         # Calculate min and max temperatures for the day
-        temps = [item["main"]["temp"] for item in items]
+        temps = [float_bag(dict_bag(item, "main"), "temp") for item in items]
         min_temp = min(temps)
         max_temp = max(temps)
 
         # Get the most common weather condition for the day
-        weather_conditions = [item["weather"][0]["main"] for item in items]
-        weather_descriptions = [item["weather"][0]["description"] for item in items]
+        weather_conditions = [text_bag(_first_weather(item), "main") for item in items]
+        weather_descriptions = [text_bag(_first_weather(item), "description") for item in items]
 
         # Use the most frequent condition (simple approach)
         from collections import Counter
@@ -270,18 +288,18 @@ def process_forecast_data(forecast_data: dict[str, Any]) -> list[dict[str, Any]]
         # Find a matching weather icon from one of the items with this condition
         icon = next(
             (
-                item["weather"][0]["icon"]
+                text_bag(_first_weather(item), "icon")
                 for item in items
-                if item["weather"][0]["main"] == most_common_condition
+                if text_bag(_first_weather(item), "main") == most_common_condition
             ),
-            items[0]["weather"][0]["icon"],
+            text_bag(_first_weather(items[0]), "icon"),
         )
 
         # Extract timestamp from first item of the day for frontend date formatting
-        timestamp = items[0]["dt"]
+        timestamp = int_bag(items[0], "dt")
 
         # Calculate average humidity
-        humidity = sum(item["main"]["humidity"] for item in items) / len(items)
+        humidity = sum(int_bag(dict_bag(item, "main"), "humidity") for item in items) / len(items)
 
         # Create the daily summary
         daily_summary = {
@@ -300,12 +318,12 @@ def process_forecast_data(forecast_data: dict[str, Any]) -> list[dict[str, Any]]
         daily_forecasts.append(daily_summary)
 
     # Sort by date
-    daily_forecasts.sort(key=lambda x: x["date"])
+    daily_forecasts.sort(key=lambda x: text_bag(x, "date"))
 
     return daily_forecasts
 
 
-async def geocode_location(location_name: str) -> dict[str, Any]:
+async def geocode_location(location_name: str) -> dict[str, object]:
     """
     Geocode a location name to latitude and longitude using OpenStreetMap Nominatim API.
 

@@ -273,7 +273,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         # The motor stubs type find_one_and_update as returning the document even
         # with ReturnDocument.AFTER, but no match legitimately yields None at runtime
         # — keep the defensive check against the stub's optimistic signature.
-        raw: dict[str, Any] | None = await get_async_collection(
+        raw: dict[str, object] | None = await get_async_collection(
             self.collection_name
         ).find_one_and_update(
             {**self._identity_filter(doc_id), **extra_filter},
@@ -336,7 +336,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
 
     # ---- subclass-only primitives (never called outside a repository) ----
 
-    def _raw_collection(self) -> AsyncIOMotorCollection[dict[str, Any]]:
+    def _raw_collection(self) -> AsyncIOMotorCollection[dict[str, object]]:
         """The repository's own Motor handle, for the rare operator no base
         primitive expresses (e.g. an aggregation-pipeline update or a filter
         upsert). Resolves through this module's ``get_async_collection`` binding —
@@ -491,7 +491,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         collection = get_async_collection(self.collection_name)
         # Motor stubs claim find_one_and_update never returns None; the runtime can
         # (no matching document), so the None branch below is kept despite the stub.
-        raw: dict[str, Any] | None = await collection.find_one_and_update(
+        raw: dict[str, object] | None = await collection.find_one_and_update(
             {**dict(filter_), **(extra_filter or {})},
             ops,
             array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
@@ -580,7 +580,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     ) -> TDoc | None:
         # Motor stubs type find_one_and_update as non-None; no match returns None at
         # runtime, so keep the defensive check against the stub's optimistic signature.
-        raw: dict[str, Any] | None = await get_async_collection(
+        raw: dict[str, object] | None = await get_async_collection(
             self.collection_name
         ).find_one_and_update(
             {**self._identity_filter(doc_id), **(extra_filter or {})},

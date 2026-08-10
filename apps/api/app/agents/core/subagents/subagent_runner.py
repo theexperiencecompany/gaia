@@ -56,6 +56,7 @@ from app.models.stream_events import ReasoningPayload, ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
 from app.services.files import FileService
 from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
+from app.utils.json_helpers import list_bag
 from app.utils.multimodal import extract_text_content
 from app.utils.stream_utils import extract_tool_entries_from_update
 from shared.py.wide_events import log
@@ -111,7 +112,7 @@ class SubagentOutcome:
     """
 
     text: str
-    interrupt: dict[str, Any] | None = None
+    interrupt: dict[str, object] | None = None
 
     @property
     def paused(self) -> bool:
@@ -132,7 +133,7 @@ def subagent_row_id(tool_call_id: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"subagent_row:{tool_call_id}"))
 
 
-def resume_for_gate(interrupt_payload: dict[str, Any]) -> object:
+def resume_for_gate(interrupt_payload: dict[str, object]) -> object:
     """The decision belonging to the subagent gate now paused.
 
     A synchronous spawn/handoff drives its subagent imperatively, bubbling each HIL
@@ -170,7 +171,7 @@ class SubagentExecutionContext:
         config: AgentRunnableConfig,
         configurable: AgentConfigurable,
         integration_id: str,
-        initial_state: dict[str, Any],
+        initial_state: dict[str, object],
         user_id: str | None = None,
         stream_id: str | None = None,
     ) -> None:
@@ -284,7 +285,7 @@ def _with_current_time(resume: Command[Any], configurable: AgentConfigurable) ->
 def _process_messages_payload(
     # "messages"-mode payloads are always (message chunk, metadata); the driver
     # above holds them as `Any` only because the shape varies per stream mode.
-    payload: tuple[BaseMessage, dict[str, Any]],
+    payload: tuple[BaseMessage, dict[str, object]],
     complete_message: str,
     stream_writer: StreamWriterCallable | None,
     subagent_id: str | None,
@@ -373,7 +374,7 @@ async def execute_subagent_stream(
     complete_message = ""
     emitted_tool_calls: set[str] = set()
     tool_ran = False
-    pending_approvals: list[dict[str, Any]] = []
+    pending_approvals: list[dict[str, object]] = []
 
     # Inject the UUID subagent_id into configurable so nested spawn_subagent
     # tool calls can read the correct parent_subagent_id via
@@ -457,7 +458,7 @@ async def execute_subagent_stream(
                     # will replay this ToolMessage into the outer run's stream too.
                     note_tool_output_owner(ctx.stream_id or "", tc_id, subagent_id)
                     if stream_writer:
-                        chunk_data: dict[str, Any] = {"tool_data": tool_entry}
+                        chunk_data: dict[str, object] = {"tool_data": tool_entry}
                         if subagent_id:
                             chunk_data["tool_data"] = {**tool_entry, "subagent_id": subagent_id}
                         stream_writer(chunk_data)
@@ -497,7 +498,7 @@ async def execute_subagent_stream(
             "name": ctx.agent_name,
             "provider": ctx.integration_id,
             "response_length": len(final_message),
-            "messages_count": len(ctx.initial_state.get("messages", [])),
+            "messages_count": len(list_bag(ctx.initial_state, "messages")),
         }
     )
     return SubagentOutcome(text=final_message)
@@ -614,7 +615,7 @@ def _approval_id_of(resume: Command[Any]) -> str | None:
     return str(approval_id) if approval_id else None
 
 
-def interrupt_payload(raw: object) -> dict[str, Any]:
+def interrupt_payload(raw: object) -> dict[str, object]:
     """The HIL payload inside LangGraph Interrupt object(s) — from a stream event's
     ``__interrupt__`` tuple or a state snapshot's ``interrupts``.
 
@@ -632,7 +633,7 @@ def interrupt_payload(raw: object) -> dict[str, Any]:
     return merge_approvals(interrupt_values(raw))
 
 
-def interrupt_values(raw: object) -> list[dict[str, Any]]:
+def interrupt_values(raw: object) -> list[dict[str, object]]:
     """The dict payloads inside one or more LangGraph ``Interrupt`` objects."""
     items = raw if isinstance(raw, (list, tuple)) else (raw,)
     return [
@@ -642,7 +643,7 @@ def interrupt_values(raw: object) -> list[dict[str, Any]]:
     ]
 
 
-def merge_approvals(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+def merge_approvals(payloads: list[dict[str, object]]) -> dict[str, object]:
     """Fold several pending approvals into one payload carrying ALL their ids.
 
     The first payload's own fields stay at the top level, so callers reading a single

@@ -7,7 +7,7 @@ import email.message
 import email.parser
 import email.policy
 from html import unescape
-from typing import Any, cast
+from typing import cast
 
 from bs4 import BeautifulSoup
 
@@ -20,6 +20,7 @@ from app.models.composio_schemas.gmail import (
     GmailParsedAttachment,
 )
 from app.utils.email_body_normalizer import normalize_email_body
+from app.utils.json_helpers import dict_bag, list_bag, text_bag
 from shared.py.wide_events import log
 
 # ============================================================================
@@ -59,7 +60,7 @@ class GmailMessageParser:
     """Parse Gmail messages via Python's email library, exposing clean
     content-extraction methods over raw Gmail API data."""
 
-    def __init__(self, gmail_message: dict[str, Any]):
+    def __init__(self, gmail_message: dict[str, object]):
         """Initialize the parser with a Gmail API message object.
 
         ``gmail_message`` stays a raw mapping: this is the provider boundary and
@@ -90,7 +91,7 @@ class GmailMessageParser:
     def _parse_with_email_parser(self) -> email.message.EmailMessage | None:
         """Parse Gmail message using manual parsing of payload structure."""
         # Try raw email data first (most reliable)
-        raw_data = self.gmail_message.get("raw")
+        raw_data = text_bag(self.gmail_message, "raw")
         if raw_data:
             raw_email_bytes = base64.urlsafe_b64decode(raw_data)
             parser = email.parser.BytesParser(policy=email.policy.default)
@@ -209,7 +210,7 @@ class GmailMessageParser:
 
         # Handle Composio messages
         if "message_text" in self.gmail_message:
-            content: str = self.gmail_message.get("message_text", "")
+            content: str = text_bag(self.gmail_message, "message_text")
             if "<" in content and ">" in content:
                 return _get_text_from_html(content)
             return content
@@ -242,7 +243,7 @@ class GmailMessageParser:
 
         # Handle Composio messages
         if "message_text" in self.gmail_message:
-            content: str = self.gmail_message.get("message_text", "")
+            content: str = text_bag(self.gmail_message, "message_text")
             if "<" in content and ">" in content:
                 return content
             return ""
@@ -283,7 +284,7 @@ class GmailMessageParser:
                             "attachmentId": body.attachment_id,
                             "mimeType": mime_part.mime_type,
                             "size": body.size,
-                            "messageId": self.gmail_message.get("id", ""),
+                            "messageId": text_bag(self.gmail_message, "id"),
                         }
                     )
             return attachments
@@ -302,7 +303,7 @@ class GmailMessageParser:
                             "filename": filename,
                             "mimeType": part.get_content_type(),
                             "size": len(payload_bytes or b""),
-                            "messageId": self.gmail_message.get("id", ""),
+                            "messageId": text_bag(self.gmail_message, "id"),
                             "content": payload_bytes,
                         }
                     )
@@ -312,7 +313,9 @@ class GmailMessageParser:
     @property
     def labels(self) -> list[str]:
         """Get Gmail labels."""
-        labels: list[str] = self.gmail_message.get("labelIds", [])
+        labels: list[str] = [
+            label for label in list_bag(self.gmail_message, "labelIds") if isinstance(label, str)
+        ]
         return labels
 
     @property
@@ -330,7 +333,7 @@ def _get_text_from_html(html_content: str | None) -> str:
     return soup.get_text()
 
 
-def _attachment_metadata(raw: dict[str, Any]) -> list[GmailAttachmentMetadata]:
+def _attachment_metadata(raw: dict[str, object]) -> list[GmailAttachmentMetadata]:
     """Extract attachment metadata (no bytes) from a full-format Gmail payload.
 
     Walks the (possibly nested) MIME ``parts`` tree, returning one entry per
@@ -361,10 +364,10 @@ def _attachment_metadata(raw: dict[str, Any]) -> list[GmailAttachmentMetadata]:
 
 # Template for minimal message representation
 def minimal_message_template(
-    email_data: dict[str, Any],
+    email_data: dict[str, object],
     short_body: bool = True,
     include_both_formats: bool = False,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Convert a Gmail message to a minimal representation with only essential
     fields. short_body truncates the body to 100 chars; include_both_formats
     adds text and HTML content."""
@@ -374,12 +377,12 @@ def minimal_message_template(
 
     content = parser.content if include_both_formats else None
 
-    body_content = (content["text"] if content else parser.text_content) or email_data.get(
-        "messageText", ""
+    body_content = (text_bag(content, "text") if content else parser.text_content) or text_bag(
+        email_data, "messageText"
     )
     labels = parser.labels
 
-    result: dict[str, Any] = {
+    result: dict[str, object] = {
         "id": email_data.get("messageId") or email_data.get("id", ""),
         "threadId": email_data.get("threadId", ""),
         "from": parser.sender or email_data.get("sender", ""),
@@ -405,8 +408,8 @@ def minimal_message_template(
 
 # Template for message details (when a single message needs more detail)
 def detailed_message_template(
-    email_data: dict[str, Any], *, include_body: bool = True
-) -> dict[str, Any]:
+    email_data: dict[str, object], *, include_body: bool = True
+) -> dict[str, object]:
     """Convert a Gmail message to a detailed representation: essential fields
     plus body content in both text and HTML.
 
@@ -420,7 +423,7 @@ def detailed_message_template(
 
     labels = parser.labels
 
-    view: dict[str, Any] = {
+    view: dict[str, object] = {
         "id": email_data.get("messageId") or email_data.get("id", ""),
         "threadId": email_data.get("threadId", ""),
         "from": parser.sender,
@@ -442,24 +445,25 @@ def detailed_message_template(
 
 
 # Template for thread information
-def thread_template(thread_data: dict[str, Any]) -> dict[str, Any]:
+def thread_template(thread_data: dict[str, object]) -> dict[str, object]:
     """Convert a Gmail thread to a minimal representation (thread ID + minimized
     messages)."""
     return {
         "id": thread_data.get("id", ""),
         "messages": [
             minimal_message_template(msg, short_body=False, include_both_formats=True)
-            for msg in thread_data.get("messages", [])
+            for msg in list_bag(thread_data, "messages")
+            if isinstance(msg, dict)
         ],
-        "messageCount": len(thread_data.get("messages", [])),
+        "messageCount": len(list_bag(thread_data, "messages")),
     }
 
 
 # Template for draft information
-def draft_template(draft_data: dict[str, Any]) -> dict[str, Any]:
+def draft_template(draft_data: dict[str, object]) -> dict[str, object]:
     """Convert a Gmail draft to a minimal representation: essential fields plus
     text and HTML content."""
-    message = draft_data.get("message", {})
+    message = dict_bag(draft_data, "message")
 
     # Use GmailMessageParser directly for efficiency
     parser = GmailMessageParser(message)
@@ -472,7 +476,7 @@ def draft_template(draft_data: dict[str, Any]) -> dict[str, Any]:
         "message": {
             "to": parser.to,
             "subject": parser.subject,
-            "snippet": message.get("snippet", ""),
+            "snippet": text_bag(message, "snippet"),
             "body": content["text"],  # Plain text for backward compatibility
             "content": {"text": content["text"], "html": content["html"]},
         },
@@ -495,8 +499,8 @@ def message_view_needs_body(
 
 
 def project_message_view(
-    view: dict[str, Any], fields: Sequence[MessageFieldLiteral] | None
-) -> dict[str, Any]:
+    view: dict[str, object], fields: Sequence[MessageFieldLiteral] | None
+) -> dict[str, object]:
     """Project a full message view to the requested fields.
 
     ``None`` or an empty ``fields`` list means "all fields" (view returned
@@ -509,10 +513,10 @@ def project_message_view(
 
 # Process tool responses
 def build_message_view(
-    raw: dict[str, Any],
+    raw: dict[str, object],
     fields: Sequence[MessageFieldLiteral] | None = None,
     body_processing: BodyProcessingLiteral = "none",
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Project a raw Gmail API message to only the requested fields.
 
     Single source of truth for per-message field selection. Used by
@@ -543,21 +547,23 @@ def build_message_view(
     view.pop("content", None)
 
     if body_processing == "normalize" and view.get("body"):
-        view["body"] = normalize_email_body(view["body"])
+        view["body"] = normalize_email_body(text_bag(view, "body"))
 
     return project_message_view(view, fields)
 
 
-def process_list_drafts_response(response: dict[str, Any]) -> dict[str, Any]:
+def process_list_drafts_response(response: dict[str, object]) -> dict[str, object]:
     """Process the response from list_email_drafts tool to minimize data."""
     processed_response = {
         "nextPageToken": response.get("nextPageToken"),
-        "resultSize": len(response.get("drafts", [])),
+        "resultSize": len(list_bag(response, "drafts")),
     }
 
     if "drafts" in response:
         processed_response["drafts"] = [
-            draft_template(draft) for draft in response.get("drafts", [])
+            draft_template(draft)
+            for draft in list_bag(response, "drafts")
+            if isinstance(draft, dict)
         ]
 
     if "error" in response:
@@ -566,6 +572,6 @@ def process_list_drafts_response(response: dict[str, Any]) -> dict[str, Any]:
     return processed_response
 
 
-def process_get_thread_response(response: dict[str, Any]) -> dict[str, Any]:
+def process_get_thread_response(response: dict[str, object]) -> dict[str, object]:
     """Process the response from get_email_thread tool to minimize data."""
     return thread_template(response)

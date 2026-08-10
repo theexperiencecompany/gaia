@@ -22,7 +22,6 @@ repository. Revisit only with evidence of a hot by-id read path.
 
 from datetime import UTC, datetime
 import re
-from typing import Any
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
@@ -40,17 +39,17 @@ from app.utils.creator import creator_lookup_stage
 # Cron-driven workflows only carry a non-empty ``repeat``; manual / integration /
 # todo workflows default to status="scheduled" with ``scheduled_at=now``, so the
 # pending scan must exclude them or it would re-run the agent every pass.
-_RECURRING_REPEAT_FILTER: dict[str, Any] = {"repeat": {"$nin": [None, ""]}}
+_RECURRING_REPEAT_FILTER: dict[str, object] = {"repeat": {"$nin": [None, ""]}}
 
 # ``_aggregate`` validates each raw row straight into the result model, and the
 # raw carries ``_id`` (not ``id``); this stage surfaces the string business key as
 # ``id`` so the row validates. Appended to every public-read pipeline.
-_ADD_ID_STAGE: dict[str, Any] = {"$addFields": {"id": "$_id"}}
+_ADD_ID_STAGE: dict[str, object] = {"$addFields": {"id": "$_id"}}
 
 # The community marketplace shows public workflows that are NOT explore/featured;
 # the same match drives both the paged aggregation and its total count so the two
 # can never diverge.
-_COMMUNITY_MATCH: dict[str, Any] = {
+_COMMUNITY_MATCH: dict[str, object] = {
     "is_public": True,
     "$or": [{"is_explore": {"$exists": False}}, {"is_explore": False}],
 }
@@ -80,11 +79,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._find_one({"_id": workflow_id, "user_id": user_id})
 
     @staticmethod
-    def _list_query(user_id: str, *, exclude_todo_workflows: bool) -> dict[str, Any]:
+    def _list_query(user_id: str, *, exclude_todo_workflows: bool) -> dict[str, object]:
         """The shared filter for a user's listed workflows — the single source of
         truth for both ``list_for_user`` and ``count_for_user`` so a paginated
         list and its total can never drift out of the same predicate."""
-        query: dict[str, Any] = {"user_id": user_id}
+        query: dict[str, object] = {"user_id": user_id}
         if exclude_todo_workflows:
             query["$or"] = [
                 {"is_todo_workflow": {"$exists": False}},
@@ -184,7 +183,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         the fan-out target when a webhook arrives for that id. ``trigger_name`` narrows
         to a single trigger slug for the caller that must disambiguate (Gmail's poll
         path, where account-level and poll workflows share the handler)."""
-        query: dict[str, Any] = {
+        query: dict[str, object] = {
             "activated": True,
             "trigger_config.type": TriggerType.INTEGRATION.value,
             "trigger_config.enabled": True,
@@ -227,7 +226,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         """How many workflows still reference ``composio_trigger_id`` — a Composio
         trigger is only safe to delete at zero. ``excluding_workflow_id`` drops the
         workflow being deleted/updated from the count."""
-        query: dict[str, Any] = {"trigger_config.composio_trigger_ids": composio_trigger_id}
+        query: dict[str, object] = {"trigger_config.composio_trigger_ids": composio_trigger_id}
         if excluding_workflow_id:
             query["_id"] = {"$ne": excluding_workflow_id}
         return await self._count(query)
@@ -237,7 +236,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     ) -> WorkflowDocument | None:
         """A public workflow already holding ``slug`` (excluding ``exclude_id``), or
         ``None`` when the slug is free — the pre-write uniqueness probe."""
-        query: dict[str, Any] = {"slug": slug, "is_public": True}
+        query: dict[str, object] = {"slug": slug, "is_public": True}
         if exclude_id:
             query["_id"] = {"$ne": exclude_id}
         return await self._find_one(query)
@@ -247,7 +246,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def get_public_with_creator(self, ref: str, *, by_slug: bool) -> PublicWorkflowRow | None:
         """A single public workflow by id (``by_slug=False``) or slug, with its
         creator hydrated. ``None`` when no public workflow matches ``ref``."""
-        match: dict[str, Any] = (
+        match: dict[str, object] = (
             {"slug": ref, "is_public": True} if by_slug else {"_id": ref, "is_public": True}
         )
         rows = await self._aggregate(
@@ -331,7 +330,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._count(self._step_category_match(category))
 
     @staticmethod
-    def _step_category_match(category: str) -> dict[str, Any]:
+    def _step_category_match(category: str) -> dict[str, object]:
         return {
             "$or": [{"is_public": True}, {"is_explore": True}],
             "steps": {"$elemMatch": {"category": {"$regex": re.escape(category), "$options": "i"}}},
@@ -360,7 +359,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     ) -> WorkflowDocument | None:
         """Record an error heartbeat (bump ``updated_at``), optionally deactivating
         the workflow so an unrunnable one stops firing."""
-        ops: dict[str, dict[str, Any]] = {}
+        ops: dict[str, dict[str, object]] = {}
         if deactivate:
             ops["$set"] = {"activated": False}
         return await self._apply_raw_update(
@@ -389,7 +388,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         """Replace a workflow's steps (LLM generation/regeneration). When the new
         steps need integrations the user hasn't connected, ``deactivate`` forces the
         workflow inactive so an enabled-but-unrunnable workflow can't keep firing."""
-        set_fields: dict[str, Any] = {"steps": [s.model_dump() for s in steps]}
+        set_fields: dict[str, object] = {"steps": [s.model_dump() for s in steps]}
         if integration_ids is not None:
             set_fields["integration_ids"] = integration_ids
         if deactivate:
@@ -406,7 +405,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     ) -> bool:
         """Bump execution counters and stamp ``last_executed_at``. Returns whether a
         workflow was matched."""
-        inc_fields: dict[str, Any] = {"total_executions": 1}
+        inc_fields: dict[str, object] = {"total_executions": 1}
         if successful:
             inc_fields["successful_executions"] = 1
         result = await self._apply_raw_update(
@@ -464,7 +463,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         """Flip a freshly-created pending workflow live (``activated`` + trigger
         ``enabled``), storing any registered Composio ids. Keyed by id alone — the
         create saga owns the row and no other user can hold this id."""
-        set_fields: dict[str, Any] = {"activated": True, "trigger_config.enabled": True}
+        set_fields: dict[str, object] = {"activated": True, "trigger_config.enabled": True}
         if trigger_ids:
             set_fields["trigger_config.composio_trigger_ids"] = trigger_ids
         return await self._apply_raw_update(
@@ -509,10 +508,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         scan writes — omitted fields are left untouched; an explicit ``None`` clears
         them. ``occurrence_count``/``repeat`` are only set when provided (they never
         need clearing to ``None``)."""
-        filter_: dict[str, Any] = {"_id": workflow_id}
+        filter_: dict[str, object] = {"_id": workflow_id}
         if user_id:
             filter_["user_id"] = user_id
-        set_fields: dict[str, Any] = {"status": status.value}
+        set_fields: dict[str, object] = {"status": status.value}
         if not isinstance(scheduled_at, _Unset):
             set_fields["scheduled_at"] = scheduled_at
         if occurrence_count is not None:

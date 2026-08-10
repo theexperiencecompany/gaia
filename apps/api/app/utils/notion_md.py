@@ -1,5 +1,19 @@
 """Notion ↔ Markdown bidirectional conversion utilities.
 
+    value = bag.get(key)
+    return value if isinstance(value, str) else default
+
+
+def list_bag(bag: dict[str, object], key: str) -> list[object]:
+    value = bag.get(key)
+    return value if isinstance(value, list) else []
+
+
+def bool_bag(bag: dict[str, object], key: str, default: bool = False) -> bool:
+    value = bag.get(key)
+    return value if isinstance(value, bool) else default
+
+
 Provides:
 - blocks_to_markdown(): Convert Notion blocks → Markdown string
 - markdown_to_notion_blocks(): Convert Markdown string → NOTION_ADD_MULTIPLE_PAGE_CONTENT format
@@ -8,7 +22,8 @@ Adapted from notion-to-md-py with modifications for Composio integration.
 """
 
 import re
-from typing import Any
+
+from app.utils.json_helpers import bool_bag, dict_bag, int_bag, list_bag, text_bag
 
 # =============================================================================
 # Markdown Formatting Functions
@@ -71,8 +86,8 @@ def _quote(text: str) -> str:
     return f"> {no_newline}"
 
 
-def _callout(text: str, icon: dict[str, Any] | None = None) -> str:
-    emoji = icon.get("emoji", "") if icon and icon.get("type") == "emoji" else ""
+def _callout(text: str, icon: dict[str, object] | None = None) -> str:
+    emoji = text_bag(icon, "emoji") if icon and icon.get("type") == "emoji" else ""
     formatted_text = text.replace("\n", "\n> ")
     formatted_emoji = emoji + " " if emoji else ""
     heading_match = re.match(r"^(#{1,6})\s+(.+)", formatted_text)
@@ -122,7 +137,7 @@ def _toggle(summary: str | None = None, children: str | None = None) -> str:
 # =============================================================================
 
 
-def _apply_annotations(plain_text: str, annotations: dict[str, Any]) -> str:
+def _apply_annotations(plain_text: str, annotations: dict[str, object]) -> str:
     """Apply text annotations (bold, italic, etc.) to plain text."""
     if not plain_text.strip():
         return plain_text
@@ -152,25 +167,25 @@ def _apply_annotations(plain_text: str, annotations: dict[str, Any]) -> str:
 # =============================================================================
 
 
-def rich_text_to_markdown(rich_text: list[dict[str, Any]]) -> str:
+def rich_text_to_markdown(rich_text: list[dict[str, object]]) -> str:
     """Convert Notion rich_text array to markdown string."""
     result = ""
 
     for content in rich_text:
         if content.get("type") == "equation":
-            expression = content.get("equation", {}).get("expression", "")
+            expression = text_bag(dict_bag(content, "equation"), "expression")
             result += _inline_equation(expression)
             continue
 
-        plain_text = content.get("plain_text", "")
-        annotations = content.get("annotations", {})
+        plain_text = text_bag(content, "plain_text")
+        annotations = dict_bag(content, "annotations")
 
         # Apply annotations
         plain_text = _apply_annotations(plain_text, annotations)
 
         # Add link if present
         if content.get("href"):
-            plain_text = _link(plain_text, content["href"])
+            plain_text = _link(plain_text, text_bag(content, "href"))
 
         result += plain_text
 
@@ -182,27 +197,29 @@ def rich_text_to_markdown(rich_text: list[dict[str, Any]]) -> str:
 # =============================================================================
 
 
-def block_to_markdown(block: dict[str, Any]) -> str:
+def block_to_markdown(block: dict[str, object]) -> str:
     """Convert a single Notion block to markdown string."""
     if not isinstance(block, dict) or "type" not in block:
         return ""
 
-    block_type = block["type"]
+    block_type = text_bag(block, "type")
 
     # Handle image blocks
     if block_type == "image":
-        block_content = block.get("image", {})
+        block_content = dict_bag(block, "image")
         image_title = "image"
 
         image_caption_plain = "".join(
-            item.get("plain_text", "") for item in block_content.get("caption", [])
+            text_bag(item, "plain_text")
+            for item in list_bag(block_content, "caption")
+            if isinstance(item, dict)
         )
 
-        image_type = block_content.get("type", "")
+        image_type = text_bag(block_content, "type")
         if image_type == "external":
-            link = block_content.get("external", {}).get("url", "")
+            link = text_bag(dict_bag(block_content, "external"), "url")
         else:
-            link = block_content.get("file", {}).get("url", "")
+            link = text_bag(dict_bag(block_content, "file"), "url")
 
         image_title = (
             image_caption_plain.strip() or link.split("/")[-1] if "/" in link else image_title
@@ -216,24 +233,26 @@ def block_to_markdown(block: dict[str, Any]) -> str:
 
     # Handle equation
     if block_type == "equation":
-        expression = block.get("equation", {}).get("expression", "")
+        expression = text_bag(dict_bag(block, "equation"), "expression")
         return _equation(expression)
 
     # Handle video, file, pdf
     if block_type in ["video", "file", "pdf"]:
-        block_content = block.get(block_type, {})
+        block_content = dict_bag(block, block_type)
         title = block_type
 
         if block_content:
             caption = "".join(
-                item.get("plain_text", "") for item in block_content.get("caption", [])
+                text_bag(item, "plain_text")
+                for item in list_bag(block_content, "caption")
+                if isinstance(item, dict)
             )
 
-            file_type = block_content.get("type", "")
+            file_type = text_bag(block_content, "type")
             if file_type == "external":
-                link = block_content.get("external", {}).get("url", "")
+                link = text_bag(dict_bag(block_content, "external"), "url")
             else:
-                link = block_content.get("file", {}).get("url", "")
+                link = text_bag(dict_bag(block_content, "file"), "url")
 
             title = caption.strip() or (link.split("/")[-1] if "/" in link else title)
             return _link(title, link)
@@ -243,7 +262,7 @@ def block_to_markdown(block: dict[str, Any]) -> str:
     # Handle bookmark, embed, link_preview, link_to_page
     if block_type in ["bookmark", "embed", "link_preview", "link_to_page"]:
         if block_type == "link_to_page":
-            link_data = block.get("link_to_page", {})
+            link_data = dict_bag(block, "link_to_page")
             if link_data.get("type") == "page_id":
                 url = f"https://www.notion.so/{link_data.get('page_id', '')}"
             elif link_data.get("type") == "database_id":
@@ -251,19 +270,19 @@ def block_to_markdown(block: dict[str, Any]) -> str:
             else:
                 url = ""
         else:
-            block_content = block.get(block_type, {})
-            url = block_content.get("url", "")
+            block_content = dict_bag(block, block_type)
+            url = text_bag(block_content, "url")
 
         return _link(block_type, url)
 
     # Handle child_page
     if block_type == "child_page":
-        page_title = block.get("child_page", {}).get("title", "")
+        page_title = text_bag(dict_bag(block, "child_page"), "title")
         return _heading2(page_title)
 
     # Handle child_database
     if block_type == "child_database":
-        db_title = block.get("child_database", {}).get("title", "child_database")
+        db_title = text_bag(dict_bag(block, "child_database"), "title", "child_database")
         return _heading2(db_title)
 
     # Handle table (rows processed separately)
@@ -273,17 +292,17 @@ def block_to_markdown(block: dict[str, Any]) -> str:
 
     # Handle table_row
     if block_type == "table_row":
-        cells = block.get("table_row", {}).get("cells", [])
-        row_content = [rich_text_to_markdown(cell) for cell in cells]
+        cells = list_bag(dict_bag(block, "table_row"), "cells")
+        row_content = [rich_text_to_markdown(c) for c in cells if isinstance(c, list)]
         return "| " + " | ".join(row_content) + " |"
 
     # Handle standard blocks with rich_text
-    block_data = block.get(block_type, {})
-    rich_text = block_data.get("rich_text", []) or block_data.get("text", [])
-    parsed_data = rich_text_to_markdown(rich_text)
+    block_data = dict_bag(block, block_type)
+    rich_text = list_bag(block_data, "rich_text") or list_bag(block_data, "text")
+    parsed_data = rich_text_to_markdown([r for r in rich_text if isinstance(r, dict)])
 
     if block_type == "code":
-        language = block.get("code", {}).get("language", "")
+        language = text_bag(dict_bag(block, "code"), "language")
         return _code_block(parsed_data, language)
 
     if block_type == "heading_1":
@@ -299,18 +318,18 @@ def block_to_markdown(block: dict[str, Any]) -> str:
         return _quote(parsed_data)
 
     if block_type == "callout":
-        icon = block.get("callout", {}).get("icon")
+        icon = dict_bag(dict_bag(block, "callout"), "icon")
         return _callout(parsed_data, icon)
 
     if block_type == "bulleted_list_item":
         return _bullet(parsed_data)
 
     if block_type == "numbered_list_item":
-        number = block.get("numbered_list_item", {}).get("number")
+        number = int_bag(dict_bag(block, "numbered_list_item"), "number")
         return _bullet(parsed_data, number)
 
     if block_type == "to_do":
-        checked = block.get("to_do", {}).get("checked", False)
+        checked = bool_bag(dict_bag(block, "to_do"), "checked", False)
         return _todo(parsed_data, checked)
 
     if block_type == "toggle":
@@ -329,7 +348,7 @@ def block_to_markdown(block: dict[str, Any]) -> str:
 
 
 def blocks_to_markdown(
-    blocks: list[dict[str, Any]],
+    blocks: list[dict[str, object]],
     nesting_level: int = 0,
     include_block_ids: bool = False,
 ) -> str:
@@ -353,8 +372,8 @@ def blocks_to_markdown(
     numbered_list_index = 0
 
     for block in blocks:
-        block_type = block.get("type", "")
-        block_id = block.get("id", "")
+        block_type = text_bag(block, "type")
+        block_id = text_bag(block, "id")
 
         # Skip unsupported blocks
         if block_type == "unsupported":
@@ -363,7 +382,7 @@ def blocks_to_markdown(
         # Track numbered list indices
         if block_type == "numbered_list_item":
             numbered_list_index += 1
-            block["numbered_list_item"]["number"] = numbered_list_index
+            dict_bag(block, "numbered_list_item")["number"] = numbered_list_index
         else:
             numbered_list_index = 0
 
@@ -385,9 +404,10 @@ def blocks_to_markdown(
             result_lines.append(md_content)
 
         # Handle children recursively if present
-        children = block.get("children", [])
-        if children:
-            child_md = blocks_to_markdown(children, nesting_level + 1, include_block_ids)
+        children = list_bag(block, "children")
+        dict_children = [c for c in children if isinstance(c, dict)]
+        if dict_children:
+            child_md = blocks_to_markdown(dict_children, nesting_level + 1, include_block_ids)
             if child_md:
                 result_lines.append(child_md)
 
@@ -399,78 +419,85 @@ def blocks_to_markdown(
 # =============================================================================
 
 
-def simplify_block(block: dict[str, Any]) -> dict[str, Any]:
+def simplify_block(block: dict[str, object]) -> dict[str, object]:
     """
     Simplify a Notion block, removing formatting metadata.
 
     Keeps: id, type, text content, has_children, children
     Removes: colors, annotations, parent info, timestamps, user info
     """
-    block_type = block.get("type", "")
+    block_type = text_bag(block, "type")
 
-    simplified: dict[str, Any] = {
-        "id": block.get("id", ""),
+    simplified: dict[str, object] = {
+        "id": text_bag(block, "id"),
         "type": block_type,
     }
 
     # Extract text content
-    block_data = block.get(block_type, {})
-    rich_text = block_data.get("rich_text", []) or block_data.get("text", [])
+    block_data = dict_bag(block, block_type)
+    rich_text = list_bag(block_data, "rich_text") or list_bag(block_data, "text")
 
     if rich_text:
         # Just get plain text, no formatting
-        simplified["text"] = "".join(item.get("plain_text", "") for item in rich_text)
+        simplified["text"] = "".join(
+            text_bag(item, "plain_text") for item in rich_text if isinstance(item, dict)
+        )
 
     # Handle special block types
     if block_type == "child_page":
-        simplified["title"] = block.get("child_page", {}).get("title", "")
+        simplified["title"] = text_bag(dict_bag(block, "child_page"), "title")
     elif block_type == "child_database":
-        simplified["title"] = block.get("child_database", {}).get("title", "")
+        simplified["title"] = text_bag(dict_bag(block, "child_database"), "title")
     elif block_type == "to_do":
-        simplified["checked"] = block.get("to_do", {}).get("checked", False)
+        simplified["checked"] = bool_bag(dict_bag(block, "to_do"), "checked", False)
     elif block_type == "code":
-        simplified["language"] = block.get("code", {}).get("language", "")
+        simplified["language"] = text_bag(dict_bag(block, "code"), "language")
     elif block_type in ["image", "video", "file", "pdf"]:
-        content = block.get(block_type, {})
-        file_type = content.get("type", "")
+        content = dict_bag(block, block_type)
+        file_type = text_bag(content, "type")
         if file_type == "external":
-            simplified["url"] = content.get("external", {}).get("url", "")
+            simplified["url"] = text_bag(dict_bag(content, "external"), "url")
         else:
-            simplified["url"] = content.get("file", {}).get("url", "")
+            simplified["url"] = text_bag(dict_bag(content, "file"), "url")
         simplified["caption"] = "".join(
-            item.get("plain_text", "") for item in content.get("caption", [])
+            text_bag(item, "plain_text")
+            for item in list_bag(content, "caption")
+            if isinstance(item, dict)
         )
     elif block_type in ["bookmark", "embed", "link_preview"]:
-        simplified["url"] = block.get(block_type, {}).get("url", "")
+        simplified["url"] = text_bag(dict_bag(block, block_type), "url")
 
     # Handle children
     if block.get("has_children"):
         simplified["has_children"] = True
-    children = block.get("children", [])
+    children = list_bag(block, "children")
     if children:
-        simplified["children"] = [simplify_block(child) for child in children]
+        simplified["children"] = [simplify_block(c) for c in children if isinstance(c, dict)]
 
     return simplified
 
 
-def extract_plain_text(blocks: list[dict[str, Any]]) -> str:
+def extract_plain_text(blocks: list[dict[str, object]]) -> str:
     """Extract just the plain text from blocks, no formatting."""
     texts: list[str] = []
 
     for block in blocks:
-        block_type = block.get("type", "")
-        block_data = block.get(block_type, {})
-        rich_text = block_data.get("rich_text", []) or block_data.get("text", [])
+        block_type = text_bag(block, "type")
+        block_data = dict_bag(block, block_type)
+        rich_text = list_bag(block_data, "rich_text") or list_bag(block_data, "text")
 
         if rich_text:
-            text = "".join(item.get("plain_text", "") for item in rich_text)
+            text = "".join(
+                text_bag(item, "plain_text") for item in rich_text if isinstance(item, dict)
+            )
             if text:
                 texts.append(text)
 
         # Handle children recursively
-        children = block.get("children", [])
-        if children:
-            child_text = extract_plain_text(children)
+        children = list_bag(block, "children")
+        dict_children = [c for c in children if isinstance(c, dict)]
+        if dict_children:
+            child_text = extract_plain_text(dict_children)
             if child_text:
                 texts.append(child_text)
 
@@ -482,7 +509,7 @@ def extract_plain_text(blocks: list[dict[str, Any]]) -> str:
 # =============================================================================
 
 
-def markdown_to_notion_blocks(markdown: str) -> list[dict[str, Any]]:
+def markdown_to_notion_blocks(markdown: str) -> list[dict[str, object]]:
     """
     Convert markdown string to NOTION_ADD_MULTIPLE_PAGE_CONTENT format.
 
@@ -502,7 +529,7 @@ def markdown_to_notion_blocks(markdown: str) -> list[dict[str, Any]]:
     - --- dividers
     - Inline: **bold**, *italic*, ~~strikethrough~~, `code`, [links](url)
     """
-    blocks: list[dict[str, Any]] = []
+    blocks: list[dict[str, object]] = []
     lines = markdown.split("\n")
     i = 0
 

@@ -76,6 +76,7 @@ from app.override.langgraph_bigtool.utils import (
     dedupe_tool_bindings,
     format_selected_tools,
 )
+from app.utils.json_helpers import dict_bag
 from app.utils.mcp_utils import canonical_tool_name_map
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
@@ -103,7 +104,7 @@ def create_agent(
     tool_registry: Mapping[str, BaseTool],
     *,
     limit: int = 2,
-    filter: dict[str, Any] | None = None,
+    filter: dict[str, object] | None = None,
     namespace_prefix: tuple[str, ...] = ("tools",),
     retrieve_tools_function: Callable[..., RetrieveToolsResponse] | None = None,
     retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResponse]] | None = None,
@@ -299,7 +300,7 @@ def create_agent(
             log.debug("Failed to log message preview", error_type=type(e).__name__, error=str(e))
 
         if middleware_executor and middleware_executor.has_wrap_model_call():
-            middleware_tools_for_request: list[BaseTool | dict[str, Any]] = [
+            middleware_tools_for_request: list[BaseTool | dict[str, object]] = [
                 tool for tool in tools_to_bind
             ]
             response = await middleware_executor.wrap_model_invocation(
@@ -340,7 +341,7 @@ def create_agent(
         return result  # type: ignore[return-value]
 
     def select_tools(
-        tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
+        tool_calls: list[dict[str, object]], config: RunnableConfig, *, store: BaseStore
     ) -> State:
         if retrieve_tools is None:
             raise RuntimeError("retrieve_tools is disabled and select_tools should not be called")
@@ -348,7 +349,7 @@ def create_agent(
         selected_tools = {}
         response_tools = {}
         for tool_call in tool_calls:
-            kwargs = {**tool_call["args"]}
+            kwargs = {**dict_bag(tool_call, "args")}
             if store_arg:
                 kwargs[store_arg] = store
             if config:
@@ -388,7 +389,7 @@ def create_agent(
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
 
     async def aselect_tools(
-        tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
+        tool_calls: list[dict[str, object]], config: RunnableConfig, *, store: BaseStore
     ) -> State:
         if retrieve_tools is None:
             raise RuntimeError("retrieve_tools is disabled and aselect_tools should not be called")
@@ -396,7 +397,7 @@ def create_agent(
         selected_tools = {}
         response_tools = {}
         for tool_call in tool_calls:
-            kwargs = {**tool_call["args"]}
+            kwargs = {**dict_bag(tool_call, "args")}
             if store_arg:
                 kwargs[store_arg] = store
             if config:
@@ -465,7 +466,7 @@ def create_agent(
                 bound.add(tool.name)
         return bound
 
-    def reject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: BaseStore) -> State:
+    def reject_unbound_tools(tool_calls: list[dict[str, object]], *, store: BaseStore) -> State:
         """Return error ToolMessages for tool calls that were not bound."""
         messages = [
             ToolMessage(
@@ -481,7 +482,9 @@ def create_agent(
         ]
         return {"messages": messages}  # type: ignore[return-value]
 
-    async def areject_unbound_tools(tool_calls: list[dict[str, Any]], *, store: BaseStore) -> State:
+    async def areject_unbound_tools(
+        tool_calls: list[dict[str, object]], *, store: BaseStore
+    ) -> State:
         return reject_unbound_tools(tool_calls, store=store)
 
     def _last_tool_calling_message(state: State) -> AIMessage | None:

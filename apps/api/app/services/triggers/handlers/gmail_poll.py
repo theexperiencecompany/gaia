@@ -78,7 +78,7 @@ class GmailPollTriggerHandler(TriggerHandler):
                 trigger_name,
             )
 
-        composio_config = {"interval": trigger_data.interval}
+        composio_config: dict[str, object] = {"interval": trigger_data.interval}
 
         return await self._register_triggers_parallel(
             user_id=user_id,

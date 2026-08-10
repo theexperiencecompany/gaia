@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from chromadb.api import AsyncClientAPI
 from chromadb.api.models.AsyncCollection import AsyncCollection
+from chromadb.api.types import Where
 from langchain_core.embeddings import Embeddings
 from langgraph.store.base import (
     BaseStore,
@@ -36,7 +37,7 @@ from shared.py.wide_events import VectorContext, log
 
 # A filter value (or the item value it's compared against) is an arbitrary
 # JSON-like scalar/container pulled out of a MongoDB-style query filter dict.
-FilterValue = str | int | float | bool | None | dict[str, Any] | list[Any]
+FilterValue = str | int | float | bool | None | dict[str, object] | list[Any]
 
 
 class ChromaStore(BaseStore):
@@ -345,12 +346,13 @@ class ChromaStore(BaseStore):
             return False
         return namespace[: len(prefix)] == prefix
 
-    def _check_filter(self, value: dict[str, Any], filter_dict: dict[str, Any]) -> bool:
+    def _check_filter(self, value: dict[str, object], filter_dict: dict[str, object]) -> bool:
         """Check if value matches filter conditions."""
         for key, filter_value in filter_dict.items():
             if key.startswith("$"):
-                if not self._apply_operator(value, key, filter_value):
-                    return False
+                if isinstance(filter_value, (dict, list, str, int, float, bool)):
+                    if not self._apply_operator(value, key, filter_value):
+                        return False
             else:
                 item_value = value.get(key)
                 if isinstance(filter_value, dict):
@@ -412,10 +414,12 @@ class ChromaStore(BaseStore):
 
                 try:
                     # Build where filter for namespace prefix
-                    where_filter: dict[str, Any] | None = None
+                    where_filter: Where | None = None
                     if op.namespace_prefix:
                         namespace_str = "::".join(op.namespace_prefix)
-                        where_filter = {"namespace": {"$eq": namespace_str}}
+                        # Chroma's Where type keys the operator dict by a Literal union;
+                        # the literal is exactly the shape the SDK accepts at runtime.
+                        where_filter = cast(Where, {"namespace": {"$eq": namespace_str}})
 
                     # Apply additional filters if provided
                     if op.filter:

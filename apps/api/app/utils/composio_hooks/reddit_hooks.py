@@ -5,18 +5,17 @@ These hooks implement response processing for raw Reddit API data,
 minimizing token usage by extracting only critical information.
 """
 
-from typing import Any
-
 from composio.types import ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
+from app.utils.json_helpers import dict_bag, list_bag
 from shared.py.wide_events import log
 
 from .registry import register_after_hook, register_before_hook
 
 
-def process_reddit_post(post_data: dict[str, Any]) -> dict[str, Any]:
+def process_reddit_post(post_data: dict[str, object]) -> dict[str, object]:
     """
     Extract only critical information from a Reddit post.
 
@@ -27,7 +26,7 @@ def process_reddit_post(post_data: dict[str, Any]) -> dict[str, Any]:
         Minimized post data with only essential fields
     """
     try:
-        data = post_data.get("data", {})
+        data = dict_bag(post_data, "data")
 
         return {
             "id": data.get("id", ""),
@@ -58,7 +57,7 @@ def process_reddit_post(post_data: dict[str, Any]) -> dict[str, Any]:
         return {}
 
 
-def process_reddit_search_results(response_data: dict[str, Any]) -> dict[str, Any]:
+def process_reddit_search_results(response_data: dict[str, object]) -> dict[str, object]:
     """
     Process Reddit search results to minimize data.
 
@@ -69,14 +68,14 @@ def process_reddit_search_results(response_data: dict[str, Any]) -> dict[str, An
         Processed search results with only critical information
     """
     try:
-        search_results = response_data.get("search_results", {})
-        data = search_results.get("data", {})
-        children = data.get("children", [])
+        search_results = dict_bag(response_data, "search_results")
+        data = dict_bag(search_results, "data")
+        children = list_bag(data, "children")
 
         # Process each post
         processed_posts = []
         for child in children:
-            if child.get("kind") == "t3":  # t3 is a link/post
+            if isinstance(child, dict) and child.get("kind") == "t3":  # t3 is a link/post
                 processed_post = process_reddit_post(child)
                 if processed_post:
                     processed_posts.append(processed_post)
@@ -96,7 +95,7 @@ def process_reddit_search_results(response_data: dict[str, Any]) -> dict[str, An
         return response_data
 
 
-def process_reddit_comment(comment_data: dict[str, Any]) -> dict[str, Any]:
+def process_reddit_comment(comment_data: dict[str, object]) -> dict[str, object]:
     """
     Extract only critical information from a Reddit comment.
 
@@ -107,7 +106,7 @@ def process_reddit_comment(comment_data: dict[str, Any]) -> dict[str, Any]:
         Minimized comment data with only essential fields
     """
     try:
-        data = comment_data.get("data", {})
+        data = dict_bag(comment_data, "data")
 
         return {
             "id": data.get("id", ""),
@@ -226,7 +225,7 @@ def reddit_retrieve_before_hook(
 @register_after_hook(tools=["REDDIT_SEARCH_ACROSS_SUBREDDITS"])
 def reddit_search_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process Reddit search response to minimize raw data."""
     log.set(reddit_tool=tool, toolkit=toolkit)
     try:
@@ -238,10 +237,13 @@ def reddit_search_after_hook(
         # Process the raw search response
         processed_response = process_reddit_search_results(response["data"])
 
-        if writer is not None and processed_response.get("posts"):
+        posts = processed_response.get("posts")
+        if writer is not None and isinstance(posts, list):
             # Send search results to frontend
             reddit_search_data = []
-            for post in processed_response["posts"]:
+            for post in posts:
+                if not isinstance(post, dict):
+                    continue
                 reddit_search_data.append(
                     {
                         "id": post.get("id", ""),
@@ -282,7 +284,7 @@ def reddit_search_after_hook(
 @register_after_hook(tools=["REDDIT_RETRIEVE_REDDIT_POST"])
 def reddit_post_detail_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process single Reddit post response and stream to frontend."""
     try:
         writer = get_stream_writer()
@@ -337,7 +339,7 @@ def reddit_post_detail_after_hook(
 @register_after_hook(tools=["REDDIT_RETRIEVE_POST_COMMENTS"])
 def reddit_comments_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process Reddit comments response and stream to frontend."""
     try:
         writer = get_stream_writer()
@@ -349,7 +351,7 @@ def reddit_comments_after_hook(
         # as a plain Dict, but Reddit's raw listing API for this endpoint returns a
         # top-level JSON array `[post_listing, comments_listing]` — genuinely either
         # shape can arrive here.
-        response_data: dict[str, Any] | list[Any] = response.get("data", {})
+        response_data: dict[str, object] | list[object] = response.get("data", {})
 
         # Reddit returns an array with [post_data, comments_data]
         if isinstance(response_data, list):
@@ -363,7 +365,9 @@ def reddit_comments_after_hook(
                 comments_data = []
         else:
             # Alternative structure
-            comments_data = response_data.get("comments", {}).get("data", {}).get("children", [])
+            comments_data = list_bag(
+                dict_bag(dict_bag(response_data, "comments"), "data"), "children"
+            )
 
         # Process comments
         processed_comments = []
@@ -415,7 +419,7 @@ def reddit_comments_after_hook(
 @register_after_hook(tools=["REDDIT_CREATE_REDDIT_POST", "REDDIT_POST_REDDIT_COMMENT"])
 def reddit_content_created_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Process Reddit content creation response and stream to frontend."""
     try:
         writer = get_stream_writer()

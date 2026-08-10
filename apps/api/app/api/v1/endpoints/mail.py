@@ -76,6 +76,7 @@ from app.services.mail.mail_service import (
     update_label,
 )
 from app.utils.embedding_utils import search_notes_by_similarity
+from app.utils.json_helpers import text_bag
 from app.utils.user_preferences_utils import format_writing_style_for_prompt
 from shared.py.wide_events import log
 
@@ -587,7 +588,7 @@ async def trash_emails(
         )
         return TrashEmailsResponse(
             success=True,
-            trashed=[msg["id"] for msg in modified_messages],
+            trashed=[text_bag(msg, "id") for msg in modified_messages],
             count=len(modified_messages),
             status="Messages moved to trash",
         )
@@ -621,7 +622,7 @@ async def untrash_emails(
         )
         return UntrashEmailsResponse(
             success=True,
-            restored=[msg["id"] for msg in modified_messages],
+            restored=[text_bag(msg, "id") for msg in modified_messages],
             count=len(modified_messages),
             status="Messages restored from trash",
         )

@@ -33,6 +33,7 @@ from app.templates.docstrings.notion_tool_docs import (
 )
 from app.utils.context_utils import execute_tool
 from app.utils.errors import AppError
+from app.utils.json_helpers import text_opt_bag
 from app.utils.notion_md import blocks_to_markdown, markdown_to_notion_blocks
 from shared.py.wide_events import log
 
@@ -41,7 +42,7 @@ NOTION_TOOLKIT = "NOTION"
 _NOTION_HEADERS = {"Notion-Version": "2022-06-28"}
 
 
-def _user_id(auth_credentials: dict[str, Any]) -> str:
+def _user_id(auth_credentials: dict[str, object]) -> str:
     user_id = auth_credentials.get("user_id")
     if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
@@ -56,8 +57,8 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def MOVE_PAGE(
         request: MovePageInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del auth_credentials  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "notion", "action": "move_page"})
         # Build parent object based on type
@@ -74,7 +75,7 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         # ToolProxyResponse.data is typed Optional[object] by the framework's own
         # Pydantic model; this endpoint's real payload is a JSON object.
-        data = cast("dict[str, Any]", response.data if hasattr(response, "data") else response)
+        data = cast("dict[str, object]", response.data if hasattr(response, "data") else response)
         return {
             "page_id": data.get("id"),
             "new_parent": parent,
@@ -86,8 +87,8 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def FETCH_PAGE_AS_MARKDOWN(
         request: FetchPageAsMarkdownInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "notion", "action": "fetch_page_as_markdown"})
         # Get page title using NOTION_GET_PAGE_PROPERTY_ACTION
@@ -99,9 +100,9 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                     "page_id": request.page_id,
                     "property_id": "title",
                 },
-                version=auth_credentials.get("version"),
+                version=text_opt_bag(auth_credentials, "version"),
                 dangerously_skip_version_check=True,
-                user_id=auth_credentials.get("user_id"),
+                user_id=text_opt_bag(auth_credentials, "user_id"),
             )
             # Composio tools return ToolExecutionResponse format
             if not title_response["successful"]:
@@ -134,9 +135,9 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 "recursive": request.recursive,
                 "page_size": 100,
             },
-            version=auth_credentials.get("version"),
+            version=text_opt_bag(auth_credentials, "version"),
             dangerously_skip_version_check=True,
-            user_id=auth_credentials.get("user_id"),
+            user_id=text_opt_bag(auth_credentials, "user_id"),
         )
 
         # Extract blocks from response (ToolExecutionResponse format)
@@ -172,8 +173,8 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def INSERT_MARKDOWN(
         request: InsertMarkdownInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "notion", "action": "insert_markdown"})
         # Convert markdown to Notion blocks
@@ -189,7 +190,7 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
             is_table = block.get("type") == "table"
 
             if is_table:
-                params: dict[str, Any] = {
+                params: dict[str, object] = {
                     "block_id": request.parent_block_id,
                     "table_width": block["table_width"],
                     "has_column_header": block.get("has_column_header", True),
@@ -198,9 +199,9 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 response: ToolExecutionResponse = composio.tools.execute(
                     slug="NOTION_APPEND_TABLE_BLOCKS",
                     arguments=params,
-                    version=auth_credentials.get("version"),
+                    version=text_opt_bag(auth_credentials, "version"),
                     dangerously_skip_version_check=True,
-                    user_id=auth_credentials.get("user_id"),
+                    user_id=text_opt_bag(auth_credentials, "user_id"),
                 )
 
                 if not response["successful"]:
@@ -219,9 +220,9 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
                 response = composio.tools.execute(
                     slug="NOTION_ADD_MULTIPLE_PAGE_CONTENT",
                     arguments=params,
-                    version=auth_credentials.get("version"),
+                    version=text_opt_bag(auth_credentials, "version"),
                     dangerously_skip_version_check=True,
-                    user_id=auth_credentials.get("user_id"),
+                    user_id=text_opt_bag(auth_credentials, "user_id"),
                 )
 
                 if not response["successful"]:
@@ -243,8 +244,8 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def FETCH_DATA(
         request: FetchDataInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Fetch databases or pages from Notion workspace."""
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "notion", "action": "fetch_data"})
@@ -252,7 +253,7 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
 
         search_filter = {"property": "object", "value": request.fetch_type.rstrip("s")}
 
-        search_body: dict[str, Any] = {
+        search_body: dict[str, object] = {
             "filter": search_filter,
             "page_size": min(request.page_size, 100),
         }
@@ -318,8 +319,8 @@ def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Notion workspace context: recently edited pages and databases.
 
         Zero required parameters. Returns recently modified content for situational awareness.

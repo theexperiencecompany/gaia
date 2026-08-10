@@ -8,7 +8,7 @@ with our langgraph_bigtool-based agent state.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, cast
 
 from langchain.agents.middleware.types import (
     AgentState,
@@ -17,7 +17,7 @@ from langchain.agents.middleware.types import (
 )
 from langchain.tools import ToolRuntime
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AnyMessage, SystemMessage
 from langchain_core.messages.tool import ToolCall
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
@@ -26,6 +26,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 
 from app.override.langgraph_bigtool.utils import State
+from app.utils.json_helpers import dict_bag, text_bag, text_opt_bag
 
 
 def _noop_stream_writer(_: object) -> None:
@@ -33,12 +34,20 @@ def _noop_stream_writer(_: object) -> None:
     return
 
 
-def to_agent_state(state: State | dict[str, Any]) -> AgentState[Any]:
+def to_agent_state(state: State | dict[str, object]) -> AgentState[Any]:
     """Convert graph state into LangChain AgentState-compatible shape."""
-    agent_state: AgentState[Any] = AgentState(messages=list(state.get("messages", [])))
+    raw_messages = state.get("messages", [])
+    agent_state: AgentState[Any] = AgentState(
+        # Container-guarded, elements unfiltered (RemoveMessage tombstones drive
+        # summarization deletion); bridged to the adapter's narrower type.
+        messages=cast(list[AnyMessage], raw_messages if isinstance(raw_messages, list) else [])
+    )
     jump_to = state.get("jump_to")
-    if jump_to in {"tools", "model", "end"}:
-        agent_state["jump_to"] = jump_to
+    if isinstance(jump_to, str):
+        if jump_to in {"tools", "model", "end"}:
+            # The membership check proves the value is one of the three literals;
+            # mypy cannot narrow a str through `in`, so the checked value is bridged.
+            agent_state["jump_to"] = cast(Literal["tools", "model", "end"], jump_to)
     if "structured_response" in state:
         agent_state["structured_response"] = state["structured_response"]
     return agent_state
@@ -84,7 +93,7 @@ class BigtoolRuntime(  # type: ignore[misc]  # Runtime IS frozen via _DC_KWARGS 
 
 
 @dataclass
-class BigtoolToolRuntime(ToolRuntime[None, dict[str, Any]]):
+class BigtoolToolRuntime(ToolRuntime[None, dict[str, object]]):
     """
     Tool-specific runtime adapter for wrap_tool_call middleware.
 
@@ -105,7 +114,7 @@ class BigtoolToolRuntime(ToolRuntime[None, dict[str, Any]]):
         config: RunnableConfig,
         store: BaseStore | None = None,
         tool_name: str | None = None,
-        state: dict[str, Any] | None = None,
+        state: dict[str, object] | None = None,
         context: None = None,
         stream_writer: StreamWriter = _noop_stream_writer,
         tool_call_id: str | None = None,
@@ -126,7 +135,7 @@ def create_model_request(
     model: BaseChatModel,
     state: State,
     runtime: BigtoolRuntime,
-    tools: Sequence[BaseTool | dict[str, Any]],
+    tools: Sequence[BaseTool | dict[str, object]],
     system_message: SystemMessage | None = None,
 ) -> ModelRequest:
     """
@@ -168,7 +177,7 @@ def create_model_request(
 
     # ModelRequest.state follows LangChain's AgentState schema.
     agent_state = to_agent_state(state)
-    tools_for_request: list[BaseTool | dict[str, Any]] = [tool for tool in tools]
+    tools_for_request: list[BaseTool | dict[str, object]] = [tool for tool in tools]
 
     return ModelRequest(
         model=model,
@@ -184,7 +193,7 @@ def create_model_request(
 
 
 def create_tool_call_request(
-    tool_call: dict[str, Any],
+    tool_call: dict[str, object],
     tool: BaseTool | None,
     state: State,
     runtime: BigtoolToolRuntime,
@@ -205,9 +214,9 @@ def create_tool_call_request(
     """
     # Convert dict to ToolCall TypedDict
     tc: ToolCall = {
-        "name": tool_call.get("name", ""),
-        "args": tool_call.get("args", {}),
-        "id": tool_call.get("id"),
+        "name": text_bag(tool_call, "name"),
+        "args": dict_bag(tool_call, "args"),
+        "id": text_opt_bag(tool_call, "id"),
     }
 
     return ToolCallRequest(
