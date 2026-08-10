@@ -127,8 +127,9 @@ class LoopGuardMiddleware(AgentMiddleware):
 
         if self.hard_stop and repeat >= LOOP_GUARD_STOP_REPEAT:
             log.warning(
-                f"{LogTag.AGENT} Loop guard hard-stopped {tool_name} "
-                f"(repeat={repeat}) — redundant duplicate call not executed"
+                f"{LogTag.AGENT} Loop guard hard-stopped tool — redundant duplicate call not executed",
+                tool_name=tool_name,
+                repeat=repeat,
             )
             return ToolMessage(
                 content=(
@@ -167,8 +168,9 @@ class LoopGuardMiddleware(AgentMiddleware):
             # re-issuing the same handoff/search.
             if isinstance(result, ToolMessage) and repeat >= LOOP_GUARD_WARN_REPEAT:
                 log.warning(
-                    f"{LogTag.AGENT} Loop guard repeat-warning appended for {tool_name} "
-                    f"(repeat={repeat})"
+                    f"{LogTag.AGENT} Loop guard repeat-warning appended for tool",
+                    tool_name=tool_name,
+                    repeat=repeat,
                 )
                 self._append_note(
                     result,
