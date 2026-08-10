@@ -2,17 +2,39 @@
 
 Tests the user endpoints with mocked service layer to verify
 routing, status codes, response bodies, auth, and validation.
+
+The endpoints are thin orchestration: resolve the user id, call a
+service/repository seam, and emit wide-event log lines. These tests pin the
+full contract — exact response bodies, exact mocked-seam call args, and the
+exact `log.set` / `log.audit` / `log.error` / `log.warning` payloads — so a
+wrong operation name, a dropped audit kwarg, a mutated error string, or a
+wrong cookie attribute fails at the boundary instead of silently degrading
+the observability/audit trail. ``log`` is patched per-test with a MagicMock
+and asserted with exact call lists; error paths pin the exact ``error_type``
+/ ``error`` (which for logout's swallowed 401 also pins the ``HTTPException``
+status/detail via ``str(e)`` — the only surface where they remain observable).
+
+Mutation residue (provably equivalent — no test can kill these; the mutated
+value is never observable):
+- update_me: ``picture.size > 0`` -> ``>= 0`` in both the ``has_picture_upload``
+  expression and the upload gate. ``picture.size`` is a non-negative int: a
+  falsy size (0) short-circuits the ``and`` chain BEFORE the comparison is
+  evaluated, and a truthy size (>= 1) makes both operators True — identical
+  outcome for every reachable input.
 """
 
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import get_type_hints
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import ClassVar, get_type_hints
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from fastapi.responses import JSONResponse
 from httpx import AsyncClient
 
 from app.config.settings import settings
+from app.constants.auth import WOS_SESSION_COOKIE
+from app.constants.log_tags import LogTag
 from app.models.user_models import (
     AuthenticatedUserResponse,
     OnboardingPreferences,
@@ -26,14 +48,39 @@ USER_BASE = "/api/v1/user"
 
 USER_ID = "507f1f77bcf86cd799439011"
 
+USER_EMAIL = "test@example.com"
+
 FAKE_USER_UPDATE = {
     "user_id": USER_ID,
     "name": "Updated User",
-    "email": "test@example.com",
+    "email": USER_EMAIL,
     "picture": None,
 }
 
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+class _RecordingJSONResponse(JSONResponse):
+    """JSONResponse that records constructor and delete_cookie calls.
+
+    The logout endpoint builds its response inside the handler and clears the
+    session cookie on it, so the only way to pin the exact delete_cookie
+    arguments (including the ``secure=settings.ENV == "production"`` flag and
+    the ``samesite``/``path``/``httponly`` values) is to observe the response
+    object at the seam. Subclassing keeps the response fully functional for
+    the ASGI client.
+    """
+
+    init_calls: ClassVar[list[tuple[tuple, dict]]] = []
+    delete_cookie_calls: ClassVar[list[tuple[tuple, dict]]] = []
+
+    def __init__(self, *args, **kwargs):
+        _RecordingJSONResponse.init_calls.append((args, kwargs))
+        super().__init__(*args, **kwargs)
+
+    def delete_cookie(self, *args, **kwargs):
+        _RecordingJSONResponse.delete_cookie_calls.append((args, kwargs))
+        super().delete_cookie(*args, **kwargs)
 
 
 @contextmanager
@@ -62,6 +109,10 @@ def _card_user_doc(**overrides) -> UserDocument:
             "user_bio": "Hello",
             "account_number": 42,
             "member_since": "Jan 01, 2025",
+            # Non-default overlay values: the response echoes these, and the
+            # response model's own defaults must NOT mask a dropped kwarg.
+            "overlay_color": "rgba(0,0,0,0.5)",
+            "overlay_opacity": 80,
         },
     }
     base.update(overrides)
@@ -92,17 +143,25 @@ class TestGetMe:
             preferences=OnboardingPreferences(),
             first_message_conversation_id=None,
         )
-        response = await client.get(f"{USER_BASE}/me")
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.get(f"{USER_BASE}/me")
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "User retrieved successfully"
         assert data["user_id"] == USER_ID
-        assert data["email"] == "test@example.com"
+        assert data["email"] == USER_EMAIL
         assert data["name"] == "Test User"
         assert data["auth_provider"] == "workos"
         assert data["timezone"] == "UTC"
         assert data["onboarding"]["completed"] is True
         mock_onboarding.assert_awaited_once_with(USER_ID)
+        assert mock_log.set.call_args_list == [
+            call(
+                user={"id": USER_ID, "email": USER_EMAIL},
+                operation="get_me",
+            ),
+            call(outcome="success"),
+        ]
 
     @patch(
         "app.api.v1.endpoints.user.get_user_onboarding_status",
@@ -159,18 +218,30 @@ class TestUpdateMe:
     )
     async def test_update_me_name(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = FAKE_USER_UPDATE
-        response = await client.patch(
-            f"{USER_BASE}/me",
-            data={"name": "Updated User"},
-        )
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.patch(
+                f"{USER_BASE}/me",
+                data={"name": "Updated User"},
+            )
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "Updated User"
         assert data["user_id"] == USER_ID
-        assert data["email"] == "test@example.com"
+        assert data["email"] == USER_EMAIL
         assert data["picture"] is None
         mock_update.assert_awaited_once_with(
             user_id=USER_ID, name="Updated User", picture_data=None
+        )
+        assert mock_log.set.call_args_list == [
+            call(
+                user={"id": USER_ID, "email": USER_EMAIL},
+                operation="update_me",
+                has_picture_upload=False,
+            ),
+            call(outcome="success"),
+        ]
+        mock_log.audit.assert_called_once_with(
+            "profile updated", actor=USER_ID, changed_fields=["name"]
         )
 
     @patch(
@@ -183,22 +254,35 @@ class TestUpdateMe:
             **FAKE_USER_UPDATE,
             "picture": "https://img.example.com/a.png",
         }
-        response = await client.patch(
-            f"{USER_BASE}/me",
-            data={"name": "Updated User"},
-            files={
-                "picture": (
-                    "avatar.png",
-                    picture_bytes,
-                    "image/png",
-                )
-            },
-        )
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.patch(
+                f"{USER_BASE}/me",
+                data={"name": "Updated User"},
+                files={
+                    "picture": (
+                        "avatar.png",
+                        picture_bytes,
+                        "image/png",
+                    )
+                },
+            )
         assert response.status_code == 200
         data = response.json()
         assert data["picture"] == "https://img.example.com/a.png"
         mock_update.assert_awaited_once_with(
             user_id=USER_ID, name="Updated User", picture_data=picture_bytes
+        )
+        assert mock_log.set.call_args_list == [
+            call(
+                user={"id": USER_ID, "email": USER_EMAIL},
+                operation="update_me",
+                has_picture_upload=True,
+            ),
+            call(picture_size_bytes=len(picture_bytes)),
+            call(outcome="success"),
+        ]
+        mock_log.audit.assert_called_once_with(
+            "profile updated", actor=USER_ID, changed_fields=["name", "picture"]
         )
 
     @patch(
@@ -274,14 +358,20 @@ class TestUpdateMe:
     ):
         """A zero-byte upload must be treated as 'no picture'."""
         mock_update.return_value = FAKE_USER_UPDATE
-        response = await client.patch(
-            f"{USER_BASE}/me",
-            data={"name": "Updated User"},
-            files={"picture": ("empty.png", b"", "image/png")},
-        )
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.patch(
+                f"{USER_BASE}/me",
+                data={"name": "Updated User"},
+                files={"picture": ("empty.png", b"", "image/png")},
+            )
         assert response.status_code == 200
         mock_update.assert_awaited_once_with(
             user_id=USER_ID, name="Updated User", picture_data=None
+        )
+        mock_log.set.assert_any_call(
+            user={"id": USER_ID, "email": USER_EMAIL},
+            operation="update_me",
+            has_picture_upload=False,
         )
 
     @patch(
@@ -293,14 +383,20 @@ class TestUpdateMe:
     ):
         """The size check is `> 0`: a 1-byte file is still a real upload."""
         mock_update.return_value = {**FAKE_USER_UPDATE, "picture": "https://img.example.com/1.png"}
-        response = await client.patch(
-            f"{USER_BASE}/me",
-            data={"name": "Updated User"},
-            files={"picture": ("one.png", b"\x00", "image/png")},
-        )
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.patch(
+                f"{USER_BASE}/me",
+                data={"name": "Updated User"},
+                files={"picture": ("one.png", b"\x00", "image/png")},
+            )
         assert response.status_code == 200
         mock_update.assert_awaited_once_with(
             user_id=USER_ID, name="Updated User", picture_data=b"\x00"
+        )
+        mock_log.set.assert_any_call(
+            user={"id": USER_ID, "email": USER_EMAIL},
+            operation="update_me",
+            has_picture_upload=True,
         )
 
     @patch(
@@ -339,13 +435,21 @@ class TestUpdateUserName:
     )
     async def test_update_name_success(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = FAKE_USER_UPDATE
-        response = await client.patch(
-            f"{USER_BASE}/name",
-            data={"name": "Updated User"},
-        )
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.patch(
+                f"{USER_BASE}/name",
+                data={"name": "Updated User"},
+            )
         assert response.status_code == 200
         assert response.json()["name"] == "Updated User"
         mock_update.assert_awaited_once_with(user_id=USER_ID, name="Updated User")
+        assert mock_log.set.call_args_list == [
+            call(user={"id": USER_ID}, operation="update_user_name"),
+            call(outcome="success"),
+        ]
+        mock_log.audit.assert_called_once_with(
+            "profile updated", actor=USER_ID, changed_fields=["name"]
+        )
 
     @patch(
         "app.api.v1.endpoints.user.update_user_profile",
@@ -353,12 +457,22 @@ class TestUpdateUserName:
     )
     async def test_update_name_service_error(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.side_effect = Exception("db error")
-        response = await client.patch(
-            f"{USER_BASE}/name",
-            data={"name": "X"},
-        )
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.patch(
+                f"{USER_BASE}/name",
+                data={"name": "X"},
+            )
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to update name"
+        mock_log.set.assert_called_once_with(user={"id": USER_ID}, operation="update_user_name")
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.API} Error updating user name",
+            user_id=USER_ID,
+            error_type="Exception",
+            error="db error",
+            exc_info=True,
+        )
+        mock_log.audit.assert_not_called()
 
     async def test_update_name_missing_field(self, client: AsyncClient):
         response = await client.patch(f"{USER_BASE}/name")
@@ -394,10 +508,14 @@ class TestUpdateTimezone:
     @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_success(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = UserDocument(timezone="America/New_York")
-        response = await client.patch(
-            f"{USER_BASE}/timezone",
-            data={"timezone": "America/New_York"},
-        )
+        with (
+            patch("app.api.v1.endpoints.user.is_valid_timezone", return_value=True) as mock_tz,
+            patch("app.api.v1.endpoints.user.log") as mock_log,
+        ):
+            response = await client.patch(
+                f"{USER_BASE}/timezone",
+                data={"timezone": "America/New_York"},
+            )
         assert response.status_code == 200
         assert response.json() == {
             "success": True,
@@ -405,19 +523,33 @@ class TestUpdateTimezone:
             "timezone": "America/New_York",
         }
         mock_update.assert_awaited_once_with(USER_ID, UserUpdate(timezone="America/New_York"))
+        mock_tz.assert_called_once_with("America/New_York")
+        assert mock_log.set.call_args_list == [
+            call(
+                user={"id": USER_ID},
+                operation="update_user_timezone",
+                timezone="America/New_York",
+            ),
+            call(outcome="success"),
+        ]
+        mock_log.audit.assert_called_once_with(
+            "profile updated", actor=USER_ID, changed_fields=["timezone"]
+        )
 
     @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_strips_whitespace(
         self, mock_update: AsyncMock, client: AsyncClient
     ):
         mock_update.return_value = UserDocument(timezone="UTC")
-        response = await client.patch(
-            f"{USER_BASE}/timezone",
-            data={"timezone": "  UTC  "},
-        )
+        with patch("app.api.v1.endpoints.user.is_valid_timezone", return_value=True) as mock_tz:
+            response = await client.patch(
+                f"{USER_BASE}/timezone",
+                data={"timezone": "  UTC  "},
+            )
         assert response.status_code == 200
         assert response.json()["timezone"] == "UTC"
         mock_update.assert_awaited_once_with(USER_ID, UserUpdate(timezone="UTC"))
+        mock_tz.assert_called_once_with("UTC")
 
     @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_utc(self, mock_update: AsyncMock, client: AsyncClient):
@@ -429,9 +561,13 @@ class TestUpdateTimezone:
         assert response.status_code == 200
 
     async def test_update_timezone_invalid(self, client: AsyncClient):
-        with patch(
-            "app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock
-        ) as mock_update:
+        with (
+            patch(
+                "app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock
+            ) as mock_update,
+            patch("app.api.v1.endpoints.user.is_valid_timezone", return_value=False) as mock_tz,
+            patch("app.api.v1.endpoints.user.log") as mock_log,
+        ):
             response = await client.patch(
                 f"{USER_BASE}/timezone",
                 data={"timezone": "Invalid/Zone"},
@@ -440,6 +576,14 @@ class TestUpdateTimezone:
         assert response.status_code == 400
         assert "Invalid timezone" in response.json()["detail"]
         mock_update.assert_not_awaited()
+        mock_tz.assert_called_once_with("Invalid/Zone")
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            operation="update_user_timezone",
+            timezone="Invalid/Zone",
+        )
+        mock_log.audit.assert_not_called()
+        mock_log.error.assert_not_called()
 
     @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_user_not_found(
@@ -460,12 +604,26 @@ class TestUpdateTimezone:
     @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_db_error(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.side_effect = Exception("db error")
-        response = await client.patch(
-            f"{USER_BASE}/timezone",
-            data={"timezone": "America/New_York"},
-        )
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.patch(
+                f"{USER_BASE}/timezone",
+                data={"timezone": "America/New_York"},
+            )
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to update timezone"
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            operation="update_user_timezone",
+            timezone="America/New_York",
+        )
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.API} Error updating timezone",
+            user_id=USER_ID,
+            timezone="America/New_York",
+            error_type="Exception",
+            error="db error",
+            exc_info=True,
+        )
 
     async def test_update_timezone_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.patch(f"{USER_BASE}/timezone", data={"timezone": "UTC"})
@@ -489,7 +647,8 @@ class TestGetPublicHoloCard:
         self, mock_count: AsyncMock, mock_get: AsyncMock, client: AsyncClient
     ):
         mock_get.return_value = _card_user_doc()
-        response = await client.get(f"{USER_BASE}/holo-card/{USER_ID}")
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.get(f"{USER_BASE}/holo-card/{USER_ID}")
         assert response.status_code == 200
         assert response.json() == {
             "house": "phoenix",
@@ -498,11 +657,15 @@ class TestGetPublicHoloCard:
             "account_number": 42,
             "member_since": "Jan 01, 2025",
             "name": "Alice",
-            "overlay_color": "rgba(0,0,0,0)",
-            "overlay_opacity": 40,
+            "overlay_color": "rgba(0,0,0,0.5)",
+            "overlay_opacity": 80,
         }
         mock_get.assert_awaited_once_with(USER_ID)
         mock_count.assert_not_awaited()
+        assert mock_log.set.call_args_list == [
+            call(operation="get_public_holo_card", card_id=USER_ID),
+            call(outcome="success"),
+        ]
 
     @patch("app.api.v1.endpoints.user.user_repository.get", new_callable=AsyncMock)
     @patch(
@@ -540,6 +703,7 @@ class TestGetPublicHoloCard:
         data = response.json()
         assert data["account_number"] == 1
         assert data["member_since"] == "Aug 10, 2026"
+        mock_datetime.now.assert_called_once_with(UTC)
 
     async def test_holo_card_invalid_id(self, client: AsyncClient):
         with patch(
@@ -590,9 +754,18 @@ class TestGetPublicHoloCard:
     @patch("app.api.v1.endpoints.user.user_repository.get", new_callable=AsyncMock)
     async def test_holo_card_db_error(self, mock_get: AsyncMock, client: AsyncClient):
         mock_get.side_effect = Exception("db error")
-        response = await client.get(f"{USER_BASE}/holo-card/{USER_ID}")
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.get(f"{USER_BASE}/holo-card/{USER_ID}")
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to fetch holo card data"
+        mock_log.set.assert_called_once_with(operation="get_public_holo_card", card_id=USER_ID)
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.API} Error fetching holo card",
+            card_id=USER_ID,
+            error_type="Exception",
+            error="db error",
+            exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -606,10 +779,11 @@ class TestUpdateHoloCardColors:
     @patch("app.api.v1.endpoints.user.user_repository.set_holo_card_colors", new_callable=AsyncMock)
     async def test_update_colors_success(self, mock_set: AsyncMock, client: AsyncClient):
         mock_set.return_value = True
-        response = await client.patch(
-            f"{USER_BASE}/holo-card/colors",
-            data={"overlay_color": "rgba(255,0,0,1)", "overlay_opacity": 50},
-        )
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.patch(
+                f"{USER_BASE}/holo-card/colors",
+                data={"overlay_color": "rgba(255,0,0,1)", "overlay_opacity": 50},
+            )
         assert response.status_code == 200
         assert response.json() == {
             "success": True,
@@ -618,6 +792,20 @@ class TestUpdateHoloCardColors:
             "overlay_opacity": 50,
         }
         mock_set.assert_awaited_once_with(USER_ID, "rgba(255,0,0,1)", 50)
+        assert mock_log.set.call_args_list == [
+            call(
+                user={"id": USER_ID},
+                operation="update_holo_card_colors",
+                overlay_color="rgba(255,0,0,1)",
+                overlay_opacity=50,
+            ),
+            call(outcome="success"),
+        ]
+        mock_log.audit.assert_called_once_with(
+            "profile updated",
+            actor=USER_ID,
+            changed_fields=["overlay_color", "overlay_opacity"],
+        )
 
     @patch("app.api.v1.endpoints.user.user_repository.set_holo_card_colors", new_callable=AsyncMock)
     async def test_update_colors_user_not_found(self, mock_set: AsyncMock, client: AsyncClient):
@@ -658,12 +846,26 @@ class TestUpdateHoloCardColors:
     @patch("app.api.v1.endpoints.user.user_repository.set_holo_card_colors", new_callable=AsyncMock)
     async def test_update_colors_db_error(self, mock_set: AsyncMock, client: AsyncClient):
         mock_set.side_effect = Exception("db error")
-        response = await client.patch(
-            f"{USER_BASE}/holo-card/colors",
-            data={"overlay_color": "rgba(0,0,0,1)", "overlay_opacity": 50},
-        )
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.patch(
+                f"{USER_BASE}/holo-card/colors",
+                data={"overlay_color": "rgba(0,0,0,1)", "overlay_opacity": 50},
+            )
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to update holo card colors"
+        mock_log.set.assert_called_once_with(
+            user={"id": USER_ID},
+            operation="update_holo_card_colors",
+            overlay_color="rgba(0,0,0,1)",
+            overlay_opacity=50,
+        )
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.API} Error updating holo card colors",
+            user_id=USER_ID,
+            error_type="Exception",
+            error="db error",
+            exc_info=True,
+        )
 
     async def test_update_colors_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.patch(
@@ -689,8 +891,19 @@ class TestLogout:
         session = MagicMock()
         session.get_logout_url.return_value = "https://auth.example.com/logout"
         mock_workos.user_management.load_sealed_session.return_value = session
-        client.cookies.set("wos_session", "sealed_token")
-        response = await client.post(f"{USER_BASE}/logout")
+        _RecordingJSONResponse.init_calls = []
+        _RecordingJSONResponse.delete_cookie_calls = []
+        with (
+            patch("app.api.v1.endpoints.user.log") as mock_log,
+            # ENV="production" makes the secure=settings.ENV == "production"
+            # flag observable: True here, False for any mutated comparison.
+            patch("app.api.v1.endpoints.user.settings") as mock_settings,
+            patch("app.api.v1.endpoints.user.JSONResponse", _RecordingJSONResponse),
+        ):
+            mock_settings.ENV = "production"
+            mock_settings.WORKOS_COOKIE_PASSWORD = settings.WORKOS_COOKIE_PASSWORD
+            client.cookies.set("wos_session", "sealed_token")
+            response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 200
         assert response.json() == {"logout_url": "https://auth.example.com/logout"}
         mock_workos.user_management.load_sealed_session.assert_called_once_with(
@@ -698,11 +911,32 @@ class TestLogout:
             cookie_password=settings.WORKOS_COOKIE_PASSWORD,
         )
         session.get_logout_url.assert_called_once_with()
-        mock_track.assert_called_once_with(user_id=USER_ID, email="test@example.com")
+        mock_track.assert_called_once_with(user_id=USER_ID, email=USER_EMAIL)
+        assert mock_log.set.call_args_list == [
+            call(operation="logout"),
+            call(outcome="success"),
+        ]
+        mock_log.audit.assert_called_once_with("logged out", actor=USER_ID)
+        assert _RecordingJSONResponse.init_calls == [
+            ((), {"content": {"logout_url": "https://auth.example.com/logout"}})
+        ]
+        assert _RecordingJSONResponse.delete_cookie_calls == [
+            (
+                (WOS_SESSION_COOKIE,),
+                {
+                    "httponly": True,
+                    "path": "/",
+                    "secure": True,
+                    "samesite": "lax",
+                },
+            )
+        ]
         set_cookie = response.headers.get("set-cookie", "").lower()
         assert "wos_session=" in set_cookie
         assert "httponly" in set_cookie
         assert "path=/" in set_cookie
+        assert "secure" in set_cookie
+        assert "samesite=lax" in set_cookie
 
     @patch("app.api.v1.endpoints.user.track_logout")
     @patch("app.api.v1.endpoints.user.workos")
@@ -714,10 +948,22 @@ class TestLogout:
         session.get_logout_url.return_value = "https://auth.example.com/logout"
         mock_workos.user_management.load_sealed_session.return_value = session
         mock_track.side_effect = RuntimeError("analytics down")
-        client.cookies.set("wos_session", "sealed_token")
-        response = await client.post(f"{USER_BASE}/logout")
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            client.cookies.set("wos_session", "sealed_token")
+            response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 200
         assert response.json()["logout_url"] == "https://auth.example.com/logout"
+        assert mock_log.set.call_args_list == [
+            call(operation="logout"),
+            call(outcome="success"),
+        ]
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.API} Failed to track logout analytics",
+            user_email=USER_EMAIL,
+            error_type="RuntimeError",
+            error="analytics down",
+        )
+        mock_log.audit.assert_called_once_with("logged out", actor=USER_ID)
 
     async def test_logout_no_session_cookie(self, client: AsyncClient):
         response = await client.post(f"{USER_BASE}/logout")
@@ -726,16 +972,35 @@ class TestLogout:
 
     @patch("app.api.v1.endpoints.user.workos")
     async def test_logout_invalid_session(self, mock_workos: MagicMock, client: AsyncClient):
-        # The HTTPException(401) is inside a bare except that re-raises as 500
+        # The HTTPException(401) is raised inside the try block, so the broad
+        # except re-raises it as a 500. Its status/detail remain observable
+        # only through log.error's error=str(e) — asserted exactly below.
         mock_workos.user_management.load_sealed_session.return_value = None
-        client.cookies.set("wos_session", "bad_token")
-        response = await client.post(f"{USER_BASE}/logout")
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            client.cookies.set("wos_session", "bad_token")
+            response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 500
+        assert response.json()["detail"] == "Logout failed"
+        mock_log.set.assert_called_once_with(operation="logout")
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.API} Logout error",
+            user_id=USER_ID,
+            error_type="HTTPException",
+            error="401: Invalid session",
+        )
 
     @patch("app.api.v1.endpoints.user.workos")
     async def test_logout_exception(self, mock_workos: MagicMock, client: AsyncClient):
         mock_workos.user_management.load_sealed_session.side_effect = Exception("boom")
-        client.cookies.set("wos_session", "sealed_token")
-        response = await client.post(f"{USER_BASE}/logout")
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            client.cookies.set("wos_session", "sealed_token")
+            response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 500
         assert response.json()["detail"] == "Logout failed"
+        mock_log.set.assert_called_once_with(operation="logout")
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.API} Logout error",
+            user_id=USER_ID,
+            error_type="Exception",
+            error="boom",
+        )
