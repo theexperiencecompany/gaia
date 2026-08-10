@@ -12,6 +12,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, Too
 import pytest
 
 from app.constants.cache import CUSTOM_INT_METADATA_TTL, HANDOFF_METADATA_CACHE_PREFIX
+from app.constants.hil import HIL_JUDGE_MAX_TURN_CHARS, HIL_JUDGE_MAX_USER_TURNS
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     DEFAULT_LLM_PROVIDER,
@@ -28,7 +29,9 @@ from app.helpers.agent_helpers import (
     execute_graph_silent,
     execute_graph_streaming,
     get_handoff_metadata,
+    recent_user_messages,
 )
+from app.utils.general_utils import ELLIPSIS
 from app.models.integration_models import Integration
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
@@ -1215,6 +1218,99 @@ class TestBuildInitialState:
 
 
 # ---------------------------------------------------------------------------
+# recent_user_messages
+# ---------------------------------------------------------------------------
+
+
+class TestRecentUserMessages:
+    def test_keeps_user_turns_verbatim_and_ends_with_current(self):
+        """Assistant turns are dropped; the current turn is appended so the
+        last entry is always the live request."""
+        history = [
+            {"role": "user", "content": "draft an email to Bob"},
+            {"role": "assistant", "content": "Here is a draft"},
+            {"role": "user", "content": "looks good, send it"},
+        ]
+
+        result = recent_user_messages(history, "and confirm receipt")
+
+        assert result == [
+            "draft an email to Bob",
+            "looks good, send it",
+            "and confirm receipt",
+        ]
+
+    def test_non_user_roles_alone_yield_empty(self):
+        history = [
+            {"role": "system", "content": "you are gaia"},
+            {"role": "assistant", "content": "hi"},
+        ]
+
+        assert recent_user_messages(history, "") == []
+        assert recent_user_messages(history, "hello") == ["hello"]
+
+    def test_current_turn_not_duplicated_when_it_is_last(self):
+        """The client already appended this turn: it must not appear twice."""
+        history = [{"role": "user", "content": "send it"}]
+
+        result = recent_user_messages(history, "send it")
+
+        assert result == ["send it"]
+
+    def test_whitespace_only_turns_dropped_and_content_stripped(self):
+        history = [
+            {"role": "user", "content": "   "},
+            {"role": "user", "content": "  draft  "},
+        ]
+
+        result = recent_user_messages(history, "  now  ")
+
+        assert result == ["draft", "now"]
+
+    def test_user_message_without_content_key_is_skipped(self):
+        history = [{"role": "user"}, {"role": "user", "content": None}]
+
+        assert recent_user_messages(history, "") == []
+
+    def test_empty_current_not_appended(self):
+        history = [{"role": "user", "content": "hi"}]
+
+        assert recent_user_messages(history, "   ") == ["hi"]
+
+    def test_empty_history_with_current(self):
+        assert recent_user_messages([], "hello") == ["hello"]
+
+    def test_keeps_only_last_max_user_turns(self):
+        """Only the last HIL_JUDGE_MAX_USER_TURNS entries survive, current
+        included — oldest turns are dropped, newest kept."""
+        history = [{"role": "user", "content": f"turn {i}"} for i in range(10)]
+
+        result = recent_user_messages(history, "final")
+
+        assert len(result) == HIL_JUDGE_MAX_USER_TURNS
+        assert result == ["turn 5", "turn 6", "turn 7", "turn 8", "turn 9", "final"]
+
+    def test_long_turns_clipped_with_ellipsis_marker(self):
+        """Each turn is capped at HIL_JUDGE_MAX_TURN_CHARS with the ellipsis
+        marker, so truncation is distinguishable from a real end."""
+        long_turn = "a" * (HIL_JUDGE_MAX_TURN_CHARS + 100)
+
+        result = recent_user_messages([{"role": "user", "content": long_turn}], "")
+
+        assert result == [f"{'a' * HIL_JUDGE_MAX_TURN_CHARS}{ELLIPSIS}"]
+
+    def test_clip_applies_after_window_slice(self):
+        """Clipping happens per turn after the window slice: a short current
+        turn is not clipped, an old long turn still is."""
+        long_turn = "b" * (HIL_JUDGE_MAX_TURN_CHARS + 1)
+        history = [{"role": "user", "content": long_turn}]
+
+        result = recent_user_messages(history, "short")
+
+        assert result == [f"{'b' * HIL_JUDGE_MAX_TURN_CHARS}{ELLIPSIS}", "short"]
+
+
+# ---------------------------------------------------------------------------
 # execute_graph_silent
 # ---------------------------------------------------------------------------
 
@@ -1976,6 +2072,249 @@ class TestExecuteGraphStreaming:
 
         assert any("[DONE]" in r for r in results)
         assert any("nostream" in r for r in results)
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_no_stream_id_skips_cancellation_check(self, mock_sm):
+        """Without a stream_id the cancellation probe is never awaited: a run
+        with no stream is not cancellable."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter([]))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        mock_sm.is_cancelled.assert_not_awaited()
+        assert results == ['nostream: {"complete_message": ""}', "data: [DONE]\n\n"]
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_empty_comms_chunk_streams_no_response(self, mock_sm):
+        """An empty-content chunk from comms_agent must not emit a response
+        frame: only non-empty content is streamed."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        chunk = AIMessageChunk(content="")
+
+        events = [((), "messages", (chunk, {"agent_name": "comms_agent"}))]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+        ):
+            results.append(s)
+
+        assert results == ['nostream: {"complete_message": ""}', "data: [DONE]\n\n"]
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_non_ai_message_chunk_streams_no_response(self, mock_sm):
+        """A HumanMessage chunk must not stream a response frame even from
+        comms_agent (only AIMessage/AIMessageChunk carry streamable text)."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        chunk = HumanMessage(content="human text")
+
+        events = [((), "messages", (chunk, {"agent_name": "comms_agent"}))]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+        ):
+            results.append(s)
+
+        assert results == ['nostream: {"complete_message": ""}', "data: [DONE]\n\n"]
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_multi_block_chunk_streams_no_response(self, mock_sm):
+        """A chunk whose .text is empty (non-text block content, e.g. inline
+        media) must not stream a response frame: the streamed content comes
+        from .text, not the raw .content list."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        chunk = AIMessageChunk(
+            content=[{"type": "image", "base64": "AAA", "mime_type": "image/png"}]
+        )
+
+        events = [((), "messages", (chunk, {"agent_name": "comms_agent"}))]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+        ):
+            results.append(s)
+
+        assert results == ['nostream: {"complete_message": ""}', "data: [DONE]\n\n"]
+
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_tool_calls_data_without_mcp_ui_not_buffered(
+        self, mock_sm, mock_format
+    ):
+        """A tool_calls_data entry WITHOUT mcp_ui must not buffer an mcp_app
+        and must not crash on the missing key."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+        mock_format.return_value = {
+            "tool_name": "tool_calls_data",
+            "tool_category": "mcp",
+            "data": {"tool_call_id": "tc_u", "tool_name": "t", "inputs": {}},
+            "mcp_server_url": "https://mcp.u",
+            "timestamp": "t-u",
+        }
+
+        msg = MagicMock()
+        msg.tool_calls = [{"id": "tc_u", "name": "t", "args": {}}]
+        tool_msg = ToolMessage(content="result", tool_call_id="tc_u")
+
+        events = [
+            ((), "updates", {"agent": {"messages": [msg]}}),
+            ((), "messages", (tool_msg, {"agent_name": "comms_agent"})),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        assert not any("mcp_app" in r for r in results)
+        assert results == [
+            f"data: {json.dumps({'tool_data': mock_format.return_value})}\n\n",
+            'data: {"tool_output": {"tool_call_id": "tc_u", "output": "result"}}\n\n',
+            'nostream: {"complete_message": ""}',
+            "data: [DONE]\n\n",
+        ]
+
+    @patch("app.helpers.agent_helpers.fetch_mcp_ui_resource", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.claim_tool_output", return_value=True)
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_tool_calls_data_without_resource_uri_not_buffered(
+        self, mock_sm, mock_format, mock_claim, mock_fetch
+    ):
+        """A tool_calls_data entry whose mcp_ui lacks resource_uri is not
+        buffered: the resource_uri check gates the mcp_app emission."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+        mock_format.return_value = {
+            "tool_name": "tool_calls_data",
+            "tool_category": "mcp",
+            "data": {"tool_call_id": "tc_r2", "tool_name": "t", "inputs": {}},
+            "mcp_ui": {"csp": "default-src 'self'"},
+            "mcp_server_url": "https://mcp.r2",
+            "timestamp": "t-r2",
+        }
+        mock_fetch.return_value = {"html": "h"}
+
+        msg = MagicMock()
+        msg.tool_calls = [{"id": "tc_r2", "name": "t", "args": {}}]
+        tool_msg = ToolMessage(content="result", tool_call_id="tc_r2")
+
+        events = [
+            ((), "updates", {"agent": {"messages": [msg]}}),
+            ((), "messages", (tool_msg, {"agent_name": "comms_agent"})),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        mock_fetch.assert_not_awaited()
+        assert not any("mcp_app" in r for r in results)
+
+    @patch("app.helpers.agent_helpers.claim_tool_output", return_value=True)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_tool_output_media_content_text_extracted(self, mock_sm, mock_claim):
+        """Media-block ToolMessage content is text-extracted before it is
+        streamed as tool_output: base64 never reaches the SSE frame."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        tool_msg = ToolMessage(
+            content=[{"type": "image", "base64": "AAA", "mime_type": "image/png"}],
+            tool_call_id="tc1",
+        )
+
+        events = [((), "messages", (tool_msg, {"agent_name": "comms_agent"}))]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+        ):
+            results.append(s)
+
+        assert results == [
+            'data: {"tool_output": {"tool_call_id": "tc1", "output": ""}}\n\n',
+            'nostream: {"complete_message": ""}',
+            "data: [DONE]\n\n",
+        ]
+
+    @patch("app.helpers.agent_helpers.record_interruption", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_cancellation_closes_astream(self, mock_sm, mock_record):
+        """On cancellation the underlying astream is closed (aclose) so
+        LangGraph cancels in-flight work before the interruption is recorded."""
+        mock_sm.is_cancelled = AsyncMock(side_effect=[False, True])
+
+        gen = _RecordingAsyncGen(
+            [
+                (
+                    (),
+                    "messages",
+                    (AIMessageChunk(content="x"), {"agent_name": "comms_agent"}),
+                ),
+                (
+                    (),
+                    "messages",
+                    (AIMessageChunk(content="y"), {"agent_name": "comms_agent"}),
+                ),
+            ]
+        )
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=gen)
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {"stream_id": "s1"}}
+        ):
+            results.append(s)
+
+        gen.aclose.assert_awaited_once()
+        assert any("cancelled" in r for r in results)
+
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_subagent_tool_calls_data_without_mcp_ui_not_buffered(self, mock_sm):
+        """A subagent tool_calls_data event without mcp_ui must not crash or
+        buffer an mcp_app: the mcp_ui key gates the buffering."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        calls_event = {
+            "tool_data": {
+                "tool_name": "tool_calls_data",
+                "data": {"tool_call_id": "tc_m", "tool_name": "t", "inputs": {}},
+                "mcp_server_url": "https://mcp.m",
+                "timestamp": "t-m",
+            }
+        }
+        output_event = {"tool_output": {"tool_call_id": "tc_m", "output": "r"}}
+
+        events = [((), "custom", calls_event), ((), "custom", output_event)]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {}}):
+            results.append(s)
+
+        assert not any("mcp_app" in r for r in results)
 
     @patch("app.helpers.agent_helpers.stream_manager")
     async def test_cancellation(self, mock_sm):
@@ -3924,3 +4263,20 @@ class TestExecuteGraphStreaming:
 async def _async_iter(items):
     for item in items:
         yield item
+
+
+class _RecordingAsyncGen:
+    """A real async generator whose aclose is a spy, so tests can assert the
+    module closes the astream on cancellation (a plain AsyncMock cannot be
+    driven by `async for` reliably)."""
+
+    def __init__(self, events):
+        self._events = events
+        self.aclose = AsyncMock()
+
+    def __aiter__(self):
+        return self._generate()
+
+    async def _generate(self):
+        for event in self._events:
+            yield event
