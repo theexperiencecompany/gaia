@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 
-class ShareRecipient(BaseModel):
+class ShareRecipient(BaseModel):  # type: ignore[explicit-any]
     """Single recipient for document sharing."""
 
     email: str = Field(..., description="Email address to share with")
@@ -14,7 +14,7 @@ class ShareRecipient(BaseModel):
     )
 
 
-class ShareDocInput(BaseModel):
+class ShareDocInput(BaseModel):  # type: ignore[explicit-any]
     """Input for bulk sharing a Google Doc with multiple recipients."""
 
     document_id: str = Field(..., description="ID of the document to share")
@@ -25,7 +25,7 @@ class ShareDocInput(BaseModel):
     )
 
 
-class CreateTOCInput(BaseModel):
+class CreateTOCInput(BaseModel):  # type: ignore[explicit-any]
     """Input for creating a table of contents in a Google Doc."""
 
     document_id: str = Field(..., description="ID of the document")
@@ -44,7 +44,7 @@ class CreateTOCInput(BaseModel):
     )
 
 
-class DeleteDocInput(BaseModel):
+class DeleteDocInput(BaseModel):  # type: ignore[explicit-any]
     """Input for deleting a Google Doc."""
 
     document_id: str = Field(..., description="ID of the document to delete")

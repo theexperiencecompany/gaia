@@ -18,7 +18,7 @@ from app.db.repositories.base import MongoDocument
 WorkflowExecutionStatus = Literal["running", "success", "failed"]
 
 
-class WorkflowExecution(BaseModel):
+class WorkflowExecution(BaseModel):  # type: ignore[explicit-any]
     """A single workflow execution record."""
 
     execution_id: str = Field(description="Unique execution identifier")
@@ -45,7 +45,7 @@ class WorkflowExecution(BaseModel):
     )
 
 
-class WorkflowExecutionsResponse(BaseModel):
+class WorkflowExecutionsResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for workflow executions list endpoint."""
 
     executions: list[WorkflowExecution] = Field(
@@ -55,7 +55,7 @@ class WorkflowExecutionsResponse(BaseModel):
     has_more: bool = Field(default=False, description="Whether there are more executions to load")
 
 
-class WorkflowExecutionDocument(WorkflowExecution, MongoDocument):
+class WorkflowExecutionDocument(WorkflowExecution, MongoDocument):  # type: ignore[explicit-any]
     """A workflow execution as stored in MongoDB.
 
     Identity is the business key ``execution_id``; Mongo's ``_id`` is an
@@ -64,7 +64,7 @@ class WorkflowExecutionDocument(WorkflowExecution, MongoDocument):
     """
 
 
-class WorkflowExecutionUpdate(BaseModel):
+class WorkflowExecutionUpdate(BaseModel):  # type: ignore[explicit-any]
     """Partial ``$set`` update for an execution — the completion fields."""
 
     model_config = ConfigDict(extra="forbid")

@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.db.repositories.base import UserScopedDocument
 
 
-class NoteModel(BaseModel):
+class NoteModel(BaseModel):  # type: ignore[explicit-any]
     content: str = Field(
         ...,
         max_length=100000,
@@ -17,7 +17,7 @@ class NoteModel(BaseModel):
     )
 
 
-class NoteResponse(BaseModel):
+class NoteResponse(BaseModel):  # type: ignore[explicit-any]
     id: str
     content: str
     plaintext: str
@@ -27,7 +27,7 @@ class NoteResponse(BaseModel):
     description: str | None = None
 
 
-class NoteDocument(UserScopedDocument):
+class NoteDocument(UserScopedDocument):  # type: ignore[explicit-any]
     """A note as stored in MongoDB. Base stamps created_at/updated_at on write."""
 
     content: str
@@ -43,7 +43,7 @@ class NoteDocument(UserScopedDocument):
     needs_reindex: bool = False
 
 
-class NoteUpdate(BaseModel):
+class NoteUpdate(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(extra="forbid")
 
     content: str | None = None
@@ -52,7 +52,7 @@ class NoteUpdate(BaseModel):
     needs_reindex: bool | None = None
 
 
-class NoteSearchHit(BaseModel):
+class NoteSearchHit(BaseModel):  # type: ignore[explicit-any]
     """A note matched by a plaintext search (the id is the stringified ``_id``)."""
 
     id: str

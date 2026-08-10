@@ -25,7 +25,7 @@ _MAX_HANDLE_LEN = 60
 _MIN_URL_CHARS_AFTER_SCHEME = 5
 
 
-class _CandidateContext(BaseModel):
+class _CandidateContext(BaseModel):  # type: ignore[explicit-any]
     """One email a candidate URL appeared in, as shown to the ownership LLM."""
 
     sender: str
@@ -33,7 +33,7 @@ class _CandidateContext(BaseModel):
     snippet: str
 
 
-class _ProfileCandidate(BaseModel):
+class _ProfileCandidate(BaseModel):  # type: ignore[explicit-any]
     """A harvested social URL plus the evidence used to judge ownership."""
 
     platform: str

@@ -15,7 +15,7 @@ INSTAGRAM_API_BASE = "https://graph.instagram.com/v18.0"
 INSTAGRAM_TOOLKIT = "INSTAGRAM"
 
 
-def register_instagram_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_instagram_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     @composio.tools.custom_tool(toolkit="INSTAGRAM")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,

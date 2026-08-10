@@ -60,7 +60,7 @@ class ActionStyle(str, Enum):
     DANGER = "danger"
 
 
-class RedirectConfig(BaseModel):
+class RedirectConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for a redirect action that navigates the user to a URL."""
 
     url: str
@@ -68,7 +68,7 @@ class RedirectConfig(BaseModel):
     close_notification: bool = False
 
 
-class ApiCallConfig(BaseModel):
+class ApiCallConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for an action that issues an HTTP request when invoked."""
 
     endpoint: str
@@ -80,14 +80,14 @@ class ApiCallConfig(BaseModel):
     is_internal: bool | None = False
 
 
-class ModalConfig(BaseModel):
+class ModalConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for an action that opens a frontend modal component."""
 
     component: str
     props: dict[str, object] = Field(default_factory=dict)
 
 
-class ActionConfig(BaseModel):
+class ActionConfig(BaseModel):  # type: ignore[explicit-any]
     """Container holding exactly one of the supported action configurations."""
 
     redirect: RedirectConfig | None = None
@@ -105,7 +105,7 @@ class ActionConfig(BaseModel):
         return self
 
 
-class NotificationAction(BaseModel):
+class NotificationAction(BaseModel):  # type: ignore[explicit-any]
     """An interactive action (button) attached to a notification."""
 
     id: str = Field(default_factory=lambda: str(uuid4()))
@@ -136,7 +136,7 @@ class NotificationAction(BaseModel):
         return True
 
 
-class NotificationContent(BaseModel):
+class NotificationContent(BaseModel):  # type: ignore[explicit-any]
     """Displayable payload of a notification: title, body, actions and rich data."""
 
     title: str
@@ -145,7 +145,7 @@ class NotificationContent(BaseModel):
     rich_content: dict[str, object] | None = None
 
 
-class ChannelConfig(BaseModel):
+class ChannelConfig(BaseModel):  # type: ignore[explicit-any]
     """Per-channel delivery settings for a notification request."""
 
     channel_type: str  # 'inapp', 'telegram', 'discord'
@@ -155,7 +155,7 @@ class ChannelConfig(BaseModel):
     config: dict[str, object] = Field(default_factory=dict)
 
 
-class NotificationRequest(BaseModel):
+class NotificationRequest(BaseModel):  # type: ignore[explicit-any]
     """Inbound request to send a notification to a user across channels."""
 
     id: str = Field(default_factory=lambda: str(uuid4()))
@@ -177,7 +177,7 @@ class NotificationRequest(BaseModel):
         return v
 
 
-class ChannelDeliveryStatus(BaseModel):
+class ChannelDeliveryStatus(BaseModel):  # type: ignore[explicit-any]
     """Delivery outcome of a notification on a single channel."""
 
     channel_type: str
@@ -188,7 +188,7 @@ class ChannelDeliveryStatus(BaseModel):
     skipped: bool = False
 
 
-class NotificationRecord(UserScopedDocument):
+class NotificationRecord(UserScopedDocument):  # type: ignore[explicit-any]
     """Persisted notification with its original request and per-channel statuses.
 
     Identity is the UUID ``id`` (not Mongo's ``_id``); the notification repository
@@ -227,7 +227,7 @@ class NotificationRecord(UserScopedDocument):
         return None
 
 
-class NotificationActionView(BaseModel):
+class NotificationActionView(BaseModel):  # type: ignore[explicit-any]
     """A notification action as it appears on the wire (see ``NotificationView``)."""
 
     id: str
@@ -242,7 +242,7 @@ class NotificationActionView(BaseModel):
     disabled: bool
 
 
-class NotificationContentView(BaseModel):
+class NotificationContentView(BaseModel):  # type: ignore[explicit-any]
     """The ``content`` block of a ``NotificationView``."""
 
     title: str
@@ -250,7 +250,7 @@ class NotificationContentView(BaseModel):
     actions: list[NotificationActionView] = Field(default_factory=list)
 
 
-class NotificationChannelView(BaseModel):
+class NotificationChannelView(BaseModel):  # type: ignore[explicit-any]
     """One channel's delivery outcome as it appears on the wire.
 
     A narrower projection of ``ChannelDeliveryStatus``: ``retry_count`` is
@@ -264,7 +264,7 @@ class NotificationChannelView(BaseModel):
     error_message: str | None = None
 
 
-class NotificationView(BaseModel):
+class NotificationView(BaseModel):  # type: ignore[explicit-any]
     """A notification flattened for API/tool consumers.
 
     Distinct from ``NotificationRecord``: the record is the stored document (it
@@ -295,7 +295,7 @@ class NotificationView(BaseModel):
     channels: list[NotificationChannelView] = Field(default_factory=list)
 
 
-class NotificationUpdate(BaseModel):
+class NotificationUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed status/timestamp fields for a notification update.
 
     Free-form patches (e.g. an action result's arbitrary field set) go through
@@ -310,7 +310,7 @@ class NotificationUpdate(BaseModel):
     archived_at: datetime | None = None
 
 
-class ActionResult(BaseModel):
+class ActionResult(BaseModel):  # type: ignore[explicit-any]
     """Outcome of executing a notification action."""
 
     success: bool
@@ -329,7 +329,7 @@ class BulkActions(str, Enum):
     ARCHIVE = "archive"
 
 
-class ChannelPreferences(BaseModel):
+class ChannelPreferences(BaseModel):  # type: ignore[explicit-any]
     """User notification channel preferences."""
 
     telegram: bool = True
@@ -338,7 +338,7 @@ class ChannelPreferences(BaseModel):
     slack: bool = True
 
 
-class ChannelPreferencesUpdate(BaseModel):
+class ChannelPreferencesUpdate(BaseModel):  # type: ignore[explicit-any]
     """Request body for updating channel preferences."""
 
     telegram: bool | None = None

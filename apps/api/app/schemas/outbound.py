@@ -14,7 +14,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, model_validator
 
 
-class OutboundAttachment(BaseModel):
+class OutboundAttachment(BaseModel):  # type: ignore[explicit-any]
     """A file the bot should deliver. The bytes are NOT in the envelope — the bot
     fetches them from ``GET /sessions/{conversation_id}/artifacts/{path}`` using
     its own (bot-authenticated) session, then uploads them to the platform."""
@@ -26,7 +26,7 @@ class OutboundAttachment(BaseModel):
     caption: str | None = None
 
 
-class OutboundMessageEnvelope(BaseModel):
+class OutboundMessageEnvelope(BaseModel):  # type: ignore[explicit-any]
     id: str = Field(default_factory=lambda: str(uuid4()))
     platform: str = Field(min_length=1)
     destination_id: str = Field(min_length=1)

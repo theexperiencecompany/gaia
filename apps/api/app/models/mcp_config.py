@@ -106,7 +106,7 @@ class McpUiResourceDetails(TypedDict):
     permissions: object
 
 
-class OAuthDiscovery(BaseModel):
+class OAuthDiscovery(BaseModel):  # type: ignore[explicit-any]
     """Resolved OAuth discovery result for an MCP integration.
 
     Wraps the RFC 8414 authorization server metadata (``as_metadata``) together
@@ -129,7 +129,7 @@ class OAuthDiscovery(BaseModel):
         return self.as_metadata.scopes_supported or []
 
 
-class MCPConfig(BaseModel):
+class MCPConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for MCP (Model Context Protocol) integration."""
 
     server_url: str
@@ -144,14 +144,14 @@ class MCPConfig(BaseModel):
     oauth_metadata: dict[str, str] | None = None
 
 
-class OAuthScope(BaseModel):
+class OAuthScope(BaseModel):  # type: ignore[explicit-any]
     """OAuth scope configuration."""
 
     scope: str
     description: str
 
 
-class ComposioConfig(BaseModel):
+class ComposioConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for Composio integration."""
 
     auth_config_id: str
@@ -159,7 +159,7 @@ class ComposioConfig(BaseModel):
     toolkit_version: str | None = None
 
 
-class SubAgentConfig(BaseModel):
+class SubAgentConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for sub-agent metadata."""
 
     has_subagent: bool = False
@@ -196,21 +196,21 @@ class SubAgentConfig(BaseModel):
     include_finish_task: bool = True
 
 
-class VariableExtraction(BaseModel):
+class VariableExtraction(BaseModel):  # type: ignore[explicit-any]
     """Configuration for a single variable to extract from a tool response."""
 
     name: str  # Variable name (e.g., "username", "user_id", "email")
     field_path: str  # Dot-notation path to extract (e.g., "data.username")
 
 
-class ToolMetadataConfig(BaseModel):
+class ToolMetadataConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for one tool and its variables to extract."""
 
     tool: str  # Tool to call (e.g., "TWITTER_USER_LOOKUP_ME")
     variables: list[VariableExtraction]  # Variables to extract from this tool's response
 
 
-class ProviderMetadataConfig(BaseModel):
+class ProviderMetadataConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for fetching provider-specific user metadata.
 
     Supports multiple tools, each with multiple variables to extract.

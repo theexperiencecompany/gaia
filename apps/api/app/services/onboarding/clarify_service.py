@@ -30,7 +30,7 @@ from shared.py.wide_events import log
 _KINDS: tuple[ClarifyQuestionKind, ...] = ("scope", "blocker", "constraint")
 
 
-class _ClarifyQuestion(BaseModel):
+class _ClarifyQuestion(BaseModel):  # type: ignore[explicit-any]
     kind: ClarifyQuestionKind = Field(
         description="One of scope, blocker, or constraint — see prompt for definitions"
     )
@@ -40,7 +40,7 @@ class _ClarifyQuestion(BaseModel):
     )
 
 
-class _ClarifyQuestionList(BaseModel):
+class _ClarifyQuestionList(BaseModel):  # type: ignore[explicit-any]
     questions: list[_ClarifyQuestion] = Field(
         description="Exactly 3 questions in order: scope, blocker, constraint"
     )

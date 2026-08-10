@@ -48,7 +48,7 @@ _MODERATION_PROMPT = (
 )
 
 
-class _ModerationResult(BaseModel):
+class _ModerationResult(BaseModel):  # type: ignore[explicit-any]
     """Structured output schema for the moderation LLM call."""
 
     is_offensive: bool = Field(

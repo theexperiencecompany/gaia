@@ -35,19 +35,19 @@ from shared.py.wide_events import log
 _inference_slots = asyncio.Semaphore(EMBEDDING_SIDECAR_MAX_CONCURRENCY)
 
 
-class EmbedRequest(BaseModel):
+class EmbedRequest(BaseModel):  # type: ignore[explicit-any]
     """Passage texts to embed in one fastembed pass."""
 
     texts: list[str]
 
 
-class EmbedQueryRequest(BaseModel):
+class EmbedQueryRequest(BaseModel):  # type: ignore[explicit-any]
     """A single query string to embed with the model's query instruction."""
 
     text: str
 
 
-class RerankRequest(BaseModel):
+class RerankRequest(BaseModel):  # type: ignore[explicit-any]
     """A query and the documents to score against it."""
 
     query: str

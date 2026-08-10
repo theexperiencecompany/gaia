@@ -80,7 +80,7 @@ def _sheets_proxy(
     return response if isinstance(response, dict) else {}
 
 
-def register_google_sheets_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_google_sheets_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register Google Sheets tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="GOOGLESHEETS")

@@ -17,7 +17,7 @@ from langchain_core.runnables import RunnableConfig
 #: It lives here, rather than beside the factory that builds stacks, because
 #: both that factory and the spawn-graph builder that consumes one need it, and
 #: those two must not import each other (see ``spawn_agent``'s module docstring).
-AnyAgentMiddleware = AgentMiddleware[Any, Any, Any]
+AnyAgentMiddleware = AgentMiddleware[Any, Any, Any]  # type: ignore[explicit-any]
 
 #: An agent's middleware stack, in execution order.
 AgentMiddlewareStack = list[AnyAgentMiddleware]

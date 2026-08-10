@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field
 
 
-class GatherContextInput(BaseModel):
+class GatherContextInput(BaseModel):  # type: ignore[explicit-any]
     """Input model for CUSTOM_GATHER_CONTEXT tools.
 
     No required parameters — these tools gather context automatically using the

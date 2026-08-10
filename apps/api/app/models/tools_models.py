@@ -5,7 +5,7 @@ Pydantic models for tool-related operations.
 from pydantic import BaseModel
 
 
-class ToolInfo(BaseModel):
+class ToolInfo(BaseModel):  # type: ignore[explicit-any]
     """Model for individual tool information."""
 
     name: str
@@ -19,7 +19,7 @@ class ToolInfo(BaseModel):
     locked: bool = False
 
 
-class ToolsListResponse(BaseModel):
+class ToolsListResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for tools list endpoint."""
 
     tools: list[ToolInfo]
@@ -27,7 +27,7 @@ class ToolsListResponse(BaseModel):
     categories: list[str]
 
 
-class ToolsCategoryResponse(BaseModel):
+class ToolsCategoryResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for tools by category."""
 
     category: str

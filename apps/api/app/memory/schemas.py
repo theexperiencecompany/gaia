@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.constants.memory import MemoryEntityType, MemoryKind, ReconcileOutcome
 
 
-class ExtractedEntity(BaseModel):
+class ExtractedEntity(BaseModel):  # type: ignore[explicit-any]
     """A named entity mentioned by a fact (person, place, project, ...)."""
 
     name: str = Field(
@@ -29,7 +29,7 @@ class ExtractedEntity(BaseModel):
     )
 
 
-class ExtractedEdge(BaseModel):
+class ExtractedEdge(BaseModel):  # type: ignore[explicit-any]
     """A directed relationship between two entities, with provenance in the fact."""
 
     source: str = Field(
@@ -46,7 +46,7 @@ class ExtractedEdge(BaseModel):
     )
 
 
-class ExtractedFact(BaseModel):
+class ExtractedFact(BaseModel):  # type: ignore[explicit-any]
     """One atomic, durable fact extracted from the conversation."""
 
     content: str = Field(
@@ -116,7 +116,7 @@ class ExtractedFact(BaseModel):
     )
 
 
-class ExtractedMemoryBatch(BaseModel):
+class ExtractedMemoryBatch(BaseModel):  # type: ignore[explicit-any]
     """Everything the extractor pulls out of one conversation."""
 
     facts: list[ExtractedFact] = Field(
@@ -142,7 +142,7 @@ class ExtractedMemoryBatch(BaseModel):
     )
 
 
-class FactCategorization(BaseModel):
+class FactCategorization(BaseModel):  # type: ignore[explicit-any]
     """Filing decision for a single manually added fact (add_memory path)."""
 
     category_path: str = Field(
@@ -170,7 +170,7 @@ class FactCategorization(BaseModel):
     )
 
 
-class EpisodeSummary(BaseModel):
+class EpisodeSummary(BaseModel):  # type: ignore[explicit-any]
     """Day-rollover summary of one journal page."""
 
     summary: str = Field(
@@ -178,7 +178,7 @@ class EpisodeSummary(BaseModel):
     )
 
 
-class ConsolidatedDocument(BaseModel):
+class ConsolidatedDocument(BaseModel):  # type: ignore[explicit-any]
     """Rewritten body of one core memory document (consolidation pass)."""
 
     content: str = Field(
@@ -190,7 +190,7 @@ class ConsolidatedDocument(BaseModel):
     )
 
 
-class ReconcileDecision(BaseModel):
+class ReconcileDecision(BaseModel):  # type: ignore[explicit-any]
     """How one newly extracted fact relates to the existing memory store."""
 
     new_fact_index: int = Field(
@@ -221,7 +221,7 @@ class ReconcileDecision(BaseModel):
         return self
 
 
-class ReconcileBatchResult(BaseModel):
+class ReconcileBatchResult(BaseModel):  # type: ignore[explicit-any]
     """One reconcile decision per new fact, in fact order."""
 
     decisions: list[ReconcileDecision] = Field(

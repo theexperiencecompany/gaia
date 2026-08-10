@@ -8,7 +8,7 @@ the chat stream emit, and there must be one of it.
 from pydantic import BaseModel, Field
 
 
-class ImageToTextResponse(BaseModel):
+class ImageToTextResponse(BaseModel):  # type: ignore[explicit-any]
     """``POST /image/text`` — the vision model's answer about the upload."""
 
     response: str = Field(..., description="The model's answer about the uploaded image")

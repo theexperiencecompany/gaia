@@ -15,7 +15,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 
-class MCPConnectionTestResponse(BaseModel):
+class MCPConnectionTestResponse(BaseModel):  # type: ignore[explicit-any]
     """Outcome of probing an MCP server from ``POST /mcp/test/{integration_id}``.
 
     Exactly one of ``tools_count`` / ``oauth_url`` / ``error`` accompanies the
@@ -29,34 +29,34 @@ class MCPConnectionTestResponse(BaseModel):
     error: str | None = None
 
 
-class MCPProxyToolCallResponse(BaseModel):
+class MCPProxyToolCallResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for a proxied tools/call."""
 
     content: list[dict[str, object]]
     is_error: bool = False
 
 
-class MCPProxyResourcesListResponse(BaseModel):
+class MCPProxyResourcesListResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for a proxied resources/list."""
 
     resources: list[dict[str, object]]
     next_cursor: str | None = None
 
 
-class MCPProxyResourceTemplatesListResponse(BaseModel):
+class MCPProxyResourceTemplatesListResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for a proxied resources/templates/list."""
 
     resource_templates: list[dict[str, object]]
     next_cursor: str | None = None
 
 
-class MCPProxyResourceReadResponse(BaseModel):
+class MCPProxyResourceReadResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for a proxied resources/read."""
 
     contents: list[dict[str, object]]
 
 
-class MCPProxyPromptsListResponse(BaseModel):
+class MCPProxyPromptsListResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for a proxied prompts/list."""
 
     prompts: list[dict[str, object]]

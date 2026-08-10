@@ -16,7 +16,7 @@ class MessageDict(TypedDict):
     content: Annotated[str, StringConstraints(max_length=MAX_MESSAGE_LENGTH)]
 
 
-class FileData(BaseModel):
+class FileData(BaseModel):  # type: ignore[explicit-any]
     """Uploaded-file reference attached to a chat message."""
 
     fileId: str
@@ -34,7 +34,7 @@ class FileData(BaseModel):
     sandbox_path: str | None = None
 
 
-class SelectedWorkflowData(BaseModel):
+class SelectedWorkflowData(BaseModel):  # type: ignore[explicit-any]
     """Workflow the user attached to a message for execution."""
 
     id: str
@@ -44,7 +44,7 @@ class SelectedWorkflowData(BaseModel):
     steps: list[dict[str, object]]
 
 
-class SelectedCalendarEventData(BaseModel):
+class SelectedCalendarEventData(BaseModel):  # type: ignore[explicit-any]
     """Calendar event the user attached to a message."""
 
     id: str
@@ -58,7 +58,7 @@ class SelectedCalendarEventData(BaseModel):
     isAllDay: bool | None = False
 
 
-class ReplyToMessageData(BaseModel):
+class ReplyToMessageData(BaseModel):  # type: ignore[explicit-any]
     """Data for the message being replied to."""
 
     id: str
@@ -66,7 +66,7 @@ class ReplyToMessageData(BaseModel):
     role: str
 
 
-class MessageRequestWithHistory(BaseModel):
+class MessageRequestWithHistory(BaseModel):  # type: ignore[explicit-any]
     """Chat-stream request carrying the full message history and attachments."""
 
     message: str = Field(max_length=MAX_MESSAGE_LENGTH)
@@ -99,7 +99,7 @@ class MessageRequestWithHistory(BaseModel):
     use_default_models: bool = True
 
 
-class MessageRequest(BaseModel):
+class MessageRequest(BaseModel):  # type: ignore[explicit-any]
     """Minimal chat request with a single message."""
 
     message: str = Field(max_length=MAX_MESSAGE_LENGTH)

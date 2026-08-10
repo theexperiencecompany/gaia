@@ -16,11 +16,11 @@ from pydantic import (
 from app.db.repositories.base import MongoDocument
 
 
-class CalendarPreferencesUpdateRequest(BaseModel):
+class CalendarPreferencesUpdateRequest(BaseModel):  # type: ignore[explicit-any]
     selected_calendars: list[str]
 
 
-class GooglePassthroughModel(BaseModel):
+class GooglePassthroughModel(BaseModel):  # type: ignore[explicit-any]
     """Base for Google payloads that GAIA forwards to the web client verbatim.
 
     Subclasses declare only the fields GAIA reads or writes and rely on
@@ -38,7 +38,7 @@ class GooglePassthroughModel(BaseModel):
         return {key: value for key, value in dumped.items() if key in self.model_fields_set}
 
 
-class GoogleCalendarEventDateTime(GooglePassthroughModel):
+class GoogleCalendarEventDateTime(GooglePassthroughModel):  # type: ignore[explicit-any]
     """The ``start``/``end`` object of a Google Calendar ``events`` resource.
 
     An event carries either ``date`` (all-day) or ``dateTime`` + ``timeZone``; both
@@ -50,7 +50,7 @@ class GoogleCalendarEventDateTime(GooglePassthroughModel):
     timeZone: str | None = None
 
 
-class GoogleCalendarEventResource(GooglePassthroughModel):
+class GoogleCalendarEventResource(GooglePassthroughModel):  # type: ignore[explicit-any]
     """A single Google Calendar ``events`` resource, forwarded to the client verbatim.
 
     Only the fields GAIA itself reads (filtering, sorting, display) or injects
@@ -73,7 +73,7 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     calendarTitle: str | None = None
 
 
-class GoogleCalendarEventsPage(BaseModel):
+class GoogleCalendarEventsPage(BaseModel):  # type: ignore[explicit-any]
     """One page of Google's ``events.list`` response.
 
     Internal only — the service unpacks ``items``/``nextPageToken`` and never
@@ -86,7 +86,7 @@ class GoogleCalendarEventsPage(BaseModel):
     nextPageToken: str | None = None
 
 
-class GoogleCalendarListEntry(GooglePassthroughModel):
+class GoogleCalendarListEntry(GooglePassthroughModel):  # type: ignore[explicit-any]
     """One entry of Google's ``calendarList.list`` payload, forwarded to the client
     verbatim.
 
@@ -99,7 +99,7 @@ class GoogleCalendarListEntry(GooglePassthroughModel):
     summary: str | None = None
 
 
-class CalendarSummary(BaseModel):
+class CalendarSummary(BaseModel):  # type: ignore[explicit-any]
     """Trimmed calendar-list entry — the four fields GAIA's agent tools and colour
     maps need, without the rest of Google's envelope."""
 
@@ -109,7 +109,7 @@ class CalendarSummary(BaseModel):
     backgroundColor: str | None = None
 
 
-class CalendarListResponse(BaseModel):
+class CalendarListResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``GET /calendar/list`` — Google's ``calendarList.list`` payload.
 
     ``extra="allow"`` keeps the envelope keys Google sends alongside ``items``
@@ -121,7 +121,7 @@ class CalendarListResponse(BaseModel):
     items: list[GoogleCalendarListEntry] = Field(default_factory=list)
 
 
-class CalendarEventsResponse(BaseModel):
+class CalendarEventsResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for the multi-calendar reads (``POST /calendar/events/query`` and
     ``GET /calendar/events``)."""
 
@@ -131,14 +131,14 @@ class CalendarEventsResponse(BaseModel):
     calendars_truncated: list[str]
 
 
-class CalendarEventPageResponse(BaseModel):
+class CalendarEventPageResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``GET /calendar/{calendar_id}/events``."""
 
     events: list[GoogleCalendarEventResource]
     next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
 
 
-class CalendarEventFetchResult(BaseModel):
+class CalendarEventFetchResult(BaseModel):  # type: ignore[explicit-any]
     """Result of paging one calendar's events to exhaustion — internal to the
     calendar service."""
 
@@ -147,7 +147,7 @@ class CalendarEventFetchResult(BaseModel):
     total_fetched: int
 
 
-class CalendarEventDisplay(BaseModel):
+class CalendarEventDisplay(BaseModel):  # type: ignore[explicit-any]
     """Flattened event shape streamed to the web client as ``calendar_fetch_data``."""
 
     summary: str
@@ -157,7 +157,7 @@ class CalendarEventDisplay(BaseModel):
     background_color: str
 
 
-class CalendarSearchResult(BaseModel):
+class CalendarSearchResult(BaseModel):  # type: ignore[explicit-any]
     """Result of a native Google Calendar search across the user's calendars."""
 
     query: str
@@ -167,26 +167,26 @@ class CalendarSearchResult(BaseModel):
     searched_calendars: list[str]
 
 
-class GoogleConferenceSolutionKey(BaseModel):
+class GoogleConferenceSolutionKey(BaseModel):  # type: ignore[explicit-any]
     type: str
 
 
-class GoogleConferenceCreateRequest(BaseModel):
+class GoogleConferenceCreateRequest(BaseModel):  # type: ignore[explicit-any]
     requestId: str
     conferenceSolutionKey: GoogleConferenceSolutionKey
 
 
-class GoogleConferenceData(BaseModel):
+class GoogleConferenceData(BaseModel):  # type: ignore[explicit-any]
     """``conferenceData`` asking Google to attach a Meet link to a new event."""
 
     createRequest: GoogleConferenceCreateRequest
 
 
-class GoogleCalendarAttendee(BaseModel):
+class GoogleCalendarAttendee(BaseModel):  # type: ignore[explicit-any]
     email: str
 
 
-class GoogleCalendarEventWrite(BaseModel):
+class GoogleCalendarEventWrite(BaseModel):  # type: ignore[explicit-any]
     """Request body GAIA sends to Google's ``events.insert`` / ``events.update``.
 
     Serialized with ``exclude_none=True`` so an unset field is omitted rather than
@@ -202,26 +202,26 @@ class GoogleCalendarEventWrite(BaseModel):
     conferenceData: GoogleConferenceData | None = None
 
 
-class CalendarPreferencesResponse(BaseModel):
+class CalendarPreferencesResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``GET /calendar/preferences``."""
 
     selected_calendars: list[str] = Field(serialization_alias="selectedCalendars")
 
 
-class CalendarPreferencesUpdateResponse(BaseModel):
+class CalendarPreferencesUpdateResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``PUT /calendar/preferences``."""
 
     message: str
 
 
-class EventDeleteResponse(BaseModel):
+class EventDeleteResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``DELETE /calendar/event``."""
 
     success: bool
     message: str
 
 
-class BatchEventCreateFailure(BaseModel):
+class BatchEventCreateFailure(BaseModel):  # type: ignore[explicit-any]
     """One failed entry of a batch create — identified by summary, since a failed
     create never produced an event id."""
 
@@ -229,42 +229,42 @@ class BatchEventCreateFailure(BaseModel):
     error: str
 
 
-class BatchEventFailure(BaseModel):
+class BatchEventFailure(BaseModel):  # type: ignore[explicit-any]
     """One failed entry of a batch update or delete."""
 
     event_id: str
     error: str
 
 
-class BatchEventDeleteSuccess(BaseModel):
+class BatchEventDeleteSuccess(BaseModel):  # type: ignore[explicit-any]
     """One successfully deleted entry of a batch delete."""
 
     event_id: str
     calendar_id: str
 
 
-class BatchEventCreateResponse(BaseModel):
+class BatchEventCreateResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``POST /calendar/events/batch``."""
 
     successful: list[GoogleCalendarEventResource]
     failed: list[BatchEventCreateFailure]
 
 
-class BatchEventUpdateResponse(BaseModel):
+class BatchEventUpdateResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``PUT /calendar/events/batch``."""
 
     successful: list[GoogleCalendarEventResource]
     failed: list[BatchEventFailure]
 
 
-class BatchEventDeleteResponse(BaseModel):
+class BatchEventDeleteResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``DELETE /calendar/events/batch``."""
 
     successful: list[BatchEventDeleteSuccess]
     failed: list[BatchEventFailure]
 
 
-class CalendarEventsQueryRequest(BaseModel):
+class CalendarEventsQueryRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for querying calendar events via POST to avoid URL length limits."""
 
     selected_calendars: list[str] = Field(
@@ -298,25 +298,25 @@ class CalendarEventsQueryRequest(BaseModel):
         return v
 
 
-class EventDeleteRequest(BaseModel):
+class EventDeleteRequest(BaseModel):  # type: ignore[explicit-any]
     event_id: str = Field(..., title="Event ID to delete")
     calendar_id: str = Field("primary", title="Calendar ID containing the event")
     summary: str | None = Field(None, title="Event summary for confirmation")
 
 
-class BatchEventCreateRequest(BaseModel):
+class BatchEventCreateRequest(BaseModel):  # type: ignore[explicit-any]
     events: list["EventCreateRequest"] = Field(..., title="List of events to create")
 
 
-class BatchEventUpdateRequest(BaseModel):
+class BatchEventUpdateRequest(BaseModel):  # type: ignore[explicit-any]
     events: list["EventUpdateRequest"] = Field(..., title="List of events to update")
 
 
-class BatchEventDeleteRequest(BaseModel):
+class BatchEventDeleteRequest(BaseModel):  # type: ignore[explicit-any]
     events: list[EventDeleteRequest] = Field(..., title="List of events to delete")
 
 
-class RecurrenceRule(BaseModel):
+class RecurrenceRule(BaseModel):  # type: ignore[explicit-any]
     """Recurrence rule (RRULE) for a recurring event following RFC 5545."""
 
     frequency: Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] = Field(
@@ -447,7 +447,7 @@ class RecurrenceRule(BaseModel):
     model_config = {"extra": "forbid"}
 
 
-class RecurrenceData(BaseModel):
+class RecurrenceData(BaseModel):  # type: ignore[explicit-any]
     """Complete recurrence data for an event."""
 
     rrule: RecurrenceRule = Field(..., title="Recurrence rule")
@@ -472,7 +472,7 @@ class RecurrenceData(BaseModel):
     model_config = {"extra": "forbid"}
 
 
-class EventUpdateRequest(BaseModel):
+class EventUpdateRequest(BaseModel):  # type: ignore[explicit-any]
     event_id: str = Field(..., title="Event ID to update")
     calendar_id: str = Field("primary", title="Calendar ID containing the event")
     summary: str | None = Field(None, title="Updated event summary")
@@ -488,7 +488,7 @@ class EventUpdateRequest(BaseModel):
     recurrence: RecurrenceData | None = Field(None, title="Recurrence rules for recurring event")
 
 
-class CalendarPreferencesDocument(MongoDocument):
+class CalendarPreferencesDocument(MongoDocument):  # type: ignore[explicit-any]
     """A user's calendar preferences as stored in the ``calendar`` collection —
     the ids of the calendars they have selected. Global, keyed by ``user_id``."""
 
@@ -496,7 +496,7 @@ class CalendarPreferencesDocument(MongoDocument):
     selected_calendars: list[str] = Field(default_factory=list)
 
 
-class CalendarPreferencesUpdate(BaseModel):
+class CalendarPreferencesUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed ``$set`` fields for calendar preferences."""
 
     model_config = ConfigDict(extra="forbid")
@@ -504,7 +504,7 @@ class CalendarPreferencesUpdate(BaseModel):
     selected_calendars: list[str] | None = None
 
 
-class BaseCalendarEvent(BaseModel):
+class BaseCalendarEvent(BaseModel):  # type: ignore[explicit-any]
     """Base model for calendar events with common fields shared across models."""
 
     summary: str = Field(..., title="Event Summary")
@@ -703,7 +703,7 @@ class BaseCalendarEvent(BaseModel):
 #             raise ValueError(f"Invalid time format: {self.time_str}. Error: {e}")
 
 
-class EventCreateRequest(BaseCalendarEvent):
+class EventCreateRequest(BaseCalendarEvent):  # type: ignore[explicit-any]
     """Model for calendar event creation for service layer."""
 
     # Direct time fields for service operations
@@ -716,7 +716,7 @@ class EventCreateRequest(BaseCalendarEvent):
     # Validate that start and end times are in ISO format or date format
     @field_validator("start", "end")
     @classmethod
-    def validate_time_format(cls, v: str, info: ValidationInfo) -> str:
+    def validate_time_format(cls, v: str, info: ValidationInfo) -> str:  # type: ignore[explicit-any]
         field_name = info.field_name
 
         try:
@@ -751,7 +751,7 @@ class EventCreateRequest(BaseCalendarEvent):
         return self
 
 
-class SingleEventInput(BaseModel):
+class SingleEventInput(BaseModel):  # type: ignore[explicit-any]
     """Single event definition for creation."""
 
     summary: str = Field(..., description="Title of the event")
@@ -774,7 +774,7 @@ class SingleEventInput(BaseModel):
     )
 
 
-class CreateEventInput(BaseModel):
+class CreateEventInput(BaseModel):  # type: ignore[explicit-any]
     """Input for creating one or more calendar events."""
 
     events: list[SingleEventInput] = Field(
@@ -787,14 +787,14 @@ class CreateEventInput(BaseModel):
     )
 
 
-class ListCalendarsInput(BaseModel):
+class ListCalendarsInput(BaseModel):  # type: ignore[explicit-any]
     short: bool = Field(
         default=True,
         description="Return only essential fields (id, summary, description, backgroundColor)",
     )
 
 
-class FetchEventsInput(BaseModel):
+class FetchEventsInput(BaseModel):  # type: ignore[explicit-any]
     """Input for fetching events from one or more calendars."""
 
     calendar_ids: list[str] = Field(
@@ -811,7 +811,7 @@ class FetchEventsInput(BaseModel):
     )
 
 
-class GetDaySummaryInput(BaseModel):
+class GetDaySummaryInput(BaseModel):  # type: ignore[explicit-any]
     """Input for getting a day's schedule summary."""
 
     date: str | None = Field(
@@ -820,21 +820,21 @@ class GetDaySummaryInput(BaseModel):
     )
 
 
-class FindEventInput(BaseModel):
+class FindEventInput(BaseModel):  # type: ignore[explicit-any]
     query: str = Field(..., description="Search query text")
     calendar_id: str = Field(default="primary", description="Calendar ID to search")
     time_min: str | None = Field(default=None, description="Start time filter (ISO format)")
     time_max: str | None = Field(default=None, description="End time filter (ISO format)")
 
 
-class EventReference(BaseModel):
+class EventReference(BaseModel):  # type: ignore[explicit-any]
     """Reference to a specific event by ID and calendar."""
 
     event_id: str = Field(..., description="Event ID")
     calendar_id: str = Field(default="primary", description="Calendar ID")
 
 
-class GetEventInput(BaseModel):
+class GetEventInput(BaseModel):  # type: ignore[explicit-any]
     """Input for getting one or more events by ID."""
 
     events: list[EventReference] = Field(
@@ -843,7 +843,7 @@ class GetEventInput(BaseModel):
     )
 
 
-class DeleteEventInput(BaseModel):
+class DeleteEventInput(BaseModel):  # type: ignore[explicit-any]
     """Input for deleting one or more events."""
 
     events: list[EventReference] = Field(
@@ -856,7 +856,7 @@ class DeleteEventInput(BaseModel):
     )
 
 
-class PatchEventInput(BaseModel):
+class PatchEventInput(BaseModel):  # type: ignore[explicit-any]
     event_id: str = Field(..., description="Event ID to update")
     calendar_id: str = Field(default="primary", description="Calendar ID")
     summary: str | None = Field(default=None, description="New title")
@@ -868,7 +868,7 @@ class PatchEventInput(BaseModel):
     send_updates: str = Field(default="all", description="Notify attendees")
 
 
-class AddRecurrenceInput(BaseModel):
+class AddRecurrenceInput(BaseModel):  # type: ignore[explicit-any]
     event_id: str = Field(..., description="Event ID to add recurrence to")
     calendar_id: str = Field(default="primary", description="Calendar ID")
     frequency: Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] = Field(

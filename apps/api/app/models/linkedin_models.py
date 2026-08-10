@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class CreatePostInput(BaseModel):
+class CreatePostInput(BaseModel):  # type: ignore[explicit-any]
     """Unified input for creating LinkedIn posts with optional media (image, document, or article).
 
     This model supports:
@@ -76,7 +76,7 @@ class CreatePostInput(BaseModel):
     )
 
 
-class AddCommentInput(BaseModel):
+class AddCommentInput(BaseModel):  # type: ignore[explicit-any]
     """Input for adding a comment to a LinkedIn post."""
 
     post_urn: str = Field(
@@ -95,7 +95,7 @@ class AddCommentInput(BaseModel):
     )
 
 
-class GetPostCommentsInput(BaseModel):
+class GetPostCommentsInput(BaseModel):  # type: ignore[explicit-any]
     """Input for retrieving comments on a LinkedIn post."""
 
     post_urn: str = Field(
@@ -115,7 +115,7 @@ class GetPostCommentsInput(BaseModel):
     )
 
 
-class ReactToPostInput(BaseModel):
+class ReactToPostInput(BaseModel):  # type: ignore[explicit-any]
     """Input for adding a reaction to a LinkedIn post."""
 
     post_urn: str = Field(
@@ -128,7 +128,7 @@ class ReactToPostInput(BaseModel):
     )
 
 
-class DeleteReactionInput(BaseModel):
+class DeleteReactionInput(BaseModel):  # type: ignore[explicit-any]
     """Input for removing a reaction from a LinkedIn post."""
 
     post_urn: str = Field(
@@ -137,7 +137,7 @@ class DeleteReactionInput(BaseModel):
     )
 
 
-class GetPostReactionsInput(BaseModel):
+class GetPostReactionsInput(BaseModel):  # type: ignore[explicit-any]
     """Input for retrieving reactions on a LinkedIn post."""
 
     post_urn: str = Field(

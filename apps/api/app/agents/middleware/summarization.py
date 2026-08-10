@@ -34,7 +34,7 @@ from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
 
-class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
+class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):  # type: ignore[explicit-any]
     """Archives conversation history to the user's workspace before summarizing.
 
     Drop-in replacement for the previous VFS-backed middleware. The archive

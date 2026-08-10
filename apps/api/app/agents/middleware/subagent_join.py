@@ -33,7 +33,7 @@ from app.services.hil.approvals_store import list_parked_subagents_for_conversat
 from shared.py.wide_events import log
 
 
-class SubagentJoinMiddleware(AgentMiddleware):
+class SubagentJoinMiddleware(AgentMiddleware):  # type: ignore[explicit-any]
     """Executor-only: never let a turn end while background subagents are uncollected."""
 
     async def aafter_model(

@@ -67,7 +67,7 @@ class _RunCounters:
         self.per_tool: dict[str, int] = {}
 
 
-class LoopGuardMiddleware(AgentMiddleware):
+class LoopGuardMiddleware(AgentMiddleware):  # type: ignore[explicit-any]
     """Nudge (or, in ``hard_stop`` mode, halt) a model looping on a failing tool.
 
     Usage::

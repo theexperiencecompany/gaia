@@ -476,7 +476,7 @@ async def fs_timer(op: str, **labels: str) -> AsyncIterator[None]:
         # cast: **labels is homogeneously str, but record_fs_op also has a
         # same-spelled `bytes: int` keyword — mypy can't rule out a collision
         # from the splat alone, even though no caller ever passes that label.
-        record_fs_op(op, duration_ms=elapsed_ms, error=err, **cast(dict[str, Any], labels))
+        record_fs_op(op, duration_ms=elapsed_ms, error=err, **cast(dict[str, Any], labels))  # type: ignore[explicit-any]
 
 
 def flush_fs_metrics() -> dict[str, OpStatsSnapshot]:

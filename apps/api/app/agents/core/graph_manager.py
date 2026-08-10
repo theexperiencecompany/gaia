@@ -12,7 +12,7 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from shared.py.wide_events import log
 
-CompiledAgentGraph = CompiledStateGraph[Any, Any, Any, Any]
+CompiledAgentGraph = CompiledStateGraph[Any, Any, Any, Any]  # type: ignore[explicit-any]
 
 
 class GraphUnavailableError(RuntimeError):

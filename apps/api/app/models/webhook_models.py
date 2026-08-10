@@ -30,7 +30,7 @@ class DodoWebhookEventType(str, Enum):
     SUBSCRIPTION_PLAN_CHANGED = "subscription.plan_changed"
 
 
-class DodoCustomerData(BaseModel):
+class DodoCustomerData(BaseModel):  # type: ignore[explicit-any]
     """Customer info from webhook."""
 
     customer_id: str
@@ -38,7 +38,7 @@ class DodoCustomerData(BaseModel):
     name: str
 
 
-class DodoBillingData(BaseModel):
+class DodoBillingData(BaseModel):  # type: ignore[explicit-any]
     """Billing address from webhook."""
 
     city: str
@@ -48,7 +48,7 @@ class DodoBillingData(BaseModel):
     zipcode: str
 
 
-class DodoPaymentData(BaseModel):
+class DodoPaymentData(BaseModel):  # type: ignore[explicit-any]
     """Payment data from payment webhook."""
 
     payment_id: str
@@ -76,7 +76,7 @@ class DodoPaymentData(BaseModel):
     error_message: str | None = None
 
 
-class DodoSubscriptionData(BaseModel):
+class DodoSubscriptionData(BaseModel):  # type: ignore[explicit-any]
     """Subscription data from subscription webhook."""
 
     subscription_id: str
@@ -104,7 +104,7 @@ class DodoSubscriptionData(BaseModel):
     discount_id: str | None = None
 
 
-class DodoWebhookEvent(BaseModel):
+class DodoWebhookEvent(BaseModel):  # type: ignore[explicit-any]
     """Dodo webhook event structure."""
 
     business_id: str
@@ -147,7 +147,7 @@ class DodoWebhookEvent(BaseModel):
         return None
 
 
-class DodoWebhookProcessingResult(BaseModel):
+class DodoWebhookProcessingResult(BaseModel):  # type: ignore[explicit-any]
     """Result of webhook processing."""
 
     event_type: str
@@ -157,7 +157,7 @@ class DodoWebhookProcessingResult(BaseModel):
     subscription_id: str | None = None
 
 
-class DodoWebhookAckResponse(BaseModel):
+class DodoWebhookAckResponse(BaseModel):  # type: ignore[explicit-any]
     """Acknowledgement returned to Dodo once a webhook has been accepted."""
 
     status: Literal["success"] = "success"
@@ -166,14 +166,14 @@ class DodoWebhookAckResponse(BaseModel):
     message: str
 
 
-class ComposioWebhookAckResponse(BaseModel):
+class ComposioWebhookAckResponse(BaseModel):  # type: ignore[explicit-any]
     """Acknowledgement returned to Composio once a webhook has been accepted."""
 
     status: Literal["success"] = "success"
     message: str
 
 
-class ComposioWebhookEvent(BaseModel):
+class ComposioWebhookEvent(BaseModel):  # type: ignore[explicit-any]
     """Composio webhook event structure."""
 
     type: str

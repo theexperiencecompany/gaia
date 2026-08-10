@@ -17,7 +17,7 @@ _api_env_path = Path(__file__).parent.parent.parent / "api" / ".env"
 load_dotenv(_api_env_path)
 
 
-class VoiceAgentSettings(BaseAppSettings):
+class VoiceAgentSettings(BaseAppSettings):  # type: ignore[explicit-any]
     """Settings specific to the voice agent worker."""
 
     GAIA_BACKEND_URL: str = "http://localhost:8000"

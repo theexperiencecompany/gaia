@@ -11,7 +11,7 @@ from app.utils.context_utils import execute_tool
 from app.utils.json_helpers import list_bag, text_opt_bag
 
 
-def register_google_tasks_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_google_tasks_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register Google Tasks tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="GOOGLETASKS")

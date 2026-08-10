@@ -77,7 +77,7 @@ class TestBaseAppSettingsFromEnv:
     def test_from_env_fallback_on_validation_error(self):
         """When creation fails, from_env should try with empty-string defaults for str fields."""
 
-        class StrictSettings(BaseAppSettings):
+        class StrictSettings(BaseAppSettings):  # type: ignore[explicit-any]
             REQUIRED_STR: str  # no default — will fail if not supplied
 
         with patch.dict(os.environ, {}, clear=True):
@@ -90,7 +90,7 @@ class TestBaseAppSettingsFromEnv:
     def test_from_env_kwargs_not_overridden_by_fallback(self):
         """Explicitly provided kwargs should survive the fallback logic."""
 
-        class StrictSettings(BaseAppSettings):
+        class StrictSettings(BaseAppSettings):  # type: ignore[explicit-any]
             REQUIRED_STR: str
 
         with patch.dict(os.environ, {}, clear=True):
@@ -193,7 +193,7 @@ class TestSubclassing:
     """Test that apps can extend BaseAppSettings properly."""
 
     def test_custom_subclass(self):
-        class MyAppSettings(BaseAppSettings):
+        class MyAppSettings(BaseAppSettings):  # type: ignore[explicit-any]
             DATABASE_URL: str = "sqlite:///test.db"
             DEBUG: bool = False
 
@@ -204,7 +204,7 @@ class TestSubclassing:
         assert settings.ENV == "production"
 
     def test_custom_subclass_from_env(self):
-        class MyAppSettings(BaseAppSettings):
+        class MyAppSettings(BaseAppSettings):  # type: ignore[explicit-any]
             API_KEY: str = "default"
 
         with patch.dict(os.environ, {"API_KEY": "from-env"}, clear=True):

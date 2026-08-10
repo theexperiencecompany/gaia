@@ -3,11 +3,11 @@
 from pydantic import BaseModel, Field
 
 
-class MessageFeedbackRequest(BaseModel):
+class MessageFeedbackRequest(BaseModel):  # type: ignore[explicit-any]
     is_positive: bool = Field(description="True for thumbs-up, False for thumbs-down.")
 
 
-class MessageFeedbackResponse(BaseModel):
+class MessageFeedbackResponse(BaseModel):  # type: ignore[explicit-any]
     """`scored=False` with `reason="langfuse_disabled"` is a successful ack."""
 
     status: str = "ok"

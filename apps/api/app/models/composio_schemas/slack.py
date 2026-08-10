@@ -7,7 +7,7 @@ Reference: node_modules/@composio/core/generated/slack.ts
 from pydantic import BaseModel, Field
 
 
-class SlackReceiveMessagePayload(BaseModel):
+class SlackReceiveMessagePayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for SLACK_RECEIVE_MESSAGE trigger."""
 
     attachments: list[dict[str, object]] | None = Field(
@@ -22,7 +22,7 @@ class SlackReceiveMessagePayload(BaseModel):
     user: str | None = Field(None, description="User ID who sent the message")
 
 
-class SlackChannelCreatedPayload(BaseModel):
+class SlackChannelCreatedPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for SLACK_CHANNEL_CREATED trigger."""
 
     created: int | None = Field(None, description="Unix timestamp when created")

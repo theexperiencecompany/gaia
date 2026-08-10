@@ -15,7 +15,7 @@ class Priority(str, Enum):
     NONE = "none"  # no color
 
 
-class SubTask(BaseModel):
+class SubTask(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(from_attributes=True)
 
     id: str = Field(default="", description="Unique identifier for the subtask")
@@ -25,7 +25,7 @@ class SubTask(BaseModel):
 
 
 # Base model with all shared todo fields
-class TodoBase(BaseModel):
+class TodoBase(BaseModel):  # type: ignore[explicit-any]
     """Base model with shared fields for todos"""
 
     model_config = ConfigDict(from_attributes=True)
@@ -75,7 +75,7 @@ class TodoBase(BaseModel):
 
 
 # For creating new todos
-class TodoModel(TodoBase):
+class TodoModel(TodoBase):  # type: ignore[explicit-any]
     """Model for creating todos"""
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -83,7 +83,7 @@ class TodoModel(TodoBase):
 
 
 # For updating todos - all fields optional
-class TodoUpdateRequest(BaseModel):
+class TodoUpdateRequest(BaseModel):  # type: ignore[explicit-any]
     """Model for updating todos - all fields optional for partial updates"""
 
     model_config = ConfigDict(from_attributes=True)
@@ -105,7 +105,7 @@ class TodoUpdateRequest(BaseModel):
 
 
 # For responses with ID and user_id
-class TodoResponse(TodoBase):
+class TodoResponse(TodoBase):  # type: ignore[explicit-any]
     """Complete todo response with all fields"""
 
     id: str = Field(..., description="Unique identifier")
@@ -133,7 +133,7 @@ class TodoResponse(TodoBase):
 
 
 # Project models
-class ProjectBase(BaseModel):
+class ProjectBase(BaseModel):  # type: ignore[explicit-any]
     """Base model for project fields"""
 
     model_config = ConfigDict(from_attributes=True)
@@ -149,11 +149,11 @@ class ProjectBase(BaseModel):
     )
 
 
-class ProjectCreate(ProjectBase):
+class ProjectCreate(ProjectBase):  # type: ignore[explicit-any]
     """Model for creating projects"""
 
 
-class UpdateProjectRequest(BaseModel):
+class UpdateProjectRequest(BaseModel):  # type: ignore[explicit-any]
     """Model for updating projects - all fields optional"""
 
     model_config = ConfigDict(from_attributes=True)
@@ -163,7 +163,7 @@ class UpdateProjectRequest(BaseModel):
     color: Annotated[str, Field(pattern="^#[0-9A-Fa-f]{6}$")] | None = None
 
 
-class ProjectResponse(ProjectBase):
+class ProjectResponse(ProjectBase):  # type: ignore[explicit-any]
     """Complete project response"""
 
     id: str = Field(..., description="Unique identifier")
@@ -185,17 +185,17 @@ class ProjectResponse(ProjectBase):
 
 
 # Subtask operations
-class SubtaskCreateRequest(BaseModel):
+class SubtaskCreateRequest(BaseModel):  # type: ignore[explicit-any]
     title: str
 
 
-class SubtaskUpdateRequest(BaseModel):
+class SubtaskUpdateRequest(BaseModel):  # type: ignore[explicit-any]
     title: str | None = None
     completed: bool | None = None
 
 
 # Pagination and stats
-class PaginationMeta(BaseModel):
+class PaginationMeta(BaseModel):  # type: ignore[explicit-any]
     total: int = Field(..., description="Total number of items")
     page: int = Field(..., description="Current page (1-based)")
     per_page: int = Field(..., description="Items per page")
@@ -204,14 +204,14 @@ class PaginationMeta(BaseModel):
     has_prev: bool = Field(..., description="Whether there's a previous page")
 
 
-class TodoLabelCount(BaseModel):
+class TodoLabelCount(BaseModel):  # type: ignore[explicit-any]
     """One label with the number of (incomplete) todos carrying it."""
 
     name: str
     count: int
 
 
-class TodoStats(BaseModel):
+class TodoStats(BaseModel):  # type: ignore[explicit-any]
     total: int = Field(default=0)
     completed: int = Field(default=0)
     pending: int = Field(default=0)
@@ -222,13 +222,13 @@ class TodoStats(BaseModel):
     labels: list[TodoLabelCount] | None = None
 
 
-class TodoListResponse(BaseModel):
+class TodoListResponse(BaseModel):  # type: ignore[explicit-any]
     data: list[TodoResponse]
     meta: PaginationMeta
     stats: TodoStats | None = None
 
 
-class TodoCanvasResponse(BaseModel):
+class TodoCanvasResponse(BaseModel):  # type: ignore[explicit-any]
     """A tracked todo's canvas markdown. Empty string when the todo has no canvas."""
 
     content: str
@@ -241,7 +241,7 @@ class SearchMode(str, Enum):
     HYBRID = "hybrid"
 
 
-class TodoSearchParams(BaseModel):
+class TodoSearchParams(BaseModel):  # type: ignore[explicit-any]
     q: str | None = None
     mode: SearchMode = Field(default=SearchMode.HYBRID)
     project_id: str | None = None
@@ -258,19 +258,19 @@ class TodoSearchParams(BaseModel):
 
 
 # Bulk operations
-class BulkOperationRequest(BaseModel):
+class BulkOperationRequest(BaseModel):  # type: ignore[explicit-any]
     todo_ids: Annotated[list[str], Field(min_length=1, max_length=100)]
 
 
-class BulkUpdateRequest(BulkOperationRequest):
+class BulkUpdateRequest(BulkOperationRequest):  # type: ignore[explicit-any]
     updates: TodoUpdateRequest
 
 
-class BulkMoveRequest(BulkOperationRequest):
+class BulkMoveRequest(BulkOperationRequest):  # type: ignore[explicit-any]
     project_id: str
 
 
-class BulkOperationResponse(BaseModel):
+class BulkOperationResponse(BaseModel):  # type: ignore[explicit-any]
     success: list[str] = Field(default_factory=list)
     failed: list[dict[str, object]] = Field(default_factory=list)
     total: int
@@ -292,7 +292,7 @@ class TodoWorkflowStatus(str, Enum):
     FAILED = "failed"
 
 
-class TodoWorkflowGenerationResponse(BaseModel):
+class TodoWorkflowGenerationResponse(BaseModel):  # type: ignore[explicit-any]
     """Result of asking for a todo's workflow to be generated."""
 
     status: TodoWorkflowGenerationStatus
@@ -303,7 +303,7 @@ class TodoWorkflowGenerationResponse(BaseModel):
     )
 
 
-class TodoWorkflowStatusResponse(BaseModel):
+class TodoWorkflowStatusResponse(BaseModel):  # type: ignore[explicit-any]
     """Generation progress and the linked workflow, if any, for one todo."""
 
     todo_id: str
@@ -321,7 +321,7 @@ class TodoWorkflowStatusResponse(BaseModel):
 # preserved on write because updates are ``$set``-only.
 
 
-class TodoDocument(UserScopedDocument):
+class TodoDocument(UserScopedDocument):  # type: ignore[explicit-any]
     """A todo as stored in MongoDB. Base stamps created_at/updated_at on write."""
 
     title: str
@@ -351,7 +351,7 @@ class TodoDocument(UserScopedDocument):
     updated_at: datetime | None = None
 
 
-class TodoUpdate(BaseModel):
+class TodoUpdate(BaseModel):  # type: ignore[explicit-any]
     """Partial ``$set`` update for a todo — every settable field, all optional."""
 
     model_config = ConfigDict(extra="forbid")
@@ -378,7 +378,7 @@ class TodoUpdate(BaseModel):
     log_content: str | None = None
 
 
-class ProjectDocument(UserScopedDocument):
+class ProjectDocument(UserScopedDocument):  # type: ignore[explicit-any]
     """A project as stored in MongoDB. Base stamps created_at/updated_at on write."""
 
     name: str
@@ -389,7 +389,7 @@ class ProjectDocument(UserScopedDocument):
     updated_at: datetime | None = None
 
 
-class ProjectUpdate(BaseModel):
+class ProjectUpdate(BaseModel):  # type: ignore[explicit-any]
     """Partial ``$set`` update for a project — user-editable fields, all optional."""
 
     model_config = ConfigDict(extra="forbid")
@@ -399,13 +399,13 @@ class ProjectUpdate(BaseModel):
     color: str | None = None
 
 
-class ProjectWithCount(ProjectDocument):
+class ProjectWithCount(ProjectDocument):  # type: ignore[explicit-any]
     """A project plus its todo count, produced by the list aggregation."""
 
     todo_count: int = 0
 
 
-class TodoCounts(BaseModel):
+class TodoCounts(BaseModel):  # type: ignore[explicit-any]
     """Dashboard/sidebar counts for a user's todos."""
 
     inbox: int = 0
@@ -415,7 +415,7 @@ class TodoCounts(BaseModel):
     overdue: int = 0
 
 
-class TodoPage(BaseModel):
+class TodoPage(BaseModel):  # type: ignore[explicit-any]
     """A page of todos plus the unpaginated total for the same filter."""
 
     items: list[TodoDocument] = Field(default_factory=list)

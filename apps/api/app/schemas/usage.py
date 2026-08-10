@@ -8,7 +8,7 @@ both together.
 from pydantic import BaseModel, Field
 
 
-class FeaturePeriodUsage(BaseModel):
+class FeaturePeriodUsage(BaseModel):  # type: ignore[explicit-any]
     """One feature's usage within one window (day or month)."""
 
     used: int
@@ -18,14 +18,14 @@ class FeaturePeriodUsage(BaseModel):
     remaining: int
 
 
-class FeatureUpgrade(BaseModel):
+class FeatureUpgrade(BaseModel):  # type: ignore[explicit-any]
     """The Pro tier's limits for a feature, so a free user sees the delta."""
 
     day: int
     month: int
 
 
-class FeatureUsageSummary(BaseModel):
+class FeatureUsageSummary(BaseModel):  # type: ignore[explicit-any]
     title: str
     description: str
     upgrade: FeatureUpgrade
@@ -33,7 +33,7 @@ class FeatureUsageSummary(BaseModel):
     periods: dict[str, FeaturePeriodUsage] = Field(default_factory=dict)
 
 
-class BudgetWindow(BaseModel):
+class BudgetWindow(BaseModel):  # type: ignore[explicit-any]
     """One cost-budget window: how much of the allowance is used, and when it
     resets. Deliberately no raw USD — see ``cost_budget.get_budget_status``."""
 
@@ -41,14 +41,14 @@ class BudgetWindow(BaseModel):
     reset_time: str
 
 
-class UsageBudget(BaseModel):
+class UsageBudget(BaseModel):  # type: ignore[explicit-any]
     daily: BudgetWindow
     # Free has no monthly cost budget, so this is null there.
     monthly: BudgetWindow | None = None
     per_request_token_ceiling: int
 
 
-class UsageSummary(BaseModel):
+class UsageSummary(BaseModel):  # type: ignore[explicit-any]
     user_id: str
     plan_type: str
     # The feature the usage UI leads with, owned by the API so the client never

@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field
 
 
-class SearchResultItem(BaseModel):
+class SearchResultItem(BaseModel):  # type: ignore[explicit-any]
     """A single web result in the shape the agent and frontend consume."""
 
     url: str
@@ -14,7 +14,7 @@ class SearchResultItem(BaseModel):
     favicon: str = ""
 
 
-class SearchResponse(BaseModel):
+class SearchResponse(BaseModel):  # type: ignore[explicit-any]
     """The outcome of one search, from a single provider or the whole engine."""
 
     results: list[SearchResultItem] = Field(default_factory=list)
@@ -27,7 +27,7 @@ class SearchResponse(BaseModel):
         return not self.results
 
 
-class WebSearchResult(BaseModel):
+class WebSearchResult(BaseModel):  # type: ignore[explicit-any]
     """The wire shape ``perform_search`` returns: results plus the query echoed back."""
 
     web: list[SearchResultItem] = Field(default_factory=list)

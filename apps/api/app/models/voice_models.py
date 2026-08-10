@@ -15,7 +15,7 @@ existed still validate.
 from pydantic import BaseModel, Field
 
 
-class ElevenLabsVoice(BaseModel):
+class ElevenLabsVoice(BaseModel):  # type: ignore[explicit-any]
     """What both voice sources have in common — all ``_build_voice_option`` needs."""
 
     voice_id: str
@@ -24,7 +24,7 @@ class ElevenLabsVoice(BaseModel):
     language_codes: list[str] = Field(default_factory=list)
 
 
-class ElevenLabsAccountVoice(ElevenLabsVoice):
+class ElevenLabsAccountVoice(ElevenLabsVoice):  # type: ignore[explicit-any]
     """A voice on the ElevenLabs account, whose metadata lives in ``labels``."""
 
     # Provider-owned free-form label bag: ElevenLabs lets an account define its own
@@ -33,7 +33,7 @@ class ElevenLabsAccountVoice(ElevenLabsVoice):
     labels: dict[str, object] = Field(default_factory=dict)
 
 
-class ElevenLabsSharedVoice(ElevenLabsVoice):
+class ElevenLabsSharedVoice(ElevenLabsVoice):  # type: ignore[explicit-any]
     """A voice from the public ElevenLabs library, whose metadata is top-level."""
 
     public_owner_id: str

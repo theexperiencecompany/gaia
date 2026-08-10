@@ -141,7 +141,7 @@ PLATFORM_CONFIG: dict[str, PlatformConfig] = {
 }
 
 
-class UsernameExtraction(BaseModel):
+class UsernameExtraction(BaseModel):  # type: ignore[explicit-any]
     """Structured output for username extraction."""
 
     username: str = Field(

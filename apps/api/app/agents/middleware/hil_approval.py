@@ -15,7 +15,7 @@ from langgraph.types import Command
 from app.services.hil.gate import Handler, decide_tool_call
 
 
-class HILApprovalMiddleware(AgentMiddleware):
+class HILApprovalMiddleware(AgentMiddleware):  # type: ignore[explicit-any]
     """Middleware-chain adapter that puts regular tool calls to the HIL gate first."""
 
     async def awrap_tool_call(

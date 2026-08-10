@@ -39,14 +39,14 @@ class TriggerType(str, Enum):
     INTEGRATION = "integration"
 
 
-class IntegrationRef(BaseModel):
+class IntegrationRef(BaseModel):  # type: ignore[explicit-any]
     """Lightweight integration reference for workflow responses."""
 
     id: str
     name: str
 
 
-class WorkflowStep(BaseModel):
+class WorkflowStep(BaseModel):  # type: ignore[explicit-any]
     """A single step in a workflow."""
 
     id: str = Field(default="", description="Unique identifier for the step")
@@ -59,7 +59,7 @@ class WorkflowStep(BaseModel):
 
 
 # LLM Output Models for Workflow Generation
-class GeneratedStep(BaseModel):
+class GeneratedStep(BaseModel):  # type: ignore[explicit-any]
     """Minimal schema for LLM-generated workflow steps."""
 
     title: str = Field(description="Human-readable step name")
@@ -67,13 +67,13 @@ class GeneratedStep(BaseModel):
     description: str = Field(description="What this step accomplishes")
 
 
-class GeneratedWorkflow(BaseModel):
+class GeneratedWorkflow(BaseModel):  # type: ignore[explicit-any]
     """Schema for LLM workflow generation output."""
 
     steps: list[GeneratedStep] = Field(description="List of workflow steps")
 
 
-class TriggerConfig(BaseModel):
+class TriggerConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for workflow triggers.
 
     Uses a discriminated union pattern for type-safe provider configs.
@@ -165,7 +165,7 @@ class WorkflowCreator(TypedDict):
     avatar: str | None
 
 
-class Workflow(BaseScheduledTask):
+class Workflow(BaseScheduledTask):  # type: ignore[explicit-any]
     """Main workflow model extending BaseScheduledTask for scheduling capabilities."""
 
     # Override ID generation for workflows - always generate ID
@@ -340,7 +340,7 @@ class Workflow(BaseScheduledTask):
 # Request/Response models for API
 
 
-class WorkflowWithIntegrations(Workflow):
+class WorkflowWithIntegrations(Workflow):  # type: ignore[explicit-any]
     """Read-time view of a workflow: the persisted `Workflow` plus its computed
     integration requirements. Never persisted — the storage model is `Workflow`;
     these fields are populated by the service on read paths only."""
@@ -355,7 +355,7 @@ class WorkflowWithIntegrations(Workflow):
     )
 
 
-class CreateWorkflowRequest(BaseModel):
+class CreateWorkflowRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for creating a new workflow."""
 
     title: str = Field(min_length=1, description="Title of the workflow")
@@ -416,7 +416,7 @@ class CreateWorkflowRequest(BaseModel):
         return v.strip() if v else None
 
 
-class CreateWorkflowFromTodoRequest(BaseModel):
+class CreateWorkflowFromTodoRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for the todo → workflow migration helper.
 
     ``todo_id``/``todo_title`` are optional at the schema level on purpose: the
@@ -430,7 +430,7 @@ class CreateWorkflowFromTodoRequest(BaseModel):
     todo_description: str | None = None
 
 
-class UpdateWorkflowRequest(BaseModel):
+class UpdateWorkflowRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for updating an existing workflow."""
 
     title: str | None = Field(default=None)
@@ -462,7 +462,7 @@ class UpdateWorkflowRequest(BaseModel):
         return stripped if stripped else None
 
 
-class WorkflowResponse(BaseModel):
+class WorkflowResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for workflow operations."""
 
     # SerializeAsAny so a WorkflowWithIntegrations (from read paths) serializes
@@ -471,7 +471,7 @@ class WorkflowResponse(BaseModel):
     message: str = Field(description="Success or status message")
 
 
-class WorkflowListResponse(BaseModel):
+class WorkflowListResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for listing workflows."""
 
     # Sequence (not list) because list is invariant: the read path hands us
@@ -480,7 +480,7 @@ class WorkflowListResponse(BaseModel):
     workflows: Sequence[SerializeAsAny[Workflow]]
 
 
-class WorkflowExecutionRequest(BaseModel):
+class WorkflowExecutionRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for executing a workflow."""
 
     context: dict[str, object] | None = Field(
@@ -488,14 +488,14 @@ class WorkflowExecutionRequest(BaseModel):
     )
 
 
-class WorkflowExecutionResponse(BaseModel):
+class WorkflowExecutionResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for workflow execution."""
 
     execution_id: str = Field(description="Unique ID for this execution")
     message: str
 
 
-class WorkflowStatusResponse(BaseModel):
+class WorkflowStatusResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for workflow status checks."""
 
     workflow_id: str
@@ -508,7 +508,7 @@ class WorkflowStatusResponse(BaseModel):
     logs: list[str] = Field(default_factory=list)
 
 
-class RegenerateStepsRequest(BaseModel):
+class RegenerateStepsRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for regenerating workflow steps."""
 
     instruction: str = Field(min_length=1, description="Instruction for how to modify the workflow")
@@ -522,7 +522,7 @@ class RegenerateStepsRequest(BaseModel):
     )
 
 
-class PublicWorkflowsResponse(BaseModel):
+class PublicWorkflowsResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for listing public workflows."""
 
     # Deliberately left as untyped card dicts. Three endpoints build these — the
@@ -540,20 +540,20 @@ class PublicWorkflowsResponse(BaseModel):
     total: int = Field(description="Total number of public workflows")
 
 
-class ResetWorkflowResponse(BaseModel):
+class ResetWorkflowResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for resetting a system workflow to its default definition."""
 
     success: bool = Field(description="Whether the workflow was reset")
     message: str = Field(description="Success or status message")
 
 
-class WorkflowMessageResponse(BaseModel):
+class WorkflowMessageResponse(BaseModel):  # type: ignore[explicit-any]
     """Acknowledgement for a workflow mutation that returns no entity."""
 
     message: str = Field(description="Human-readable outcome")
 
 
-class PublishWorkflowResponse(BaseModel):
+class PublishWorkflowResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for publishing a workflow."""
 
     message: str = Field(description="Success message")
@@ -561,7 +561,7 @@ class PublishWorkflowResponse(BaseModel):
     slug: str | None = Field(default=None, description="Public URL slug for the workflow")
 
 
-class PromptTriggerHint(BaseModel):
+class PromptTriggerHint(BaseModel):  # type: ignore[explicit-any]
     """The subset of a trigger config the magic-prompt generator reads.
 
     The workflow editor posts whatever it currently holds in the trigger form, so
@@ -576,7 +576,7 @@ class PromptTriggerHint(BaseModel):
     trigger_name: str | None = None
 
 
-class GenerateWorkflowPromptRequest(BaseModel):
+class GenerateWorkflowPromptRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for AI-generated workflow instructions."""
 
     title: str | None = None
@@ -589,7 +589,7 @@ class GenerateWorkflowPromptRequest(BaseModel):
     )
 
 
-class SuggestedTrigger(BaseModel):
+class SuggestedTrigger(BaseModel):  # type: ignore[explicit-any]
     """AI-suggested trigger configuration returned alongside generated instructions."""
 
     type: str = Field(description="Trigger type: manual, schedule, or integration")
@@ -602,7 +602,7 @@ class SuggestedTrigger(BaseModel):
     )
 
 
-class GeneratedPromptOutput(BaseModel):
+class GeneratedPromptOutput(BaseModel):  # type: ignore[explicit-any]
     """Structured LLM output for the magic-prompt generator.
 
     Used by PydanticOutputParser to extract both the prose instructions and
@@ -644,7 +644,7 @@ class GeneratedPromptOutput(BaseModel):
     )
 
 
-class GenerateWorkflowPromptResponse(BaseModel):
+class GenerateWorkflowPromptResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for AI-generated workflow instructions."""
 
     prompt: str
@@ -668,7 +668,7 @@ class GeneratedPromptResult(TypedDict):
 # Repository persistence models (Wave E migration)
 
 
-class WorkflowDocument(Workflow, MongoDocument):
+class WorkflowDocument(Workflow, MongoDocument):  # type: ignore[explicit-any]
     """A workflow as stored in MongoDB.
 
     Identity is the string business key ``id`` (persisted as ``_id``; the two are
@@ -687,7 +687,7 @@ class WorkflowDocument(Workflow, MongoDocument):
     id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
 
 
-class WorkflowCreatorInfo(BaseModel):
+class WorkflowCreatorInfo(BaseModel):  # type: ignore[explicit-any]
     """One creator row hydrated by the ``creator_lookup_stage`` ``$lookup`` — the
     projected ``{name, email, picture}`` subset of the joined user document. All
     optional because the join yields no match for a non-user creator (the literal
@@ -698,7 +698,7 @@ class WorkflowCreatorInfo(BaseModel):
     picture: str | None = None
 
 
-class PublicWorkflowRow(WorkflowDocument):
+class PublicWorkflowRow(WorkflowDocument):  # type: ignore[explicit-any]
     """A workflow read from a public-marketplace aggregation: the persisted
     ``WorkflowDocument`` plus the joined ``creator_info`` array.
 
@@ -716,7 +716,7 @@ class PublicWorkflowRow(WorkflowDocument):
     use_case_categories: list[str] = Field(default_factory=lambda: ["featured"], exclude=True)
 
 
-class WorkflowUpdate(BaseModel):
+class WorkflowUpdate(BaseModel):  # type: ignore[explicit-any]
     """Partial ``$set`` update for a workflow — the flat, top-level fields the
     owned-CRUD paths mutate. Nested (``trigger_config.*``) and operator
     (``$inc`` stats, atomic status claim) writes are named repository methods that

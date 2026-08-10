@@ -11,7 +11,7 @@ from typing import NotRequired, TypedDict
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class GooglePersonFieldMetadata(BaseModel):
+class GooglePersonFieldMetadata(BaseModel):  # type: ignore[explicit-any]
     """The ``metadata`` block on a person field, flagging the primary entry."""
 
     model_config = ConfigDict(extra="allow")
@@ -19,7 +19,7 @@ class GooglePersonFieldMetadata(BaseModel):
     primary: bool | None = None
 
 
-class GooglePersonName(BaseModel):
+class GooglePersonName(BaseModel):  # type: ignore[explicit-any]
     """One entry of a person's ``names``."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -28,7 +28,7 @@ class GooglePersonName(BaseModel):
     metadata: GooglePersonFieldMetadata | None = None
 
 
-class GooglePersonValue(BaseModel):
+class GooglePersonValue(BaseModel):  # type: ignore[explicit-any]
     """One entry of ``emailAddresses`` or ``phoneNumbers`` — both are ``{value, metadata}``."""
 
     model_config = ConfigDict(extra="allow")
@@ -37,7 +37,7 @@ class GooglePersonValue(BaseModel):
     metadata: GooglePersonFieldMetadata | None = None
 
 
-class GooglePerson(BaseModel):
+class GooglePerson(BaseModel):  # type: ignore[explicit-any]
     """A People API ``person`` resource."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -48,7 +48,7 @@ class GooglePerson(BaseModel):
     phone_numbers: list[GooglePersonValue] = Field(default_factory=list, alias="phoneNumbers")
 
 
-class GooglePeopleSearchResult(BaseModel):
+class GooglePeopleSearchResult(BaseModel):  # type: ignore[explicit-any]
     """One entry of a ``people:searchContacts`` result list."""
 
     model_config = ConfigDict(extra="allow")
@@ -56,7 +56,7 @@ class GooglePeopleSearchResult(BaseModel):
     person: GooglePerson = Field(default_factory=GooglePerson)
 
 
-class GoogleContactsResponseData(BaseModel):
+class GoogleContactsResponseData(BaseModel):  # type: ignore[explicit-any]
     """The ``response_data`` payload of ``GMAIL_GET_CONTACTS``."""
 
     model_config = ConfigDict(extra="allow")
@@ -64,7 +64,7 @@ class GoogleContactsResponseData(BaseModel):
     connections: list[GooglePerson] = Field(default_factory=list)
 
 
-class GooglePeopleSearchResponseData(BaseModel):
+class GooglePeopleSearchResponseData(BaseModel):  # type: ignore[explicit-any]
     """The ``response_data`` payload of ``GMAIL_SEARCH_PEOPLE``."""
 
     model_config = ConfigDict(extra="allow")

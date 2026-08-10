@@ -12,7 +12,7 @@ from app.utils.json_helpers import list_bag, text_bag
 from shared.py.wide_events import log
 
 
-def register_github_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_github_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register GitHub tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="GITHUB")

@@ -83,7 +83,7 @@ class IntentDecision:
     reason: str
 
 
-class _Verdict(BaseModel):
+class _Verdict(BaseModel):  # type: ignore[explicit-any]
     """Field order is generation order: the model commits to its evidence before it rules,
     so the verdict is conditioned on the findings rather than rationalising a token it has
     already emitted."""

@@ -89,11 +89,11 @@ class CustomToolsRegistry:
     """
 
     def __init__(self) -> None:
-        self._composio: Composio[Any, Any] | None = None
+        self._composio: Composio[Any, Any] | None = None  # type: ignore[explicit-any]
         self._tools_by_toolkit: dict[str, list[str]] = {}
         self._registered_toolkits: set[str] = set()
 
-    def _toolkit_registrations(
+    def _toolkit_registrations(  # type: ignore[explicit-any]
         self,
     ) -> list[tuple[str, Callable[["Composio[Any, Any]"], list[str]]]]:
         """Return the canonical list of toolkit registrations."""
@@ -128,7 +128,7 @@ class CustomToolsRegistry:
         expected_count = len(self._toolkit_registrations())
         return len(self._registered_toolkits) == expected_count
 
-    def initialize(self, composio: Composio[Any, Any]) -> None:
+    def initialize(self, composio: Composio[Any, Any]) -> None:  # type: ignore[explicit-any]
         """Initialize the registry with the Composio client and register all custom tools."""
         if self._composio is composio and self._is_fully_initialized():
             return
@@ -153,7 +153,7 @@ class CustomToolsRegistry:
         for toolkit, register_func in self._toolkit_registrations():
             self._register_toolkit(toolkit, register_func)
 
-    def _register_toolkit(
+    def _register_toolkit(  # type: ignore[explicit-any]
         self,
         toolkit: str,
         register_func: Callable[["Composio[Any, Any]"], list[str]],

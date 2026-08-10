@@ -100,7 +100,7 @@ def _user_local_today() -> date:
         return datetime.now(UTC).date()
 
 
-def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register Linear tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="linear")

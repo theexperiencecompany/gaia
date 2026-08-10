@@ -3,14 +3,14 @@
 from pydantic import BaseModel, Field
 
 
-class CreateDevUserRequest(BaseModel):
+class CreateDevUserRequest(BaseModel):  # type: ignore[explicit-any]
     """Mint (find-or-create) a dev user by email."""
 
     email: str = Field(min_length=3, max_length=320, description="User email (unique key)")
     name: str | None = Field(default=None, max_length=200, description="Display name")
 
 
-class SeedDevDataRequest(BaseModel):
+class SeedDevDataRequest(BaseModel):  # type: ignore[explicit-any]
     """Seed deterministic sample data for an existing dev user."""
 
     email: str = Field(min_length=3, max_length=320)
@@ -22,7 +22,7 @@ class SeedDevDataRequest(BaseModel):
     )
 
 
-class SeedDevDataResponse(BaseModel):
+class SeedDevDataResponse(BaseModel):  # type: ignore[explicit-any]
     """Summary of what the seed run created."""
 
     email: str
@@ -35,7 +35,7 @@ class SeedDevDataResponse(BaseModel):
     platform_user_ids: dict[str, str]
 
 
-class DevDeletedCounts(BaseModel):
+class DevDeletedCounts(BaseModel):  # type: ignore[explicit-any]
     """How many rows teardown removed, per collection."""
 
     todos: int
@@ -44,7 +44,7 @@ class DevDeletedCounts(BaseModel):
     user: int
 
 
-class DeleteDevUserResponse(BaseModel):
+class DeleteDevUserResponse(BaseModel):  # type: ignore[explicit-any]
     """Summary of the user + owned data removed during teardown."""
 
     email: str
@@ -52,7 +52,7 @@ class DeleteDevUserResponse(BaseModel):
     deleted: DevDeletedCounts
 
 
-class RunDevAgentRequest(BaseModel):
+class RunDevAgentRequest(BaseModel):  # type: ignore[explicit-any]
     """Run the executor or one subagent directly, skipping the comms agent."""
 
     email: str = Field(min_length=3, max_length=320, description="Dev user to run as")
@@ -68,7 +68,7 @@ class RunDevAgentRequest(BaseModel):
     )
 
 
-class DevAgentRunResponse(BaseModel):
+class DevAgentRunResponse(BaseModel):  # type: ignore[explicit-any]
     """Outcome of a direct agent run."""
 
     user_id: str
@@ -86,7 +86,7 @@ class DevAgentRunResponse(BaseModel):
     """
 
 
-class DevSubagentInfo(BaseModel):
+class DevSubagentInfo(BaseModel):  # type: ignore[explicit-any]
     """A subagent id/name pair accepted by the direct-run endpoint."""
 
     id: str

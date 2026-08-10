@@ -48,7 +48,7 @@ class BioStatus(str, Enum):
     NO_GMAIL = "no_gmail"  # No Gmail connected, showing placeholder
 
 
-class UserUpdateResponse(BaseModel):
+class UserUpdateResponse(BaseModel):  # type: ignore[explicit-any]
     user_id: str = Field(..., description="Unique identifier for the user")
     name: str = Field(..., description="Name of the user")
     email: str = Field(..., description="Email address of the user")
@@ -56,13 +56,13 @@ class UserUpdateResponse(BaseModel):
     updated_at: datetime | None = Field(None, description="Last update timestamp")
 
 
-class UpdateTimezoneResponse(BaseModel):
+class UpdateTimezoneResponse(BaseModel):  # type: ignore[explicit-any]
     success: bool = Field(..., description="Whether the timezone update succeeded")
     message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
     timezone: str = Field(..., description="The timezone that was set")
 
 
-class OnboardingPreferences(BaseModel):
+class OnboardingPreferences(BaseModel):  # type: ignore[explicit-any]
     profession: str | None = Field(
         None,
         description="User's profession or main area of focus",
@@ -114,7 +114,7 @@ class OnboardingPreferences(BaseModel):
         return None if v == "" else v
 
 
-class ClarifyAnswer(BaseModel):
+class ClarifyAnswer(BaseModel):  # type: ignore[explicit-any]
     """One answered no-Gmail clarify question, persisted on onboarding.clarify_answers."""
 
     id: str = Field(..., description="Question id — one of scope, blocker, constraint")
@@ -127,7 +127,7 @@ class ClarifyAnswer(BaseModel):
     )
 
 
-class OnboardingRequest(BaseModel):
+class OnboardingRequest(BaseModel):  # type: ignore[explicit-any]
     name: str = Field(..., min_length=1, max_length=100, description="User's preferred name")
     profession: str = Field(..., min_length=1, max_length=50, description="User's profession")
     timezone: str | None = Field(
@@ -194,13 +194,13 @@ class OnboardingRequest(BaseModel):
         return v
 
 
-class OnboardingResponse(BaseModel):
+class OnboardingResponse(BaseModel):  # type: ignore[explicit-any]
     success: bool = Field(..., description="Whether onboarding was successful")
     message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
     user: dict[str, object] | None = Field(None, description="Updated user data")
 
 
-class OnboardingIntegrationsRequest(BaseModel):
+class OnboardingIntegrationsRequest(BaseModel):  # type: ignore[explicit-any]
     selected_integrations: list[IntegrationSlug] = Field(
         default_factory=list,
         max_length=25,
@@ -221,14 +221,14 @@ class OnboardingIntegrationsStatus(str, Enum):
     ALREADY_RUNNING = "already_running"  # Workflows job already in flight (replay).
 
 
-class OnboardingIntegrationsResponse(BaseModel):
+class OnboardingIntegrationsResponse(BaseModel):  # type: ignore[explicit-any]
     success: bool = Field(..., description="Whether the submission was accepted")
     status: OnboardingIntegrationsStatus = Field(
         ..., description="Outcome of persisting the selected integrations"
     )
 
 
-class OnboardingPhaseUpdateRequest(BaseModel):
+class OnboardingPhaseUpdateRequest(BaseModel):  # type: ignore[explicit-any]
     phase: OnboardingPhase = Field(..., description="The onboarding phase to transition to")
 
     @field_validator("phase")
@@ -409,7 +409,7 @@ class AuthenticatedUser(TypedDict, total=False):
     nurture: NurtureState | None
 
 
-class UserDocument(MongoDocument):
+class UserDocument(MongoDocument):  # type: ignore[explicit-any]
     """A user as stored in MongoDB.
 
     ``extra="allow"`` (not the usual ``ignore``): the auth layer's
@@ -473,7 +473,7 @@ class UserDocument(MongoDocument):
     nurture: NurtureState | None = None
 
 
-class OnboardingStatusResponse(BaseModel):
+class OnboardingStatusResponse(BaseModel):  # type: ignore[explicit-any]
     """``get_user_onboarding_status()``'s processed shape.
 
     Lives here rather than in ``onboarding_models`` because it embeds
@@ -493,7 +493,7 @@ class OnboardingStatusResponse(BaseModel):
     first_message_conversation_id: str | None
 
 
-class AuthenticatedUserResponse(BaseModel):
+class AuthenticatedUserResponse(BaseModel):  # type: ignore[explicit-any]
     """The full ``GET /me`` payload.
 
     ``build_user_context()`` (``app/utils/auth_utils.py``) spreads the entire
@@ -550,7 +550,7 @@ class AuthenticatedUserResponse(BaseModel):
     inactive_email_count: int | None = None
 
 
-class HoloCardOnboardingFields(BaseModel):
+class HoloCardOnboardingFields(BaseModel):  # type: ignore[explicit-any]
     """The subset of ``UserDocument.onboarding`` the holo-card endpoint reads.
 
     ``UserDocument.onboarding`` stays ``dict[str, object]`` (see its field comment
@@ -571,7 +571,7 @@ class HoloCardOnboardingFields(BaseModel):
     overlay_opacity: int = 40
 
 
-class UpdateHoloCardColorsResponse(BaseModel):
+class UpdateHoloCardColorsResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for a holo-card overlay colour update, echoing the stored values."""
 
     success: bool = Field(..., description="Whether the update succeeded")
@@ -580,7 +580,7 @@ class UpdateHoloCardColorsResponse(BaseModel):
     overlay_opacity: int = Field(..., description="Overlay opacity that was stored (0-100)")
 
 
-class PublicHoloCardResponse(BaseModel):
+class PublicHoloCardResponse(BaseModel):  # type: ignore[explicit-any]
     """Public-facing subset of a user's profile, keyed by user id (``card_id``).
 
     Deliberately excludes everything else on ``UserDocument`` (email, workflows,
@@ -599,7 +599,7 @@ class PublicHoloCardResponse(BaseModel):
     overlay_opacity: int = Field(40, description="Holo card overlay opacity (0-100)")
 
 
-class UserUpdate(BaseModel):
+class UserUpdate(BaseModel):  # type: ignore[explicit-any]
     """Flat top-level user fields updatable through the generic ``update`` path.
 
     Nested ``onboarding.*`` / ``platform_links.*`` changes go through the

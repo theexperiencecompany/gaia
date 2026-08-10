@@ -53,7 +53,7 @@ _GRAVATAR_TIMEOUT = httpx.Timeout(
 )
 
 
-class _ProfileFields(BaseModel):
+class _ProfileFields(BaseModel):  # type: ignore[explicit-any]
     """One source's contribution to an email preview.
 
     Every field is optional because each source knows only part of the picture —

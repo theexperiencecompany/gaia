@@ -3,14 +3,14 @@
 from pydantic import BaseModel, Field
 
 
-class UpdateFileRequest(BaseModel):
+class UpdateFileRequest(BaseModel):  # type: ignore[explicit-any]
     """Editable file metadata fields. Only these may be updated by the client."""
 
     filename: str | None = Field(default=None, description="New display name for the file.")
     description: str | None = Field(default=None, description="New description for the file.")
 
 
-class FileDeletedResponse(BaseModel):
+class FileDeletedResponse(BaseModel):  # type: ignore[explicit-any]
     """Result of removing a file from Mongo, Cloudinary, and the vector index."""
 
     message: str = Field(description="Human-readable outcome.")

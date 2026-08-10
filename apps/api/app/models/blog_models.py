@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.db.repositories.base import MongoDocument
 
 
-class AuthorDetails(BaseModel):
+class AuthorDetails(BaseModel):  # type: ignore[explicit-any]
     """Author details model for populated team member information."""
 
     id: str | None = None
@@ -15,7 +15,7 @@ class AuthorDetails(BaseModel):
     twitter: str | None = None
 
 
-class BlogPostBase(BaseModel):
+class BlogPostBase(BaseModel):  # type: ignore[explicit-any]
     title: str
     date: str
     authors: list[str]  # Team member IDs
@@ -24,7 +24,7 @@ class BlogPostBase(BaseModel):
     image: str | None = None
 
 
-class BlogPost(BlogPostBase):
+class BlogPost(BlogPostBase):  # type: ignore[explicit-any]
     """Blog post response model with proper ID handling."""
 
     model_config = ConfigDict(
@@ -39,7 +39,7 @@ class BlogPost(BlogPostBase):
     author_details: list[AuthorDetails] | None = None
 
 
-class BlogDocument(MongoDocument):
+class BlogDocument(MongoDocument):  # type: ignore[explicit-any]
     """A blog post as stored in the ``blog`` collection (global, keyed by ``_id``).
 
     ``author_details`` is not stored — it is populated by a ``$lookup`` join to the
@@ -54,7 +54,7 @@ class BlogDocument(MongoDocument):
     image: str | None = None
 
 
-class BlogUpdate(BaseModel):
+class BlogUpdate(BaseModel):  # type: ignore[explicit-any]
     """Editable fields of a blog post (authoring is out of band for now)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -67,13 +67,13 @@ class BlogUpdate(BaseModel):
     image: str | None = None
 
 
-class BlogCountResponse(BaseModel):
+class BlogCountResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for the total count of blog posts."""
 
     count: int
 
 
-class BlogAggregateRow(BaseModel):
+class BlogAggregateRow(BaseModel):  # type: ignore[explicit-any]
     """One row of the blog read pipeline, before author/content normalisation.
 
     ``content`` is absent from list projections and ``author_details`` is absent

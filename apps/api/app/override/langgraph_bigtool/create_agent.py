@@ -84,7 +84,7 @@ from shared.py.wide_events import log
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
 
-def _prepare_fallback(
+def _prepare_fallback(  # type: ignore[explicit-any]
     fallback_llm: Runnable[Any, Any] | None,
     tools_to_bind: list[BaseTool],
     model_configurations: AgentConfigurable,
@@ -99,7 +99,7 @@ def _prepare_fallback(
     return lambda: fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
 
 
-def create_agent(
+def create_agent(  # type: ignore[explicit-any]
     llm: LanguageModelLike,
     tool_registry: Mapping[str, BaseTool],
     *,
@@ -206,7 +206,7 @@ def create_agent(
     # Default model used as the last-resort fallback when the selected model
     # keeps failing; None when Google isn't configured (fallback then skipped).
     try:
-        fallback_llm: Runnable[Any, Any] | None = get_default_llm()
+        fallback_llm: Runnable[Any, Any] | None = get_default_llm()  # type: ignore[explicit-any]
     except LLMNotConfiguredError:
         fallback_llm = None
 

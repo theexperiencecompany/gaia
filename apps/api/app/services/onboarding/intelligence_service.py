@@ -211,7 +211,7 @@ class InboxScanContext:
     done: asyncio.Event = field(default_factory=asyncio.Event)
 
 
-class _TodoSpec(BaseModel):
+class _TodoSpec(BaseModel):  # type: ignore[explicit-any]
     title: str = Field(description="What GAIA will do — under 80 chars, starts with a verb")
     description: str = Field(description="Context and what the output will be — 1-2 sentences")
     source_sender: str = Field(
@@ -224,17 +224,17 @@ class _TodoSpec(BaseModel):
     )
 
 
-class _TodoListFromEmails(BaseModel):
+class _TodoListFromEmails(BaseModel):  # type: ignore[explicit-any]
     todos: list[_TodoSpec] = Field(description="List of exactly 3 GAIA-actionable todo items")
 
 
-class _FocusTodoList(BaseModel):
+class _FocusTodoList(BaseModel):  # type: ignore[explicit-any]
     todos: list[str] = Field(
         description="List of 3 GAIA-actionable todo titles — each under 60 characters, starts with a verb"
     )
 
 
-class _WorkflowSpec(BaseModel):
+class _WorkflowSpec(BaseModel):  # type: ignore[explicit-any]
     title: str = Field(description="Workflow title — under 60 chars, starts with a verb or noun")
     description: str = Field(
         description="1-2 sentences: what triggers it, what it does, what output it produces"
@@ -252,7 +252,7 @@ class _WorkflowSpec(BaseModel):
     )
 
 
-class _WorkflowList(BaseModel):
+class _WorkflowList(BaseModel):  # type: ignore[explicit-any]
     workflows: list[_WorkflowSpec] = Field(
         description="Exactly 4 workflow specs — no more, no fewer",
         min_length=4,

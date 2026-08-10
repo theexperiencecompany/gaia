@@ -10,7 +10,7 @@ Note: All Composio tool responses are wrapped in ToolExecutionResponse with
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class SlackListAllChannelsInput(BaseModel):
+class SlackListAllChannelsInput(BaseModel):  # type: ignore[explicit-any]
     """Input for SLACK_LIST_ALL_CHANNELS."""
 
     channel_name: str | None = Field(None, description="Filter by channel name")
@@ -22,7 +22,7 @@ class SlackListAllChannelsInput(BaseModel):
     )
 
 
-class SlackChannel(BaseModel):
+class SlackChannel(BaseModel):  # type: ignore[explicit-any]
     """Slack channel model."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
@@ -40,7 +40,7 @@ class SlackChannel(BaseModel):
     num_members: int | None = None
 
 
-class SlackListAllChannelsData(BaseModel):
+class SlackListAllChannelsData(BaseModel):  # type: ignore[explicit-any]
     """Data inside ToolExecutionResponse.data for SLACK_LIST_ALL_CHANNELS."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")

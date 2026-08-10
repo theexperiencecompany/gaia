@@ -15,7 +15,7 @@ from shared.py.wide_events import log
 GOOGLE_MEET_TOOLKIT = "GOOGLEMEET"
 
 
-def register_google_meet_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_google_meet_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     @composio.tools.custom_tool(toolkit="GOOGLEMEET")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,

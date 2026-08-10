@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field
 
 
-class BatchFollowInput(BaseModel):
+class BatchFollowInput(BaseModel):  # type: ignore[explicit-any]
     """Input for batch follow operation on Twitter."""
 
     usernames: list[str] | None = Field(
@@ -18,7 +18,7 @@ class BatchFollowInput(BaseModel):
     )
 
 
-class BatchUnfollowInput(BaseModel):
+class BatchUnfollowInput(BaseModel):  # type: ignore[explicit-any]
     """Input for batch unfollow operation on Twitter. DESTRUCTIVE - requires consent."""
 
     usernames: list[str] | None = Field(
@@ -33,7 +33,7 @@ class BatchUnfollowInput(BaseModel):
     )
 
 
-class CreateThreadInput(BaseModel):
+class CreateThreadInput(BaseModel):  # type: ignore[explicit-any]
     """Input for creating a Twitter thread (multiple connected tweets)."""
 
     tweets: list[str] = Field(
@@ -48,7 +48,7 @@ class CreateThreadInput(BaseModel):
     )
 
 
-class SearchUsersInput(BaseModel):
+class SearchUsersInput(BaseModel):  # type: ignore[explicit-any]
     """Input for searching Twitter users by name or bio content."""
 
     query: str = Field(
@@ -65,7 +65,7 @@ class SearchUsersInput(BaseModel):
     )
 
 
-class ScheduleTweetInput(BaseModel):
+class ScheduleTweetInput(BaseModel):  # type: ignore[explicit-any]
     """Input for scheduling a tweet for later posting."""
 
     text: str = Field(

@@ -32,13 +32,13 @@ from app.models.todo_models import (
 _STATS_LABEL_LIMIT = 50
 
 
-class _FacetCount(BaseModel):
+class _FacetCount(BaseModel):  # type: ignore[explicit-any]
     """One ``{"$count": ...}`` bucket from a ``$facet`` stage."""
 
     count: int = 0
 
 
-class _GroupCount(BaseModel):
+class _GroupCount(BaseModel):  # type: ignore[explicit-any]
     """One ``{"$group": {"_id": key, "count": n}}`` row."""
 
     model_config = ConfigDict(populate_by_name=True)
@@ -47,7 +47,7 @@ class _GroupCount(BaseModel):
     count: int = 0
 
 
-class _StatsFacet(BaseModel):
+class _StatsFacet(BaseModel):  # type: ignore[explicit-any]
     total: list[_FacetCount] = Field(default_factory=list)
     completed: list[_FacetCount] = Field(default_factory=list)
     overdue: list[_FacetCount] = Field(default_factory=list)
@@ -56,7 +56,7 @@ class _StatsFacet(BaseModel):
     labels: list[_GroupCount] = Field(default_factory=list)
 
 
-class _CountsFacet(BaseModel):
+class _CountsFacet(BaseModel):  # type: ignore[explicit-any]
     inbox: list[_FacetCount] = Field(default_factory=list)
     today: list[_FacetCount] = Field(default_factory=list)
     upcoming: list[_FacetCount] = Field(default_factory=list)

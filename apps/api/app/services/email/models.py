@@ -3,7 +3,7 @@
 from pydantic import BaseModel
 
 
-class EmailMessage(BaseModel):
+class EmailMessage(BaseModel):  # type: ignore[explicit-any]
     """One outbound email, provider-agnostic; headers carry e.g. List-Unsubscribe."""
 
     sender: str

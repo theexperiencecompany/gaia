@@ -22,14 +22,14 @@ from app.models.oauth_models import IntegrationContent, OAuthIntegration
 AuthType = Literal["none", "oauth", "bearer"]
 
 
-class IntegrationTool(BaseModel):
+class IntegrationTool(BaseModel):  # type: ignore[explicit-any]
     """Tool metadata for frontend display (not used by LLM)."""
 
     name: str
     description: str | None = None
 
 
-class IntegrationToolsSlice(BaseModel):
+class IntegrationToolsSlice(BaseModel):  # type: ignore[explicit-any]
     """Projected read of just an integration's stored tools."""
 
     model_config = ConfigDict(extra="ignore")
@@ -37,7 +37,7 @@ class IntegrationToolsSlice(BaseModel):
     tools: list[IntegrationTool] = Field(default_factory=list)
 
 
-class IntegrationToolsRecord(BaseModel):
+class IntegrationToolsRecord(BaseModel):  # type: ignore[explicit-any]
     """Projected {integration_id, name, icon_url, tools} for the global MCP tool roll-up."""
 
     model_config = ConfigDict(extra="ignore")
@@ -48,14 +48,14 @@ class IntegrationToolsRecord(BaseModel):
     tools: list[IntegrationTool] = Field(default_factory=list)
 
 
-class ComposioConfigDoc(BaseModel):
+class ComposioConfigDoc(BaseModel):  # type: ignore[explicit-any]
     """Composio configuration stored in MongoDB."""
 
     auth_config_id: str
     toolkit: str
 
 
-class Integration(MongoDocument):
+class Integration(MongoDocument):  # type: ignore[explicit-any]
     """
     Integration document model for MongoDB 'integrations' collection.
 
@@ -129,7 +129,7 @@ class Integration(MongoDocument):
     model_config = ConfigDict(extra="ignore", json_encoders={datetime: lambda v: v.isoformat()})
 
 
-class IntegrationUpdate(BaseModel):
+class IntegrationUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed ``$set`` surface for a custom integration edit.
 
     Mirrors exactly the fields ``update_custom_integration`` writes; ``updated_at``
@@ -145,21 +145,21 @@ class IntegrationUpdate(BaseModel):
     updated_at: datetime | None = None
 
 
-class CreatorInfo(BaseModel):
+class CreatorInfo(BaseModel):  # type: ignore[explicit-any]
     """Creator name/picture joined from the users collection in marketplace aggregations."""
 
     name: str | None = None
     picture: str | None = None
 
 
-class IntegrationWithCreator(Integration):
+class IntegrationWithCreator(Integration):  # type: ignore[explicit-any]
     """An integration enriched with joined creator info — the typed result of the
     creator-lookup aggregations (public detail + community listings)."""
 
     creator: CreatorInfo | None = None
 
 
-class UserIntegration(BaseModel):
+class UserIntegration(BaseModel):  # type: ignore[explicit-any]
     """
     User integration document model for MongoDB 'user_integrations' collection.
 
@@ -179,7 +179,7 @@ class UserIntegration(BaseModel):
     model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
 
 
-class UserIntegrationDocument(UserScopedDocument):
+class UserIntegrationDocument(UserScopedDocument):  # type: ignore[explicit-any]
     """Storage model for the ``user_integrations`` collection — one document per
     ``(user_id, integration_id)`` (unique index). The Mongo ``_id`` (ObjectId) is
     incidental; access is always by the business pair."""
@@ -190,7 +190,7 @@ class UserIntegrationDocument(UserScopedDocument):
     connected_at: datetime | None = None
 
 
-class UserIntegrationUpdate(BaseModel):
+class UserIntegrationUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed ``$set`` fields for a user-integration record (the auth transition)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -199,13 +199,13 @@ class UserIntegrationUpdate(BaseModel):
     connected_at: datetime | None = None
 
 
-class AddUserIntegrationRequest(BaseModel):
+class AddUserIntegrationRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to add an integration to user's workspace."""
 
     integration_id: str = Field(..., description="ID of integration to add")
 
 
-class CreateCustomIntegrationRequest(BaseModel):
+class CreateCustomIntegrationRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to create a custom MCP integration."""
 
     name: str = Field(..., min_length=1, max_length=100)
@@ -218,7 +218,7 @@ class CreateCustomIntegrationRequest(BaseModel):
     bearer_token: str | None = Field(None)
 
 
-class UpdateCustomIntegrationRequest(BaseModel):
+class UpdateCustomIntegrationRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to update a custom integration (partial update)."""
 
     name: str | None = Field(None, min_length=1, max_length=100)
@@ -229,7 +229,7 @@ class UpdateCustomIntegrationRequest(BaseModel):
     is_public: bool | None = None
 
 
-class IntegrationResponse(BaseModel):
+class IntegrationResponse(BaseModel):  # type: ignore[explicit-any]
     """Integration details for API responses."""
 
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
@@ -335,7 +335,7 @@ class IntegrationResponse(BaseModel):
         )
 
 
-class UserIntegrationResponse(BaseModel):
+class UserIntegrationResponse(BaseModel):  # type: ignore[explicit-any]
     """User integration with hydrated integration details."""
 
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
@@ -349,7 +349,7 @@ class UserIntegrationResponse(BaseModel):
     integration: IntegrationResponse
 
 
-class MarketplaceResponse(BaseModel):
+class MarketplaceResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for marketplace listing."""
 
     featured: list[IntegrationResponse] = Field(default_factory=list)
@@ -357,14 +357,14 @@ class MarketplaceResponse(BaseModel):
     total: int = 0
 
 
-class UserIntegrationsListResponse(BaseModel):
+class UserIntegrationsListResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for user's integrations listing."""
 
     integrations: list[UserIntegrationResponse] = Field(default_factory=list)
     total: int = 0
 
 
-class ConnectIntegrationRequest(BaseModel):
+class ConnectIntegrationRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to connect an integration."""
 
     redirect_path: str = Field(
@@ -374,7 +374,7 @@ class ConnectIntegrationRequest(BaseModel):
     bearer_token: str | None = Field(None)
 
 
-class ConnectIntegrationResponse(BaseModel):
+class ConnectIntegrationResponse(BaseModel):  # type: ignore[explicit-any]
     """
     Unified response for integration connection.
 

@@ -7,7 +7,7 @@ Reference: node_modules/@composio/core/generated/github.ts
 from pydantic import BaseModel, Field
 
 
-class GitHubCommitEventPayload(BaseModel):
+class GitHubCommitEventPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for GITHUB_COMMIT_EVENT trigger."""
 
     author: str | None = Field(None, description="GitHub username of the commit author")
@@ -17,7 +17,7 @@ class GitHubCommitEventPayload(BaseModel):
     url: str | None = Field(None, description="GitHub URL of the commit")
 
 
-class GitHubPullRequestEventPayload(BaseModel):
+class GitHubPullRequestEventPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for GITHUB_PULL_REQUEST_EVENT trigger."""
 
     action: str | None = Field(None, description="Action performed on the PR")
@@ -29,7 +29,7 @@ class GitHubPullRequestEventPayload(BaseModel):
     url: str | None = Field(None, description="GitHub URL of the PR")
 
 
-class GitHubStarAddedEventPayload(BaseModel):
+class GitHubStarAddedEventPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for GITHUB_STAR_ADDED_EVENT trigger."""
 
     action: str | None = Field(None, description="Action (starred)")
@@ -37,7 +37,7 @@ class GitHubStarAddedEventPayload(BaseModel):
     user: str | None = Field(None, description="Username who starred")
 
 
-class GitHubIssueAddedEventPayload(BaseModel):
+class GitHubIssueAddedEventPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for GITHUB_ISSUE_ADDED_EVENT trigger."""
 
     action: str | None = Field(None, description="Action performed on the issue")

@@ -11,7 +11,7 @@ class UsagePeriod(str, Enum):
     MONTH = "month"
 
 
-class UsageInfo(BaseModel):
+class UsageInfo(BaseModel):  # type: ignore[explicit-any]
     """Usage information with limit and reset time."""
 
     used: int
@@ -19,7 +19,7 @@ class UsageInfo(BaseModel):
     reset_time: datetime
 
 
-class FeatureUsage(BaseModel):
+class FeatureUsage(BaseModel):  # type: ignore[explicit-any]
     feature_key: str
     feature_title: str
     period: UsagePeriod
@@ -29,7 +29,7 @@ class FeatureUsage(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class UserUsageSnapshot(UserScopedDocument):
+class UserUsageSnapshot(UserScopedDocument):  # type: ignore[explicit-any]
     """A user's usage snapshot as stored in the ``usage_snapshots`` collection.
 
     User-scoped; ``id`` is the stringified Mongo ``_id``. ``created_at`` carries a
@@ -44,7 +44,7 @@ class UserUsageSnapshot(UserScopedDocument):
     updated_at: datetime | None = None
 
 
-class UsageSnapshotUpdate(BaseModel):
+class UsageSnapshotUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed ``$set`` fields for a usage snapshot (the plan tier)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -52,7 +52,7 @@ class UsageSnapshotUpdate(BaseModel):
     plan_type: str | None = None
 
 
-class HistoryUsagePeriod(BaseModel):
+class HistoryUsagePeriod(BaseModel):  # type: ignore[explicit-any]
     """Usage counters for one feature/period window in a stored usage snapshot."""
 
     used: int
@@ -60,14 +60,14 @@ class HistoryUsagePeriod(BaseModel):
     percentage: float
 
 
-class HistoryFeatureUsage(BaseModel):
+class HistoryFeatureUsage(BaseModel):  # type: ignore[explicit-any]
     """Snapshot usage for one feature across its rate-limited periods."""
 
     title: str
     periods: dict[str, HistoryUsagePeriod] = Field(default_factory=dict)
 
 
-class UsageHistoryEntry(BaseModel):
+class UsageHistoryEntry(BaseModel):  # type: ignore[explicit-any]
     """One item in the ``GET /usage/history`` response list."""
 
     date: str

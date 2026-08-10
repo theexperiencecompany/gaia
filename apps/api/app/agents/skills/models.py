@@ -53,7 +53,7 @@ def _validate_skill_description(value: str) -> str:
     return value
 
 
-class SkillMetadata(BaseModel):
+class SkillMetadata(BaseModel):  # type: ignore[explicit-any]
     """Parsed from SKILL.md YAML frontmatter.
 
     Used only during import to validate external SKILL.md files.
@@ -106,7 +106,7 @@ class SkillMetadata(BaseModel):
         return _validate_skill_description(v)
 
 
-class Skill(MongoDocument):
+class Skill(MongoDocument):  # type: ignore[explicit-any]
     """A skill tracked in MongoDB with a flat schema.
 
     All metadata fields (name, description, target, etc.) live at the
@@ -191,7 +191,7 @@ class Skill(MongoDocument):
         return value.isoformat() if value else None
 
 
-class SkillUpdate(BaseModel):
+class SkillUpdate(BaseModel):  # type: ignore[explicit-any]
     """Editable fields of a stored skill (metadata patch). ``updated_at`` is
     stamped by the repository, not passed here."""
 
@@ -214,7 +214,7 @@ class SkillUpdate(BaseModel):
 InstalledSkill = Skill
 
 
-class SkillInlineCreateRequest(BaseModel):
+class SkillInlineCreateRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to create a skill from components."""
 
     name: str = Field(..., max_length=64, description="Skill name (kebab-case)")
@@ -226,7 +226,7 @@ class SkillInlineCreateRequest(BaseModel):
     )
 
 
-class SkillUpdateRequest(BaseModel):
+class SkillUpdateRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to edit an existing skill. Only provided fields are changed.
 
     The skill ``name`` is its identity (and the key of its VFS directory), so it
@@ -245,14 +245,14 @@ class SkillUpdateRequest(BaseModel):
     )
 
 
-class SkillListResponse(BaseModel):
+class SkillListResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for listing installed skills."""
 
     skills: list[Skill] = Field(default_factory=list)
     total: int = Field(default=0)
 
 
-class SkillToggleResponse(BaseModel):
+class SkillToggleResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for enabling or disabling a skill."""
 
     success: bool
@@ -260,7 +260,7 @@ class SkillToggleResponse(BaseModel):
     enabled: bool
 
 
-class SkillTarget(BaseModel):
+class SkillTarget(BaseModel):  # type: ignore[explicit-any]
     """A place a skill can run: the executor, or a connected integration subagent.
 
     ``value`` is the subagent ``agent_name`` written to a skill's ``target``;
@@ -274,13 +274,13 @@ class SkillTarget(BaseModel):
     connected: bool = Field(default=True, description="Whether the target is available")
 
 
-class SkillTargetsResponse(BaseModel):
+class SkillTargetsResponse(BaseModel):  # type: ignore[explicit-any]
     """Available skill targets for the current user."""
 
     targets: list[SkillTarget] = Field(default_factory=list)
 
 
-class DiscoveredSkillInfo(BaseModel):
+class DiscoveredSkillInfo(BaseModel):  # type: ignore[explicit-any]
     """A skill found in a remote GitHub repository but not yet installed."""
 
     name: str = Field(..., description="Skill identifier from SKILL.md frontmatter")
@@ -290,7 +290,7 @@ class DiscoveredSkillInfo(BaseModel):
     subagent_id: str = Field(..., description="Target agent declared in the skill's frontmatter")
 
 
-class DiscoverSkillsResponse(BaseModel):
+class DiscoverSkillsResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for previewing the skills available in a GitHub repository."""
 
     repo: str = Field(..., description="Repository as requested (owner/repo or full URL)")
@@ -301,7 +301,7 @@ class DiscoverSkillsResponse(BaseModel):
     count: int = Field(default=0)
 
 
-class BuiltinSkillInfo(BaseModel):
+class BuiltinSkillInfo(BaseModel):  # type: ignore[explicit-any]
     """A read-only built-in skill shipped with GAIA, for display in settings."""
 
     slug: str = Field(..., description="Skill directory slug")
@@ -317,7 +317,7 @@ class BuiltinSkillInfo(BaseModel):
     body: str = Field(default="", description="SKILL.md markdown body (for read-only preview)")
 
 
-class BuiltinSkillsResponse(BaseModel):
+class BuiltinSkillsResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for listing built-in skills."""
 
     skills: list[BuiltinSkillInfo] = Field(default_factory=list)

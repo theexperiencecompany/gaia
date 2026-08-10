@@ -26,7 +26,7 @@ from app.templates.docstrings.follow_up_actions_tool_docs import (
 from shared.py.wide_events import log
 
 
-class FollowUpActions(BaseModel):
+class FollowUpActions(BaseModel):  # type: ignore[explicit-any]
     """Data structure for follow-up action suggestions."""
 
     actions: list[str] = Field(

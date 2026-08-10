@@ -34,7 +34,7 @@ from shared.py.wide_events import log
 load_dotenv()
 
 
-class BaseAppSettings(BaseSettings):
+class BaseAppSettings(BaseSettings):  # type: ignore[explicit-any]
     """Base configuration settings for the application."""
 
     ENV: Literal["production", "development"] = "production"
@@ -49,7 +49,7 @@ class BaseAppSettings(BaseSettings):
 
     # For handling both normal env var loading and dict constructor
     @classmethod
-    def from_env(cls, **kwargs: Any) -> Self:
+    def from_env(cls, **kwargs: Any) -> Self:  # type: ignore[explicit-any]
         """Create settings from environment variables."""
         try:
             return cls(**kwargs)
@@ -62,7 +62,7 @@ class BaseAppSettings(BaseSettings):
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
-            defaults: dict[str, Any] = {}
+            defaults: dict[str, Any] = {}  # type: ignore[explicit-any]
             for field_name, field_info in fields.items():
                 if field_name in kwargs:
                     continue
@@ -75,7 +75,7 @@ class BaseAppSettings(BaseSettings):
             return cls(**defaults, **kwargs)
 
 
-class CommonSettings(BaseAppSettings):
+class CommonSettings(BaseAppSettings):  # type: ignore[explicit-any]
     """Common settings required for all environments."""
 
     # ----------------------------------------------
@@ -257,7 +257,7 @@ class CommonSettings(BaseAppSettings):
     )
 
 
-class ProductionSettings(CommonSettings):
+class ProductionSettings(CommonSettings):  # type: ignore[explicit-any]
     """Strict settings required for production environment."""
 
     # ----------------------------------------------
@@ -474,7 +474,7 @@ class ProductionSettings(CommonSettings):
     )
 
 
-class DevelopmentSettings(CommonSettings):
+class DevelopmentSettings(CommonSettings):  # type: ignore[explicit-any]
     """Looser settings for development environment with defaults."""
 
     # ----------------------------------------------
@@ -700,7 +700,7 @@ def _ensure_infisical_loaded() -> None:
 
 
 @lru_cache(maxsize=1)
-def get_settings() -> Any:
+def get_settings() -> Any:  # type: ignore[explicit-any]
     """
     Get cached settings instance based on environment.
 

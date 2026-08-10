@@ -23,7 +23,7 @@ class AgentType(str, Enum):
     STATIC = "static"
 
 
-class StaticReminderPayload(BaseModel):
+class StaticReminderPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for STATIC agent reminders."""
 
     title: str = Field(
@@ -45,7 +45,7 @@ class StaticReminderPayload(BaseModel):
     )
 
 
-class ReminderModel(BaseScheduledTask):
+class ReminderModel(BaseScheduledTask):  # type: ignore[explicit-any]
     """Reminder document model for MongoDB (one-time or recurring)."""
 
     agent: AgentType = Field(..., description="Agent responsible for this reminder task")
@@ -66,7 +66,7 @@ class ReminderModel(BaseScheduledTask):
     )
 
 
-class CreateReminderRequest(BaseModel):
+class CreateReminderRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for creating a new reminder."""
 
     agent: AgentType = Field(..., description="Agent handling the reminder task (static only)")
@@ -152,7 +152,7 @@ class CreateReminderRequest(BaseModel):
         return None
 
 
-class CreateReminderToolRequest(BaseModel):
+class CreateReminderToolRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for create_reminder_tool with timezone handling and validation."""
 
     agent: AgentType = Field(
@@ -288,7 +288,7 @@ class CreateReminderToolRequest(BaseModel):
         )
 
 
-class UpdateReminderRequest(BaseModel):
+class UpdateReminderRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for updating an existing reminder."""
 
     agent: AgentType | None = Field(None, description="Agent handling the reminder task (optional)")
@@ -347,7 +347,7 @@ class UpdateReminderRequest(BaseModel):
         return None
 
 
-class ReminderResponse(BaseModel):
+class ReminderResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for reminder operations.
 
     ``from_attributes`` so the endpoints can project a ``ReminderModel`` onto
@@ -382,7 +382,7 @@ class ReminderResponse(BaseModel):
         return None
 
 
-class CronValidationResponse(BaseModel):
+class CronValidationResponse(BaseModel):  # type: ignore[explicit-any]
     """Result of validating a cron expression."""
 
     expression: str = Field(..., description="The cron expression that was checked")
@@ -399,7 +399,7 @@ class CronValidationResponse(BaseModel):
 # Repository persistence models (Wave E migration)
 
 
-class ReminderDocument(ReminderModel, MongoDocument):
+class ReminderDocument(ReminderModel, MongoDocument):  # type: ignore[explicit-any]
     """A reminder as stored in MongoDB.
 
     Identity is Mongo's ``ObjectId`` ``_id`` (stringified into ``id`` on read).
@@ -414,7 +414,7 @@ class ReminderDocument(ReminderModel, MongoDocument):
     id: str = ""
 
 
-class ReminderUpdate(BaseModel):
+class ReminderUpdate(BaseModel):  # type: ignore[explicit-any]
     """Partial ``$set`` update for a reminder — the fields the update and
     scheduler-status paths mutate. All optional, ``extra="forbid"``.
 

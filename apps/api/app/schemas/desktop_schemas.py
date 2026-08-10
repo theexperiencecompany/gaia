@@ -9,7 +9,7 @@ MAX_RESULT_IMAGE_B64_CHARS = 16 * 1024 * 1024
 _IMAGE_RESULT_FIELDS = ("image_b64", "thumbnail_b64")
 
 
-class DesktopToolResultRequest(BaseModel):
+class DesktopToolResultRequest(BaseModel):  # type: ignore[explicit-any]
     """Result of a desktop-executed action, POSTed back by the Electron app."""
 
     request_id: str = Field(min_length=1, description="Bridge request this result answers")
@@ -44,13 +44,13 @@ class DesktopToolResultRequest(BaseModel):
         return self
 
 
-class DesktopToolResultResponse(BaseModel):
+class DesktopToolResultResponse(BaseModel):  # type: ignore[explicit-any]
     """Acknowledgement that a desktop tool result was relayed."""
 
     success: bool
 
 
-class DesktopReleaseAsset(BaseModel):
+class DesktopReleaseAsset(BaseModel):  # type: ignore[explicit-any]
     """One downloadable binary attached to a desktop release."""
 
     name: str = Field(description="Asset filename, e.g. GAIA-x64.exe")
@@ -61,7 +61,7 @@ class DesktopReleaseAsset(BaseModel):
     )
 
 
-class DesktopReleaseResponse(BaseModel):
+class DesktopReleaseResponse(BaseModel):  # type: ignore[explicit-any]
     """Latest published desktop (Electron) release and its per-platform binaries."""
 
     tag: str = Field(description="Release tag, e.g. desktop-v0.3.0")

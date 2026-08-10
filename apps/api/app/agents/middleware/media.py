@@ -17,7 +17,7 @@ from langgraph.types import Command
 from app.agents.llm.vision import describe_tool_media
 
 
-class MediaDescriptionMiddleware(AgentMiddleware):
+class MediaDescriptionMiddleware(AgentMiddleware):  # type: ignore[explicit-any]
     """Attaches a text description to any tool result whose images the model can't see."""
 
     async def awrap_tool_call(

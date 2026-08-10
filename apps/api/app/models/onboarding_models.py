@@ -10,7 +10,7 @@ House = Literal["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 HOUSES: list[House] = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
 
-class WritingStyleExampleBlocks(BaseModel):
+class WritingStyleExampleBlocks(BaseModel):  # type: ignore[explicit-any]
     greeting: str = Field(
         default="",
         description=(
@@ -35,25 +35,25 @@ class WritingStyleExampleBlocks(BaseModel):
     )
 
 
-class WritingStyleProfile(BaseModel):
+class WritingStyleProfile(BaseModel):  # type: ignore[explicit-any]
     summary: str
     example: WritingStyleExampleBlocks
     user_edited_summary: str | None = None
 
 
-class SocialProfile(BaseModel):
+class SocialProfile(BaseModel):  # type: ignore[explicit-any]
     platform: str
     url: str
 
 
-class EmailSummary(BaseModel):
+class EmailSummary(BaseModel):  # type: ignore[explicit-any]
     sender: str
     subject: str
     snippet: str = ""
     why_important: str
 
 
-class TriageEmailSummary(BaseModel):
+class TriageEmailSummary(BaseModel):  # type: ignore[explicit-any]
     """The fields of an important email that actually reach the client.
 
     Deliberately not :class:`EmailSummary`: both the persisted triage subdoc and
@@ -70,7 +70,7 @@ class TriageEmailSummary(BaseModel):
     why_important: str = ""
 
 
-class InboxTriage(BaseModel):
+class InboxTriage(BaseModel):  # type: ignore[explicit-any]
     total_scanned: int
     total_unread: int
     summary: str = ""
@@ -78,7 +78,7 @@ class InboxTriage(BaseModel):
     patterns: list[str]
 
 
-class PersistedTriageSummary(BaseModel):
+class PersistedTriageSummary(BaseModel):  # type: ignore[explicit-any]
     """``users.onboarding.triage_summary``.
 
     Written only by the onboarding pipeline's ``_persist_profiles`` and surfaced
@@ -98,7 +98,7 @@ class PersistedTriageSummary(BaseModel):
     important_emails: list[TriageEmailSummary] = Field(default_factory=list)
 
 
-class InboxTriageOutput(BaseModel):
+class InboxTriageOutput(BaseModel):  # type: ignore[explicit-any]
     summary: str = Field(
         min_length=1,
         description="2-3 sentence overview of the inbox written conversationally to the user",
@@ -109,7 +109,7 @@ class InboxTriageOutput(BaseModel):
     patterns: list[str] = Field(description="2-5 interesting patterns across the inbox")
 
 
-class WritingStyleOutput(BaseModel):
+class WritingStyleOutput(BaseModel):  # type: ignore[explicit-any]
     summary: str = Field(
         description=(
             "2-3 sentence writing style description capturing concrete observable patterns: "
@@ -124,7 +124,7 @@ class WritingStyleOutput(BaseModel):
     )
 
 
-class HoloCardLLMOutput(BaseModel):
+class HoloCardLLMOutput(BaseModel):  # type: ignore[explicit-any]
     personality_phrase: str = Field(
         description=(
             "Unique 2-3 word personality phrase capturing the user's essence. "
@@ -144,7 +144,7 @@ class HoloCardLLMOutput(BaseModel):
     )
 
 
-class WritingStyleExampleOutput(BaseModel):
+class WritingStyleExampleOutput(BaseModel):  # type: ignore[explicit-any]
     example: WritingStyleExampleBlocks = Field(
         description=(
             "Example email matching the provided style summary, broken into structured blocks."
@@ -152,7 +152,7 @@ class WritingStyleExampleOutput(BaseModel):
     )
 
 
-class OwnedSocialProfile(BaseModel):
+class OwnedSocialProfile(BaseModel):  # type: ignore[explicit-any]
     """One profile the ownership-filter LLM claims belongs to the user.
 
     Both fields default to empty so a key the model omits degrades to a lookup
@@ -164,7 +164,7 @@ class OwnedSocialProfile(BaseModel):
     handle: str = Field(default="", description="Handle, echoed from the candidate list")
 
 
-class SocialProfileFilterOutput(BaseModel):
+class SocialProfileFilterOutput(BaseModel):  # type: ignore[explicit-any]
     owned_profiles: list[OwnedSocialProfile] = Field(
         description="Profiles that belong to the user. Empty list if none."
     )
@@ -175,7 +175,7 @@ class SocialProfileFilterOutput(BaseModel):
 ClarifyQuestionKind = Literal["scope", "blocker", "constraint"]
 
 
-class ClarifyQuestion(BaseModel):
+class ClarifyQuestion(BaseModel):  # type: ignore[explicit-any]
     """One no-Gmail follow-up question from ``POST /onboarding/clarify-questions``."""
 
     id: ClarifyQuestionKind
@@ -184,18 +184,18 @@ class ClarifyQuestion(BaseModel):
     options: list[str]
 
 
-class ClarifyQuestionsResponse(BaseModel):
+class ClarifyQuestionsResponse(BaseModel):  # type: ignore[explicit-any]
     questions: list[ClarifyQuestion]
 
 
-class OnboardingTodoSource(BaseModel):
+class OnboardingTodoSource(BaseModel):  # type: ignore[explicit-any]
     """The email a generated onboarding todo was drafted from."""
 
     sender: str
     subject: str
 
 
-class OnboardingTodoSummary(BaseModel):
+class OnboardingTodoSummary(BaseModel):  # type: ignore[explicit-any]
     """A todo the onboarding pipeline created, as sent on ``todos_ready`` and fed
     to the first-message prompt."""
 
@@ -204,7 +204,7 @@ class OnboardingTodoSummary(BaseModel):
     source_email: OnboardingTodoSource | None = None
 
 
-class OnboardingTriggerPayload(BaseModel):
+class OnboardingTriggerPayload(BaseModel):  # type: ignore[explicit-any]
     """A created workflow's trigger, shaped like the workflow API's own ``trigger``
     field so the onboarding cards and the app render it identically."""
 
@@ -214,7 +214,7 @@ class OnboardingTriggerPayload(BaseModel):
     trigger_name: str | None = None
 
 
-class OnboardingWorkflowSummary(BaseModel):
+class OnboardingWorkflowSummary(BaseModel):  # type: ignore[explicit-any]
     """A workflow the onboarding pipeline created, as sent on ``workflows_ready``."""
 
     id: str
@@ -227,14 +227,14 @@ class OnboardingWorkflowSummary(BaseModel):
     missing_integrations: list[IntegrationRef] | None = None
 
 
-class UserProfileMetadata(BaseModel):
+class UserProfileMetadata(BaseModel):  # type: ignore[explicit-any]
     """Holo-card metadata derived from the user's account age."""
 
     account_number: int
     member_since: str
 
 
-class ProfileCardDesign(BaseModel):
+class ProfileCardDesign(BaseModel):  # type: ignore[explicit-any]
     """Randomized holo-card visuals."""
 
     house: House
@@ -245,7 +245,7 @@ class ProfileCardDesign(BaseModel):
 # ------------------------------------------------------ websocket stage payloads
 
 
-class StagePayload(BaseModel):
+class StagePayload(BaseModel):  # type: ignore[explicit-any]
     """Base for the ``payload`` of an ``onboarding_stage`` WebSocket event."""
 
     # Whether a None field is dropped from the wire payload or sent as an explicit
@@ -258,22 +258,22 @@ class StagePayload(BaseModel):
         return self.model_dump(mode="json", exclude_none=self.omit_none_on_wire)
 
 
-class StatusTextPayload(StagePayload):
+class StatusTextPayload(StagePayload):  # type: ignore[explicit-any]
     """Progress ping for a stage that is still running."""
 
     status_text: str
 
 
-class WritingStyleReadyPayload(StagePayload):
+class WritingStyleReadyPayload(StagePayload):  # type: ignore[explicit-any]
     style_summary: str | None
     example: WritingStyleExampleBlocks | None
 
 
-class SocialProfilesReadyPayload(StagePayload):
+class SocialProfilesReadyPayload(StagePayload):  # type: ignore[explicit-any]
     profiles: list[SocialProfile]
 
 
-class TriageReadyPayload(StagePayload):
+class TriageReadyPayload(StagePayload):  # type: ignore[explicit-any]
     total_scanned: int
     total_unread: int
     summary: str | None
@@ -281,26 +281,26 @@ class TriageReadyPayload(StagePayload):
     important_emails: list[TriageEmailSummary]
 
 
-class TodosReadyPayload(StatusTextPayload):
+class TodosReadyPayload(StatusTextPayload):  # type: ignore[explicit-any]
     omit_none_on_wire: ClassVar[bool] = True
 
     todos: list[OnboardingTodoSummary]
 
 
-class WorkflowsReadyPayload(StatusTextPayload):
+class WorkflowsReadyPayload(StatusTextPayload):  # type: ignore[explicit-any]
     omit_none_on_wire: ClassVar[bool] = True
 
     workflows: list[OnboardingWorkflowSummary]
 
 
-class CompletePayload(StagePayload):
+class CompletePayload(StagePayload):  # type: ignore[explicit-any]
     conversation_id: str | None
 
 
 # ----------------------------------------------------------- endpoint responses
 
 
-class OnboardingResetCounts(BaseModel):
+class OnboardingResetCounts(BaseModel):  # type: ignore[explicit-any]
     """What ``reset_onboarding`` tore down."""
 
     workflows_deleted: int
@@ -311,30 +311,30 @@ class OnboardingResetCounts(BaseModel):
     memories_cleared: int
 
 
-class OnboardingResetResponse(OnboardingResetCounts):
+class OnboardingResetResponse(OnboardingResetCounts):  # type: ignore[explicit-any]
     success: bool
 
 
-class OnboardingPhaseUpdateResponse(BaseModel):
+class OnboardingPhaseUpdateResponse(BaseModel):  # type: ignore[explicit-any]
     success: bool
     phase: OnboardingPhase
     message: str
 
 
-class SaveWritingStyleResponse(BaseModel):
+class SaveWritingStyleResponse(BaseModel):  # type: ignore[explicit-any]
     success: bool
 
 
-class RegenerateWritingStyleExampleResponse(BaseModel):
+class RegenerateWritingStyleExampleResponse(BaseModel):  # type: ignore[explicit-any]
     example: WritingStyleExampleBlocks | None
 
 
-class SaveSocialProfilesResponse(BaseModel):
+class SaveSocialProfilesResponse(BaseModel):  # type: ignore[explicit-any]
     success: bool
     saved: int
 
 
-class PersonalizationWorkflow(BaseModel):
+class PersonalizationWorkflow(BaseModel):  # type: ignore[explicit-any]
     """A suggested workflow as rendered by the onboarding cards."""
 
     id: str
@@ -343,12 +343,12 @@ class PersonalizationWorkflow(BaseModel):
     steps: list[WorkflowStep]
 
 
-class PersonalizationWritingStyle(BaseModel):
+class PersonalizationWritingStyle(BaseModel):  # type: ignore[explicit-any]
     style_summary: str
     example: WritingStyleExampleBlocks | None
 
 
-class PersonalizationTodo(BaseModel):
+class PersonalizationTodo(BaseModel):  # type: ignore[explicit-any]
     id: str
     title: str
     description: str | None
@@ -359,7 +359,7 @@ class PersonalizationTodo(BaseModel):
     source_email: str | None
 
 
-class PersonalizationResponse(BaseModel):
+class PersonalizationResponse(BaseModel):  # type: ignore[explicit-any]
     """``GET /onboarding/personalization`` — the holo card plus every reveal the
     onboarding UI replays when the WebSocket stage events are missed."""
 

@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class MovePageInput(BaseModel):
+class MovePageInput(BaseModel):  # type: ignore[explicit-any]
     """Input for moving a page to a new parent."""
 
     page_id: str = Field(..., description="UUID of the page to move.")
@@ -15,7 +15,7 @@ class MovePageInput(BaseModel):
     parent_id: str = Field(..., description="UUID of the new parent (page or database).")
 
 
-class FetchPageAsMarkdownInput(BaseModel):
+class FetchPageAsMarkdownInput(BaseModel):  # type: ignore[explicit-any]
     """Input for fetching a page as markdown."""
 
     page_id: str = Field(..., description="UUID of the page to fetch.")
@@ -26,7 +26,7 @@ class FetchPageAsMarkdownInput(BaseModel):
     )
 
 
-class InsertMarkdownInput(BaseModel):
+class InsertMarkdownInput(BaseModel):  # type: ignore[explicit-any]
     """Input for inserting markdown content into a page or block."""
 
     parent_block_id: str = Field(
@@ -43,7 +43,7 @@ class InsertMarkdownInput(BaseModel):
     )
 
 
-class FetchDataInput(BaseModel):
+class FetchDataInput(BaseModel):  # type: ignore[explicit-any]
     """Input for fetching databases or pages from Notion."""
 
     fetch_type: Literal["databases", "pages"] = Field(

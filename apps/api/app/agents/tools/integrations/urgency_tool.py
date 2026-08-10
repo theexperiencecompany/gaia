@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from app.utils.json_helpers import int_bag, text_bag
 
 
-class UrgencyAggregatorInput(BaseModel):
+class UrgencyAggregatorInput(BaseModel):  # type: ignore[explicit-any]
     """Input for the urgency aggregator — a dict of integration snapshots."""
 
     snapshots: dict[str, object] = Field(
@@ -25,7 +25,7 @@ class UrgencyAggregatorInput(BaseModel):
     )
 
 
-def register_urgency_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_urgency_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register urgency aggregator tool as a Composio custom tool."""
 
     @composio.tools.custom_tool(toolkit="GAIA")

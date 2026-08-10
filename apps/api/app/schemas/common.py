@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 
-class SuccessResponse(BaseModel):
+class SuccessResponse(BaseModel):  # type: ignore[explicit-any]
     """Base success response for CRUD operations."""
 
     model_config = ConfigDict(populate_by_name=True)

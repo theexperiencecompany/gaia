@@ -32,7 +32,7 @@ from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from shared.py.wide_events import log
 
 
-class _ClassifyResult(BaseModel):
+class _ClassifyResult(BaseModel):  # type: ignore[explicit-any]
     is_destructive: bool = Field(description="True if the tool is destructive.")
     rationale: str = Field(default="", description="One short sentence of reasoning.")
 

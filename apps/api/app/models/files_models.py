@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.db.repositories.base import UserScopedDocument
 
 
-class DocumentPageModel(BaseModel):
+class DocumentPageModel(BaseModel):  # type: ignore[explicit-any]
     page_number: int = Field(
         ...,
         gt=0,
@@ -14,7 +14,7 @@ class DocumentPageModel(BaseModel):
     # Other metadata fields can be added here
 
 
-class DocumentSummaryModel(BaseModel):
+class DocumentSummaryModel(BaseModel):  # type: ignore[explicit-any]
     data: DocumentPageModel
     summary: str = Field(
         ...,
@@ -27,7 +27,7 @@ class DocumentSummaryModel(BaseModel):
 PageWiseSummary = list[dict[str, object]] | dict[str, object] | str | None
 
 
-class FileDocument(UserScopedDocument):
+class FileDocument(UserScopedDocument):  # type: ignore[explicit-any]
     """An uploaded file's metadata as stored in the ``files`` collection.
 
     User-scoped and addressed by the business ``file_id`` (a UUID); the Mongo
@@ -49,7 +49,7 @@ class FileDocument(UserScopedDocument):
     updated_at: datetime | None = None
 
 
-class FileUpdate(BaseModel):
+class FileUpdate(BaseModel):  # type: ignore[explicit-any]
     """Editable file-metadata fields (server-controlled, never the raw payload)."""
 
     model_config = ConfigDict(extra="forbid")

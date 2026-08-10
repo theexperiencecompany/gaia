@@ -370,7 +370,7 @@ async def compact_tool_output(
     return fallback()
 
 
-class WorkspaceCompactionMiddleware(AgentMiddleware):
+class WorkspaceCompactionMiddleware(AgentMiddleware):  # type: ignore[explicit-any]
     """Compacts large tool outputs to the user's persistent workspace.
 
     Usage::

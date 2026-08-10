@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class ResolveContextInput(BaseModel):
+class ResolveContextInput(BaseModel):  # type: ignore[explicit-any]
     """Input for resolving fuzzy names to Linear IDs."""
 
     team_name: str | None = Field(
@@ -34,7 +34,7 @@ class ResolveContextInput(BaseModel):
     )
 
 
-class GetMyTasksInput(BaseModel):
+class GetMyTasksInput(BaseModel):  # type: ignore[explicit-any]
     """Input for getting current user's assigned issues."""
 
     filter: Literal["all", "today", "this_week", "overdue", "high_priority"] | None = Field(
@@ -52,7 +52,7 @@ class GetMyTasksInput(BaseModel):
     )
 
 
-class SearchIssuesInput(BaseModel):
+class SearchIssuesInput(BaseModel):  # type: ignore[explicit-any]
     """Input for searching issues with natural language."""
 
     query: str = Field(
@@ -88,7 +88,7 @@ class SearchIssuesInput(BaseModel):
     )
 
 
-class GetIssueFullContextInput(BaseModel):
+class GetIssueFullContextInput(BaseModel):  # type: ignore[explicit-any]
     """Input for getting complete issue context."""
 
     issue_id: str | None = Field(
@@ -101,7 +101,7 @@ class GetIssueFullContextInput(BaseModel):
     )
 
 
-class CreateIssueSubItem(BaseModel):
+class CreateIssueSubItem(BaseModel):  # type: ignore[explicit-any]
     """Sub-issue to create along with parent issue."""
 
     title: str = Field(
@@ -124,7 +124,7 @@ class CreateIssueSubItem(BaseModel):
     )
 
 
-class CreateIssueInput(BaseModel):
+class CreateIssueInput(BaseModel):  # type: ignore[explicit-any]
     """Input for creating an issue with full field support."""
 
     # Required fields
@@ -190,7 +190,7 @@ class CreateIssueInput(BaseModel):
     )
 
 
-class SubIssueItem(BaseModel):
+class SubIssueItem(BaseModel):  # type: ignore[explicit-any]
     """Single sub-issue definition for batch creation."""
 
     title: str = Field(
@@ -213,7 +213,7 @@ class SubIssueItem(BaseModel):
     )
 
 
-class CreateSubIssuesInput(BaseModel):
+class CreateSubIssuesInput(BaseModel):  # type: ignore[explicit-any]
     """Input for batch creating sub-issues under a parent."""
 
     parent_issue_id: str | None = Field(
@@ -231,7 +231,7 @@ class CreateSubIssuesInput(BaseModel):
     )
 
 
-class CreateIssueRelationInput(BaseModel):
+class CreateIssueRelationInput(BaseModel):  # type: ignore[explicit-any]
     """Input for creating issue relationships."""
 
     issue_id: str = Field(
@@ -248,7 +248,7 @@ class CreateIssueRelationInput(BaseModel):
     )
 
 
-class GetIssueActivityInput(BaseModel):
+class GetIssueActivityInput(BaseModel):  # type: ignore[explicit-any]
     """Input for getting issue change history."""
 
     issue_id: str | None = Field(
@@ -266,7 +266,7 @@ class GetIssueActivityInput(BaseModel):
     )
 
 
-class GetActiveSprintInput(BaseModel):
+class GetActiveSprintInput(BaseModel):  # type: ignore[explicit-any]
     """Input for getting current/active cycle context."""
 
     team_id: str | None = Field(
@@ -280,7 +280,7 @@ class GetActiveSprintInput(BaseModel):
     )
 
 
-class BulkUpdateIssuesInput(BaseModel):
+class BulkUpdateIssuesInput(BaseModel):  # type: ignore[explicit-any]
     """Input for batch updating multiple issues."""
 
     issue_ids: list[str] = Field(
@@ -319,7 +319,7 @@ class BulkUpdateIssuesInput(BaseModel):
     )
 
 
-class GetNotificationsInput(BaseModel):
+class GetNotificationsInput(BaseModel):  # type: ignore[explicit-any]
     """Input for getting user notifications."""
 
     include_read: bool = Field(
@@ -333,5 +333,5 @@ class GetNotificationsInput(BaseModel):
     )
 
 
-class GetWorkspaceContextInput(BaseModel):
+class GetWorkspaceContextInput(BaseModel):  # type: ignore[explicit-any]
     """Input for getting full workspace context (no parameters needed)."""

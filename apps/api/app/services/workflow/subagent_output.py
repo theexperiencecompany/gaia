@@ -34,14 +34,14 @@ TRIGGER_TYPE_BY_DRAFT_TYPE: dict[str, TriggerType] = {
 # =============================================================================
 
 
-class ClarifyingOutput(BaseModel):
+class ClarifyingOutput(BaseModel):  # type: ignore[explicit-any]
     """Output when subagent needs to ask clarifying questions."""
 
     type: Literal["clarifying"] = Field(description="Must be 'clarifying' when asking questions")
     message: str = Field(description="The clarifying question to ask the user")
 
 
-class FinalizedOutput(BaseModel):
+class FinalizedOutput(BaseModel):  # type: ignore[explicit-any]
     """Output when workflow is ready to be created."""
 
     type: Literal["finalized"] = Field(description="Must be 'finalized' when workflow is complete")

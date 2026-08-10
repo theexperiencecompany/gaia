@@ -202,7 +202,7 @@ class SanitizingLangChainAdapter(LangChainAdapter):
 
         adapter_self = self
 
-        class McpToLangChainAdapter(BaseTool):
+        class McpToLangChainAdapter(BaseTool):  # type: ignore[explicit-any]
             name: str = mcp_tool.name or "NO NAME"
             description: str = mcp_tool.description or ""
             args_schema: type[BaseModel] = _mcp_use_lc_adapter.jsonschema_to_pydantic(

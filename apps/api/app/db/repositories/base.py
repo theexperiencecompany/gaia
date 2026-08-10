@@ -32,7 +32,7 @@ from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfigured
 from shared.py.wide_events import log
 
 
-class MongoDocument(BaseModel):
+class MongoDocument(BaseModel):  # type: ignore[explicit-any]
     """Base for every repository document model — carries the string id.
 
     ``extra="ignore"`` so a legacy document with stray fields still reads (the
@@ -44,7 +44,7 @@ class MongoDocument(BaseModel):
     id: str = ""
 
 
-class UserScopedDocument(MongoDocument):
+class UserScopedDocument(MongoDocument):  # type: ignore[explicit-any]
     """A document owned by a user — the base for user-scoped repositories."""
 
     user_id: str

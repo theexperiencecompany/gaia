@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 Environment = Literal["production", "development"]
 
 
-class HealthResponse(BaseModel):
+class HealthResponse(BaseModel):  # type: ignore[explicit-any]
     """``GET /health`` (and its ping/root aliases) when the API is serving normally."""
 
     status: Literal["online"] = "online"
@@ -19,7 +19,7 @@ class HealthResponse(BaseModel):
     event_loop_lag_ms: float = Field(description="Time to round-trip one event-loop tick")
 
 
-class DegradedHealthResponse(BaseModel):
+class DegradedHealthResponse(BaseModel):  # type: ignore[explicit-any]
     """The 503 body returned when the event loop is lagged past the threshold."""
 
     status: Literal["degraded"] = "degraded"

@@ -876,7 +876,7 @@ def _batch_modify(
 # =============================================================================
 
 
-class MarkAsReadInput(BaseModel):
+class MarkAsReadInput(BaseModel):  # type: ignore[explicit-any]
     """Input for marking emails as read."""
 
     message_ids: list[str] = Field(
@@ -885,7 +885,7 @@ class MarkAsReadInput(BaseModel):
     )
 
 
-class MarkAsUnreadInput(BaseModel):
+class MarkAsUnreadInput(BaseModel):  # type: ignore[explicit-any]
     """Input for marking emails as unread."""
 
     message_ids: list[str] = Field(
@@ -894,7 +894,7 @@ class MarkAsUnreadInput(BaseModel):
     )
 
 
-class ArchiveEmailInput(BaseModel):
+class ArchiveEmailInput(BaseModel):  # type: ignore[explicit-any]
     """Input for archiving emails."""
 
     message_ids: list[str] = Field(
@@ -903,7 +903,7 @@ class ArchiveEmailInput(BaseModel):
     )
 
 
-class StarEmailInput(BaseModel):
+class StarEmailInput(BaseModel):  # type: ignore[explicit-any]
     """Input for starring/unstarring emails."""
 
     message_ids: list[str] = Field(
@@ -916,7 +916,7 @@ class StarEmailInput(BaseModel):
     )
 
 
-class GetUnreadCountInput(BaseModel):
+class GetUnreadCountInput(BaseModel):  # type: ignore[explicit-any]
     """Input for getting unread email count."""
 
     label_ids: list[str] | None = Field(
@@ -935,7 +935,7 @@ class GetUnreadCountInput(BaseModel):
     )
 
 
-class GetContactListInput(BaseModel):
+class GetContactListInput(BaseModel):  # type: ignore[explicit-any]
     """Input for getting contact list from email history."""
 
     query: str = Field(
@@ -1042,7 +1042,7 @@ def _recent_inbox_ids(user_id: str, *, since: str | None, max_results: int) -> l
     return [ref.id for ref in messages_data.messages if ref.id]
 
 
-def register_gmail_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_gmail_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register custom Gmail tools with the Composio client. Returns the registered tool names."""
 
     @composio.tools.custom_tool(toolkit="gmail")

@@ -13,7 +13,7 @@ from app.db.chroma.chromadb import ChromaClient
 from shared.py.wide_events import log
 
 
-class KnowledgeItem(BaseModel):
+class KnowledgeItem(BaseModel):  # type: ignore[explicit-any]
     """Schema for a single knowledge item."""
 
     content: str = Field(..., min_length=1, description="Knowledge content to store")

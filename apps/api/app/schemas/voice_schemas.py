@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field
 
 
-class VoiceOption(BaseModel):
+class VoiceOption(BaseModel):  # type: ignore[explicit-any]
     """One selectable ElevenLabs voice from the curated catalog."""
 
     voice_id: str = Field(description="ElevenLabs voice id")
@@ -28,7 +28,7 @@ class VoiceOption(BaseModel):
     starred: bool = Field(default=False, description="Starred by this user")
 
 
-class VoiceTokenResponse(BaseModel):
+class VoiceTokenResponse(BaseModel):  # type: ignore[explicit-any]
     """LiveKit session credentials minted by GET /token.
 
     Field names are camelCase to match what the LiveKit web client consumes.
@@ -45,7 +45,7 @@ class VoiceTokenResponse(BaseModel):
     )
 
 
-class VoiceListResponse(BaseModel):
+class VoiceListResponse(BaseModel):  # type: ignore[explicit-any]
     """Catalog of selectable voices plus the user's current selection."""
 
     voices: list[VoiceOption]
@@ -55,25 +55,25 @@ class VoiceListResponse(BaseModel):
     )
 
 
-class UpdateVoiceRequest(BaseModel):
+class UpdateVoiceRequest(BaseModel):  # type: ignore[explicit-any]
     """Request body for choosing a voice."""
 
     voice_id: str = Field(min_length=1, description="Catalog voice id to use for voice mode")
 
 
-class VoiceSelectionResponse(BaseModel):
+class VoiceSelectionResponse(BaseModel):  # type: ignore[explicit-any]
     """Confirmation of the persisted voice selection."""
 
     selected_voice_id: str
 
 
-class StarVoiceRequest(BaseModel):
+class StarVoiceRequest(BaseModel):  # type: ignore[explicit-any]
     """Request body for starring/unstarring a voice."""
 
     starred: bool = Field(description="True to star, False to unstar")
 
 
-class StarredVoicesResponse(BaseModel):
+class StarredVoicesResponse(BaseModel):  # type: ignore[explicit-any]
     """The user's full starred set after a star/unstar."""
 
     starred_voice_ids: list[str]

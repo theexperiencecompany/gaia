@@ -17,7 +17,7 @@ _USERNAME_DESC = "Username on the platform"
 _DISPLAY_NAME_DESC = "Display name on the platform"
 
 
-class BotChatRequest(BaseModel):
+class BotChatRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for bot chat messages."""
 
     message: str = Field(..., description="User's message text", min_length=1, max_length=32768)
@@ -45,7 +45,7 @@ class BotChatRequest(BaseModel):
         return v
 
 
-class BotAuthStatusResponse(BaseModel):
+class BotAuthStatusResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for bot authentication status check."""
 
     authenticated: bool = Field(..., description="Whether user is linked to GAIA")
@@ -53,7 +53,7 @@ class BotAuthStatusResponse(BaseModel):
     platform_user_id: str = Field(..., description="User's platform ID")
 
 
-class LinkedUsersResponse(BaseModel):
+class LinkedUsersResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for the list of platform_user_ids linked on a platform."""
 
     platform_user_ids: list[str] = Field(
@@ -62,7 +62,7 @@ class LinkedUsersResponse(BaseModel):
     )
 
 
-class CreateLinkTokenRequest(BaseModel):
+class CreateLinkTokenRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for creating a secure platform link token."""
 
     platform: str = Field(..., description=_PLATFORM_DESC)
@@ -79,14 +79,14 @@ class CreateLinkTokenRequest(BaseModel):
         return v
 
 
-class CreateLinkTokenResponse(BaseModel):
+class CreateLinkTokenResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for the created link token."""
 
     token: str = Field(..., description="Secure link token")
     auth_url: str = Field(..., description="Full auth URL for the user to visit")
 
 
-class ResetSessionRequest(BaseModel):
+class ResetSessionRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for resetting a bot session (starting a new conversation)."""
 
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
@@ -102,14 +102,14 @@ class ResetSessionRequest(BaseModel):
         return v
 
 
-class ResetSessionResponse(BaseModel):
+class ResetSessionResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for a bot session reset."""
 
     success: bool = Field(..., description="Whether the session reset succeeded")
     conversation_id: str = Field(..., description="The new conversation ID")
 
 
-class LinkTokenRecord(BaseModel):
+class LinkTokenRecord(BaseModel):  # type: ignore[explicit-any]
     """The display fields read from the Redis hash ``create_link_token`` writes
     for a pending platform link (the hash also carries ``platform_user_id``,
     which this read path never surfaces).
@@ -131,7 +131,7 @@ class LinkTokenRecord(BaseModel):
         return v
 
 
-class LinkTokenInfoResponse(BaseModel):
+class LinkTokenInfoResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for the link-token confirmation page's display metadata."""
 
     platform: str = Field(..., description="Platform name")
@@ -139,19 +139,19 @@ class LinkTokenInfoResponse(BaseModel):
     display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
 
 
-class UnlinkAccountResponse(BaseModel):
+class UnlinkAccountResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for unlinking a platform account."""
 
     success: bool = Field(..., description="Whether the account was unlinked")
 
 
-class TranscribeAudioResponse(BaseModel):
+class TranscribeAudioResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for a transcribed bot audio clip."""
 
     text: str = Field(..., description="Transcript of the audio clip")
 
 
-class IntegrationInfo(BaseModel):
+class IntegrationInfo(BaseModel):  # type: ignore[explicit-any]
     """Integration information for bot settings."""
 
     name: str = Field(..., description="Integration name")
@@ -159,7 +159,7 @@ class IntegrationInfo(BaseModel):
     status: str = Field(..., description="Integration status: 'created' or 'connected'")
 
 
-class BotSettingsResponse(BaseModel):
+class BotSettingsResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for user settings. When authenticated=False only that field is relevant."""
 
     authenticated: bool = Field(..., description="Whether user is linked")
@@ -176,7 +176,7 @@ class BotSettingsResponse(BaseModel):
     )
 
 
-class BotSessionDocument(MongoDocument):
+class BotSessionDocument(MongoDocument):  # type: ignore[explicit-any]
     """A bot chat session — the mapping from a platform conversation to a GAIA
     ``conversation_id``, keyed by a unique ``session_key``.
 
@@ -193,7 +193,7 @@ class BotSessionDocument(MongoDocument):
     channel_id: str | None = None
 
 
-class BotSessionUpdate(BaseModel):
+class BotSessionUpdate(BaseModel):  # type: ignore[explicit-any]
     """Bot sessions are claimed via an atomic upsert, never typed-updated."""
 
     model_config = ConfigDict(extra="forbid")

@@ -49,7 +49,7 @@ def _user_id(auth_credentials: dict[str, object]) -> str:
     return user_id
 
 
-def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_notion_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register Notion tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="NOTION")

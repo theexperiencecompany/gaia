@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from shared.py.wide_events import log
 
 
-class BaseAppSettings(BaseSettings):
+class BaseAppSettings(BaseSettings):  # type: ignore[explicit-any]
     """Base configuration settings for all GAIA applications."""
 
     ENV: Literal["production", "staging", "development"] = "production"
@@ -25,7 +25,7 @@ class BaseAppSettings(BaseSettings):
     )
 
     @classmethod
-    def from_env(cls, **kwargs: Any) -> Self:
+    def from_env(cls, **kwargs: Any) -> Self:  # type: ignore[explicit-any]
         """Create settings from environment variables with fallback handling."""
         try:
             return cls(**kwargs)
@@ -36,7 +36,7 @@ class BaseAppSettings(BaseSettings):
             # per-field types (ENV is a Literal, SHOW_MISSING_KEY_WARNINGS a bool).
             # The annotation filter below — not the type system — is what keeps
             # only str-annotated fields in it.
-            defaults: dict[str, Any] = {
+            defaults: dict[str, Any] = {  # type: ignore[explicit-any]
                 field_name: ""
                 for field_name in fields
                 if field_name not in kwargs and "str" in str(fields[field_name].annotation)
@@ -44,7 +44,7 @@ class BaseAppSettings(BaseSettings):
             return cls(**defaults, **kwargs)
 
 
-class CommonSettings(BaseAppSettings):
+class CommonSettings(BaseAppSettings):  # type: ignore[explicit-any]
     """Common settings shared across GAIA applications."""
 
     HOST: str = "https://api.heygaia.io"

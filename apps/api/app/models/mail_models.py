@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.db.repositories.base import UserScopedDocument
 
 
-class EmailRequest(BaseModel):
+class EmailRequest(BaseModel):  # type: ignore[explicit-any]
     prompt: str
     subject: str | None = None
     body: str | None = None
@@ -15,14 +15,14 @@ class EmailRequest(BaseModel):
     clarityOption: str | None = None
 
 
-class ComposedEmailOutput(BaseModel):
+class ComposedEmailOutput(BaseModel):  # type: ignore[explicit-any]
     """Structured output of the AI email composer."""
 
     subject: str = Field(description="Generated email subject line")
     body: str = Field(description="Generated email body")
 
 
-class SendEmailRequest(BaseModel):
+class SendEmailRequest(BaseModel):  # type: ignore[explicit-any]
     to: list[str]
     subject: str
     body: str
@@ -30,17 +30,17 @@ class SendEmailRequest(BaseModel):
     bcc: list[str] | None = None
 
 
-class EmailReadStatusRequest(BaseModel):
+class EmailReadStatusRequest(BaseModel):  # type: ignore[explicit-any]
     message_ids: list[str]
 
 
-class EmailActionRequest(BaseModel):
+class EmailActionRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for performing actions on emails like star, trash, archive."""
 
     message_ids: list[str]
 
 
-class LabelRequest(BaseModel):
+class LabelRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for creating or updating Gmail labels."""
 
     name: str
@@ -56,14 +56,14 @@ class LabelRequest(BaseModel):
     text_color: str | None = None
 
 
-class ApplyLabelRequest(BaseModel):
+class ApplyLabelRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for applying or removing labels from messages."""
 
     message_ids: list[str]
     label_ids: list[str]
 
 
-class DraftRequest(BaseModel):
+class DraftRequest(BaseModel):  # type: ignore[explicit-any]
     """Request model for creating or updating a draft email.
 
     ``body`` may be Markdown or HTML — the Composio Gmail hook converts
@@ -77,7 +77,7 @@ class DraftRequest(BaseModel):
     bcc: list[str] | None = None
 
 
-class MailDocument(UserScopedDocument):
+class MailDocument(UserScopedDocument):  # type: ignore[explicit-any]
     """An analyzed-email importance summary as stored in the mail collection.
 
     ``extra="allow"`` because the analyzer stores a variable set of summary fields
@@ -91,13 +91,13 @@ class MailDocument(UserScopedDocument):
     analyzed_at: datetime | None = None
 
 
-class MailUpdate(BaseModel):
+class MailUpdate(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(extra="forbid")
 
     is_important: bool | None = None
 
 
-class EmailImportanceSummariesResponse(BaseModel):
+class EmailImportanceSummariesResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``GET /gmail/importance-summaries``.
 
     ``emails`` entries stay ``dict[str, object]`` because they are JSON dumps of
@@ -110,7 +110,7 @@ class EmailImportanceSummariesResponse(BaseModel):
     filtered_by_importance: bool
 
 
-class EmailImportanceSummaryResponse(BaseModel):
+class EmailImportanceSummaryResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``GET /gmail/importance-summary/{message_id}``.
 
     ``email`` stays ``dict[str, object]`` for the same reason as
@@ -121,7 +121,7 @@ class EmailImportanceSummaryResponse(BaseModel):
     email: dict[str, object]
 
 
-class BulkEmailImportanceSummariesResponse(BaseModel):
+class BulkEmailImportanceSummariesResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``POST /gmail/importance-summaries/bulk``.
 
     ``emails`` values stay ``dict[str, object]`` for the same reason as
@@ -150,7 +150,7 @@ class GmailAttachmentPayload(TypedDict):
     content_type: str | None
 
 
-class GmailToolResult(BaseModel):
+class GmailToolResult(BaseModel):  # type: ignore[explicit-any]
     """The result of one Composio Gmail tool invocation.
 
     Composio's own envelope is exactly ``{data, error, successful}``
@@ -179,7 +179,7 @@ class GmailToolResult(BaseModel):
         return self.model_dump(exclude_unset=True, by_alias=True)
 
 
-class GmailFetchEmailsData(BaseModel):
+class GmailFetchEmailsData(BaseModel):  # type: ignore[explicit-any]
     """The ``data`` payload of a ``GMAIL_FETCH_EMAILS`` result."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -188,7 +188,7 @@ class GmailFetchEmailsData(BaseModel):
     next_page_token: str | None = Field(default=None, alias="nextPageToken")
 
 
-class GmailMessageResource(BaseModel):
+class GmailMessageResource(BaseModel):  # type: ignore[explicit-any]
     """A Gmail ``messages`` resource returned by the label-modification tools.
 
     Only ``id`` is declared — it is the one field every caller reads, and Gmail
@@ -200,7 +200,7 @@ class GmailMessageResource(BaseModel):
     id: str
 
 
-class GmailMessagesResponse(BaseModel):
+class GmailMessagesResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``GET /gmail/messages`` and ``GET /gmail/search``, and the return
     shape of ``search_messages``, which the routes forward unchanged."""
 
@@ -208,7 +208,7 @@ class GmailMessagesResponse(BaseModel):
     next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
 
 
-class GmailLabelsResult(BaseModel):
+class GmailLabelsResult(BaseModel):  # type: ignore[explicit-any]
     """Return shape of ``list_labels`` — ``count``/``error`` are branch-specific."""
 
     success: bool
@@ -217,7 +217,7 @@ class GmailLabelsResult(BaseModel):
     error: str | None = None
 
 
-class GmailLabelResource(BaseModel):
+class GmailLabelResource(BaseModel):  # type: ignore[explicit-any]
     """A Gmail ``labels`` resource, forwarded to the client verbatim.
 
     No field is declared on purpose: Gmail owns this schema, so ``extra="allow"``
@@ -228,20 +228,20 @@ class GmailLabelResource(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class GmailDraftResource(BaseModel):
+class GmailDraftResource(BaseModel):  # type: ignore[explicit-any]
     """A Gmail ``drafts`` resource, forwarded verbatim — see ``GmailLabelResource``."""
 
     model_config = ConfigDict(extra="allow")
 
 
-class GmailLabelsResponse(BaseModel):
+class GmailLabelsResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``GET /gmail/labels``."""
 
     labels: list[dict[str, object]]
     count: int
 
 
-class GmailEmailResult(BaseModel):
+class GmailEmailResult(BaseModel):  # type: ignore[explicit-any]
     """Return shape of ``get_email_by_id``."""
 
     success: bool
@@ -249,14 +249,14 @@ class GmailEmailResult(BaseModel):
     error: str | None = None
 
 
-class GmailMessageResponse(BaseModel):
+class GmailMessageResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``GET /gmail/message/{message_id}``."""
 
     message: dict[str, object] | None
     status: str
 
 
-class GmailThreadResponse(BaseModel):
+class GmailThreadResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``GET /gmail/thread/{thread_id}``.
 
     ``thread`` is the Composio thread payload with its messages transformed, so it
@@ -268,20 +268,20 @@ class GmailThreadResponse(BaseModel):
     thread: dict[str, object]
 
 
-class SendEmailResponse(BaseModel):
+class SendEmailResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``POST /gmail/send-json``."""
 
     message_id: str | None
     status: str
 
 
-class SendEmailWithAttachmentsResponse(SendEmailResponse):
+class SendEmailWithAttachmentsResponse(SendEmailResponse):  # type: ignore[explicit-any]
     """Response for ``POST /gmail/send``, which also reports the attachment count."""
 
     attachments_count: int
 
 
-class GmailMessageActionResponse(BaseModel):
+class GmailMessageActionResponse(BaseModel):  # type: ignore[explicit-any]
     """Shared envelope of the bulk message-action endpoints.
 
     Each endpoint adds the field naming the ids it acted on (``starred``,
@@ -293,52 +293,52 @@ class GmailMessageActionResponse(BaseModel):
     status: str
 
 
-class MarkAsReadResponse(GmailMessageActionResponse):
+class MarkAsReadResponse(GmailMessageActionResponse):  # type: ignore[explicit-any]
     marked_as_read: list[str]
 
 
-class MarkAsUnreadResponse(GmailMessageActionResponse):
+class MarkAsUnreadResponse(GmailMessageActionResponse):  # type: ignore[explicit-any]
     marked_as_unread: list[str]
 
 
-class StarEmailsResponse(GmailMessageActionResponse):
+class StarEmailsResponse(GmailMessageActionResponse):  # type: ignore[explicit-any]
     starred: list[str]
 
 
-class UnstarEmailsResponse(GmailMessageActionResponse):
+class UnstarEmailsResponse(GmailMessageActionResponse):  # type: ignore[explicit-any]
     unstarred: list[str]
 
 
-class TrashEmailsResponse(GmailMessageActionResponse):
+class TrashEmailsResponse(GmailMessageActionResponse):  # type: ignore[explicit-any]
     trashed: list[str]
 
 
-class UntrashEmailsResponse(GmailMessageActionResponse):
+class UntrashEmailsResponse(GmailMessageActionResponse):  # type: ignore[explicit-any]
     restored: list[str]
 
 
-class ArchiveEmailsResponse(GmailMessageActionResponse):
+class ArchiveEmailsResponse(GmailMessageActionResponse):  # type: ignore[explicit-any]
     archived: list[str]
 
 
-class MoveToInboxResponse(GmailMessageActionResponse):
+class MoveToInboxResponse(GmailMessageActionResponse):  # type: ignore[explicit-any]
     moved_to_inbox: list[str]
 
 
-class ModifyLabelsResponse(GmailMessageActionResponse):
+class ModifyLabelsResponse(GmailMessageActionResponse):  # type: ignore[explicit-any]
     """Response for both the apply-label and remove-label endpoints."""
 
     modified_messages: list[str]
 
 
-class GmailDraftsResponse(BaseModel):
+class GmailDraftsResponse(BaseModel):  # type: ignore[explicit-any]
     """Return shape of ``list_drafts``, forwarded verbatim by ``GET /gmail/drafts``."""
 
     drafts: list[dict[str, object]]
     next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
 
 
-class DraftMutationResponse(BaseModel):
+class DraftMutationResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for the draft create and update endpoints."""
 
     draft_id: str | None
@@ -346,7 +346,7 @@ class DraftMutationResponse(BaseModel):
     status: str
 
 
-class SendDraftResponse(BaseModel):
+class SendDraftResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for ``POST /gmail/drafts/{draft_id}/send``."""
 
     message_id: str
@@ -355,7 +355,7 @@ class SendDraftResponse(BaseModel):
     successful: bool
 
 
-class GmailDeletionResponse(BaseModel):
+class GmailDeletionResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for the label and draft delete endpoints."""
 
     status: Literal["success", "error"]

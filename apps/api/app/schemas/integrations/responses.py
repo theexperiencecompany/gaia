@@ -12,14 +12,14 @@ from app.schemas.common import SuccessResponse
 
 
 # Base model that auto-converts snake_case to camelCase for JSON serialization
-class CamelModel(BaseModel):
+class CamelModel(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(
         populate_by_name=True,
         alias_generator=to_camel,
     )
 
 
-class CloneCountMixin(BaseModel):
+class CloneCountMixin(BaseModel):  # type: ignore[explicit-any]
     """Mixin to handle clone_count None -> 0 coercion."""
 
     @field_validator("clone_count", mode="before", check_fields=False)
@@ -29,7 +29,7 @@ class CloneCountMixin(BaseModel):
         return v if v is not None else 0
 
 
-class IntegrationConfigItem(CamelModel):
+class IntegrationConfigItem(CamelModel):  # type: ignore[explicit-any]
     id: str
     name: str
     description: str
@@ -47,20 +47,20 @@ class IntegrationConfigItem(CamelModel):
     slug: str  # For platform integrations, this is the same as id
 
 
-class IntegrationsConfigResponse(BaseModel):
+class IntegrationsConfigResponse(BaseModel):  # type: ignore[explicit-any]
     integrations: list[IntegrationConfigItem]
 
 
-class IntegrationSuccessResponse(SuccessResponse, CamelModel):
+class IntegrationSuccessResponse(SuccessResponse, CamelModel):  # type: ignore[explicit-any]
     integration_id: str
 
 
-class AddUserIntegrationResponse(SuccessResponse, CamelModel):
+class AddUserIntegrationResponse(SuccessResponse, CamelModel):  # type: ignore[explicit-any]
     integration_id: str
     connection_status: Literal["created", "connected"]
 
 
-class IntegrationInstructionsResponse(CamelModel):
+class IntegrationInstructionsResponse(CamelModel):  # type: ignore[explicit-any]
     """A user's custom instructions for one integration."""
 
     integration_id: str
@@ -69,20 +69,20 @@ class IntegrationInstructionsResponse(CamelModel):
     updated_at: datetime | None = None
 
 
-class CustomIntegrationConnectionResult(CamelModel):
+class CustomIntegrationConnectionResult(CamelModel):  # type: ignore[explicit-any]
     status: Literal["created", "connected", "requires_oauth", "failed"]
     tools_count: int | None = None
     oauth_url: str | None = None
     error: str | None = None
 
 
-class CreateCustomIntegrationResponse(SuccessResponse, CamelModel):
+class CreateCustomIntegrationResponse(SuccessResponse, CamelModel):  # type: ignore[explicit-any]
     integration_id: str
     name: str
     connection: CustomIntegrationConnectionResult
 
 
-class IntegrationTool(BaseModel):
+class IntegrationTool(BaseModel):  # type: ignore[explicit-any]
     name: str
     description: str | None = None
     # HIL default: this tool is gated (irreversible) unless the user overrides it.
@@ -91,7 +91,7 @@ class IntegrationTool(BaseModel):
     destructive: bool = False
 
 
-class IntegrationResponse(CamelModel, CloneCountMixin):
+class IntegrationResponse(CamelModel, CloneCountMixin):  # type: ignore[explicit-any]
     """Integration details for API responses."""
 
     integration_id: str
@@ -117,13 +117,13 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     creator: Optional["CommunityIntegrationCreator"] = None
 
 
-class MarketplaceResponse(BaseModel):
+class MarketplaceResponse(BaseModel):  # type: ignore[explicit-any]
     featured: list[IntegrationResponse] = []
     integrations: list[IntegrationResponse] = []
     total: int = 0
 
 
-class MyIntegrationItem(CamelModel, CloneCountMixin):
+class MyIntegrationItem(CamelModel, CloneCountMixin):  # type: ignore[explicit-any]
     """One integration as it pertains to the current user: catalog metadata plus
     their connection `status`, without the heavy per-tool schemas (only `tool_count`).
     Fetch full tools on demand from `GET /integrations/{id}/tools`.
@@ -152,7 +152,7 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     creator: Optional["CommunityIntegrationCreator"] = None
 
 
-class MyIntegrationsResponse(BaseModel):
+class MyIntegrationsResponse(BaseModel):  # type: ignore[explicit-any]
     """The full integration catalog personalized for one user (platform + their
     own custom integrations), each carrying connection status. Replaces the
     client-side merge of /config + /status + /users/me/integrations."""
@@ -161,7 +161,7 @@ class MyIntegrationsResponse(BaseModel):
     total: int = 0
 
 
-class IntegrationToolsResponse(CamelModel):
+class IntegrationToolsResponse(CamelModel):  # type: ignore[explicit-any]
     """Full tool list for a single integration (catalog data, on demand)."""
 
     integration_id: str
@@ -169,7 +169,7 @@ class IntegrationToolsResponse(CamelModel):
     count: int = 0
 
 
-class ConnectIntegrationResponse(CamelModel):
+class ConnectIntegrationResponse(CamelModel):  # type: ignore[explicit-any]
     status: Literal["connected", "redirect", "error"]
     integration_id: str
     name: str
@@ -179,23 +179,23 @@ class ConnectIntegrationResponse(CamelModel):
     error: str | None = None
 
 
-class PublishIntegrationResponse(SuccessResponse, CamelModel):
+class PublishIntegrationResponse(SuccessResponse, CamelModel):  # type: ignore[explicit-any]
     integration_id: str
     public_url: str
 
 
-class UnpublishIntegrationResponse(SuccessResponse, CamelModel):
+class UnpublishIntegrationResponse(SuccessResponse, CamelModel):  # type: ignore[explicit-any]
     integration_id: str
 
 
-class CommunityIntegrationCreator(CamelModel):
+class CommunityIntegrationCreator(CamelModel):  # type: ignore[explicit-any]
     """Creator info for community integration display."""
 
     name: str | None = None
     picture: str | None = None
 
 
-class CommunityIntegrationItem(CamelModel, CloneCountMixin):
+class CommunityIntegrationItem(CamelModel, CloneCountMixin):  # type: ignore[explicit-any]
     """Integration item for community marketplace listing."""
 
     integration_id: str
@@ -211,7 +211,7 @@ class CommunityIntegrationItem(CamelModel, CloneCountMixin):
     creator: CommunityIntegrationCreator | None = None
 
 
-class CommunityListResponse(BaseModel):
+class CommunityListResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for community marketplace listing."""
 
     integrations: list[CommunityIntegrationItem] = []
@@ -219,7 +219,7 @@ class CommunityListResponse(BaseModel):
     has_more: bool = False
 
 
-class MCPConfigDetail(CamelModel):
+class MCPConfigDetail(CamelModel):  # type: ignore[explicit-any]
     """MCP config for public display."""
 
     server_url: str | None = None
@@ -227,7 +227,7 @@ class MCPConfigDetail(CamelModel):
     auth_type: Literal["none", "oauth", "bearer"] | None = None
 
 
-class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
+class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):  # type: ignore[explicit-any]
     """Full public integration details for public pages (SEO/sharing)."""
 
     integration_id: str
@@ -259,7 +259,7 @@ class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     content: IntegrationContent | None = None
 
 
-class AddIntegrationResponse(CamelModel):
+class AddIntegrationResponse(CamelModel):  # type: ignore[explicit-any]
     """Response for adding a public integration to user's workspace."""
 
     integration_id: str
@@ -271,7 +271,7 @@ class AddIntegrationResponse(CamelModel):
     error: str | None = None
 
 
-class SearchIntegrationItem(CamelModel, CloneCountMixin):
+class SearchIntegrationItem(CamelModel, CloneCountMixin):  # type: ignore[explicit-any]
     """Integration item in search results."""
 
     integration_id: str
@@ -285,7 +285,7 @@ class SearchIntegrationItem(CamelModel, CloneCountMixin):
     icon_url: str | None = None
 
 
-class SearchIntegrationsResponse(BaseModel):
+class SearchIntegrationsResponse(BaseModel):  # type: ignore[explicit-any]
     """Response for semantic search of integrations."""
 
     integrations: list[SearchIntegrationItem] = []

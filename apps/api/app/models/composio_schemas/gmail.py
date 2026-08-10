@@ -15,7 +15,7 @@ from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
 # =============================================================================
 
 
-class GmailNewMessagePayload(BaseModel):
+class GmailNewMessagePayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for GMAIL_NEW_GMAIL_MESSAGE trigger."""
 
     attachment_list: list[dict[str, object]] | None = Field(
@@ -59,7 +59,7 @@ TimeframeLiteral = Literal[
 BodyProcessingLiteral = Literal["normalize", "raw", "none"]
 
 
-class FetchMessagesInput(BaseModel):
+class FetchMessagesInput(BaseModel):  # type: ignore[explicit-any]
     """Input for the GMAIL_FETCH_MESSAGES custom tool."""
 
     timeframe: TimeframeLiteral | None = Field(
@@ -115,7 +115,7 @@ class FetchMessagesInput(BaseModel):
     per_page: int = Field(default=100, ge=1, le=500, description="Gmail page size (max 500).")
 
 
-class FetchThreadInput(BaseModel):
+class FetchThreadInput(BaseModel):  # type: ignore[explicit-any]
     """Input for the GMAIL_FETCH_THREAD custom tool."""
 
     thread_ids: list[str] = Field(
@@ -169,7 +169,7 @@ class FetchThreadInput(BaseModel):
 # keeps the fields we don't read rather than silently dropping them.
 
 
-class GmailHeader(BaseModel):
+class GmailHeader(BaseModel):  # type: ignore[explicit-any]
     """One ``{name, value}`` entry of a MIME part's ``headers`` array."""
 
     model_config = ConfigDict(extra="allow")
@@ -178,7 +178,7 @@ class GmailHeader(BaseModel):
     value: str = ""
 
 
-class GmailPartBody(BaseModel):
+class GmailPartBody(BaseModel):  # type: ignore[explicit-any]
     """A MIME part's ``body``: inline base64url ``data``, or an attachment reference."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -188,7 +188,7 @@ class GmailPartBody(BaseModel):
     data: str | None = None
 
 
-class GmailMessagePart(BaseModel):
+class GmailMessagePart(BaseModel):  # type: ignore[explicit-any]
     """One node of a Gmail message's MIME tree.
 
     Recursive by construction: a ``multipart/*`` part nests further parts to
@@ -238,7 +238,7 @@ class GmailMessageContent(TypedDict):
     html: str
 
 
-class GmailMessageRef(BaseModel):
+class GmailMessageRef(BaseModel):  # type: ignore[explicit-any]
     """A ``{id, threadId}`` stub from ``users.messages.list``."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -247,7 +247,7 @@ class GmailMessageRef(BaseModel):
     thread_id: str | None = Field(default=None, alias="threadId")
 
 
-class GmailMessagesListResponse(BaseModel):
+class GmailMessagesListResponse(BaseModel):  # type: ignore[explicit-any]
     """``users.messages.list`` response — id stubs plus paging/count metadata."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -258,7 +258,7 @@ class GmailMessagesListResponse(BaseModel):
     result_size_estimate: int | None = Field(default=None, alias="resultSizeEstimate")
 
 
-class GmailLabelDetail(BaseModel):
+class GmailLabelDetail(BaseModel):  # type: ignore[explicit-any]
     """``users.labels.get`` response — the counts the unread-count tool reports."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -269,7 +269,7 @@ class GmailLabelDetail(BaseModel):
     messages_unread: int = Field(default=0, alias="messagesUnread")
 
 
-class GmailProfile(BaseModel):
+class GmailProfile(BaseModel):  # type: ignore[explicit-any]
     """``users.getProfile`` response."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)

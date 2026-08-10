@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict
 from app.db.repositories.base import UserScopedDocument, UserScopedRepository
 
 
-class UsageDailyDocument(UserScopedDocument):
+class UsageDailyDocument(UserScopedDocument):  # type: ignore[explicit-any]
     """One user's rollup row for one UTC day."""
 
     date: str
@@ -23,7 +23,7 @@ class UsageDailyDocument(UserScopedDocument):
     aux_cost: float = 0.0
 
 
-class UsageDailyUpdate(BaseModel):
+class UsageDailyUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed ``$set`` fields for a rollup row. Rollups move via ``$inc``-only
     raw updates, so nothing is typed-settable."""
 

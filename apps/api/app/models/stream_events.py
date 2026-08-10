@@ -59,7 +59,7 @@ from app.models.hil_models import HILApprovalStatus
 # ---------------------------------------------------------------------------
 
 
-class ToolCallsDataEntryData(BaseModel):
+class ToolCallsDataEntryData(BaseModel):  # type: ignore[explicit-any]
     """Inner ``data`` object of a ``tool_calls_data`` entry."""
 
     tool_name: str
@@ -72,7 +72,7 @@ class ToolCallsDataEntryData(BaseModel):
     integration_name: str | None
 
 
-class ToolCallsDataEntry(BaseModel):
+class ToolCallsDataEntry(BaseModel):  # type: ignore[explicit-any]
     """The ``tool_calls_data`` tool_data entry built by ``format_tool_call_entry``.
 
     Emitted (wrapped in a ``tool_data`` envelope) when a tool call's args are
@@ -88,7 +88,7 @@ class ToolCallsDataEntry(BaseModel):
     mcp_server_url: str | None
 
 
-class ApprovalRequestEntryData(BaseModel):
+class ApprovalRequestEntryData(BaseModel):  # type: ignore[explicit-any]
     """Inner ``data`` object of a HIL ``approval_request`` entry."""
 
     approval_id: str
@@ -104,7 +104,7 @@ class ApprovalRequestEntryData(BaseModel):
     timeout_seconds: int
 
 
-class ApprovalRequestEntry(BaseModel):
+class ApprovalRequestEntry(BaseModel):  # type: ignore[explicit-any]
     """The ``approval_request`` tool_data entry built by ``hil.bridge``.
 
     Emitted (wrapped in a ``tool_data`` envelope) when a gated call asks for the
@@ -119,7 +119,7 @@ class ApprovalRequestEntry(BaseModel):
     timestamp: str
 
 
-class ToolOutputPayload(BaseModel):
+class ToolOutputPayload(BaseModel):  # type: ignore[explicit-any]
     """Result text for a completed tool call, keyed by its ``tool_call_id``."""
 
     tool_call_id: str
@@ -127,14 +127,14 @@ class ToolOutputPayload(BaseModel):
     subagent_id: str | None = None
 
 
-class ReasoningPayload(BaseModel):
+class ReasoningPayload(BaseModel):  # type: ignore[explicit-any]
     """A streamed reasoning ("thinking") delta from the model."""
 
     content: str
     subagent_id: str | None = None
 
 
-class SubagentStartPayload(BaseModel):
+class SubagentStartPayload(BaseModel):  # type: ignore[explicit-any]
     """Lifecycle payload marking a delegated subagent beginning execution."""
 
     subagent_id: str
@@ -146,7 +146,7 @@ class SubagentStartPayload(BaseModel):
     parent_subagent_id: str | None = None
 
 
-class SubagentEndPayload(BaseModel):
+class SubagentEndPayload(BaseModel):  # type: ignore[explicit-any]
     """Lifecycle payload marking a delegated subagent finishing."""
 
     subagent_id: str
@@ -159,25 +159,25 @@ class SubagentEndPayload(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class ResponseFrame(BaseModel):
+class ResponseFrame(BaseModel):  # type: ignore[explicit-any]
     """Assistant text delta."""
 
     response: str
 
 
-class FollowUpActionsFrame(BaseModel):
+class FollowUpActionsFrame(BaseModel):  # type: ignore[explicit-any]
     """Suggested follow-up actions for the turn."""
 
     follow_up_actions: list[str]
 
 
-class ErrorFrame(BaseModel):
+class ErrorFrame(BaseModel):  # type: ignore[explicit-any]
     """Terminal error for the stream."""
 
     error: str
 
 
-class ModelFallbackFrame(BaseModel):
+class ModelFallbackFrame(BaseModel):  # type: ignore[explicit-any]
     """One-time notice that the primary model failed and a backup answered.
 
     Emitted at most once per stream; the frontend surfaces it as a quiet toast.
@@ -186,7 +186,7 @@ class ModelFallbackFrame(BaseModel):
     model_fallback: dict[str, str]
 
 
-class MainResponseCompleteFrame(BaseModel):
+class MainResponseCompleteFrame(BaseModel):  # type: ignore[explicit-any]
     """Marks the primary assistant response as finished.
 
     ``usage`` carries the turn's aggregate token usage (per-model input/output/
@@ -198,19 +198,19 @@ class MainResponseCompleteFrame(BaseModel):
     usage: dict[str, UsageMetadata] | None = None
 
 
-class TodoProgressFrame(BaseModel):
+class TodoProgressFrame(BaseModel):  # type: ignore[explicit-any]
     """Envelope for a todo-progress snapshot."""
 
     todo_progress: dict[str, object]
 
 
-class ConversationDescriptionFrame(BaseModel):
+class ConversationDescriptionFrame(BaseModel):  # type: ignore[explicit-any]
     """A freshly generated conversation title/description."""
 
     conversation_description: str
 
 
-class ConversationInitializedFrame(BaseModel):
+class ConversationInitializedFrame(BaseModel):  # type: ignore[explicit-any]
     """Identity frame sent first: conversation + message ids for the turn.
 
     New conversations dump all fields (``conversation_description`` may be

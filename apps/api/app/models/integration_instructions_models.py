@@ -27,7 +27,7 @@ class InstructionsEditor(str, Enum):
     AGENT = "agent"
 
 
-class IntegrationInstructions(BaseModel):
+class IntegrationInstructions(BaseModel):  # type: ignore[explicit-any]
     """Custom instructions for a single integration, owned by one user."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -51,7 +51,7 @@ class IntegrationInstructions(BaseModel):
         return value.isoformat()
 
 
-class IntegrationInstructionsDocument(UserScopedDocument):
+class IntegrationInstructionsDocument(UserScopedDocument):  # type: ignore[explicit-any]
     """Storage model for one ``(user_id, integration_id)`` instructions record.
 
     ``id`` is the stringified Mongo ``_id`` (the editor surfaces it). ``updated_at``
@@ -63,7 +63,7 @@ class IntegrationInstructionsDocument(UserScopedDocument):
     updated_at: datetime | None = None
 
 
-class IntegrationInstructionsUpdate(BaseModel):
+class IntegrationInstructionsUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed ``$set`` fields for an instructions record."""
 
     model_config = ConfigDict(extra="forbid")

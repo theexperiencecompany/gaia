@@ -49,7 +49,7 @@ class DeclinedCallRecord(TypedDict):
     feedback: str | None
 
 
-class HILPreferences(BaseModel):
+class HILPreferences(BaseModel):  # type: ignore[explicit-any]
     """Stored on the user document under ``hil_preferences``."""
 
     # always_allow: run everything. always_ask: pause for every destructive tool.
@@ -61,7 +61,7 @@ class HILPreferences(BaseModel):
     tool_overrides: dict[str, bool] = Field(default_factory=dict)
 
 
-class HILToolRiskRecord(MongoDocument):
+class HILToolRiskRecord(MongoDocument):  # type: ignore[explicit-any]
     """Cached LLM classification for one CUSTOM-integration tool (Mongo
     ``hil_tool_risk``), for durability across restarts/processes.
 
@@ -76,7 +76,7 @@ class HILToolRiskRecord(MongoDocument):
     classified_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class HILApprovalRecord(MongoDocument):
+class HILApprovalRecord(MongoDocument):  # type: ignore[explicit-any]
     """Durable record of one approval request (Mongo ``hil_approvals``).
 
     The decision source of truth and audit trail: who asked to run what, the
@@ -125,7 +125,7 @@ class HILApprovalRecord(MongoDocument):
     subagent_collected_at: datetime | None = None
 
 
-class HILApprovalUpdate(BaseModel):
+class HILApprovalUpdate(BaseModel):  # type: ignore[explicit-any]
     """Partial ``$set`` update for an approval record (repository write model).
 
     Covers the post-creation stamps only — the decision transition itself goes
@@ -146,7 +146,7 @@ class HILApprovalUpdate(BaseModel):
     subagent_collected_at: datetime | None = None
 
 
-class HILToolRiskUpdate(BaseModel):
+class HILToolRiskUpdate(BaseModel):  # type: ignore[explicit-any]
     """Partial update for a tool-risk record (repository write model)."""
 
     model_config = ConfigDict(extra="forbid")

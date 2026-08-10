@@ -8,7 +8,7 @@ from typing_extensions import TypedDict
 from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
 
 
-class ImageData(BaseModel):
+class ImageData(BaseModel):  # type: ignore[explicit-any]
     """Generated-image metadata attached to a chat message."""
 
     url: str
@@ -90,7 +90,7 @@ tool_fields = [
 ]
 
 
-class MessageModel(BaseModel):
+class MessageModel(BaseModel):  # type: ignore[explicit-any]
     """A single chat message with its content, attachments and tool data."""
 
     type: str
@@ -201,7 +201,7 @@ BOT_CONVERSATION_SOURCES: frozenset[ConversationSource] = frozenset(
 )
 
 
-class ConversationModel(BaseModel):
+class ConversationModel(BaseModel):  # type: ignore[explicit-any]
     """A chat conversation and its display/system metadata."""
 
     conversation_id: str
@@ -213,45 +213,45 @@ class ConversationModel(BaseModel):
     is_onboarding_demo: bool = False
 
 
-class UpdateMessagesRequest(BaseModel):
+class UpdateMessagesRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to replace the messages of a conversation."""
 
     conversation_id: str
     messages: list[MessageModel]
 
 
-class StarredUpdate(BaseModel):
+class StarredUpdate(BaseModel):  # type: ignore[explicit-any]
     """Request to set a conversation's starred flag."""
 
     starred: bool
 
 
-class PinnedUpdate(BaseModel):
+class PinnedUpdate(BaseModel):  # type: ignore[explicit-any]
     """Request to set a conversation's pinned flag."""
 
     pinned: bool
 
 
-class UpdateDescriptionRequest(BaseModel):
+class UpdateDescriptionRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to rename a conversation's description."""
 
     description: str
 
 
-class ConversationSyncItem(BaseModel):
+class ConversationSyncItem(BaseModel):  # type: ignore[explicit-any]
     """A conversation id and its last-updated timestamp for client sync."""
 
     conversation_id: str
     last_updated: str | None = None
 
 
-class BatchSyncRequest(BaseModel):
+class BatchSyncRequest(BaseModel):  # type: ignore[explicit-any]
     """Batch of conversation sync items sent by a client to reconcile state."""
 
     conversations: list[ConversationSyncItem]
 
 
-class CancelStreamResponse(BaseModel):
+class CancelStreamResponse(BaseModel):  # type: ignore[explicit-any]
     """Outcome of a stream-cancellation request.
 
     ``error`` is set only when the stream could not be cancelled at all (it was

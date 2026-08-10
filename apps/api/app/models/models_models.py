@@ -40,7 +40,7 @@ class PlanType(str, Enum):
     PRO = "pro"
 
 
-class ModelConfig(MongoDocument):
+class ModelConfig(MongoDocument):  # type: ignore[explicit-any]
     """Configuration for an AI model as stored in the ``ai_models`` collection."""
 
     model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
@@ -89,7 +89,7 @@ class ModelConfig(MongoDocument):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class AiModelUpdate(BaseModel):
+class AiModelUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed ``$set`` fields for an AI model row (admin/seed edits)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -98,7 +98,7 @@ class AiModelUpdate(BaseModel):
     is_default: bool | None = None
 
 
-class ModelResponse(BaseModel):
+class ModelResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for model data."""
 
     model_id: str = Field(..., description="Unique identifier for the model")

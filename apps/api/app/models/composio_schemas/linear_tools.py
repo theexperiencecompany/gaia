@@ -10,13 +10,13 @@ Note: All Composio tool responses are wrapped in ToolExecutionResponse with
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class LinearGetAllTeamsInput(BaseModel):
+class LinearGetAllTeamsInput(BaseModel):  # type: ignore[explicit-any]
     """Input for LINEAR_GET_ALL_LINEAR_TEAMS."""
 
     # No input parameters required
 
 
-class LinearMember(BaseModel):
+class LinearMember(BaseModel):  # type: ignore[explicit-any]
     """Linear team member."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
@@ -26,7 +26,7 @@ class LinearMember(BaseModel):
     email: str = ""
 
 
-class LinearTeam(BaseModel):
+class LinearTeam(BaseModel):  # type: ignore[explicit-any]
     """Linear team."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
@@ -37,7 +37,7 @@ class LinearTeam(BaseModel):
     members: list[LinearMember] = Field(default_factory=list)
 
 
-class LinearGetAllTeamsData(BaseModel):
+class LinearGetAllTeamsData(BaseModel):  # type: ignore[explicit-any]
     """Data inside ToolExecutionResponse.data for LINEAR_GET_ALL_LINEAR_TEAMS.
 
     The API returns teams in 'items' or 'teams' field.

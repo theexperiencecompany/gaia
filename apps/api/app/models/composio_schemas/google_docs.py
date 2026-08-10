@@ -7,7 +7,7 @@ Reference: node_modules/@composio/core/generated/googledocs.ts
 from pydantic import BaseModel, Field
 
 
-class GoogleDocsDocument(BaseModel):
+class GoogleDocsDocument(BaseModel):  # type: ignore[explicit-any]
     """Google Doc document details."""
 
     createdTime: str = Field(..., description="Creation time in ISO format")
@@ -21,7 +21,7 @@ class GoogleDocsDocument(BaseModel):
     owners: list[dict[str, object]] | None = Field(None, description="List of document owners")
 
 
-class GoogleDocsPageAddedPayload(BaseModel):
+class GoogleDocsPageAddedPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for GOOGLEDOCS_PAGE_ADDED_TRIGGER."""
 
     document: GoogleDocsDocument | None = Field(None, description="The newly added Google document")

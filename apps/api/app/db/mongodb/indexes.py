@@ -729,7 +729,7 @@ async def create_ai_models_indexes() -> None:
         raise
 
 
-async def _create_index_safe(
+async def _create_index_safe(  # type: ignore[explicit-any]
     collection: AsyncIOMotorCollection[dict[str, object]], keys: IndexKeys, **kwargs: Any
 ) -> None:
     """Create an index safely, handling IndexOptionsConflict gracefully.

@@ -70,7 +70,7 @@ _STRUCTURED_FAILURE_EXCEPTIONS: tuple[type[BaseException], ...] = (
 )
 
 
-class SimilarMemory(BaseModel):
+class SimilarMemory(BaseModel):  # type: ignore[explicit-any]
     """An existing memory candidate handed to the reconcile LLM."""
 
     id: str = Field(description="Memory ID in the canonical store")

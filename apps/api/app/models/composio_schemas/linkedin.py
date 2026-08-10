@@ -7,7 +7,7 @@ keeps the rest of each response rather than dropping it.
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class LinkedInUserInfo(BaseModel):
+class LinkedInUserInfo(BaseModel):  # type: ignore[explicit-any]
     """``/v2/userinfo`` — the OpenID Connect profile. ``sub`` is the member id."""
 
     model_config = ConfigDict(extra="allow")
@@ -15,7 +15,7 @@ class LinkedInUserInfo(BaseModel):
     sub: str | None = None
 
 
-class LinkedInUploadTarget(BaseModel):
+class LinkedInUploadTarget(BaseModel):  # type: ignore[explicit-any]
     """The ``value`` block of an ``initializeUpload`` response.
 
     Images and documents share this shape; each populates its own urn field
@@ -29,7 +29,7 @@ class LinkedInUploadTarget(BaseModel):
     document: str | None = None
 
 
-class LinkedInInitializeUploadResponse(BaseModel):
+class LinkedInInitializeUploadResponse(BaseModel):  # type: ignore[explicit-any]
     """``/rest/{images,documents}?action=initializeUpload`` response."""
 
     model_config = ConfigDict(extra="allow")

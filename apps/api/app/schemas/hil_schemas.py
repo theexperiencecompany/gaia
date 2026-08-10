@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from app.models.hil_models import HILMode, HILPreferences
 
 
-class ApprovalDecisionRequest(BaseModel):
+class ApprovalDecisionRequest(BaseModel):  # type: ignore[explicit-any]
     """Body for a button approval decision (approve/deny, with scope and feedback)."""
 
     decision: Literal["approve", "deny"]
@@ -16,13 +16,13 @@ class ApprovalDecisionRequest(BaseModel):
     scope: Literal["once", "always_tool"] = "once"
 
 
-class ApprovalDecisionResponse(BaseModel):
+class ApprovalDecisionResponse(BaseModel):  # type: ignore[explicit-any]
     """Result of relaying an approval decision to the awaiting gate."""
 
     success: bool
 
 
-class BatchDecisionItem(BaseModel):
+class BatchDecisionItem(BaseModel):  # type: ignore[explicit-any]
     """One approval's decision within a batch."""
 
     approval_id: str
@@ -30,13 +30,13 @@ class BatchDecisionItem(BaseModel):
     feedback: str | None = Field(None, max_length=2000)
 
 
-class BatchApprovalDecisionRequest(BaseModel):
+class BatchApprovalDecisionRequest(BaseModel):  # type: ignore[explicit-any]
     """Body for deciding several pending approvals in one submission."""
 
     decisions: list[BatchDecisionItem] = Field(min_length=1, max_length=25)
 
 
-class BatchDecisionOutcome(BaseModel):
+class BatchDecisionOutcome(BaseModel):  # type: ignore[explicit-any]
     """Per-approval outcome of a batch decision."""
 
     approval_id: str
@@ -46,24 +46,24 @@ class BatchDecisionOutcome(BaseModel):
     reason: str | None = None
 
 
-class BatchApprovalDecisionResponse(BaseModel):
+class BatchApprovalDecisionResponse(BaseModel):  # type: ignore[explicit-any]
     """Result of a batch decision: each approval's individual outcome."""
 
     outcomes: list[BatchDecisionOutcome]
 
 
-class HILPreferencesResponse(HILPreferences):
+class HILPreferencesResponse(HILPreferences):  # type: ignore[explicit-any]
     """A user's HIL preferences as returned by the preferences endpoints."""
 
 
-class UpdateHILPreferencesRequest(BaseModel):
+class UpdateHILPreferencesRequest(BaseModel):  # type: ignore[explicit-any]
     """Partial update to a user's HIL preferences; omitted fields are left unchanged."""
 
     mode: HILMode | None = None
     tool_overrides: dict[str, bool] | None = None
 
 
-class SetToolOverrideRequest(BaseModel):
+class SetToolOverrideRequest(BaseModel):  # type: ignore[explicit-any]
     """Body for setting or clearing one tool's approval override."""
 
     # True = always ask, False = never ask, None = clear override (use default).

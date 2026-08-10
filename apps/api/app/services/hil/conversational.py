@@ -66,14 +66,14 @@ DecisionAction = Literal["approve", "deny", "unrelated"]
 UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform the action."
 
 
-class DecisionResult(BaseModel):
+class DecisionResult(BaseModel):  # type: ignore[explicit-any]
     """LLM classification of a user's reply to a pending approval."""
 
     action: DecisionAction
     feedback: str | None = None
 
 
-class BatchItemDecision(BaseModel):
+class BatchItemDecision(BaseModel):  # type: ignore[explicit-any]
     """One pending action's verdict from the user's reply."""
 
     index: int = Field(description="1-based index of the pending action")
@@ -81,7 +81,7 @@ class BatchItemDecision(BaseModel):
     feedback: str | None = None
 
 
-class BatchDecisionResult(BaseModel):
+class BatchDecisionResult(BaseModel):  # type: ignore[explicit-any]
     """LLM classification of a reply against several pending approvals."""
 
     unrelated: bool = Field(

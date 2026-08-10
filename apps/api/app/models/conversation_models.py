@@ -46,7 +46,7 @@ def _coerce_source(value: object) -> object:
     return value
 
 
-class ConversationDocument(UserScopedDocument):
+class ConversationDocument(UserScopedDocument):  # type: ignore[explicit-any]
     """A conversation and its embedded message history as stored in MongoDB.
 
     ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
@@ -77,7 +77,7 @@ class ConversationDocument(UserScopedDocument):
     _coerce_source = field_validator("source", mode="before")(_coerce_source)
 
 
-class ConversationUpdate(BaseModel):
+class ConversationUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed ``$set`` fields for a conversation. The repository bumps ``updatedAt``
     itself, so it is not part of the update surface."""
 
@@ -88,7 +88,7 @@ class ConversationUpdate(BaseModel):
     is_unread: bool | None = None
 
 
-class ConversationSummary(BaseModel):
+class ConversationSummary(BaseModel):  # type: ignore[explicit-any]
     """The projected conversation-list row — every field the web list consumes,
     without the heavy ``messages`` array."""
 
@@ -109,7 +109,7 @@ class ConversationSummary(BaseModel):
     _coerce_source = field_validator("source", mode="before")(_coerce_source)
 
 
-class ConversationMessageHit(BaseModel):
+class ConversationMessageHit(BaseModel):  # type: ignore[explicit-any]
     """A single conversation message tagged with its conversation id — the shape of
     the pinned-messages and message-search results."""
 
@@ -122,21 +122,21 @@ class ConversationMessageHit(BaseModel):
         return convert_legacy_tool_data(value) if isinstance(value, dict) else value
 
 
-class ConversationDescriptionHit(BaseModel):
+class ConversationDescriptionHit(BaseModel):  # type: ignore[explicit-any]
     """A conversation matched by its description in a text search."""
 
     conversation_id: str
     description: str | None = None
 
 
-class ConversationSearchResults(BaseModel):
+class ConversationSearchResults(BaseModel):  # type: ignore[explicit-any]
     """The two facets of a conversation text search (``$facet`` output)."""
 
     messages: list[ConversationMessageHit] = Field(default_factory=list)
     conversations: list[ConversationDescriptionHit] = Field(default_factory=list)
 
 
-class _SourceRow(BaseModel):
+class _SourceRow(BaseModel):  # type: ignore[explicit-any]
     """Projection of just a conversation's stored source string."""
 
     model_config = ConfigDict(extra="ignore")
@@ -144,7 +144,7 @@ class _SourceRow(BaseModel):
     source: str | None = None
 
 
-class _ConversationIdRow(BaseModel):
+class _ConversationIdRow(BaseModel):  # type: ignore[explicit-any]
     """Projection of just a conversation id (owner lookups)."""
 
     model_config = ConfigDict(extra="ignore")
@@ -152,7 +152,7 @@ class _ConversationIdRow(BaseModel):
     conversation_id: str
 
 
-class _MessageProjectionRow(BaseModel):
+class _MessageProjectionRow(BaseModel):  # type: ignore[explicit-any]
     """Positional ``messages.$`` projection — a one-element messages slice."""
 
     model_config = ConfigDict(extra="ignore")
@@ -160,7 +160,7 @@ class _MessageProjectionRow(BaseModel):
     messages: list[MessageModel] = Field(default_factory=list)
 
 
-class _OnboardingProbeRow(BaseModel):
+class _OnboardingProbeRow(BaseModel):  # type: ignore[explicit-any]
     """Projection for the onboarding-demo prompt gate: the flag plus message list."""
 
     model_config = ConfigDict(extra="ignore")
@@ -174,7 +174,7 @@ class _OnboardingProbeRow(BaseModel):
         return _normalize_messages(value)
 
 
-class OnboardingProbe(BaseModel):
+class OnboardingProbe(BaseModel):  # type: ignore[explicit-any]
     """The onboarding-demo gate result: whether this is the demo conversation and
     how many messages it holds."""
 
@@ -187,7 +187,7 @@ class OnboardingProbe(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class CreateConversationResponse(BaseModel):
+class CreateConversationResponse(BaseModel):  # type: ignore[explicit-any]
     """Acknowledgement for a newly created conversation."""
 
     conversation_id: str
@@ -196,7 +196,7 @@ class CreateConversationResponse(BaseModel):
     detail: str
 
 
-class SystemConversationCreated(BaseModel):
+class SystemConversationCreated(BaseModel):  # type: ignore[explicit-any]
     """A system-generated conversation (workflow / email / reminder processing).
 
     Carries more than :class:`CreateConversationResponse` because the caller that
@@ -213,7 +213,7 @@ class SystemConversationCreated(BaseModel):
     detail: str
 
 
-class ConversationListResponse(BaseModel):
+class ConversationListResponse(BaseModel):  # type: ignore[explicit-any]
     """One page of the conversation list: every starred conversation followed by
     the requested page of the non-starred ones."""
 
@@ -224,7 +224,7 @@ class ConversationListResponse(BaseModel):
     total_pages: int
 
 
-class ConversationSyncRow(BaseModel):
+class ConversationSyncRow(BaseModel):  # type: ignore[explicit-any]
     """One batch-sync row — the conversation's client-visible fields plus its full
     message history and artifact registry.
 
@@ -248,13 +248,13 @@ class ConversationSyncRow(BaseModel):
     active_stream_id: str | None = None
 
 
-class BatchSyncResponse(BaseModel):
+class BatchSyncResponse(BaseModel):  # type: ignore[explicit-any]
     """The conversations a client's sync request found stale."""
 
     conversations: list[ConversationSyncRow] = Field(default_factory=list)
 
 
-class ConversationActionResponse(BaseModel):
+class ConversationActionResponse(BaseModel):  # type: ignore[explicit-any]
     """Acknowledgement for a conversation-scoped action that reports back which
     conversation it applied to — delete, rename, mark read/unread."""
 
@@ -262,26 +262,26 @@ class ConversationActionResponse(BaseModel):
     conversation_id: str
 
 
-class DeleteAllConversationsResponse(BaseModel):
+class DeleteAllConversationsResponse(BaseModel):  # type: ignore[explicit-any]
     """Acknowledgement for the bulk delete, which names no single conversation."""
 
     message: str
 
 
-class StarConversationResponse(BaseModel):
+class StarConversationResponse(BaseModel):  # type: ignore[explicit-any]
     """Acknowledgement echoing the conversation's new starred state."""
 
     message: str
     starred: bool
 
 
-class UpdateDescriptionResponse(ConversationActionResponse):
+class UpdateDescriptionResponse(ConversationActionResponse):  # type: ignore[explicit-any]
     """Rename acknowledgement, echoing the description that was stored."""
 
     description: str
 
 
-class UpdateMessagesResponse(BaseModel):
+class UpdateMessagesResponse(BaseModel):  # type: ignore[explicit-any]
     """Append acknowledgement carrying the ids the appended messages were stored
     under — the client reconciles its optimistic records against these."""
 
@@ -291,14 +291,14 @@ class UpdateMessagesResponse(BaseModel):
     message_ids: list[str]
 
 
-class PinMessageResponse(BaseModel):
+class PinMessageResponse(BaseModel):  # type: ignore[explicit-any]
     """Acknowledgement echoing a message's new pinned state."""
 
     message: str
     pinned: bool
 
 
-class PinnedMessagesResponse(BaseModel):
+class PinnedMessagesResponse(BaseModel):  # type: ignore[explicit-any]
     """Every pinned message across the user's conversations."""
 
     results: list[ConversationMessageHit] = Field(default_factory=list)

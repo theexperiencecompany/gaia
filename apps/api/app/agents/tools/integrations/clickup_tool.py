@@ -11,7 +11,7 @@ from app.utils.context_utils import execute_tool
 from app.utils.json_helpers import dict_bag, list_bag, text_bag, text_opt_bag
 
 
-def register_clickup_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_clickup_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register ClickUp tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="CLICKUP")

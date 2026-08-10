@@ -56,14 +56,14 @@ _SAFE_INLINE_TYPES = (
 )
 
 
-class PinRequest(BaseModel):
+class PinRequest(BaseModel):  # type: ignore[explicit-any]
     path: str = Field(..., description="Path relative to the session's artifacts/")
     target_name: str | None = Field(
         default=None, description="Optional filename for the pinned copy"
     )
 
 
-class PinResponse(BaseModel):
+class PinResponse(BaseModel):  # type: ignore[explicit-any]
     pinned_path: str = Field(..., description="/workspace/... path of the pinned copy")
 
 

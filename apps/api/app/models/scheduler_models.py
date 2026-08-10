@@ -19,7 +19,7 @@ class ScheduledTaskStatus(str, Enum):
     PAUSED = "paused"
 
 
-class BaseScheduledTask(BaseModel):
+class BaseScheduledTask(BaseModel):  # type: ignore[explicit-any]
     """Base model for any scheduled task; domain models inherit and add their own fields."""
 
     id: str | None = Field(None, alias="_id")
@@ -77,7 +77,7 @@ class BaseScheduledTask(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class ScheduleConfig(BaseModel):
+class ScheduleConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for scheduling a task."""
 
     repeat: str | None = Field(None, description="Cron expression for recurring tasks")
@@ -111,7 +111,7 @@ class ScheduleConfig(BaseModel):
         return v
 
 
-class TaskExecutionResult(BaseModel):
+class TaskExecutionResult(BaseModel):  # type: ignore[explicit-any]
     """Result of executing a scheduled task."""
 
     success: bool = Field(..., description="Whether the task executed successfully")

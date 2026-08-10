@@ -599,7 +599,7 @@ def _inject_available_subagents(
     return result
 
 
-def get_retrieve_tools_function(
+def get_retrieve_tools_function(  # type: ignore[explicit-any]
     tool_space: str = "general",
     include_subagents: bool = True,
     limit: int = 25,

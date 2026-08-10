@@ -162,7 +162,7 @@ async def submit_integrations(
         raise HTTPException(status_code=500, detail="Failed to submit integrations") from e
 
 
-class ClarifyQuestionsRequest(BaseModel):
+class ClarifyQuestionsRequest(BaseModel):  # type: ignore[explicit-any]
     name: str
     profession: str
     focus: str
@@ -534,11 +534,11 @@ async def get_onboarding_personalization(
         raise HTTPException(status_code=500, detail="Failed to fetch personalization data")
 
 
-class WritingStyleEditRequest(BaseModel):
+class WritingStyleEditRequest(BaseModel):  # type: ignore[explicit-any]
     edited_summary: str
 
 
-class WritingStyleRegenerateRequest(BaseModel):
+class WritingStyleRegenerateRequest(BaseModel):  # type: ignore[explicit-any]
     edited_summary: str
     profession: str = ""
 
@@ -601,7 +601,7 @@ async def regenerate_writing_style_example(
         ) from e
 
 
-class SocialProfilesConfirmRequest(BaseModel):
+class SocialProfilesConfirmRequest(BaseModel):  # type: ignore[explicit-any]
     profiles: list[SocialProfile]
 
 

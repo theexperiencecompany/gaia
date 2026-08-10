@@ -15,21 +15,21 @@ from app.models.mcp_config import (
 from app.models.trigger_config import TriggerConfig
 
 
-class IntegrationHowItWorksStep(BaseModel):
+class IntegrationHowItWorksStep(BaseModel):  # type: ignore[explicit-any]
     """A single step in the 'How it works' section."""
 
     title: str
     body: str
 
 
-class IntegrationFAQ(BaseModel):
+class IntegrationFAQ(BaseModel):  # type: ignore[explicit-any]
     """A single FAQ entry for the integration detail page."""
 
     question: str
     answer: str
 
 
-class IntegrationContent(BaseModel):
+class IntegrationContent(BaseModel):  # type: ignore[explicit-any]
     """Rich marketplace content shown only on the integration detail page.
 
     Serializes with camelCase aliases (use_cases -> useCases, how_it_works ->
@@ -45,7 +45,7 @@ class IntegrationContent(BaseModel):
     faqs: list[IntegrationFAQ] = []
 
 
-class OAuthIntegration(BaseModel):
+class OAuthIntegration(BaseModel):  # type: ignore[explicit-any]
     """OAuth integration configuration."""
 
     id: str
@@ -93,13 +93,13 @@ class OAuthIntegration(BaseModel):
         return self
 
 
-class MobileLoginUrlResponse(BaseModel):
+class MobileLoginUrlResponse(BaseModel):  # type: ignore[explicit-any]
     """The hosted authorization URL a mobile client should open."""
 
     url: str
 
 
-class OAuthClientMetadataResponse(BaseModel):
+class OAuthClientMetadataResponse(BaseModel):  # type: ignore[explicit-any]
     """The OAuth Client ID Metadata Document authorization servers fetch.
 
     Shape is fixed by draft-ietf-oauth-client-id-metadata-document-00 §4.1;

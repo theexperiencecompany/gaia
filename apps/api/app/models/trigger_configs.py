@@ -19,7 +19,7 @@ from pydantic import BaseModel, Discriminator, Field
 MAX_GMAIL_POLL_INTERVAL_MINUTES = 60 * 24 * 30  # 30 days
 
 
-class BaseTriggerConfigData(BaseModel):
+class BaseTriggerConfigData(BaseModel):  # type: ignore[explicit-any]
     """Base class for trigger-specific configuration."""
 
 
@@ -28,7 +28,7 @@ class BaseTriggerConfigData(BaseModel):
 # =============================================================================
 
 
-class CalendarEventCreatedConfig(BaseTriggerConfigData):
+class CalendarEventCreatedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for calendar_event_created trigger."""
 
     trigger_name: Literal["calendar_event_created"] = "calendar_event_created"
@@ -38,7 +38,7 @@ class CalendarEventCreatedConfig(BaseTriggerConfigData):
     )
 
 
-class CalendarEventStartingSoonConfig(BaseTriggerConfigData):
+class CalendarEventStartingSoonConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for calendar_event_starting_soon trigger."""
 
     trigger_name: Literal["calendar_event_starting_soon"] = "calendar_event_starting_soon"
@@ -60,14 +60,14 @@ class CalendarEventStartingSoonConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
-class GmailNewMessageConfig(BaseTriggerConfigData):
+class GmailNewMessageConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for gmail new message trigger."""
 
     trigger_name: Literal["gmail_new_message"] = "gmail_new_message"
     # Gmail triggers currently have no additional config
 
 
-class GmailPollInboxConfig(BaseTriggerConfigData):
+class GmailPollInboxConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for interval-based Gmail polling.
 
     Uses GMAIL_NEW_GMAIL_MESSAGE with an interval so Composio polls Gmail
@@ -89,7 +89,7 @@ class GmailPollInboxConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
-class GitHubCommitEventConfig(BaseTriggerConfigData):
+class GitHubCommitEventConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for github_commit_event trigger."""
 
     trigger_name: Literal["github_commit_event"] = "github_commit_event"
@@ -99,7 +99,7 @@ class GitHubCommitEventConfig(BaseTriggerConfigData):
     )
 
 
-class GitHubPrEventConfig(BaseTriggerConfigData):
+class GitHubPrEventConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for github_pr_event trigger."""
 
     trigger_name: Literal["github_pr_event"] = "github_pr_event"
@@ -109,7 +109,7 @@ class GitHubPrEventConfig(BaseTriggerConfigData):
     )
 
 
-class GitHubStarAddedConfig(BaseTriggerConfigData):
+class GitHubStarAddedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for github_star_added trigger."""
 
     trigger_name: Literal["github_star_added"] = "github_star_added"
@@ -119,7 +119,7 @@ class GitHubStarAddedConfig(BaseTriggerConfigData):
     )
 
 
-class GitHubIssueAddedConfig(BaseTriggerConfigData):
+class GitHubIssueAddedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for github_issue_added trigger."""
 
     trigger_name: Literal["github_issue_added"] = "github_issue_added"
@@ -134,19 +134,19 @@ class GitHubIssueAddedConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
-class GoogleDocsNewDocumentConfig(BaseTriggerConfigData):
+class GoogleDocsNewDocumentConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for google_docs_new_document trigger."""
 
     trigger_name: Literal["google_docs_new_document"] = "google_docs_new_document"
 
 
-class GoogleDocsDocumentDeletedConfig(BaseTriggerConfigData):
+class GoogleDocsDocumentDeletedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for google_docs_document_deleted trigger."""
 
     trigger_name: Literal["google_docs_document_deleted"] = "google_docs_document_deleted"
 
 
-class GoogleDocsDocumentUpdatedConfig(BaseTriggerConfigData):
+class GoogleDocsDocumentUpdatedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for google_docs_document_updated trigger."""
 
     trigger_name: Literal["google_docs_document_updated"] = "google_docs_document_updated"
@@ -157,7 +157,7 @@ class GoogleDocsDocumentUpdatedConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
-class GoogleSheetsNewRowConfig(BaseTriggerConfigData):
+class GoogleSheetsNewRowConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for google_sheets_new_row trigger."""
 
     trigger_name: Literal["google_sheets_new_row"] = "google_sheets_new_row"
@@ -171,7 +171,7 @@ class GoogleSheetsNewRowConfig(BaseTriggerConfigData):
     )
 
 
-class GoogleSheetsNewSheetConfig(BaseTriggerConfigData):
+class GoogleSheetsNewSheetConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for google_sheets_new_sheet trigger."""
 
     trigger_name: Literal["google_sheets_new_sheet"] = "google_sheets_new_sheet"
@@ -186,7 +186,7 @@ class GoogleSheetsNewSheetConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
-class LinearIssueCreatedConfig(BaseTriggerConfigData):
+class LinearIssueCreatedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for linear_issue_created trigger."""
 
     trigger_name: Literal["linear_issue_created"] = "linear_issue_created"
@@ -196,7 +196,7 @@ class LinearIssueCreatedConfig(BaseTriggerConfigData):
     )
 
 
-class LinearIssueUpdatedConfig(BaseTriggerConfigData):
+class LinearIssueUpdatedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for linear_issue_updated trigger."""
 
     trigger_name: Literal["linear_issue_updated"] = "linear_issue_updated"
@@ -206,7 +206,7 @@ class LinearIssueUpdatedConfig(BaseTriggerConfigData):
     )
 
 
-class LinearCommentAddedConfig(BaseTriggerConfigData):
+class LinearCommentAddedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for linear_comment_added trigger."""
 
     trigger_name: Literal["linear_comment_added"] = "linear_comment_added"
@@ -221,7 +221,7 @@ class LinearCommentAddedConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
-class NotionNewPageInDbConfig(BaseTriggerConfigData):
+class NotionNewPageInDbConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for notion_new_page_in_db trigger."""
 
     trigger_name: Literal["notion_new_page_in_db"] = "notion_new_page_in_db"
@@ -231,7 +231,7 @@ class NotionNewPageInDbConfig(BaseTriggerConfigData):
     )
 
 
-class NotionPageUpdatedConfig(BaseTriggerConfigData):
+class NotionPageUpdatedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for notion_page_updated trigger."""
 
     trigger_name: Literal["notion_page_updated"] = "notion_page_updated"
@@ -241,7 +241,7 @@ class NotionPageUpdatedConfig(BaseTriggerConfigData):
     )
 
 
-class NotionAllPageEventsConfig(BaseTriggerConfigData):
+class NotionAllPageEventsConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for notion_all_page_events trigger."""
 
     trigger_name: Literal["notion_all_page_events"] = "notion_all_page_events"
@@ -252,7 +252,7 @@ class NotionAllPageEventsConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
-class SlackNewMessageConfig(BaseTriggerConfigData):
+class SlackNewMessageConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for slack_new_message trigger."""
 
     trigger_name: Literal["slack_new_message"] = "slack_new_message"
@@ -282,7 +282,7 @@ class SlackNewMessageConfig(BaseTriggerConfigData):
     )
 
 
-class SlackChannelCreatedConfig(BaseTriggerConfigData):
+class SlackChannelCreatedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for slack_channel_created trigger."""
 
     trigger_name: Literal["slack_channel_created"] = "slack_channel_created"
@@ -293,7 +293,7 @@ class SlackChannelCreatedConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
-class TodoistNewTaskCreatedConfig(BaseTriggerConfigData):
+class TodoistNewTaskCreatedConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for todoist_new_task_created trigger."""
 
     trigger_name: Literal["todoist_new_task_created"] = "todoist_new_task_created"
@@ -304,7 +304,7 @@ class TodoistNewTaskCreatedConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
-class AsanaTaskTriggerConfig(BaseTriggerConfigData):
+class AsanaTaskTriggerConfig(BaseTriggerConfigData):  # type: ignore[explicit-any]
     """Config for asana_task_trigger."""
 
     trigger_name: Literal["asana_task_trigger"] = "asana_task_trigger"

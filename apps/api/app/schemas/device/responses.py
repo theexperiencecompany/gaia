@@ -6,7 +6,7 @@ from typing import TypedDict
 from pydantic import BaseModel
 
 
-class StartPairingResponse(BaseModel):
+class StartPairingResponse(BaseModel):  # type: ignore[explicit-any]
     """Returned to the daemon after it starts pairing."""
 
     device_code: str
@@ -16,7 +16,7 @@ class StartPairingResponse(BaseModel):
     interval: int
 
 
-class PollPairingResponse(BaseModel):
+class PollPairingResponse(BaseModel):  # type: ignore[explicit-any]
     """Result of a pairing poll.
 
     ``status`` is ``pending`` (keep polling), ``approved`` (``refresh_token`` set),
@@ -28,7 +28,7 @@ class PollPairingResponse(BaseModel):
     refresh_token: str | None = None
 
 
-class DeviceTokenResponse(BaseModel):
+class DeviceTokenResponse(BaseModel):  # type: ignore[explicit-any]
     """Short-lived connect JWT plus the rotated refresh credential."""
 
     access_token: str
@@ -37,7 +37,7 @@ class DeviceTokenResponse(BaseModel):
     refresh_token: str
 
 
-class DeviceServerResponse(BaseModel):
+class DeviceServerResponse(BaseModel):  # type: ignore[explicit-any]
     """One MCP server a device exposes, as shown in the device list."""
 
     server_key: str
@@ -47,7 +47,7 @@ class DeviceServerResponse(BaseModel):
     tools_synced_at: datetime | None = None
 
 
-class DeviceResponse(BaseModel):
+class DeviceResponse(BaseModel):  # type: ignore[explicit-any]
     """A paired device with its status and exposed servers."""
 
     id: str
@@ -61,27 +61,27 @@ class DeviceResponse(BaseModel):
     servers: list[DeviceServerResponse]
 
 
-class DeviceListResponse(BaseModel):
+class DeviceListResponse(BaseModel):  # type: ignore[explicit-any]
     """The user's paired devices."""
 
     devices: list[DeviceResponse]
 
 
-class RegisterServerResponse(BaseModel):
+class RegisterServerResponse(BaseModel):  # type: ignore[explicit-any]
     """Result of registering a device's MCP server."""
 
     integration_id: str
     server_key: str
 
 
-class DevicePairApproveResponse(BaseModel):
+class DevicePairApproveResponse(BaseModel):  # type: ignore[explicit-any]
     """Result of approving a pending device pairing."""
 
     device_id: str
     name: str
 
 
-class DeviceRevokeResponse(BaseModel):
+class DeviceRevokeResponse(BaseModel):  # type: ignore[explicit-any]
     """Result of revoking a device's access."""
 
     device_id: str

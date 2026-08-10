@@ -7,7 +7,7 @@ Reference: node_modules/@composio/core/generated/googlesheets.ts
 from pydantic import BaseModel, Field
 
 
-class GoogleSheetsNewRowPayload(BaseModel):
+class GoogleSheetsNewRowPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for GOOGLESHEETS_NEW_ROWS_TRIGGER."""
 
     detected_at: str | None = Field(None, description="ISO timestamp when row was detected")
@@ -17,7 +17,7 @@ class GoogleSheetsNewRowPayload(BaseModel):
     spreadsheet_id: str | None = Field(None, description="Spreadsheet ID")
 
 
-class GoogleSheetsNewSheetAddedPayload(BaseModel):
+class GoogleSheetsNewSheetAddedPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER."""
 
     detected_at: str | None = Field(None, description="ISO timestamp")

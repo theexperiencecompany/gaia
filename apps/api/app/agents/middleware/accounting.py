@@ -107,7 +107,7 @@ def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
     return None
 
 
-class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
+class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):  # type: ignore[explicit-any]
     """Track LLM usage + emit wide events after every model call.
 
     Responsibilities:

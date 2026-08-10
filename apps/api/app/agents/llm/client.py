@@ -477,7 +477,7 @@ def _resolve_fallback(
     return with_llm_retry(resolved)
 
 
-async def ainvoke_llm(
+async def ainvoke_llm(  # type: ignore[explicit-any]
     primary: Runnable[Any, Any],
     messages: LanguageModelInput,
     *,
@@ -543,7 +543,7 @@ async def ainvoke_llm(
         await _record_auxiliary_usage(usage_handler, label, str(user_id) if user_id else None)
 
 
-def invoke_llm(
+def invoke_llm(  # type: ignore[explicit-any]
     primary: Runnable[Any, Any],
     messages: LanguageModelInput,
     *,

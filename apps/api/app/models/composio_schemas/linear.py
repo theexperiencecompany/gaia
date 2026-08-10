@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 # =============================================================================
 
 
-class LinearIssueCreatedPayload(BaseModel):
+class LinearIssueCreatedPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for LINEAR_ISSUE_CREATED_TRIGGER."""
 
     action: str | None = Field(None, description="Action (create)")
@@ -20,7 +20,7 @@ class LinearIssueCreatedPayload(BaseModel):
     url: str | None = Field(None, description="Issue URL")
 
 
-class LinearCommentAddedPayload(BaseModel):
+class LinearCommentAddedPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for LINEAR_COMMENT_EVENT_TRIGGER."""
 
     action: str | None = Field(None, description="Action (create)")

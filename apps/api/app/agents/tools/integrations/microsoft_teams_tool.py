@@ -15,7 +15,7 @@ TEAMS_TOOLKIT = "MICROSOFT_TEAMS"
 GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
 
 
-def register_microsoft_teams_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_microsoft_teams_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register Microsoft Teams tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="MICROSOFT_TEAMS")

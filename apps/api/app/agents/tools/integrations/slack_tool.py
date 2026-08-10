@@ -13,7 +13,7 @@ from app.utils.json_helpers import dict_bag, list_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 
-def register_slack_custom_tools(composio: Composio[Any, Any]) -> list[str]:
+def register_slack_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register Slack tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="SLACK")

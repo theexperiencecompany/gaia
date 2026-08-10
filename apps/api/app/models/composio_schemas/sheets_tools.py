@@ -10,7 +10,7 @@ Note: All Composio tool responses are wrapped in ToolExecutionResponse with
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class GoogleSheetsSearchSpreadsheetsInput(BaseModel):
+class GoogleSheetsSearchSpreadsheetsInput(BaseModel):  # type: ignore[explicit-any]
     """Input for GOOGLESHEETS_SEARCH_SPREADSHEETS."""
 
     created_after: str | None = Field(
@@ -26,13 +26,13 @@ class GoogleSheetsSearchSpreadsheetsInput(BaseModel):
     order_by: str | None = Field(None, description="Sort order", alias="orderBy")
 
 
-class GoogleSheetsGetSheetNamesInput(BaseModel):
+class GoogleSheetsGetSheetNamesInput(BaseModel):  # type: ignore[explicit-any]
     """Input for GOOGLESHEETS_GET_SHEET_NAMES."""
 
     spreadsheet_id: str | None = Field(None, description="Spreadsheet ID")
 
 
-class GoogleSheetsOwner(BaseModel):
+class GoogleSheetsOwner(BaseModel):  # type: ignore[explicit-any]
     """Spreadsheet owner info."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
@@ -43,7 +43,7 @@ class GoogleSheetsOwner(BaseModel):
     emailAddress: str | None = None
 
 
-class GoogleSheetsSpreadsheet(BaseModel):
+class GoogleSheetsSpreadsheet(BaseModel):  # type: ignore[explicit-any]
     """Google Sheets spreadsheet model."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
@@ -55,7 +55,7 @@ class GoogleSheetsSpreadsheet(BaseModel):
     owners: list[GoogleSheetsOwner] = Field(default_factory=list)
 
 
-class GoogleSheetsSearchSpreadsheetsData(BaseModel):
+class GoogleSheetsSearchSpreadsheetsData(BaseModel):  # type: ignore[explicit-any]
     """Data inside ToolExecutionResponse.data for GOOGLESHEETS_SEARCH_SPREADSHEETS."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
@@ -63,7 +63,7 @@ class GoogleSheetsSearchSpreadsheetsData(BaseModel):
     spreadsheets: list[GoogleSheetsSpreadsheet] = Field(default_factory=list)
 
 
-class GoogleSheetsGetSheetNamesData(BaseModel):
+class GoogleSheetsGetSheetNamesData(BaseModel):  # type: ignore[explicit-any]
     """Data inside ToolExecutionResponse.data for GOOGLESHEETS_GET_SHEET_NAMES."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")

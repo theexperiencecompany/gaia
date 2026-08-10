@@ -7,7 +7,7 @@ Reference: node_modules/@composio/core/generated/googlecalendar.ts
 from pydantic import BaseModel, Field
 
 
-class GoogleCalendarEventCreatedPayload(BaseModel):
+class GoogleCalendarEventCreatedPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER."""
 
     calendar_id: str | None = Field(None, description="The calendar identifier")
@@ -19,7 +19,7 @@ class GoogleCalendarEventCreatedPayload(BaseModel):
     summary: str | None = Field(None, description="Event title/summary")
 
 
-class GoogleCalendarEventStartingSoonPayload(BaseModel):
+class GoogleCalendarEventStartingSoonPayload(BaseModel):  # type: ignore[explicit-any]
     """Payload for GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER."""
 
     attendees: list[dict[str, object]] | None = Field(None, description="List of attendees")

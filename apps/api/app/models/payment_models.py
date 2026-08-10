@@ -29,7 +29,7 @@ class SubscriptionStatus(str, Enum):
 
 
 # Request Models
-class CreateSubscriptionRequest(BaseModel):
+class CreateSubscriptionRequest(BaseModel):  # type: ignore[explicit-any]
     """Simplified request model for creating a subscription - backend handles security."""
 
     product_id: str = Field(..., description="Product ID to subscribe to")
@@ -37,7 +37,7 @@ class CreateSubscriptionRequest(BaseModel):
 
 
 # Response Models
-class PlanResponse(BaseModel):
+class PlanResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for subscription plan."""
 
     id: str = Field(..., description="Plan ID")
@@ -54,7 +54,7 @@ class PlanResponse(BaseModel):
     updated_at: datetime = Field(..., description="Update timestamp")
 
 
-class CreateSubscriptionResponse(BaseModel):
+class CreateSubscriptionResponse(BaseModel):  # type: ignore[explicit-any]
     """Hosted-checkout session created for a new subscription."""
 
     # Dodo's checkout-session id, not a subscription id — the subscription only exists
@@ -65,7 +65,7 @@ class CreateSubscriptionResponse(BaseModel):
     status: str = Field(..., description="Checkout creation status")
 
 
-class UserSubscriptionStatus(BaseModel):
+class UserSubscriptionStatus(BaseModel):  # type: ignore[explicit-any]
     """Response model for user subscription status."""
 
     user_id: str = Field(..., description="User ID")
@@ -82,7 +82,7 @@ class UserSubscriptionStatus(BaseModel):
 
 
 # Database Models (Internal)
-class PlanDocument(MongoDocument):
+class PlanDocument(MongoDocument):  # type: ignore[explicit-any]
     """A subscription plan as stored in the ``subscription_plans`` collection.
 
     Global (not user-scoped); ``id`` is the stringified Mongo ``_id``. Seeded by
@@ -104,7 +104,7 @@ class PlanDocument(MongoDocument):
     updated_at: datetime
 
 
-class PlanUpdate(BaseModel):
+class PlanUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed ``$set`` fields for a plan row (admin/seed edits)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -112,7 +112,7 @@ class PlanUpdate(BaseModel):
     is_active: bool | None = None
 
 
-class SubscriptionDocument(MongoDocument):
+class SubscriptionDocument(MongoDocument):  # type: ignore[explicit-any]
     """A subscription as stored in the ``subscriptions`` collection.
 
     Global (webhook updates key on ``dodo_subscription_id`` with no user in scope);
@@ -132,7 +132,7 @@ class SubscriptionDocument(MongoDocument):
     updated_at: datetime | None = None
 
 
-class SubscriptionUpdate(BaseModel):
+class SubscriptionUpdate(BaseModel):  # type: ignore[explicit-any]
     """Typed ``$set`` fields for a subscription.
 
     Covers every field the Dodo subscription webhooks write. Types mirror
@@ -158,7 +158,7 @@ class SubscriptionUpdate(BaseModel):
     cancel_at_next_billing_date: bool | None = None
 
 
-class ProcessedWebhookDocument(MongoDocument):
+class ProcessedWebhookDocument(MongoDocument):  # type: ignore[explicit-any]
     """An idempotency record in the ``processed_webhooks`` collection.
 
     Keyed by the business ``webhook_id`` (a unique index enforces
@@ -176,13 +176,13 @@ class ProcessedWebhookDocument(MongoDocument):
     processed_at: datetime | None = None
 
 
-class ProcessedWebhookUpdate(BaseModel):
+class ProcessedWebhookUpdate(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(extra="forbid")
 
     status: str | None = None
 
 
-class PaymentVerificationResponse(BaseModel):
+class PaymentVerificationResponse(BaseModel):  # type: ignore[explicit-any]
     payment_completed: bool
     subscription_id: str | None = None
     message: str

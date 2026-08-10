@@ -12,7 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class GitHubListRepositoriesInput(BaseModel):
+class GitHubListRepositoriesInput(BaseModel):  # type: ignore[explicit-any]
     """Input for GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER."""
 
     before: str | None = Field(None, description="Filter for repos updated before timestamp")
@@ -32,7 +32,7 @@ class GitHubListRepositoriesInput(BaseModel):
     )
 
 
-class GitHubRepository(BaseModel):
+class GitHubRepository(BaseModel):  # type: ignore[explicit-any]
     """GitHub repository model."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
@@ -52,7 +52,7 @@ class GitHubRepository(BaseModel):
     default_branch: str | None = None
 
 
-class GitHubListRepositoriesData(BaseModel):
+class GitHubListRepositoriesData(BaseModel):  # type: ignore[explicit-any]
     """Data inside ToolExecutionResponse.data for GITHUB_LIST_REPOSITORIES.
 
     The API returns a list of repositories directly, but the Composio wrapper

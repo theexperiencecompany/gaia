@@ -33,7 +33,7 @@ class SupportRequestPriority(str, Enum):
     URGENT = "urgent"
 
 
-class SupportAttachment(BaseModel):
+class SupportAttachment(BaseModel):  # type: ignore[explicit-any]
     """Model for support request attachments."""
 
     filename: str = Field(..., description="Original filename")
@@ -46,7 +46,7 @@ class SupportAttachment(BaseModel):
     )
 
 
-class SupportRequestCreate(BaseModel):
+class SupportRequestCreate(BaseModel):  # type: ignore[explicit-any]
     """Request model for creating a support request."""
 
     type: SupportRequestType = Field(..., description="Type of request (support or feature)")
@@ -56,7 +56,7 @@ class SupportRequestCreate(BaseModel):
     )
 
 
-class SupportRequestResponse(BaseModel):
+class SupportRequestResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for support requests."""
 
     id: str = Field(..., description="Unique identifier for the support request")
@@ -83,7 +83,7 @@ class SupportRequestResponse(BaseModel):
     )
 
 
-class SupportRequestSubmissionResponse(BaseModel):
+class SupportRequestSubmissionResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for support request submission."""
 
     success: bool = Field(..., description="Whether the submission was successful")
@@ -94,7 +94,7 @@ class SupportRequestSubmissionResponse(BaseModel):
     )
 
 
-class SupportRequestPagination(BaseModel):
+class SupportRequestPagination(BaseModel):  # type: ignore[explicit-any]
     """Pagination envelope for a page of support requests."""
 
     page: int = Field(..., description="Current page number (1-based)")
@@ -103,35 +103,35 @@ class SupportRequestPagination(BaseModel):
     pages: int = Field(..., description="Total number of pages")
 
 
-class SupportRequestListResponse(BaseModel):
+class SupportRequestListResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for a paginated list of a user's support requests."""
 
     requests: list[SupportRequestResponse] = Field(..., description="Requests on this page")
     pagination: SupportRequestPagination = Field(..., description="Pagination info")
 
 
-class SupportRateLimitWindow(BaseModel):
+class SupportRateLimitWindow(BaseModel):  # type: ignore[explicit-any]
     """One configured rate-limit window for support request submission."""
 
     limit: int = Field(..., description="Maximum submissions allowed in the window")
     window: str = Field(..., description="Human-readable window length")
 
 
-class SupportRateLimits(BaseModel):
+class SupportRateLimits(BaseModel):  # type: ignore[explicit-any]
     """The rate-limit windows enforced on support request submission."""
 
     hourly: SupportRateLimitWindow
     daily: SupportRateLimitWindow
 
 
-class SupportRateLimitStatusResponse(BaseModel):
+class SupportRateLimitStatusResponse(BaseModel):  # type: ignore[explicit-any]
     """Response model for the support rate-limit status endpoint."""
 
     limits: SupportRateLimits = Field(..., description="Configured limits")
     note: str = Field(..., description="How the limits are applied")
 
 
-class SupportEmailNotification(BaseModel):
+class SupportEmailNotification(BaseModel):  # type: ignore[explicit-any]
     """Model for email notification data."""
 
     user_name: str
@@ -145,7 +145,7 @@ class SupportEmailNotification(BaseModel):
     attachments: list[SupportAttachment] = []
 
 
-class SupportRequestDocument(UserScopedDocument):
+class SupportRequestDocument(UserScopedDocument):  # type: ignore[explicit-any]
     """A support request as stored in the ``support_requests`` collection.
 
     User-scoped; ``id`` is a caller-minted UUID stored as the Mongo ``_id``
@@ -168,7 +168,7 @@ class SupportRequestDocument(UserScopedDocument):
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
-class SupportRequestUpdate(BaseModel):
+class SupportRequestUpdate(BaseModel):  # type: ignore[explicit-any]
     """Mutable fields of a support request (triage/resolution)."""
 
     model_config = ConfigDict(extra="forbid")

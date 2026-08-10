@@ -54,7 +54,7 @@ def to_agent_state(state: State | dict[str, object]) -> AgentState[object]:
 
 
 @dataclass(frozen=True)
-class BigtoolRuntime(  # type: ignore[misc]  # Runtime IS frozen via _DC_KWARGS but mypy can't see it
+class BigtoolRuntime(  # type: ignore[misc, explicit-any]  # Runtime IS frozen via _DC_KWARGS but mypy can't see it
     Runtime[None]
 ):
     """

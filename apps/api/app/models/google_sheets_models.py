@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class ShareRecipient(BaseModel):
+class ShareRecipient(BaseModel):  # type: ignore[explicit-any]
     """Single recipient for spreadsheet sharing."""
 
     email: str = Field(..., description="Email address to share with")
@@ -16,7 +16,7 @@ class ShareRecipient(BaseModel):
     send_notification: bool = Field(default=True, description="Whether to send email notification")
 
 
-class ShareSpreadsheetInput(BaseModel):
+class ShareSpreadsheetInput(BaseModel):  # type: ignore[explicit-any]
     """Input for sharing a Google Spreadsheet with multiple recipients."""
 
     spreadsheet_id: str = Field(..., description="ID of the spreadsheet to share")
@@ -27,7 +27,7 @@ class ShareSpreadsheetInput(BaseModel):
     )
 
 
-class PivotValue(BaseModel):
+class PivotValue(BaseModel):  # type: ignore[explicit-any]
     """Configuration for a value field in a pivot table."""
 
     column: str = Field(..., description="Column header name to aggregate")
@@ -39,7 +39,7 @@ class PivotValue(BaseModel):
     )
 
 
-class CreatePivotTableInput(BaseModel):
+class CreatePivotTableInput(BaseModel):  # type: ignore[explicit-any]
     """Input for creating a pivot table in a spreadsheet."""
 
     spreadsheet_id: str = Field(..., description="ID of the spreadsheet")
@@ -70,7 +70,7 @@ class CreatePivotTableInput(BaseModel):
     )
 
 
-class DataValidationInput(BaseModel):
+class DataValidationInput(BaseModel):  # type: ignore[explicit-any]
     """Input for setting data validation rules on a range."""
 
     spreadsheet_id: str = Field(..., description="ID of the spreadsheet")
@@ -116,7 +116,7 @@ class DataValidationInput(BaseModel):
     )
 
 
-class ConditionalFormatInput(BaseModel):
+class ConditionalFormatInput(BaseModel):  # type: ignore[explicit-any]
     """Input for adding conditional formatting rules."""
 
     spreadsheet_id: str = Field(..., description="ID of the spreadsheet")
@@ -174,7 +174,7 @@ class ConditionalFormatInput(BaseModel):
     )
 
 
-class ChartInput(BaseModel):
+class ChartInput(BaseModel):  # type: ignore[explicit-any]
     """Input for creating a chart in a spreadsheet."""
 
     spreadsheet_id: str = Field(..., description="ID of the spreadsheet")

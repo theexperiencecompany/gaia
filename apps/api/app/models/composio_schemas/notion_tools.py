@@ -12,7 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class NotionFetchDataInput(BaseModel):
+class NotionFetchDataInput(BaseModel):  # type: ignore[explicit-any]
     """Input for NOTION_FETCH_DATA."""
 
     fetch_type: Literal["pages", "databases", "all"] = Field(
@@ -22,7 +22,7 @@ class NotionFetchDataInput(BaseModel):
     query: str | None = Field(None, description="Search query to filter by title")
 
 
-class NotionItem(BaseModel):
+class NotionItem(BaseModel):  # type: ignore[explicit-any]
     """Notion item (page or database)."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
@@ -33,7 +33,7 @@ class NotionItem(BaseModel):
     url: str | None = None
 
 
-class NotionFetchDataData(BaseModel):
+class NotionFetchDataData(BaseModel):  # type: ignore[explicit-any]
     """Data inside ToolExecutionResponse.data for NOTION_FETCH_DATA."""
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")

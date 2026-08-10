@@ -20,7 +20,7 @@ class E2bSandboxState(str, Enum):
     DEAD = "dead"
 
 
-class E2bSandboxDocument(MongoDocument):
+class E2bSandboxDocument(MongoDocument):  # type: ignore[explicit-any]
     """A user's E2B sandbox record — one per user, keyed by ``user_id``.
 
     ``last_canary_ts`` is an ISO-format string; the other timestamps are datetimes.
@@ -41,7 +41,7 @@ class E2bSandboxDocument(MongoDocument):
     last_canary_ts: str | None = None
 
 
-class E2bSandboxUpdate(BaseModel):
+class E2bSandboxUpdate(BaseModel):  # type: ignore[explicit-any]
     """Sandbox writes are raw ($set/$setOnInsert/$inc), never typed updates."""
 
     model_config = ConfigDict(extra="forbid")

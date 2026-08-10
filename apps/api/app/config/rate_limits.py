@@ -38,21 +38,21 @@ class RateLimitPeriod(str, Enum):
     MONTH = "month"
 
 
-class RateLimitConfig(BaseModel):
+class RateLimitConfig(BaseModel):  # type: ignore[explicit-any]
     """Allowed request counts per day and per month (0 = no limit for that period)."""
 
     day: int = 0
     month: int = 0
 
 
-class FeatureInfo(BaseModel):
+class FeatureInfo(BaseModel):  # type: ignore[explicit-any]
     """User-facing title and description for a rate-limited feature."""
 
     title: str
     description: str
 
 
-class TieredRateLimits(BaseModel):
+class TieredRateLimits(BaseModel):  # type: ignore[explicit-any]
     """Per-plan rate limit configs for one feature."""
 
     free: RateLimitConfig = RateLimitConfig()

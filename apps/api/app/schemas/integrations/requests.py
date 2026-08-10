@@ -12,13 +12,13 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.utils.url_safety import assert_safe_url_shape
 
 
-class AddUserIntegrationRequest(BaseModel):
+class AddUserIntegrationRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to add an integration to user's workspace."""
 
     integration_id: str = Field(..., description="ID of integration to add")
 
 
-class CreateCustomIntegrationRequest(BaseModel):
+class CreateCustomIntegrationRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to create a custom MCP integration."""
 
     name: str = Field(..., min_length=1, max_length=100)
@@ -49,7 +49,7 @@ class CreateCustomIntegrationRequest(BaseModel):
         return self
 
 
-class UpdateCustomIntegrationRequest(BaseModel):
+class UpdateCustomIntegrationRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to update a custom integration (partial update)."""
 
     name: str | None = Field(None, min_length=1, max_length=100)
@@ -73,7 +73,7 @@ class UpdateCustomIntegrationRequest(BaseModel):
         return v
 
 
-class ConnectIntegrationRequest(BaseModel):
+class ConnectIntegrationRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to connect an integration."""
 
     redirect_path: str = Field(
@@ -83,7 +83,7 @@ class ConnectIntegrationRequest(BaseModel):
     bearer_token: str | None = Field(None)
 
 
-class UpdateIntegrationInstructionsRequest(BaseModel):
+class UpdateIntegrationInstructionsRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to set a user's custom instructions for one integration."""
 
     content: str = Field(

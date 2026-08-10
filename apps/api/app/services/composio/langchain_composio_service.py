@@ -101,7 +101,7 @@ def _reinstate_reserved_python_keywords(
     return request
 
 
-class StructuredTool(BaseStructuredTool):
+class StructuredTool(BaseStructuredTool):  # type: ignore[explicit-any]
     """StructuredTool that returns a structured failure instead of raising on invalid args."""
 
     def run(

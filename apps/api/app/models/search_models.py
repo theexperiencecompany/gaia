@@ -8,11 +8,11 @@ from app.models.notes_models import NoteSearchHit
 from app.utils.search.models import WebSearchResult
 
 
-class URLRequest(BaseModel):
+class URLRequest(BaseModel):  # type: ignore[explicit-any]
     urls: list[str]  # Always accept array of URLs
 
 
-class EmailSearchResponse(BaseModel):
+class EmailSearchResponse(BaseModel):  # type: ignore[explicit-any]
     """Contact-email addresses extracted from a web search, plus the raw search data."""
 
     emails: list[str]
@@ -20,19 +20,19 @@ class EmailSearchResponse(BaseModel):
     search_data: WebSearchResult
 
 
-class MessageSearchResult(ConversationMessageHit):
+class MessageSearchResult(ConversationMessageHit):  # type: ignore[explicit-any]
     """A message hit from keyword search, with its highlighting snippet."""
 
     snippet: str
 
 
-class NoteSearchResult(NoteSearchHit):
+class NoteSearchResult(NoteSearchHit):  # type: ignore[explicit-any]
     """A note hit from keyword search, with its highlighting snippet."""
 
     snippet: str
 
 
-class SearchResultsResponse(BaseModel):
+class SearchResultsResponse(BaseModel):  # type: ignore[explicit-any]
     """Keyword search results across messages, conversations, and notes."""
 
     messages: list[MessageSearchResult]
@@ -40,7 +40,7 @@ class SearchResultsResponse(BaseModel):
     notes: list[NoteSearchResult]
 
 
-class URLResponse(BaseModel):
+class URLResponse(BaseModel):  # type: ignore[explicit-any]
     title: Union[str, None] = None
     description: Union[str, None] = None
     favicon: Union[str, None] = None
@@ -50,11 +50,11 @@ class URLResponse(BaseModel):
     url: str
 
 
-class MultiURLResponse(BaseModel):
+class MultiURLResponse(BaseModel):  # type: ignore[explicit-any]
     results: dict[str, URLResponse]  # URL -> metadata mapping
 
 
-class SearchUrlDocument(MongoDocument):
+class SearchUrlDocument(MongoDocument):  # type: ignore[explicit-any]
     """A scraped URL's metadata as cached in the ``search_urls`` collection.
 
     Global, keyed by ``url`` (the incidental Mongo ``_id`` is unused above the
@@ -69,7 +69,7 @@ class SearchUrlDocument(MongoDocument):
     website_image: str | None = None
 
 
-class SearchUrlUpdate(BaseModel):
+class SearchUrlUpdate(BaseModel):  # type: ignore[explicit-any]
     """Refreshable metadata fields for a cached URL."""
 
     model_config = ConfigDict(extra="forbid")
