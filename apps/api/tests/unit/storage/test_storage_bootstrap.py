@@ -689,6 +689,27 @@ def test_a_key_that_already_ends_in_a_newline_is_not_doubled(
     assert path.read_text() == "KEYDATA\n"
 
 
+def test_the_key_file_is_written_with_an_explicit_utf8_encoding(
+    cfg: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # write_text defaults to the locale encoding; the explicit "utf-8" keeps the
+    # PEM bytes identical on every host. Dropping the arg (or passing None / a
+    # differently-cased alias) is invisible to the returned path, so pin the
+    # exact call instead of the file contents.
+    monkeypatch.setattr(bootstrap.settings, "JFS_ENCRYPTION_KEY", "KEYDATA")
+    calls: list[tuple[Path, str, dict[str, Any]]] = []
+    original_write_text = Path.write_text
+
+    def fake_write_text(self: Path, data: str, **kwargs: Any) -> None:
+        calls.append((self, data, dict(kwargs)))
+        original_write_text(self, data, **kwargs)
+
+    monkeypatch.setattr(bootstrap.Path, "write_text", fake_write_text)
+    path = _materialize_encryption_key()
+    assert path is not None
+    assert calls == [(path, "KEYDATA\n", {"encoding": "utf-8"})]
+
+
 # ── _format_if_needed: the destructive path ──────────────────────────
 
 
@@ -1149,6 +1170,37 @@ def test_the_mount_supervisor_records_the_ok_op_with_exact_fields(
         )
     ]
     assert isinstance(logs.info_calls[0][1]["elapsed_s"], float)
+
+
+def test_the_elapsed_seconds_are_rounded_to_one_decimal_place(
+    cfg: Path,
+    runs: RunRecorder,
+    ops: OpRecorder,
+    logs: LogRecorder,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The "mounted" line reports elapsed_s for operators judging slow mounts; a
+    # poll that ends mid-second must keep the second decimal (a round-to-2
+    # mutant is invisible at whole-second elapsed values, so force a fraction).
+    class FracClock(Clock):
+        def sleep(self, seconds: float) -> None:
+            self.slept.append(seconds)
+            self.now += 1.25
+
+    monkeypatch.setattr(bootstrap, "time", FracClock())
+    monkeypatch.setattr(bootstrap.settings, "JUICEFS_MOUNT_READY_TIMEOUT", 200)
+    runs.replies["juicefs mount"] = completed(returncode=1)
+    # 99 failed polls x 1.25s = 123.75s: round(123.75, 1) == 123.8, but a
+    # round(..., 2) mutant yields 123.75.
+    monkeypatch.setattr(bootstrap, "_is_mounted", mounted_after(100))
+    assert _mount(META, cfg) == "ok"
+    assert ops.calls == [("juicefs_mount", {"duration_ms": 123750.0, "outcome": "ok"})]
+    assert logs.info_calls == [
+        (
+            f"{LogTag.STORAGE} mounted",
+            {"mount": str(cfg), "elapsed_s": 123.8},
+        )
+    ]
 
 
 def test_the_failed_mount_records_the_op_and_logs_the_exact_fields(
