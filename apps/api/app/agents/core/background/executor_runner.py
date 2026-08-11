@@ -155,6 +155,7 @@ async def _record_pause(
             configurable=configurable,
             conversation_id=run.conversation_id,
             user_message_id=run.user_message_id,
+            bot_message_id=run.bot_message_id,
         )
         for approval_id in approval_ids:
             await set_resume_item(approval_id, item)

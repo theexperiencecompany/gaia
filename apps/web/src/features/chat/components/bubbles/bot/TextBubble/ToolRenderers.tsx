@@ -440,9 +440,17 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   // (pending→resolved replaced in place via upsertApprovalToolData); grouping
   // collects them into the array.
   approval_request: (data, index) => {
-    const items = (
-      Array.isArray(data) ? data : [data]
-    ) as ApprovalRequestData[];
+    const raw = (Array.isArray(data) ? data : [data]) as ApprovalRequestData[];
+    // A resumed stream replays the gate-time PENDING frame after the decision
+    // already settled it — collapse by approval_id, settled wins over pending.
+    const byId = new Map<string, ApprovalRequestData>();
+    for (const item of raw) {
+      const prev = byId.get(item.approval_id);
+      if (!prev || prev.status === "pending" || item.status !== "pending") {
+        byId.set(item.approval_id, item);
+      }
+    }
+    const items = [...byId.values()];
     return (
       <ApprovalRequestGroup
         key={`approval-group-${items[0]?.approval_id || index}`}

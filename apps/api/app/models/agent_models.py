@@ -91,6 +91,11 @@ class AgentConfigurable(TypedDict, total=False):
     #: paraphrase of the request.
     user_messages: list[str] | None
     user_message_id: str
+    #: The live comms turn's own bot message id (chat stream's ``state.bot_message_id``).
+    #: Threaded into ``call_executor`` so a HIL pause that later resumes can reconcile
+    #: its result onto this SAME message instead of minting a rival one — see
+    #: ``ExecutorRun.bot_message_id`` and ``executor_runner._record_pause``.
+    bot_message_id: str
     #: One id for the WHOLE user turn: minted at the top-level
     #: ``build_agent_config`` call and inherited by every child agent (executor,
     #: handoff subagents, spawn loops). The accounting middleware keys the

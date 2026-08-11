@@ -187,6 +187,7 @@ async def _dispatch_executor(
     )
     stream_id = configurable.get("stream_id")
     user_message_id = configurable.get("user_message_id")
+    bot_message_id = configurable.get("bot_message_id")
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     lock_value = build_lock_value(stream_id, task_id)
@@ -260,6 +261,7 @@ async def _dispatch_executor(
         kind=RunKind.LIVE,
         task_id=task_id,
         user_message_id=user_message_id,
+        bot_message_id=bot_message_id,
     )
     spawn_background_task(
         run_executor_background(

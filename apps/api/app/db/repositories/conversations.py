@@ -31,6 +31,7 @@ from app.models.chat_models import (
     ConversationSyncItem,
     MessageModel,
     SystemPurpose,
+    ToolDataEntry,
 )
 from app.models.conversation_models import (
     ConversationDocument,
@@ -286,6 +287,34 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$push": {"messages.$.tool_data": {"$each": entries}}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
+    async def set_message_response(
+        self, conversation_id: str, *, user_id: str, message_id: str, response: str
+    ) -> bool:
+        """Set a message's response text in place. Does not advance ``updatedAt``
+        (matches the legacy delivery write)."""
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "messages.message_id": message_id},
+            {"$set": {"messages.$.response": response}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
+    async def set_message_tool_data(
+        self, conversation_id: str, *, user_id: str, message_id: str, entries: list[ToolDataEntry]
+    ) -> bool:
+        """Replace a message's tool_data wholesale. Does not advance ``updatedAt``
+        (matches the legacy delivery write)."""
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "messages.message_id": message_id},
+            {"$set": {"messages.$.tool_data": entries}},
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},

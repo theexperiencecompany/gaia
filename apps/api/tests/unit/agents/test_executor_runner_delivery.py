@@ -15,7 +15,7 @@ from app.agents.core.background.session import (
     RunKind,
     create_session,
 )
-from app.models.chat_models import ConversationSource
+from app.models.chat_models import ConversationSource, MessageModel
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +30,7 @@ def _run(
     *,
     stream_id: str = "",
     task_id: str | None = None,
+    bot_message_id: str | None = None,
 ) -> ExecutorRun:
     """A run context for delivery tests (defaults: live, non-workflow)."""
     return ExecutorRun(
@@ -39,6 +40,7 @@ def _run(
         kind=kind,
         task_id=task_id,
         user_message_id=None,
+        bot_message_id=bot_message_id,
     )
 
 
@@ -287,3 +289,115 @@ class TestDeliverResultToolDataOwnership:
             await rd.deliver_result(run, "traceback...", "error")
 
         follow_ups.assert_not_awaited()
+
+
+class TestDeliverResultHilResume:
+    """A HIL-resumed run (``run.bot_message_id`` set) merges its result onto the
+    ORIGINAL live turn's message in place, instead of appending a rival one —
+    the same class of trap ``_persist_follow_up_actions`` already guards
+    against for follow-ups (see its docstring)."""
+
+    async def _deliver_resumed(self, run: ExecutorRun, *, existing_tool_data=None):
+        existing = MessageModel(type="bot", response="old text", date="2026-01-01")
+        existing.tool_data = existing_tool_data
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="new voiced"
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(
+                rd.conversation_repository,
+                "get_message",
+                new_callable=AsyncMock,
+                return_value=existing,
+            ) as get_msg,
+            patch.object(
+                rd.conversation_repository,
+                "set_message_response",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as set_resp,
+            patch.object(
+                rd.conversation_repository,
+                "append_message_tool_data",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as append_td,
+        ):
+            result = await rd.deliver_result(run, "raw result", "final")
+        return result, save, ws, get_msg, set_resp, append_td
+
+    async def test_merges_onto_original_message_instead_of_appending(self) -> None:
+        _session_with_cards("queued_s1")
+        run = _run(
+            RunKind.QUEUED,
+            stream_id="queued_s1",
+            task_id="task-resume-1",
+            bot_message_id="orig-msg-1",
+        )
+
+        (text, message_id), save, ws, get_msg, set_resp, append_td = await self._deliver_resumed(
+            run
+        )
+
+        assert message_id == "orig-msg-1"  # reconciles onto the ORIGINAL message, not task_id
+        save.assert_not_awaited()  # never $push's a rival array element
+
+        get_msg.assert_awaited_once()
+        assert get_msg.await_args.args == ("conv-1", "orig-msg-1")
+
+        set_resp.assert_awaited_once()
+        assert set_resp.await_args.kwargs["message_id"] == "orig-msg-1"
+        assert set_resp.await_args.kwargs["response"] == "new voiced"
+
+        append_td.assert_awaited_once()
+        assert append_td.await_args.kwargs["message_id"] == "orig-msg-1"
+
+        # A live task_id-keyed placeholder DOES exist for queued-kind runs
+        # (real queue pops AND resumes), so task_id must still be emitted —
+        # otherwise the frontend's placeholder is orphaned forever.
+        ws_message = ws.await_args.args[1]["message"]
+        assert ws_message["message_id"] == "orig-msg-1"
+        assert ws_message["task_id"] == "task-resume-1"
+
+    async def test_merged_tool_data_carries_original_plus_new_cards(self) -> None:
+        _session_with_cards("queued_s1")
+        run = _run(
+            RunKind.QUEUED,
+            stream_id="queued_s1",
+            task_id="task-resume-1",
+            bot_message_id="orig-msg-1",
+        )
+        existing_cards = [{"tool_name": "old_tool", "data": {}}]
+
+        (_text, _mid), _save, ws, _get_msg, _set_resp, _append_td = await self._deliver_resumed(
+            run, existing_tool_data=existing_cards
+        )
+
+        # A WebSocket push replaces the client's stored message wholesale, so
+        # dropping either half here would erase real cards from the user's view.
+        ws_message = ws.await_args.args[1]["message"]
+        tool_names = [c["tool_name"] for c in ws_message["tool_data"]]
+        assert "old_tool" in tool_names
+        assert "tool_calls_data" in tool_names  # the resumed run's new card
+
+    async def test_missing_original_message_drops_delivery(self) -> None:
+        run = _run(RunKind.QUEUED, task_id="task-resume-1", bot_message_id="orig-msg-1")
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(
+                rd.conversation_repository, "get_message", new_callable=AsyncMock, return_value=None
+            ),
+        ):
+            result = await rd.deliver_result(run, "raw", "final")
+
+        assert result == (None, None)
+        save.assert_not_awaited()
+        ws.assert_not_awaited()
