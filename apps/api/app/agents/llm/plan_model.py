@@ -10,6 +10,7 @@ per-request ceiling) stay intact; only the model changes.
 
 from typing import Any
 
+from app.agents.llm.client import PROVIDER_MODELS
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
 from app.constants.llm import (
@@ -157,12 +158,20 @@ def _apply_dev_model(
     if option["model"]:
         _pin_model(configurable, option["provider"], option["model"])
     else:
-        # Entry without a pinned model (the env-defined "custom" endpoint): route
-        # by provider and clear any earlier model pin so the client's own default
-        # (DEV_LLM_MODEL) serves the request.
-        configurable["provider"] = option["provider"]
-        configurable.pop("model", None)
-        configurable.pop("model_name", None)
+        # Entry without a pinned model (the env-defined "custom" endpoint): the
+        # client binds PROVIDER_MODELS[provider] (DEV_LLM_MODEL) as its own default
+        # whenever the "model" configurable field is absent, so pinning that same
+        # value here changes nothing about which model actually runs -- it just
+        # keeps the resolved name visible to accounting instead of falling through
+        # to DEFAULT_PRICING as "unknown". Only pop when the env var itself is
+        # unset, since then the model is genuinely unknown ahead of the call.
+        resolved_model = PROVIDER_MODELS.get(option["provider"], "")
+        if resolved_model:
+            _pin_model(configurable, option["provider"], resolved_model)
+        else:
+            configurable["provider"] = option["provider"]
+            configurable.pop("model", None)
+            configurable.pop("model_name", None)
     if option["model_kwargs"] is not None:
         configurable["model_kwargs"] = option["model_kwargs"]
     else:

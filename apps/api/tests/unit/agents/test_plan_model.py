@@ -7,6 +7,7 @@ model, and the dev-only overrides pin/stash/clear model fields exactly.
 
 from unittest.mock import AsyncMock, patch
 
+from app.agents.llm.client import PROVIDER_MODELS
 from app.agents.llm.plan_model import (
     apply_dev_executor_model,
     apply_dev_model_override,
@@ -161,6 +162,42 @@ class TestApplyDevModelOverride:
         assert configurable["model"] == DEV_MODEL_OPTIONS["deepseek-v4-flash"]["model"]
         assert "reasoning" not in configurable
         assert "model_kwargs" not in configurable
+
+    async def test_custom_provider_pins_the_resolved_dev_model_instead_of_clearing_it(
+        self, monkeypatch
+    ) -> None:
+        # DEV_MODEL_OPTIONS["custom"] carries model=None -- it used to be cleared
+        # entirely, leaving LLMAccountingMiddleware with no model name to price the
+        # call against (it silently falls back to DEFAULT_PRICING, ~11x the real
+        # rate). The client binds PROVIDER_MODELS["custom"] (resolved once at import
+        # from DEV_LLM_MODEL) as its own default whenever "model" is absent from the
+        # configurable, so pinning that same value here doesn't change which model
+        # runs -- it just keeps the name visible to accounting.
+        monkeypatch.setitem(PROVIDER_MODELS, "custom", "nous/deepseek-v4-flash-cheap")
+        configurable = self._config()
+        apply_dev_model_override(
+            configurable, comms_model="custom", executor_model=None, use_defaults=False
+        )
+
+        assert configurable["provider"] == "custom"
+        assert configurable["model"] == "nous/deepseek-v4-flash-cheap"
+        assert configurable["model_name"] == "nous/deepseek-v4-flash-cheap"
+
+    async def test_custom_provider_clears_the_model_when_dev_llm_model_is_unset(
+        self, monkeypatch
+    ) -> None:
+        # Genuinely unknown ahead of the call (the custom endpoint isn't
+        # configured) -- clearing is still correct so the client falls through to
+        # its own unconfigured-endpoint error rather than pricing against a lie.
+        monkeypatch.setitem(PROVIDER_MODELS, "custom", "")
+        configurable = self._config()
+        apply_dev_model_override(
+            configurable, comms_model="custom", executor_model=None, use_defaults=False
+        )
+
+        assert configurable["provider"] == "custom"
+        assert "model" not in configurable
+        assert "model_name" not in configurable
 
 
 class TestApplyDevExecutorModel:
