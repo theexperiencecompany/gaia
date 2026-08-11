@@ -285,7 +285,10 @@ async def _dispatch_executor(
         "finished. Risky actions pause for the user's approval first and they see an "
         "approval card; if that happens the work waits on them, not on you. Acknowledge "
         "that you are on it, and say the action is waiting for their approval if one is "
-        "pending. The real result arrives later as its own message."
+        "pending. This guidance applies ONLY to this acknowledgment. The real result "
+        "arrives later as its own message and supersedes it completely: by then the gate "
+        "is settled, so report what happened and never ask again for an approval the "
+        "user has already given."
     )
 
 
