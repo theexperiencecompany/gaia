@@ -34,8 +34,25 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
 from app.constants.log_tags import LogTag
+from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import PRUNED_MESSAGE_IDS_KEY, State
 from shared.py.wide_events import log
+
+# OpenAI-wire providers (OpenRouter, the env-defined custom endpoint) accept
+# system messages anywhere in the message list — DeepSeek applies every system
+# message (the earliest wins on a directive conflict, which keeps the static
+# prompt's authority). Gemini is different: ``langchain-google-genai`` only
+# promotes a LEADING contiguous run of SystemMessages to ``system_instruction``
+# and silently drops any system message after a non-system message.
+#
+# For OpenAI-wire providers the volatile slots therefore move to the TAIL of
+# the prompt (after the whole conversation). The byte-stable prefix then
+# becomes ``[static, dynamic_stable, ...conversation]`` and the provider's
+# implicit prefix cache covers the conversation — measured 97% hit rate vs
+# 83% with the leading-block layout (scripts/measure_llm_cache.py). With the
+# volatile slots between the stable block and the conversation, the entire
+# conversation re-sends uncached on every turn.
+TAIL_VOLATILE_PROVIDERS: frozenset[str] = frozenset({"openrouter", "custom"})
 
 
 def _has_marker(msg: AnyMessage, name: str) -> bool:
@@ -113,13 +130,28 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
       the real static prompt when accumulated snapshots exist in state.
     - At most ONE background-executor and ONE executor-status frame are kept.
     - At most ONE memory-recall system message is kept — the latest. Volatile
-      per-turn content; slotted at the TAIL of the system block so it never
-      shifts the cacheable [static, dynamic_stable] prefix.
+      per-turn content; churns turn-to-turn.
     - At most ONE time-context HumanMessage is kept — the latest. Emitted each
       turn by ``build_current_time_message``; older copies are dropped so the
       LLM never sees contradictory clocks across a checkpointed thread.
     - All other system messages are dropped. Non-time-context non-system
       messages pass through.
+
+    Layout is provider-aware (see ``TAIL_VOLATILE_PROVIDERS``):
+
+    - Gemini keeps the legacy leading-block layout
+      ``[static, dynamic_stable, todo, bg_exec, exec_status, memory_recall,
+      ...conversation, time]`` — Gemini only accepts system messages in the
+      leading contiguous block, and its cache can only cover the stable
+      ``[static, dynamic_stable]`` prefix.
+    - OpenAI-wire providers (OpenRouter / custom — the production default
+      route) get the tail layout
+      ``[static, dynamic_stable, ...conversation, todo, bg_exec, exec_status,
+      memory_recall, time]`` — every volatile slot moves AFTER the
+      conversation so the cacheable prefix extends across the whole history.
+      Measured on the real lane: 97% vs 83% hit rate on a growing
+      conversation, because the conversation joins the cached prefix instead
+      of re-sending uncached every turn.
 
     Runs as a pre-model hook so this also fires when a generation is cancelled
     (end-of-graph hooks don't run on cancellation).
@@ -238,15 +270,22 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
             filtered.append(static_msg)
         if dynamic_msg is not None:
             filtered.append(dynamic_msg)
-        if todo_msg is not None:
-            filtered.append(todo_msg)
-        if bg_exec_msg is not None:
-            filtered.append(bg_exec_msg)
-        if exec_status_msg is not None:
-            filtered.append(exec_status_msg)
-        if memory_recall_msg is not None:
-            filtered.append(memory_recall_msg)
-        filtered.extend(non_system)
+        # Provider-aware placement of the volatile slots: leading-block layout
+        # for Gemini (system messages must stay in the leading run), tail
+        # layout for OpenAI-wire providers (system messages are accepted
+        # anywhere; the conversation joins the cacheable prefix).
+        volatile_msgs = [
+            msg
+            for msg in (todo_msg, bg_exec_msg, exec_status_msg, memory_recall_msg)
+            if msg is not None
+        ]
+        use_tail_layout = agent_configurable(config).get("provider") in TAIL_VOLATILE_PROVIDERS
+        if use_tail_layout:
+            filtered.extend(non_system)
+            filtered.extend(volatile_msgs)
+        else:
+            filtered.extend(volatile_msgs)
+            filtered.extend(non_system)
         if time_msg is not None:
             filtered.append(time_msg)
 
@@ -263,6 +302,7 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                 "kept_exec_status": exec_status_msg is not None,
                 "kept_memory_recall": memory_recall_msg is not None,
                 "kept_time": time_msg is not None,
+                "tail_layout": use_tail_layout,
             }
         )
 
