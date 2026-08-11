@@ -121,6 +121,29 @@ class TestHarnessCompletion:
             "after the nudge the model should have dug further"
         )
 
+    async def test_reply_promising_future_work_is_nudged(self):
+        """A stop that PROMISES more work ("hang tight") is never a valid ending:
+        the run is over when the reply ends, so the loop nudges instead."""
+        c1 = {"name": "lookup", "args": {"query": "mail"}, "id": "c1", "type": "tool_call"}
+        c2 = {"name": "lookup", "args": {"query": "more"}, "id": "c2", "type": "tool_call"}
+        llm = create_fake_llm_with_tool_calls(
+            [
+                c1,
+                c2,
+                "Got 29 messages so far, still digging for the earlier ones, hang tight.",
+                "Here is everything I could get; the older range failed to fetch.",
+            ]
+        )
+        graph = _compile(llm, require_finish_to_end=True)
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="this week's emails")]},
+            config={"configurable": {"thread_id": str(uuid4())}},
+        )
+
+        assert len(_nudges(result["messages"])) == MAX_COMPLETION_NUDGES
+        assert "hang tight" not in result["messages"][-1].content
+
     async def test_comms_style_agent_ends_on_plain_text(self):
         """require_finish_to_end=False (comms) ends on plain text even with a
         pending todo — the gate is executor-only."""

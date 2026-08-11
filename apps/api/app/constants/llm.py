@@ -51,8 +51,41 @@ COMPLETION_MIN_TOOL_CALLS = 2
 COMPLETION_NUDGE_MESSAGE = (
     "[System: before you finish — every part of the task must actually be done "
     "and confirmed with tools, not assumed. If anything is still pending, not yet "
-    "verified, or an action you described but did not take, do it now. If you are "
-    "genuinely finished, reply with your complete final result.]"
+    "verified, or an action you described but did not take, do it now. Nothing "
+    "runs after your reply ends, so never tell the user you are still working or "
+    "that more results are coming ('hang tight', 'still digging'): either do the "
+    "work now with tools, or state plainly what you got and what failed. If you "
+    "are genuinely finished, reply with your complete final result.]"
+)
+# A plain-text stop that PROMISES future work is never a valid ending: the run
+# is over the moment the reply ends, so "hang tight" is a lie to the user.
+# Lowercase substrings, matched against the final reply. Kept deliberately
+# specific — a false positive only costs one bounded nudge, but each entry
+# should still be an unambiguous forward commitment.
+COMPLETION_PROMISE_MARKERS: tuple[str, ...] = (
+    "hang tight",
+    "still digging",
+    "still working on",
+    "still fetching",
+    "still searching",
+    "still looking",
+    "keep digging",
+    "keep looking",
+    "give me a moment",
+    "give me a sec",
+    "one moment while",
+    "bear with me",
+    "stay tuned",
+    "i'll get back to you",
+    "will get back to you",
+    "i'll keep you posted",
+    "keep you posted",
+    "i'll follow up",
+    "will follow up shortly",
+    "check back soon",
+    "coming right up",
+    "working on it now",
+    "in the background",
 )
 
 # Per-tool-call execution timeout. A hung integration call previously hung the
