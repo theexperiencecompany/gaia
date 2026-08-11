@@ -72,13 +72,16 @@ def _current_config() -> RunnableConfig:
 
 
 def _extract_usage(message: AIMessage) -> dict[str, int]:
-    """Return input/output/cached token counts from a message's usage metadata.
+    """Return input/output/cached/reasoning token counts from a message's usage metadata.
 
     Reads ``message.usage_metadata`` (the canonical LangChain shape) and falls
     back to ``response_metadata.usage_metadata`` for the provider SDK versions
     that only populate that. ``cached_tokens`` comes from
     ``input_token_details.cache_read`` or — when the provider surfaces it
-    separately — ``cached_content_token_count``. Missing fields default to 0.
+    separately — ``cached_content_token_count``. ``reasoning_tokens`` (a
+    subset of ``output_tokens`` spent on hidden thinking) comes from
+    ``output_token_details.reasoning``; not every provider/model returns it.
+    Missing fields default to 0.
     """
     usage = getattr(message, "usage_metadata", None) or {}
     resp_meta = getattr(message, "response_metadata", None) or {}
@@ -87,6 +90,7 @@ def _extract_usage(message: AIMessage) -> dict[str, int]:
     input_tokens = int(usage.get("input_tokens") or 0)
     output_tokens = int(usage.get("output_tokens") or 0)
     cached_tokens = int((usage.get("input_token_details") or {}).get("cache_read") or 0)
+    reasoning_tokens = int((usage.get("output_token_details") or {}).get("reasoning") or 0)
 
     # Each field falls back independently. Gating the output fallback behind a
     # missing *input* count (as this once did) silently dropped output tokens —
@@ -108,6 +112,7 @@ def _extract_usage(message: AIMessage) -> dict[str, int]:
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cached_tokens": cached_tokens,
+        "reasoning_tokens": reasoning_tokens,
     }
 
 
@@ -328,6 +333,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         input_tokens = usage["input_tokens"]
         output_tokens = usage["output_tokens"]
         cached_tokens = usage["cached_tokens"]
+        reasoning_tokens = usage["reasoning_tokens"]
 
         config = _current_config()
         configurable = agent_configurable(config)
@@ -360,6 +366,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cached_tokens=cached_tokens,
+            reasoning_tokens=reasoning_tokens,
             root_request_id=str(root_request_id) if root_request_id else None,
             charge_to_budget=True,
         )
@@ -379,11 +386,13 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         prior_input = int(prior.get("input_tokens") or 0)
         prior_output = int(prior.get("output_tokens") or 0)
         prior_cached = int(prior.get("cached_tokens") or 0)
+        prior_reasoning = int(prior.get("reasoning_tokens") or 0)
         prior_cost = float(prior.get("cost_usd") or 0.0)
 
         agg_input = prior_input + input_tokens
         agg_output = prior_output + output_tokens
         agg_cached = prior_cached + cached_tokens
+        agg_reasoning = prior_reasoning + reasoning_tokens
         agg_cost = prior_cost + total_cost
         agg_hit_rate = agg_cached / max(agg_input, 1) if agg_input else 0.0
 
@@ -395,6 +404,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 output_tokens=agg_output,
                 tokens_used=agg_input + agg_output,
                 cached_tokens=agg_cached,
+                reasoning_tokens=agg_reasoning,
                 cache_hit_rate=round(agg_hit_rate, 4),
                 cost_usd=round(agg_cost, 6),
                 credits_charged=round(agg_cost, 6),
@@ -413,6 +423,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             input_tokens=input_tokens,
             cached_tokens=cached_tokens,
             output_tokens=output_tokens,
+            reasoning_tokens=reasoning_tokens,
             cost_usd=total_cost,
             step_index=step_index,
         )

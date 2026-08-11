@@ -79,27 +79,59 @@ async def record_activity(user_id: str, amount: int = 1) -> None:
         )
 
 
-async def record_cost(user_id: str, cost_usd: float, *, charged: bool = True) -> None:
-    """Add real LLM spend to today's durable rollup. Never raises.
+async def record_cost(
+    user_id: str,
+    cost_usd: float,
+    *,
+    charged: bool = True,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cached_tokens: int = 0,
+    reasoning_tokens: int = 0,
+) -> None:
+    """Add real LLM spend and its token counts to today's durable rollup. Never raises.
 
     Redis cost windows expire in ~26h, so this is the ONLY per-day cost
     history — it's what lets usage charts show cost-based (nearest-wall)
-    percentages for past days instead of message counts alone.
+    percentages for past days instead of message counts alone. The token
+    counts land in the same write so a mispriced call can be re-derived from
+    raw usage later, instead of only the dollar amount surviving — including
+    when pricing itself failed and ``cost_usd`` is 0 for a call that still
+    burned real tokens.
 
-    ``charged=False`` books the spend under ``aux_cost`` instead of ``cost``:
+    ``charged=False`` books everything under the ``aux_*`` fields instead:
     auxiliary background work (memory pipeline, onboarding, workflow
     generation, …) is tracked for per-user COGS but never counts against the
-    user's allowance, so ``cost`` stays an exact durable mirror of the Redis
-    windows the budget wall enforces.
+    user's allowance, so ``cost``/``input_tokens``/etc. stay an exact durable
+    mirror of the Redis windows the budget wall enforces.
     """
-    if not user_id or cost_usd <= 0:
+    if not user_id:
+        return
+    has_tokens = bool(input_tokens or output_tokens or cached_tokens or reasoning_tokens)
+    if cost_usd <= 0 and not has_tokens:
         return
     try:
         day = _day(datetime.now(UTC))
         if charged:
-            await usage_daily_repository.increment(user_id, day, cost=cost_usd)
+            await usage_daily_repository.increment(
+                user_id,
+                day,
+                cost=cost_usd,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                reasoning_tokens=reasoning_tokens,
+            )
         else:
-            await usage_daily_repository.increment(user_id, day, aux_cost=cost_usd)
+            await usage_daily_repository.increment(
+                user_id,
+                day,
+                aux_cost=cost_usd,
+                aux_input_tokens=input_tokens,
+                aux_output_tokens=output_tokens,
+                aux_cached_tokens=cached_tokens,
+                aux_reasoning_tokens=reasoning_tokens,
+            )
     except PyMongoError as e:
         log.warning(
             f"{LogTag.MONGO} record_cost failed",

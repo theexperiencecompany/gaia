@@ -651,6 +651,8 @@ async def _record_auxiliary_usage(
             continue
         details = usage.get("input_token_details") or {}
         cached_tokens = int(details.get("cache_read", 0) or 0)
+        output_details = usage.get("output_token_details") or {}
+        reasoning_tokens = int(output_details.get("reasoning", 0) or 0)
 
         if user_id is None:
             log.warning(
@@ -665,6 +667,7 @@ async def _record_auxiliary_usage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cached_tokens=cached_tokens,
+            reasoning_tokens=reasoning_tokens,
             charge_to_budget=False,
         )
         log.info(
@@ -677,6 +680,7 @@ async def _record_auxiliary_usage(
             input_tokens=input_tokens,
             cached_tokens=cached_tokens,
             output_tokens=output_tokens,
+            reasoning_tokens=reasoning_tokens,
             cost_usd=cost,
         )
 

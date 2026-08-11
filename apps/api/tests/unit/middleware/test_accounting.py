@@ -110,6 +110,7 @@ def test_canonical_usage_metadata_is_read_verbatim() -> None:
         "input_tokens": 100,
         "output_tokens": 20,
         "cached_tokens": 40,
+        "reasoning_tokens": 0,
     }
 
 
@@ -118,6 +119,7 @@ def test_message_without_any_usage_reports_zeros() -> None:
         "input_tokens": 0,
         "output_tokens": 0,
         "cached_tokens": 0,
+        "reasoning_tokens": 0,
     }
 
 
@@ -136,6 +138,7 @@ def test_provider_native_response_metadata_is_used_when_usage_metadata_is_absent
         "input_tokens": 500,
         "output_tokens": 70,
         "cached_tokens": 200,
+        "reasoning_tokens": 0,
     }
 
 
@@ -148,7 +151,29 @@ def test_langchain_normalised_keys_in_response_metadata_are_accepted() -> None:
         "input_tokens": 11,
         "output_tokens": 3,
         "cached_tokens": 0,
+        "reasoning_tokens": 0,
     }
+
+
+def test_reasoning_tokens_are_read_from_output_token_details() -> None:
+    message = AIMessage(
+        content="x",
+        usage_metadata={
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tokens": 150,
+            "output_token_details": {"reasoning": 30},
+        },
+    )
+    assert _extract_usage(message)["reasoning_tokens"] == 30
+
+
+def test_missing_output_token_details_does_not_raise() -> None:
+    message = AIMessage(
+        content="x",
+        usage_metadata={"input_tokens": 5, "output_tokens": 1, "total_tokens": 6},
+    )
+    assert _extract_usage(message)["reasoning_tokens"] == 0
 
 
 def test_output_tokens_fall_back_even_when_input_tokens_are_present() -> None:
@@ -659,6 +684,7 @@ async def test_the_llm_call_event_carries_the_per_step_attribution() -> None:
         "input_tokens": 100,
         "cached_tokens": 40,
         "output_tokens": 20,
+        "reasoning_tokens": 0,
         "cost_usd": pytest.approx(0.14),
         "step_index": 1,
     }
