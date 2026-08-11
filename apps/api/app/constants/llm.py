@@ -192,6 +192,17 @@ OPENROUTER_MODEL_CATALOG_RETRY_SECONDS = 300
 # window), so 64k of output leaves ample headroom for the prompt.
 OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
 
+# Output cap for one-shot helper calls (conversation naming, memory extraction,
+# structured JSON blobs, onboarding copy, moderation, category inference) — every
+# get_default_llm() consumer EXCEPT the agent-graph fallback and the
+# summarization/compaction middleware, which legitimately produce long output and
+# keep OPENROUTER_MAX_OUTPUT_TOKENS. OpenRouter reserves credit against `max_tokens`
+# per call, so a helper emitting a 200-token title was demanding the full 64k
+# reservation and 402ing on a low balance even though it had credit for its real
+# (tiny) output. 8k is ~10x the largest observed helper output while cutting the
+# reservation 8x.
+HELPER_MAX_OUTPUT_TOKENS = 8_000
+
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
 OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}

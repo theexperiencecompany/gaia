@@ -28,6 +28,7 @@ from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     DEV_LLM_MAX_OUTPUT_TOKENS,
+    HELPER_MAX_OUTPUT_TOKENS,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
     OPENROUTER_APP_CATEGORIES,
@@ -403,6 +404,30 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
     return llm
 
 
+def get_helper_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
+    """:func:`get_default_llm`, capped to :data:`HELPER_MAX_OUTPUT_TOKENS`.
+
+    For the one-shot helpers whose real output is small (titles, JSON blobs,
+    classifications, short generated copy) — ``ainvoke_structured`` and every
+    direct ``get_default_llm()`` call outside the agent graph. The two graph-
+    adjacent consumers (the ``create_agent`` model fallback, the summarization/
+    compaction middleware) keep the full reservation via ``get_default_llm()``
+    directly, since they can legitimately produce long output.
+
+    ``model_copy`` (not a new ``ChatOpenRouter(...)``) is deliberate: it shares
+    the cached instance's ``client`` field by reference instead of opening a
+    second connection pool. A ``.bind(max_tokens=...)`` wrapper was tried and
+    rejected — ``RunnableBinding.__getattr__`` only preserves bound kwargs for
+    methods that take a ``config`` argument, and neither ``bind_tools`` nor
+    ``with_structured_output`` do, so the override silently vanished the moment
+    a caller chained either of those on top of it.
+    """
+    llm = get_default_llm(temperature=temperature)
+    if settings.GAIA_SIM_MODE:
+        return llm
+    return cast(BaseChatModel, llm.model_copy(update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS}))
+
+
 def get_vision_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     """The factory for every image -> text call (``vision/describe.py``).
 
@@ -670,9 +695,10 @@ async def ainvoke_structured(
     message list — and ``config`` carries optional run config (e.g. silent tags that
     keep internal tokens out of the chat stream, and ``configurable.user_id``, which
     is what the call's spend is metered against). Adds the transient-retry + fallback
-    of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
-    is not configured (see ``get_default_llm``)."""
-    structured = get_default_llm(temperature=temperature).with_structured_output(schema)
+    of :func:`ainvoke_llm`. Runs on :func:`get_helper_llm` — structured output is
+    always a small JSON blob, never the large-output case. Returns the validated
+    ``schema`` instance. Raises if Google is not configured (see ``get_default_llm``)."""
+    structured = get_helper_llm(temperature=temperature).with_structured_output(schema)
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(

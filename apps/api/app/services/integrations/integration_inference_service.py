@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from langchain_core.messages import BaseMessage, HumanMessage
 
-from app.agents.llm.client import ainvoke_llm, ainvoke_structured, get_default_llm, metered_config
+from app.agents.llm.client import ainvoke_llm, ainvoke_structured, get_helper_llm, metered_config
 from app.constants.integrations import (
     CATEGORY_INFERENCE_PROMPT,
     CONTENT_INFERENCE_PROMPT,
@@ -75,7 +75,7 @@ async def infer_integration_category(
     try:
         async with asyncio.timeout(_CATEGORY_INFERENCE_TIMEOUT_SECONDS):
             response = await ainvoke_llm(
-                get_default_llm(), [HumanMessage(content=prompt)], label="integration_category"
+                get_helper_llm(), [HumanMessage(content=prompt)], label="integration_category"
             )
     except Exception as e:
         log.error(
