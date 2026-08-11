@@ -12,7 +12,7 @@ import time
 from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock, patch
 
-from langchain.agents.middleware.types import AgentState
+from langchain.agents.middleware.types import AgentState, ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
 
@@ -23,8 +23,15 @@ from app.agents.middleware.accounting import (
     _extract_usage,
     _latest_ai_message,
 )
-from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
+from app.config.rate_limits import get_daily_cost_budget_usd
+from app.constants.llm import (
+    AGENT_RECURSION_LIMIT,
+    BUDGET_WRAPUP_REMAINING_FRACTION,
+    RECURSION_HWM_FRACTION,
+)
+from app.models.payment_models import PlanType
 from app.services import llm_metering
+from app.services.cost_budget import BUDGET_WRAPUP_NOTICE, BudgetCheck
 from shared.py.wide_events import log
 
 CONFIG: dict[str, Any] = {
@@ -422,6 +429,92 @@ def test_thread_id_is_unknown_without_any_identifier() -> None:
     mw = LLMAccountingMiddleware(agent_name="a")
     assert mw._thread_id({}) == "unknown"
     assert mw._thread_id({"configurable": None}) == "unknown"
+
+
+# --- budget wall / wrap-up notice --------------------------------------------- #
+
+
+def _model_request(messages: list[Any] | None = None) -> ModelRequest:
+    return ModelRequest(model=cast(Any, None), messages=messages or [HumanMessage(content="hi")])
+
+
+def _recording_handler() -> tuple[list[ModelRequest], Any]:
+    captured: list[ModelRequest] = []
+
+    async def handler(request: ModelRequest) -> ModelResponse:
+        captured.append(request)
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    return captured, handler
+
+
+def _has_wrapup_notice(request: ModelRequest) -> bool:
+    return any(
+        isinstance(m, HumanMessage) and m.content == BUDGET_WRAPUP_NOTICE for m in request.messages
+    )
+
+
+async def test_budget_wrapup_notice_injected_once_when_spend_crosses_threshold() -> None:
+    budget = get_daily_cost_budget_usd(PlanType.FREE)
+    spent = budget * (1 - BUDGET_WRAPUP_REMAINING_FRACTION)  # exactly at the threshold
+    check = BudgetCheck(None, spent, PlanType.FREE)
+    mw = LLMAccountingMiddleware(agent_name="a")
+    captured, handler = _recording_handler()
+
+    with (
+        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+    ):
+        await mw.awrap_model_call(_model_request(), handler)
+        await mw.awrap_model_call(_model_request(), handler)
+
+    assert len(captured) == 2
+    assert _has_wrapup_notice(captured[0])
+    assert not _has_wrapup_notice(captured[1])  # already emitted for this thread
+
+    notices = [w for w in log.get().get("warnings", []) if w.get("msg") == "budget_wrapup_notice"]
+    assert len(notices) == 1
+    assert notices[0]["spent"] == spent
+    assert notices[0]["budget"] == budget
+    assert notices[0]["thread_id"] == "conv-1"
+
+
+async def test_budget_wrapup_notice_not_injected_below_threshold() -> None:
+    budget = get_daily_cost_budget_usd(PlanType.FREE)
+    spent = budget * (1 - BUDGET_WRAPUP_REMAINING_FRACTION) - 0.0001  # just under
+    check = BudgetCheck(None, spent, PlanType.FREE)
+    mw = LLMAccountingMiddleware(agent_name="a")
+    captured, handler = _recording_handler()
+
+    with (
+        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+    ):
+        await mw.awrap_model_call(_model_request(), handler)
+
+    assert len(captured) == 1
+    assert not _has_wrapup_notice(captured[0])
+    assert "warnings" not in log.get() or not any(
+        w.get("msg") == "budget_wrapup_notice" for w in log.get()["warnings"]
+    )
+
+
+async def test_hard_wall_stop_short_circuits_and_skips_the_wrapup_notice() -> None:
+    # Spend is already past the hard wall (far above the wrap-up threshold too) —
+    # the stop text must win and the handler must never run.
+    check = BudgetCheck("You've reached today's usage limit.", 999.0, PlanType.FREE)
+    mw = LLMAccountingMiddleware(agent_name="a")
+    handler = AsyncMock()
+
+    with (
+        patch.object(accounting, "_current_config", lambda: CONFIG),
+        patch.object(accounting, "get_budget_stop_reason", AsyncMock(return_value=check)),
+    ):
+        response = await mw.awrap_model_call(_model_request(), handler)
+
+    handler.assert_not_called()
+    assert response.result == [AIMessage(content="You've reached today's usage limit.")]
+    assert not any(w.get("msg") == "budget_wrapup_notice" for w in log.get().get("warnings", []))
 
 
 # --- recursion high-water mark ------------------------------------------------ #

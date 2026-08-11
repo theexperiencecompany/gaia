@@ -268,6 +268,12 @@ PRO_PER_REQUEST_TOKEN_CEILING = 5_000_000  # TUNE
 FREE_DAILY_COST_BUDGET_USD = 0.05  # TUNE
 PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
 
+# When remaining daily budget headroom drops to this fraction of the full budget
+# (0.2 = 20% left, i.e. 80% spent), the accounting middleware injects a one-time
+# wrap-up notice telling the agent to stop gathering and answer with what it has —
+# before is_daily_budget_exhausted binds and kills the run mid-flight with no answer.
+BUDGET_WRAPUP_REMAINING_FRACTION = 0.2
+
 # Rolling monthly USD cost budget for pro: the ECONOMIC guard. Set ~1x the
 # subscription price so the worst-case whale is break-even. On exhaustion pro
 # is NOT blocked — model routing degrades to the free-tier model for the rest

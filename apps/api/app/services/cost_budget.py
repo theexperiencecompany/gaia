@@ -24,7 +24,7 @@ is what fails hard in production).
 
 import asyncio
 from collections.abc import Awaitable
-from typing import Any
+from typing import Any, NamedTuple
 
 from redis.exceptions import RedisError
 
@@ -36,6 +36,7 @@ from app.config.rate_limits import (
     get_time_window_key,
 )
 from app.constants.llm import (
+    BUDGET_WRAPUP_REMAINING_FRACTION,
     DAILY_BUDGET_TTL_SECONDS,
     MONTHLY_BUDGET_TTL_SECONDS,
     PRO_MONTHLY_COST_BUDGET_USD,
@@ -76,6 +77,24 @@ REQUEST_CEILING_STOP_PRO = (
     "This request hit its safety ceiling, so I'm stopping here with what I "
     "have so far. Try splitting the task into smaller steps."
 )
+# Injected as a trailing HumanMessage (not returned as a stop text) when spend
+# crosses BUDGET_WRAPUP_REMAINING_FRACTION but before the wall above binds — the
+# run is told to land the plane instead of dying mid-tool-call on the hard stop.
+BUDGET_WRAPUP_NOTICE = (
+    "[System notice: your daily usage budget is almost exhausted. Stop gathering "
+    "more information now. Answer the user's request with the best answer you can "
+    "give using what you already have. Do not make further tool calls unless "
+    "strictly necessary to complete the answer.]"
+)
+
+
+class BudgetCheck(NamedTuple):
+    """Stop text (if bound) plus the daily spend read used to decide it, so
+    callers can test the wrap-up threshold without a second Redis round trip."""
+
+    stop_reason: str | None
+    spent_usd: float | None
+    plan_type: PlanType | None
 
 
 def _budget_key(user_id: str, period: RateLimitPeriod) -> str:
@@ -201,7 +220,7 @@ async def get_budget_stop_reason(
     user_id: str | None,
     plan_type: PlanType | None,
     root_request_id: str | None,
-) -> str | None:
+) -> BudgetCheck:
     """Return the user-facing stop text when a budget wall binds, else None.
 
     Checked before every model call by ``LLMAccountingMiddleware`` — the one
@@ -214,6 +233,9 @@ async def get_budget_stop_reason(
     1. Daily cost budget — catches entry points that skip the endpoint gate.
     2. Per-request aggregate token ceiling — stops runaway agentic loops.
 
+    Also returns the daily spend + resolved plan actually read (or None when no
+    read happened) so the caller can test the wrap-up threshold for free.
+
     Fails open only when there is genuinely nothing to enforce against
     (``user_id`` missing) or the plan lookup itself errors (infra hiccup) —
     both warn loudly so the gap stays visible, never silently skipped.
@@ -223,7 +245,7 @@ async def get_budget_stop_reason(
             f"{LogTag.AGENT} Budget check skipped — no user_id in configurable "
             "(nothing to enforce against; threading gap?)."
         )
-        return None
+        return BudgetCheck(None, None, None)
 
     if plan_type is None:
         # The stamp is missing (a path that skipped apply_plan_model). Derive the
@@ -238,7 +260,7 @@ async def get_budget_stop_reason(
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            return None
+            return BudgetCheck(None, None, None)
         log.warning(
             f"{LogTag.AGENT} plan_type missing from configurable — derived via "
             "cached lookup (upstream threading gap).",
@@ -251,12 +273,13 @@ async def get_budget_stop_reason(
     if root_request_id is None:
         spent = await get_cost(user_id, RateLimitPeriod.DAY)
         if is_daily_budget_exhausted(spent, plan_type):
-            return DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
+            stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
+            return BudgetCheck(stop, spent, plan_type)
         log.warning(
             f"{LogTag.AGENT} Per-request ceiling skipped — missing root_request_id "
             "in configurable (threading gap?)."
         )
-        return None
+        return BudgetCheck(None, spent, plan_type)
 
     # Both reads are independent — issue them together so the hottest path (this
     # runs before every model call) pays one round trip, not two. The daily wall
@@ -266,11 +289,13 @@ async def get_budget_stop_reason(
         get_request_tokens(root_request_id),
     )
     if is_daily_budget_exhausted(spent, plan_type):
-        return DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
+        stop = DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
+        return BudgetCheck(stop, spent, plan_type)
     if used >= get_per_request_token_ceiling(plan_type):
-        return REQUEST_CEILING_STOP_FREE if plan_type == PlanType.FREE else REQUEST_CEILING_STOP_PRO
+        stop = REQUEST_CEILING_STOP_FREE if plan_type == PlanType.FREE else REQUEST_CEILING_STOP_PRO
+        return BudgetCheck(stop, spent, plan_type)
 
-    return None
+    return BudgetCheck(None, spent, plan_type)
 
 
 def is_daily_budget_exhausted(spent: float, plan_type: PlanType) -> bool:
@@ -283,6 +308,14 @@ def is_daily_budget_exhausted(spent: float, plan_type: PlanType) -> bool:
     gathered with the token counter).
     """
     return spent >= get_daily_cost_budget_usd(plan_type)
+
+
+def is_budget_wrapup_threshold(spent: float, plan_type: PlanType) -> bool:
+    """True once spend crosses BUDGET_WRAPUP_REMAINING_FRACTION headroom, before
+    the hard wall above binds. Same shared-comparison rationale as
+    :func:`is_daily_budget_exhausted`."""
+    budget = get_daily_cost_budget_usd(plan_type)
+    return budget > 0 and spent >= budget * (1 - BUDGET_WRAPUP_REMAINING_FRACTION)
 
 
 def _allowance_used(spent: float, budget: float, period: RateLimitPeriod) -> BudgetWindow:

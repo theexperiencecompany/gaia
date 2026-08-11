@@ -21,6 +21,7 @@ Runs as a LangChain :class:`AgentMiddleware` via `create_agent(middleware=...)`.
 """
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 import time
 from typing import Any
 
@@ -30,16 +31,27 @@ from langchain.agents.middleware.types import (
     ModelRequest,
     ModelResponse,
 )
-from langchain_core.messages import AIMessage, AnyMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.config import get_config
+from langgraph.config import get_config, get_stream_writer
 from langgraph.runtime import Runtime
 
+from app.config.rate_limits import (
+    PRIMARY_METERED_FEATURE,
+    RateLimitPeriod,
+    get_daily_cost_budget_usd,
+    get_reset_time,
+)
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from app.models.payment_models import PlanType
-from app.services.cost_budget import get_budget_stop_reason
+from app.services.cost_budget import (
+    BUDGET_WRAPUP_NOTICE,
+    BudgetCheck,
+    get_budget_stop_reason,
+    is_budget_wrapup_threshold,
+)
 from app.services.llm_metering import record_llm_call
 from shared.py.wide_events import ModelContext, log
 
@@ -119,7 +131,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
       ``recursion_high_water_mark`` exactly once per thread.
     - ``@awrap_model_call``: the budget wall — short-circuits the model call
       with a stop message when the daily cost budget or per-request token
-      ceiling is exhausted (see :func:`get_budget_stop_reason`).
+      ceiling is exhausted (see :func:`get_budget_stop_reason`); below that,
+      injects a one-time-per-thread wrap-up notice once spend crosses
+      ``BUDGET_WRAPUP_REMAINING_FRACTION``.
     """
 
     def __init__(self, agent_name: str, recursion_limit: int = AGENT_RECURSION_LIMIT) -> None:
@@ -139,6 +153,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # overhead to every model step without improving correctness.
         self._step_counts: dict[str, int] = {}
         self._hwm_emitted: set[str] = set()
+        self._budget_wrapup_emitted: set[str] = set()
         self._start_ts: dict[str, float] = {}
 
     # --- helpers ---------------------------------------------------------
@@ -151,6 +166,37 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         n = self._step_counts.get(thread_id, 0) + 1
         self._step_counts[thread_id] = n
         return n
+
+    def _emit_budget_stop_card(self, stop_reason: str, plan_type: PlanType) -> None:
+        """Stream a ``rate_limit_data`` frame so the frontend renders RateLimitCard
+        instead of the bare stop text. Same pattern as ``with_rate_limiting`` in
+        ``app.decorators.rate_limiting``; a missing stream writer (workflows, bots)
+        is normal and logged at debug, never raised.
+        """
+        try:
+            writer = get_stream_writer()
+            writer(
+                {
+                    "tool_data": {
+                        "tool_name": "rate_limit_data",
+                        "tool_category": "system",
+                        "data": {
+                            "feature": PRIMARY_METERED_FEATURE,
+                            "plan_required": "pro" if plan_type == PlanType.FREE else None,
+                            "reset_time": get_reset_time(RateLimitPeriod.DAY).isoformat(),
+                            "current_plan": plan_type.value,
+                            "message": stop_reason,
+                        },
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                }
+            )
+        except Exception as e:
+            log.debug(
+                f"{LogTag.AGENT} Budget stop card not streamed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     # --- hooks -----------------------------------------------------------
 
@@ -190,8 +236,15 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         On a hit, returns the user-facing stop text as the final AIMessage —
         no tool calls, so the graph ends naturally. Fail-open on infra errors:
         a Redis hiccup must never take down the turn.
+
+        Below the hard wall, when spend has crossed
+        ``BUDGET_WRAPUP_REMAINING_FRACTION`` of the daily budget, injects a
+        one-time-per-thread wrap-up notice (mirrors the recursion wrap-up in
+        ``create_agent._maybe_inject_wrapup``) so the model lands the plane
+        with what it has instead of dying mid-tool-call on the hard stop.
         """
-        configurable = agent_configurable(_current_config())
+        config = _current_config()
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id")
         root_request_id = configurable.get("root_request_id")
         # plan_type is passed through when the path stamped it (the hot chat path,
@@ -205,7 +258,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             plan_type = None
 
         try:
-            stop_reason = await get_budget_stop_reason(
+            check = await get_budget_stop_reason(
                 str(user_id) if user_id else None,
                 plan_type,
                 str(root_request_id) if root_request_id else None,
@@ -216,9 +269,9 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            stop_reason = None
+            check = BudgetCheck(None, None, None)
 
-        if stop_reason is not None:
+        if check.stop_reason is not None:
             log.warning(
                 "budget_stop",
                 event_name="budget_stop",
@@ -227,7 +280,33 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 plan_type=plan_raw,
                 root_request_id=root_request_id,
             )
-            return ModelResponse(result=[AIMessage(content=stop_reason)])
+            # check.plan_type is always resolved alongside stop_reason (see
+            # get_budget_stop_reason: every return that sets stop_reason also
+            # sets plan_type), so the card always has a real plan to render.
+            if check.plan_type is not None:
+                self._emit_budget_stop_card(check.stop_reason, check.plan_type)
+            return ModelResponse(result=[AIMessage(content=check.stop_reason)])
+
+        thread_id = self._thread_id(config)
+        if (
+            check.spent_usd is not None
+            and check.plan_type is not None
+            and thread_id not in self._budget_wrapup_emitted
+            and is_budget_wrapup_threshold(check.spent_usd, check.plan_type)
+        ):
+            self._budget_wrapup_emitted.add(thread_id)
+            log.warning(
+                "budget_wrapup_notice",
+                event_name="budget_wrapup_notice",
+                agent_name=self.agent_name,
+                user_id=user_id,
+                thread_id=thread_id,
+                spent=check.spent_usd,
+                budget=get_daily_cost_budget_usd(check.plan_type),
+            )
+            request = request.override(
+                messages=[*request.messages, HumanMessage(content=BUDGET_WRAPUP_NOTICE)]
+            )
 
         return await handler(request)
 
