@@ -718,3 +718,11 @@ PLATFORM_DELIVERY_NOTE = (
     "and don't over-split into one line each). Write it like you personally sorted "
     "this for them and are handing it over, in GAIA's normal voice.\n"
 )
+
+# Prepended to an interactive executor result so the bubble-split instruction sits
+# right next to the write; the same rule in the distant system prompt alone proved
+# probabilistic (workflow deliveries, which carry it inline, split reliably).
+INTERACTIVE_DELIVERY_NOTE = (
+    f"Split your reply per the bubble rules: conversational beats separated with "
+    f"{NEW_MESSAGE_BREAKER}, any structured data or list kept whole in one bubble.\n"
+)
