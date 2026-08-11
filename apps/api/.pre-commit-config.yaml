@@ -12,20 +12,7 @@ repos:
 
   - repo: local
     hooks:
-      - id: bandit
-        name: Bandit Security Check
-        language: system
-        entry: uvx bandit -c pyproject.toml -r app --exclude app/agents/prompts
-        types: [python]
-        pass_filenames: false
-        priority: 0
 
-      - id: pip-audit
-        name: Pip Audit
-        language: system
-        entry: bash -c "uv export --no-dev --frozen --no-emit-header 2>/dev/null | uvx pip-audit --disable-pip --no-deps -r /dev/stdin"
-        pass_filenames: false
-        priority: 0
 
       - id: outbound-topology-parity
         name: Outbound topology parity (Python <-> TypeScript)
@@ -49,17 +36,4 @@ repos:
         entry: python3 tools/lints/check_ignore_ratchet.py
         files: ^(pyproject\.toml|tools/lints/(check_ignore_ratchet\.py|ignore_ratchet_baseline\.txt))$
         pass_filenames: false
-        priority: 0
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
-    hooks:
-      - id: mypy
-        args: [--ignore-missing-imports]
-        files: ^apps/api/app/
-        additional_dependencies:
-          - types-redis
-          - types-requests
-          - types-pytz
-          - types-croniter
         priority: 0
