@@ -27,9 +27,12 @@ export function markApprovalDecided(): void {
   const store = useStreamStore.getState();
   for (const [key, session] of Object.entries(store.sessions)) {
     if (session.awaitingApproval) {
+      // toolInfo must clear with the text: it prefixes the label with the
+      // gated tool's integration ("Posthog: Resuming"), and that tool is done.
       store.updateSession(key, {
         awaitingApproval: false,
         loadingText: "Resuming",
+        toolInfo: undefined,
       });
     }
   }
