@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
-import { ShieldIcon } from "@icons";
 import { toolAsks } from "@shared/chat";
 import { useMemo } from "react";
 import type { IntegrationToolEntry } from "@/features/integrations/hooks/useIntegrationTools";
@@ -46,7 +45,7 @@ export const IntegrationToolApprovals = ({
       {disabled && (
         <div className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-zinc-800/60 px-3 py-2">
           <span className="text-xs text-zinc-400">
-            Approvals are off — GAIA won't ask before running these.
+            GAIA runs these without asking.
           </span>
           <Button
             size="sm"
@@ -58,23 +57,17 @@ export const IntegrationToolApprovals = ({
           </Button>
         </div>
       )}
-      <div className="divide-y divide-zinc-800/60">
+      <div>
         {ordered.map((tool) => {
           const ask = toolAsks(prefs, tool.name, tool.destructive);
           return (
             <div
               key={tool.name}
-              className="flex items-center justify-between gap-3 py-2.5"
+              className="flex items-center justify-between gap-3 py-1.5"
             >
-              <div className="flex min-w-0 items-center gap-2">
-                <ShieldIcon
-                  width={15}
-                  className={`shrink-0 ${ask ? "text-amber-400" : "text-zinc-600"}`}
-                />
-                <span className="truncate text-sm text-zinc-200">
-                  {tool.label}
-                </span>
-              </div>
+              <span className="truncate text-sm text-zinc-300">
+                {tool.label}
+              </span>
               <Switch
                 size="sm"
                 isSelected={ask}
