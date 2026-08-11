@@ -2273,16 +2273,24 @@ PostHog is a product analytics platform. Core capabilities:
 - Saved insights and dashboards
 - Error tracking and log analysis
 
+— TOOL ACCESS
+PostHog's MCP runs in CLI mode: the single `exec` tool wraps every PostHog tool.
+- exec({"command": "search <regex>"}) finds tools; `tools` lists all
+- exec({"command": "info <tool_name>"}) returns the schema; run it once per tool, then reuse it
+- exec({"command": "schema <tool_name> <field.path>"}) is required for any field info marks with a `hint`
+- exec({"command": "call <tool_name> <json_input>"}) runs it
+Never guess a tool name or a schema. Search and info first.
+
 — QUERY STRATEGY
-- Prefer building queries directly with query-run (TrendsQuery, FunnelsQuery, HogQLQuery)
-- Resolve unknown event names with event-definitions-list before querying
-- Check insights-get-all first — reuse saved insights rather than rerunning queries
+- Build queries directly (TrendsQuery, FunnelsQuery, HogQLQuery) via the query tool
+- Resolve unknown event names before querying
+- Check saved insights first and reuse them rather than rerunning queries
 - Use HogQL for complex cross-event analysis or custom aggregations
 
 — PARALLEL EXECUTION
 When asked for multiple independent metrics:
-- 2 simple metrics → call tools in parallel directly
-- Multi-step investigations (e.g., list-errors → error-details per error) → use spawn_subagent per thread
+- 2 simple metrics → issue both exec calls in one turn
+- Multi-step investigations (discover → call → drill per result) → use spawn_subagent per thread
 
 — SKILL ROUTING
 If "Available Skills:" includes a PostHog skill (posthog-find-metrics, posthog-build-dashboard, etc.),
