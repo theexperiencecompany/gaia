@@ -16,7 +16,24 @@ import type {
 import { useState } from "react";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
+import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { toast } from "@/lib/toast";
+import { useStreamStore } from "@/stores/streamStore";
+
+/** Swap "Waiting for your approval" for a resuming state the moment the user
+ *  decides — the resolved frame arrives on the resumed run's stream, which can
+ *  take seconds; the indicator must not keep asking for an answer it has. */
+export function markApprovalDecided(): void {
+  const store = useStreamStore.getState();
+  for (const [key, session] of Object.entries(store.sessions)) {
+    if (session.awaitingApproval) {
+      store.updateSession(key, {
+        awaitingApproval: false,
+        loadingText: "Resuming",
+      });
+    }
+  }
+}
 
 interface ApprovalRequestSectionProps {
   data: ApprovalRequestData;
@@ -35,13 +52,13 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   );
   if (rows.length === 0) return null;
   return (
-    <div className="mt-2.5 space-y-1 rounded-2xl bg-zinc-900 p-3">
+    <div className="mt-3 space-y-2 rounded-2xl bg-zinc-900 p-3">
       {rows.map(([key, value]) => (
-        <div key={key} className="flex gap-3 text-xs">
-          <span className="shrink-0 text-zinc-500">{key}</span>
-          <span className="min-w-0 flex-1 truncate text-right text-zinc-300">
-            {String(value)}
-          </span>
+        <div key={key} className="text-xs">
+          <div className="mb-0.5 text-[11px] text-zinc-500">
+            {key.replaceAll("_", " ")}
+          </div>
+          <div className="text-zinc-200">{String(value)}</div>
         </div>
       ))}
     </div>
@@ -72,6 +89,7 @@ export default function ApprovalRequestSection({
       // stream (a different message), so it never replaces this card. A 410
       // (already resolved elsewhere) is swallowed by postApprovalDecision and
       // settles here too; reaching the catch means the submit genuinely failed.
+      markApprovalDecided();
       onDecided(
         decision === "approve" ? "approved" : "denied",
         feedback.trim() || null,
@@ -85,8 +103,8 @@ export default function ApprovalRequestSection({
   if (data.status !== "pending") return null;
 
   return (
-    <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-3 text-white">
-      <div className="flex items-center gap-2.5">
+    <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
+      <div className="flex items-start gap-2.5">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-400/10">
           <ShieldAlertIcon width={17} height={17} className="text-amber-400" />
         </div>
@@ -94,8 +112,24 @@ export default function ApprovalRequestSection({
           <div className="text-xs font-medium text-amber-400">
             Needs approval
           </div>
-          <div className="truncate text-sm text-zinc-100">{data.summary}</div>
+          <div className="text-sm leading-snug text-zinc-100">
+            {formatToolName(data.gated_tool_name)}
+          </div>
         </div>
+      </div>
+
+      <ArgsPreview args={data.args_preview} />
+
+      <div className="mt-3 flex items-center gap-2">
+        <Input
+          className="flex-1"
+          size="sm"
+          variant="flat"
+          placeholder="Tell GAIA why (optional)"
+          value={feedback}
+          onValueChange={setFeedback}
+          isDisabled={locked}
+        />
         <Button
           color="primary"
           size="sm"
@@ -136,18 +170,6 @@ export default function ApprovalRequestSection({
           </DropdownMenu>
         </Dropdown>
       </div>
-
-      <ArgsPreview args={data.args_preview} />
-
-      <Input
-        className="mt-2.5"
-        size="sm"
-        variant="flat"
-        placeholder="Optional: tell GAIA why (or what to do instead)"
-        value={feedback}
-        onValueChange={setFeedback}
-        isDisabled={locked}
-      />
     </div>
   );
 }

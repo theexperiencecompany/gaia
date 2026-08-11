@@ -35,6 +35,7 @@ from app.constants.hil import (
 )
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
+from app.db.repositories.conversations import conversation_repository
 from app.models.hil_models import DeclinedCallRecord, HILApprovalRecord, HILApprovalStatus
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
@@ -113,6 +114,15 @@ async def publish_decision(
             record.integration_name,
             feedback,
         ),
+    )
+    # Also settle the PERSISTED frame right now. Final delivery reconciles too,
+    # but the run may pause again on a later gate first — a revisit in that
+    # window would otherwise render a dead pending card for a decided approval.
+    await conversation_repository.set_message_approval_status(
+        record.conversation_id,
+        user_id=record.user_id,
+        approval_id=record.approval_id,
+        status=status.value,
     )
 
 

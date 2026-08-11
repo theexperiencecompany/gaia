@@ -10,7 +10,9 @@ import type {
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { toast } from "@/lib/toast";
-import ApprovalRequestSection from "./ApprovalRequestSection";
+import ApprovalRequestSection, {
+  markApprovalDecided,
+} from "./ApprovalRequestSection";
 import { useApprovalResolver } from "./ApprovalResolveContext";
 
 interface ApprovalRequestGroupProps {
@@ -58,6 +60,7 @@ export default function ApprovalRequestGroup({
           decision,
         })),
       });
+      markApprovalDecided();
       const status: ApprovalStatus =
         decision === "approve" ? "approved" : "denied";
       for (const outcome of response.outcomes) {

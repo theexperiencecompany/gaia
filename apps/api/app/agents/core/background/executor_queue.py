@@ -454,6 +454,10 @@ async def prepare_run_from_item(
                 "stream_id": queued_stream_id,
                 "conversation_id": conversation_id,
                 "task_id": task_id,
+                # A HIL resume continues the ORIGINAL turn's message: the client
+                # folds this stream into it instead of opening a second
+                # placeholder (which would render its own tool accordion).
+                "bot_message_id": item.get("bot_message_id"),
             },
         )
 

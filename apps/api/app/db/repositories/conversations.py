@@ -321,6 +321,21 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
+    async def set_message_approval_status(
+        self, conversation_id: str, *, user_id: str, approval_id: str, status: str
+    ) -> bool:
+        """Settle a persisted approval_request frame's status wherever it lives in
+        the messages array. Does not advance ``updatedAt``."""
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id},
+            {"$set": {"messages.$[].tool_data.$[entry].data.status": status}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+            array_filters=[{"entry.data.approval_id": approval_id}],
+        )
+        return matched > 0
+
     async def set_message_follow_up_actions(
         self, conversation_id: str, *, user_id: str, message_id: str, actions: list[str]
     ) -> bool:

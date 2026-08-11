@@ -2,12 +2,16 @@
 
 import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
-import { PuzzleIcon, ShieldIcon, ToolsIcon } from "@icons";
+import { PuzzleIcon, ToolsIcon } from "@icons";
 import type { ApprovalStatus } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
-import { BrainIcon, ChevronDown } from "@/components/shared/icons";
+import {
+  BrainIcon,
+  ChevronDown,
+  ShieldAlertIcon,
+} from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -27,7 +31,7 @@ const expandTransition = {
 function WaitingForApprovalPill() {
   return (
     <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-400">
-      <ShieldIcon width={13} height={13} />
+      <ShieldAlertIcon width={13} height={13} />
       Waiting for approval
     </span>
   );
