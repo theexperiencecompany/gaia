@@ -34,7 +34,7 @@ export default function IntegrationConnectionPrompt({
   };
 
   const content = (
-    <div className="w-fit max-w-lg rounded-3xl bg-zinc-800/50 p-4 text-white">
+    <div className="w-fit max-w-2xl rounded-3xl bg-zinc-800/50 p-4 text-white">
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <div className="shrink-0 pt-0.5">
@@ -69,12 +69,13 @@ export default function IntegrationConnectionPrompt({
         {!isConnected && isAvailable && (
           <div className="flex gap-2 w-full">
             {!isConnected && (
-              <div className="flex gap-2 rounded-xl items-center bg-warning-100/10 p-3">
+              <div className="flex w-fit gap-2 rounded-xl items-center bg-warning-100/10 p-3">
                 <AlertCircleIcon
                   className="mt-0.5 shrink-0 text-warning-500"
                   size={16}
                 />
-                <p className="text-xs text-warning-700 dark:text-warning-400">
+                {/* The card grows to fit this line rather than wrapping it. */}
+                <p className="whitespace-nowrap text-xs text-warning-700 dark:text-warning-400">
                   {message}
                 </p>
               </div>
