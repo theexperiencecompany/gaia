@@ -627,3 +627,61 @@ class TestProcessGetThreadResponse:
         result = process_get_thread_response(response)
         assert result["id"] == "thread_x"
         assert result["messageCount"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Regression: stdlib get_payload's unbound `bpayload` on a malformed part
+# ---------------------------------------------------------------------------
+
+
+class TestMalformedPartDoesNotAbortTheMessage:
+    def test_empty_part_claiming_base64_cte_does_not_raise(self):
+        # A part whose copied headers claim base64 transfer encoding but whose
+        # body carries no data used to crash content extraction with
+        # UnboundLocalError('bpayload') inside the stdlib, aborting the whole
+        # fetch loop as a partial result.
+        payload = {
+            "mimeType": "multipart/mixed",
+            "headers": [{"name": "Subject", "value": "Mixed"}],
+            "parts": [
+                {
+                    "mimeType": "text/plain",
+                    "headers": [
+                        {"name": "Content-Transfer-Encoding", "value": "base64"},
+                    ],
+                    "body": {},
+                },
+                {
+                    "mimeType": "text/plain",
+                    "headers": [],
+                    "body": {"data": _b64_encode("Good part")},
+                },
+            ],
+        }
+        msg = _make_gmail_message(payload=payload)
+
+        parser = GmailMessageParser(msg)
+        assert parser.parse() is True
+        assert "Good part" in parser.text_content
+
+    def test_attachment_listing_survives_a_malformed_part(self):
+        payload = {
+            "mimeType": "multipart/mixed",
+            "headers": [{"name": "Subject", "value": "Attach"}],
+            "parts": [
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "report.pdf",
+                    "headers": [
+                        {"name": "Content-Transfer-Encoding", "value": "base64"},
+                    ],
+                    "body": {},
+                },
+            ],
+        }
+        msg = _make_gmail_message(payload=payload)
+
+        parser = GmailMessageParser(msg)
+        assert parser.parse() is True
+        names = [a["filename"] for a in parser.attachments]
+        assert names == ["report.pdf"]

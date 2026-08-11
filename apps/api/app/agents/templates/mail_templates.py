@@ -31,10 +31,19 @@ _DEFAULT_MIME_TYPE = "text/plain"
 _HTML_MIME_TYPE = "text/html"
 
 
+# The synthesized EmailMessage stores already-DECODED content (set_content
+# manages its own transfer encoding), so the original part's wire encoding
+# must not be copied: an empty part stamped "Content-Transfer-Encoding:
+# base64" sends the stdlib's get_payload(decode=True) down its base64 branch
+# with no payload, crashing on the unbound `bpayload` local (bpo-level quirk).
+_WIRE_ENCODING_HEADER = "content-transfer-encoding"
+
+
 def _copy_headers(part: GmailMessagePart, target: email.message.EmailMessage) -> None:
-    """Copy a Gmail MIME part's headers onto an ``EmailMessage``."""
+    """Copy a Gmail MIME part's headers onto an ``EmailMessage``, minus the
+    transfer encoding set_content owns."""
     for header in part.headers:
-        if header.name and header.value:
+        if header.name and header.value and header.name.lower() != _WIRE_ENCODING_HEADER:
             target[header.name] = header.value
 
 
@@ -221,7 +230,17 @@ class GmailMessageParser:
                     # A text/* part's content manager always yields str.
                     return cast(str, part.get_content())
                 except Exception:
-                    payload = part.get_payload(decode=True)
+                    # get_payload itself can raise on a malformed part (the
+                    # stdlib's unbound-bpayload path) — skip the part, never
+                    # the whole message.
+                    try:
+                        payload = part.get_payload(decode=True)
+                    except Exception as e:
+                        log.warning(
+                            "Skipping malformed MIME part during content extraction",
+                            error_type=type(e).__name__,
+                        )
+                        continue
                     if isinstance(payload, bytes):
                         return payload.decode("utf-8", errors="ignore")
                     if isinstance(payload, str):
@@ -253,7 +272,14 @@ class GmailMessageParser:
                 try:
                     return cast(str, part.get_content())
                 except Exception:
-                    payload = part.get_payload(decode=True)
+                    try:
+                        payload = part.get_payload(decode=True)
+                    except Exception as e:
+                        log.warning(
+                            "Skipping malformed MIME part during content extraction",
+                            error_type=type(e).__name__,
+                        )
+                        continue
                     if isinstance(payload, bytes):
                         return payload.decode("utf-8", errors="ignore")
                     if isinstance(payload, str):
@@ -296,7 +322,11 @@ class GmailMessageParser:
                     # ``decode=True`` on a non-multipart part yields the decoded
                     # bytes (or None); typeshed's union also covers the multipart
                     # case, which an "attachment" disposition rules out.
-                    payload_bytes = cast("bytes | None", part.get_payload(decode=True))
+                    try:
+                        payload_bytes = cast("bytes | None", part.get_payload(decode=True))
+                    except Exception:
+                        # Malformed part — list the attachment without content.
+                        payload_bytes = None
                     attachments.append(
                         {
                             "filename": filename,
