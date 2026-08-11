@@ -69,7 +69,7 @@ detect_secrets = "uvx detect-secrets scan --all-files"  # pragma: allowlist secr
 [dependency-groups]
 dev = [
   "mypy>=1.16.1",
-  "ruff>=0.4.4",
+  "ruff>=0.16.2",
   "pre-commit>=4.2.0",
   "cfgv>=3.4.0",
   "types-pytz>=2025.2.0.20250516",
