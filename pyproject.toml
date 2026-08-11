@@ -293,11 +293,6 @@ ignore = [
   "RUF001",
   "RUF002",
   "RUF043",
-  # RUF100 (unused noqa) stays off until BLE001 is enabled. All 60 of its current
-  # findings are `# noqa: BLE001` markers on deliberate blind excepts — redundant
-  # only because BLE001 is ignored below. Removing them would delete the intent
-  # they document and have to be undone the moment BLE001 is turned on.
-  "RUF100",
   # Other naming / misc.
   "N803",   # arg name should be snake_case (pydantic-camelCase passthroughs)
   "N806",   # variable in function should be snake_case
@@ -606,6 +601,7 @@ no_implicit_optional = true
 ignore_missing_imports = true
 follow_imports = "silent"
 show_error_codes = true
+enable_error_code = ["ignore-without-code"]
 show_column_numbers = true
 pretty = true
 # Full strictness: every --strict-family flag is on globally (see the flags below).
@@ -675,6 +671,9 @@ exclude_dirs = [
 # - B101: assert used (legitimate in pydantic validators / dev guards)
 # - B311: random module for non-crypto (sampling, jitter)
 # - B404: subprocess import (we run trusted commands)
+# B603 (subprocess call without shell=True) is NOT skipped repo-wide — it stays
+# enforced so any *new* subprocess.run call is checked. The one legitimate
+# trusted-constant-argv call site is silenced locally with `# nosec B603`.
 skips = ["B101", "B311", "B404"]
 
 # ---------------------------------------------------------------------------

@@ -141,7 +141,7 @@ async def call_executor(
             configurable=configurable,
             conversation_id=conversation_id,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.error(f"{LogTag.TOOL} Error dispatching executor", error=str(e))
         # Release only if THIS dispatch's acquire is what holds the lock. An
         # unconditional delete here freed a FOREIGN lock when the failure
@@ -342,7 +342,7 @@ async def cancel_executor(
             result += " Currently running task was not in the cancel list — still running."
         return result
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # Deliberately no lock cleanup here: this handler used to delete the busy
         # key unconditionally, which freed the lock of a run it had NOT managed to
         # cancel (no cancel_stream reached it), so the old executor kept going
@@ -370,7 +370,7 @@ async def _broadcast_executor_cancelled(
                 "cancelled": cancelled,
             },
         )
-    except Exception as e:  # noqa: BLE001 — best-effort UI signal
+    except Exception as e:  # best-effort UI signal
         log.warning(f"{LogTag.TOOL} Failed to broadcast executor.cancelled", error=str(e))
 
 

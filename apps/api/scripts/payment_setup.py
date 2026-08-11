@@ -71,11 +71,11 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 
-from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
+from motor.motor_asyncio import AsyncIOMotorClient
 
-from app.config.settings import settings  # noqa: E402
+from app.config.settings import settings
 from app.constants.memory import FREE_MEMORY_FACT_LIMIT
-from app.models.payment_models import PlanDocument  # noqa: E402
+from app.models.payment_models import PlanDocument
 
 
 async def cleanup_old_indexes(collection):

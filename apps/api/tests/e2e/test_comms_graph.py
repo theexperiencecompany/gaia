@@ -152,18 +152,21 @@ class TestEndOfTurnHooks:
     async def test_the_turn_runs_its_end_graph_hooks(self):
         """Follow-up suggestions and passive memory ingestion both hang off the
         end hook. If the graph stopped routing through it, chips would vanish and
-        nothing said in conversation would ever be remembered."""
+        nothing said in conversation would ever be remembered.
+
+        Asserted via ``visited``, not ``nodes()``: the end hooks are
+        side-effecting and write no channels, so the node emits an empty update
+        rather than echoing the message list back into the checkpoint."""
         async with comms_graph(["Hi there."]) as graph:
             run = await run_graph(graph, "hello")
 
-        assert "end_graph_hooks" in run.nodes()
+        assert "end_graph_hooks" in run.visited
 
     async def test_the_hooks_run_after_the_model_not_before(self):
         async with comms_graph(["Hi there."]) as graph:
             run = await run_graph(graph, "hello")
 
-        nodes = run.nodes()
-        assert nodes.index(AGENT_NODE) < nodes.index("end_graph_hooks")
+        assert run.visited.index(AGENT_NODE) < run.visited.index("end_graph_hooks")
 
 
 class TestSystemPromptSlots:

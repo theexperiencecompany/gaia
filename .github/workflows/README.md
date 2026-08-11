@@ -14,19 +14,10 @@ flowchart TD
   classDef external fill:#F0FDF4,stroke:#22C55E,color:#14532D,stroke-width:1.2px;
   classDef terminal fill:#F8FAFC,stroke:#94A3B8,color:#334155,stroke-width:1px;
 
-  START["Feature branch changes"]:::event --> PR_DEV["PR to develop"]:::event
-  PR_DEV --> PR_TITLE["pr-naming-conventions.yml<br/>Validate PR title"]:::ci
-  PR_DEV --> MAIN_PR_DEV["main.yml<br/>quality-checks (PR)"]:::ci
-  MAIN_PR_DEV --> DEV_MERGED{"Merged to develop?"}:::decision
-  DEV_MERGED -- "No" --> STOP1["Stop"]:::terminal
-  DEV_MERGED -- "Yes" --> PR_MASTER["PR develop -> master"]:::event
-
-  HOTFIX["hotfix/* cut from master<br/>(production defect, skips the develop backlog)"]:::event --> PR_MASTER
-  HOTFIX --> BACKPORT["Land on develop too<br/>(else the next develop -> master merge regresses it)"]:::event
-
-  PR_MASTER --> PR_TITLE
-  PR_MASTER --> MAIN_PR_MASTER["main.yml<br/>quality-checks (PR + master source policy)"]:::ci
-  MAIN_PR_MASTER --> MASTER_MERGED{"Merged to master?"}:::decision
+  START["Feature branch changes<br/>(humans, contributors, bots)"]:::event --> PR_MASTER["PR to master"]:::event
+  PR_MASTER --> PR_TITLE["pr-naming-conventions.yml<br/>Validate PR title"]:::ci
+  PR_MASTER --> MAIN_PR["main.yml + code-quality.yml<br/>quality gates (PR)"]:::ci
+  MAIN_PR --> MASTER_MERGED{"Merged to master?"}:::decision
   MASTER_MERGED -- "No" --> STOP2["Stop"]:::terminal
   MASTER_MERGED -- "Yes" --> PUSH_MASTER["push -> master"]:::event
 
@@ -53,15 +44,23 @@ flowchart TD
     B_WEB_PUB --> B_WEB_DONE["docker-web complete"]:::build
     B_WEB_SKIP --> B_WEB_DONE
 
-    B_REL_DONE --> PLAN["deployment-plan<br/>(needs docker-release + docker-web)"]:::decision
+    B_REL_DONE --> PLAN["deployment-plan (if: always())<br/>needs docker-release + docker-web + docker-grafana<br/>runs even if a lane failed/cancelled"]:::decision
     B_WEB_DONE --> PLAN
 
-    PLAN --> PLAN_BE{"backend_deploy == true?"}:::decision
-    PLAN --> PLAN_FE{"frontend_deploy == true?"}:::decision
+    PLAN --> PLAN_COUPLE{"backend AND web<br/>both affected?"}:::decision
+    PLAN_COUPLE -- "Yes (coupled)" --> PLAN_COUPLE_GATE{"either lane failed?"}:::decision
+    PLAN_COUPLE_GATE -- "Yes" --> PLAN_HOLD["Hold BOTH deploys back<br/>(coupled_hold, avoids forward skew)"]:::terminal
+    PLAN_COUPLE_GATE -- "No" --> PLAN_COUPLE_GO["Deploy BOTH together"]:::deploy
+    PLAN_COUPLE -- "No (single side)" --> PLAN_BE{"docker-release succeeded<br/>AND api/bots affected?"}:::decision
+    PLAN_COUPLE -- "No (single side)" --> PLAN_FE{"frontend_deploy == true?"}:::decision
+    PLAN --> PLAN_ORPHAN{"image published but its<br/>deploy did not run<br/>(incl. coupled_hold)?"}:::decision
   end
 
   PLAN_BE -- "Yes" --> DEPLOY_BACKEND["trigger-deploy -> deploy-swarm-prod.yml"]:::deploy
   PLAN_FE -- "Yes" --> DEPLOY_FRONTEND["trigger-web -> deploy-frontend.yml"]:::deploy
+  PLAN_COUPLE_GO --> DEPLOY_BACKEND
+  PLAN_COUPLE_GO --> DEPLOY_FRONTEND
+  PLAN_ORPHAN -- "Yes" --> NOTIFY_ORPHAN["notify-publish-without-deploy<br/>Discord alert + gh workflow run<br/>build.yml -f deployment_mode=both remedy"]:::deploy
 
   subgraph BACKEND_DEPLOY["deploy-swarm-prod.yml (Swarm app stack)"]
     direction TB
@@ -102,25 +101,31 @@ flowchart TD
 
 ## Per-Workflow Steps
 ### `.github/workflows/main.yml`
-1. Enter from PRs targeting `develop`/`master` and pushes to `master`.
-2. `detect`: run master promotion policy guard (`develop`, `release-please--*`, or `hotfix/*` to `master`), validate the release manifest, and compute Nx-affected Python/TypeScript project lists (fail-loud — an nx error fails the job rather than silently skipping every lane).
+1. Enter from PRs targeting `master` and pushes to `master`.
+2. `detect`: validate the release manifest and compute Nx-affected Python/TypeScript project lists (fail-loud — an nx error fails the job rather than silently skipping every lane).
 3. Correctness lanes, each gated on the affected lists: `build` (TS builds), `test-typescript` (vitest via Nx), and `test-python` — pytest run directly on the runner against live PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers started by `scripts/ci/start-test-services.sh` (same images/credentials as the local `dagger call test-python` harness), with coverage measured in the same run and gated at `--cov-fail-under=80` (a separate coverage job would re-run the whole suite a second time per PR, so it lives here instead). Static checks (ruff, mypy, Biome, tsc, custom AST lints, dead code) intentionally do NOT run here — they are enforced lanes in `code-quality.yml`.
 4. `quality-gate` (branch protection target) fails on any failed/cancelled lane; skipped lanes pass.
 5. If run is a successful push on `master`, call `build.yml`.
 
 ### `.github/workflows/code-quality.yml`
-1. Enter from PRs targeting `develop`/`master`, pushes to those branches, and manual dispatch.
+1. Enter from PRs targeting `master`, pushes to `master`, and manual dispatch.
 2. `changes`: one cheap no-toolchain job detects which languages a PR touches; Python lanes and TypeScript lanes are skipped wholesale when their language is untouched (on push/dispatch everything runs).
 3. Eighteen hygiene lanes (Biome, deps, circular, file-size, types-location, components-per-file, jscpd, type-coverage, package hygiene, tsc, ruff + custom AST lints, mypy, interrogate, xenon, bandit, evlog-map observability score, wide-event cross-runtime conformance, knip/vulture dead code), each self-scoping to changed files via `scripts/ci/changed-files.sh`. The `wide-event-conformance` lane runs the Python and TypeScript logging stacks for real and diffs the log shapes they actually emit against each other and against `scripts/ci/wide-event-conformance/contract.json`, so the two halves cannot drift apart. The observability lane (`tools/evlog_map`, enforced) posts the full-repo score to the job summary and fails PRs whose changed files score below the same files at the merge-base.
 
 4. `Quality gate (required)` (the single required status check) fails the merge if any lane is neither `success` nor `skipped`; a lane skipped by `changes` counts as passing, but a failed `changes` job fails the gate. All lanes are enforced — there is no informational tier.
 
 ### `.github/workflows/build.yml`
-1. Start two build lanes: `docker-release` and `docker-web`.
-2. `docker-release`: detect affected backend/bot projects, publish images to GHCR via Dagger, optionally sync Discord commands.
-3. `docker-web`: detect `web` changes and build/push web image via Dagger only when affected.
-4. `deployment-plan` waits for both lanes and computes `backend_deploy` / `frontend_deploy`.
-5. Trigger `deploy-swarm-prod.yml` and/or `deploy-frontend.yml` based on plan outputs.
+1. Start three build lanes: `docker-release`, `docker-web`, `docker-grafana`.
+2. `docker-release`: detect affected backend/bot projects, publish images to GHCR, optionally sync Discord commands. Records `images_published` right after its push steps (before Discord command sync), so a later, unrelated step failure never misreports a real publish as "nothing published".
+3. `docker-web`: detect `web` changes and build/push the web image only when affected.
+4. `docker-grafana`: builds/pushes the Grafana image unconditionally every run (tiny COPY layer over the upstream image). Not part of coupling or orphan detection — it has no "affected" concept and its `:latest` is always safe for the stack to pick up.
+5. `deployment-plan` runs with `if: always()` — it is never skipped by a lane failing or being cancelled — and needs all three build lanes purely for sequencing (deploy planning must not race ahead of the build lanes). It evaluates `docker-release`'s and `docker-web`'s `.result`, plus each side's affected-detection (`docker-release.outputs.api_affected`/`bots_affected`, `docker-web.outputs.web_affected`), via `scripts/ci/compute-deploy-plan.sh`:
+   - **Single-side push** (only backend or only web affected): each side deploys independently. `backend_deploy` is `true` only when `docker-release` succeeded AND api/bots affected. A failed/cancelled `docker-release` never deploys, but a failed `docker-web` no longer blocks it either — the old implicit needs-all-success gate did. `frontend_deploy` follows the existing rule (always true on a master push) and is not gated on `docker-web`'s result — the Vercel deploy path syncs from source, not from the `docker-web` image.
+   - **Coupled push** (both backend AND web affected by the same commit): the two deploys are treated as one unit. Both `docker-release` and `docker-web` must succeed for either to deploy; if either lane failed or was cancelled, `coupled_hold` is set and BOTH `backend_deploy`/`frontend_deploy` stay `false` — this prevents shipping one half (e.g. a new frontend) against a stale, untested other half. This is the one case where a lane failure still blocks a deploy on the healthy side, by design.
+   - `backend_orphaned` / `frontend_orphaned` flag when an image lane published to GHCR as `:latest` but its corresponding deploy did not run this time, for any reason (lane failure, cancellation, the plan itself deciding not to deploy, or a `coupled_hold` — which flags both sides even if only one side's lane actually failed, since the healthy side is held back too). Scoped to `master` only.
+   - Manual `workflow_dispatch` modes (`backend-only` / `frontend-only` / `both`) bypass affected-detection, lane-result gating, AND the coupling rule — this is the intended one-command remedy for drift: `gh workflow run build.yml --ref master -f deployment_mode=both` redeploys whatever is currently tagged `:latest` in GHCR regardless of what this run's own build lanes did. Manual `auto` mode applies the same coupling rule as an automatic push.
+6. `notify-publish-without-deploy` fires a Discord alert (same webhook/action the deploy workflows use) when either orphan flag is set, naming which images are published-but-undeployed (or held together, for a `coupled_hold`) and the `gh workflow run` remedy above.
+7. Trigger `deploy-swarm-prod.yml` and/or `deploy-frontend.yml` based on `backend_deploy` / `frontend_deploy`.
 
 ### `.github/workflows/deploy-swarm-prod.yml`
 1. Install SSH private key from `PROD_VM_SSH_KEY` via the `setup-swarm-context` composite action and log in to GHCR.
@@ -160,7 +165,7 @@ flowchart TD
 2. Validate PR title against configured semantic type list.
 
 ## File Map
-- `.github/workflows/main.yml`: CI correctness gate (build + tests) and master promotion policy. Python tests run runner-native against live service containers.
+- `.github/workflows/main.yml`: CI correctness gate (build + tests). Python tests run runner-native against live service containers.
 - `.github/workflows/code-quality.yml`: code-hygiene lanes (lint/type/dead-code/complexity/security) behind the ratcheted `Quality gate (required)` check.
 - `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
 - `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.

@@ -721,9 +721,9 @@ class TestPreModelHooksExecution:
 
     async def test_manage_system_prompts_keeps_latest_only(self, pg_checkpointer):
         """Send multiple non-memory system prompts. The
-        manage_system_prompts_node keeps only the latest one before the
-        LLM call, but the checkpoint retains all of them (pre-model hooks
-        modify state ephemerally). The graph must complete without error."""
+        manage_system_prompts_node keeps only the latest one, and since the
+        prompt-accumulation fix that pruning is durable: the stale copy is
+        tombstoned out of the checkpoint too."""
         from langgraph.store.memory import InMemoryStore
 
         fake_llm = create_fake_llm(["System prompt managed"])
@@ -753,15 +753,16 @@ class TestPreModelHooksExecution:
             config=config,
         )
 
-        # Both system prompts remain in persisted state (pre-model hooks
-        # only modify ephemerally for the LLM call)
+        # Only the latest system prompt persists — the stale copy is
+        # tombstoned out of the checkpoint by the model node.
         system_msgs = [m for m in result["messages"] if m.type == "system"]
         non_memory = [
             m for m in system_msgs if not m.additional_kwargs.get("memory_message", False)
         ]
-        assert len(non_memory) == 2, (
-            f"Both system prompts should remain in persisted state, found {len(non_memory)}"
+        assert len(non_memory) == 1, (
+            f"Exactly the latest system prompt should persist, found {len(non_memory)}"
         )
+        assert "New system prompt" in str(non_memory[0].content)
 
         # Graph completed with AI response
         ai_msgs = [m for m in result["messages"] if isinstance(m, AIMessage)]

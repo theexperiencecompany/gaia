@@ -8,6 +8,9 @@ trees so the logic is proven without running mutmut.
 
 import importlib.util
 from pathlib import Path
+import subprocess
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
 _SPEC = importlib.util.spec_from_file_location(
@@ -109,3 +112,82 @@ def test_test_files_for_finds_patch_string(tmp_path: Path) -> None:
     hits = mm._test_files_for("api/v1/endpoints/conversations", tmp_path)
 
     assert hits == [str(tmp_path / "tests/unit/api/test_conversations.py")]
+
+
+def test_tokens_without_comments_treats_trailing_and_whole_line_comments_as_inert() -> None:
+    """A trailing `# noqa` and a whole-line comment both disappear from the
+    token stream — the two shapes the suppression burn-down actually produced.
+    """
+    with_comments = mm._tokens_without_comments(
+        "try:\n    pass\nexcept Exception as e:  # noqa: BLE001\n    pass\n# a whole line comment\ny = 2\n"
+    )
+    without_comments = mm._tokens_without_comments(
+        "try:\n    pass\nexcept Exception as e:\n    pass\ny = 2\n"
+    )
+
+    assert with_comments == without_comments
+
+
+def test_tokens_without_comments_still_distinguishes_real_code_changes() -> None:
+    a = mm._tokens_without_comments("return 1  # noqa: E501\n")
+    b = mm._tokens_without_comments("return 2\n")
+
+    assert a != b
+
+
+def test_tokens_without_comments_returns_none_on_syntax_error() -> None:
+    assert mm._tokens_without_comments("def f(:\n") is None
+
+
+def _init_repo_with_commit(root: Path, content: str) -> str:
+    """A throwaway git repo with one file committed; returns that commit's sha."""
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "test"], cwd=root, check=True)
+    (root / "mod.py").write_text(content)
+    subprocess.run(["git", "add", "mod.py"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "base"], cwd=root, check=True)
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+
+
+def test_is_comment_only_change_true_when_only_a_trailing_noqa_is_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base_sha = _init_repo_with_commit(
+        tmp_path, "try:\n    pass\nexcept Exception as e:  # noqa: BLE001\n    pass\n"
+    )
+    (tmp_path / "mod.py").write_text("try:\n    pass\nexcept Exception as e:\n    pass\n")
+
+    monkeypatch.chdir(tmp_path)
+
+    assert mm._is_comment_only_change("mod.py", base_sha) is True
+
+
+def test_is_comment_only_change_false_when_a_return_value_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base_sha = _init_repo_with_commit(tmp_path, "def f():\n    return 1\n")
+    (tmp_path / "mod.py").write_text("def f():\n    return 2\n")
+
+    monkeypatch.chdir(tmp_path)
+
+    assert mm._is_comment_only_change("mod.py", base_sha) is False
+
+
+def test_is_comment_only_change_false_for_a_file_the_base_never_had(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "test"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "empty base", "--allow-empty"], cwd=tmp_path, check=True
+    )
+    base_sha = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True
+    ).strip()
+    (tmp_path / "mod.py").write_text("def f():\n    return 1\n")
+
+    monkeypatch.chdir(tmp_path)
+
+    assert mm._is_comment_only_change("mod.py", base_sha) is False

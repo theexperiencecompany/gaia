@@ -146,7 +146,7 @@ async def resolve_approvals_batch(
                     approval_id=approval_id, resolved=False, reason="not_resumable"
                 )
             )
-        except Exception as e:  # noqa: BLE001 — one item's infra failure must not strand the rest
+        except Exception as e:  # one item's infra failure must not strand the rest
             # The item stays pending (nothing transitioned), so the sweep retries it; the
             # rest of the batch still processes. Reported, not swallowed.
             log.error(
@@ -397,7 +397,7 @@ async def sweep_approvals() -> dict[str, int]:
             expired += 1
         except ApprovalRequestNotFound:
             continue
-        except Exception as e:  # noqa: BLE001 — one bad record must not strand the rest of the pass
+        except Exception as e:  # one bad record must not strand the rest of the pass
             log.error(
                 f"{LogTag.HIL} Sweep could not expire",
                 approval_id=record.approval_id,
@@ -413,7 +413,7 @@ async def sweep_approvals() -> dict[str, int]:
                 record, resume_status=resume_status, feedback=record.feedback, scope=record.scope
             )
             redispatched += 1
-        except Exception as e:  # noqa: BLE001 — a failed redispatch is retried next sweep; don't abort
+        except Exception as e:  # a failed redispatch is retried next sweep; don't abort
             log.error(
                 f"{LogTag.HIL} Sweep could not redispatch",
                 approval_id=record.approval_id,

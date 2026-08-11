@@ -80,7 +80,7 @@ _early_infisical_patch.start()
 # app.db.repositories.base -> app.db.redis -> app.config.settings, which
 # instantiates settings at import time. Without ENV set first, that resolves to
 # ProductionSettings and fails validation (CI has no production keys).
-from app.models.payment_models import (  # noqa: E402
+from app.models.payment_models import (
     PlanType,
     SubscriptionStatus,
     UserSubscriptionStatus,

@@ -4,7 +4,7 @@ description: >
   Autonomously ship a feature end-to-end with zero human intervention: plan it,
   implement it, review it with a team of subagents, boot the full stack, drive
   it in a real browser like a user (agent-browser + the driving-gaia skill),
-  capture before/after screenshots, open a PR to develop, and drive CI and
+  capture before/after screenshots, open a PR to master, and drive CI and
   CodeRabbit to green. Use this skill whenever the user asks to "ship" a
   feature, "one-shot" a feature, build something "end to end", implement
   something "autonomously", take an idea "from spec to PR", or asks for a
@@ -46,7 +46,7 @@ not volume.
 
 ## Non-Negotiables
 
-- **Branch from and PR into `develop`.** Never `master`. **Never merge the PR.**
+- **Branch from and PR into `master`.** **Never merge the PR.**
 - **Never fake evidence.** No mocked-up screenshots, no "verified" claims for
   paths you did not run. Whatever you could not exercise, the PR says so.
 - **No debt as a shipping strategy.** Root-cause fixes, no lint suppressions,
@@ -72,7 +72,7 @@ questions nobody is there to answer.
 
 ### 1. Bootstrap (start first, runs while you plan)
 
-`git fetch origin develop` and branch from it. Then `pnpm install` and
+`git fetch origin master` and branch from it. Then `pnpm install` and
 `pnpm exec nx run api:sync`, create env files
 (`cp -f apps/api/.env.example apps/api/.env` first — `mise setup:env` errors
 without it, and only auto-copies the others; dummy WorkOS values are fine —
@@ -99,7 +99,7 @@ survives. A plan flaw costs minutes here and hours in phase 9.
 
 ### 3. BEFORE screenshots
 
-Valid only while the branch's tracked tree still matches `develop` —
+Valid only while the branch's tracked tree still matches `master` —
 untracked bootstrap artifacts (`.env` files, installed deps) don't count.
 Capture before your first source edit (`git stash` around the capture if
 you already edited). Walk the journey script and shoot every surface the
@@ -124,7 +124,7 @@ root; auto-fixers first where they exist.
 
 ### 6. Review team
 
-Spawn reviewer subagents in parallel on the full diff vs `origin/develop`,
+Spawn reviewer subagents in parallel on the full diff vs `origin/master`,
 one lens each — correctness (real user-reachable failures, not theoretical
 races), architecture/debt (duplication, wrong-layer logic, missed
 `libs/shared` reuse, dead code), design-system compliance vs DESIGN.md (UI
@@ -158,7 +158,7 @@ until clean, then capture the AFTER shot-list.
 ### 8. Ship the PR
 
 Push the branch first (`git push -u origin <branch>`), then open the PR:
-Conventional-Commit title, base `develop`, body with the before/after table
+Conventional-Commit title, base `master`, body with the before/after table
 and an honest verification section
 ([references/screenshots-and-pr.md](references/screenshots-and-pr.md)).
 Subscribe to PR activity immediately.
@@ -199,7 +199,7 @@ exist. Design is a gate in this pipeline, not a coat of paint:
       equivalent live evidence (bot transcript, curl + Mongo output) and say so
 - [ ] Local gates green for every touched language; review findings fixed or
       refuted
-- [ ] PR open against `develop`, both CI gates green, CodeRabbit threads all
+- [ ] PR open against `master`, both CI gates green, CodeRabbit threads all
       resolved or answered
 - [ ] Branch pushed, tree clean, no stray files in the diff (plans,
       screenshots, scratch scripts)

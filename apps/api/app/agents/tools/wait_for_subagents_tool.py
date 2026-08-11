@@ -194,7 +194,7 @@ async def _collect_subagent(
     agent_name = record.subagent_agent_name or "subagent"
     try:
         outcome = await resume_parked_subagent(record, configurable, writer)
-    except Exception as e:  # noqa: BLE001 — one subagent's failure must not strand the batch
+    except Exception as e:  # one subagent's failure must not strand the batch
         log.error(
             f"{LogTag.HIL} Failed to resume parked subagent",
             approval_id=record.approval_id,

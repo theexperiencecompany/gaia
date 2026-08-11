@@ -274,6 +274,83 @@ class TestFormatToolCallEntry:
 
 
 # ---------------------------------------------------------------------------
+# format_tool_call_entry -> _resolve_mcp_icon_name (custom MCP integration
+# icon/name lazy-fill; only reached when integration_id + user_id are set,
+# the tool isn't a core tool, and no icon_url was pre-supplied)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveMcpIconName:
+    @pytest.mark.asyncio
+    async def test_cache_miss_looks_up_db_and_fills_icon_name(self) -> None:
+        tool_call = {"name": "custom_mcp_tool", "args": {}, "id": "tc9"}
+        mock_registry = MagicMock()
+        mock_registry.get_category_of_tool.return_value = None
+        mock_registry.get_all_tools_for_search.return_value = []
+
+        integration = _integration("custom_integration_1", "Custom Service")
+        integration.icon_url = "https://cdn.example.com/icon.png"
+
+        with (
+            patch(
+                "app.utils.agent_utils.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch("app.db.redis.get_cache", new_callable=AsyncMock, return_value=None),
+            patch("app.db.redis.set_cache", new_callable=AsyncMock) as mock_set_cache,
+            patch(
+                "app.utils.agent_utils.integration_repository.get",
+                new_callable=AsyncMock,
+                return_value=integration,
+            ) as mock_repo_get,
+        ):
+            result = await format_tool_call_entry(
+                tool_call,  # type: ignore[arg-type]
+                integration_id="custom_integration_1",
+                user_id="user123",
+            )
+
+        assert result is not None
+        assert result["data"]["icon_url"] == "https://cdn.example.com/icon.png"
+        assert result["data"]["integration_name"] == "Custom Service"
+        mock_repo_get.assert_awaited_once_with("custom_integration_1")
+        mock_set_cache.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_db_lookup(self) -> None:
+        tool_call = {"name": "custom_mcp_tool", "args": {}, "id": "tc10"}
+        mock_registry = MagicMock()
+        mock_registry.get_category_of_tool.return_value = None
+        mock_registry.get_all_tools_for_search.return_value = []
+
+        cached = {"icon_url": "cached.png", "integration_name": "Cached"}
+
+        with (
+            patch(
+                "app.utils.agent_utils.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch("app.db.redis.get_cache", new_callable=AsyncMock, return_value=cached),
+            patch(
+                "app.utils.agent_utils.integration_repository.get",
+                new_callable=AsyncMock,
+            ) as mock_repo_get,
+        ):
+            result = await format_tool_call_entry(
+                tool_call,  # type: ignore[arg-type]
+                integration_id="custom_integration_2",
+                user_id="user123",
+            )
+
+        assert result is not None
+        assert result["data"]["icon_url"] == "cached.png"
+        assert result["data"]["integration_name"] == "Cached"
+        mock_repo_get.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
 # format_sse_response / format_sse_data
 # ---------------------------------------------------------------------------
 

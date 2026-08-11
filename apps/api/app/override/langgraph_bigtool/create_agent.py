@@ -66,6 +66,7 @@ from app.override.langgraph_bigtool.dynamic_tool_node import (
 )
 from app.override.langgraph_bigtool.hooks import (
     HookType,
+    changed_hook_keys,
     execute_hooks,
     sync_execute_hooks,
 )
@@ -75,6 +76,7 @@ from app.override.langgraph_bigtool.utils import (
     dedupe_str_list,
     dedupe_tool_bindings,
     format_selected_tools,
+    pop_pruned_tombstones,
 )
 from app.utils.json_helpers import dict_bag
 from app.utils.mcp_utils import canonical_tool_name_map
@@ -212,6 +214,7 @@ def create_agent(  # type: ignore[explicit-any]
 
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         state = sync_execute_hooks(pre_model_hooks, state, config, store)
+        tombstones = pop_pruned_tombstones(state)
 
         if middleware_executor:
             raise RuntimeError(
@@ -241,7 +244,7 @@ def create_agent(  # type: ignore[explicit-any]
         if isinstance(response.content, str) and agent_name == "comms_agent":
             response.content = response.content + NEW_MESSAGE_BREAKER
 
-        return {"messages": [response]}  # type: ignore[return-value]
+        return {"messages": [*tombstones, response]}  # type: ignore[return-value]
 
     def _maybe_inject_wrapup(state: State) -> State:
         """Warn the model to finish when the recursion budget is nearly spent.
@@ -266,6 +269,7 @@ def create_agent(  # type: ignore[explicit-any]
     async def acall_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         """Async model invocation with middleware support."""
         state = await execute_hooks(pre_model_hooks, state, config, store)
+        tombstones = pop_pruned_tombstones(state)
 
         if middleware_executor:
             state = await middleware_executor.execute_before_model(state, config, store)
@@ -332,8 +336,10 @@ def create_agent(  # type: ignore[explicit-any]
 
         # Return partial state update: new message + any keys added by
         # after_model (e.g. todos). Messages use an append reducer, so only
-        # return the new response — not the full list.
-        result: dict[str, object] = {"messages": [response]}
+        # return the new response — not the full list. Tombstones prune the
+        # slot-stale prompt copies the pre-model hooks dropped, so the
+        # checkpointed thread stays bounded too.
+        result: dict[str, object] = {"messages": [*tombstones, response]}
         base_keys = {"messages", "selected_tool_ids"}
         for key, value in updated_state.items():
             if key not in base_keys:
@@ -391,6 +397,7 @@ def create_agent(  # type: ignore[explicit-any]
     async def aselect_tools(
         tool_calls: list[dict[str, object]], config: RunnableConfig, *, store: BaseStore
     ) -> State:
+        """Async twin of ``select_tools`` — resolve retrieve_tools calls into bindings."""
         if retrieve_tools is None:
             raise RuntimeError("retrieve_tools is disabled and aselect_tools should not be called")
 
@@ -439,12 +446,13 @@ def create_agent(  # type: ignore[explicit-any]
     def execute_end_graph_hooks_node(
         state: State, config: RunnableConfig, *, store: BaseStore
     ) -> State:
-        return sync_execute_hooks(end_graph_hooks, state, config, store)
+        return changed_hook_keys(state, sync_execute_hooks(end_graph_hooks, state, config, store))
 
     async def aexecute_end_graph_hooks_node(
         state: State, config: RunnableConfig, *, store: BaseStore
     ) -> State:
-        return await execute_hooks(end_graph_hooks, state, config, store)
+        """Run the end-graph hooks; persist only the keys they actually changed."""
+        return changed_hook_keys(state, await execute_hooks(end_graph_hooks, state, config, store))
 
     def _get_bound_tool_names(state: State) -> set[str]:
         """Return the set of tool names currently bound to the model."""
@@ -485,6 +493,7 @@ def create_agent(  # type: ignore[explicit-any]
     async def areject_unbound_tools(
         tool_calls: list[dict[str, object]], *, store: BaseStore
     ) -> State:
+        """Async twin of ``reject_unbound_tools`` for the async graph path."""
         return reject_unbound_tools(tool_calls, store=store)
 
     def _last_tool_calling_message(state: State) -> AIMessage | None:
@@ -593,6 +602,7 @@ def create_agent(  # type: ignore[explicit-any]
         return {"messages": messages}  # type: ignore[return-value]
 
     async def afinish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
+        """Async twin of ``finish_task_node`` for the async graph path."""
         return finish_task_node(tool_calls, store=store)
 
     builder = StateGraph(State, context_schema=context_schema)

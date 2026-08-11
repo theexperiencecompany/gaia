@@ -161,7 +161,7 @@ class DeviceConnector(BaseConnector):  # type: ignore[misc]  # third-party conne
                         continue
                     try:
                         jsonrpc = JSONRPCMessage.model_validate_json(data)
-                    except Exception as parse_err:  # noqa: BLE001 - forward as stream error
+                    except Exception as parse_err:  # forward as stream error
                         await read_send.send(parse_err)
                         continue
                     await read_send.send(SessionMessage(jsonrpc))

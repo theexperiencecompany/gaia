@@ -17,19 +17,19 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select
 
-from app.constants.memory import (  # noqa: E402
+from app.constants.memory import (
     CHROMA_MEMORIES_COLLECTION,
     CHROMA_MEMORY_EPISODES_COLLECTION,
 )
-from app.db.chroma.chromadb import ChromaClient, init_chroma  # noqa: E402
-from app.db.postgresql import init_postgresql_engine  # noqa: E402
-from app.memory import chroma_store  # noqa: E402
-from app.memory.chroma_store import EpisodeVectorItem, MemoryVectorItem  # noqa: E402
-from app.memory.embeddings import embed_batch  # noqa: E402
-from app.memory.pg_store._session import memory_session  # noqa: E402
-from app.models.memory_db_models import MemoryEpisode, MemoryRecord  # noqa: E402
+from app.db.chroma.chromadb import ChromaClient, init_chroma
+from app.db.postgresql import init_postgresql_engine
+from app.memory import chroma_store
+from app.memory.chroma_store import EpisodeVectorItem, MemoryVectorItem
+from app.memory.embeddings import embed_batch
+from app.memory.pg_store._session import memory_session
+from app.models.memory_db_models import MemoryEpisode, MemoryRecord
 
 _BATCH = 64
 
