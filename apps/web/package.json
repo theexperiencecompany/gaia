@@ -210,7 +210,7 @@
     "tailwindcss": "^4.3.2",
     "tailwindcss-animate": "^1.0.7",
     "tinycolor2": "^1.6.0",
-    "torph": "^0.0.9",
+    "torph": "^0.1.0",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
     "uuid": "^13.0.2",

@@ -1055,8 +1055,8 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0
       torph:
-        specifier: ^0.0.9
-        version: 0.0.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: ^0.1.0
+        version: 0.1.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       unified:
         specifier: ^11.0.5
         version: 11.0.5
@@ -17937,8 +17937,8 @@ packages:
   toqr@0.1.1:
     resolution: {integrity: sha512-FWAPzCIHZHnrE/5/w9MPk0kK25hSQSH2IKhYh9PyjS3SG/+IEMvlwIHbhz+oF7xl54I+ueZlVnMjyzdSwLmAwA==}
 
-  torph@0.0.9:
-    resolution: {integrity: sha512-WrFMtJwqXCfIXbLNuTOwHWff0XVm/Ewctb+71bFis3HykPvCXl1CHXapU0r67pQhAI323fsA1L2pGPeqxXeRRA==}
+  torph@0.1.0:
+    resolution: {integrity: sha512-2HxoKBIjydwsVilfP44Dawsc6Ou4iL00GgnCvs4raL+Oc8EfY1kKyAxm+wmPYtVRdgdUoSIWUeaaIShNadxQPQ==}
     peerDependencies:
       react: 19.1.0
       react-dom: 19.1.0
@@ -40251,7 +40251,7 @@ snapshots:
 
   toqr@0.1.1: {}
 
-  torph@0.0.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
+  torph@0.1.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     optionalDependencies:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
