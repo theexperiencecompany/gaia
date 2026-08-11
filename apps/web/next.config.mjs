@@ -38,6 +38,10 @@ const withBundleAnalyzer = bundleAnalyzer({
 const useCloudflareImageLoader = process.env.IMAGE_LOADER === "cloudflare";
 
 const nextConfig = {
+  // Next's dev-server dedup locks on distDir, refusing a second `next dev` for
+  // the same directory. A dedicated dist dir (agents driving the app while a
+  // human dev server runs) lifts that without touching the default build.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   productionBrowserSourceMaps: true,
   // OpenNext file-traces every `public/*.wasm` into the Worker as a wasm chunk
   // (it shows up even in unrelated routes' .nft.json), which collects the

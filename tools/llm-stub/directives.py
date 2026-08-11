@@ -262,7 +262,14 @@ def resolve_response(
         nxt = tool_dirs[di]
         if nxt.name not in available_tools:
             if CALL_EXECUTOR_TOOL in available_tools:
-                return ToolCallResponse(name=CALL_EXECUTOR_TOOL, args={"task": user_text})
+                # acceptance_criteria became required with the structured handoff.
+                return ToolCallResponse(
+                    name=CALL_EXECUTOR_TOOL,
+                    args={
+                        "task": user_text,
+                        "acceptance_criteria": ["scripted directives executed"],
+                    },
+                )
             if RETRIEVE_TOOLS_TOOL in available_tools:
                 return ToolCallResponse(
                     name=RETRIEVE_TOOLS_TOOL,
