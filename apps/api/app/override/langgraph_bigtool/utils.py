@@ -85,7 +85,7 @@ def messages_delta_reducer(state: list[AnyMessage], writes: Sequence[Messages]) 
     return _messages_delta_reducer(current, [cast("list[AnyMessage]", kept)])
 
 
-class State(_BigtoolState):
+class State(_BigtoolState):  # type: ignore[misc]  # langgraph_bigtool State base is Any-typed (third-party)
     """Extended state with todos channel for agent task management."""
 
     # Override MessagesState's plain add_messages channel with a DeltaChannel:

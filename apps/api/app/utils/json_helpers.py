@@ -23,6 +23,7 @@ __all__ = [
     "int_opt_bag",
     "float_bag",
     "bool_bag",
+    "int_str_bag",
 ]
 
 

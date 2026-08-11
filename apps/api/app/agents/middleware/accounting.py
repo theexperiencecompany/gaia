@@ -22,7 +22,6 @@ Runs as a LangChain :class:`AgentMiddleware` via `create_agent(middleware=...)`.
 
 from collections.abc import Awaitable, Callable
 import time
-from typing import Any
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -107,7 +106,7 @@ def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
     return None
 
 
-class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):  # type: ignore[explicit-any]
+class LLMAccountingMiddleware(AgentMiddleware[AgentState[object], None, object]):
     """Track LLM usage + emit wide events after every model call.
 
     Responsibilities:

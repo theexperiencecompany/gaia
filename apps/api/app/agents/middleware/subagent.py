@@ -83,7 +83,7 @@ class SubagentState(AgentState[Any]):
     active_subagents: Annotated[list[str], OmitFromInput]
 
 
-class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):  # type: ignore[explicit-any]
+class SubagentMiddleware(AgentMiddleware[SubagentState, None, object]):
     """Middleware that exposes a spawn_subagent tool for focused subtask execution."""
 
     state_schema = SubagentState

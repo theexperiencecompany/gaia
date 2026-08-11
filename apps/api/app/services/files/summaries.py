@@ -63,7 +63,7 @@ def render_summary_markdown(
                 "",
             ]
             raw_summary = page.get("summary")
-            if isinstance(raw_summary, str):
+            if isinstance(raw_summary, str) and raw_summary:
                 parts += [f"**Summary:** {raw_summary.strip()}", ""]
             if isinstance(data, dict) and data.get("content"):
                 parts += [str(data["content"]).strip(), ""]

@@ -49,7 +49,8 @@ in exactly one helper, so the frame and the persisted record can never
 disagree.
 """
 
-from langchain_core.messages.ai import UsageMetadata
+from collections.abc import Mapping
+
 from pydantic import BaseModel
 
 from app.models.hil_models import HILApprovalStatus
@@ -195,7 +196,7 @@ class MainResponseCompleteFrame(BaseModel):  # type: ignore[explicit-any]
     """
 
     main_response_complete: bool
-    usage: dict[str, UsageMetadata] | None = None
+    usage: Mapping[str, object] | None = None
 
 
 class TodoProgressFrame(BaseModel):  # type: ignore[explicit-any]

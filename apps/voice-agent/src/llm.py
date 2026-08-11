@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from livekit.agents import AgentSession
 
 
-class CustomLLM(LLM[Any]):
+class CustomLLM(LLM[Any]):  # type: ignore[misc]  # livekit is not installed in the CI/typecheck env, so LLM resolves to Any
     """LLM adapter that streams SSE from POST /api/v1/chat-stream on the GAIA backend."""
 
     def __init__(

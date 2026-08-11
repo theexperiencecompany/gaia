@@ -36,7 +36,7 @@ _MEMORY_SEARCH_TSV = (
 )
 
 
-class MemoryRecord(Base):
+class MemoryRecord(Base):  # type: ignore[misc]  # SQLAlchemy declarative_base() -> type[Any] (third-party typing)
     """An atomic memory: a semantic fact or an experience.
 
     Never hard-deleted from agent flows. Contradictions create a new row
@@ -95,7 +95,7 @@ class MemoryRecord(Base):
     )
 
 
-class MemoryEntity(Base):
+class MemoryEntity(Base):  # type: ignore[misc]  # SQLAlchemy declarative_base() -> type[Any] (third-party typing)
     """A named entity (person, place, project, ...) mentioned in memories."""
 
     __tablename__ = "memory_entities"
@@ -116,7 +116,7 @@ class MemoryEntity(Base):
     )
 
 
-class MemoryEntityLink(Base):
+class MemoryEntityLink(Base):  # type: ignore[misc]  # SQLAlchemy declarative_base() -> type[Any] (third-party typing)
     """Links a memory to an entity it mentions (event-centric graph)."""
 
     __tablename__ = "memory_entity_links"
@@ -129,7 +129,7 @@ class MemoryEntityLink(Base):
     )
 
 
-class MemoryGraphEdge(Base):
+class MemoryGraphEdge(Base):  # type: ignore[misc]  # SQLAlchemy declarative_base() -> type[Any] (third-party typing)
     """LLM-extracted entity-to-entity relationship with provenance."""
 
     __tablename__ = "memory_graph_edges"
@@ -164,7 +164,7 @@ class MemoryGraphEdge(Base):
 EpisodeEntry = dict[str, str]  # {time, text, source}
 
 
-class MemoryEpisode(Base):
+class MemoryEpisode(Base):  # type: ignore[misc]  # SQLAlchemy declarative_base() -> type[Any] (third-party typing)
     """One row per (user, date): what happened that day, appended at ingestion."""
 
     __tablename__ = "memory_episodes"
@@ -186,7 +186,7 @@ class MemoryEpisode(Base):
     __table_args__ = (UniqueConstraint("user_id", "date", name="uq_memory_episodes_user_date"),)
 
 
-class MemoryDocument(Base):
+class MemoryDocument(Base):  # type: ignore[misc]  # SQLAlchemy declarative_base() -> type[Any] (third-party typing)
     """Core markdown document GAIA maintains about the user (user.md, agenda.md, ...)."""
 
     __tablename__ = "memory_documents"

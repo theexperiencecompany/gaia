@@ -26,7 +26,7 @@ class MCPCredentialStatus(str, Enum):
     ERROR = "error"
 
 
-class OAuthToken(Base):
+class OAuthToken(Base):  # type: ignore[misc]  # SQLAlchemy declarative_base() -> type[Any] (third-party typing)
     """SQLAlchemy model for OAuth tokens."""
 
     __tablename__ = "oauth_tokens"
@@ -51,7 +51,7 @@ class OAuthToken(Base):
     )
 
 
-class MCPCredential(Base):
+class MCPCredential(Base):  # type: ignore[misc]  # SQLAlchemy declarative_base() -> type[Any] (third-party typing)
     """User's MCP integration connection state and encrypted credentials."""
 
     __tablename__ = "mcp_credentials"

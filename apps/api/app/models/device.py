@@ -32,7 +32,7 @@ class DeviceServerStatus(str, Enum):
     ERROR = "error"
 
 
-class Device(Base):
+class Device(Base):  # type: ignore[misc]  # SQLAlchemy declarative_base() -> type[Any] (third-party typing)
     """A user's paired machine running the ``gaia bridge`` daemon.
 
     ``refresh_token_hash`` holds the SHA-256 of the current long-lived refresh
@@ -66,7 +66,7 @@ class Device(Base):
     )
 
 
-class DeviceMCPServer(Base):
+class DeviceMCPServer(Base):  # type: ignore[misc]  # SQLAlchemy declarative_base() -> type[Any] (third-party typing)
     """One MCP server a device exposes to the cloud over its tunnel.
 
     Each row is surfaced to the user as a custom integration (``managed_by="mcp"``,

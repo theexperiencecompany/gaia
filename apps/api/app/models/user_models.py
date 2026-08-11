@@ -448,7 +448,9 @@ class UserDocument(MongoDocument):  # type: ignore[explicit-any]
     # read path tolerates them (PlatformLinkRecord docstring); validating
     # would add a failure mode without adding safety.
     platform_links: Annotated[dict[str, PlatformLinkRecord] | None, SkipValidation()] = None
-    platform_links_connected_at: dict[str, str] | None = None
+    # SkipValidation: legacy rows stored BSON datetimes (or timestamps) here;
+    # the read path tolerates them, validating would fail every legacy user load.
+    platform_links_connected_at: Annotated[dict[str, str] | None, SkipValidation()] = None
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     # Profile / billing display name used by the payments emails.
@@ -536,7 +538,9 @@ class AuthenticatedUserResponse(BaseModel):  # type: ignore[explicit-any]
     # read path tolerates them (PlatformLinkRecord docstring); validating
     # would add a failure mode without adding safety.
     platform_links: Annotated[dict[str, PlatformLinkRecord] | None, SkipValidation()] = None
-    platform_links_connected_at: dict[str, str] | None = None
+    # SkipValidation: legacy rows stored BSON datetimes (or timestamps) here;
+    # the read path tolerates them, validating would fail every legacy user load.
+    platform_links_connected_at: Annotated[dict[str, str] | None, SkipValidation()] = None
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     first_name: str | None = None

@@ -118,7 +118,7 @@ def _error_content(exc: Exception, tool: str) -> dict[str, object]:
     return error
 
 
-class SanitizingLangChainAdapter(LangChainAdapter):
+class SanitizingLangChainAdapter(LangChainAdapter):  # type: ignore[misc]  # langchain base is Any-typed (third-party)
     """LangChain adapter that sanitizes MCP schemas and preserves annotations.
 
     Some MCP servers (e.g. Postman) return tool schemas with field names that

@@ -404,7 +404,7 @@ class ChromaStore(BaseStore):
         """Check if value matches filter conditions."""
         for key, filter_value in filter_dict.items():
             if key.startswith("$"):
-                if isinstance(filter_value, (dict, list, str, int, float, bool)):
+                if isinstance(filter_value, (dict, list, str, int, float, bool, type(None))):
                     if not self._apply_operator(value, key, filter_value):
                         return False
             else:

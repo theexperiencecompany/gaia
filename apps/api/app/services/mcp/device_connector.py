@@ -44,7 +44,7 @@ class DeviceConnectionError(RuntimeError):
     """The device is offline or the tunnel could not open a session."""
 
 
-class DeviceConnector(BaseConnector):
+class DeviceConnector(BaseConnector):  # type: ignore[misc]  # third-party connector base is Any-typed
     """MCP connector that tunnels a session to a local server on a paired device."""
 
     def __init__(self, device_id: str, server_key: str) -> None:

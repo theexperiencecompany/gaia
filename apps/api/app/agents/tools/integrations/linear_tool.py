@@ -222,8 +222,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
             else:
                 filtered.append(issue)
 
-        def sort_key(issue: dict[str, object]) -> tuple[int, str]:
-            p = int_bag(issue, "priority", 99)
+        def sort_key(issue: dict[str, object]) -> tuple[float, str]:
+            p = float_bag(issue, "priority", 99.0)
             due = text_bag(issue, "dueDate", "9999-12-31")
             return (p, due)
 
@@ -328,7 +328,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
             "priority": priority_to_str(int_bag(issue, "priority")),
             "state": text_opt_bag(dict_bag(issue, "state"), "name"),
             "dueDate": text_opt_bag(issue, "dueDate"),
-            "estimate": text_opt_bag(issue, "estimate"),
+            "estimate": float_bag(issue, "estimate"),
             "team": text_opt_bag(dict_bag(issue, "team"), "name"),
             "project": text_opt_bag(dict_bag(issue, "project"), "name"),
             "cycle": text_opt_bag(dict_bag(issue, "cycle"), "name"),
@@ -667,9 +667,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
         for h in history:
             entry: dict[str, object] = {
                 "timestamp": text_opt_bag(h, "createdAt"),
-                "actor": text_opt_bag(dict_bag(h, "actor"), "name")
-                if text_opt_bag(h, "actor")
-                else "System",
+                "actor": text_opt_bag(dict_bag(h, "actor"), "name") if h.get("actor") else "System",
             }
             if h.get("fromState") or h.get("toState"):
                 entry["change_type"] = "state"
@@ -679,13 +677,11 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                 entry["change_type"] = "assignee"
                 entry["from"] = (
                     text_opt_bag(dict_bag(h, "fromAssignee"), "name")
-                    if text_opt_bag(h, "fromAssignee")
+                    if h.get("fromAssignee")
                     else None
                 )
                 entry["to"] = (
-                    text_opt_bag(dict_bag(h, "toAssignee"), "name")
-                    if text_opt_bag(h, "toAssignee")
-                    else None
+                    text_opt_bag(dict_bag(h, "toAssignee"), "name") if h.get("toAssignee") else None
                 )
             elif h.get("fromPriority") is not None or h.get("toPriority") is not None:
                 entry["change_type"] = "priority"
@@ -744,7 +740,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                             "title": text_opt_bag(issue, "title"),
                             "priority": priority_to_str(int_bag(issue, "priority")),
                             "assignee": text_opt_bag(dict_bag(issue, "assignee"), "name")
-                            if text_opt_bag(issue, "assignee")
+                            if issue.get("assignee")
                             else None,
                         }
                     )
@@ -753,7 +749,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                 {
                     "id": text_opt_bag(cycle, "id"),
                     "name": text_opt_bag(cycle, "name"),
-                    "number": text_opt_bag(cycle, "number"),
+                    "number": float_bag(cycle, "number"),
                     "team": text_opt_bag(dict_bag(cycle, "team"), "name"),
                     "team_key": text_opt_bag(dict_bag(cycle, "team"), "key"),
                     "starts_at": text_opt_bag(cycle, "startsAt"),
@@ -852,9 +848,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                     }
                     if dict_bag(n, "issue")
                     else None,
-                    "actor": text_opt_bag(dict_bag(n, "actor"), "name")
-                    if text_opt_bag(n, "actor")
-                    else None,
+                    "actor": text_opt_bag(dict_bag(n, "actor"), "name") if n.get("actor") else None,
                 }
             )
 
@@ -902,7 +896,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                 except ValueError:
                     pass
 
-            if int_bag(issue, "priority") in [1, 2]:
+            if float_bag(issue, "priority") in [1, 2]:
                 high_priority.append(format_issue_summary(issue))
 
             if text_opt_bag(issue, "slaBreachesAt"):
@@ -926,7 +920,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                     "cycle_progress": round(
                         float_bag(dict_bag(t, "activeCycle"), "progress") * 100, 1
                     )
-                    if text_opt_bag(t, "activeCycle")
+                    if t.get("activeCycle")
                     else None,
                 }
                 for t in teams
@@ -978,7 +972,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                         overdue.append(format_issue_summary(issue))
                 except ValueError:
                     pass
-            if text_opt_bag(issue, "priority") in [1, 2]:
+            if float_bag(issue, "priority") in [1, 2]:
                 high_priority.append(format_issue_summary(issue))
 
         return {
