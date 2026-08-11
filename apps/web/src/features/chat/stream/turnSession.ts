@@ -121,6 +121,9 @@ export class TurnSession {
     streamLog("lifecycle", "turn:start", {
       turnKey: this.key,
       conversationId: this.conversationId,
+      // Carried so an on-disk recording is self-describing: the reader can see
+      // which prompt produced the frames that follow.
+      detail: { prompt: this.inputText },
     });
 
     trackEvent(ANALYTICS_EVENTS.CHAT_STARTED, {

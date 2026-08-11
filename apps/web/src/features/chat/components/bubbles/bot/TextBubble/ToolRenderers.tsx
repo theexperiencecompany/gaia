@@ -460,6 +460,12 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   },
 };
 
+/** Whether a tool_data entry has a card registered at all. A missing entry is a
+ *  silent drop (`renderTool` returns null), which the render audit records. */
+export function hasToolRenderer(name: ToolName): boolean {
+  return name in TOOL_RENDERERS;
+}
+
 export function renderTool<K extends ToolName>(
   name: K,
   data: ToolDataMap[K],

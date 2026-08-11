@@ -32,6 +32,7 @@ import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
 import { useSubagentSynthesis } from "./useSubagentSynthesis";
+import { useToolRenderAudit } from "./useToolRenderAudit";
 
 // OpenUI components use bg-zinc-800 (same as the bubble) and must render
 // OUTSIDE the imessage-bubble — see bubbles/bot/CLAUDE.md.
@@ -338,6 +339,9 @@ export default function TextBubble({
   // Single ordered timeline of tool calls + subagent groups (emission order)
   // and the remaining tool_data entries that render via TOOL_RENDERERS.
   const { timeline, processedTools } = useSubagentSynthesis(tool_data);
+
+  // Dev-only: record what this bubble did with each tool_data entry.
+  useToolRenderAudit(message_id, tool_data);
 
   // Tool calls currently blocked on a HIL approval, keyed by the shared
   // tool_call_id. Lets the tool row/subagent show "Waiting for approval"
