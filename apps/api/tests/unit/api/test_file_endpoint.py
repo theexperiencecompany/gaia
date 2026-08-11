@@ -17,6 +17,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.models.files_models import FileDocument
+from app.models.message_models import FileData
 from app.schemas.file import FileDeletedResponse
 
 FILE_BASE = "/api/v1"
@@ -101,6 +102,29 @@ class TestUploadFile:
             mime_type="image",
             outcome="success",
         )
+
+    @patch("app.api.v1.endpoints.file.FileData")
+    @patch("app.api.v1.endpoints.file.FileService.upload", new_callable=AsyncMock)
+    async def test_upload_file_pins_success_message(
+        self, mock_upload: AsyncMock, mock_filedata: MagicMock, client: AsyncClient
+    ):
+        """The success message is passed explicitly to the response model, not
+        left to FileData's default — a mutant that drops the ``message=``
+        kwarg must fail even though the current default happens to match."""
+        mock_upload.return_value = _file_doc(
+            file_id="file-001",
+            url="https://cdn.example.com/file.png",
+            filename="test.png",
+            type="image",
+        )
+        mock_filedata.side_effect = lambda **kwargs: FileData(**kwargs)
+        response = await client.post(
+            f"{FILE_BASE}/upload",
+            files={"file": ("test.png", BytesIO(b"data"), "image/png")},
+        )
+        assert response.status_code == 201
+        mock_filedata.assert_called_once()
+        assert mock_filedata.call_args.kwargs["message"] == "File uploaded successfully"
 
     @patch("app.api.v1.endpoints.file.FileService.upload", new_callable=AsyncMock)
     async def test_upload_file_forwards_content_length_header(
