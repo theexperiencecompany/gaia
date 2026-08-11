@@ -10,6 +10,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.email import (
+    CONTACT_EMAIL,
+    DISCORD_URL,
+    FOUNDER_SENDER,
+    SUPPORT_SENDER,
+    TWITTER_URL,
+    WHATSAPP_URL,
+)
+from app.constants.log_tags import LogTag
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from app.services.email.models import EmailMessage
 from app.services.email.providers.resend_provider import ResendEmailProvider
@@ -178,10 +187,54 @@ class TestSendSupportTeamNotification:
         m_render.assert_called_once()
         assert m_render.call_args.args[0] == "support_to_admin.html"
 
-    async def test_message_contract(self):
+    async def test_full_contract(self):
+        """Pin every observable side effect: log.set, template args, message fields, log.info."""
         with (
             patch(f"{SENDERS_MOD}.send_email", new_callable=AsyncMock) as m_send,
-            patch(f"{SENDERS_MOD}.render_email_template", return_value="<h1>ticket</h1>"),
+            patch(
+                f"{SENDERS_MOD}.render_email_template", return_value="<h1>ticket</h1>"
+            ) as m_render,
+            patch(f"{SENDERS_MOD}.settings") as m_settings,
+            patch(f"{SENDERS_MOD}.log") as m_log,
+        ):
+            from app.services.email.senders import send_support_team_notification
+
+            m_settings.FRONTEND_URL = "https://app.example.com"
+            await send_support_team_notification(_support_notification())
+
+        m_log.set.assert_called_once_with(
+            ticket_id="TKT-1",
+            request_type="support",
+            user_email="alice@example.com",
+        )
+        assert m_render.call_args.args == ("support_to_admin.html",)
+        assert m_render.call_args.kwargs == {
+            "request_type_label": "Support Request",
+            "ticket_id": "TKT-1",
+            "title": "Cannot log in",
+            "description": "It says invalid credentials",
+            "user_name": "Alice",
+            "user_email": "alice@example.com",
+            "admin_url": "https://app.example.com/admin/support/TKT-1",
+            "attachments": [],
+        }
+        message: EmailMessage = m_send.await_args.args[0]
+        assert message.sender == SUPPORT_SENDER
+        assert message.to == [SUPPORT_EMAIL]
+        assert message.subject == "[TKT-1] New Support Request: Cannot log in"
+        assert message.html == "<h1>ticket</h1>"
+        assert message.reply_to == "alice@example.com"
+        m_log.info.assert_called_once_with(
+            f"{LogTag.MAIL} Support notification sent to", support_email=SUPPORT_EMAIL
+        )
+
+    async def test_message_contract(self):
+        """Feature-request branch: label and subject must use the feature wording."""
+        with (
+            patch(f"{SENDERS_MOD}.send_email", new_callable=AsyncMock) as m_send,
+            patch(
+                f"{SENDERS_MOD}.render_email_template", return_value="<h1>ticket</h1>"
+            ) as m_render,
         ):
             from app.services.email.senders import send_support_team_notification
 
@@ -193,6 +246,7 @@ class TestSendSupportTeamNotification:
         assert message.to == [SUPPORT_EMAIL]
         assert message.subject == "[TKT-1] New Feature Request: Cannot log in"
         assert message.reply_to == "alice@example.com"
+        assert m_render.call_args.kwargs["request_type_label"] == "Feature Request"
 
     async def test_recipient_failure_does_not_block_others(self):
         with (
@@ -202,6 +256,7 @@ class TestSendSupportTeamNotification:
                 side_effect=[RuntimeError("smtp down"), None],
             ) as m_send,
             patch(f"{SENDERS_MOD}.render_email_template", return_value="<h1>ticket</h1>"),
+            patch(f"{SENDERS_MOD}.log") as m_log,
         ):
             from app.services.email.senders import send_support_team_notification
 
@@ -210,6 +265,15 @@ class TestSendSupportTeamNotification:
             )
 
         assert m_send.await_count == 2
+        m_log.error.assert_called_once_with(
+            f"{LogTag.MAIL} Failed to send support email to",
+            support_email="support@a.io",
+            error="smtp down",
+            error_type="RuntimeError",
+        )
+        m_log.info.assert_called_once_with(
+            f"{LogTag.MAIL} Support notification sent to", support_email="ops@a.io"
+        )
 
     async def test_template_failure_propagates(self):
         with (
@@ -218,6 +282,7 @@ class TestSendSupportTeamNotification:
                 f"{SENDERS_MOD}.render_email_template",
                 side_effect=RuntimeError("jinja boom"),
             ),
+            patch(f"{SENDERS_MOD}.log") as m_log,
         ):
             from app.services.email.senders import send_support_team_notification
 
@@ -225,13 +290,21 @@ class TestSendSupportTeamNotification:
                 await send_support_team_notification(_support_notification())
 
         m_send.assert_not_awaited()
+        m_log.error.assert_called_once_with(
+            f"{LogTag.MAIL} Error sending support team notifications",
+            error="jinja boom",
+            error_type="RuntimeError",
+        )
 
 
 class TestSendSupportToUserEmail:
     async def test_confirmation_message_contract(self):
         with (
             patch(f"{SENDERS_MOD}.send_email", new_callable=AsyncMock) as m_send,
-            patch(f"{SENDERS_MOD}.render_email_template", return_value="<h1>got it</h1>"),
+            patch(
+                f"{SENDERS_MOD}.render_email_template", return_value="<h1>got it</h1>"
+            ) as m_render,
+            patch(f"{SENDERS_MOD}.log") as m_log,
         ):
             from app.services.email.senders import send_support_to_user_email
 
@@ -241,6 +314,34 @@ class TestSendSupportToUserEmail:
         assert message.to == ["alice@example.com"]
         assert message.subject == "[TKT-1] Your support request has been received"
         assert message.reply_to is None
+        assert message.sender == SUPPORT_SENDER
+        assert m_render.call_args.args == ("support_to_user.html",)
+        assert m_render.call_args.kwargs == {
+            "request_type_label": "Support Request",
+            "user_name": "Alice",
+            "ticket_id": "TKT-1",
+            "title": "Cannot log in",
+            "description": "It says invalid credentials",
+            "expected_response_time": "24 hours",
+            "attachments": [],
+        }
+        m_log.info.assert_called_once_with(
+            f"{LogTag.MAIL} Confirmation email sent to user", user_email="alice@example.com"
+        )
+
+    async def test_feature_request_label(self):
+        with (
+            patch(f"{SENDERS_MOD}.send_email", new_callable=AsyncMock) as m_send,
+            patch(
+                f"{SENDERS_MOD}.render_email_template", return_value="<h1>got it</h1>"
+            ) as m_render,
+        ):
+            from app.services.email.senders import send_support_to_user_email
+
+            await send_support_to_user_email(_support_notification(type=SupportRequestType.FEATURE))
+
+        assert m_render.call_args.kwargs["request_type_label"] == "Feature Request"
+        assert m_send.await_args.args[0].subject == "[TKT-1] Your feature request has been received"
 
     async def test_failure_propagates(self):
         with (
@@ -250,18 +351,28 @@ class TestSendSupportToUserEmail:
                 side_effect=RuntimeError("down"),
             ),
             patch(f"{SENDERS_MOD}.render_email_template", return_value="<h1>got it</h1>"),
+            patch(f"{SENDERS_MOD}.log") as m_log,
         ):
             from app.services.email.senders import send_support_to_user_email
 
             with pytest.raises(RuntimeError, match="down"):
                 await send_support_to_user_email(_support_notification())
 
+        m_log.error.assert_called_once_with(
+            f"{LogTag.MAIL} Failed to send confirmation email to user",
+            error="down",
+            error_type="RuntimeError",
+        )
+
 
 class TestSendProSubscriptionEmail:
     async def test_welcome_message_contract(self):
         with (
             patch(f"{SENDERS_MOD}.send_email", new_callable=AsyncMock) as m_send,
-            patch(f"{SENDERS_MOD}.render_email_template", return_value="<h1>welcome pro</h1>"),
+            patch(
+                f"{SENDERS_MOD}.render_email_template", return_value="<h1>welcome pro</h1>"
+            ) as m_render,
+            patch(f"{SENDERS_MOD}.log") as m_log,
         ):
             from app.services.email.senders import send_pro_subscription_email
 
@@ -270,8 +381,20 @@ class TestSendProSubscriptionEmail:
         message: EmailMessage = m_send.await_args.args[0]
         assert message.to == ["alice@example.com"]
         assert message.subject == "Welcome to GAIA Pro! 🚀"
-        assert message.reply_to == "aryan@heygaia.io"
+        assert message.reply_to == CONTACT_EMAIL
         assert message.html == "<h1>welcome pro</h1>"
+        assert message.sender == FOUNDER_SENDER
+        assert m_render.call_args.args == ("subscribed.html",)
+        assert m_render.call_args.kwargs == {
+            "user_name": "Alice",
+            "discord_url": DISCORD_URL,
+            "whatsapp_url": WHATSAPP_URL,
+            "twitter_url": TWITTER_URL,
+        }
+        m_log.info.assert_called_once_with(
+            f"{LogTag.MAIL} Pro subscription welcome email sent to",
+            user_email="alice@example.com",
+        )
 
     async def test_failure_propagates(self):
         with (
@@ -281,8 +404,16 @@ class TestSendProSubscriptionEmail:
                 side_effect=RuntimeError("down"),
             ),
             patch(f"{SENDERS_MOD}.render_email_template", return_value="<h1>welcome pro</h1>"),
+            patch(f"{SENDERS_MOD}.log") as m_log,
         ):
             from app.services.email.senders import send_pro_subscription_email
 
             with pytest.raises(RuntimeError, match="down"):
                 await send_pro_subscription_email("Alice", "alice@example.com")
+
+        m_log.error.assert_called_once_with(
+            f"{LogTag.MAIL} Failed to send pro subscription email to",
+            user_email="alice@example.com",
+            error="down",
+            error_type="RuntimeError",
+        )
