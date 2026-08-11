@@ -20,6 +20,8 @@ def init_posthog() -> Posthog:
     Returns:
         Posthog: Configured PostHog client instance.
     """
-    posthog = Posthog(settings.POSTHOG_API_KEY, host="https://us.i.posthog.com")
+    # The lazy provider only initializes when the key is present (required_keys
+    # gate above); the fallback satisfies the type without changing behavior.
+    posthog = Posthog(settings.POSTHOG_API_KEY or "", host="https://us.i.posthog.com")
 
     return posthog

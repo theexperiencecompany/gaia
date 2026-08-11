@@ -117,7 +117,7 @@ async def init_postgresql_engine() -> AsyncEngine:
     """
     log.debug(f"{LogTag.STARTUP} Initializing PostgreSQL async engine")
 
-    postgres_url: str = settings.POSTGRES_URL
+    postgres_url: str = settings.POSTGRES_URL or ""
     url, connect_args = _adapt_url_for_asyncpg(postgres_url)
 
     engine = create_async_engine(

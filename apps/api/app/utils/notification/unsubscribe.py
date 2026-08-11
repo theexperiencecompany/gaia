@@ -15,7 +15,9 @@ _SALT = "email-unsubscribe"
 
 
 def _serializer() -> URLSafeSerializer:
-    return URLSafeSerializer(settings.EMAIL_UNSUBSCRIBE_SECRET, salt=_SALT)
+    # ``or ""`` keeps dev (where the key is optional) signing with an empty
+    # secret; production requires the key, so the real secret is always used.
+    return URLSafeSerializer(settings.EMAIL_UNSUBSCRIBE_SECRET or "", salt=_SALT)
 
 
 def build_unsubscribe_url(user_id: str) -> str:

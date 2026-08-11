@@ -97,6 +97,78 @@ class CommonSettings(BaseAppSettings):  # type: ignore[explicit-any]
     DEV_UNLIMITED_RATE_LIMITS: bool = False
 
     # ----------------------------------------------
+    # Env-var-backed settings shared by every environment. Hoisted from the
+    # env-specific classes (each carried a copy) so get_settings() can be typed
+    # CommonSettings instead of Any; ProductionSettings re-declares the
+    # required subset (``str`` without a default) to keep prod boot enforcement.
+    # ----------------------------------------------
+    AGENT_SECRET: str | None = None
+    BRAVE_API_KEY: str | None = None
+    CHROMADB_HOST: str | None = None
+    CHROMADB_PORT: int | None = None
+    CLOUDINARY_API_KEY: str | None = None
+    CLOUDINARY_API_SECRET: str | None = None
+    CLOUDINARY_CLOUD_NAME: str | None = None
+    COMPOSIO_KEY: str | None = None
+    COMPOSIO_WEBHOOK_SECRET: str | None = None
+    DEBUG_EMAIL_PROCESSING: bool = False
+    DEV_AUTH_BYPASS_EMAIL: str | None = None
+    DISCORD_OAUTH_CLIENT_ID: str | None = None
+    DISCORD_OAUTH_CLIENT_SECRET: str | None = None
+    E2B_API_KEY: str | None = None
+    E2B_DOMAIN: str | None = None
+    E2B_SANDBOX_EVICT_DAYS: int = 14
+    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 300
+    E2B_TEMPLATE_ID: str | None = None
+    ELEVENLABS_API_KEY: str | None = None
+    EMAIL_UNSUBSCRIBE_SECRET: str | None = None
+    EXA_API_KEY: str | None = None
+    FIRECRAWL_API_KEY: str | None = None
+    GOOGLE_API_KEY: str | None = None
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
+    JFS_ENCRYPTION_KEY: str | None = None
+    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 20
+    JUICEFS_BOOTSTRAP_RETRY_BACKOFF: int = 3
+    JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"
+    JUICEFS_META_URL_TEMPLATE: str | None = None
+    JUICEFS_MOUNT_READY_TIMEOUT: int = 90
+    JUICEFS_NUM_SHARDS: int = 1
+    LIVEKIT_API_KEY: str | None = None
+    LIVEKIT_API_SECRET: str | None = None
+    LIVEKIT_URL: str | None = None
+    LLAMA_INDEX_KEY: str | None = None
+    OPENROUTER_API_KEY: str | None = None
+    OPENWEATHER_API_KEY: str | None = None
+    R2_ACCESS_KEY: str | None = None
+    R2_ACCOUNT_ID: str | None = None
+    R2_BUCKET: str | None = None
+    R2_SECRET_KEY: str | None = None
+    RABBITMQ_URL: str | None = None
+    RESEND_AUDIENCE_ID: str | None = None
+    RESEND_API_KEY: str | None = None
+    SEARXNG_BASE_URL: str | None = None
+    SESSION_PRUNE_BATCH_LIMIT: int = 1000
+    SESSION_RETENTION_DAYS: int = 30
+    SLACK_OAUTH_CLIENT_ID: str | None = None
+    SLACK_OAUTH_CLIENT_SECRET: str | None = None
+    TAVILY_API_KEY: str | None = None
+    TELEGRAM_BOT_USERNAME: str | None = "heygaia_bot"
+    VOICE_AGENT_BACKEND_URL: str | None = None
+    WHATSAPP_PHONE_NUMBER: str | None = (
+        None  # E.164 without +, e.g. "15551234567" — used for wa.me links
+    )
+
+    ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
+    DODO_PAYMENTS_API_KEY: str | None = None
+    DODO_PAYMENTS_BASE_URL: str | None = None
+    DODO_WEBHOOK_PAYMENTS_SECRET: str | None = None
+    POSTGRES_URL: str | None = None
+    POSTHOG_API_KEY: str | None = None
+    SENTRY_DSN: str | None = None
+
+    # ----------------------------------------------
     # Database Connections
     # ----------------------------------------------
     MONGO_DB: str
@@ -261,17 +333,24 @@ class ProductionSettings(CommonSettings):  # type: ignore[explicit-any]
     """Strict settings required for production environment."""
 
     # ----------------------------------------------
+    # Required in production — re-declared over the optional base so prod
+    # boot fails loudly when an env var is missing (dev stays optional).
+    # ----------------------------------------------
+    POSTGRES_URL: str
+    DODO_PAYMENTS_API_KEY: str
+    DODO_WEBHOOK_PAYMENTS_SECRET: str
+    SENTRY_DSN: str
+    POSTHOG_API_KEY: str
+    # ----------------------------------------------
     # Database & Message Queue Connections
     # ----------------------------------------------
     CHROMADB_HOST: str
     CHROMADB_PORT: int
-    POSTGRES_URL: str
     RABBITMQ_URL: str
 
     # ----------------------------------------------
     # Authentication & OAuth
     # ----------------------------------------------
-    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
 
@@ -307,9 +386,6 @@ class ProductionSettings(CommonSettings):  # type: ignore[explicit-any]
     # any provider whose key/URL is unset). Exa is the primary free workhorse
     # (20k/mo free); SearXNG is the self-hosted unlimited floor that can never
     # bill us; Tavily/Brave are budget-capped boosters.
-    EXA_API_KEY: str | None = None
-    BRAVE_API_KEY: str | None = None
-    SEARXNG_BASE_URL: str | None = None
 
     # Voice Agent Configuration
     LIVEKIT_URL: str
@@ -325,13 +401,11 @@ class ProductionSettings(CommonSettings):  # type: ignore[explicit-any]
     # per-room in the LiveKit participant metadata. Unset (default) keeps the
     # agent on its boot-time GAIA_BACKEND_URL — set it in multi-backend
     # deployments like staging previews (one agent, many preview APIs).
-    VOICE_AGENT_BACKEND_URL: str | None = None
 
     # ----------------------------------------------
     # Webhook Secrets & Security
     # ----------------------------------------------
     COMPOSIO_WEBHOOK_SECRET: str
-    DODO_WEBHOOK_PAYMENTS_SECRET: str
 
     # ----------------------------------------------
     # Content Management
@@ -352,14 +426,11 @@ class ProductionSettings(CommonSettings):  # type: ignore[explicit-any]
     # gaps so back-to-back turns reuse a live mount. Trade-off: more concurrently
     # live sandboxes vs the E2B quota — the scalable fix is the warm pool
     # (E2B_WARM_POOL_TARGET_RATIO), still a follow-up.
-    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 300
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
-    E2B_SANDBOX_EVICT_DAYS: int = 14
     E2B_WARM_POOL_TARGET_RATIO: float = 2.0  # Phase 2
     # Artifact detection mechanism — decided empirically by
     # scripts/probe_artifact_detection.py (Phase 0). "watch_dir" uses E2B
     # envd's native recursive watch; "accesslog" tails JuiceFS .accesslog.
-    ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
     ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096  # accesslog mode only
 
     # ----------------------------------------------
@@ -380,7 +451,6 @@ class ProductionSettings(CommonSettings):  # type: ignore[explicit-any]
     # single env var / Infisical secret; the entrypoint writes it to disk on
     # boot so `juicefs format / mount` can pick it up. Optional — leave empty
     # to skip client-side encryption (R2 at-rest encryption still applies).
-    JFS_ENCRYPTION_KEY: str | None = None
     JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"  # API container's sidecar mount
     # JuiceFS bootstrap supervisor (tune per env without a code change):
     JUICEFS_MOUNT_READY_TIMEOUT: int = 90  # secs to wait for mount readiness
@@ -392,14 +462,10 @@ class ProductionSettings(CommonSettings):  # type: ignore[explicit-any]
     # ----------------------------------------------
     # Payment Processing
     # ----------------------------------------------
-    DODO_PAYMENTS_API_KEY: str
-    DODO_PAYMENTS_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Monitoring & Analytics
     # ----------------------------------------------
-    SENTRY_DSN: str
-    POSTHOG_API_KEY: str
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -421,7 +487,6 @@ class ProductionSettings(CommonSettings):  # type: ignore[explicit-any]
     # ----------------------------------------------
     # Debug Config
     # ----------------------------------------------
-    DEBUG_EMAIL_PROCESSING: bool = False
 
     # ----------------------------------------------
     # Bot Configuration
@@ -435,18 +500,10 @@ class ProductionSettings(CommonSettings):  # type: ignore[explicit-any]
     TELEGRAM_BOT_TOKEN: str | None = None
     KAPSO_API_KEY: str | None = None
     KAPSO_PHONE_NUMBER_ID: str | None = None
-    WHATSAPP_PHONE_NUMBER: str | None = (
-        None  # E.164 without +, e.g. "15551234567" — used for wa.me links
-    )
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
     # ----------------------------------------------
-    DISCORD_OAUTH_CLIENT_ID: str | None = None
-    DISCORD_OAUTH_CLIENT_SECRET: str | None = None
-    SLACK_OAUTH_CLIENT_ID: str | None = None
-    SLACK_OAUTH_CLIENT_SECRET: str | None = None
-    TELEGRAM_BOT_USERNAME: str | None = "heygaia_bot"
 
     # ----------------------------------------------
     # Bot Session Token Configuration
@@ -480,71 +537,40 @@ class DevelopmentSettings(CommonSettings):  # type: ignore[explicit-any]
     # ----------------------------------------------
     # Database & Message Queue Connections
     # ----------------------------------------------
-    CHROMADB_HOST: str | None = None
-    CHROMADB_PORT: int | None = None
-    POSTGRES_URL: str | None = None
-    RABBITMQ_URL: str | None = None
 
     # ----------------------------------------------
     # Authentication & OAuth
     # ----------------------------------------------
-    GOOGLE_CLIENT_ID: str | None = None
-    GOOGLE_CLIENT_SECRET: str | None = None
     ENABLE_PUBSUB_JWT_VERIFICATION: bool = False
     GOOGLE_USERINFO_URL: str = "https://www.googleapis.com/oauth2/v2/userinfo"
-    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
 
     # ----------------------------------------------
     # External API Integration Keys
     # ----------------------------------------------
     # Search & Data Services
-    TAVILY_API_KEY: str | None = None
-    LLAMA_INDEX_KEY: str | None = None
 
     # AI & Machine Learning
     OPENAI_API_KEY: str | None = None
-    GOOGLE_API_KEY: str | None = None
-    OPENROUTER_API_KEY: str | None = None
 
     # Weather Services
-    OPENWEATHER_API_KEY: str | None = None
 
     # Email & Communication
-    RESEND_API_KEY: str | None = None
-    RESEND_AUDIENCE_ID: str | None = None
-    EMAIL_UNSUBSCRIBE_SECRET: str | None = None
 
     # Media Storage
-    CLOUDINARY_CLOUD_NAME: str | None = None
-    CLOUDINARY_API_KEY: str | None = None
-    CLOUDINARY_API_SECRET: str | None = None
 
     # External Service Integration
-    COMPOSIO_KEY: str | None = None
-    FIRECRAWL_API_KEY: str | None = None
 
     # Search providers (multi-provider failover; all optional)
-    EXA_API_KEY: str | None = None
-    BRAVE_API_KEY: str | None = None
-    SEARXNG_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Webhook Secrets & Security
     # ----------------------------------------------
-    COMPOSIO_WEBHOOK_SECRET: str | None = None
-    DODO_WEBHOOK_PAYMENTS_SECRET: str | None = None
 
     # Voice Agent Configuration
-    LIVEKIT_URL: str | None = None
-    LIVEKIT_API_KEY: str | None = None
-    LIVEKIT_API_SECRET: str | None = None
-    AGENT_SECRET: str | None = None
     DEEPGRAM_API_KEY: str | None = None
-    ELEVENLABS_API_KEY: str | None = None
     ELEVENLABS_TTS_MODEL: str | None = None
     GAIA_BACKEND_URL: str | None = "http://host.docker.internal:8000"
     ELEVENLABS_VOICE_ID: str | None = None
-    VOICE_AGENT_BACKEND_URL: str | None = None
 
     # ----------------------------------------------
     # Content Management
@@ -554,9 +580,6 @@ class DevelopmentSettings(CommonSettings):  # type: ignore[explicit-any]
     # ----------------------------------------------
     # Code Execution Environment
     # ----------------------------------------------
-    E2B_API_KEY: str | None = None
-    E2B_TEMPLATE_ID: str | None = None
-    E2B_DOMAIN: str | None = None
     # Idle window before a sandbox is paused. A paused sandbox must resume +
     # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
     # most expensive step in an acquire (the metadata engine is remote). At 60s,
@@ -565,41 +588,21 @@ class DevelopmentSettings(CommonSettings):  # type: ignore[explicit-any]
     # gaps so back-to-back turns reuse a live mount. Trade-off: more concurrently
     # live sandboxes vs the E2B quota — the scalable fix is the warm pool
     # (E2B_WARM_POOL_TARGET_RATIO), still a follow-up.
-    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 300
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
-    E2B_SANDBOX_EVICT_DAYS: int = 14
     E2B_WARM_POOL_TARGET_RATIO: float = 2.0
-    ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
     ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096
 
     # ----------------------------------------------
     # Persistent Workspace Storage (R2 + JuiceFS)
     # ----------------------------------------------
-    R2_ACCOUNT_ID: str | None = None
-    R2_BUCKET: str | None = None
-    R2_ACCESS_KEY: str | None = None
-    R2_SECRET_KEY: str | None = None
-    JUICEFS_META_URL_TEMPLATE: str | None = None
-    JUICEFS_NUM_SHARDS: int = 1
-    JFS_ENCRYPTION_KEY: str | None = None
-    JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"
-    JUICEFS_MOUNT_READY_TIMEOUT: int = 90
-    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 20
-    JUICEFS_BOOTSTRAP_RETRY_BACKOFF: int = 3
-    SESSION_RETENTION_DAYS: int = 30
-    SESSION_PRUNE_BATCH_LIMIT: int = 1000
 
     # ----------------------------------------------
     # Payment Processing
     # ----------------------------------------------
-    DODO_PAYMENTS_API_KEY: str | None = None
-    DODO_PAYMENTS_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Monitoring & Analytics
     # ----------------------------------------------
-    SENTRY_DSN: str | None = None
-    POSTHOG_API_KEY: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -626,13 +629,11 @@ class DevelopmentSettings(CommonSettings):  # type: ignore[explicit-any]
     # ----------------------------------------------
     # Debug Config
     # ----------------------------------------------
-    DEBUG_EMAIL_PROCESSING: bool = False
 
     # Development-only auth bypass: every request is authenticated as this
     # user (must exist in Mongo) with no WorkOS session, so agents and tools
     # can drive the app end to end. get_settings() refuses to start in
     # production when this is set.
-    DEV_AUTH_BYPASS_EMAIL: str | None = None
 
     # GAIA_SIM_MODE and OPENROUTER_BASE_URL are declared on CommonSettings (the
     # production import path reads them) — see the note there.
@@ -652,18 +653,10 @@ class DevelopmentSettings(CommonSettings):  # type: ignore[explicit-any]
     TELEGRAM_BOT_TOKEN: str | None = None
     KAPSO_API_KEY: str | None = None
     KAPSO_PHONE_NUMBER_ID: str | None = None
-    WHATSAPP_PHONE_NUMBER: str | None = (
-        None  # E.164 without +, e.g. "15551234567" — used for wa.me links
-    )
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
     # ----------------------------------------------
-    DISCORD_OAUTH_CLIENT_ID: str | None = None
-    DISCORD_OAUTH_CLIENT_SECRET: str | None = None
-    SLACK_OAUTH_CLIENT_ID: str | None = None
-    SLACK_OAUTH_CLIENT_SECRET: str | None = None
-    TELEGRAM_BOT_USERNAME: str | None = "heygaia_bot"
 
     # ----------------------------------------------
     # Bot Session Token Configuration
@@ -700,22 +693,16 @@ def _ensure_infisical_loaded() -> None:
 
 
 @lru_cache(maxsize=1)
-def get_settings() -> Any:  # type: ignore[explicit-any]
+def get_settings() -> CommonSettings:
     """
     Get cached settings instance based on environment.
 
     This function uses LRU cache to ensure settings are instantiated only once,
     avoiding expensive Pydantic validation on every import.
 
-    The return stays `Any`. Measured, don't re-litigate: annotating it
-    `-> CommonSettings` produced **129 new mypy errors** — the concrete keys live
-    on ProductionSettings/DevelopmentSettings or arrive via `extra="allow"`, so
-    every `settings.TAVILY_API_KEY` / `R2_*` / `JUICEFS_*` read across the
-    storage, search-provider and sandbox layers becomes `has no attribute`.
-    Narrowing means hoisting those declarations onto the common base, which is a
-    settings-model redesign, not a typing fix (Type Safety item 14). The same run
-    showed `from_env(**kwargs: object)` adds 4 more: `cls(**kwargs)` feeds
-    per-field types (`ENV: Literal[...]`, `SHOW_MISSING_KEY_WARNINGS: bool`).
+    Typed ``CommonSettings``: the env-var-backed keys shared by every
+    environment are declared on the common base (ProductionSettings re-declares
+    the required subset to keep prod boot enforcement).
     """
     log.info(f"{LogTag.STARTUP} Starting settings initialization...")
 

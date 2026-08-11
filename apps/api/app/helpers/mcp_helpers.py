@@ -6,14 +6,12 @@ Contains helper functions for MCP operations:
 - URL helpers for OAuth flows
 """
 
-from typing import cast
-
 from app.config.settings import settings
 
 
 def get_api_base_url() -> str:
     """Get the backend API base URL for callbacks."""
-    return cast(str, settings.HOST)
+    return settings.HOST
 
 
 def get_frontend_url() -> str:

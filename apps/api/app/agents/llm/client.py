@@ -209,7 +209,7 @@ def init_openrouter_llm() -> LanguageModelLike:
             # Output cap; must stay well under the model's shared input+output context
             # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
             max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-            api_key=settings.OPENROUTER_API_KEY,
+            api_key=SecretStr(settings.OPENROUTER_API_KEY) if settings.OPENROUTER_API_KEY else None,
             # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
             # these as dedicated params (NOT `default_headers`, which it forwards to
             # send_async and crashes on). https://openrouter.ai/docs/app-attribution
@@ -246,7 +246,7 @@ def init_custom_llm() -> LanguageModelLike:
             streaming=True,
             stream_usage=True,
             max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
-            api_key=settings.DEV_LLM_API_KEY,
+            api_key=SecretStr(settings.DEV_LLM_API_KEY) if settings.DEV_LLM_API_KEY else None,
             base_url=settings.DEV_LLM_BASE_URL,
         )
     )
@@ -414,7 +414,7 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
         streaming=True,
         stream_usage=True,
         max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-        api_key=settings.OPENROUTER_API_KEY,
+        api_key=SecretStr(settings.OPENROUTER_API_KEY) if settings.OPENROUTER_API_KEY else None,
     )
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).

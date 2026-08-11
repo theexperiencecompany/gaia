@@ -168,8 +168,8 @@ async def init_chromadb_client() -> AsyncClientAPI:
     Returns:
         AsyncClientAPI: The ChromaDB async client
     """
-    host: str = settings.CHROMADB_HOST
-    port: int = settings.CHROMADB_PORT
+    host: str = settings.CHROMADB_HOST or ""
+    port: int = settings.CHROMADB_PORT or 0
 
     # Route telemetry to a no-op client (see NoopProductTelemetry): the bundled
     # posthog telemetry is incompatible with the installed posthog and errors on
@@ -229,8 +229,8 @@ def init_chromadb_constructor() -> ClientAPI:
     """
     log.debug(f"{LogTag.CHROMA} Initializing ChromaDB constructor client")
 
-    host: str = settings.CHROMADB_HOST
-    port: int = settings.CHROMADB_PORT
+    host: str = settings.CHROMADB_HOST or ""
+    port: int = settings.CHROMADB_PORT or 0
 
     # HttpClient, NOT Client: only HttpClient sets chroma_api_impl to the FastAPI
     # backend. chromadb.Client() keeps the default RustBindingsAPI with

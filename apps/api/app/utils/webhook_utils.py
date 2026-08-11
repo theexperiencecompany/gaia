@@ -44,7 +44,7 @@ async def verify_composio_webhook_signature(request: Request) -> tuple[bytes, st
 
     # Generate expected signature
     expected_signature = hmac.new(
-        settings.COMPOSIO_WEBHOOK_SECRET.encode(),
+        (settings.COMPOSIO_WEBHOOK_SECRET or "").encode(),
         signed_content,
         hashlib.sha256,
     ).digest()
