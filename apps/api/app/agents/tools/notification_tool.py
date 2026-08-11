@@ -1,3 +1,4 @@
+import re
 from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
@@ -254,6 +255,25 @@ async def mark_notifications_read(
         return {"error": str(e), "success": False}
 
 
+_CREDENTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("API key", re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b")),
+    ("AWS key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("GitHub token", re.compile(r"\b(?:ghp_|github_pat_|gho_|ghs_)[A-Za-z0-9_]{20,}\b")),
+    ("Slack token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b")),
+    ("private key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+    ("password", re.compile(r"\b(?:password|passwd|pwd)\s*[=:]\s*\S+", re.IGNORECASE)),
+)
+
+
+def _credential_in(text: str) -> str | None:
+    """The credential kind found in ``text``, or None. Refusal is pattern-based
+    so it works even when the model obfuscates or quotes the secret."""
+    for kind, pattern in _CREDENTIAL_PATTERNS:
+        if pattern.search(text):
+            return kind
+    return None
+
+
 @tool
 @with_rate_limiting("notification_operations")
 @with_doc(SEND_NOTIFICATION)
@@ -293,6 +313,26 @@ async def send_notification(
         resolved_title = title.strip()
         resolved_message = message.strip()
         resolved_type = notification_type or NotificationType.INFO
+
+        # A credential in an outbound message is a leak surface regardless of
+        # where it goes — the user's own channels included. Refuse outright;
+        # the agent is told the same thing in the comms prompt, this is the
+        # tool-level backstop that works even when the model disobeys.
+        leaked = _credential_in(resolved_message) or _credential_in(resolved_title)
+        if leaked:
+            log.warning(
+                f"{LogTag.TOOL} Refused notification containing a credential",
+                pattern=leaked,
+                channels=channels,
+            )
+            return {
+                "error": (
+                    "Refusing to send a notification that contains what looks like a "
+                    f"credential ({leaked}). Secrets never go into outbound messages — "
+                    "store it somewhere private instead."
+                ),
+                "success": False,
+            }
 
         # Channels must be explicit: an empty list would auto-inject every
         # user-enabled channel in the orchestrator, which over-notifies. Force
