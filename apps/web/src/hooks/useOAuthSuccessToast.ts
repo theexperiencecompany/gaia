@@ -78,8 +78,18 @@ export function useOAuthSuccessToast() {
       // Automatically send a message to continue the chat (only on chat routes)
       // Only send the message if we're on a chat page to avoid creating unwanted conversations
       const isChatRoute = pathname === "/c" || pathname.startsWith("/c/");
-      if (isChatRoute)
-        sendMessageRef.current(`Hey I just connected ${displayName}`);
+      if (isChatRoute) {
+        // OAuth is a full-page redirect, so the store has not been populated
+        // from the route yet when this fires. The URL is the reliable source:
+        // without it the send falls back to a null active id and the message
+        // lands in a brand new conversation instead of the one being worked in.
+        const conversationId = pathname.startsWith("/c/")
+          ? (pathname.split("/")[2] ?? null)
+          : null;
+        sendMessageRef.current(`Hey I just connected ${displayName}`, {
+          conversationId,
+        });
+      }
     }
 
     // Handle OAuth errors
