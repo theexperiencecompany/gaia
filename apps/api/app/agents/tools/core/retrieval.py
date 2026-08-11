@@ -10,6 +10,7 @@ This module provides the retrieve_tools function factory that supports:
 
 import asyncio
 from collections.abc import Awaitable, Callable
+import json
 from typing import (
     Annotated,
     Any,
@@ -538,11 +539,18 @@ def _render_discovery_response(
     final_tools: list[str],
     tool_registry: ToolRegistry,
     connected_integrations: dict[str, str | None],
+    internal_subagents: set[str],
     query: str | None,
     total_candidates: int,
     limit: int,
 ) -> str:
-    """Render discovery hits grouped by source, with handoff and connection state."""
+    """Render discovery hits as JSON in three buckets: bind, handoff, connect.
+
+    Availability is the only axis that changes what the model may do next, so it
+    is the top-level split. ``internal_subagents`` is required to tell a built-in
+    capability (always usable) from an integration the user has not connected —
+    without it every built-in was reported as needing a connection it has none of.
+    """
     bindable: list[str] = []
     subagents: list[tuple[str, str | None]] = []
     for entry in final_tools:
@@ -551,58 +559,66 @@ def _render_discovery_response(
         else:
             bindable.append(entry)
 
-    # Group bindable tools by their registry category; a category that matches a
-    # connected integration is that integration's, everything else is native.
-    grouped: dict[str, list[str]] = {}
-    for name in bindable:
-        grouped.setdefault(tool_registry.get_category_of_tool(name), []).append(name)
-
-    def _render_tool(name: str) -> str:
+    def _tool_entry(name: str) -> dict[str, Any]:
+        category = tool_registry.get_category_of_tool(name)
         meta = tool_registry.get_tool_meta(name)
-        return f"  - {name}{'  [needs approval]' if meta and meta.destructive else ''}"
+        entry: dict[str, Any] = {
+            "name": name,
+            "source": connected_integrations.get(category) or category
+            if category in connected_integrations
+            else "gaia",
+        }
+        if meta and meta.destructive:
+            entry["needs_approval"] = True
+        return entry
 
-    lines: list[str] = []
-    for category in sorted(grouped):
-        if category in connected_integrations:
-            label = f"{connected_integrations[category] or category} ({category}) — connected"
-        else:
-            label = f"GAIA native — {category}"
-        lines.append(f"{label}:")
-        lines.extend(_render_tool(name) for name in grouped[category])
-        lines.append("")
+    def _subagent_entry(sid: str, name: str | None) -> dict[str, str]:
+        return {"id": sid, "name": name} if name else {"id": sid}
 
-    connected_subagents = [(sid, n) for sid, n in subagents if sid in connected_integrations]
-    disconnected_subagents = [(sid, n) for sid, n in subagents if sid not in connected_integrations]
+    ready = [_subagent_entry(s, n) for s, n in subagents if s in internal_subagents]
+    connected = [
+        _subagent_entry(s, n)
+        for s, n in subagents
+        if s in connected_integrations and s not in internal_subagents
+    ]
+    needs_connecting = [
+        _subagent_entry(s, n)
+        for s, n in subagents
+        if s not in connected_integrations and s not in internal_subagents
+    ]
 
-    if connected_subagents:
-        lines.append('Subagents — do NOT bind these; call handoff(subagent_id="<id>", task="..."):')
-        lines.extend(f"  - {sid}{f' ({n})' if n else ''}" for sid, n in connected_subagents)
-        lines.append("")
-
-    if disconnected_subagents:
-        lines.append("Matched but NOT connected — ask the user to connect before using:")
-        lines.extend(f"  - {sid}{f' ({n})' if n else ''}" for sid, n in disconnected_subagents)
-        lines.append("")
-
-    if not lines:
-        hint = f' for "{query}"' if query else ""
-        return (
-            f"No tools found{hint}. Next: retry with a broader query naming the action "
-            "(e.g. 'send email' rather than a product name), or tell the user the "
-            "capability is unavailable. Do not retry the same query."
-        )
-
-    header = f"Found {len(final_tools)} tools."
+    payload: dict[str, Any] = {
+        "tools_to_bind": [_tool_entry(n) for n in bindable],
+        "subagents_builtin": ready,
+        "subagents_connected": connected,
+        "subagents_needing_connection": needs_connecting,
+    }
     if total_candidates > limit:
-        header = (
-            f"Showing {len(final_tools)} of {total_candidates} matches — "
-            "refine the query if what you need is missing."
+        payload["truncated"] = {"shown": len(final_tools), "total": total_candidates}
+
+    # Keyed off the SEARCH, not off what is listed: built-in subagents are injected
+    # unconditionally, so a zero-match search still returns entries. Reporting that
+    # as a find is what sent the model into re-querying the same dead index.
+    if total_candidates == 0:
+        payload["search_matched_nothing"] = True
+        payload["next"] = (
+            "The search matched NOTHING; anything listed above is a built-in that is "
+            "always offered, not a hit. Retry ONCE with a broader query naming the "
+            "action ('send email', not a product name). If you already know the exact "
+            "tool name, skip search and call retrieve_tools(exact_tool_names=[...]). "
+            "Otherwise tell the user the capability is unavailable. Never repeat the "
+            "same query."
         )
-    footer = (
-        "Next: retrieve_tools(exact_tool_names=[...]) to bind the tools you need, "
-        "or handoff(...) for a subagent."
-    )
-    return "\n".join([header, "", *lines, footer])
+    else:
+        payload["next"] = (
+            "Bind with retrieve_tools(exact_tool_names=[...]) then call the tool. "
+            'Subagents are NOT bindable — use handoff(subagent_id="<id>", task="..."). '
+            "Anything under subagents_needing_connection is unusable until the user "
+            "connects it, so ask them first."
+        )
+    if query:
+        payload["query"] = query
+    return json.dumps(payload, indent=2)
 
 
 def _inject_available_subagents(
@@ -998,7 +1014,7 @@ def get_retrieve_tools_function(
                 chroma_preview=chroma_preview,
             )
         )
-        if chroma_hits == 0 and tool_space != "general":
+        if chroma_hits == 0:
             log.warning(
                 f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits — check that index_tools_to_store actually wrote docs for this namespace",
                 tool_space=tool_space,
@@ -1012,6 +1028,7 @@ def get_retrieve_tools_function(
                 final_tools,
                 tool_registry,
                 connected_integrations,
+                internal_subagents,
                 query,
                 len(all_results),
                 limit,
