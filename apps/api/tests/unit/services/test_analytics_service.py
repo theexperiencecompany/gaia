@@ -1,17 +1,35 @@
-"""Unit tests for analytics service."""
+"""Unit tests for analytics service (server-side PostHog event tracking).
 
+Hermetic: the PostHog client, the provider registry seam and the wide-event
+logger are all mocked. Every assertion pins the exact call contract —
+distinct_ids, property dicts, event names, error payloads — so a mutated
+line (wrong key, dropped arg, wrong constant, naive timestamp) is caught.
+"""
+
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.constants.auth import LOGIN_METHOD_WORKOS
+from app.models.payment_models import PlanType, SubscriptionStatus
 from app.services.analytics_service import (
     AnalyticsEvents,
+    _get_posthog_client,
     capture_event,
     identify_user,
+    track_login,
+    track_logout,
     track_payment_event,
     track_signup,
     track_subscription_event,
 )
+
+_MOD = "app.services.analytics_service"
+
+USER_ID = "user-123"
+EMAIL = "user@example.com"
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -20,21 +38,92 @@ from app.services.analytics_service import (
 
 @pytest.fixture
 def mock_posthog():
+    """PostHog client returned by the (mocked) provider seam."""
     mock_client = MagicMock()
-    with patch(
-        "app.services.analytics_service._get_posthog_client",
-        return_value=mock_client,
-    ):
+    with patch(f"{_MOD}._get_posthog_client", return_value=mock_client):
         yield mock_client
 
 
 @pytest.fixture
 def mock_posthog_none():
-    with patch(
-        "app.services.analytics_service._get_posthog_client",
-        return_value=None,
-    ):
+    """No PostHog client configured."""
+    with patch(f"{_MOD}._get_posthog_client", return_value=None):
         yield
+
+
+@pytest.fixture
+def mock_log():
+    """Wide-event logger; every analytics call path logs through it."""
+    with patch(f"{_MOD}.log") as mock_logger:
+        yield mock_logger
+
+
+# ---------------------------------------------------------------------------
+# Assertion helpers
+# ---------------------------------------------------------------------------
+
+
+def _assert_utc_iso(value: object) -> None:
+    """Pin that timestamps are ISO-8601 strings with an explicit UTC offset."""
+    assert isinstance(value, str)
+    assert value.endswith("+00:00")
+    datetime.fromisoformat(value)
+
+
+def _assert_capture(
+    client: MagicMock, *, event: object, distinct_id: str, expected_props: dict
+) -> None:
+    """capture() was called exactly once with the exact contract."""
+    assert client.capture.call_count == 1
+    kwargs = client.capture.call_args.kwargs
+    assert kwargs["event"] == event
+    assert kwargs["distinct_id"] == distinct_id
+    props = dict(kwargs["properties"])
+    _assert_utc_iso(props.pop("timestamp"))
+    assert props == expected_props
+
+
+def _assert_identify_set(client: MagicMock, *, distinct_id: str, expected_props: dict) -> None:
+    """set() (identify) was called exactly once with the exact properties."""
+    assert client.set.call_count == 1
+    kwargs = client.set.call_args.kwargs
+    assert kwargs["distinct_id"] == distinct_id
+    assert dict(kwargs["properties"]) == expected_props
+
+
+def _assert_identify_set_ts(
+    client: MagicMock, *, distinct_id: str, ts_key: str, expected_props: dict
+) -> None:
+    """Like _assert_identify_set, with a dynamic UTC timestamp popped first."""
+    assert client.set.call_count == 1
+    kwargs = client.set.call_args.kwargs
+    assert kwargs["distinct_id"] == distinct_id
+    props = dict(kwargs["properties"])
+    _assert_utc_iso(props.pop(ts_key))
+    assert props == expected_props
+
+
+def _assert_set_once(client: MagicMock, *, distinct_id: str) -> None:
+    """set_once() was called exactly once with a first_seen UTC timestamp."""
+    assert client.set_once.call_count == 1
+    kwargs = client.set_once.call_args.kwargs
+    assert kwargs["distinct_id"] == distinct_id
+    props = kwargs["properties"]
+    assert set(props) == {"first_seen"}
+    _assert_utc_iso(props["first_seen"])
+
+
+def _assert_metadata_set(
+    client: MagicMock, *, distinct_id: str, expected_props: dict, ts_key: str | None = None
+) -> None:
+    """set() (subscription metadata) was called exactly once with the exact props."""
+    assert client.set.call_count == 1
+    kwargs = client.set.call_args.kwargs
+    assert kwargs["distinct_id"] == distinct_id
+    props = dict(kwargs["properties"])
+    if ts_key is not None:
+        _assert_utc_iso(props.pop(ts_key))
+    assert props == expected_props
 
 
 # ---------------------------------------------------------------------------
@@ -43,8 +132,11 @@ def mock_posthog_none():
 
 
 class TestAnalyticsEvents:
-    def test_event_constants_exist(self):
+    def test_event_constants_match_frontend_conventions(self):
         assert AnalyticsEvents.USER_SIGNED_UP == "user:signed_up"
+        assert AnalyticsEvents.USER_LOGGED_IN == "user:logged_in"
+        assert AnalyticsEvents.USER_LOGGED_OUT == "user:logged_out"
+        assert AnalyticsEvents.NURTURE_EMAIL_SENT == "nurture:email_sent"
         assert AnalyticsEvents.PAYMENT_SUCCEEDED == "payment:succeeded"
         assert AnalyticsEvents.PAYMENT_FAILED == "payment:failed"
         assert AnalyticsEvents.PAYMENT_REFUNDED == "payment:refunded"
@@ -56,41 +148,62 @@ class TestAnalyticsEvents:
 
 
 # ---------------------------------------------------------------------------
+# _get_posthog_client
+# ---------------------------------------------------------------------------
+
+
+class TestGetPosthogClient:
+    def test_returns_registered_client(self):
+        client = object()
+        with patch(f"{_MOD}.providers") as mock_providers:
+            mock_providers.get.return_value = client
+            assert _get_posthog_client() is client
+            mock_providers.get.assert_called_once_with("posthog")
+
+    def test_returns_none_when_unregistered(self):
+        with patch(f"{_MOD}.providers") as mock_providers:
+            mock_providers.get.return_value = None
+            assert _get_posthog_client() is None
+
+
+# ---------------------------------------------------------------------------
 # identify_user
 # ---------------------------------------------------------------------------
 
 
 class TestIdentifyUser:
     def test_identify_with_properties(self, mock_posthog):
-        identify_user("user@example.com", {"email": "user@example.com"})
+        identify_user(EMAIL, {"email": EMAIL, "plan": "pro"})
 
-        # Implementation uses PostHog `set` and `set_once` methods
-        mock_posthog.set.assert_called_once()
-        set_call = mock_posthog.set.call_args
-        # set called with distinct_id keyword and properties
-        assert set_call.kwargs.get("distinct_id") == "user@example.com"
-        props = set_call.kwargs.get("properties")
-        assert props["email"] == "user@example.com"
-        mock_posthog.set_once.assert_called_once()
-        set_once_call = mock_posthog.set_once.call_args
-        assert set_once_call.kwargs.get("distinct_id") == "user@example.com"
-        fo_props = set_once_call.kwargs.get("properties")
-        assert "first_seen" in fo_props
+        _assert_identify_set(
+            mock_posthog, distinct_id=EMAIL, expected_props={"email": EMAIL, "plan": "pro"}
+        )
+        _assert_set_once(mock_posthog, distinct_id=EMAIL)
 
     def test_identify_with_none_properties(self, mock_posthog):
-        identify_user("user@example.com", None)
-        mock_posthog.set.assert_called_once()
-        mock_posthog.set_once.assert_called_once()
+        identify_user(EMAIL, None)
 
-    def test_identify_skips_when_no_client(self, mock_posthog_none):
-        # Should not raise
-        identify_user("user@example.com", {"email": "user@example.com"})
+        _assert_identify_set(mock_posthog, distinct_id=EMAIL, expected_props={})
+        _assert_set_once(mock_posthog, distinct_id=EMAIL)
 
-    def test_identify_handles_exception(self, mock_posthog):
-        mock_posthog.set.side_effect = Exception("PostHog error")
+    def test_skips_when_no_client(self, mock_posthog_none, mock_log):
+        identify_user(EMAIL, {"email": EMAIL})
 
-        # Should not raise
-        identify_user("user@example.com", {"email": "user@example.com"})
+        mock_log.debug.assert_called_once_with("PostHog client not available, skipping identify")
+        mock_log.error.assert_not_called()
+
+    def test_set_failure_logs_and_stops(self, mock_posthog, mock_log):
+        mock_posthog.set.side_effect = RuntimeError("posthog down")
+
+        identify_user(EMAIL, {"email": EMAIL})
+
+        mock_posthog.set_once.assert_not_called()
+        mock_log.error.assert_called_once_with(
+            "Failed to identify user in PostHog",
+            error="posthog down",
+            error_type="RuntimeError",
+            user_id=EMAIL,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -100,32 +213,42 @@ class TestIdentifyUser:
 
 class TestCaptureEvent:
     def test_capture_basic_event(self, mock_posthog):
-        capture_event("user1", "test:event", {"key": "value"})
-        mock_posthog.capture.assert_called_once()
-        call_args = mock_posthog.capture.call_args
-        # capture called with keyword args: event, distinct_id, properties
-        assert call_args.kwargs.get("event") == "test:event"
-        assert call_args.kwargs.get("distinct_id") == "user1"
-        props = call_args.kwargs.get("properties")
-        assert props["key"] == "value"
-        assert "timestamp" in props
+        capture_event(USER_ID, "test:event", {"key": "value"})
+
+        _assert_capture(
+            mock_posthog, event="test:event", distinct_id=USER_ID, expected_props={"key": "value"}
+        )
 
     def test_capture_with_none_properties(self, mock_posthog):
-        capture_event("user1", "test:event", None)
-        mock_posthog.capture.assert_called_once()
-        call_args = mock_posthog.capture.call_args
-        props = call_args.kwargs.get("properties")
-        assert "timestamp" in props
+        capture_event(USER_ID, "test:event", None)
 
-    def test_capture_skips_when_no_client(self, mock_posthog_none):
-        # Should not raise
-        capture_event("user1", "test:event")
+        _assert_capture(mock_posthog, event="test:event", distinct_id=USER_ID, expected_props={})
 
-    def test_capture_handles_exception(self, mock_posthog):
-        mock_posthog.capture.side_effect = Exception("PostHog error")
+    def test_sets_analytics_log_context(self, mock_posthog, mock_log):
+        capture_event(USER_ID, "test:event", {"key": "value"})
 
-        # Should not raise
-        capture_event("user1", "test:event")
+        mock_log.set.assert_called_once_with(analytics={"user_id": USER_ID, "event": "test:event"})
+
+    def test_skips_when_no_client(self, mock_posthog_none, mock_log):
+        capture_event(USER_ID, "test:event")
+
+        mock_log.debug.assert_called_once_with(
+            "PostHog client not available, skipping event", event="test:event"
+        )
+        mock_log.error.assert_not_called()
+
+    def test_capture_failure_logs(self, mock_posthog, mock_log):
+        mock_posthog.capture.side_effect = RuntimeError("posthog down")
+
+        capture_event(USER_ID, "test:event", {"key": "value"})
+
+        mock_log.error.assert_called_once_with(
+            "Failed to capture event in PostHog",
+            event="test:event",
+            error="posthog down",
+            error_type="RuntimeError",
+            user_id=USER_ID,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -134,40 +257,164 @@ class TestCaptureEvent:
 
 
 class TestTrackSignup:
-    def test_calls_identify_and_capture(self, mock_posthog):
-        track_signup("user1", "user@example.com", name="Alice")
-        # identify_user uses set/set_once
-        assert mock_posthog.set.call_count == 1
-        assert mock_posthog.set_once.call_count == 1
-        assert mock_posthog.capture.call_count == 1
+    def test_identifies_and_captures(self, mock_posthog):
+        track_signup(USER_ID, EMAIL, name="Alice")
 
-        # Verify set properties contain email/name/signup_method
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["email"] == "user@example.com"
-        assert set_props["name"] == "Alice"
-        assert set_props["signup_method"] == "workos"
-
-        # Verify capture event name
-        assert mock_posthog.capture.call_args.kwargs.get("event") == AnalyticsEvents.USER_SIGNED_UP
+        _assert_identify_set_ts(
+            mock_posthog,
+            distinct_id=EMAIL,
+            ts_key="created_at",
+            expected_props={
+                "user_id": USER_ID,
+                "email": EMAIL,
+                "name": "Alice",
+                "signup_method": "workos",
+            },
+        )
+        _assert_set_once(mock_posthog, distinct_id=EMAIL)
+        _assert_capture(
+            mock_posthog,
+            event="user:signed_up",
+            distinct_id=EMAIL,
+            expected_props={
+                "user_id": USER_ID,
+                "email": EMAIL,
+                "name": "Alice",
+                "signup_method": "workos",
+            },
+        )
 
     def test_default_signup_method(self, mock_posthog):
-        track_signup("user1", "user@example.com")
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["signup_method"] == "workos"
+        track_signup(USER_ID, EMAIL)
+
+        assert (
+            mock_posthog.set.call_args.kwargs["properties"]["signup_method"] == LOGIN_METHOD_WORKOS
+        )
+        assert (
+            mock_posthog.capture.call_args.kwargs["properties"]["signup_method"]
+            == LOGIN_METHOD_WORKOS
+        )
 
     def test_custom_signup_method(self, mock_posthog):
-        track_signup("user1", "user@example.com", signup_method="google")
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["signup_method"] == "google"
+        track_signup(USER_ID, EMAIL, signup_method="google")
 
-    def test_extra_properties_merged(self, mock_posthog):
-        track_signup("user1", "user@example.com", properties={"referral": "friend"})
-        capture_props = mock_posthog.capture.call_args.kwargs.get("properties")
-        assert capture_props["referral"] == "friend"
+        assert mock_posthog.set.call_args.kwargs["properties"]["signup_method"] == "google"
+        assert mock_posthog.capture.call_args.kwargs["properties"]["signup_method"] == "google"
 
-    def test_skips_when_no_client(self, mock_posthog_none):
-        # Should not raise
-        track_signup("user1", "user@example.com")
+    def test_extra_properties_merged_into_capture_only(self, mock_posthog):
+        track_signup(USER_ID, EMAIL, properties={"referral": "friend"})
+
+        _assert_capture(
+            mock_posthog,
+            event="user:signed_up",
+            distinct_id=EMAIL,
+            expected_props={
+                "user_id": USER_ID,
+                "email": EMAIL,
+                "name": None,
+                "signup_method": "workos",
+                "referral": "friend",
+            },
+        )
+        # extra properties extend only the event, not the identify payload
+        set_props = mock_posthog.set.call_args.kwargs["properties"]
+        assert "referral" not in set_props
+
+    def test_skips_when_no_client(self, mock_posthog_none, mock_log):
+        track_signup(USER_ID, EMAIL)  # must not raise
+
+        mock_log.error.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# track_login
+# ---------------------------------------------------------------------------
+
+
+class TestTrackLogin:
+    def test_identifies_and_captures(self, mock_posthog):
+        track_login(USER_ID, EMAIL, name="Bob", login_method="google")
+
+        _assert_identify_set_ts(
+            mock_posthog,
+            distinct_id=EMAIL,
+            ts_key="last_login_at",
+            expected_props={
+                "user_id": USER_ID,
+                "email": EMAIL,
+                "name": "Bob",
+                "last_login_method": "google",
+            },
+        )
+        _assert_set_once(mock_posthog, distinct_id=EMAIL)
+        _assert_capture(
+            mock_posthog,
+            event="user:logged_in",
+            distinct_id=EMAIL,
+            expected_props={
+                "user_id": USER_ID,
+                "email": EMAIL,
+                "name": "Bob",
+                "login_method": "google",
+            },
+        )
+
+    def test_default_login_method(self, mock_posthog):
+        track_login(USER_ID, EMAIL)
+
+        assert (
+            mock_posthog.set.call_args.kwargs["properties"]["last_login_method"]
+            == LOGIN_METHOD_WORKOS
+        )
+        assert (
+            mock_posthog.capture.call_args.kwargs["properties"]["login_method"]
+            == LOGIN_METHOD_WORKOS
+        )
+
+    def test_extra_properties_merged_into_capture_only(self, mock_posthog):
+        track_login(USER_ID, EMAIL, properties={"device": "mac"})
+
+        _assert_capture(
+            mock_posthog,
+            event="user:logged_in",
+            distinct_id=EMAIL,
+            expected_props={
+                "user_id": USER_ID,
+                "email": EMAIL,
+                "name": None,
+                "login_method": "workos",
+                "device": "mac",
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# track_logout
+# ---------------------------------------------------------------------------
+
+
+class TestTrackLogout:
+    def test_captures_logout_event(self, mock_posthog):
+        track_logout(USER_ID, EMAIL, properties={"session_id": "s1"})
+
+        _assert_capture(
+            mock_posthog,
+            event="user:logged_out",
+            distinct_id=EMAIL,
+            expected_props={"user_id": USER_ID, "email": EMAIL, "session_id": "s1"},
+        )
+        mock_posthog.set.assert_not_called()
+
+    def test_captures_without_extra_properties(self, mock_posthog):
+        track_logout(USER_ID, EMAIL)
+
+        _assert_capture(
+            mock_posthog,
+            event="user:logged_out",
+            distinct_id=EMAIL,
+            expected_props={"user_id": USER_ID, "email": EMAIL},
+        )
+        mock_posthog.set.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -176,9 +423,9 @@ class TestTrackSignup:
 
 
 class TestTrackSubscriptionEvent:
-    def test_captures_subscription_event(self, mock_posthog):
+    def test_captures_event_with_all_fields(self, mock_posthog):
         track_subscription_event(
-            "user1",
+            USER_ID,
             AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
             subscription_id="sub123",
             plan_name="pro",
@@ -186,78 +433,141 @@ class TestTrackSubscriptionEvent:
             currency="USD",
         )
 
-        mock_posthog.capture.assert_called_once()
-        call_args = mock_posthog.capture.call_args
-        props = call_args.kwargs.get("properties")
-        assert props["subscription_id"] == "sub123"
-        assert props["plan_name"] == "pro"
-        assert props["amount"] == pytest.approx(9.99)
-        assert props["currency"] == "USD"
-
-    def test_removes_none_values(self, mock_posthog):
-        track_subscription_event(
-            "user1",
-            AnalyticsEvents.SUBSCRIPTION_CANCELLED,
-            subscription_id="sub123",
+        _assert_capture(
+            mock_posthog,
+            event=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
+            distinct_id=USER_ID,
+            expected_props={
+                "subscription_id": "sub123",
+                "plan_name": "pro",
+                "amount": 9.99,
+                "currency": "USD",
+            },
         )
 
-        call_args = mock_posthog.capture.call_args
-        props = call_args.kwargs.get("properties")
-        assert "plan_name" not in props
-        assert "amount" not in props
-        assert "currency" not in props
-
-    def test_activated_event_updates_user_properties(self, mock_posthog):
+    def test_strips_none_values_from_event_properties(self, mock_posthog):
         track_subscription_event(
-            "user1",
-            AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
-            plan_name="pro",
+            USER_ID, AnalyticsEvents.SUBSCRIPTION_CANCELLED, subscription_id="sub123"
         )
 
-        # Should call identify to update user properties
-        # Should call set to update user properties
-        assert mock_posthog.set.call_count >= 1
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["plan"] == "pro"
-        assert set_props["subscription_status"] == "active"
-
-    def test_cancelled_event_updates_subscription_status(self, mock_posthog):
-        """SUBSCRIPTION_CANCELLED now updates user properties with cancellation status."""
-        from app.models.payment_models import SubscriptionStatus
-
-        track_subscription_event(
-            "user1",
-            AnalyticsEvents.SUBSCRIPTION_CANCELLED,
+        _assert_capture(
+            mock_posthog,
+            event=AnalyticsEvents.SUBSCRIPTION_CANCELLED,
+            distinct_id=USER_ID,
+            expected_props={"subscription_id": "sub123"},
         )
-
-        mock_posthog.set.assert_called_once()
-        set_props = mock_posthog.set.call_args.kwargs.get("properties")
-        assert set_props["subscription_status"] == SubscriptionStatus.CANCELLED
 
     def test_extra_properties_merged(self, mock_posthog):
         track_subscription_event(
-            "user1",
-            AnalyticsEvents.SUBSCRIPTION_RENEWED,
-            properties={"renewal_count": 3},
+            USER_ID, AnalyticsEvents.SUBSCRIPTION_RENEWED, properties={"renewal_count": 3}
         )
 
-        call_args = mock_posthog.capture.call_args
-        props = call_args.kwargs.get("properties")
-        assert props["renewal_count"] == 3
+        _assert_capture(
+            mock_posthog,
+            event=AnalyticsEvents.SUBSCRIPTION_RENEWED,
+            distinct_id=USER_ID,
+            expected_props={"renewal_count": 3},
+        )
 
-    def test_identify_error_handled(self, mock_posthog):
-        mock_posthog.set.side_effect = Exception("PostHog error")
-
-        # Should not raise despite set failure
+    def test_sets_subscription_log_context(self, mock_posthog, mock_log):
         track_subscription_event(
-            "user1",
+            USER_ID,
             AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
             plan_name="pro",
+            subscription_id="sub123",
         )
 
-    def test_skips_when_no_client(self, mock_posthog_none):
-        # Should not raise
-        track_subscription_event("user1", AnalyticsEvents.SUBSCRIPTION_ACTIVATED)
+        assert mock_log.set.call_args_list[0].kwargs == {
+            "subscription": {
+                "user_id": USER_ID,
+                "event_type": AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
+                "plan_name": "pro",
+                "subscription_id": "sub123",
+            }
+        }
+        # the nested capture_event also logs its own analytics context
+        assert len(mock_log.set.call_args_list) == 2
+
+    def test_activated_sets_user_metadata(self, mock_posthog):
+        track_subscription_event(USER_ID, AnalyticsEvents.SUBSCRIPTION_ACTIVATED, plan_name="pro")
+
+        _assert_metadata_set(
+            mock_posthog,
+            distinct_id=USER_ID,
+            ts_key="subscription_activated_at",
+            expected_props={
+                "plan": PlanType.PRO,
+                "is_subscribed": True,
+                "subscription_status": SubscriptionStatus.ACTIVE,
+            },
+        )
+
+    def test_renewed_sets_user_metadata(self, mock_posthog):
+        track_subscription_event(USER_ID, AnalyticsEvents.SUBSCRIPTION_RENEWED)
+
+        _assert_metadata_set(
+            mock_posthog,
+            distinct_id=USER_ID,
+            expected_props={
+                "plan": PlanType.PRO,
+                "is_subscribed": True,
+                "subscription_status": SubscriptionStatus.ACTIVE,
+            },
+        )
+
+    def test_cancelled_sets_user_metadata(self, mock_posthog):
+        track_subscription_event(USER_ID, AnalyticsEvents.SUBSCRIPTION_CANCELLED)
+
+        _assert_metadata_set(
+            mock_posthog,
+            distinct_id=USER_ID,
+            expected_props={"subscription_status": SubscriptionStatus.CANCELLED},
+        )
+
+    def test_expired_sets_user_metadata(self, mock_posthog):
+        track_subscription_event(USER_ID, AnalyticsEvents.SUBSCRIPTION_EXPIRED)
+
+        _assert_metadata_set(
+            mock_posthog,
+            distinct_id=USER_ID,
+            expected_props={
+                "plan": PlanType.FREE,
+                "is_subscribed": False,
+                "subscription_status": SubscriptionStatus.EXPIRED,
+            },
+        )
+
+    def test_unmapped_event_skips_metadata_set(self, mock_posthog, mock_log):
+        track_subscription_event(USER_ID, AnalyticsEvents.SUBSCRIPTION_FAILED)
+
+        _assert_capture(
+            mock_posthog,
+            event=AnalyticsEvents.SUBSCRIPTION_FAILED,
+            distinct_id=USER_ID,
+            expected_props={},
+        )
+        mock_posthog.set.assert_not_called()
+        # The default case must swallow unmapped events silently: no metadata
+        # update attempt and no error logged (a dropped `case _` falls through
+        # to an UnboundLocalError that this must catch).
+        mock_log.error.assert_not_called()
+
+    def test_set_failure_logs(self, mock_posthog, mock_log):
+        mock_posthog.set.side_effect = RuntimeError("posthog down")
+
+        track_subscription_event(USER_ID, AnalyticsEvents.SUBSCRIPTION_ACTIVATED)
+
+        mock_log.error.assert_called_once_with(
+            "Failed to update user subscription properties",
+            error="posthog down",
+            error_type="RuntimeError",
+            user_id=USER_ID,
+        )
+
+    def test_skips_metadata_when_no_client(self, mock_posthog_none, mock_log):
+        track_subscription_event(USER_ID, AnalyticsEvents.SUBSCRIPTION_ACTIVATED)  # must not raise
+
+        mock_log.error.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -268,45 +578,38 @@ class TestTrackSubscriptionEvent:
 class TestTrackPaymentEvent:
     def test_captures_payment_event(self, mock_posthog):
         track_payment_event(
-            "user1",
+            USER_ID,
             AnalyticsEvents.PAYMENT_SUCCEEDED,
             payment_id="pay123",
             amount=29.99,
             currency="USD",
         )
 
-        mock_posthog.capture.assert_called_once()
-        call_args = mock_posthog.capture.call_args
-        assert call_args.kwargs.get("event") == AnalyticsEvents.PAYMENT_SUCCEEDED
-        props = call_args.kwargs.get("properties")
-        assert props["payment_id"] == "pay123"
-        assert props["amount"] == pytest.approx(29.99)
-        assert props["currency"] == "USD"
-
-    def test_removes_none_values(self, mock_posthog):
-        track_payment_event(
-            "user1",
-            AnalyticsEvents.PAYMENT_FAILED,
+        _assert_capture(
+            mock_posthog,
+            event=AnalyticsEvents.PAYMENT_SUCCEEDED,
+            distinct_id=USER_ID,
+            expected_props={"payment_id": "pay123", "amount": 29.99, "currency": "USD"},
         )
 
-        call_args = mock_posthog.capture.call_args
-        props = call_args.kwargs.get("properties")
-        assert "payment_id" not in props
-        assert "amount" not in props
-        assert "currency" not in props
+    def test_strips_none_values(self, mock_posthog):
+        track_payment_event(USER_ID, AnalyticsEvents.PAYMENT_FAILED)
+
+        _assert_capture(
+            mock_posthog,
+            event=AnalyticsEvents.PAYMENT_FAILED,
+            distinct_id=USER_ID,
+            expected_props={},
+        )
 
     def test_extra_properties_merged(self, mock_posthog):
         track_payment_event(
-            "user1",
-            AnalyticsEvents.PAYMENT_REFUNDED,
-            properties={"reason": "duplicate"},
+            USER_ID, AnalyticsEvents.PAYMENT_REFUNDED, properties={"reason": "duplicate"}
         )
 
-        call_args = mock_posthog.capture.call_args
-        props = call_args.kwargs.get("properties")
-        assert props["reason"] == "duplicate"
-
-
-# ---------------------------------------------------------------------------
-# flush_events
-# ---------------------------------------------------------------------------
+        _assert_capture(
+            mock_posthog,
+            event=AnalyticsEvents.PAYMENT_REFUNDED,
+            distinct_id=USER_ID,
+            expected_props={"reason": "duplicate"},
+        )
