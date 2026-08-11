@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.llm.chatbot import chatbot
@@ -481,6 +482,23 @@ class TestAinvokeLlm:
             await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
         fallback.ainvoke.assert_not_called()
 
+    async def test_attaches_usage_handler_by_default(self) -> None:
+        primary = self._runnable(result=AIMessage(content="ok"))
+        await ainvoke_llm(primary, [HumanMessage(content="hi")], config=RunnableConfig())
+        assert primary.ainvoke.call_args.kwargs["config"]["callbacks"]
+
+    async def test_graph_calls_skip_auxiliary_metering(self) -> None:
+        # The agent graph is metered by LLMAccountingMiddleware; attaching the
+        # usage handler here too booked every graph call a second time.
+        primary = self._runnable(result=AIMessage(content="ok"))
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=RunnableConfig(),
+            meter_auxiliary=False,
+        )
+        assert "callbacks" not in primary.ainvoke.call_args.kwargs["config"]
+
 
 # ---------------------------------------------------------------------------
 # register_llm_providers
@@ -594,28 +612,29 @@ class TestChatbot:
 
     @patch("app.agents.llm.chatbot.log")
     @patch("app.agents.llm.chatbot.get_default_llm")
-    async def test_chatbot_no_provider_returns_fallback_message(
+    async def test_chatbot_no_provider_logs_and_raises(
         self, mock_get_default: MagicMock, mock_log: MagicMock
     ) -> None:
         mock_get_default.side_effect = LLMNotConfiguredError("no providers")
 
-        result = await chatbot([HumanMessage(content="hello")])
+        with pytest.raises(LLMNotConfiguredError):
+            await chatbot([HumanMessage(content="hello")])
 
-        assert isinstance(result["messages"][0], AIMessage)
-        assert "trouble processing" in result["messages"][0].content
+        mock_log.error.assert_called_once()
 
     @patch("app.agents.llm.chatbot.log")
     @patch("app.agents.llm.chatbot.ainvoke_llm")
     @patch("app.agents.llm.chatbot.get_default_llm")
-    async def test_chatbot_provider_error_returns_fallback_message(
+    async def test_chatbot_provider_error_logs_and_raises(
         self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock, mock_log: MagicMock
     ) -> None:
         mock_get_default.return_value = MagicMock()
         mock_ainvoke.side_effect = ConnectionError("provider down")
 
-        result = await chatbot([HumanMessage(content="hello")])
+        with pytest.raises(ConnectionError, match="provider down"):
+            await chatbot([HumanMessage(content="hello")])
 
-        assert "trouble processing" in result["messages"][0].content
+        mock_log.error.assert_called_once()
 
     @patch("app.agents.llm.chatbot.ainvoke_llm")
     @patch("app.agents.llm.chatbot.get_default_llm")

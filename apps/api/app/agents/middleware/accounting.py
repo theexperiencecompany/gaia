@@ -257,6 +257,15 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         provider = configurable.get("provider", "unknown")
         user_id = configurable.get("user_id")
 
+        if model_name == "unknown":
+            # An unnamed model is priced at DEFAULT_PRICING — ~11x the real rate
+            # for our default model — so this must never pass silently.
+            log.error(
+                f"{LogTag.AGENT} model name missing from configurable — call will be mispriced",
+                agent_name=self.agent_name,
+                configurable_keys=sorted(configurable.keys()),
+            )
+
         # Price the call (full input_tokens + cached_tokens, so the cached subset
         # is billed at the discounted rate rather than free) and record it into
         # the day/month budget windows plus the request tree's aggregate token

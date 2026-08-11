@@ -285,8 +285,15 @@ def create_agent(
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
+        # LLMAccountingMiddleware already charges this call; auxiliary metering
+        # here would book it a second time.
         invoke_fn = functools.partial(
-            ainvoke_llm, llm_with_tools, fallback=fallback, config=config, label=agent_name
+            ainvoke_llm,
+            llm_with_tools,
+            fallback=fallback,
+            config=config,
+            label=agent_name,
+            meter_auxiliary=False,
         )
 
         try:
@@ -351,6 +358,7 @@ def create_agent(
 
         selected_tools = {}
         response_tools = {}
+        response_texts: dict[str, str] = {}
         for tool_call in tool_calls:
             kwargs = {**tool_call["args"]}
             if store_arg:
@@ -372,6 +380,9 @@ def create_agent(
                 response = [
                     tool_id for tool_id in result.get("response", []) if isinstance(tool_id, str)
                 ]
+                rendered = result.get("response_text")
+                if isinstance(rendered, str) and rendered:
+                    response_texts[tool_call["id"]] = rendered
             else:
                 tools_to_bind = [
                     tool_id
@@ -387,7 +398,7 @@ def create_agent(
             selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
             response_tools[tool_call["id"]] = dedupe_str_list(response)
 
-        tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
+        tool_messages, _ = format_selected_tools(response_tools, tool_registry, response_texts)  # type: ignore[arg-type]
         _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
 
@@ -399,6 +410,7 @@ def create_agent(
 
         selected_tools = {}
         response_tools = {}
+        response_texts: dict[str, str] = {}
         for tool_call in tool_calls:
             kwargs = {**tool_call["args"]}
             if store_arg:
@@ -420,6 +432,9 @@ def create_agent(
                 response = [
                     tool_id for tool_id in result.get("response", []) if isinstance(tool_id, str)
                 ]
+                rendered = result.get("response_text")
+                if isinstance(rendered, str) and rendered:
+                    response_texts[tool_call["id"]] = rendered
             else:
                 tools_to_bind = [
                     tool_id
@@ -435,7 +450,7 @@ def create_agent(
             selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
             response_tools[tool_call["id"]] = dedupe_str_list(response)
 
-        tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
+        tool_messages, _ = format_selected_tools(response_tools, tool_registry, response_texts)  # type: ignore[arg-type]
         _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
 

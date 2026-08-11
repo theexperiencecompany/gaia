@@ -461,6 +461,7 @@ async def ainvoke_llm(
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
+    meter_auxiliary: bool = True,
 ) -> Any:
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
@@ -495,9 +496,11 @@ async def ainvoke_llm(
     # summaries, integration inference, profanity, onboarding — and each used to
     # spend real money that nothing recorded. Metering here rather than at each
     # call site is what stops the next helper from silently joining that list.
-    # The agent graph does NOT come through this function (it runs the model via
-    # LangGraph, metered by LLMAccountingMiddleware), so there is no double count.
-    usage_handler = UsageMetadataCallbackHandler()
+    #
+    # The agent graph also comes through here (create_agent wants the retry +
+    # fallback policy) but is already metered by LLMAccountingMiddleware, so it
+    # passes meter_auxiliary=False — otherwise every graph call is booked twice.
+    usage_handler = UsageMetadataCallbackHandler() if meter_auxiliary else None
     user_id = (config or {}).get("configurable", {}).get("user_id")
     try:
         async with asyncio.timeout(timeout):
@@ -514,7 +517,8 @@ async def ainvoke_llm(
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
         # retry and fallback made, and that spend is just as real.
-        await _record_auxiliary_usage(usage_handler, label, str(user_id) if user_id else None)
+        if usage_handler is not None:
+            await _record_auxiliary_usage(usage_handler, label, str(user_id) if user_id else None)
 
 
 def invoke_llm(
@@ -574,11 +578,14 @@ def silent_metered_config(user_id: str) -> RunnableConfig:
 
 
 def _with_usage_handler(
-    config: RunnableConfig | None, handler: BaseCallbackHandler
+    config: RunnableConfig | None, handler: BaseCallbackHandler | None
 ) -> RunnableConfig:
     """Return ``config`` with ``handler`` attached, never mutating the caller's
     object — several callers pass a shared module-level config constant, and
-    graph nodes forward a config whose ``callbacks`` is a live manager."""
+    graph nodes forward a config whose ``callbacks`` is a live manager. A None
+    handler (caller meters the call itself) returns the config unchanged."""
+    if handler is None:
+        return config if config is not None else RunnableConfig()
     merged: dict[str, Any] = dict(config) if config else {}
     existing = merged.get("callbacks")
     if existing is None:
