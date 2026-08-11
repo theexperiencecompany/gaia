@@ -1,7 +1,7 @@
 # Quality gate
 
 The `quality-gate` job in `.github/workflows/code-quality.yml` is one of the
-two branch-protection gate jobs on `develop` (the other is `main.yml`'s
+two branch-protection gate jobs on `master` (the other is `main.yml`'s
 `quality-gate`). It aggregates every code-quality lane and **fails the merge
 if any lane is red**.
 

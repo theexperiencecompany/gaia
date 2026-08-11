@@ -1,6 +1,6 @@
 # CI Gates, Local Repro, and the Drive-to-Green Loop
 
-## What runs on a PR to develop
+## What runs on a PR to master
 
 Source of truth: `.github/workflows/` — read the workflow when you need a
 lane's exact command; don't trust memory or this file for specifics.
@@ -41,7 +41,7 @@ Mirror what CI will run, scoped to what you touched:
 vs the PR base (see `scripts/ci/changed-files.sh`). Locally the base-ref env
 var is unset, so the same command runs repo-wide and can fail on files you
 never touched. Reproduce a lane exactly as CI sees it by exporting the
-base-ref variable the script reads (with `develop` fetched), or by limiting
+base-ref variable the script reads (with `master` fetched), or by limiting
 the tool to your changed files. Pre-existing repo-wide failures outside your
 diff are not yours to fix in this PR.
 
@@ -55,7 +55,7 @@ diff are not yours to fix in this PR.
    blind retry. Every failure event ends in a pushed fix or a PR comment
    explaining precisely why not — no third option.
 3. **Merge conflict / base moved** → `git fetch origin && git merge
-   origin/develop` (plain merge — rebase is banned in this repo), resolve,
+   origin/master` (plain merge — rebase is banned in this repo), resolve,
    re-run affected gates, push.
 4. Green + mergeable + all threads answered → one concise status comment
    (what shipped, what was verified, evidence links) and stop. **Never merge.**

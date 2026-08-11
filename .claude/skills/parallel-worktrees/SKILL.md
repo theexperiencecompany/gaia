@@ -17,14 +17,13 @@ has it. Run it via the mise shim (`wt ...`) or `mise exec -- wt ...`.
 
 ```bash
 wt config shell install   # enables `wt switch` to cd for you; restart the shell after
-wt config state default-branch set develop   # GAIA merges everything into `develop` — see below
+wt config state default-branch set master   # GAIA merges everything into `master`
 ```
 
-**GAIA's base branch is `develop`, never `master`/`main`.** The remote's `origin/HEAD`
-points at `master`, so a fresh clone makes worktrunk mis-detect `develop` and every
-`wt switch -c` would branch from `master`. Always run the `default-branch` one-liner
-above on a new clone. New feature branches are cut from `develop` — fetch it fresh
-before branching, and merge `develop` back in to keep the PR mergeable.
+**GAIA's base branch is `master`** — the remote's `origin/HEAD` points at `master`,
+so worktrunk detects it correctly on fresh clones. New feature branches are cut from
+`master` — fetch it fresh before branching, and merge `master` back in to keep the
+PR mergeable.
 
 ## Create a worktree and start working
 
@@ -111,16 +110,16 @@ deferred; until then this is the constraint.
 
 Repo git rules apply (see root `CLAUDE.md`):
 
-- `develop` is the base branch — branch from and merge into `develop`, not `master`.
-  If `wt switch -c` ever creates branches from `master`, the default-branch state is
-  wrong on this clone: run `wt config state default-branch set develop` (see One-time setup).
-- Plain merge only. Never `git rebase` / `git pull --rebase` against `origin/develop`.
+- `master` is the single base branch — branch from and merge into `master`.
+  If `wt switch -c` creates branches from anything else, the default-branch state is
+  wrong on this clone: run `wt config state default-branch set master` (see One-time setup).
+- Plain merge only. Never `git rebase` / `git pull --rebase` against `origin/master`.
 - Never merge PRs (`gh pr merge` and `wt merge` are both off-limits) — the team merges.
 
-Hand-off flow: sync with develop, push the branch, open a PR:
+Hand-off flow: sync with master, push the branch, open a PR:
 
 ```bash
-git fetch origin && git merge origin/develop && git push -u origin HEAD
+git fetch origin && git merge origin/master && git push -u origin HEAD
 ```
 
 ```bash
@@ -144,7 +143,7 @@ wt remove         # remove the current worktree; deletes the branch if merged
 - **`no task //:wt:env found` during `wt switch -c`** — the branch predates the worktree
   infra (added Jul 2026 in `7f3cd4115`), so its `mise.toml` lacks the `wt:env` task,
   the `_.file = ".env.worktree"` auto-load, and the `--port=${WEB_PORT:-3000}` dev script.
-  Run the port script manually (or `git merge origin/develop` to bring the infra in),
+  Run the port script manually (or `git merge origin/master` to bring the infra in),
   then export the port when running the dev server: `pnpm nx run web:next:dev --port=3040`.
 - **New worktree has no secrets** — the `copy-ignored` hook only copies files that
   are both gitignored and in `.worktreeinclude`. If you added a new secret file,

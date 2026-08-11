@@ -12,7 +12,7 @@ _queue_stub = MagicMock()
 sys.modules.setdefault("app.services.workflow.queue_service", _queue_stub)
 sys.modules.setdefault("app.services.workflow.trigger_service", MagicMock())
 
-from app.services.triggers.handlers.notion import NotionTriggerHandler  # noqa: E402
+from app.services.triggers.handlers.notion import NotionTriggerHandler
 
 # ---------------------------------------------------------------------------
 # Helpers

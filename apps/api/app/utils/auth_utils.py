@@ -108,7 +108,7 @@ async def authenticate_workos_session(
         # Handle authentication result
         if auth_response.authenticated:
             # Authentication successful
-            workos_user = auth_response.user  # type: ignore[reportOptionalMemberAccess]
+            workos_user = auth_response.user
         else:
             # Try to refresh the session
             try:
@@ -120,7 +120,7 @@ async def authenticate_workos_session(
                     # Authentication failed, even after refresh
                     log.warning(
                         f"{LogTag.AGENT} Authentication failed even after refresh with reason",
-                        reason=refresh_result.reason,  # type: ignore[reportOptionalMemberAccess]
+                        reason=refresh_result.reason,
                     )
                     return {}, None
 

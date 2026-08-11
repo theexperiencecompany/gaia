@@ -16,15 +16,104 @@ Exit 1 with a ::error message when a changed module has no test file.
 from __future__ import annotations
 
 import ast
+import io
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tokenize
 
 APP_DIR = Path("apps/api/app")
 TESTS_DIR = Path("apps/api/tests")
+
+
+def _merge_base() -> str:
+    """The merge-base commit between HEAD and the PR's base ref, or "" outside CI.
+
+    The single source of truth both diff-against-base computations in this
+    file use (line ranges below, and comment-only detection). Resolving the
+    actual merge-base commit — not just ``origin/<base>``'s current tip —
+    matters: if the base branch has moved since the PR branched, diffing
+    against its tip would pull in unrelated changes landed on the base after
+    the branch point and could misjudge a genuine PR change as comment-only
+    (or vice versa).
+
+    Returns "" when GITHUB_BASE_REF is unset (local runs — both callers treat
+    that as "diff not applicable here"). In CI, GITHUB_BASE_REF is always
+    set, so a resolution failure there is a real infra problem, not an
+    absent diff — fails loud rather than silently disabling both checks.
+    """
+    base = os.environ.get("GITHUB_BASE_REF", "")
+    if not base:
+        return ""
+    try:
+        return subprocess.check_output(
+            ["git", "merge-base", f"origin/{base}", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except subprocess.CalledProcessError as exc:
+        print(
+            f"::error::mutation gate: could not resolve merge-base with origin/{base}: {exc}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
+
+
+def _tokens_without_comments(source: str) -> list[tuple[int, str]] | None:
+    """``source``'s tokens with COMMENT and NL (comment-only-line terminator)
+    stripped, or None if it fails to tokenize.
+
+    Stripping only COMMENT would leave a stray NL where a whole-line comment
+    used to be, making a deleted comment-only line look like a structural
+    change. Stripping both makes the comparison see straight through both
+    forms: a trailing ``# noqa: X`` sliced off a code line, and a whole line
+    that was nothing but a comment to begin with.
+    """
+    tokens: list[tuple[int, str]] = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+            if tok.type in (tokenize.COMMENT, tokenize.NL, tokenize.ENCODING):
+                continue
+            tokens.append((tok.type, tok.string))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return None
+    return tokens
+
+
+def _is_comment_only_change(module_path: str, merge_base: str) -> bool:
+    """True when ``module_path``'s diff against ``merge_base`` changes only
+    comments — i.e. it has zero possible mutants, so requiring a test file
+    for it would be meaningless.
+
+    A pragmatic line-based diff (skip lines whose changed side starts with
+    ``#``) is not enough here: this codebase's suppressions are routinely
+    trailing comments on a code line (``except Exception as e:  # noqa:
+    BLE001``), and after the comment is deleted the changed line no longer
+    starts with ``#`` at all — a line-prefix check would misclassify that as
+    a code change. Tokenizing both sides and comparing with COMMENT/NL
+    stripped catches both the trailing-comment and whole-line-comment forms
+    correctly, because it compares what the code actually *is*, not how the
+    diff happens to be shaped.
+    """
+    try:
+        old_source = subprocess.check_output(
+            ["git", "show", f"{merge_base}:{module_path}"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return False  # new file, or base lookup failed — not comment-only
+    new_full_path = Path(module_path)
+    if not new_full_path.exists():
+        return False  # deleted file — not comment-only
+    old_tokens = _tokens_without_comments(old_source)
+    new_tokens = _tokens_without_comments(new_full_path.read_text())
+    if old_tokens is None or new_tokens is None:
+        return False  # unparseable on either side — don't guess, enforce normally
+    return old_tokens == new_tokens
 
 
 def _module_refs(path: Path) -> set[str]:
@@ -143,19 +232,40 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
 
 def main() -> int:
     changed = [line.strip() for line in sys.stdin if line.strip()]
+    merge_base = _merge_base()
     matrix: list[dict[str, object]] = []
     failures: list[str] = []
     for module in changed:
         rel = module.removeprefix("apps/api/")
+        # A comment-only diff has zero possible mutants — checked before the
+        # test-file lookup, and regardless of whether a test file exists.
+        # This isn't just about the "no test file" failure: even a module
+        # WITH a test file pays a real cost here — mutmut's `# pragma: no
+        # mutate` line-scoping only suppresses mutants ON that exact line,
+        # so a single-line comment change inside a large, weakly-covered
+        # function still leaves the rest of that function's body fully
+        # mutable and can run mutmut's full per-mutant test battery across
+        # it. That's how a one-line noqa removal produced 157 mutants and
+        # blew the per-module timeout in practice. Enforcing test coverage —
+        # or even attempting it — for a diff that changed no code proves
+        # nothing either way, so skip it before the expensive test-file
+        # search and the mutation run even start. Printed, never silent.
+        if merge_base and _is_comment_only_change(module, merge_base):
+            print(
+                f"::notice::mutation gate: {rel}'s diff vs {merge_base[:12]} is "
+                "comment-only (no mutable code changed) — skipping",
+                file=sys.stderr,
+            )
+            continue
         rel_py = rel.removeprefix("app/")
         rel_py = rel_py.removesuffix(".py")
         unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
         if (TESTS_DIR.parent / unit_mirror).exists():
-            matrix.append(_entry(rel, unit_mirror))
+            matrix.append(_entry(rel, unit_mirror, merge_base))
             continue
         hits = _test_files_for(rel_py)
         if hits:
-            matrix.append(_entry(rel, hits[0].removeprefix("apps/api/")))
+            matrix.append(_entry(rel, hits[0].removeprefix("apps/api/"), merge_base))
             continue
         failures.append(
             f"changed module {rel} has no test file anywhere (looked for {unit_mirror} "
@@ -169,7 +279,7 @@ def main() -> int:
     return 0
 
 
-def _entry(module_rel: str, testfile: str) -> dict[str, object]:
+def _entry(module_rel: str, testfile: str, merge_base: str) -> dict[str, object]:
     """Module matrix entry with the PR's changed line ranges for this file.
 
     The gate is diff-driven: a survivor only fails the lane when its mutation
@@ -177,29 +287,28 @@ def _entry(module_rel: str, testfile: str) -> dict[str, object]:
     failures — otherwise a 1-line import fix would demand full-module test
     coverage.
     """
-    ranges = _changed_line_ranges(f"apps/api/{module_rel}")
+    ranges = _changed_line_ranges(f"apps/api/{module_rel}", merge_base)
     return {"module": module_rel, "testfile": testfile, "changed_lines": ranges}
 
 
-def _changed_line_ranges(path: str) -> list[list[int]]:
+def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:
     """PR-changed line ranges for a file, from the merge-base diff (unified=0).
 
-    Returns [] when GITHUB_BASE_REF is unset (local runs). In CI the diff
-    MUST succeed — empty ranges would silently pass every survivor, so a
-    git failure there is a hard lane error.
+    Returns [] when ``merge_base`` is empty (local runs — see ``_merge_base``).
+    In CI the diff MUST succeed — empty ranges would silently pass every
+    survivor, so a git failure there is a hard lane error.
     """
-    base = os.environ.get("GITHUB_BASE_REF", "")
-    if not base:
+    if not merge_base:
         return []
     try:
         out = subprocess.check_output(
-            ["git", "diff", "--unified=0", f"origin/{base}...HEAD", "--", path],
+            ["git", "diff", "--unified=0", merge_base, "HEAD", "--", path],
             text=True,
             stderr=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError as exc:
         print(
-            f"::error::mutation gate: could not diff {path} against origin/{base}: {exc}",
+            f"::error::mutation gate: could not diff {path} against {merge_base}: {exc}",
             file=sys.stderr,
         )
         raise SystemExit(1)

@@ -26,28 +26,28 @@ if "app.services.workflow.queue_service" not in sys.modules:
     _qs_mod.WorkflowQueueService = MagicMock()
     sys.modules["app.services.workflow.queue_service"] = _qs_mod
 
-from app.models.trigger_configs import (  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.models.trigger_configs import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
     AsanaTaskTriggerConfig,
     GoogleDocsNewDocumentConfig,
     TodoistNewTaskCreatedConfig,
 )
 from app.models.workflow_models import (
-    TriggerConfig,  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+    TriggerConfig,  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
 )
-from app.services.triggers.handlers.asana import (  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.services.triggers.handlers.asana import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
     AsanaTriggerHandler,
     asana_trigger_handler,
 )
-from app.services.triggers.handlers.google_docs import (  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.services.triggers.handlers.google_docs import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
     GoogleDocsTriggerHandler,
     google_docs_trigger_handler,
 )
-from app.services.triggers.handlers.todoist import (  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.services.triggers.handlers.todoist import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
     TodoistTriggerHandler,
     todoist_trigger_handler,
 )
 from app.utils.exceptions import (
-    TriggerRegistrationError,  # noqa: E402  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+    TriggerRegistrationError,  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
 )
 
 TRIGGER_CONFIGS = {

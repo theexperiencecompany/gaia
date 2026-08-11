@@ -93,6 +93,11 @@ class GraphRun:
     #: it on the way in and that rewrite never reaches the checkpoint, so this is
     #: the only place a hook's effect is observable.
     prompts: list[list[BaseMessage]] = field(default_factory=list)
+    #: Every node that emitted an update, in order — including nodes whose
+    #: update carried no messages (e.g. ``end_graph_hooks``, whose hooks are
+    #: side-effecting and write no channels). ``nodes()`` covers only the
+    #: message-bearing route.
+    visited: list[str] = field(default_factory=list)
     error: BaseException | None = None
 
     def last_prompt(self) -> list[BaseMessage]:
@@ -374,6 +379,7 @@ async def comms_graph(
     script: Sequence[Any],
     store: InMemoryStore | None = None,
     model: RecordingFakeModel | None = None,
+    checkpointer_manager: Any | None = None,
 ) -> AsyncIterator[Any]:
     """The REAL comms graph, with only the model and the external edges replaced.
 
@@ -425,7 +431,11 @@ async def comms_graph(
         patch.object(
             _build_graph, "get_tools_store", AsyncMock(return_value=store or InMemoryStore())
         ),
-        patch.object(_build_graph, "get_checkpointer_manager", AsyncMock(return_value=None)),
+        patch.object(
+            _build_graph,
+            "get_checkpointer_manager",
+            AsyncMock(return_value=checkpointer_manager),
+        ),
         patch(
             f"{node_module}.ainvoke_structured",
             new=AsyncMock(return_value=FollowUpActions(actions=[])),
@@ -442,7 +452,7 @@ async def comms_graph(
         ),
     ):
         async with _build_graph.build_comms_graph(
-            chat_llm=llm, in_memory_checkpointer=True
+            chat_llm=llm, in_memory_checkpointer=checkpointer_manager is None
         ) as graph:
             _SCRIPTED_MODELS[id(graph)] = llm
             _MEMORY_DOUBLES[id(graph)] = memory
@@ -501,6 +511,8 @@ async def run_graph(
     try:
         async for _mode, payload in graph.astream(initial, stream_mode=["updates"], config=config):
             for node, update in payload.items():
+                if not run.visited or run.visited[-1] != node:
+                    run.visited.append(node)
                 if not isinstance(update, dict):
                     continue
                 if "selected_tool_ids" in update:

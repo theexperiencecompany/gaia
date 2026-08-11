@@ -318,6 +318,23 @@ class TestDeleteCalendarEvent:
         assert exc.value.status_code == 404
         assert "Event not found" in str(exc.value.detail)
 
+    async def test_percent_encodes_calendar_id_with_reserved_chars(self, mock_proxy):
+        """Google calendar IDs like 'user@group.calendar.google.com' or
+        '#contacts@group.v.calendar.google.com' contain '@'/'#'. Unencoded,
+        those characters break the URL path (404s or a truncated path)."""
+        mock_proxy.return_value = None
+        await delete_calendar_event(
+            EventDeleteRequest(
+                event_id="evt-1", calendar_id="#contacts@group.v.calendar.google.com"
+            ),
+            USER_ID,
+        )
+        endpoint = mock_proxy.call_args.kwargs["endpoint"]
+        assert "#contacts@group.v.calendar.google.com" not in endpoint
+        assert endpoint.endswith(
+            "/calendars/%23contacts%40group.v.calendar.google.com/events/evt-1"
+        )
+
 
 class TestUpdateCalendarEvent:
     async def test_updates_summary(self, mock_proxy):
@@ -334,6 +351,25 @@ class TestUpdateCalendarEvent:
         assert mock_proxy.call_args_list[0].kwargs["method"] == "GET"
         assert mock_proxy.call_args_list[1].kwargs["method"] == "PUT"
         assert mock_proxy.call_args_list[1].kwargs["body"]["summary"] == "New"
+
+    async def test_percent_encodes_calendar_id_with_reserved_chars(self, mock_proxy):
+        """Same bug as delete_calendar_event: the GET-existing + PUT-update
+        endpoint interpolates calendar_id/event_id unencoded."""
+        mock_proxy.side_effect = [
+            {"summary": "Old", "description": "d", "start": {}, "end": {}},
+            {"id": "evt", "summary": "New"},
+        ]
+        await update_calendar_event(
+            EventUpdateRequest(
+                event_id="evt",
+                calendar_id="user@group.calendar.google.com",
+                summary="New",
+            ),
+            USER_ID,
+        )
+        get_endpoint = mock_proxy.call_args_list[0].kwargs["endpoint"]
+        assert "user@group.calendar.google.com" not in get_endpoint
+        assert get_endpoint.endswith("/calendars/user%40group.calendar.google.com/events/evt")
 
 
 # ---------------------------------------------------------------------------

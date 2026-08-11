@@ -103,6 +103,7 @@ export default function Footer() {
                   height={30}
                   width={186}
                   style={{ colorScheme: "normal" }}
+                  className="ph-no-capture"
                 />
               </div>
               <div className="mt-2 flex flex-col items-start px-2 text-xl font-medium text-white sm:px-3 sm:text-2xl">

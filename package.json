@@ -50,7 +50,8 @@
     "react-dom": "19.1.0",
     "style-dictionary": "^4.4.0",
     "syncpack": "^15.3.2",
-    "tsx": "^4.23.0"
+    "tsx": "^4.23.11",
+    "typescript": "npm:typescript@6.0.0-beta"
   },
   "packageManager": "pnpm@10.17.1",
   "pnpm": {

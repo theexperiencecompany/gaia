@@ -92,7 +92,7 @@ Pre-model hooks in `app/agents/core/nodes/`:
 Default to **less**. The code is the documentation — docstrings and comments exist only where the code cannot speak for itself. AI-generated over-documentation (restating the signature in prose, narrating every line, "textbook" docstrings on trivial helpers) is a defect, not thoroughness. Strip it.
 
 - **Docstrings** belong on public API surface — exported services, route handlers, shared utilities, and functions whose behavior is genuinely non-obvious. Skip them on private/internal helpers, obvious wrappers, and anything whose name + signature already says everything.
-- **One line** is the default. A summary sentence is enough. Add an `Args:`/`Returns:`/`Raises:` body only when a parameter, return value, or failure mode is non-obvious — never to mechanically mirror the signature. Document *why* and the non-obvious *what*, never the obvious what.
+- **One line** is the default — and for helpers/internal functions it is a HARD CAP of two lines. A multi-paragraph docstring is reserved for genuinely complex public API; anywhere else it is a review comment waiting to happen. Add an `Args:`/`Returns:`/`Raises:` body only when a parameter, return value, or failure mode is non-obvious — never to mechanically mirror the signature. Document *why* and the non-obvious *what*, never the obvious what.
 - **Never** document params/returns/raises that don't exist or no longer match the signature. A stale or hallucinated docstring is worse than none.
 - **Comments** explain non-obvious decisions — a tricky invariant, a workaround and its cause, a "why this and not the obvious thing." A comment that restates what the line plainly does is noise; delete it. Never leave commented-out code — git already has it. `ERA001` is *not* currently enforced (213 findings in `app/`, concentrated in `models/calendar_models.py`, `agents/tools/webpage_tool.py` and the deliberately-parked `utils/calendar_utils.py`), so this one is on you rather than the linter until that backlog is cleared.
 - When editing AI-generated code, treat trimming its redundant docstrings/comments as part of the change, not a separate cleanup.
@@ -111,6 +111,8 @@ Python 3.11+: use modern syntax (`X | Y` unions, `match` statements).
 ## File & Structural Organization
 
 One domain per file. Never let a file span multiple domains.
+
+**New code goes in the module that owns the concept, never in the caller's file by convenience.** Before adding a function, ask where a reader would look for it — put it there and import it. Adding to an already-large file because "that's where it's used" is how monoliths grow.
 
 - `app/models/` — SQLAlchemy / MongoDB document models, one file per domain (`todo_models.py`).
 - `app/schemas/` — Pydantic request/response schemas, one file per domain. Separate `CreateRequest`, `UpdateRequest`, `Response`.
@@ -392,6 +394,8 @@ If a parameter is unused by one implementation but required by a framework's cal
 ### 12. Narrowing `Any`/unknown values: `cast()` over `isinstance()` when already correct by construction
 
 Prefer `cast(RealType, value)` over `isinstance(value, RealType)` when you already know the value is correct by construction (a lazy-provider registry lookup, a well-known dict's `.get()` result, a value a framework's own contract guarantees). `cast()` only changes what the type checker believes; `isinstance()` changes what the code actually *does* at runtime, and can reject a structurally-compatible object — a mock, a duck-typed wrapper, a different concrete implementation of a `Protocol` — that was working fine before.
+
+Never cast through `Any` (or an `Any`-parametrized container) to bypass a declared type — that re-introduces `Any` through the back door. Cast to the honest narrow type and validate/narrow what you pull out.
 
 ### 13. Never change behavior to satisfy a type checker
 

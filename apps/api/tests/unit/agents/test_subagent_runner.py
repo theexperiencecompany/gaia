@@ -728,7 +728,7 @@ class TestPrepareExecutorExecution:
 # ---------------------------------------------------------------------------
 
 
-from app.agents.core.subagents.subagent_helpers import (  # noqa: E402
+from app.agents.core.subagents.subagent_helpers import (
     build_subagent_system_prompt,
     create_agent_context_message,
     create_subagent_system_message,
