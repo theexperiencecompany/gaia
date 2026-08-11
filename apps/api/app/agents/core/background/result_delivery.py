@@ -38,6 +38,7 @@ from app.models.chat_models import (
     ToolDataEntry,
     UpdateMessagesRequest,
 )
+from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
@@ -162,8 +163,12 @@ async def _narrate_and_deliver(
     """
     user_id = run.user.get("user_id", "")
 
+    # A resumed run's report can still describe its gate as pending (the task
+    # spec often DEFINED done that way), so the decided statuses are injected
+    # mechanically: comms must never re-offer a decision the user already made.
+    approval_note = await _approval_outcomes_note(run)
     notification_text = await narrate_executor_result(
-        result_text,
+        result_text + approval_note,
         result_type,
         run.conversation_id,
         run.user,
@@ -404,6 +409,46 @@ async def _merge_resumed_result(
 _SETTLED_APPROVAL_STATUSES = frozenset(
     {"approved", "denied", "timeout", "abandoned", "auto_approved"}
 )
+
+
+_APPROVAL_OUTCOME_PHRASES: dict[HILApprovalStatus, str] = {
+    HILApprovalStatus.APPROVED: "approved by the user; the action ran",
+    HILApprovalStatus.AUTO_APPROVED: "auto-approved; the action ran",
+    HILApprovalStatus.DENIED: "denied by the user; the action did NOT run",
+    HILApprovalStatus.TIMEOUT: "expired with no decision; the action did NOT run",
+    HILApprovalStatus.ABANDONED: "abandoned; the action did NOT run",
+}
+
+
+async def _approval_outcomes_note(run: ExecutorRun) -> str:
+    """Ground-truth note listing this run's decided approval gates, or ""."""
+    if not run.bot_message_id:
+        return ""
+    try:
+        message = await conversation_repository.get_message(
+            run.conversation_id, run.bot_message_id, user_id=run.user.get("user_id", "")
+        )
+    except Exception as e:
+        log.warning(f"{LogTag.AGENT} _approval_outcomes_note: message lookup failed", error=str(e))
+        return ""
+    if message is None or not message.tool_data:
+        return ""
+    lines: list[str] = []
+    for entry in message.tool_data:
+        approval_id = _approval_id(entry)
+        if approval_id is None:
+            continue
+        record = await get_approval(approval_id)
+        if record is None or record.status not in _APPROVAL_OUTCOME_PHRASES:
+            continue
+        lines.append(f"- {record.tool_name}: {_APPROVAL_OUTCOME_PHRASES[record.status]}")
+    if not lines:
+        return ""
+    return (
+        "\n\n[APPROVAL OUTCOMES] Final, decided by the user; this overrides anything above "
+        "that says an action is waiting for approval. Report each action by its outcome; "
+        "never say it is pending and never re-offer approve/decline.\n" + "\n".join(lines)
+    )
 
 
 def _approval_id(entry: ToolDataEntry) -> str | None:
