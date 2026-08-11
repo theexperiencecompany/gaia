@@ -328,11 +328,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         the messages array. Does not advance ``updatedAt``."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
-            {"$set": {"messages.$[].tool_data.$[entry].data.status": status}},
+            {"$set": {"messages.$[msg].tool_data.$[entry].data.status": status}},
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
-            array_filters=[{"entry.data.approval_id": approval_id}],
+            # Filter BOTH levels: `messages.$[]` would require tool_data on every
+            # message (user messages have none) and Mongo rejects the whole update.
+            array_filters=[
+                {"msg.tool_data": {"$elemMatch": {"data.approval_id": approval_id}}},
+                {"entry.data.approval_id": approval_id},
+            ],
         )
         return matched > 0
 

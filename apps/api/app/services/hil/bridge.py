@@ -33,6 +33,7 @@ from app.constants.hil import (
     HIL_SUMMARY_MAX_ARG_CHARS,
     HIL_SUMMARY_MAX_ARGS,
 )
+from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
@@ -118,12 +119,23 @@ async def publish_decision(
     # Also settle the PERSISTED frame right now. Final delivery reconciles too,
     # but the run may pause again on a later gate first — a revisit in that
     # window would otherwise render a dead pending card for a decided approval.
-    await conversation_repository.set_message_approval_status(
-        record.conversation_id,
-        user_id=record.user_id,
-        approval_id=record.approval_id,
-        status=status.value,
-    )
+    # Isolated on purpose: this is a redraw of an already-decided card, and the
+    # caller is the gate, which fails CLOSED. Letting a write error escape here
+    # would turn a cosmetic failure into a denial of the user's own decision.
+    try:
+        await conversation_repository.set_message_approval_status(
+            record.conversation_id,
+            user_id=record.user_id,
+            approval_id=record.approval_id,
+            status=status.value,
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.HIL} Could not settle persisted approval frame; delivery will reconcile",
+            approval_id=record.approval_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def publish_auto_approval(
