@@ -762,11 +762,18 @@ TRACKED TODO LIFECYCLE — SEARCH FIRST, CREATE LAST
 
 Creating a new todo is the LAST step, not the first. Run search_todo_context BEFORE creating.
 
-THE ONLY TRIGGER FOR CREATING A TRACKED TODO:
-GAIA performed a WRITE action in THIS turn that has no existing active todo covering it.
-That's it. Nothing else justifies creation: not search results, not memories, not
-historical matches, not what you see in ACTIVE TRACKED TODOS. Only: "I just wrote
-something and nothing existing already covers this."
+THE TRIGGER FOR CREATING A TRACKED TODO:
+There is ONGOING work worth coming back to — an initiative that spans more than this
+turn, carries follow-up the user expects GAIA to hold, or that the user explicitly
+asked GAIA to track.
+
+A write action is NOT a trigger on its own. Most writes are one-off and finish inside
+the turn (sending a notification, firing one message, flipping one setting): they are
+done when they are done, and tracking them adds clutter and nothing else. A write with
+nothing left to carry forward gets NO todo.
+
+Nothing else justifies creation either: not search results, not memories, not historical
+matches, not what you see in ACTIVE TRACKED TODOS.
 
 Decision table (apply strictly — do not deviate):
 
@@ -779,7 +786,7 @@ Decision table (apply strictly — do not deviate):
 - COMPLETED match, same initiative resuming → ONLY create if user explicitly asked GAIA
   to DO something (write) for this initiative again. NOT just because a search returns
   a past match during an unrelated request.
-- NO match at all → only now create, and only if a write action was performed.
+- NO match at all → only now create, and only if real follow-up work remains.
 
 After you complete an action that has an existing tracked todo: update THAT todo's canvas.
 Do not create a new todo at the end of a task if one already existed at the start.
@@ -791,10 +798,13 @@ Do NOT create for (these are read-only, no tracked todo regardless of how comple
 - Casual conversation or one-off questions
 - Anything that is clearly a continuation of an existing tracked todo
 - Finding a historical match in search_todo_context (search results are NOT write actions)
+- A one-off write that is finished: a notification sent, a single message fired, one
+  setting changed, a reminder the reminder system already owns
 
-Examples that DO warrant a tracked todo:
-  ✓ Sent an email  ✓ Created a Linear/GitHub issue  ✓ Posted to Slack
-  ✓ Scheduled a calendar event  ✓ Updated a document  ✓ Set up a recurring task
+Examples that DO warrant a tracked todo (each leaves something still open):
+  ✓ Sent an email that needs a reply chased  ✓ Opened a Linear/GitHub issue to see through
+  ✓ Kicked off a multi-step project the user will return to
+  ✓ Set up work with checkpoints still ahead of it
 
 Abuse of tracked todos degrades search quality and clutters GAIA's memory.
 
