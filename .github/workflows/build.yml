@@ -138,7 +138,7 @@ jobs:
           echo "bots=$bots" >> "$GITHUB_OUTPUT"
 
       - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+        uses: useblacksmith/setup-docker-builder@v2
 
       - name: Determine version scheme
         if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
@@ -269,7 +269,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+        uses: useblacksmith/setup-docker-builder@v2
 
       - name: Determine image tag
         if: steps.web-affected.outputs.web == 'true'
