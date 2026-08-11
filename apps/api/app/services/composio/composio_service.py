@@ -115,7 +115,7 @@ class ComposioService:
         log.info(f"{LogTag.COMPOSIO} Loading toolkit...", tool_kit=tool_kit)
 
         tools = await asyncio.to_thread(
-            lambda: self.composio.tools.get(  # type: ignore[call-overload]
+            lambda: self.composio.tools.get(
                 user_id="",
                 toolkits=[tool_kit],
                 limit=1000,
@@ -134,7 +134,7 @@ class ComposioService:
         master_schema_mod = schema_modifier(tools=tool_names)(master_schema_modifier)
 
         tools = await asyncio.to_thread(
-            lambda: self.composio.tools.get(  # type: ignore[call-overload]
+            lambda: self.composio.tools.get(
                 user_id="",
                 toolkits=[tool_kit],
                 modifiers=[

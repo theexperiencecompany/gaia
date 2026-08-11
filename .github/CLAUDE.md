@@ -41,7 +41,7 @@ times on this repo: when the PR's `mergeable` state is `CONFLICTING`,
 `pull_request`-triggered runs are not created — silently, with no error,
 no queued entry, nothing. If CI "stopped" with no new runs, the first thing
 to check is `gh pr view --json mergeable`. Keep the branch merged with
-`develop`; re-merge and resolve before pushing further.
+`master`; re-merge and resolve before pushing further.
 
 ## Skipping work that isn't needed
 
@@ -52,7 +52,7 @@ Three layers, from cheap to precise:
    versa). Lanes skipped this way count as PASSING in the gate; a failed
    `changes` job fails the gate.
 2. **`main.yml` `detect` job** — `nx show projects --affected` (via
-   `nrwl/nx-set-shas`, base `develop`) computes the affected project lists
+   `nrwl/nx-set-shas`, base `master`) computes the affected project lists
    that gate build/test jobs and scope their `-p` arguments.
 3. **`scripts/ci/changed-files.sh` inside lanes** — scopes each tool to the
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
@@ -109,6 +109,23 @@ is gone — the rollout it enabled is complete and the two sources of truth had
 drifted. New lane: add the job, its result to the gate's `needs:` + `RESULT`
 map, and its name to the `LANES` array; it is enforced from the first run.
 
+## Suppression baseline (no new inline lint suppressions)
+
+The `suppression-ratchet` lane guards `# noqa` / `# type: ignore` / `// biome-ignore`
+against silent growth via a checked-in baseline (`config/suppressions-baseline.json`),
+not a git-history diff — `tools/lints/check_suppressions.py` scans the current
+working tree and compares per-(file, kind) counts against it, so the check is a
+pure local scan with no fetch-depth, base ref, or merge-base. A file may only
+match or shrink its baseline count; a pure rename (byte-identical content) is
+free via a content hash, but any genuine growth fails with an exact `file:line`.
+Reproduce or accept a change locally with the one command:
+`python3 tools/lints/check_suppressions.py` (add `--update` to regenerate the
+baseline after fixing or deliberately accepting a new suppression — the baseline
+diff is the review surface). This is unrelated to the ruff ignore-list ratchet
+(`tools/lints/check_ignore_ratchet.py`), which guards `[tool.ruff.lint] ignore`
+/ `per-file-ignores` / mypy overrides in `pyproject.toml` — see
+`tools/lints/README.md#ignore-ratchet`.
+
 ## Log readability (for humans AND agents)
 
 Every step follows the convention documented at the top of code-quality.yml:
@@ -127,7 +144,7 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   re-enable). There is NO remote nx cache: each CI job recomputes everything.
   The Next.js compiler cache IS persisted (`actions/cache` on
   `apps/web/.next/cache` in main.yml build + desktop-pr-build prepare).
-- `nx.json` `defaultBase` is `develop` (the integration branch). CI passes
+- `nx.json` `defaultBase` is `master` (the single base branch). CI passes
   explicit bases; `defaultBase` matters for local `nx affected` / mise tasks.
 - Versions are pinned where a trusted SHA/number was resolvable (nx 22.7.7 in
   nx.json `installation`, uv 0.8.17, `uvx ruff@<uv.lock version>` in the ruff

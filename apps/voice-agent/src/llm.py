@@ -250,7 +250,7 @@ class CustomLLM(LLM):
     # this override does not use — the catch-all has to stay or those calls TypeError.
     # `object`, not Any: nothing here ever reads them.
     @asynccontextmanager
-    async def chat(  # type: ignore[override]
+    async def chat(
         self, *, chat_ctx: ChatContext, **_kwargs: object
     ) -> AsyncGenerator[AsyncGenerator[ChatChunk, None], None]:
         """Stream SSE from the backend and yield ChatChunks for TTS."""

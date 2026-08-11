@@ -208,7 +208,7 @@ async def workos_mobile_callback(
 
     try:
         if not code:
-            log.error(
+            log.warning(
                 f"{LogTag.OAUTH} No authorization code received from WorkOS (mobile)",
                 failure_reason="missing_code",
             )
@@ -315,7 +315,7 @@ async def workos_desktop_callback(
     try:
         # Validate code parameter
         if not code:
-            log.error(
+            log.warning(
                 f"{LogTag.OAUTH} No authorization code received from WorkOS (desktop)",
                 failure_reason="missing_code",
             )
@@ -410,7 +410,7 @@ async def workos_callback(
     try:
         # Validate code parameter
         if not code:
-            log.error(
+            log.warning(
                 f"{LogTag.OAUTH} No authorization code received from WorkOS",
                 failure_reason="missing_code",
             )
@@ -514,7 +514,7 @@ async def composio_callback(
     # Validate and consume state token
     state_data = await validate_and_consume_oauth_state(state)
     if not state_data:
-        log.error(f"{LogTag.OAUTH} Invalid OAuth state token", state_prefix=state[:8])
+        log.warning(f"{LogTag.OAUTH} Invalid OAuth state token", state_prefix=state[:8])
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/redirect?oauth_error=invalid_state")
 
     redirect_path = state_data["redirect_path"]
