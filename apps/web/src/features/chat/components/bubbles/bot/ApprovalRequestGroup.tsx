@@ -2,16 +2,14 @@
 
 import { Button } from "@heroui/button";
 import { ShieldIcon } from "@icons";
-import {
-  type ApprovalDecision,
-  type ApprovalRequestData,
-  type ApprovalStatus,
-  isSettled,
+import type {
+  ApprovalDecision,
+  ApprovalRequestData,
+  ApprovalStatus,
 } from "@shared/chat";
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { toast } from "@/lib/toast";
-import { ApprovalReceipts } from "./ApprovalReceipts";
 import ApprovalRequestSection from "./ApprovalRequestSection";
 import { useApprovalResolver } from "./ApprovalResolveContext";
 
@@ -20,9 +18,9 @@ interface ApprovalRequestGroupProps {
 }
 
 /**
- * Pending approvals render as actionable cards; a decided one moves into the collapsed
- * receipts list rather than disappearing. That list is also where auto mode's actions
- * show up — an action taken without asking still has to be visible after the fact.
+ * Pending approvals render as actionable cards; a decided one collapses into an
+ * outcome chip on its tool's own row in the "Used N tools" thread (see
+ * ApprovalOutcomeChip), so nothing renders here once it settles.
  *
  * With several pending at once (a concurrent-subagent batch), a review bar offers one
  * decision for the whole set — the "review the cart" moment — while the per-card
@@ -41,7 +39,6 @@ export default function ApprovalRequestGroup({
     useState<ApprovalDecision | null>(null);
 
   const pending = items.filter((item) => item.status === "pending");
-  const settled = items.filter((item) => isSettled(item.status));
 
   const settle = (
     approvalId: string,
@@ -128,7 +125,6 @@ export default function ApprovalRequestGroup({
           ))}
         </div>
       )}
-      <ApprovalReceipts items={settled} />
     </div>
   );
 }

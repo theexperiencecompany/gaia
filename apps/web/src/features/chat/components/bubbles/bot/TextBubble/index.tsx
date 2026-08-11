@@ -354,6 +354,20 @@ export default function TextBubble({
     return ids;
   }, [tool_data]);
 
+  // Settled decisions, keyed the same way — the tool's own row in the thread
+  // carries the outcome as a chip instead of a separate receipts block.
+  const approvalStatusByToolCallId = React.useMemo(() => {
+    const statuses = new Map<string, ApprovalRequestData["status"]>();
+    tool_data?.forEach((entry) => {
+      if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
+      const data = entry.data as ApprovalRequestData | null;
+      if (data?.tool_call_id && data.status !== "pending") {
+        statuses.set(data.tool_call_id, data.status);
+      }
+    });
+    return statuses;
+  }, [tool_data]);
+
   return (
     <ApprovalResolveProvider value={resolveApproval}>
       {parsedContent.thinking && (
@@ -366,6 +380,7 @@ export default function TextBubble({
           timeline={timeline}
           isStreaming={!!loading}
           pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+          approvalStatusByToolCallId={approvalStatusByToolCallId}
         />
       )}
 

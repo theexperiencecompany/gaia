@@ -1,7 +1,9 @@
 "use client";
 
+import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 import { PuzzleIcon, ShieldIcon, ToolsIcon } from "@icons";
+import type { ApprovalStatus } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
@@ -28,6 +30,33 @@ function WaitingForApprovalPill() {
       <ShieldIcon width={13} height={13} />
       Waiting for approval
     </span>
+  );
+}
+
+// A settled decision rides its tool's own row — one place tells the whole story.
+const APPROVAL_CHIP: Record<
+  string,
+  { label: string; color: "success" | "danger" | "warning" }
+> = {
+  approved: { label: "Approved", color: "success" },
+  auto_approved: { label: "Auto-approved", color: "success" },
+  denied: { label: "Denied", color: "danger" },
+  timeout: { label: "Expired", color: "warning" },
+  abandoned: { label: "Expired", color: "warning" },
+};
+
+function ApprovalOutcomeChip({ status }: Readonly<{ status: ApprovalStatus }>) {
+  const chip = APPROVAL_CHIP[status];
+  if (!chip) return null;
+  return (
+    <Chip
+      size="sm"
+      variant="flat"
+      color={chip.color}
+      className="ml-2 h-5 text-[10px]"
+    >
+      {chip.label}
+    </Chip>
   );
 }
 
@@ -82,6 +111,7 @@ function ToolCallRow({
   getIconUrl,
   getIntegrationName,
   awaitingApproval,
+  approvalStatus,
 }: Readonly<{
   call: ToolCallEntry;
   isLast: boolean;
@@ -89,6 +119,8 @@ function ToolCallRow({
   getIntegrationName: (c: ToolCallEntry) => string | undefined;
   /** This tool call is blocked on a pending HIL approval. */
   awaitingApproval: boolean;
+  /** Settled HIL outcome for this call, rendered as a chip on the row. */
+  approvalStatus?: ApprovalStatus;
 }>) {
   const [expanded, setExpanded] = useState(false);
 
@@ -188,6 +220,7 @@ function ToolCallRow({
                 <WaitingForApprovalPill />
               </span>
             )}
+            {approvalStatus && <ApprovalOutcomeChip status={approvalStatus} />}
           </div>
           {hasCategoryText && (
             <p className="text-[11px] text-zinc-600 leading-tight">
@@ -299,9 +332,14 @@ export function StepRow(
     getIconUrl: (c: ToolCallEntry) => string | undefined;
     getIntegrationName: (c: ToolCallEntry) => string | undefined;
     pendingApprovalToolCallIds: Set<string>;
+    approvalStatusByToolCallId?: Map<string, ApprovalStatus>;
   }>,
 ) {
-  const { pendingApprovalToolCallIds, ...rowProps } = props;
+  const {
+    pendingApprovalToolCallIds,
+    approvalStatusByToolCallId,
+    ...rowProps
+  } = props;
   if (props.call.reasoning != null) {
     return (
       <ThinkingStepRow reasoning={props.call.reasoning} isLast={props.isLast} />
@@ -310,7 +348,16 @@ export function StepRow(
   const awaitingApproval =
     !!props.call.tool_call_id &&
     pendingApprovalToolCallIds.has(props.call.tool_call_id);
-  return <ToolCallRow {...rowProps} awaitingApproval={awaitingApproval} />;
+  const approvalStatus = props.call.tool_call_id
+    ? approvalStatusByToolCallId?.get(props.call.tool_call_id)
+    : undefined;
+  return (
+    <ToolCallRow
+      {...rowProps}
+      awaitingApproval={awaitingApproval}
+      approvalStatus={approvalStatus}
+    />
+  );
 }
 
 // ── Subagent row (Option B style) ───────────────────────────────────────────
@@ -322,6 +369,7 @@ export function SubagentRow({
   getIconUrl,
   getIntegrationName,
   pendingApprovalToolCallIds,
+  approvalStatusByToolCallId,
 }: Readonly<{
   group: EnrichedSubagentGroup;
   isLast: boolean;
@@ -334,6 +382,7 @@ export function SubagentRow({
   /** tool_call_ids blocked on a pending HIL approval — surfaces "Waiting for
    *  approval" on the matching step and this subagent's header. */
   pendingApprovalToolCallIds: Set<string>;
+  approvalStatusByToolCallId?: Map<string, ApprovalStatus>;
 }>) {
   // Running only while the stream is open: completed_at is null both for a
   // genuinely-running subagent AND for one whose end event never arrived, so
@@ -420,6 +469,7 @@ export function SubagentRow({
                       getIconUrl={getIconUrl}
                       getIntegrationName={getIntegrationName}
                       pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                      approvalStatusByToolCallId={approvalStatusByToolCallId}
                     />
                   ))}
                 </div>
@@ -503,6 +553,7 @@ export function SubagentRow({
                         getIconUrl={getIconUrl}
                         getIntegrationName={getIntegrationName}
                         pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                        approvalStatusByToolCallId={approvalStatusByToolCallId}
                       />
                     ))}
                   </div>
@@ -519,6 +570,7 @@ export function SubagentRow({
                         getIconUrl={getIconUrl}
                         getIntegrationName={getIntegrationName}
                         pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                        approvalStatusByToolCallId={approvalStatusByToolCallId}
                       />
                     ))}
                   </div>

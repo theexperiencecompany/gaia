@@ -6,7 +6,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Input } from "@heroui/input";
-import { MoreHorizontalIcon, ShieldIcon } from "@icons";
+import { MoreHorizontalIcon } from "@icons";
 import type {
   ApprovalDecision,
   ApprovalRequestData,
@@ -14,6 +14,7 @@ import type {
   ApprovalStatus,
 } from "@shared/chat";
 import { useState } from "react";
+import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { toast } from "@/lib/toast";
 
@@ -34,9 +35,9 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   );
   if (rows.length === 0) return null;
   return (
-    <div className="mt-3 space-y-1.5 rounded-2xl bg-zinc-900 p-3">
+    <div className="mt-2.5 space-y-1 rounded-2xl bg-zinc-900 p-3">
       {rows.map(([key, value]) => (
-        <div key={key} className="flex gap-2 text-xs">
+        <div key={key} className="flex gap-3 text-xs">
           <span className="shrink-0 text-zinc-500">{key}</span>
           <span className="min-w-0 flex-1 truncate text-right text-zinc-300">
             {String(value)}
@@ -71,7 +72,6 @@ export default function ApprovalRequestSection({
       // stream (a different message), so it never replaces this card. A 410
       // (already resolved elsewhere) is swallowed by postApprovalDecision and
       // settles here too; reaching the catch means the submit genuinely failed.
-      // The group moves it into the receipts list — it is not thrown away.
       onDecided(
         decision === "approve" ? "approved" : "denied",
         feedback.trim() || null,
@@ -85,27 +85,17 @@ export default function ApprovalRequestSection({
   if (data.status !== "pending") return null;
 
   return (
-    <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
-      <div className="flex items-start gap-2">
-        <ShieldIcon width={18} className="mt-0.5 shrink-0 text-amber-400" />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm text-zinc-100">{data.summary}</div>
-          <div className="text-xs text-zinc-500">Approval required</div>
+    <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-3 text-white">
+      <div className="flex items-center gap-2.5">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-400/10">
+          <ShieldAlertIcon width={17} height={17} className="text-amber-400" />
         </div>
-      </div>
-
-      <ArgsPreview args={data.args_preview} />
-
-      <Input
-        className="mt-3"
-        size="sm"
-        variant="flat"
-        placeholder="Optional: tell GAIA why (or what to do instead)"
-        value={feedback}
-        onValueChange={setFeedback}
-        isDisabled={locked}
-      />
-      <div className="mt-3 flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-medium text-amber-400">
+            Needs approval
+          </div>
+          <div className="truncate text-sm text-zinc-100">{data.summary}</div>
+        </div>
         <Button
           color="primary"
           size="sm"
@@ -146,6 +136,18 @@ export default function ApprovalRequestSection({
           </DropdownMenu>
         </Dropdown>
       </div>
+
+      <ArgsPreview args={data.args_preview} />
+
+      <Input
+        className="mt-2.5"
+        size="sm"
+        variant="flat"
+        placeholder="Optional: tell GAIA why (or what to do instead)"
+        value={feedback}
+        onValueChange={setFeedback}
+        isDisabled={locked}
+      />
     </div>
   );
 }
