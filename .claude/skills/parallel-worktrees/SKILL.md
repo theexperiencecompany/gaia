@@ -47,6 +47,16 @@ When the command returns, `mise dev` works immediately with isolated ports.
 
 ## Ports
 
+**OAuth / integration work needs the default 8000 + 3000.** Redirect URIs are
+registered with the provider (WorkOS, Composio, Google, …), and only
+`localhost:8000` / `localhost:3000` are registered — a worktree on 8140/3140
+gets its callback rejected, so connecting an integration cannot complete. Any
+task that connects an account, tests a connect card, or touches an OAuth
+callback runs on the default ports: `rm .env.worktree` in that worktree (mise
+falls back to 8000/3000), and make sure no other worktree holds them. Register
+the offset ports with the provider only if you genuinely need two OAuth-capable
+worktrees at once.
+
 `mise run wt:env` hashes the worktree path → an offset (a multiple of 10, 10–1990)
 and writes `.env.worktree` at the repo root. mise auto-loads that file for every
 task via `[env]._.file`; the main worktree has no file (offset 0) and keeps
