@@ -260,11 +260,16 @@ async def subscribe_executor_stream(
 
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
-    # Race condition: executor finished before frontend subscribed.
-    # Return [DONE] immediately so the client closes cleanly.
-    if progress.get("is_complete"):
+    # A finished stream still has a replayable event log — subscribe_stream
+    # replays it and returns at the DONE control entry, so a late attach loses
+    # nothing. (An earlier is_complete short-circuit returned a bare [DONE]
+    # here, which dropped every frame a just-paused HIL resume had published —
+    # the second approval card never reached the client.) Only when the log has
+    # already expired is there genuinely nothing to replay; answer [DONE] then,
+    # or subscribe_stream would idle on keepalives forever.
+    if progress.get("is_complete") and not await stream_manager.has_events(stream_id):
         log.info(
-            f"{LogTag.CHAT} Executor stream already complete, returning [DONE]",
+            f"{LogTag.CHAT} Executor stream complete and log expired, returning [DONE]",
             stream_id=stream_id,
         )
 
