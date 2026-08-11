@@ -276,7 +276,17 @@ async def _dispatch_executor(
         task_id=task_id,
         stream_id=stream_id,
     )
-    return f"Task accepted (task_id: {task_id}). I'm on it — you'll get progress updates as I work."
+    # Comms writes its user-facing reply from THIS string, before the executor
+    # has run a single tool — so it must not read as completion, and it has to
+    # name the approval gate the user may be about to see.
+    return (
+        f"Task accepted (task_id: {task_id}). Nothing has run yet — this only means the "
+        "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
+        "finished. Risky actions pause for the user's approval first and they see an "
+        "approval card; if that happens the work waits on them, not on you. Acknowledge "
+        "that you are on it, and say the action is waiting for their approval if one is "
+        "pending. The real result arrives later as its own message."
+    )
 
 
 @tool
