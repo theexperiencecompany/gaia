@@ -96,8 +96,12 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
 
     async def counts_since(self, user_id: str, since_day: str) -> dict[str, int]:
         """The user's per-day action counts from ``since_day`` (inclusive) on."""
-        rows = await self._find({"user_id": user_id, "date": {"$gte": since_day}})
+        rows = await self.rollups_since(user_id, since_day)
         return {row.date: row.count for row in rows}
+
+    async def rollups_since(self, user_id: str, since_day: str) -> list[UsageDailyDocument]:
+        """The user's full rollup rows from ``since_day`` (inclusive) on."""
+        return await self._find({"user_id": user_id, "date": {"$gte": since_day}})
 
     async def rank_thresholds(
         self, window_start: str, rank_fractions: Mapping[str, float]

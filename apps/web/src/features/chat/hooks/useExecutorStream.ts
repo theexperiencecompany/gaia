@@ -8,10 +8,12 @@ import { useCallback, useEffect, useRef } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
+import { loadingLabelForEvent } from "@/features/chat/utils/loadingHints";
 import { db, type IMessage } from "@/lib/db/chatDb";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
+import { useStreamStore } from "@/stores/streamStore";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 
@@ -218,6 +220,20 @@ export function useExecutorStream() {
                 detail: parsed.raw,
               });
               continue;
+            }
+            // The loading indicator is driven by the turn session, which is no
+            // longer reading anything — a resumed run streams here instead. Left
+            // unlabelled, the indicator froze on whatever the pause set
+            // ("Resuming") for the entire rest of the run.
+            const label = loadingLabelForEvent(parsed);
+            if (label) {
+              useStreamStore
+                .getState()
+                .setSessionLoadingText(
+                  conversation_id,
+                  label.text,
+                  label.toolInfo,
+                );
             }
             acc = applyStreamEvent(acc, parsed);
           }

@@ -8,7 +8,7 @@ data, not the short-lived Redis rate-limit counters.
 
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Any, NamedTuple, cast
+from typing import NamedTuple, cast
 
 from pymongo.errors import PyMongoError
 
@@ -18,6 +18,7 @@ from app.db.redis import redis_cache
 from app.db.repositories.usage_daily import usage_daily_repository
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
+from app.schemas.usage import ActivityDay, UsageActivityResponse
 from app.services.email import send_badge_earned_email
 from shared.py.wide_events import log
 
@@ -155,24 +156,41 @@ def _current_streak(counts: dict[str, int], end: datetime) -> int:
     return streak
 
 
-async def get_activity(user_id: str, days: int) -> dict[str, Any]:
-    """Trailing ``days`` of daily counts plus total, streak, percentile, and tier."""
+async def get_activity(user_id: str, days: int) -> UsageActivityResponse:
+    """Trailing ``days`` of daily counts and tokens, plus streak, percentile, and tier."""
     end = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     start = end - timedelta(days=days - 1)
 
     # NOTE: usage_daily docs also carry a durable per-day `cost` (see
     # record_cost) — deliberately NOT exposed here. Raw USD never goes to the
-    # client (see get_budget_status); the cost history exists so charts can be
-    # served as percentage-of-allowance once that representation lands.
-    counts = await usage_daily_repository.counts_since(user_id, _day(start))
+    # client (see get_budget_status); tokens do go out, because they are a
+    # capability number the user already sees, not our per-request COGS.
+    rows = await usage_daily_repository.rollups_since(user_id, _day(start))
+    by_day = {row.date: row for row in rows}
+    counts = {date: row.count for date, row in by_day.items()}
 
-    day_list: list[dict[str, Any]] = []
+    day_list: list[ActivityDay] = []
     total = 0
+    total_tokens = 0
     cursor = start
     while cursor <= end:
-        c = counts.get(_day(cursor), 0)
+        key = _day(cursor)
+        row = by_day.get(key)
+        c = row.count if row else 0
+        tokens = (row.input_tokens + row.output_tokens) if row else 0
         total += c
-        day_list.append({"date": _day(cursor), "count": c})
+        total_tokens += tokens
+        day_list.append(
+            ActivityDay(
+                date=key,
+                count=c,
+                tokens=tokens,
+                input_tokens=row.input_tokens if row else 0,
+                output_tokens=row.output_tokens if row else 0,
+                cached_tokens=row.cached_tokens if row else 0,
+                reasoning_tokens=row.reasoning_tokens if row else 0,
+            )
+        )
         cursor += timedelta(days=1)
 
     # Reuse the already-loaded window for the percentile total instead of a
@@ -186,13 +204,14 @@ async def get_activity(user_id: str, days: int) -> dict[str, Any]:
         else None
     )
     percentile, tier = await _percentile_tier(user_id, window_start, mine)
-    return {
-        "days": day_list,
-        "total": total,
-        "streak": _current_streak(counts, end),
-        "percentile": percentile,
-        "tier": tier,
-    }
+    return UsageActivityResponse(
+        days=day_list,
+        total=total,
+        total_tokens=total_tokens,
+        streak=_current_streak(counts, end),
+        percentile=percentile,
+        tier=tier,
+    )
 
 
 def _percentile_window_start() -> str:
