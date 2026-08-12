@@ -158,7 +158,7 @@ def _ingestion_edges_stubbed(capture_metadata=None):
             return_value=None,
         ),
         patch("app.services.files.service.write_summary_sidecar", new_callable=AsyncMock),
-        patch("app.utils.file_utils.get_default_llm", MagicMock()),
+        patch("app.utils.file_utils.get_helper_llm", MagicMock()),
         patch("app.utils.file_utils.with_llm_retry", MagicMock(return_value=llm)),
     ):
         yield

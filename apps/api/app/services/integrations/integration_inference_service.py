@@ -8,7 +8,7 @@ FAQs). Native integrations ship both curated by hand in
 publish time so they show tailored copy instead of the frontend's generic
 fallbacks.
 
-Both run on the default model via ``get_default_llm`` + ``ainvoke_llm`` — the same
+Both run on the default model via ``get_helper_llm`` + ``ainvoke_llm`` — the same
 path used for memory extraction, follow-ups, and research helpers.
 """
 

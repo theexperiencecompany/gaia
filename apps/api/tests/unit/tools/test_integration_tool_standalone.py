@@ -215,11 +215,20 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-            config=_cfg(), integration_ids=["gmail"]
-        )
+        # The card and the copy that promises it now live together in
+        # request_integration_connection, so the writer to watch is that
+        # module's — and a source category has to exist for a card to be sent.
+        with (
+            patch("app.utils.integration_checker.get_stream_writer", return_value=w),
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "ui"}},
+            ),
+        ):
+            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+                config=_cfg(), integration_ids=["gmail"]
+            )
         assert "needs to be connected" in result
-        # Writer should be called with integration_connection_required
         integration_calls = [
             c for c in w.call_args_list if "integration_connection_required" in c[0][0]
         ]
@@ -248,8 +257,9 @@ class TestConnectIntegration:
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "bot"}},
             ),
+            patch("app.utils.integration_checker.get_stream_writer", return_value=_writer()),
             patch(
-                "app.agents.tools.integration_tool.build_connect_link_url",
+                "app.utils.integration_checker.build_connect_link_url",
                 new=AsyncMock(return_value="https://app.example.com/connect/test-token"),
             ),
         ):
@@ -278,9 +288,12 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        with patch(
-            "app.utils.integration_checker.get_config",
-            return_value={"configurable": {"source_category": "ui"}},
+        with (
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "ui"}},
+            ),
+            patch("app.utils.integration_checker.get_stream_writer", return_value=_writer()),
         ):
             result = await connect_integration.coroutine(  # type: ignore[attr-defined]
                 config=_cfg(), integration_ids=["gmail"]
