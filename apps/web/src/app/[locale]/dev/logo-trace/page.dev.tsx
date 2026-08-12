@@ -6,7 +6,8 @@ import LogoTraceLoader from "@/components/common/LogoTraceLoader";
 
 /**
  * Dev playground for LogoTraceLoader (dev-only route). Drives a live instance
- * through loading → resolved, and shows static variants at different sizes.
+ * through loading → resolved, and shows static variants at different sizes
+ * plus the monochrome (currentColor) mode.
  */
 export default function LogoTraceDevPage() {
   const [runId, setRunId] = useState(0);
@@ -63,6 +64,16 @@ export default function LogoTraceDevPage() {
         <div className="flex flex-col items-center gap-3">
           <LogoTraceLoader size={128} strokeWidth={32} isComplete />
           <span className="text-xs text-zinc-400">128px · resolved</span>
+        </div>
+        <div className="flex flex-col items-center gap-3">
+          <LogoTraceLoader
+            monochrome
+            loading
+            size={96}
+            strokeWidth={26}
+            className="text-zinc-100"
+          />
+          <span className="text-xs text-zinc-400">96px · monochrome</span>
         </div>
       </div>
 
