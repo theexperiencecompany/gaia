@@ -24,7 +24,7 @@ jobs:
     steps:
       # Checkout repository to read package and release manifest metadata.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Install Node toolchain for build/publish.
       - name: Setup pnpm

@@ -28,6 +28,7 @@ from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
+    DeactivationReason,
     PublicWorkflowRow,
     TriggerConfig,
     TriggerType,
@@ -193,6 +194,20 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         if trigger_name is not None:
             query["trigger_config.trigger_name"] = trigger_name
         return await self._find(query)
+
+    async def find_activated_for_user(self, user_id: str) -> list[WorkflowDocument]:
+        """Every activated workflow a user owns — the dormancy sweep's pause set."""
+        return await self._find({"user_id": user_id, "activated": True})
+
+    async def find_paused_for_reason(
+        self, user_id: str, reason: DeactivationReason
+    ) -> list[WorkflowDocument]:
+        """A user's workflows the system paused for ``reason`` — the only ones an
+        automatic resume may touch. A workflow the user switched off themselves
+        carries no reason and is therefore never matched."""
+        return await self._find(
+            {"user_id": user_id, "activated": False, "deactivated_reason": reason.value}
+        )
 
     async def find_stale_executing(self, cutoff: datetime) -> list[WorkflowDocument]:
         """Activated workflows wedged in EXECUTING since before ``cutoff`` — the
@@ -437,15 +452,20 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                     "status": ScheduledTaskStatus.SCHEDULED.value,
                     "scheduled_at": next_run,
                     "trigger_config.next_run": next_run,
+                    "deactivated_reason": None,
                 }
             },
             scope=REPO_GLOBAL_SCOPE,
         )
 
-    async def deactivate(self, workflow_id: str, user_id: str) -> WorkflowDocument | None:
+    async def deactivate(
+        self, workflow_id: str, user_id: str, *, reason: DeactivationReason | None = None
+    ) -> WorkflowDocument | None:
         """Deactivate the user's workflow (disable its trigger and clear Composio
         ids). Liveness is governed by ``activated``; a deferred fire is rejected by
-        the claim gate. Returns the after state, or ``None`` when not found."""
+        the claim gate. ``reason`` marks a system pause so an automatic resume can
+        tell it apart from a user switching the workflow off (which passes none).
+        Returns the after state, or ``None`` when not found."""
         return await self._apply_raw_update(
             {"_id": workflow_id, "user_id": user_id},
             {
@@ -453,6 +473,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                     "activated": False,
                     "trigger_config.enabled": False,
                     "trigger_config.composio_trigger_ids": [],
+                    "deactivated_reason": reason.value if reason else None,
                 }
             },
             scope=REPO_GLOBAL_SCOPE,

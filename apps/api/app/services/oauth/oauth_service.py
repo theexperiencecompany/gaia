@@ -32,11 +32,12 @@ from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
 from app.services.system_workflows.provisioner import provision_system_workflows
+from app.services.workflow.dormancy import resume_dormancy_paused_workflows
 from app.services.workflow.trigger_service import TriggerService
 from app.services.workspace_sync import schedule_user_provision
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
-from shared.py.wide_events import OAuthContext, log
+from shared.py.wide_events import OAuthContext, log, spawn_logged_task
 
 
 async def store_user_info(
@@ -84,6 +85,14 @@ async def store_user_info(
 
         await user_repository.update(existing_user.id, UserUpdate(**update_fields))
         if external_side_effects:
+            # A returning user gets back only the workflows the dormancy sweep
+            # paused — never one they switched off themselves (that records no
+            # reason). Fire-and-forget: re-registering triggers must not slow or
+            # fail a login.
+            spawn_logged_task(
+                "resume_dormancy_paused_workflows",
+                resume_dormancy_paused_workflows(existing_user.id),
+            )
             try:
                 track_login(
                     user_id=email,
