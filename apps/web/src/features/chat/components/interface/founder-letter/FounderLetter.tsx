@@ -22,7 +22,6 @@ import {
   DISCOUNT_PERCENT,
   INK,
   INK_SOFT,
-  LETTER_DATE,
   LETTER_OPENED_KEY,
   LETTER_PARAGRAPHS,
   MEETING_CTA,
@@ -44,20 +43,23 @@ const LETTER_TYPOGRAPHY = {
   "--letter-body-lh": "1.7",
   "--letter-salutation": "clamp(16px, 2.1vh, 20px)",
   "--letter-small": "clamp(12px, 1.45vh, 13px)",
-  "--letter-code": "clamp(17px, 2.3vh, 21px)",
+  "--letter-code": "clamp(16px, 2.1vh, 19px)",
   "--letter-pad-x": "clamp(20px, 6vw, 46px)",
-  "--letter-pad-t": "clamp(12px, 3.2vh, 26px)",
+  "--letter-pad-t": "clamp(14px, 3.4vh, 28px)",
   "--letter-pad-b": "clamp(36px, 6vh, 52px)",
 } as CSSProperties;
 
+/** Flat golden paper (amber-300). One solid color, no gradient. */
+const PAPER_GOLD = "#fcd34d";
+/** Slightly deeper gold for the folded layers of the envelope button. */
+const PAPER_GOLD_DEEP = "#fbbf24";
+
 /**
- * The paper is drawn in SVG: bright golden yellow (Tailwind yellow-100 to
- * amber-300), with a whisper of depth at the very edges, passed through a
- * feTurbulence + feDisplacementMap filter so the silhouette gets a subtle
- * hand-torn deckle. No grain: gold paper, amber ink, that's the whole palette.
+ * The paper is a flat gold rect passed through a feTurbulence +
+ * feDisplacementMap filter so the silhouette gets a subtle hand-torn deckle.
+ * No grain, no gradient: gold paper, black ink.
  */
 const PAPER_TORN_ID = "founder-letter-torn";
-const PAPER_GRADIENT_ID = "founder-letter-paper";
 
 function PaperBackdrop() {
   return (
@@ -70,11 +72,6 @@ function PaperBackdrop() {
     >
       <title>Decorative paper texture</title>
       <defs>
-        <linearGradient id={PAPER_GRADIENT_ID} x1="0" y1="0" x2="0.55" y2="1">
-          <stop offset="0" stopColor="#fef9c3" /> {/* yellow-100 */}
-          <stop offset="0.5" stopColor="#fde68a" /> {/* amber-200 */}
-          <stop offset="1" stopColor="#fcd34d" /> {/* amber-300 */}
-        </linearGradient>
         <filter id={PAPER_TORN_ID} x="-4%" y="-4%" width="108%" height="108%">
           <feTurbulence
             type="fractalNoise"
@@ -86,11 +83,10 @@ function PaperBackdrop() {
           <feDisplacementMap in="SourceGraphic" in2="tear" scale="3" />
         </filter>
       </defs>
-      {/* Base paper */}
       <rect
         width="600"
         height="800"
-        fill={`url(#${PAPER_GRADIENT_ID})`}
+        fill={PAPER_GOLD}
         filter={`url(#${PAPER_TORN_ID})`}
       />
     </svg>
@@ -194,38 +190,27 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
               }
         }
       >
-        {/* The letter: a bright slip of paper, folded once. */}
+        {/* The letter: a flat gold slip, folded once. */}
         <span
           className="relative block h-10 w-14 rotate-[-3deg] rounded-[2px] shadow-[0_10px_24px_-6px_rgba(0,0,0,0.45)]"
-          style={{
-            background:
-              "linear-gradient(145deg, #fef9c3 0%, #fde68a 55%, #fcd34d 100%)",
-          }}
+          style={{ background: PAPER_GOLD }}
         >
           {/* Second page peeking out behind */}
           <span
             aria-hidden
             className="absolute -right-0.5 -bottom-0.5 -z-10 block h-10 w-14 rounded-[2px]"
-            style={{
-              background: "linear-gradient(145deg, #fde68a 0%, #fbbf24 100%)",
-            }}
+            style={{ background: PAPER_GOLD_DEEP }}
           />
           {/* Folded flap */}
           <span
             aria-hidden
             className="absolute inset-x-0 top-0 h-3 rounded-t-[2px]"
-            style={{
-              background: "linear-gradient(180deg, #fcd34d 0%, #fef3c7 100%)",
-            }}
+            style={{ background: PAPER_GOLD_DEEP }}
           />
           {/* The fold crease */}
           <span
             aria-hidden
-            className="absolute inset-x-0 top-3 h-px"
-            style={{
-              background:
-                "linear-gradient(90deg, transparent, rgba(217,119,6,0.45) 30%, rgba(217,119,6,0.45) 70%, transparent)",
-            }}
+            className="absolute inset-x-0 top-3 h-px bg-black/20"
           />
         </span>
         {/* Attention ring until the letter has been opened once */}
@@ -290,7 +275,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                 type="button"
                 onClick={closeLetter}
                 aria-label="Close the letter"
-                className="absolute top-3 right-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-amber-200/70 focus-visible:ring-2 focus-visible:ring-amber-700"
+                className="absolute top-3 right-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60"
               >
                 <CancelIcon className="h-4 w-4" style={{ color: INK_SOFT }} />
               </button>
@@ -298,38 +283,12 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
               {/* Letter content */}
               <div
                 className="relative px-[var(--letter-pad-x)] pt-[var(--letter-pad-t)] pb-[var(--letter-pad-b)]"
-                style={{ fontFamily: BODY_FONT }}
+                style={{ fontFamily: BODY_FONT, color: INK }}
               >
-                {/* Letterhead row: the mark and the date */}
-                <div className="flex items-baseline justify-between">
-                  <span
-                    className="font-semibold"
-                    style={{
-                      color: "#b45309", // amber-700
-                      fontSize: "calc(var(--letter-body) * 1.25)",
-                    }}
-                  >
-                    GAIA
-                  </span>
-                  <span
-                    className="font-normal"
-                    style={{ color: INK_SOFT, fontSize: "var(--letter-small)" }}
-                  >
-                    {LETTER_DATE}
-                  </span>
-                </div>
-                <div
-                  className="mt-2 h-px w-full"
-                  style={{
-                    background:
-                      "linear-gradient(90deg, transparent, #d97706 25%, #d97706 75%, transparent)",
-                  }}
-                />
-
                 {/* Salutation */}
                 <p
-                  className="mt-4 font-semibold"
-                  style={{ color: INK, fontSize: "var(--letter-salutation)" }}
+                  className="font-semibold"
+                  style={{ fontSize: "var(--letter-salutation)" }}
                 >
                   Dear {firstName},
                 </p>
@@ -338,7 +297,6 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                 <div
                   className="mt-2.5 space-y-2.5"
                   style={{
-                    color: INK,
                     fontSize: "var(--letter-body)",
                     lineHeight: "var(--letter-body-lh)",
                   }}
@@ -349,72 +307,51 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                   ))}
                 </div>
 
-                {/* The offer, on its own quiet slip of paper */}
-                <div
-                  className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-sm px-4 py-2.5"
-                  style={{
-                    background:
-                      "linear-gradient(120deg, #fef3c7 0%, #fde68a 100%)",
-                    boxShadow: "inset 0 0 0 1px rgba(217,119,6,0.4)",
-                  }}
-                >
-                  <div>
-                    <p
-                      className="font-normal"
-                      style={{
-                        color: INK_SOFT,
-                        fontSize: "var(--letter-small)",
-                      }}
-                    >
-                      {DISCOUNT_PERCENT}% off your first year, on{" "}
-                      {DISCOUNT_APPLIES}
-                    </p>
-                    <p
-                      className="mt-0.5 font-bold"
-                      style={{
-                        color: "#78350f", // amber-900
-                        fontSize: "var(--letter-code)",
-                      }}
-                    >
-                      {DISCOUNT_CODE}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
+                {/* The offer, seamless and inline */}
+                <div className="mt-3 space-y-2">
+                  <p
+                    style={{
+                      fontSize: "var(--letter-body)",
+                      lineHeight: "var(--letter-body-lh)",
+                    }}
+                  >
+                    As a thank-you for believing in us when it wasn't easy, take{" "}
+                    <strong className="font-bold">
+                      {DISCOUNT_PERCENT}% off your first year
+                    </strong>
+                    , on {DISCOUNT_APPLIES}. Use{" "}
+                    <strong className="font-bold">{DISCOUNT_CODE}</strong>
                     <button
                       type="button"
                       onClick={copyCode}
-                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-all hover:bg-amber-200/80 focus-visible:ring-2 focus-visible:ring-amber-700 active:scale-90"
                       aria-label="Copy the discount code"
                       title={copied ? "Copied" : "Copy code"}
+                      className="mx-1 inline-flex h-5 w-5 translate-y-[-1px] cursor-pointer items-center justify-center rounded-full align-middle outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-90"
                     >
-                      <Copy01Icon
-                        className="h-3.5 w-3.5"
-                        style={{ color: "#78350f" }} // amber-900
-                      />
+                      <Copy01Icon className="h-3 w-3" style={{ color: INK }} />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        openPricingModal();
-                        closeLetter();
-                      }}
-                      className="flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[calc(var(--letter-small)*1.05)] font-semibold outline-none transition-all hover:opacity-85 focus-visible:ring-2 focus-visible:ring-amber-700 active:scale-95"
-                      style={{ background: "#78350f", color: "#fef9c3" }}
-                    >
-                      Get the discount
-                      <ArrowRightIcon
-                        className="h-3.5 w-3.5"
-                        style={{ color: "#fef9c3" }}
-                      />
-                    </button>
-                  </div>
+                    at checkout.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openPricingModal();
+                      closeLetter();
+                    }}
+                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full bg-black px-3 text-[calc(var(--letter-small)*0.95)] font-semibold text-amber-300 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
+                  >
+                    Get the discount
+                    <ArrowRightIcon
+                      className="h-3 w-3"
+                      style={{ color: PAPER_GOLD }}
+                    />
+                  </button>
                 </div>
 
                 {/* Meeting */}
                 <p
                   className="mt-4"
                   style={{
-                    color: INK,
                     fontSize: "var(--letter-body)",
                     lineHeight: "var(--letter-body-lh)",
                   }}
@@ -423,23 +360,22 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                 </p>
                 <a
                   href={MEETING_MAILTO}
-                  className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-amber-700"
-                  style={{ color: INK }}
+                  className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
                 >
                   {MEETING_CTA}
                   <ArrowRightIcon className="h-3 w-3" style={{ color: INK }} />
                 </a>
 
                 {/* Signature: draws itself in, stroke by stroke */}
-                <div className="mt-6 flex justify-end">
+                <div className="mt-6">
                   <Signature
                     active={isOpen}
                     scale="clamp(1.05, 0.14vh, 1.35)"
                   />
                 </div>
                 <p
-                  className="mt-1 text-right font-normal"
-                  style={{ color: INK_SOFT, fontSize: "var(--letter-small)" }}
+                  className="mt-1 font-normal"
+                  style={{ fontSize: "var(--letter-small)" }}
                 >
                   {SIGNATURE_CAPTION}
                 </p>

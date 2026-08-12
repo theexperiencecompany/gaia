@@ -21,27 +21,22 @@ export const FOUNDER_EMAIL = "aryan@heygaia.io";
 
 export const MEETING_MAILTO = `mailto:${FOUNDER_EMAIL}?subject=${encodeURIComponent("GAIA: I'd love to talk")}&body=${encodeURIComponent("Hi Aryan,\n\nI read your letter. I'd love to set up a short call to talk about what I need from a personal assistant.\n\nThanks!")}`;
 
-/** Dated like a real letter. */
-export const LETTER_DATE = "12 August 2026";
-
 /** localStorage key: pulses the envelope until the letter has been opened once. */
 export const LETTER_OPENED_KEY = "gaia_founder_letter_opened";
 
-/** Ink + paper tones. A golden letter: bright gold paper (Tailwind's
- * yellow/amber scale) and deep amber ink (amber-900), matching the app's
- * token language instead of invented hexes. */
-export const INK = "#78350f"; // amber-900
-export const INK_SOFT = "#92400e"; // amber-800
+/** Ink: pure black on flat gold. No gray, no brown, no gradient. */
+export const INK = "#000000";
+export const INK_SOFT = "#000000";
 
 /** Typography: the app's normal sans everywhere. */
 export const BODY_FONT = "var(--font-inter), Inter, sans-serif";
 
-/** The letter's body, one entry per paragraph. */
+/** The letter's body, one entry per paragraph. The offer paragraph is
+ * rendered separately (it carries the inline code + copy button). */
 export const LETTER_PARAGRAPHS: readonly string[] = [
   "If you're reading this, you were here before almost anyone else, and I want you to know how much that means to me.",
   "I also owe you honesty. GAIA hasn't always been what you deserved. We ran out of money. APIs we depended on cut us off overnight. Life kept throwing punches. I'm sorry for all of it, truly.",
   "But here's what I'm proudest of: we're still here, and better than ever. Speed, reliability, a memory that remembers, integrations that just work. Every change since has been for you.",
-  "As a thank-you for believing in us when it wasn't easy, take 40% off your first year, on both monthly and yearly plans.",
 ];
 
 /** Salutation fallback when the user's name is unknown. */
