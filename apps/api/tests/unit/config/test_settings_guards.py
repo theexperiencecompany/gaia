@@ -1,7 +1,7 @@
-"""Production boot-guards and the OpenRouter base-URL passthrough.
+"""Production boot-guards and the Concentrate base-URL passthrough.
 
-The dev-only overrides (`DEV_AUTH_BYPASS_EMAIL`, `OPENROUTER_BASE_URL`) must make
-`get_settings()` refuse to start under `ENV=production`, and `init_openrouter_llm`
+The dev-only overrides (`DEV_AUTH_BYPASS_EMAIL`, `CONCENTRATE_BASE_URL`) must make
+`get_settings()` refuse to start under `ENV=production`, and `init_concentrate_llm`
 must forward the base-URL override only in development.
 """
 
@@ -18,14 +18,14 @@ def _reset_settings_cache():
     get_settings.cache_clear()
 
 
-DEV_OVERRIDE_VARS = ("DEV_AUTH_BYPASS_EMAIL", "OPENROUTER_BASE_URL", "GAIA_SIM_MODE")
+DEV_OVERRIDE_VARS = ("DEV_AUTH_BYPASS_EMAIL", "CONCENTRATE_BASE_URL", "GAIA_SIM_MODE")
 
 
 @pytest.mark.parametrize(
     ("env_var", "value"),
     [
         ("DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local"),
-        ("OPENROUTER_BASE_URL", "http://localhost:9797"),
+        ("CONCENTRATE_BASE_URL", "http://localhost:9797"),
         ("GAIA_SIM_MODE", "1"),
     ],
 )
@@ -43,70 +43,73 @@ def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
         get_settings()
 
 
-def test_openrouter_base_url_allowed_in_development(monkeypatch):
+def test_concentrate_base_url_allowed_in_development(monkeypatch):
     from app.config.settings import get_settings
 
     monkeypatch.setenv("ENV", "development")
-    monkeypatch.setenv("OPENROUTER_BASE_URL", "http://localhost:9797")
+    monkeypatch.setenv("CONCENTRATE_BASE_URL", "http://localhost:9797")
 
     settings_obj = get_settings()
 
     assert settings_obj.ENV == "development"
-    assert settings_obj.OPENROUTER_BASE_URL == "http://localhost:9797"
+    assert settings_obj.CONCENTRATE_BASE_URL == "http://localhost:9797"
 
 
-def test_init_openrouter_omits_base_url_outside_sim_dev(monkeypatch):
+def test_init_concentrate_ignores_the_dev_base_url_override_outside_sim_mode(monkeypatch):
+    """Outside sim mode, init_concentrate_llm must always pass the fixed
+    Concentrate base URL — CONCENTRATE_BASE_URL is a sim-mode-only stub hook
+    consumed exclusively by _sim_llm, never by the real Concentrate client."""
     from app.agents.llm import client
 
     captured: dict[str, object] = {}
 
-    class _FakeChatOpenRouter:
+    class _FakeChatOpenAI:
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
         def configurable_fields(self, **_):
             return self
 
-    monkeypatch.setattr(client, "ChatOpenRouter", _FakeChatOpenRouter)
+    monkeypatch.setattr(client, "ChatOpenAI", _FakeChatOpenAI)
     monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
-    monkeypatch.setattr(client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797")
-    monkeypatch.setattr(client.settings, "OPENROUTER_API_KEY", "sk-stub-not-used")
+    monkeypatch.setattr(client.settings, "CONCENTRATE_BASE_URL", "http://localhost:9797")
+    monkeypatch.setattr(client.settings, "CONCENTRATE_API_KEY", "sk-stub-not-used")
 
-    client.init_openrouter_llm().loader_func()
+    client.init_concentrate_llm().loader_func()
 
-    # Outside sim mode base_url must not be passed AT ALL — passing None would
-    # override ChatOpenRouter's OPENROUTER_API_BASE env default_factory.
-    # Redirecting to the stub is sim mode's job (_sim_llm).
-    assert "base_url" not in captured
+    # The real Concentrate lane always targets CONCENTRATE_API_BASE_URL — the
+    # dev-only base_url override is redirecting to the stub, which is sim
+    # mode's job (_sim_llm), not this factory's.
+    assert captured["base_url"] == client.CONCENTRATE_API_BASE_URL
 
 
-def test_init_openrouter_omits_base_url_in_production(monkeypatch):
+def test_init_concentrate_ignores_the_dev_base_url_override_in_production(monkeypatch):
     from app.agents.llm import client
 
     captured: dict[str, object] = {}
 
-    class _FakeChatOpenRouter:
+    class _FakeChatOpenAI:
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
         def configurable_fields(self, **_):
             return self
 
-    monkeypatch.setattr(client, "ChatOpenRouter", _FakeChatOpenRouter)
+    monkeypatch.setattr(client, "ChatOpenAI", _FakeChatOpenAI)
     monkeypatch.setattr(client.settings, "ENV", "production")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     # Even if the override leaks into a production settings object, it is ignored.
     monkeypatch.setattr(
-        client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797", raising=False
+        client.settings, "CONCENTRATE_BASE_URL", "http://localhost:9797", raising=False
     )
-    monkeypatch.setattr(client.settings, "OPENROUTER_API_KEY", "sk-real")
+    monkeypatch.setattr(client.settings, "CONCENTRATE_API_KEY", "sk-real")
 
-    client.init_openrouter_llm().loader_func()
+    client.init_concentrate_llm().loader_func()
 
-    # Production construction is identical to pre-sim behavior: no base_url
-    # kwarg, so ChatOpenRouter's own OPENROUTER_API_BASE env default applies.
-    assert "base_url" not in captured
+    # Production construction is identical to pre-sim behavior: the fixed
+    # Concentrate base URL, never the dev override.
+    assert captured["base_url"] == client.CONCENTRATE_API_BASE_URL
 
 
 def test_dev_override_fields_exist_on_all_settings_classes():
@@ -118,7 +121,7 @@ def test_dev_override_fields_exist_on_all_settings_classes():
 
     for cls in (CommonSettings, DevelopmentSettings, ProductionSettings):
         assert "GAIA_SIM_MODE" in cls.model_fields, cls.__name__
-        assert "OPENROUTER_BASE_URL" in cls.model_fields, cls.__name__
+        assert "CONCENTRATE_BASE_URL" in cls.model_fields, cls.__name__
 
 
 def _prod_settings(**overrides):

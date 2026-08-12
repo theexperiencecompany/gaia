@@ -1,8 +1,8 @@
 """Behavior tests for app.agents.llm.plan_model (per-plan LLM routing).
 
-Locks: free -> default Gemini pin, any paid plan -> MiniMax via OpenRouter
-(with comms reasoning + provider pin), a lookup failure keeps the default
-model, and the dev-only overrides pin/stash/clear model fields exactly.
+Locks: free -> default Concentrate pin, any paid plan -> the paid Concentrate
+model (with comms reasoning effort), a lookup failure keeps the default model,
+and the dev-only overrides pin/stash/clear model fields exactly.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -14,12 +14,11 @@ from app.agents.llm.plan_model import (
 )
 from app.config.settings import settings
 from app.constants.llm import (
-    COMMS_REASONING,
+    COMMS_REASONING_EFFORT,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MODEL_NAME,
     DEV_MODEL_OPTIONS,
-    OPENROUTER_REASONING,
-    PAID_MODEL_MODEL_KWARGS,
+    EXECUTOR_REASONING_EFFORT,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
 )
@@ -55,24 +54,28 @@ class TestApplyPlanModel:
         assert configurable["provider"] == DEFAULT_LLM_PROVIDER
         assert configurable["model"] == DEFAULT_MODEL_NAME
         assert configurable["model_name"] == DEFAULT_MODEL_NAME
-        # Free tier gets no reasoning/model_kwargs pins.
-        assert "reasoning" not in configurable
-        assert "model_kwargs" not in configurable
+        # Free tier gets no reasoning-effort pin.
+        assert "reasoning_effort" not in configurable
 
-    async def test_paid_plan_pins_the_minimax_model_with_reasoning(self) -> None:
+    async def test_paid_plan_pins_the_paid_model_with_reasoning(self) -> None:
         configurable = _configurable()
-        with patch(
-            "app.services.payments.payment_service.payment_service.get_cached_plan_type",
-            new_callable=AsyncMock,
-            return_value=PlanType.PRO,
+        with (
+            patch(
+                "app.services.payments.payment_service.payment_service.get_cached_plan_type",
+                new_callable=AsyncMock,
+                return_value=PlanType.PRO,
+            ),
+            patch(
+                "app.agents.llm.plan_model._pro_monthly_budget_exhausted",
+                AsyncMock(return_value=False),
+            ),
         ):
             await apply_plan_model(configurable, "user-1")
 
         assert configurable["provider"] == PAID_MODEL_PROVIDER
         assert configurable["model"] == PAID_MODEL_NAME
         assert configurable["model_name"] == PAID_MODEL_NAME
-        assert configurable["reasoning"] == COMMS_REASONING
-        assert configurable["model_kwargs"] == PAID_MODEL_MODEL_KWARGS
+        assert configurable["reasoning_effort"] == COMMS_REASONING_EFFORT
 
     async def test_lookup_failure_keeps_the_default_model(self) -> None:
         configurable = _configurable()
@@ -104,8 +107,7 @@ class TestApplyDevModelOverride:
         assert configurable["provider"] == option["provider"]
         assert configurable["model"] == option["model"]
         assert configurable["model_name"] == option["model"]
-        assert configurable["reasoning"] == COMMS_REASONING
-        assert configurable["model_kwargs"] == option["model_kwargs"]
+        assert configurable["reasoning_effort"] == COMMS_REASONING_EFFORT
         assert "__dev_executor_model__" not in configurable
 
     async def test_executor_model_is_stashed_for_later_inheritance(self) -> None:
@@ -129,9 +131,8 @@ class TestApplyDevModelOverride:
         assert configurable["model"] == option["model"]
         assert configurable["provider"] == option["provider"]
         assert configurable["__dev_executor_model__"] == "gemini-3.5-flash"
-        # Gemini entries carry no reasoning/model_kwargs — and any prior pin is cleared.
-        assert "reasoning" not in configurable
-        assert "model_kwargs" not in configurable
+        # Gemini entries carry no reasoning effort — and any prior pin is cleared.
+        assert "reasoning_effort" not in configurable
 
     async def test_invalid_dev_default_keeps_the_plan_model(self, monkeypatch) -> None:
         monkeypatch.setattr(settings, "DEV_DEFAULT_MODEL", "not-a-real-key")
@@ -152,15 +153,13 @@ class TestApplyDevModelOverride:
 
     async def test_non_reasoning_option_clears_a_prior_reasoning_pin(self) -> None:
         configurable = self._config()
-        configurable["reasoning"] = COMMS_REASONING
-        configurable["model_kwargs"] = PAID_MODEL_MODEL_KWARGS
+        configurable["reasoning_effort"] = COMMS_REASONING_EFFORT
         apply_dev_model_override(
             configurable, comms_model="deepseek-v4-flash", executor_model=None, use_defaults=False
         )
 
         assert configurable["model"] == DEV_MODEL_OPTIONS["deepseek-v4-flash"]["model"]
-        assert "reasoning" not in configurable
-        assert "model_kwargs" not in configurable
+        assert "reasoning_effort" not in configurable
 
 
 class TestApplyDevExecutorModel:
@@ -171,13 +170,13 @@ class TestApplyDevExecutorModel:
             "provider": "inherited",
             "model": "inherited",
             "model_name": "inherited",
-            "reasoning": COMMS_REASONING,
+            "reasoning_effort": COMMS_REASONING_EFFORT,
         }
         apply_dev_executor_model(parent, executor)
 
         assert executor["provider"] == option["provider"]
         assert executor["model"] == option["model"]
-        assert executor["reasoning"] == OPENROUTER_REASONING
+        assert executor["reasoning_effort"] == EXECUTOR_REASONING_EFFORT
 
     async def test_non_reasoning_stashed_option_clears_inherited_reasoning(self) -> None:
         parent: AgentConfigurable = {"__dev_executor_model__": "deepseek-v4"}
@@ -185,11 +184,11 @@ class TestApplyDevExecutorModel:
             "provider": "inherited",
             "model": "inherited",
             "model_name": "inherited",
-            "reasoning": COMMS_REASONING,
+            "reasoning_effort": COMMS_REASONING_EFFORT,
         }
         apply_dev_executor_model(parent, executor)
 
-        assert "reasoning" not in executor
+        assert "reasoning_effort" not in executor
 
     async def test_no_stash_is_a_no_op(self) -> None:
         parent: AgentConfigurable = {}

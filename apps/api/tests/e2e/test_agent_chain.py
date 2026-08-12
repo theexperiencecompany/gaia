@@ -109,7 +109,7 @@ class StreamingScriptedModel(RecordingFakeModel):
 
     The agent node calls ``ainvoke``, and LangChain streams under it whenever a
     streaming callback handler is attached — LangGraph's ``messages`` mode
-    installs exactly such a handler, so a provider like ``ChatOpenRouter``
+    installs exactly such a handler, so a provider like ``ChatOpenAI``
     delivers ``AIMessageChunk``s even on an ``ainvoke``.
 
     ``RecordingFakeModel`` implements only ``_agenerate``, so LangGraph falls

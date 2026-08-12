@@ -218,7 +218,7 @@ class TestMimeForPathAndBlock:
         assert ImageCodec.mime_for_path(path) == expected
 
     async def test_to_block_emits_the_canonical_v1_data_content_block(self) -> None:
-        """The block shape is a provider contract — langchain_openrouter converts
+        """The block shape is a provider contract — langchain_openai converts
         `{"type": "image", "base64": ...}` in a user message to an image_url data
         URL, and Gemini reads it as inline_data. A renamed key breaks both."""
         inline = await ImageCodec.from_bytes(_encode("PNG"))

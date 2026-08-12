@@ -63,8 +63,8 @@ class TestToolMessageBlocksLane:
         assert len(out) == len(msgs), "no extra message should be injected on this lane"
 
     def test_no_human_message_is_injected(self):
-        """Repacking into a HumanMessage is the OpenRouter workaround. Doing it on
-        Gemini would put a spurious user turn into the conversation."""
+        """Regression guard: a prior lane repacked media into a HumanMessage.
+        Doing that on Gemini would put a spurious user turn into the conversation."""
         msgs = [_ai_call(), _tool_msg(_img())]
 
         out = MediaAdapter(MediaDelivery.KEEP_IN_TOOL_RESULTS).adapt(msgs)

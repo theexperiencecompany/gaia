@@ -26,14 +26,14 @@ api_key_env = "DEV_LLM_API_KEY"
 model_env = "DEV_LLM_MODEL"
 budget_usd = 0.0
 
-[providers.openrouter]
-lane = "openrouter"
-api_key_env = "OPENROUTER_API_KEY"
-model_env = "OPENROUTER_MODEL"
+[providers.concentrate]
+lane = "concentrate"
+api_key_env = "CONCENTRATE_API_KEY"
+model_env = "CONCENTRATE_MODEL"
 budget_usd = 0.0
 
 [rotation]
-order = ["opencode", "openrouter"]
+order = ["opencode", "concentrate"]
 
 [cost]
 default_max_usd = 8.0
@@ -58,7 +58,7 @@ def _lane(lane: str, api_key: str | None) -> ProviderConfig:
     )
 
 
-@pytest.mark.parametrize("lane", ["gemini", "openrouter"])
+@pytest.mark.parametrize("lane", ["gemini", "concentrate"])
 def test_a_native_lane_without_a_key_is_not_healthy(lane: str) -> None:
     check = health_check(_lane(lane, None))
 
@@ -66,7 +66,7 @@ def test_a_native_lane_without_a_key_is_not_healthy(lane: str) -> None:
     assert "no API key" in check.reason
 
 
-@pytest.mark.parametrize("lane", ["gemini", "openrouter"])
+@pytest.mark.parametrize("lane", ["gemini", "concentrate"])
 def test_a_native_lane_with_a_key_is_healthy_without_a_probe(lane: str) -> None:
     # No base URL and no network: a native lane is served through the app's own
     # client, so the key is the only thing checkable from here.
@@ -84,9 +84,9 @@ def test_a_native_lane_does_not_inherit_the_custom_development_endpoint(
     monkeypatch.setattr("scripts.evals.core.providers._load_app_env", lambda: None, raising=True)
     monkeypatch.setenv("DEV_LLM_BASE_URL", "http://localhost:9/api/v1")
     monkeypatch.setenv("DEV_LLM_API_KEY", "custom-key")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "openrouter-key")
+    monkeypatch.setenv("CONCENTRATE_API_KEY", "concentrate-key")
 
     cfg = load_config(config_path)
 
     assert cfg.providers["opencode"].base_url == "http://localhost:9/api/v1"
-    assert cfg.providers["openrouter"].base_url is None
+    assert cfg.providers["concentrate"].base_url is None

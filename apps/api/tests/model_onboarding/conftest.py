@@ -4,4 +4,4 @@ import time, before the session fence runs."""
 
 import os
 
-os.environ.setdefault("HERMETIC_ALLOW_KEYS", "OPENROUTER_API_KEY")
+os.environ.setdefault("HERMETIC_ALLOW_KEYS", "CONCENTRATE_API_KEY")

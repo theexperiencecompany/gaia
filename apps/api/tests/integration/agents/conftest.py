@@ -45,7 +45,7 @@ def no_model_fallback():
     _sim_llm.cache_clear()
     with (
         patch.object(settings, "GAIA_SIM_MODE", False),
-        patch.object(settings, "OPENROUTER_API_KEY", None),
+        patch.object(settings, "CONCENTRATE_API_KEY", None),
         patch.object(settings, "GOOGLE_API_KEY", None),
     ):
         yield

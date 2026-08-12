@@ -129,7 +129,7 @@ class TestSubagentRouting:
             ),
             pytest.param(
                 AIMessageChunk(content=[{"type": "reasoning", "reasoning": "Checking the inbox"}]),
-                id="openrouter-style-blocks",
+                id="concentrate-style-blocks",
             ),
         ],
     )

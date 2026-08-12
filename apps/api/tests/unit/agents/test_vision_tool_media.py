@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import ToolMessage
+from langchain_openai.chat_models.base import _convert_message_to_dict
 import pytest
 
 from app.agents.llm.vision.tool_media import describe_tool_media
@@ -17,7 +18,7 @@ from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.constants.media import MEDIA_DESCRIBE_FAILED, MEDIA_DESCRIPTIONS_KEY
 from app.utils.multimodal import has_media_blocks
 
-CONFIG = {"configurable": {"provider": "openrouter", "model": "some-model"}}
+CONFIG = {"configurable": {"provider": "concentrate", "model": "some-model"}}
 
 _MOD = "app.agents.llm.vision.tool_media"
 
@@ -76,7 +77,7 @@ class TestNoOpGuards:
 
     async def test_the_lane_is_not_even_looked_up_for_a_result_without_media(self):
         """The media check must come first — the lane lookup can hit the network
-        (the OpenRouter catalog), and 99% of tool results carry no media."""
+        (the Concentrate catalog), and 99% of tool results carry no media."""
         with patch(f"{_MOD}.model_can_view_images", AsyncMock()) as mock_lane:
             await describe_tool_media(_tool_msg(), CONFIG)
             mock_lane.assert_not_called()
@@ -201,6 +202,34 @@ class TestMediaDescriptionMiddleware:
 
         assert result is command
         mock.assert_not_called()
+
+
+class TestToolMessageWireFormat:
+    """Pins a guarantee ``langchain_openai`` gives us for free: a ToolMessage's
+    GAIA-shaped image block (``{"type": "image", "base64": ..., "mime_type":
+    ...}``) reaches the OpenAI-compatible wire as an ``image_url`` data-URL
+    part. The old OpenRouter SDK didn't do this for tool messages — a
+    hand-rolled patch (app/patches/openrouter_tool_multimodal_patch.py) fixed
+    it up before every request. langchain_openai's ``_convert_message_to_dict``
+    formats it natively, so the patch was deleted; this pins the behavior we
+    now rely on instead of hand-rolling it ourselves.
+    """
+
+    def test_a_tool_message_image_block_becomes_an_image_url_part(self):
+        msg = _tool_msg({"type": "text", "text": "Image file /workspace/shot.png"}, _img())
+
+        converted = _convert_message_to_dict(msg)
+
+        assert converted["role"] == "tool"
+        assert converted["content"][1] == {
+            "type": "image_url",
+            "image_url": {"url": "data:image/png;base64,BASE64-A"},
+        }
+
+    def test_a_plain_string_tool_message_is_untouched(self):
+        converted = _convert_message_to_dict(_tool_msg())
+
+        assert converted["content"] == "plain text result"
 
 
 class _Runtime:

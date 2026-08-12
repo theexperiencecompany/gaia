@@ -56,19 +56,19 @@ class TestProviderPriorityOrdering:
 
     def test_default_priority_order(self) -> None:
         """Without a preferred provider, ordering follows PROVIDER_PRIORITY
-        (openrouter > gemini — the default provider leads)."""
+        (concentrate > gemini — the default provider leads)."""
         mock_gemini = _make_mock_llm("gemini")
-        mock_openrouter = _make_mock_llm("openrouter")
+        mock_concentrate = _make_mock_llm("concentrate")
 
         available = {
             "gemini": mock_gemini,
-            "openrouter": mock_openrouter,
+            "concentrate": mock_concentrate,
         }
 
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
         assert len(ordered) == 2
-        assert ordered[0]["name"] == "openrouter"
+        assert ordered[0]["name"] == "concentrate"
         assert ordered[1]["name"] == "gemini"
 
     def test_preferred_provider_goes_first(self) -> None:
@@ -118,15 +118,15 @@ class TestProviderPriorityOrdering:
 
     def test_fallback_disabled_no_preferred_still_returns_priority_order(self) -> None:
         """With fallback_enabled=False but no preferred provider, ordered list still populated from priority."""
-        mock_openrouter = _make_mock_llm("openrouter")
-        available = {"openrouter": mock_openrouter}
+        mock_concentrate = _make_mock_llm("concentrate")
+        available = {"concentrate": mock_concentrate}
 
         # When no ordered (preferred) providers, fallback_enabled=False still adds from priority
         # because the condition is `if fallback_enabled or not ordered`
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=False)
 
         assert len(ordered) == 1
-        assert ordered[0]["name"] == "openrouter"
+        assert ordered[0]["name"] == "concentrate"
 
 
 @pytest.mark.integration
@@ -149,32 +149,32 @@ class TestProviderInitialization:
     def test_init_llm_returns_configurable_with_multiple_providers(self) -> None:
         """With multiple providers, init_llm wraps them with configurable_alternatives."""
         mock_gemini = _make_mock_llm("gemini")
-        mock_openrouter = _make_mock_llm("openrouter")
+        mock_concentrate = _make_mock_llm("concentrate")
 
-        available = {"gemini": mock_gemini, "openrouter": mock_openrouter}
+        available = {"gemini": mock_gemini, "concentrate": mock_concentrate}
 
         with patch("app.agents.llm.client._get_available_providers", return_value=available):
             init_llm()
 
-        # Primary is openrouter (priority 1), and configurable_alternatives is
+        # Primary is concentrate (priority 1), and configurable_alternatives is
         # called on it with gemini as the alternative.
-        mock_openrouter.configurable_alternatives.assert_called_once()
-        call_kwargs = mock_openrouter.configurable_alternatives.call_args[1]
-        assert call_kwargs["default_key"] == "openrouter"
+        mock_concentrate.configurable_alternatives.assert_called_once()
+        call_kwargs = mock_concentrate.configurable_alternatives.call_args[1]
+        assert call_kwargs["default_key"] == "concentrate"
         assert "gemini" in call_kwargs
 
-    def test_init_llm_preferred_provider_openrouter(self) -> None:
-        """Requesting openrouter as preferred provider makes it the primary."""
+    def test_init_llm_preferred_provider_concentrate(self) -> None:
+        """Requesting concentrate as preferred provider makes it the primary."""
         mock_gemini = _make_mock_llm("gemini")
-        mock_openrouter = _make_mock_llm("openrouter")
+        mock_concentrate = _make_mock_llm("concentrate")
 
-        available = {"gemini": mock_gemini, "openrouter": mock_openrouter}
+        available = {"gemini": mock_gemini, "concentrate": mock_concentrate}
 
         with patch("app.agents.llm.client._get_available_providers", return_value=available):
-            init_llm(preferred_provider="openrouter")
+            init_llm(preferred_provider="concentrate")
 
-        # openrouter should be primary — its configurable_alternatives should be called
-        mock_openrouter.configurable_alternatives.assert_called_once()
+        # concentrate should be primary — its configurable_alternatives should be called
+        mock_concentrate.configurable_alternatives.assert_called_once()
 
     def test_init_llm_invalid_provider_raises_value_error(self) -> None:
         """Requesting a non-existent provider raises ValueError."""
@@ -200,9 +200,9 @@ class TestProviderInitialization:
             "app.agents.llm.client._get_available_providers",
             return_value={"gemini": mock_gemini},
         ):
-            result = init_llm(preferred_provider="openrouter", fallback_enabled=False)
+            result = init_llm(preferred_provider="concentrate", fallback_enabled=False)
 
-        # Since openrouter is not available and ordered is empty, gemini fills in
+        # Since concentrate is not available and ordered is empty, gemini fills in
         assert result is mock_gemini
 
 
@@ -325,12 +325,12 @@ class TestProviderConstants:
     def test_default_priority_matches_the_default_provider(self) -> None:
         """Priority 1 is the provider serving DEFAULT_MODEL_NAME — the fallback
         chain must start at the lane the app actually defaults to."""
-        assert PROVIDER_PRIORITY[1] == DEFAULT_LLM_PROVIDER == "openrouter"
+        assert PROVIDER_PRIORITY[1] == DEFAULT_LLM_PROVIDER == "concentrate"
 
     def test_provider_models_have_expected_keys(self) -> None:
-        """PROVIDER_MODELS must contain gemini and openrouter."""
+        """PROVIDER_MODELS must contain gemini and concentrate."""
         assert "gemini" in PROVIDER_MODELS
-        assert "openrouter" in PROVIDER_MODELS
+        assert "concentrate" in PROVIDER_MODELS
 
 
 @pytest.mark.integration
@@ -348,7 +348,7 @@ class TestGetAvailableProviders:
         all_slots = {
             "openai_llm": present_providers.get("openai_llm"),
             "gemini_llm": present_providers.get("gemini_llm"),
-            "openrouter_llm": present_providers.get("openrouter_llm"),
+            "concentrate_llm": present_providers.get("concentrate_llm"),
             "custom_llm": present_providers.get("custom_llm"),
         }
         for name, instance in all_slots.items():
@@ -371,13 +371,13 @@ class TestGetAvailableProviders:
 
     def test_returns_only_registered_providers(self) -> None:
         """Only providers whose keys are configured appear in the result."""
-        mock_openrouter_llm = _make_mock_llm("openrouter_llm")
-        registry = self._build_registry({"openrouter_llm": mock_openrouter_llm})
+        mock_concentrate_llm = _make_mock_llm("concentrate_llm")
+        registry = self._build_registry({"concentrate_llm": mock_concentrate_llm})
 
         with patch("app.agents.llm.client.providers", registry):
             available = _get_available_providers()
 
-        assert "openrouter" in available
+        assert "concentrate" in available
         assert "gemini" not in available
 
     def test_returns_empty_when_no_providers_have_keys(self) -> None:
