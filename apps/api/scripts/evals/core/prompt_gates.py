@@ -39,7 +39,10 @@ _AMBIGUOUS_IN_ENGLISH = frozenset({"agent", "tool"})
 
 _QUOTED = re.compile(r'"([^"]+)"')
 _PARENTHESISED_CHAR = re.compile(r"\((.)\)")
-_BACKTICKED_MARKER = re.compile(r"`(\[[A-Z_]+\])`")
+# Backticks optional: the rule used to write the tags as `[MARKER]` and now
+# writes them bare. The bracketed SCREAMING_CASE shape is what identifies a
+# routing tag, so matching on that survives either style.
+_MARKER = re.compile(r"`?(\[[A-Z_]+\])`?")
 
 
 def _collapse(text: str) -> str:
@@ -118,7 +121,7 @@ def internal_terms() -> tuple[str, ...]:
 def routing_markers() -> tuple[str, ...]:
     """The internal routing tags the prompt says must never reach a reply."""
     ref = "comms.never_reproduce_internal_markers"
-    found = _require(_BACKTICKED_MARKER.findall(resolve(ref)), ref, "backticked [MARKER] tags")
+    found = _require(_MARKER.findall(resolve(ref)), ref, "bracketed [MARKER] tags")
     return tuple(found)
 
 

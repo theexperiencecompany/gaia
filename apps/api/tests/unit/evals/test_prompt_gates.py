@@ -144,7 +144,7 @@ def test_a_reworded_rule_raises_instead_of_checking_nothing(
     """
 
     def dequote(text: str) -> str:
-        start = text.index("- Banned phrases, never say these")
+        start = text.index("- Banned phrases (they scream chatbot):")
         stop = text.index("- When the user is just chatting,")
         return text[:start] + text[start:stop].replace('"', "") + text[stop:]
 
