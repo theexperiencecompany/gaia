@@ -67,18 +67,22 @@ alias never reached the requests). After the real wire fix, the honest
 figures are 72.4% (wire capture + provider-reported usage, 56 requests) and
 70.5% (the 15-turn driver).
 
-The e2e delta is real but capped by a measured mechanism, not a layout
-defect: the provider's prompt cache retains only a small window of recent
-*request entries*, and every graph call that hits its own chain (the executor's
-3–9 calls per turn at 20–26k tokens, the memory-extraction/follow-up calls)
-occupies a slot. Between two comms calls the graph runs 5–15 such requests,
-so the comms conversation's entry is evicted before the next turn reads it —
-the comms hits collapse to the static prefix. This was established by
-byte-level capture of the real requests (the shared prefix is byte-identical;
-identical re-sends hit 100%) and by interleave probes: requests that never
-match anything (unique junk) do NOT evict the chain even at 112k tokens/turn,
-while the graph's own matching traffic does. Pinning the first-party DeepSeek
-lane (the paid path) measured *worse* on this key (19% vs 58% on the probe).
+The e2e delta is real but the residual gap is NOT a layout defect and NOT
+eviction by the graph's own traffic — that earlier hypothesis was measured
+and disproved. Controlled probes on the real lane (identical re-sends,
+growing chains, changing volatile tails, bound tools, interleaved
+follow-up/summarize calls at real sizes, 23k alias-namespace extractions)
+all cache at 97–100%, and **replaying the graph's exact captured request
+bytes hits 100%**. What actually varies is the provider's cache itself:
+the same byte-identical request flaps between ~81% (static prefix only)
+and ~99% (full chain) across calls minutes apart — six consecutive turns
+of the same driver measured 81/98/79/78/99/98% on the comms call with
+identical interleaves, and the identical follow-up request strictly
+alternated 0/67/0/69%. The same driver that measured 70.5% at one hour
+measured 84.8% (89% comms-only) two hours later with zero code changes.
+The layout's demonstrated 94.9% ceiling is reachable whenever the
+provider's cache cooperates; the residual is provider-side cache
+reliability, not request structure.
 
 Two follow-up fixes in this PR close the biggest measured gaps:
 
@@ -92,13 +96,16 @@ Two follow-up fixes in this PR close the biggest measured gaps:
   evict the conversation from its namespace.
 
 Real-graph runs with all fixes measure **70.5%** on a 15-turn driver
-(up from 41.4% baseline); the per-turn pattern is a ~19k-token cached
-plateau (the byte-stable system + head of the conversation) with the
-growing tail (~7k tokens/turn) never surviving between turns — the
-provider's cache retention window against the graph's per-turn request
-count (5–15 non-comms calls between comms calls, each occupying a cache
-slot). The named next step is batching the memory-pipeline/executor calls
-to cut the request count.
+(up from 41.4% baseline) — and **84.8% (89% comms-only) on the identical
+driver two hours later with zero code changes**. The per-turn pattern is
+the provider's flapping cache: the byte-identical comms chain alternates
+between ~81% (static prefix only) and ~99% (full chain) across turns;
+the extraction chain (alias namespace) holds 92–99% steadily. When the
+provider's cache holds the conversation chain, the real graph reaches the
+layout's 94.9% ceiling; when it drops the chain, the hits collapse to the
+static prefix. The named next step (batching the memory-pipeline/executor
+calls) would cut the interleaved request count but is no longer believed
+to be the binding constraint — the same interleaves replay at 100%.
 
 **Tested and reverted: OpenRouter `session_id` sticky routing.** The
 conversation id was pinned on every request (comms, executor, subagents,
