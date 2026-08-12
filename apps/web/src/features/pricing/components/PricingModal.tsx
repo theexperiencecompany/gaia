@@ -68,7 +68,7 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
                 <PricingCards
                   durationIsMonth
                   initialPlans={plans}
-                  showEnterprise={false}
+                  hideEnterprise
                 />
               </Tab>
               <Tab
@@ -86,7 +86,7 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
                 <p className="mt-3 mb-4 text-center text-xs text-zinc-600">
                   Secure payment · Cancel anytime · No credit card for Free
                 </p>
-                <PricingCards initialPlans={plans} showEnterprise={false} />
+                <PricingCards initialPlans={plans} hideEnterprise />
               </Tab>
             </Tabs>
           </div>

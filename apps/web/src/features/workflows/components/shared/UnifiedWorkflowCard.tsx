@@ -42,6 +42,10 @@ interface UnifiedWorkflowCardProps {
   title?: string;
   description?: string;
   steps?: PublicWorkflowStep[];
+  /** User-chosen icon slug (gaia-icons component name) */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  iconColor?: string | null;
   totalExecutions?: number;
   slug?: string;
   prompt?: string;
@@ -106,6 +110,8 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
     title,
     displayDescription,
     steps,
+    customIcon,
+    customIconColor,
     totalExecutions,
     creator,
     shouldShowTrigger,
@@ -254,7 +260,13 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
 
   // Render tool icons using the shared component
   const renderToolIcons = () => (
-    <WorkflowIcons steps={steps} iconSize={25} maxIcons={3} />
+    <WorkflowIcons
+      steps={steps}
+      icon={customIcon}
+      iconColor={customIconColor}
+      iconSize={25}
+      maxIcons={3}
+    />
   );
 
   const cardContent = (
@@ -380,6 +392,8 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     title: propTitle,
     description: propDescription,
     steps: propSteps,
+    icon: propIcon,
+    iconColor: propIconColor,
     totalExecutions: propTotalExecutions,
     variant = "explore",
     showTrigger,
@@ -398,6 +412,9 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     communityWorkflow?.description ||
     "";
   const steps = propSteps || workflow?.steps || communityWorkflow?.steps || [];
+  const customIcon = propIcon ?? workflow?.icon ?? communityWorkflow?.icon;
+  const customIconColor =
+    propIconColor ?? workflow?.icon_color ?? communityWorkflow?.icon_color;
   const totalExecutions =
     propTotalExecutions ??
     workflow?.total_executions ??
@@ -420,6 +437,8 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     title,
     displayDescription,
     steps,
+    customIcon,
+    customIconColor,
     totalExecutions,
     creator,
     shouldShowTrigger,

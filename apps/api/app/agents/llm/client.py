@@ -362,14 +362,14 @@ def register_llm_providers() -> None:
 
 
 def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
-    """The single factory for the default model (direct Gemini, ``gemini-3.1-flash-lite``)
-    used by EVERY auxiliary LLM task — follow-ups, research, memory extraction,
-    integration inference, profile/holo cards, vision helpers, workflow generation,
-    context summarization, onboarding, one-shot helpers. The pro model is reserved
-    for the main chat agent (see ``plan_model``); auxiliary tasks never use it.
+    """The single factory for the default model (``DEFAULT_MODEL_NAME``, served over
+    OpenRouter) used by EVERY auxiliary LLM task — follow-ups, research, memory
+    extraction, integration inference, profile/holo cards, vision helpers, workflow
+    generation, context summarization, onboarding, one-shot helpers. The pro model is
+    reserved for the main chat agent (see ``plan_model``); auxiliary tasks never use it.
     ``temperature`` lets creative tasks opt into more variation. Instances are
     cached per temperature so hot paths reuse one HTTP client instead of
-    rebuilding it per call. Raises ``LLMNotConfiguredError`` if Google is not
+    rebuilding it per call. Raises ``LLMNotConfiguredError`` if OpenRouter is not
     configured."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)

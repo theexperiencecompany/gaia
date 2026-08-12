@@ -1,15 +1,16 @@
 "use client";
 
 import { Pagination } from "@heroui/pagination";
-import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FeaturedCategoryBanner } from "@/components/shared/FeaturedCategoryBanner";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { IntegrationsFilters } from "@/features/integrations/components/IntegrationsFilters";
 import {
   PublicIntegrationCard,
   PublicIntegrationCardSkeletonGrid,
 } from "@/features/integrations/components/PublicIntegrationCard";
+import { FEATURED_INTEGRATION_CATEGORIES } from "@/features/integrations/constants/categories";
 import type { CommunityIntegration } from "@/features/integrations/types";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 
@@ -152,20 +153,8 @@ export function IntegrationsPageClient() {
   const displayTotal = filteredNativeIntegrations.length + total;
 
   return (
-    <div className="min-h-screen pt-32 pb-16">
-      <div className="absolute inset-0 top-0 z-0 h-[70vh] w-full">
-        <Image
-          src={"/images/wallpapers/library.webp"}
-          alt="GAIA Use-Cases Wallpaper"
-          sizes="100vw"
-          priority
-          fill
-          className="aspect-video object-cover object-center opacity-80"
-        />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background to-transparent" />
-      </div>
-
-      <div className="mx-auto max-w-7xl px-6 z-1 relative mt-40">
+    <div className="min-h-screen pt-16 pb-16">
+      <div className="mx-auto max-w-7xl px-6 z-1 relative mt-10">
         <div className="mb-12">
           <h1 className="mb-4 font-serif text-5xl md:text-7xl font-normal text-foreground">
             Integration Marketplace
@@ -177,9 +166,25 @@ export function IntegrationsPageClient() {
           </p>
         </div>
 
+        <div className="mb-10">
+          <h2 className="mb-4 text-sm font-medium text-zinc-300">Featured</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {FEATURED_INTEGRATION_CATEGORIES.map((featured) => (
+              <FeaturedCategoryBanner
+                key={featured.key}
+                name={featured.label}
+                description={featured.description}
+                icons={featured.icons}
+                onPress={() => handleFilterChange({ category: featured.key })}
+              />
+            ))}
+          </div>
+        </div>
+
         <IntegrationsFilters
           onFilterChange={handleFilterChange}
-          initialFilters={filters}
+          category={filters.category}
+          initialFilters={{ search: filters.search, sort: filters.sort }}
         />
 
         {displayLoading && (

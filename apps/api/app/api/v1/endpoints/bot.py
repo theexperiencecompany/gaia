@@ -16,7 +16,7 @@ from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.decorators import tiered_rate_limit
+from app.decorators import enforce_daily_cost_budget, enforce_tiered_limit, tiered_rate_limit
 from app.models.bot_models import (
     BotAuthStatusResponse,
     BotChatRequest,
@@ -251,6 +251,21 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     user_id = user.get("user_id") or str(user.get("_id", ""))
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform, outcome="success")
+
+    # Same quota the web chat endpoint charges via @tiered_rate_limit. It cannot
+    # be a decorator here: the caller is resolved from a platform link above, so
+    # there is no authenticated user when the decorator would run. Without this a
+    # free user had no message limit through a bot, and bot turns never reached
+    # `record_activity` — leaving them off the heatmap, streak and badge.
+    # `BotService.enforce_rate_limit` above stays: it is flat per-platform
+    # anti-spam (20/min, plan-blind), not the plan quota.
+    await enforce_tiered_limit(user_id, "chat_messages")
+    # The second half of what web chat charges: the tiered limit caps how MANY
+    # messages, this caps how EXPENSIVE the day has been. `LLMAccountingMiddleware`
+    # is an unbypassable mid-flight backstop, so cost was always bounded — but
+    # without this a bot user over budget got a stream that opened and then died
+    # partway instead of a clean refusal before any work.
+    await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
 
     conversation_id = await BotService.get_or_create_session(
         body.platform, body.platform_user_id, body.channel_id, user

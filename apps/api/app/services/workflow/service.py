@@ -15,6 +15,7 @@ from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
 from app.models.workflow_models import (
     CreateWorkflowRequest,
+    DeactivationReason,
     PublicWorkflowRow,
     PublicWorkflowsResponse,
     TriggerConfig,
@@ -217,7 +218,7 @@ class WorkflowService:
                 )
 
             # Use provided steps or initialize empty list for generation
-            workflow_steps = request.steps if request.steps else []
+            workflow_steps = request.steps or []
 
             # Step 1: Create workflow in PENDING state (activated=False). Keep
             # trigger_config.enabled in lockstep with activated (the single liveness
@@ -227,6 +228,8 @@ class WorkflowService:
                 title=request.title,
                 description=request.description or "",
                 prompt=request.prompt,
+                icon=request.icon,
+                icon_color=request.icon_color,
                 steps=workflow_steps,
                 trigger_config=trigger_config,
                 activated=False,  # Start in pending state
@@ -1021,9 +1024,14 @@ class WorkflowService:
 
     @staticmethod
     async def deactivate_workflow(
-        workflow_id: str, user_id: str, user_timezone: str | None = None
+        workflow_id: str,
+        user_id: str,
+        user_timezone: str | None = None,
+        *,
+        reason: DeactivationReason | None = None,
     ) -> Workflow | None:
-        """Deactivate a workflow (disable its trigger)."""
+        """Deactivate a workflow (disable its trigger). ``reason`` marks a system
+        pause; a user switching the workflow off passes none."""
         try:
             workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not workflow:
@@ -1055,7 +1063,7 @@ class WorkflowService:
                     )
 
             # Update trigger to disabled and clear trigger IDs
-            deactivated = await workflow_repository.deactivate(workflow_id, user_id)
+            deactivated = await workflow_repository.deactivate(workflow_id, user_id, reason=reason)
 
             if deactivated is None:
                 return None
@@ -1238,6 +1246,8 @@ class WorkflowService:
             "description": row.description,
             "slug": row.slug,
             "prompt": row.prompt,
+            "icon": row.icon,
+            "icon_color": row.icon_color,
             "steps": normalized_steps,
             "created_at": row.created_at,
             "creator": format_creator(row, default_name=default_creator_name),

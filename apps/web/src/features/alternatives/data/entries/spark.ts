@@ -31,7 +31,7 @@ export const entry: AlternativeData = {
     "spark email alternative 2026",
   ],
   whyPeopleLook:
-    "Spark Email is a well-designed AI email client with smart inbox categorization, quick replies, and team collaboration features. But it remains fundamentally a client — a better interface for reading and writing email, not an AI that manages your inbox on your behalf. It cannot create tasks from email automatically, does not connect to your calendar to suggest scheduling, and has no workflow automation beyond writing assistance. Users who want their AI to do more than help them type replies look for alternatives that connect email to the rest of their productivity stack.",
+    "Spark Email is a well-designed AI email client with smart inbox categorization, quick replies, and team collaboration features. But it remains fundamentally a client, a better interface for reading and writing email, not an AI that manages your inbox on your behalf. It cannot create tasks from email automatically, does not connect to your calendar to suggest scheduling, and has no workflow automation beyond writing assistance. Users who want their AI to do more than help them type replies look for alternatives that connect email to the rest of their productivity stack.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Proactive inbox triage that surfaces important email without manual review",
@@ -41,14 +41,14 @@ export const entry: AlternativeData = {
     "Follow-up reminders for unanswered email threads",
   ],
   gaiaAdvantages: [
-    "Manages email plus calendar, tasks, and 50+ tools — not just an inbox view",
+    "Manages email plus calendar, tasks, and 50+ tools, not just an inbox view",
     "Proactive: monitors email and surfaces what needs attention without asking",
     "Open-source and self-hostable; Spark is closed-source SaaS",
     "Free tier available without per-feature AI credit limits",
     "Works across web, desktop, mobile, and bot interfaces",
   ],
   migrationSteps: [
-    "Connect GAIA to Gmail via OAuth — no app switch required",
+    "Connect GAIA to Gmail via OAuth, no app switch required",
     "Configure GAIA's inbox monitoring for proactive email surfacing",
     "Enable automatic task creation from emails requiring action",
     "Link Google Calendar so GAIA creates calendar events from scheduling emails",
