@@ -38,7 +38,7 @@ export const BODY_FONT = "var(--font-inter), Inter, sans-serif";
  * rendered separately (it carries the inline code + copy button). */
 export const LETTER_PARAGRAPHS: readonly string[] = [
   "You were here before almost anyone else. That is not a small thing to me, and I have not forgotten it.",
-  "I'll be straight with you. I promised you things GAIA could not do yet, and there were months where it was slower and quieter than you deserved. I won't hand you excuses for that. What I'll say is that I took it personally, and I never once considered stopping.",
+  "You did not get the GAIA you signed up for right away. Some months were slower and quieter than they should have been, and that is on me. I spent them rebuilding the parts that kept breaking rather than shipping noise, and I never once considered stopping.",
   "The work since has gone into stability, and you can feel it: GAIA is faster, it holds on to what you tell it, and it stays up. I run my own days on it, automating a real chunk of my work with it daily, which is the only reason I can promise it is finally worth your time.",
 ];
 
