@@ -730,16 +730,23 @@ async def ainvoke_structured(
     always a small JSON blob, never the large-output case. Returns the validated
     ``schema`` instance. Raises if Google is not configured (see ``get_default_llm``).
 
-    Runs on :data:`AUX_MODEL_NAME` — the same underlying model as the default
-    under a different id — so these calls live in their own prompt-cache
-    namespace. The agent graph's calls share the conversation's namespace; if
-    the aux calls did too, their ~30k tokens/turn of new blocks would evict
-    the conversation between turns (measured)."""
-    # The helper LLM is the cached default instance; bind the alias id for the
-    # separate cache namespace (same model, different key).
+    Runs on :data:`AUX_MODEL_NAME` — a separate id in the same model series as
+    the default (a different checkpoint, hence its own provider-side cache
+    namespace) — so these calls live in their own prompt-cache namespace. The
+    agent graph's calls share the conversation's namespace; if the aux calls
+    did too, their ~30k tokens/turn of new blocks would evict the conversation
+    between turns (measured)."""
+    # The helper LLM is the cached default instance; run the aux id. The alias
+    # must be set on the INSTANCE via model_copy, NOT bound with
+    # .bind(model=...): with_structured_output rebuilds the runnable through
+    # bind_tools, which drops the outer binding's kwargs — the bound alias
+    # silently vanished and every aux call served DEFAULT_MODEL_NAME in the
+    # conversation's namespace (measured: the alias never reached the wire).
+    # model_copy is the same escape hatch get_helper_llm itself uses for
+    # max_tokens, for the identical reason.
     structured = (
         get_helper_llm(temperature=temperature)
-        .bind(model=AUX_MODEL_NAME)
+        .model_copy(update={"model_name": AUX_MODEL_NAME})
         .with_structured_output(schema)
     )
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too

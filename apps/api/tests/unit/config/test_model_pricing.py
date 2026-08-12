@@ -250,6 +250,62 @@ class TestGetModelPricing:
         assert result == DEFAULT_PRICING
 
 
+class TestAuxModelPricing:
+    """Tests for the aux-lane pricing — a separate checkpoint of the default
+    model's series under AUX_MODEL_NAME, priced at its OWN published rate (not
+    the default's): the two ids are different checkpoints with different
+    OpenRouter prices, so normalizing the alias to the default's rate would
+    under-count aux COGS by ~1.75x."""
+
+    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
+    async def test_aux_model_priced_at_its_own_rate(self, mock_get_model: AsyncMock) -> None:
+        from app.config.model_pricing import AUX_MODEL_PRICING
+        from app.constants.llm import AUX_MODEL_NAME
+
+        result = await get_model_pricing(AUX_MODEL_NAME)
+
+        assert result == AUX_MODEL_PRICING
+        # The alias is an internal routing id, not a catalog entry — no lookup.
+        mock_get_model.assert_not_awaited()
+
+    @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
+    async def test_aux_rate_differs_from_default_rate(self, mock_get_model: AsyncMock) -> None:
+        from app.config.model_pricing import AUX_MODEL_PRICING
+        from app.constants.llm import DEFAULT_MODEL_NAME
+
+        mock_get_model.return_value = _make_model(
+            pricing_per_1k_input_tokens=0.00008,
+            pricing_per_1k_output_tokens=0.00018,
+            pricing_per_1k_cached_input_tokens=0.000016,
+        )
+
+        default_pricing = await get_model_pricing(DEFAULT_MODEL_NAME)
+
+        # Same series, different checkpoint: the alias is more expensive than the
+        # default — normalizing it to the default's rate would under-count spend.
+        assert default_pricing != AUX_MODEL_PRICING
+        assert AUX_MODEL_PRICING.input_cost_per_1k > default_pricing.input_cost_per_1k
+
+    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
+    async def test_aux_spend_meters_at_aux_rate_end_to_end(self, mock_pricing: AsyncMock) -> None:
+        from app.config.model_pricing import AUX_MODEL_PRICING
+        from app.constants.llm import AUX_MODEL_NAME
+
+        mock_pricing.return_value = AUX_MODEL_PRICING
+
+        result = await calculate_token_cost(
+            AUX_MODEL_NAME, input_tokens=100_000, output_tokens=2_000, cached_tokens=80_000
+        )
+
+        # uncached input: (100000 - 80000) / 1000 * 0.00014 = 0.0028
+        # cached input:   80000 / 1000 * 0.000028          = 0.00224
+        # output:         2000 / 1000 * 0.00028            = 0.00056
+        assert result["input_cost"] == pytest.approx(0.0028)
+        assert result["cached_input_cost"] == pytest.approx(0.00224)
+        assert result["output_cost"] == pytest.approx(0.00056)
+        assert result["total_cost"] == pytest.approx(0.0056)
+
+
 # ---------------------------------------------------------------------------
 # Tests: calculate_token_cost
 # ---------------------------------------------------------------------------

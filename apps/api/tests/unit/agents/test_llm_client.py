@@ -764,37 +764,57 @@ class TestAuxModelNamespace:
         assert AUX_MODEL_NAME != DEFAULT_MODEL_NAME
 
     @pytest.mark.asyncio
-    async def test_ainvoke_structured_binds_the_aux_model(self) -> None:
+    async def test_ainvoke_structured_serves_the_aux_model_on_the_wire(self) -> None:
+        """Regression: the aux alias must be the model ON THE WIRE, not a bind kwarg.
+
+        ``with_structured_output`` rebuilds the runnable via ``bind_tools``, which
+        drops the outer binding's kwargs — a ``.bind(model=AUX_MODEL_NAME)`` alias
+        silently vanished and every aux call served ``DEFAULT_MODEL_NAME`` in the
+        conversation's cache namespace (measured on the real graph: the alias
+        never appeared on the wire). The alias must live on the model instance
+        (``model_copy``), where it survives the structured-output rewrite and
+        reaches ``_agenerate`` as ``self.model_name`` — even when the run config
+        carries a plan/dev model pin.
+        """
+        from langchain_core.messages import AIMessage
+        from langchain_core.outputs import ChatGeneration, ChatResult
+        from langchain_openrouter import ChatOpenRouter
         from pydantic import BaseModel
 
         from app.agents.llm import client as llm_client
-        from app.constants.llm import AUX_MODEL_NAME as AUX
+        from app.constants.llm import AUX_MODEL_NAME as AUX, DEFAULT_MODEL_NAME as DEFAULT
 
         class _Out(BaseModel):
             ok: bool
 
-        captured: dict = {}
+        served: dict = {}
 
-        class _Spy:
-            def bind(self, **kwargs):
-                captured.update(kwargs)
-                return self
-
-            def with_structured_output(self, schema):
-                return self
-
-            async def ainvoke(self, *args, **kwargs):
-                return _Out(ok=True)
-
-        async def _fake_ainvoke(*a, **k):
-            return _Out(ok=True)
-
-        with (
-            patch.object(llm_client, "get_helper_llm", return_value=_Spy()),
-            patch.object(llm_client, "ainvoke_llm", new=_fake_ainvoke),
-        ):
-            result = await llm_client.ainvoke_structured(
-                _Out, "hello", label="test", config={"configurable": {"user_id": "u1"}}
+        async def _fake_agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+            served["model_name"] = self.model_name
+            return ChatResult(
+                generations=[ChatGeneration(message=AIMessage(content='{"ok": true}'))]
             )
-        assert result.ok is True
-        assert captured.get("model") == AUX
+
+        async def _fake_ainvoke_llm(primary, messages, **kwargs):
+            with patch.object(ChatOpenRouter, "_agenerate", _fake_agenerate):
+                return await primary.ainvoke(messages, config=kwargs.get("config"))
+
+        llm = ChatOpenRouter(model=DEFAULT, api_key="test-key", temperature=0.0, streaming=False)
+        with (
+            patch.object(llm_client, "get_helper_llm", return_value=llm),
+            patch.object(llm_client, "ainvoke_llm", new=_fake_ainvoke_llm),
+        ):
+            await llm_client.ainvoke_structured(
+                _Out,
+                "hello",
+                label="test",
+                config={
+                    "configurable": {
+                        "user_id": "u1",
+                        "model": DEFAULT,
+                        "model_name": DEFAULT,
+                        "provider": "openrouter",
+                    }
+                },
+            )
+        assert served["model_name"] == AUX
