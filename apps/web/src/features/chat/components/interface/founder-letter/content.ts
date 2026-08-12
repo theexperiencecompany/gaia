@@ -16,10 +16,8 @@ export const DISCOUNT_PERCENT = 40;
 /** The discount applies to both billing periods. */
 export const DISCOUNT_APPLIES = "monthly and yearly plans";
 
-/** Founder's real address, used by the app's support routes too. */
-export const FOUNDER_EMAIL = "aryan@heygaia.io";
-
-export const MEETING_MAILTO = `mailto:${FOUNDER_EMAIL}?subject=${encodeURIComponent("GAIA: I'd love to talk")}&body=${encodeURIComponent("Hi Aryan,\n\nI read your letter. I'd love to set up a short call to talk about what I need from a personal assistant.\n\nThanks!")}`;
+/** Founder's booking link for the meeting CTA. */
+export const MEETING_URL = "https://cal.com/aryanranderiya";
 
 /** localStorage key: pulses the envelope until the letter has been opened once. */
 export const LETTER_OPENED_KEY = "gaia_founder_letter_opened";

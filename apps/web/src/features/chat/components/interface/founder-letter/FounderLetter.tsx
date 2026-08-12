@@ -25,8 +25,8 @@ import {
   LETTER_OPENED_KEY,
   LETTER_PARAGRAPHS,
   MEETING_CTA,
-  MEETING_MAILTO,
   MEETING_SENTENCE,
+  MEETING_URL,
   SALUTATION_FALLBACK,
   SIGNATURE_CAPTION,
 } from "./content";
@@ -49,45 +49,54 @@ const LETTER_TYPOGRAPHY = {
   "--letter-pad-b": "clamp(36px, 6vh, 52px)",
 } as CSSProperties;
 
-/** Flat golden paper (amber-300). One solid color, no gradient. */
-const PAPER_GOLD = "#fcd34d";
+/** Flat soft-gold paper (amber-200): golden, not screaming yellow. */
+const PAPER_GOLD = "#fde68a";
 /** Slightly deeper gold for the folded layers of the envelope button. */
-const PAPER_GOLD_DEEP = "#fbbf24";
+const PAPER_GOLD_DEEP = "#fcd34d";
 
 /**
- * The paper is a flat gold rect passed through a feTurbulence +
- * feDisplacementMap filter so the silhouette gets a subtle hand-torn deckle.
- * No grain, no gradient: gold paper, black ink.
+ * The paper is a clean geometric shape, like a real letterhead: straight
+ * top/left/right edges and a deliberate perforated bottom edge, evenly
+ * spaced semicircle cutouts plus a dashed tear line, like a ticket stub.
+ * Deterministic (no noise, no filters): the geometry is the design.
  */
-const PAPER_TORN_ID = "founder-letter-torn";
+const PAPER_W = 600;
+const PAPER_H = 800;
+const PERF_RADIUS = 7;
+const PERF_SPACING = 42;
+const TEAR_LINE_Y = PAPER_H - 22;
+
+function paperOutline(): string {
+  let d = `M 0 0 L ${PAPER_W} 0 L ${PAPER_W} ${PAPER_H}`;
+  for (let x = PAPER_W - PERF_RADIUS * 2; x >= 0; x -= PERF_SPACING) {
+    d += ` A ${PERF_RADIUS} ${PERF_RADIUS} 0 0 0 ${x} ${PAPER_H}`;
+    if (x - PERF_SPACING > 0) {
+      d += ` L ${x - PERF_SPACING} ${PAPER_H}`;
+    }
+  }
+  return `${d} Z`;
+}
 
 function PaperBackdrop() {
   return (
     <svg
       aria-hidden
       className="pointer-events-none absolute inset-0 h-full w-full"
-      viewBox="0 0 600 800"
+      viewBox={`0 0 ${PAPER_W} ${PAPER_H}`}
       preserveAspectRatio="none"
       style={{ filter: "drop-shadow(0 24px 50px rgba(0,0,0,0.4))" }}
     >
       <title>Decorative paper texture</title>
-      <defs>
-        <filter id={PAPER_TORN_ID} x="-4%" y="-4%" width="108%" height="108%">
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="0.06"
-            numOctaves="2"
-            seed="7"
-            result="tear"
-          />
-          <feDisplacementMap in="SourceGraphic" in2="tear" scale="3" />
-        </filter>
-      </defs>
-      <rect
-        width="600"
-        height="800"
-        fill={PAPER_GOLD}
-        filter={`url(#${PAPER_TORN_ID})`}
+      <path d={paperOutline()} fill={PAPER_GOLD} />
+      {/* Perforation tear line above the cutouts */}
+      <line
+        x1={PERF_RADIUS}
+        y1={TEAR_LINE_Y}
+        x2={PAPER_W - PERF_RADIUS}
+        y2={TEAR_LINE_Y}
+        stroke="rgba(0,0,0,0.25)"
+        strokeWidth={1.5}
+        strokeDasharray="7 7"
       />
     </svg>
   );
@@ -243,7 +252,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
 
             {/* The paper */}
             <m.div
-              className="relative flex max-h-[min(92vh,860px)] w-full max-w-[600px] flex-col overflow-y-auto overscroll-contain outline-none"
+              className="relative flex max-h-[min(92vh,860px)] w-full max-w-[500px] flex-col overflow-y-auto overscroll-contain outline-none"
               role="document"
               tabIndex={-1}
               style={LETTER_TYPOGRAPHY}
@@ -338,7 +347,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                       openPricingModal();
                       closeLetter();
                     }}
-                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full bg-black px-3 text-[calc(var(--letter-small)*0.95)] font-semibold text-amber-300 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
+                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full bg-black px-3 text-[calc(var(--letter-small)*0.95)] font-semibold text-amber-200 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
                   >
                     Get the discount
                     <ArrowRightIcon
@@ -359,7 +368,9 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                   {MEETING_SENTENCE}
                 </p>
                 <a
-                  href={MEETING_MAILTO}
+                  href={MEETING_URL}
+                  target="_blank"
+                  rel="noreferrer"
                   className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
                 >
                   {MEETING_CTA}
