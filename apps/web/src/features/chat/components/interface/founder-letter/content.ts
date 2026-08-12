@@ -33,8 +33,8 @@ export const BODY_FONT = "var(--font-inter), Inter, sans-serif";
  * rendered separately (it carries the inline code + copy button). */
 export const LETTER_PARAGRAPHS: readonly string[] = [
   "If you're reading this, you were here before almost anyone else, and I want you to know how much that means to me.",
-  "I also owe you honesty. GAIA hasn't always been what you deserved. We ran out of money. APIs we depended on cut us off overnight. Life kept throwing punches. I'm sorry for all of it, truly.",
-  "But here's what I'm proudest of: we're still here, and better than ever. Speed, reliability, a memory that remembers, integrations that just work. Every change since has been for you.",
+  "I'll be straight with you. There were stretches where GAIA wasn't what I promised it would be, and you felt every one of them. I won't hand you excuses for those months. What I'll say is that I took it personally, and I never once considered stopping.",
+  "That work is in your hands now. GAIA is faster, steadier, it remembers, and the integrations simply work. Every change since has been for the people who stayed, which means every change has been for you.",
 ];
 
 /** Salutation fallback when the user's name is unknown. */

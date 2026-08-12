@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowRightIcon, CancelIcon, Copy01Icon } from "@icons";
+import { ArrowRightIcon, CancelIcon, Copy01Icon, Tick02Icon } from "@icons";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
+import Image from "next/image";
 import {
   type CSSProperties,
   useCallback,
@@ -44,60 +45,167 @@ const LETTER_TYPOGRAPHY = {
   "--letter-salutation": "clamp(16px, 2.1vh, 20px)",
   "--letter-small": "clamp(12px, 1.45vh, 13px)",
   "--letter-code": "clamp(16px, 2.1vh, 19px)",
-  "--letter-pad-x": "clamp(20px, 6vw, 46px)",
+  "--letter-pad-x": "clamp(24px, 6vw, 58px)",
   "--letter-pad-t": "clamp(14px, 3.4vh, 28px)",
   "--letter-pad-b": "clamp(36px, 6vh, 52px)",
 } as CSSProperties;
 
-/** Flat soft-gold paper (amber-200): golden, not screaming yellow. */
-const PAPER_GOLD = "#fde68a";
-/** Slightly deeper gold for the folded layers of the envelope button. */
-const PAPER_GOLD_DEEP = "#fcd34d";
+/** Ivory stock with the faintest warmth, so the black ink stays the darkest
+ * thing on the page. Used for the paper and for ink-on-paper reversals. */
+const PAPER_CREAM = "#fdf8ea";
+
+/** The sealed envelope the letter arrives in, at its intrinsic size. */
+const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.webp";
+const ENVELOPE_WIDTH = 512;
+const ENVELOPE_HEIGHT = 356;
 
 /**
- * The paper is a clean geometric shape, like a real letterhead: straight
- * top/left/right edges and a deliberate perforated bottom edge, evenly
- * spaced semicircle cutouts plus a dashed tear line, like a ticket stub.
- * Deterministic (no noise, no filters): the geometry is the design.
+ * The paper: a sheet torn out by hand, ragged on all four edges.
+ *
+ * The tear is a displacement map, not a hand-plotted path. Fractal noise
+ * pushes the edge of a plain rectangle in and out, which is what a real fibre
+ * tear looks like and what a path of fake zigzags never does. The same noise
+ * field, at a much finer frequency, is laid back over the sheet as grain, so
+ * the texture and the edge come from one material.
  */
-const PAPER_W = 600;
-const PAPER_H = 800;
-const PERF_RADIUS = 7;
-const PERF_SPACING = 42;
-const TEAR_LINE_Y = PAPER_H - 22;
-
-function paperOutline(): string {
-  let d = `M 0 0 L ${PAPER_W} 0 L ${PAPER_W} ${PAPER_H}`;
-  for (let x = PAPER_W - PERF_RADIUS * 2; x >= 0; x -= PERF_SPACING) {
-    d += ` A ${PERF_RADIUS} ${PERF_RADIUS} 0 0 0 ${x} ${PAPER_H}`;
-    if (x - PERF_SPACING > 0) {
-      d += ` L ${x - PERF_SPACING} ${PAPER_H}`;
-    }
-  }
-  return `${d} Z`;
-}
+const PAPER_VB_W = 600;
+const PAPER_VB_H = 800;
+/** Room for the tear to bite into the rectangle without clipping. */
+const TEAR_INSET = 12;
+const TEAR_DEPTH = 15;
 
 function PaperBackdrop() {
   return (
     <svg
       aria-hidden
       className="pointer-events-none absolute inset-0 h-full w-full"
-      viewBox={`0 0 ${PAPER_W} ${PAPER_H}`}
+      viewBox={`0 0 ${PAPER_VB_W} ${PAPER_VB_H}`}
       preserveAspectRatio="none"
-      style={{ filter: "drop-shadow(0 24px 50px rgba(0,0,0,0.4))" }}
+      style={{ filter: "drop-shadow(0 26px 55px rgba(0,0,0,0.5))" }}
     >
-      <title>Decorative paper texture</title>
-      <path d={paperOutline()} fill={PAPER_GOLD} />
-      {/* Perforation tear line above the cutouts */}
-      <line
-        x1={PERF_RADIUS}
-        y1={TEAR_LINE_Y}
-        x2={PAPER_W - PERF_RADIUS}
-        y2={TEAR_LINE_Y}
-        stroke="rgba(0,0,0,0.25)"
-        strokeWidth={1.5}
-        strokeDasharray="7 7"
-      />
+      <title>Decorative letter paper</title>
+      <defs>
+        {/* Stationery: cool white where the light hits, warming into the
+         * shadow at the bottom right, the way a real sheet sits on a desk. */}
+        <linearGradient id="fl-paper" x1="0.05" y1="0" x2="0.85" y2="1">
+          <stop offset="0%" stopColor="#fffefb" />
+          <stop offset="35%" stopColor="#fdfaf1" />
+          <stop offset="72%" stopColor="#f8f1e0" />
+          <stop offset="100%" stopColor="#efe4cd" />
+        </linearGradient>
+        <radialGradient
+          id="fl-paper-light"
+          cx="0.18"
+          cy="0.04"
+          r="0.75"
+          gradientUnits="objectBoundingBox"
+        >
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+        </radialGradient>
+        {/* The sheet lifts very slightly at the left and right edges. */}
+        <linearGradient id="fl-paper-edges" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#a98c52" stopOpacity="0.14" />
+          <stop offset="9%" stopColor="#a98c52" stopOpacity="0" />
+          <stop offset="91%" stopColor="#a98c52" stopOpacity="0" />
+          <stop offset="100%" stopColor="#a98c52" stopOpacity="0.14" />
+        </linearGradient>
+
+        {/* The tear: noise displacing the edge of the sheet. */}
+        <filter
+          id="fl-tear"
+          x="-6%"
+          y="-5%"
+          width="112%"
+          height="110%"
+          filterUnits="objectBoundingBox"
+        >
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.014 0.022"
+            numOctaves="4"
+            seed="11"
+            result="tearNoise"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="tearNoise"
+            scale={TEAR_DEPTH}
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+
+        {/* The grain: the same fibre, an order of magnitude finer. */}
+        <filter id="fl-grain" x="0%" y="0%" width="100%" height="100%">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.85"
+            numOctaves="4"
+            seed="11"
+            result="grain"
+          />
+          <feColorMatrix in="grain" type="saturate" values="0" result="grey" />
+          <feComponentTransfer in="grey">
+            <feFuncA type="linear" slope="0.16" intercept="0" />
+          </feComponentTransfer>
+        </filter>
+
+        {/* Mottling: where the stock is very slightly thicker or thinner. */}
+        <filter id="fl-mottle" x="0%" y="0%" width="100%" height="100%">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.006"
+            numOctaves="3"
+            seed="4"
+            result="cloud"
+          />
+          <feColorMatrix in="cloud" type="saturate" values="0" result="grey" />
+          <feComponentTransfer in="grey">
+            <feFuncA type="linear" slope="0.1" intercept="0" />
+          </feComponentTransfer>
+        </filter>
+      </defs>
+
+      <g filter="url(#fl-tear)">
+        <rect
+          x={TEAR_INSET}
+          y={TEAR_INSET}
+          width={PAPER_VB_W - TEAR_INSET * 2}
+          height={PAPER_VB_H - TEAR_INSET * 2}
+          fill="url(#fl-paper)"
+        />
+        <rect
+          x={TEAR_INSET}
+          y={TEAR_INSET}
+          width={PAPER_VB_W - TEAR_INSET * 2}
+          height={PAPER_VB_H - TEAR_INSET * 2}
+          fill="url(#fl-paper-light)"
+        />
+        <rect
+          x={TEAR_INSET}
+          y={TEAR_INSET}
+          width={PAPER_VB_W - TEAR_INSET * 2}
+          height={PAPER_VB_H - TEAR_INSET * 2}
+          fill="url(#fl-paper-edges)"
+        />
+        <rect
+          x={TEAR_INSET}
+          y={TEAR_INSET}
+          width={PAPER_VB_W - TEAR_INSET * 2}
+          height={PAPER_VB_H - TEAR_INSET * 2}
+          filter="url(#fl-mottle)"
+          style={{ mixBlendMode: "multiply" }}
+        />
+        <rect
+          x={TEAR_INSET}
+          y={TEAR_INSET}
+          width={PAPER_VB_W - TEAR_INSET * 2}
+          height={PAPER_VB_H - TEAR_INSET * 2}
+          filter="url(#fl-grain)"
+          style={{ mixBlendMode: "multiply" }}
+        />
+      </g>
     </svg>
   );
 }
@@ -199,34 +307,19 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
               }
         }
       >
-        {/* The letter: a flat gold slip, folded once. */}
-        <span
-          className="relative block h-10 w-14 rotate-[-3deg] rounded-[2px] shadow-[0_10px_24px_-6px_rgba(0,0,0,0.45)]"
-          style={{ background: PAPER_GOLD }}
-        >
-          {/* Second page peeking out behind */}
-          <span
-            aria-hidden
-            className="absolute -right-0.5 -bottom-0.5 -z-10 block h-10 w-14 rounded-[2px]"
-            style={{ background: PAPER_GOLD_DEEP }}
-          />
-          {/* Folded flap */}
-          <span
-            aria-hidden
-            className="absolute inset-x-0 top-0 h-3 rounded-t-[2px]"
-            style={{ background: PAPER_GOLD_DEEP }}
-          />
-          {/* The fold crease */}
-          <span
-            aria-hidden
-            className="absolute inset-x-0 top-3 h-px bg-black/20"
-          />
-        </span>
-        {/* Attention ring until the letter has been opened once */}
+        <Image
+          src={ENVELOPE_IMAGE}
+          alt=""
+          width={ENVELOPE_WIDTH}
+          height={ENVELOPE_HEIGHT}
+          priority
+          className="block w-16 rotate-[-3deg] drop-shadow-[0_12px_22px_rgba(0,0,0,0.5)]"
+        />
+        {/* Attention glow until the letter has been opened once */}
         {pulse && (
           <span
             aria-hidden
-            className="absolute inset-0 -z-10 animate-ping rounded-md bg-amber-200/50"
+            className="absolute inset-1 -z-10 animate-ping rounded-lg bg-amber-200/45"
             style={{ animationDuration: "2.4s" }}
           />
         )}
@@ -252,7 +345,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
 
             {/* The paper */}
             <m.div
-              className="relative flex max-h-[min(92vh,860px)] w-full max-w-[500px] flex-col overflow-y-auto overscroll-contain outline-none"
+              className="relative flex max-h-[min(92vh,860px)] w-full max-w-[620px] flex-col overflow-y-auto overscroll-contain outline-none"
               role="document"
               tabIndex={-1}
               style={LETTER_TYPOGRAPHY}
@@ -337,22 +430,32 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                       title={copied ? "Copied" : "Copy code"}
                       className="mx-1 inline-flex h-5 w-5 translate-y-[-1px] cursor-pointer items-center justify-center rounded-full align-middle outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-90"
                     >
-                      <Copy01Icon className="h-3 w-3" style={{ color: INK }} />
+                      {copied ? (
+                        <Tick02Icon
+                          className="h-3 w-3"
+                          style={{ color: INK }}
+                        />
+                      ) : (
+                        <Copy01Icon
+                          className="h-3 w-3"
+                          style={{ color: INK }}
+                        />
+                      )}
                     </button>
                     at checkout.
                   </p>
                   <button
                     type="button"
                     onClick={() => {
-                      openPricingModal();
+                      openPricingModal({ discountCode: DISCOUNT_CODE });
                       closeLetter();
                     }}
-                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full bg-black px-3 text-[calc(var(--letter-small)*0.95)] font-semibold text-amber-200 outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
+                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full bg-black px-3 text-[calc(var(--letter-small)*0.95)] font-semibold text-[#fdf8ea] outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
                   >
                     Get the discount
                     <ArrowRightIcon
                       className="h-3 w-3"
-                      style={{ color: PAPER_GOLD }}
+                      style={{ color: PAPER_CREAM }}
                     />
                   </button>
                 </div>

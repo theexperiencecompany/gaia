@@ -12,6 +12,7 @@ import { ShineBorder } from "@/components/ui/shine-border";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
+import { usePricingModalStore } from "@/stores/pricingModalStore";
 
 import { CENTS_PER_DOLLAR, MONTHS_PER_YEAR } from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
@@ -92,6 +93,9 @@ export function PricingCard({
     isLoading: isCreatingSubscription,
     error: paymentError,
   } = useDodoPayments();
+  // An offer the modal was opened with (the founder's letter, for one) rides
+  // along to checkout so the code is already applied when the page loads.
+  const discountCode = usePricingModalStore((s) => s.discountCode);
   const user = useUser();
   const router = useRouter();
 
@@ -146,7 +150,7 @@ export function PricingCard({
       return;
     }
 
-    await createSubscriptionAndRedirect(planId);
+    await createSubscriptionAndRedirect(planId, discountCode ?? undefined);
   };
 
   const getButtonText = () => {
