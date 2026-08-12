@@ -106,17 +106,16 @@ Two follow-up fixes in this PR close the biggest measured gaps:
   (`AUX_MODEL_NAME`), so their ~30k tokens/turn of new blocks can no longer
   evict the conversation from its namespace.
 
-Real-graph runs with all fixes measure **70.5%** on a 15-turn driver
-(up from 41.4% baseline) — and **84.8% (89% comms-only) on the identical
-driver two hours later with zero code changes**. The per-turn pattern is
-the provider's flapping cache: the byte-identical comms chain alternates
-between ~81% (static prefix only) and ~99% (full chain) across turns;
-the extraction chain (alias namespace) holds 92–99% steadily. When the
-provider's cache holds the conversation chain, the real graph reaches the
-layout's 94.9% ceiling; when it drops the chain, the hits collapse to the
-static prefix. The named next step (batching the memory-pipeline/executor
-calls) would cut the interleaved request count but is no longer believed
-to be the binding constraint — the same interleaves replay at 100%.
+Real-graph runs measure **70.5% → 75.7%** on the same 15-turn driver
+across the three fixes (the anchored journal emission, the Gemini memory
+lane, and the volatile-tail layout split), with the comms' cached prefix
+now growing with the conversation (was flat) and individual turns spiking
+to 93%. The residual uncached bytes per turn are the content that SHOULD
+change — the volatile tail (recent activity, current agenda, per-query
+recall, todos) and the new turn's messages — so the practical ceiling for
+the real graph is ~90% (the 94.9% harness figure used byte-stable slots).
+The follow-up one-shot (alias lane) still contributes a flappy ~2k/turn
+at a ~60% ceiling because its tool-result message changes every turn.
 
 **Tested and reverted: OpenRouter `session_id` sticky routing.** The
 conversation id was pinned on every request (comms, executor, subagents,
