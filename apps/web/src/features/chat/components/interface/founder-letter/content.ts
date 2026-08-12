@@ -2,6 +2,10 @@
  * The founder's letter. Every word of the copy lives here so it can be
  * edited without touching the letter's structure or styling.
  *
+ * Every reader sees this, from day-old accounts to the first hundred users, so
+ * nothing here may assume shared history: the rough patch is described as
+ * GAIA's, conditionally, never as something the reader lived through.
+ *
  * Style rules for this copy: contractions, no em dashes, no ALL-CAPS labels.
  * Vary sentence length; no claims about the writer's own virtue; no vague
  * abstractions standing in for facts. It should read like a person typing,
@@ -39,8 +43,8 @@ export const BODY_FONT = "var(--font-inter), Inter, sans-serif";
 /** The letter's body, one entry per paragraph. The offer paragraph is
  * rendered separately (it carries the inline code + copy button). */
 export const LETTER_PARAGRAPHS: readonly string[] = [
-  "You've been here since the early days, and you're still here. Thank you for that.",
-  "For a long stretch, GAIA wasn't reliable. Slow when you needed it, forgetful when it mattered. You worked around it instead of leaving.",
+  "Thanks for being here. However long you've been using GAIA, you're early.",
+  "For a long stretch, GAIA wasn't reliable. Slow when you needed it, forgetful when it mattered. If you were around for that, you had every reason to stop.",
   "Reliability is the whole job now. It's fast, it remembers, and it finishes what you asked without you checking. I run my entire day on it.",
 ];
 
