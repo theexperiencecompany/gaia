@@ -12,8 +12,6 @@ import pytest
 from app.agents.tools.coding._context import canonical_path
 from app.agents.workspace.paths import WORKSPACE_ROOT, session_dir
 
-pytestmark = pytest.mark.unit
-
 
 @pytest.mark.parametrize(
     "escape",

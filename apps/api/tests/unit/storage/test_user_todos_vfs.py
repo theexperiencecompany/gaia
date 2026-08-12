@@ -32,8 +32,6 @@ from app.services.storage.user_todos_vfs import (
     write_user_todos_marker,
 )
 
-pytestmark = pytest.mark.unit
-
 GUIDE = "# Your todo list\n"
 
 ID_A = "6a70ad010000000000000001"

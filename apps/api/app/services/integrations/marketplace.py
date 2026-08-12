@@ -93,7 +93,11 @@ def assemble_integration_response(
         try:
             response = IntegrationResponse.from_integration(Integration(**custom_doc))
         except Exception as e:
-            log.error(f"{LogTag.INTEGRATION} Failed to parse integration: {e}")
+            log.error(
+                f"{LogTag.INTEGRATION} Failed to parse integration",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return None
     else:
         return None
@@ -130,7 +134,12 @@ async def get_integration_details(integration_id: str) -> IntegrationResponse | 
             if creator:
                 creator_doc = {"name": creator.name, "picture": creator.picture}
         except Exception as e:
-            log.debug(f"{LogTag.INTEGRATION} Failed to fetch creator info for {created_by}: {e}")
+            log.debug(
+                f"{LogTag.INTEGRATION} Failed to fetch creator info for",
+                created_by=created_by,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     return assemble_integration_response(
         resolved.platform_integration, resolved.custom_doc, stored_tools, creator_doc

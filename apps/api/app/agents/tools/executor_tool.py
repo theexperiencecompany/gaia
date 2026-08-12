@@ -41,10 +41,8 @@ from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.services.hil.resolution import cancel_conversation_approvals
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
-
-# Prevent GC of background tasks
-_executor_tasks: set[asyncio.Task[None]] = set()
 
 # A "stop X, do Y" redirect makes the comms model emit cancel_executor and
 # call_executor in ONE turn. The tool node runs both concurrently, so
@@ -143,7 +141,7 @@ async def call_executor(
             configurable=configurable,
             conversation_id=conversation_id,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.error(f"{LogTag.TOOL} Error dispatching executor", error=str(e))
         # Release only if THIS dispatch's acquire is what holds the lock. An
         # unconditional delete here freed a FOREIGN lock when the failure
@@ -244,15 +242,13 @@ async def _dispatch_executor(
         task_id=task_id,
         user_message_id=user_message_id,
     )
-    bg_task = asyncio.create_task(
+    spawn_background_task(
         run_executor_background(
             run=run,
             task=task,
             configurable=configurable,
         ),
     )
-    _executor_tasks.add(bg_task)
-    bg_task.add_done_callback(_executor_tasks.discard)
 
     log.info(
         f"{LogTag.TOOL} Executor dispatched to background",
@@ -346,7 +342,7 @@ async def cancel_executor(
             result += " Currently running task was not in the cancel list — still running."
         return result
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # Deliberately no lock cleanup here: this handler used to delete the busy
         # key unconditionally, which freed the lock of a run it had NOT managed to
         # cancel (no cancel_stream reached it), so the old executor kept going
@@ -374,7 +370,7 @@ async def _broadcast_executor_cancelled(
                 "cancelled": cancelled,
             },
         )
-    except Exception as e:  # noqa: BLE001 — best-effort UI signal
+    except Exception as e:  # best-effort UI signal
         log.warning(f"{LogTag.TOOL} Failed to broadcast executor.cancelled", error=str(e))
 
 

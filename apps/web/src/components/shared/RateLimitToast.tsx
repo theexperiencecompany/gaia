@@ -1,6 +1,7 @@
 "use client";
 
 import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@icons";
+import { formatPlanName } from "@shared/utils";
 import type { ReactNode } from "react";
 import { toast } from "@/lib/toast";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
@@ -23,6 +24,43 @@ interface RateLimitToastProps {
   planRequired?: string;
 }
 
+function buildResetMessage(resetTime: string): string {
+  const resetDate = new Date(resetTime);
+  const now = new Date();
+  const timeDiff = Math.ceil(
+    (resetDate.getTime() - now.getTime()) / (1000 * 60),
+  ); // minutes
+
+  if (timeDiff > 60) {
+    const hours = Math.ceil(timeDiff / 60);
+    return `Rate limit exceeded. Resets in ${hours} hour${hours > 1 ? "s" : ""}.`;
+  }
+  if (timeDiff > 0) {
+    return `Rate limit exceeded. Resets in ${timeDiff} minute${timeDiff > 1 ? "s" : ""}.`;
+  }
+  return "Rate limit exceeded. Resets very soon.";
+}
+
+function buildRateLimitMessage({
+  isUpgradeRequired,
+  feature,
+  planName,
+  resetTime,
+}: {
+  isUpgradeRequired: boolean;
+  feature?: string;
+  planName?: string;
+  resetTime?: string;
+}): string {
+  if (isUpgradeRequired) {
+    return `${feature || "This feature"} is only available in the ${planName} plan. Upgrade to continue using it.`;
+  }
+  if (resetTime) {
+    return buildResetMessage(resetTime);
+  }
+  return "You've exceeded the rate limit. Please upgrade for higher limits.";
+}
+
 export const showRateLimitToast = ({
   title = "Rate Limit Reached",
   message,
@@ -32,36 +70,23 @@ export const showRateLimitToast = ({
   planRequired,
 }: RateLimitToastProps = {}) => {
   // Determine the appropriate icon and styling based on error type
-  const isUpgradeRequired = planRequired && showUpgradeButton;
+  const isUpgradeRequired = Boolean(planRequired && showUpgradeButton);
   const Icon = isUpgradeRequired
     ? CheckmarkBadge01Icon
     : resetTime
       ? Timer02Icon
       : Alert01Icon;
 
+  const planName = planRequired ? formatPlanName(planRequired) : undefined;
+
   // Auto-generate message if not provided
   if (!message) {
-    if (isUpgradeRequired) {
-      message = `${feature || "This feature"} is only available in the ${planRequired.toUpperCase()} plan. Upgrade to continue using it.`;
-    } else if (resetTime) {
-      const resetDate = new Date(resetTime);
-      const now = new Date();
-      const timeDiff = Math.ceil(
-        (resetDate.getTime() - now.getTime()) / (1000 * 60),
-      ); // minutes
-
-      if (timeDiff > 60) {
-        const hours = Math.ceil(timeDiff / 60);
-        message = `Rate limit exceeded. Resets in ${hours} hour${hours > 1 ? "s" : ""}.`;
-      } else if (timeDiff > 0) {
-        message = `Rate limit exceeded. Resets in ${timeDiff} minute${timeDiff > 1 ? "s" : ""}.`;
-      } else {
-        message = "Rate limit exceeded. Resets very soon.";
-      }
-    } else {
-      message =
-        "You've exceeded the rate limit. Please upgrade for higher limits.";
-    }
+    message = buildRateLimitMessage({
+      isUpgradeRequired,
+      feature,
+      planName,
+      resetTime,
+    });
   }
 
   const toastConfig: ToastConfig = {
@@ -77,9 +102,7 @@ export const showRateLimitToast = ({
   // Add upgrade action if needed
   if (showUpgradeButton) {
     toastConfig.action = {
-      label: isUpgradeRequired
-        ? `Upgrade to ${planRequired?.toUpperCase()}`
-        : "Upgrade Now",
+      label: isUpgradeRequired ? `Upgrade to ${planName}` : "Upgrade Now",
       onClick: () => usePricingModalStore.getState().openModal(),
     };
   }
@@ -104,7 +127,7 @@ export const showTokenLimitToast = (feature: string, planRequired?: string) => {
   showRateLimitToast({
     title: "Token Limit Exceeded",
     message: planRequired
-      ? `${feature} token limit exceeded. Upgrade to ${planRequired.toUpperCase()} for higher token limits.`
+      ? `${feature} token limit exceeded. Upgrade to ${formatPlanName(planRequired)} for higher token limits.`
       : `${feature} token limit exceeded. Please wait or upgrade for higher limits.`,
     planRequired,
     showUpgradeButton: !!planRequired,

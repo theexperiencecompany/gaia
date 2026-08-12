@@ -10,6 +10,13 @@ const config: KnipConfig = {
   // ─── Global: suppress exports/types for dynamically-consumed files ───
   // ignoreIssues is root-only (not valid at workspace level).
   ignoreIssues: {
+    // macOS Finder-icon updater: passes the absolute path of the SIP-protected
+    // /usr/bin/osascript to execFile (never via $PATH, so $PATH can't be
+    // repointed at a malicious binary). It's a runtime system command, not an
+    // import — knip flags it as unresolved only on the Linux CI runner where
+    // the macOS binary is absent.
+    "apps/desktop/src/main/app-icon.ts": ["unresolved"],
+
     // OpenUI: components resolved by name via @openuidev/react-lang Renderer
     "apps/web/src/config/openui/components/**": ["exports", "types"],
     "apps/web/src/config/openui/genericLibrary.tsx": ["exports", "types"],
@@ -82,6 +89,11 @@ const config: KnipConfig = {
 
   // Exclude non-app files from unused file detection
   ignore: [
+    // Wide-event conformance emitters: run as subprocesses from
+    // scripts/ci/wide-event-conformance/run.py (python3/pnpm exec tsx), never
+    // imported as modules — so knip reads them as unused files.
+    "scripts/ci/wide-event-conformance/emit_typescript.ts",
+
     // Agent skill templates (not app code, used by Claude Code skill system)
     ".agents/skills/**",
     ".claude/skills/**",
@@ -212,6 +224,11 @@ const config: KnipConfig = {
         // React/ReactDOM are peer deps consumed by all workspaces
         "react",
         "react-dom",
+        // Imported by scripts/ci/lib/bots-facts.mjs (the bots evlog-map AST
+        // scanner). Declared in apps/mobile + apps/web; resolved here via
+        // pnpm workspace hoisting, so knip reads them as unlisted at the root.
+        "@babel/parser",
+        "@babel/traverse",
         // Invoked dynamically as `pnpm exec jscpd` inside
         // scripts/ci/check-duplication.mjs, so knip can't see the usage.
         "jscpd",

@@ -102,7 +102,9 @@ function RenameModal({
             width: "100%",
             maxWidth: 360,
           }}
-          onPress={() => {}}
+          onPress={() => {
+            /* swallow taps inside the dialog so the outer overlay does not close it */
+          }}
         >
           <Text
             style={{

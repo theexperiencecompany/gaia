@@ -10,13 +10,9 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.agents.tools.coding import _artifacts
 from app.agents.tools.coding._artifacts import publish_artifact, publish_artifact_write
 from app.agents.workspace.paths import INLINE_ARTIFACT_MAX_BYTES, MountRole
-
-pytestmark = pytest.mark.unit
 
 
 def _capture() -> tuple[AsyncMock, list]:

@@ -59,7 +59,11 @@ def build_user_context_parts(preferences: dict[str, Any]) -> list[str]:
                 parts.append(f"Special Instructions: {instructions}")
 
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Error building user context parts: {e!s}")
+        log.warning(
+            f"{LogTag.AGENT} Error building user context parts",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return parts
 
@@ -136,5 +140,9 @@ def format_user_preferences_for_agent(
         return None
 
     except Exception as e:
-        log.error(f"{LogTag.AGENT} Error formatting user preferences for agent: {e!s}")
+        log.error(
+            f"{LogTag.AGENT} Error formatting user preferences for agent",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None

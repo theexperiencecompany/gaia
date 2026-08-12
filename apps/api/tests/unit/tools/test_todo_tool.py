@@ -4,8 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.models.todo_models import Priority, TodoLabelCount, TodoStats
 
 # ---------------------------------------------------------------------------
@@ -96,7 +94,6 @@ def _writer_mock() -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateTodo:
     """Tests for the create_todo tool."""
 
@@ -228,7 +225,6 @@ class TestCreateTodo:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListTodos:
     """Tests for the list_todos tool."""
 
@@ -331,7 +327,6 @@ class TestListTodos:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateTodo:
     """Tests for the update_todo tool."""
 
@@ -428,7 +423,6 @@ class TestUpdateTodo:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeleteTodo:
     """Tests for the delete_todo tool."""
 
@@ -501,7 +495,6 @@ class TestDeleteTodo:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSearchTodos:
     """Tests for the search_todos tool."""
 
@@ -572,7 +565,6 @@ class TestSearchTodos:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSemanticSearchTodos:
     """Tests for the semantic_search_todos tool."""
 
@@ -628,7 +620,6 @@ class TestSemanticSearchTodos:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetTodoStatistics:
     """Tests for the get_todo_statistics tool."""
 
@@ -671,7 +662,6 @@ class TestGetTodoStatistics:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetTodayTodos:
     """Tests for the get_today_todos tool."""
 
@@ -718,7 +708,6 @@ class TestGetTodayTodos:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUpcomingTodos:
     """Tests for the get_upcoming_todos tool."""
 
@@ -769,7 +758,6 @@ class TestGetUpcomingTodos:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateProject:
     """Tests for the create_project tool."""
 
@@ -819,7 +807,6 @@ class TestCreateProject:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListProjects:
     """Tests for the list_projects tool."""
 
@@ -848,7 +835,6 @@ class TestListProjects:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeleteProject:
     """Tests for the delete_project tool."""
 
@@ -911,7 +897,6 @@ class TestDeleteProject:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetTodosByLabel:
     """Tests for the get_todos_by_label tool."""
 
@@ -943,7 +928,6 @@ class TestGetTodosByLabel:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetAllLabels:
     """Tests for the get_all_labels tool."""
 
@@ -987,7 +971,6 @@ class TestGetAllLabels:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBulkCompleteTodos:
     """Tests for the bulk_complete_todos tool."""
 
@@ -1020,7 +1003,6 @@ class TestBulkCompleteTodos:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBulkMoveTodos:
     """Tests for the bulk_move_todos tool."""
 
@@ -1053,7 +1035,6 @@ class TestBulkMoveTodos:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBulkDeleteTodos:
     """Tests for the bulk_delete_todos tool."""
 
@@ -1105,7 +1086,6 @@ class TestBulkDeleteTodos:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAddSubtask:
     """Tests for the add_subtask tool."""
 
@@ -1163,7 +1143,6 @@ class TestAddSubtask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateSubtask:
     """Tests for the update_subtask tool."""
 
@@ -1227,7 +1206,6 @@ class TestUpdateSubtask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeleteSubtask:
     """Tests for the delete_subtask tool."""
 
@@ -1288,7 +1266,6 @@ class TestDeleteSubtask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetTodosSummary:
     """Tests for the get_todos_summary tool."""
 

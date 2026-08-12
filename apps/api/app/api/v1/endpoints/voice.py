@@ -98,7 +98,7 @@ async def get_token(
             )
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate voice token: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate voice token: {e!s}") from e
 
     log.set(outcome="success")
     return VoiceTokenResponse(

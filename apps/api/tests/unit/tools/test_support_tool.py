@@ -3,8 +3,6 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -30,7 +28,6 @@ def _writer() -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateSupportTicket:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.user_service")

@@ -12,7 +12,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage
-import pytest
 
 from app.agents.middleware.subagent_join import SubagentJoinMiddleware
 
@@ -33,7 +32,6 @@ def _with_config(configurable: dict[str, Any]) -> Any:
     return patch(f"{MODULE}.get_config", return_value={"configurable": configurable})
 
 
-@pytest.mark.unit
 class TestForcedJoin:
     async def test_landed_results_force_the_join_on_a_bare_final_answer(self) -> None:
         response = AIMessage(content="All done!")

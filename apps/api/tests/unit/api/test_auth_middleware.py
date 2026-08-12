@@ -30,7 +30,6 @@ def _no_dev_bypass(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetCurrentUser:
     def test_returns_user_from_request_state(self) -> None:
         request = MagicMock()
@@ -81,7 +80,6 @@ def _build_test_app(middleware_kwargs: dict | None = None):
     return app
 
 
-@pytest.mark.unit
 class TestWorkOSAuthMiddlewareExcludedPaths:
     """Requests to excluded paths should pass through without authentication."""
 
@@ -101,7 +99,6 @@ class TestWorkOSAuthMiddlewareExcludedPaths:
         assert resp.json()["user"] is None
 
 
-@pytest.mark.unit
 class TestWorkOSAuthMiddlewareSessionAuth:
     """Session-based authentication via cookies and Authorization header."""
 
@@ -124,7 +121,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             return_value=(user_info, None),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "sealed_tok"})
+            client.cookies.set("wos_session", "sealed_tok")
+            resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
         data = resp.json()
         assert data["authenticated"] is True
@@ -158,7 +156,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             return_value=(user_info, new_session),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "old_tok"})
+            client.cookies.set("wos_session", "old_tok")
+            resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
         # The middleware should set a wos_session cookie
         assert "wos_session" in resp.cookies
@@ -172,7 +171,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             return_value=(None, None),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "bad_tok"})
+            client.cookies.set("wos_session", "bad_tok")
+            resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
         assert resp.json()["authenticated"] is False
 
@@ -185,13 +185,13 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             side_effect=RuntimeError("WorkOS error"),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "tok"})
+            client.cookies.set("wos_session", "tok")
+            resp = client.get("/api/v1/protected")
         # Request should still go through, just unauthenticated
         assert resp.status_code == 200
         assert resp.json()["authenticated"] is False
 
 
-@pytest.mark.unit
 class TestWorkOSAuthMiddlewareAgentAuth:
     """Agent-only paths use JWT agent tokens when no session is present."""
 
@@ -282,7 +282,6 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         assert resp.json()["authenticated"] is False
 
 
-@pytest.mark.unit
 class TestAuthenticateSession:
     """Unit tests for _authenticate_session helper."""
 

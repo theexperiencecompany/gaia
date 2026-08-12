@@ -1,0 +1,62 @@
+# gaia-redis-memory — fires when Redis is above 85% of its memory limit. Covers
+# both instances: the cache (allkeys-lru, evicts) and jfs_meta_redis
+# (noeviction, fails metadata writes) — the summary names the job.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-redis-memory fires at 90% of the memory limit
+    interval: 1m
+    input_series:
+      - series: 'redis_memory_used_bytes{instance="redis:6379"}'
+        values: '1932735283x30'
+      - series: 'redis_memory_max_bytes{instance="redis:6379"}'
+        values: '2147483648x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-redis-memory
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: redis
+              instance: redis:6379
+            exp_annotations:
+              description: >-
+                Redis holds more than a cache here — it is the ARQ job queue itself, the SSE chat stream channels, stream-cancellation flags, response caching and rate-limit counters. On the cache instance the eviction policy is allkeys-lru, so crossing the limit starts dropping any of those at random; on jfs_meta_redis the policy is noeviction, so metadata writes start failing instead. This is the warning before either happens.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-memory
+              __dashboardUid__: gaia-databases
+              __panelId__: '8'
+
+  - name: gaia-redis-memory fires for jfs_meta_redis at 90% of its limit
+    interval: 1m
+    input_series:
+      - series: 'redis_memory_used_bytes{instance="jfs_redis_exporter:9121"}'
+        values: '2899102925x30'
+      - series: 'redis_memory_max_bytes{instance="jfs_redis_exporter:9121"}'
+        values: '3221225472x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-redis-memory
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: redis
+              instance: jfs_redis_exporter:9121
+            exp_annotations:
+              description: >-
+                Redis holds more than a cache here — it is the ARQ job queue itself, the SSE chat stream channels, stream-cancellation flags, response caching and rate-limit counters. On the cache instance the eviction policy is allkeys-lru, so crossing the limit starts dropping any of those at random; on jfs_meta_redis the policy is noeviction, so metadata writes start failing instead. This is the warning before either happens.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-memory
+              __dashboardUid__: gaia-databases
+              __panelId__: '8'
+
+  - name: gaia-redis-memory stays quiet at 50% of the memory limit
+    interval: 1m
+    input_series:
+      - series: 'redis_memory_used_bytes{instance="redis:6379"}'
+        values: '1073741824x30'
+      - series: 'redis_memory_max_bytes{instance="redis:6379"}'
+        values: '2147483648x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-redis-memory
+        exp_alerts: []

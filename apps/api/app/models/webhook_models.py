@@ -121,7 +121,11 @@ class DodoWebhookEvent(BaseModel):
                 # Loud on purpose: returning None here is indistinguishable from
                 # "not a payment event", so a provider schema change would silently
                 # stop payment data reaching billing with nothing in the logs.
-                log.error(f"{LogTag.PAYMENT} Dodo payment webhook payload did not validate: {exc}")
+                log.error(
+                    f"{LogTag.PAYMENT} Dodo payment webhook payload did not validate",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
                 return None
         return None
 
@@ -135,7 +139,9 @@ class DodoWebhookEvent(BaseModel):
                 # "not a subscription event", so a provider schema change would silently
                 # stop subscription data reaching billing with nothing in the logs.
                 log.error(
-                    f"{LogTag.PAYMENT} Dodo subscription webhook payload did not validate: {exc}"
+                    f"{LogTag.PAYMENT} Dodo subscription webhook payload did not validate",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
                 )
                 return None
         return None

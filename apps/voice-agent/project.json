@@ -15,10 +15,10 @@
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker build -f apps/voice-agent/Dockerfile -t apps-voice-agent -t ghcr.io/theexperiencecompany/gaia-voice-agent:latest . && docker push ghcr.io/theexperiencecompany/gaia-voice-agent:latest",
+        "command": "docker build --build-arg GIT_COMMIT_SHA=$(git rev-parse HEAD) -f apps/voice-agent/Dockerfile -t apps-voice-agent -t ghcr.io/theexperiencecompany/gaia-voice-agent:latest . && docker push ghcr.io/theexperiencecompany/gaia-voice-agent:latest",
         "cwd": "."
       },
-      "cache": true,
+      "cache": false,
       "inputs": ["production", "^production"]
     },
     "sync": {

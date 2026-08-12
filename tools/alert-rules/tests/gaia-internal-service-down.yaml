@@ -1,0 +1,45 @@
+# gaia-internal-service-down — fires when any internally probed service fails.
+#
+# Multi-dimensional: only the failing instance alerts. The noData path (no
+# probe_success series at all) is Grafana-only via noDataState: Alerting.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-internal-service-down fires only for the instance that reports 0
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_internal",instance="embedding-sidecar:8200"}'
+        values: '0x30'
+      - series: 'probe_success{job="blackbox_internal",instance="discord-bot:3200"}'
+        values: '1x30'
+      - series: 'probe_success{job="blackbox_internal",instance="slack-bot:3201"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-internal-service-down
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: availability
+              incident: availability
+              job: blackbox_internal
+              instance: embedding-sidecar:8200
+            exp_annotations:
+              description: >-
+                These five targets have no metrics of their own and are health-probed instead. If this is embedding-sidecar:8200, both the API and the ARQ worker lose embedding and reranking, so memory storage and semantic memory search break product-wide — there is no in-process fallback, the worker cannot fit the models in its memory limit. If it is one of the discord, slack, telegram or whatsapp bots, that platform's users get no replies even though the API itself is healthy.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-internal-service-down
+              __dashboardUid__: gaia-containers
+              __panelId__: '1'
+
+  - name: gaia-internal-service-down stays quiet when every instance is up
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_internal",instance="embedding-sidecar:8200"}'
+        values: '1x30'
+      - series: 'probe_success{job="blackbox_internal",instance="discord-bot:3200"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-internal-service-down
+        exp_alerts: []

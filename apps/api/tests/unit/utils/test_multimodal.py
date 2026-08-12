@@ -5,8 +5,6 @@ logger, an SSE stream, a Mongo document, or a char-based token estimate. Every
 test here is really asking one question: can megabytes of base64 get through?
 """
 
-import pytest
-
 from app.constants.media import MEDIA_BLOCK_TOKEN_ESTIMATE
 from app.utils.multimodal import (
     approx_content_chars,
@@ -23,7 +21,6 @@ IMAGE = {"type": "image", "base64": BIG_B64, "mime_type": "image/png"}
 TEXT = {"type": "text", "text": "Image file shot.png"}
 
 
-@pytest.mark.unit
 class TestExtractTextContent:
     def test_media_base64_never_survives_extraction(self):
         """The core guarantee. If this leaks, it leaks to the browser and Mongo."""
@@ -61,7 +58,6 @@ class TestExtractTextContent:
         assert BIG_B64 not in result
 
 
-@pytest.mark.unit
 class TestMediaBlockDetection:
     def test_image_block_is_media(self):
         assert is_media_block(IMAGE) is True
@@ -92,7 +88,6 @@ class TestMediaBlockDetection:
         assert media_blocks("string content") == []
 
 
-@pytest.mark.unit
 class TestApproxContentChars:
     def test_media_block_is_charged_a_flat_cost_not_its_base64_length(self):
         """A 1 MB image is ~1.4M base64 chars. Charged literally, one screenshot
@@ -119,7 +114,6 @@ class TestApproxContentChars:
         assert with_image == text_only + MEDIA_BLOCK_TOKEN_ESTIMATE * 4
 
 
-@pytest.mark.unit
 class TestBlockConstructors:
     def test_image_content_block_shape(self):
         assert image_content_block("QUJD", "image/png") == {

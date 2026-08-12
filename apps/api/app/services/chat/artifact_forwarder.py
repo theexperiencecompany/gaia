@@ -55,14 +55,10 @@ from app.utils.artifact_utils import (
     build_artifact_full_entry,
     build_artifact_ref_entry,
 )
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 _warm_semaphore = asyncio.Semaphore(ARTIFACT_WARM_MAX_CONCURRENCY)
-
-# Module-level task-reference sets: they keep fire-and-forget work that can
-# outlive a forwarder instance from being garbage-collected mid-flight.
-_warm_tasks: set[asyncio.Task[None]] = set()
-_publish_tasks: set[asyncio.Task[bool]] = set()
 
 
 async def forward_artifact_events(
@@ -158,14 +154,22 @@ class ArtifactForwarder:
             await pubsub.subscribe(channel)
             self._signal_subscribed()
             log.info(
-                f"{ARTIFACT_LOG_PREFIX} subscribed "
-                f"(conv={self.conversation_id}, registry={len(self.registry_mtimes)})"
+                "subscribed",
+                artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                conversation_id=self.conversation_id,
+                registry_mtimes_count=len(self.registry_mtimes),
             )
             await self._consume(pubsub)
         except asyncio.CancelledError:
             raise
-        except Exception as e:  # noqa: BLE001 — log and exit; orchestrator cleans up
-            log.warning(f"{ARTIFACT_LOG_PREFIX} forwarder error (conv={self.conversation_id}): {e}")
+        except Exception as e:  # log and exit; orchestrator cleans up
+            log.warning(
+                "forwarder error",
+                artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                conversation_id=self.conversation_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
         finally:
             self._signal_subscribed()  # no-op when set; unblocks waiters if subscribe failed
             self._log_summary()
@@ -193,9 +197,13 @@ class ArtifactForwarder:
                 await self._handle_event(payload)
             except asyncio.CancelledError:
                 raise
-            except Exception as e:  # noqa: BLE001 — one bad event must not kill the turn
+            except Exception as e:  # one bad event must not kill the turn
                 log.warning(
-                    f"{ARTIFACT_LOG_PREFIX} event failed (conv={self.conversation_id}): {e}"
+                    "event failed",
+                    artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                    conversation_id=self.conversation_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
 
     # ── Per-event routing ──────────────────────────────────────────────────
@@ -208,7 +216,7 @@ class ArtifactForwarder:
             await self._apply_remove(path)
         elif self._is_unchanged(path, payload):
             self.stats.unchanged += 1  # idempotent re-emit — kills the cross-turn leak
-            log.debug(f"{ARTIFACT_LOG_PREFIX} skip unchanged path={path}")
+            log.debug("skip unchanged path", artifact_log_prefix=ARTIFACT_LOG_PREFIX, path=path)
         else:
             await self._apply_upsert(payload, path, event)
 
@@ -276,11 +284,18 @@ class ArtifactForwarder:
                     return
                 await asyncio.sleep(ARTIFACT_PERSIST_RETRY_BASE_DELAY * (attempt + 1))
             log.warning(
-                f"{ARTIFACT_LOG_PREFIX} persist matched no bot message after retries "
-                f"(conv={self.conversation_id}, msg={self.bot_message_id})"
+                "persist matched no bot message after retries",
+                artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                conversation_id=self.conversation_id,
+                bot_message_id=self.bot_message_id,
             )
-        except Exception as e:  # noqa: BLE001 — best-effort; live stream already delivered it
-            log.warning(f"{ARTIFACT_LOG_PREFIX} failed to persist artifact entry: {e}")
+        except Exception as e:  # best-effort; live stream already delivered it
+            log.warning(
+                "failed to persist artifact entry",
+                artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     def _maybe_deliver_to_bot(self, payload: dict[str, Any], path: str, event: str | None) -> None:
         """Push an agent-generated artifact to a bot user's outbound queue, once.
@@ -294,7 +309,7 @@ class ArtifactForwarder:
             return
         self.published_files.add(path)
         self.stats.delivered += 1
-        pub_task = asyncio.create_task(
+        spawn_background_task(
             publish_outbound_file(
                 platform=self.bot_platform,
                 user_id=self.user_id,
@@ -304,17 +319,13 @@ class ArtifactForwarder:
                 content_type=payload.get("content_type"),
             )
         )
-        _publish_tasks.add(pub_task)
-        pub_task.add_done_callback(_publish_tasks.discard)
 
     def _maybe_warm_cache(self, payload: dict[str, Any], path: str, event: str | None) -> None:
         """Warm the JuiceFS cache for follow-up-fetch files (those with no inline
         body); inlined files carry their body and never hit the file endpoint."""
         if event != "upsert" or payload.get("body"):
             return
-        warm = asyncio.create_task(self._warm_cache(path))
-        _warm_tasks.add(warm)
-        warm.add_done_callback(_warm_tasks.discard)
+        spawn_background_task(self._warm_cache(path))
 
     async def _warm_cache(self, path: str) -> None:
         """Pre-read a freshly written artifact into the host JuiceFS cache so the
@@ -329,16 +340,25 @@ class ArtifactForwarder:
                     self.user_id, self.conversation_id, "artifacts", path
                 )
                 await asyncio.to_thread(_warm_artifact_blocks, host_path)
-        except Exception as e:  # noqa: BLE001 — best-effort cache warm
-            log.debug(f"{ARTIFACT_LOG_PREFIX} cache warm skipped: {e}")
+        except Exception as e:  # best-effort cache warm
+            log.debug(
+                "cache warm skipped",
+                artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     def _log_summary(self) -> None:
         s = self.stats
         log.set(artifacts=s.as_wide_event(self.conversation_id))
         log.info(
-            f"{ARTIFACT_LOG_PREFIX} closed (conv={self.conversation_id}, "
-            f"upserts={s.upserts}, removes={s.removes}, "
-            f"unchanged={s.unchanged}, delivered={s.delivered})"
+            "closed",
+            artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+            conversation_id=self.conversation_id,
+            upserts=s.upserts,
+            removes=s.removes,
+            unchanged=s.unchanged,
+            delivered=s.delivered,
         )
 
 

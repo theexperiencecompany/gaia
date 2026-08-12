@@ -436,14 +436,12 @@ export const EnvMethodSelectionStep: React.FC<{
 // Infisical setup component
 export const InfisicalSetupStep: React.FC<{
   onSubmit: (values: {
-    INFISICAL_TOKEN: string;
     INFISICAL_PROJECT_ID: string;
     INFISICAL_MACHINE_IDENTITY_CLIENT_ID: string;
     INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET: string;
   }) => void;
 }> = ({ onSubmit }) => {
   const [values, setValues] = useState({
-    INFISICAL_TOKEN: "",
     INFISICAL_PROJECT_ID: "",
     INFISICAL_MACHINE_IDENTITY_CLIENT_ID: "",
     INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET: "",
@@ -452,10 +450,6 @@ export const InfisicalSetupStep: React.FC<{
   const [error, setError] = useState<string | null>(null);
 
   const fields = [
-    {
-      key: "INFISICAL_TOKEN" as const,
-      description: "Service token from project settings (st.xxx...)",
-    },
     {
       key: "INFISICAL_PROJECT_ID" as const,
       description: "Found in your Infisical project settings",

@@ -14,7 +14,6 @@ from app.workers.lifecycle.shutdown import shutdown
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkerStartup:
     """Tests for ARQ worker startup function."""
 
@@ -82,7 +81,6 @@ class TestWorkerStartup:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkerShutdown:
     """Tests for ARQ worker shutdown function."""
 
@@ -160,9 +158,21 @@ class TestWorkerShutdown:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkerSettings:
-    """Tests for WorkerSettings configuration class."""
+    """Tests for WorkerSettings configuration class.
+
+    The class doubles as the ARQ wiring registry: ``app/worker.py`` assigns
+    ``functions`` / ``cron_jobs`` / ``on_startup`` / ``on_shutdown`` at
+    import, and any test file importing it pollutes the class for the whole
+    xdist worker. These tests pin the DECLARED defaults, so reset them in
+    setup instead of depending on import order (pytest-randomly).
+    """
+
+    def setup_method(self) -> None:
+        WorkerSettings.functions = []
+        WorkerSettings.cron_jobs = []
+        WorkerSettings.on_startup = None
+        WorkerSettings.on_shutdown = None
 
     def test_redis_settings_from_dsn(self):
         """redis_settings is populated from the REDIS_URL setting."""

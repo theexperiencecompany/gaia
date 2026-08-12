@@ -9,6 +9,7 @@ from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
 
 from app.agents.llm.client import get_default_llm
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
@@ -20,7 +21,6 @@ from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from app.config.settings import settings
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     DEFAULT_MAX_TOKENS,
@@ -61,22 +61,32 @@ _summarization_llm: BaseChatModel | None = None
 
 
 def get_summarization_llm() -> BaseChatModel | None:
-    """Get the cached summarization LLM (the default Gemini model), or None if the
-    Google API key is not configured."""
+    """The cached summarization model, or None when the default model is not
+    configured (summarization middleware is then dropped).
+
+    Availability is decided by CALLING the factory and catching its refusal, not
+    by checking a provider key here. A key check is a second copy of "what does
+    the default model need", and when the default moved providers the two
+    disagreed: the gate passed on a key the factory no longer used, and — worse
+    the other way round — a missing key silently dropped compaction from the
+    graph while the model itself was perfectly reachable. Long conversations
+    then blow the context window with nothing in the logs pointing here.
+    """
     global _summarization_llm
 
     if _summarization_llm is not None:
         return _summarization_llm
 
-    if not settings.GOOGLE_API_KEY:
-        log.warning(
-            f"{LogTag.AGENT} Google API key not configured. Summarization middleware disabled."
+    try:
+        # get_default_llm() carries the model's context-window profile, which the
+        # summarization/compaction fractional triggers below require to build.
+        _summarization_llm = get_default_llm()
+    except LLMNotConfiguredError as exc:
+        log.set(error=str(exc))
+        log.error(
+            f"{LogTag.AGENT} Default model not configured. Summarization middleware disabled."
         )
         return None
-
-    # get_default_llm() carries the model's context-window profile, which the
-    # summarization/compaction fractional triggers below require to build.
-    _summarization_llm = get_default_llm()
     return _summarization_llm
 
 
@@ -147,7 +157,7 @@ def create_middleware_stack(
         middleware.append(
             LLMAccountingMiddleware(agent_name=agent_name, recursion_limit=recursion_limit)
         )
-        log.debug(f"{LogTag.AGENT} LLMAccountingMiddleware enabled for {agent_name}")
+        log.debug(f"{LogTag.AGENT} LLMAccountingMiddleware enabled", agent_name=agent_name)
         log.set(
             middleware_stack={
                 "agent_name": agent_name,
@@ -160,7 +170,7 @@ def create_middleware_stack(
     # effect before the user decides. A no-op unless the user's HIL preference is
     # on, so it needs no build-time flag.
     middleware.append(HILApprovalMiddleware())
-    log.debug(f"{LogTag.AGENT} HILApprovalMiddleware enabled for {agent_name}")
+    log.debug(f"{LogTag.AGENT} HILApprovalMiddleware enabled", agent_name=agent_name)
 
     # SubagentMiddleware - spawn_subagent tool for parallel/focused work
     if enable_subagent:
@@ -178,7 +188,7 @@ def create_middleware_stack(
         middleware.append(subagent)
         log.debug(f"{LogTag.AGENT} SubagentMiddleware enabled with spawn_subagent tool")
 
-    # Summarization middleware (requires Gemini API key)
+    # Summarization middleware (dropped when the default model is unconfigured)
     if enable_summarization:
         summary_llm = get_summarization_llm()
         if summary_llm:
@@ -191,7 +201,9 @@ def create_middleware_stack(
             )
             middleware.append(summarization)
             log.debug(
-                f"{LogTag.AGENT} Summarization middleware enabled: trigger={summarization_trigger}, keep={summarization_keep}"
+                f"{LogTag.AGENT} Summarization middleware enabled",
+                summarization_trigger=summarization_trigger,
+                summarization_keep=summarization_keep,
             )
 
     # Compaction middleware (always available, but respects enable flag). It also
@@ -207,14 +219,17 @@ def create_middleware_stack(
             excluded_tools=compaction_excluded_tools,
         )
         middleware.append(compaction)
-        log.debug(f"{LogTag.AGENT} Compaction middleware enabled: threshold={compaction_threshold}")
+        log.debug(
+            f"{LogTag.AGENT} Compaction middleware enabled",
+            compaction_threshold=compaction_threshold,
+        )
 
     # Media description — a lane that can't see pixels gets prose for any tool
     # result carrying images. Inner to compaction, so the description is attached
     # before compaction inspects the result; compaction never spills media anyway.
     # No enable flag: it no-ops on every result without media, i.e. nearly all.
     middleware.append(MediaDescriptionMiddleware())
-    log.debug(f"{LogTag.AGENT} Media description middleware enabled for {agent_name}")
+    log.debug(f"{LogTag.AGENT} Media description middleware enabled", agent_name=agent_name)
 
     # Loop-guard middleware — added LAST so it sits innermost and observes the
     # raw tool result before compaction/summarization transform it, counting the
@@ -222,8 +237,9 @@ def create_middleware_stack(
     if enable_loop_guard:
         middleware.append(LoopGuardMiddleware(hard_stop=loop_guard_hard_stop))
         log.debug(
-            f"{LogTag.AGENT} Loop guard middleware enabled for {agent_name}: "
-            f"hard_stop={loop_guard_hard_stop}"
+            f"{LogTag.AGENT} Loop guard middleware enabled",
+            agent_name=agent_name,
+            hard_stop=loop_guard_hard_stop,
         )
 
     # Subagent-join enforcement (executor only) — after everything else so it
@@ -233,7 +249,7 @@ def create_middleware_stack(
     # remembering to call the join.
     if enable_subagent_join:
         middleware.append(SubagentJoinMiddleware())
-        log.debug(f"{LogTag.AGENT} SubagentJoinMiddleware enabled for {agent_name}")
+        log.debug(f"{LogTag.AGENT} SubagentJoinMiddleware enabled", agent_name=agent_name)
 
     return middleware
 
@@ -312,7 +328,12 @@ def create_subagent_middleware(
     Provider subagents handle focused integration work and should have:
     - SubagentMiddleware: For spawning focused sub-subagents
     - WorkspaceCompactionMiddleware: Persist oversized tool outputs to /workspace
-    - NO summarization
+    - Summarization: compaction bounds a single tool output, not the accumulated
+      history. Without summarization a run grows unbounded up to
+      EXECUTOR_RECURSION_LIMIT steps — in production this averaged 91k input
+      tokens per call against 43k for comms/executor, peaking at a full 1M-token
+      window. Trimming is safe here because the result is read from the
+      finish_task call, never from replayed history.
 
     Spawned sub-subagents will NOT have SubagentMiddleware (enforced by
     SubagentMiddleware itself which excludes spawn_subagent from child tools).
@@ -332,7 +353,7 @@ def create_subagent_middleware(
     return create_middleware_stack(
         agent_name="provider_subagent",
         enable_subagent=enable_subagent,
-        enable_summarization=False,
+        enable_summarization=True,
         enable_compaction=True,
         subagent_llm=subagent_llm,
         subagent_tools=subagent_tools,

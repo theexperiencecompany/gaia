@@ -1082,6 +1082,61 @@ function WhatsAppTicks({ status }: { status: "sent" | "delivered" | "read" }) {
  * Source: .context/attachments/Telegram Chat.svg
  * ========================================================================= */
 
+interface TelegramBubbleProps {
+  m: ChatMessageItem;
+  from: CurvedThread["from"];
+  isMe: boolean;
+  isLast: boolean;
+  myBubble: string;
+  theirBubble: string;
+  textColor: string;
+  metaColor: string;
+  myMeta: string;
+}
+
+function TelegramBubble({
+  m,
+  from,
+  isMe,
+  isLast,
+  myBubble,
+  theirBubble,
+  textColor,
+  metaColor,
+  myMeta,
+}: TelegramBubbleProps) {
+  const showMeta = !m.typing && (m.time || (isMe && m.status));
+  return (
+    <CurvedBubble
+      className="chat-bubble-pop"
+      from={from}
+      tail={isLast}
+      background={isMe ? myBubble : theirBubble}
+      tailColor={isMe ? myBubble : theirBubble}
+      color={textColor}
+      meta={
+        showMeta ? (
+          <span
+            style={{
+              color: isMe ? myMeta : metaColor,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+            }}
+          >
+            {m.time ?? ""}
+            {isMe && m.status && (
+              <TelegramTicks status={m.status} color={myMeta} />
+            )}
+          </span>
+        ) : undefined
+      }
+    >
+      {m.typing ? <TypingDots color={isMe ? myMeta : metaColor} /> : m.text}
+    </CurvedBubble>
+  );
+}
+
 function TelegramDemo({
   messages,
   title,
@@ -1238,46 +1293,22 @@ function TelegramDemo({
               )}
               style={{ gap: 2 }}
             >
-              {group.items.map((m, i) => {
-                const isLast = i === group.items.length - 1;
-                const showMeta = !m.typing && (m.time || (isMe && m.status));
-                return (
-                  <Fragment key={m.id ?? `${gi}-${i}`}>
-                    <CurvedBubble
-                      className="chat-bubble-pop"
-                      from={group.from}
-                      tail={isLast}
-                      background={isMe ? myBubble : theirBubble}
-                      tailColor={isMe ? myBubble : theirBubble}
-                      color={textColor}
-                      meta={
-                        showMeta ? (
-                          <span
-                            style={{
-                              color: isMe ? myMeta : metaColor,
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 3,
-                            }}
-                          >
-                            {m.time ?? ""}
-                            {isMe && m.status && (
-                              <TelegramTicks status={m.status} color={myMeta} />
-                            )}
-                          </span>
-                        ) : undefined
-                      }
-                    >
-                      {m.typing ? (
-                        <TypingDots color={isMe ? myMeta : metaColor} />
-                      ) : (
-                        m.text
-                      )}
-                    </CurvedBubble>
-                    {m.cta && <DemoCta platform="telegram" />}
-                  </Fragment>
-                );
-              })}
+              {group.items.map((m, i) => (
+                <Fragment key={m.id ?? `${gi}-${i}`}>
+                  <TelegramBubble
+                    m={m}
+                    from={group.from}
+                    isMe={isMe}
+                    isLast={i === group.items.length - 1}
+                    myBubble={myBubble}
+                    theirBubble={theirBubble}
+                    textColor={textColor}
+                    metaColor={metaColor}
+                    myMeta={myMeta}
+                  />
+                  {m.cta && <DemoCta platform="telegram" />}
+                </Fragment>
+              ))}
             </div>
           );
         })}

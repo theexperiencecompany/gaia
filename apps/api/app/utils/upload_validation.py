@@ -20,12 +20,16 @@ _ALLOWED_TYPES: dict[str, tuple[str, tuple[bytes, ...]]] = {
     "image/gif": ("image", (b"GIF87a", b"GIF89a")),
     "image/webp": ("image", (b"RIFF",)),
     "image/bmp": ("image", (b"BM",)),
-    "image/svg+xml": ("image", (b"<?xml", b"<svg", b"<SVG")),
     "application/pdf": ("raw", (b"%PDF-",)),
     "text/plain": ("raw", ()),
     "text/markdown": ("raw", ()),
     "text/csv": ("raw", ()),
+    "text/rtf": ("raw", (b"{\\rtf",)),
     "application/json": ("raw", ()),
+    "application/epub+zip": ("raw", (b"PK\x03\x04",)),
+    "application/vnd.oasis.opendocument.text": ("raw", (b"PK\x03\x04",)),
+    "application/vnd.oasis.opendocument.spreadsheet": ("raw", (b"PK\x03\x04",)),
+    "application/vnd.oasis.opendocument.presentation": ("raw", (b"PK\x03\x04",)),
     "application/msword": ("raw", (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",)),
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": (
         "raw",
@@ -40,6 +44,11 @@ _ALLOWED_TYPES: dict[str, tuple[str, tuple[bytes, ...]]] = {
         (b"PK\x03\x04",),
     ),
 }
+
+# The accepted content types, derived from the allowlist above so a caller that
+# needs to know what an upload may claim (the GAIA-Bench harness picks a content
+# type per attachment extension) cannot drift from what this module enforces.
+ALLOWED_CONTENT_TYPES: frozenset[str] = frozenset(_ALLOWED_TYPES)
 
 # Extensions that must never appear in an uploaded filename, even as a
 # secondary extension. Blocks the `.php.png` polyglot trick.

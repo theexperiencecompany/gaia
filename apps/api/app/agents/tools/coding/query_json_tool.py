@@ -126,7 +126,7 @@ async def query_json(
     except FileNotFoundError:
         return f"Error: file not found at {abs_path}"
     except Exception as e:
-        log.error(f"{LogTag.SANDBOX} query_json failed: {e}", exc_info=True)
+        log.error(f"{LogTag.SANDBOX} query_json failed", error_type=type(e).__name__, exc_info=True)
         return f"Error running query_json: {e}"
 
     return _format_result(result, dropped=dropped, truncated=truncated)
@@ -203,7 +203,7 @@ def _match_condition(record: JSONRecord, cond: dict[str, Any]) -> bool:
         return isinstance(actual, list) and value in actual
     if op in ("gt", "lt"):
         try:
-            result = actual > value if op == "gt" else actual < value  # type: ignore[operator]
+            result = actual > value if op == "gt" else actual < value
             return bool(result)
         except TypeError:
             return False

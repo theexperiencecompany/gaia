@@ -15,12 +15,9 @@ from unittest.mock import AsyncMock, patch
 import uuid
 
 from e2b import NotFoundException, TimeoutException
-import pytest
 
 from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
-
-pytestmark = pytest.mark.unit
 
 
 @asynccontextmanager
@@ -48,7 +45,7 @@ async def _run(
                 assert sbx is sandbox
                 if body_error is not None:
                     raise body_error
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raised = e
         yield user_id, pool, coll, sched, raised
     pool.evict(user_id)  # cleanup any survivor

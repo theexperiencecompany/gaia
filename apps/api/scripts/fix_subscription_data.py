@@ -41,11 +41,11 @@ import sys
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from bson import ObjectId  # noqa: E402
+from bson import ObjectId
 
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
-from app.db.mongodb.mongodb import init_mongodb  # noqa: E402
-from shared.py.wide_events import log as logger  # noqa: E402
+from app.db.mongodb.collections import get_async_collection
+from app.db.mongodb.mongodb import init_mongodb
+from shared.py.wide_events import log as logger
 
 plans_collection = get_async_collection("subscription_plans")
 subscriptions_collection = get_async_collection("subscriptions")

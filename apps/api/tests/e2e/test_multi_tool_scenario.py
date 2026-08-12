@@ -24,30 +24,12 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.tools import tool
 import pytest
 
-from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
-from tests.e2e.conftest import (
-    build_gaia_test_graph,
-    make_gaia_state,
-    make_mock_store,
-    make_node_config,
-)
+from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel, assert_tool_called, extract_tool_calls
 
-# ---------------------------------------------------------------------------
-# NOTE: The three tests below (test_manage_system_prompts_keeps_only_latest_*,
-# test_manage_system_prompts_no_system_messages_is_noop, and
-# test_manage_system_prompts_single_prompt_is_preserved) are UNIT TESTS of
-# the node's pure logic (input dict → output dict).  They call
-# manage_system_prompts_node directly rather than through the compiled graph
-# because they are testing the node's contract in isolation.
-#
-# Graph-wiring coverage (i.e. that the node is actually registered as a
-# pre-model hook inside create_agent) is provided by the async graph-level
-# tests further below:
-#   - test_graph_calls_two_tools_in_sequence
-#   - test_tool_call_order_is_preserved_in_messages
-#   - test_filter_and_manage_hooks_both_run_as_pre_model_hooks
-# ---------------------------------------------------------------------------
+# The node's pure input→output contract is covered by the unit suite
+# (tests/unit/agents/test_manage_system_prompts_node.py); this file only
+# verifies the node is actually wired into the compiled graph.
 
 
 @tool
@@ -60,103 +42,6 @@ def get_weather(city: str) -> str:
 def create_note(title: str, body: str) -> str:
     """Create a note with a title and body."""
     return f"Note '{title}' saved."
-
-
-@pytest.mark.unit
-class TestManageSystemPromptsNodeUnit:
-    """Unit tests for manage_system_prompts_node pure logic (node called directly).
-
-    These tests verify the node's input→output contract in isolation.
-    Graph-wiring coverage lives in TestMultiToolScenario below.
-    """
-
-    def test_manage_system_prompts_keeps_only_latest_non_memory_prompt(self):
-        """manage_system_prompts_node must remove all but the latest non-memory SystemMessage.
-
-        Given two non-memory SystemMessages, only the last one should remain.
-        This is the core contract of manage_system_prompts_node.
-        """
-        old_prompt = SystemMessage(content="Old system prompt from turn 1")
-        new_prompt = SystemMessage(content="New system prompt from turn 2")
-        human = HumanMessage(content="What is the weather?")
-
-        state = make_gaia_state(messages=[old_prompt, human, new_prompt])
-        config = make_node_config()
-        store = make_mock_store()
-
-        result = manage_system_prompts_node(state, config, store)
-
-        system_messages = [m for m in result["messages"] if isinstance(m, SystemMessage)]
-        assert len(system_messages) == 1, (
-            "manage_system_prompts_node must keep only the latest non-memory system prompt"
-        )
-        assert system_messages[0].content == "New system prompt from turn 2"
-
-    def test_manage_system_prompts_preserves_memory_messages(self):
-        """manage_system_prompts_node must preserve SystemMessages marked as memory.
-
-        Memory system messages use additional_kwargs={'memory_message': True}.
-        They must never be removed, even when there are multiple non-memory prompts.
-        """
-        memory_prompt = SystemMessage(
-            content="User prefers concise answers.",
-            additional_kwargs={"memory_message": True},
-        )
-        old_system = SystemMessage(content="Old system prompt")
-        new_system = SystemMessage(content="New system prompt")
-        human = HumanMessage(content="Tell me something")
-
-        state = make_gaia_state(messages=[memory_prompt, old_system, human, new_system])
-        config = make_node_config()
-        store = make_mock_store()
-
-        result = manage_system_prompts_node(state, config, store)
-
-        system_messages = [m for m in result["messages"] if isinstance(m, SystemMessage)]
-        assert len(system_messages) == 2, (
-            "manage_system_prompts_node must keep memory messages AND the latest non-memory prompt"
-        )
-        memory_msgs = [m for m in system_messages if m.additional_kwargs.get("memory_message")]
-        assert len(memory_msgs) == 1
-        assert memory_msgs[0].content == "User prefers concise answers."
-        non_memory_msgs = [
-            m for m in system_messages if not m.additional_kwargs.get("memory_message")
-        ]
-        assert non_memory_msgs[0].content == "New system prompt"
-
-    def test_manage_system_prompts_no_system_messages_is_noop(self):
-        """manage_system_prompts_node must be a no-op when no SystemMessages exist."""
-        state = make_gaia_state(
-            messages=[
-                HumanMessage(content="Hello"),
-                AIMessage(content="Hi there!"),
-            ]
-        )
-        config = make_node_config()
-        store = make_mock_store()
-
-        result = manage_system_prompts_node(state, config, store)
-
-        assert len(result["messages"]) == 2
-        assert result["messages"][0].content == "Hello"
-        assert result["messages"][1].content == "Hi there!"
-
-    def test_manage_system_prompts_single_prompt_is_preserved(self):
-        """manage_system_prompts_node must keep the single non-memory SystemMessage."""
-        state = make_gaia_state(
-            messages=[
-                SystemMessage(content="Only system prompt"),
-                HumanMessage(content="Hello"),
-            ]
-        )
-        config = make_node_config()
-        store = make_mock_store()
-
-        result = manage_system_prompts_node(state, config, store)
-
-        system_msgs = [m for m in result["messages"] if isinstance(m, SystemMessage)]
-        assert len(system_msgs) == 1
-        assert system_msgs[0].content == "Only system prompt"
 
 
 @pytest.mark.e2e

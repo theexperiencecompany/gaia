@@ -59,11 +59,16 @@ def apply() -> None:
         custom_tool_cls._CustomTool__parse_info = _patched_parse_info
 
         _applied = True
-        log.info(f"{LogTag.STARTUP} Applied custom_tool schema inline patch using jsonref")
+        log.info(
+            f"{LogTag.PATCH} Applied custom_tool schema inline patch", patch="custom_tool_schema"
+        )
     except Exception as e:
-        # See composio_langchain_patch: a silently-failed patch is a runtime
-        # behaviour change that has to be visible in structured logs.
-        log.error(f"{LogTag.STARTUP} Failed to apply custom_tool patch: {e}")
+        log.error(
+            f"{LogTag.PATCH} Failed to apply custom_tool patch",
+            patch="custom_tool_schema",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 # Apply patch

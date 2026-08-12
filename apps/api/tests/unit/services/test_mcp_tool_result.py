@@ -22,7 +22,6 @@ from mcp.types import (
     TextResourceContents,
 )
 from PIL import Image
-import pytest
 
 from app.constants.mcp import EMPTY_TOOL_RESULT
 from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
@@ -48,7 +47,6 @@ def _result(*items: Any) -> CallToolResult:
     return CallToolResult(content=list(items))
 
 
-@pytest.mark.unit
 class TestToolResultToContent:
     async def test_text_only_result_collapses_to_a_plain_string(self) -> None:
         out = await _tool_result_to_content(_result(_text("line one"), _text("line two")))
@@ -124,7 +122,6 @@ class TestToolResultToContent:
         assert "could not be read" in out
 
 
-@pytest.mark.unit
 class TestJsonSafeToolResult:
     def test_a_media_block_list_is_stripped_to_its_text(self) -> None:
         """The iframe payload is JSON-serialized into the SSE event. Media blocks

@@ -177,7 +177,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 # would drop the user's approval request on the floor.
                 raise
             except Exception as e:
-                log.error(f"{LogTag.AGENT} Subagent execution failed: {e}")
+                log.error(f"{LogTag.AGENT} Subagent execution failed", error_type=type(e).__name__)
                 return Command(
                     update={
                         "messages": [

@@ -82,6 +82,47 @@ lines never join the wide event and are invisible to per-request queries.
 sink and must touch loguru directly. Relative imports (`from .logging import
 ...`, a local module) are not flagged.
 
+### Reserved wide-event keys
+
+**Rule:** `log.set(...)` / `log.set_ns(...)` / `log.bind(...)` must not write a
+key named `time`, `level`, `message`, `logger`, `module`, `line`, or `worker`
+(the JSON line's core keys — `_CORE_KEYS` in `libs/shared/py/logging.py`).
+
+**Why:** the JSON sink guarantees core keys always win: a colliding extra field
+is re-emitted as `ctx_<key>` instead of corrupting the line's real
+level/message. So a reserved key never lands where the caller expects — this
+catches the mistake at commit instead of at query time. Applies to the facade
+whatever it is imported as (`log`, or an alias like `wide_log`); the sentry.py
+import allowlist does not exempt it.
+
+Only setters whose keywords land at the JSON **top level** are checked.
+`set_ns` merges its keywords *under* the namespace (so sub-keys can safely be
+named `level`, `worker`, …) — for it, only the namespace argument itself is a
+top-level write and the only collision candidate.
+
+**Fix:** rename the field to a domain-specific name (e.g. `job_level`,
+`source_module`).
+
+### Constant log messages
+
+**Rule:** the message passed to `log.debug` / `log.info` / `log.warning` /
+`log.error` / `log.exception` / `log.critical` must be a constant string. The one
+interpolation allowed is a leading `{LogTag.X}` prefix — anything else in the
+f-string (`{e}`, `{user_id}`, `{len(items)}`) is a violation.
+
+**Why:** a wide-event message is an identifier, not a sentence. Grouping,
+alerting and every Loki query key off the literal string, so
+`f"upload failed for {user_id}"` shards one event into as many distinct messages
+as there are users, and the interpolated value lands in prose where nothing can
+query, filter or aggregate it. Applies to the facade whatever it is imported as
+(`log`, or an alias like `wide_log`).
+
+**Fix:** keep the message constant and move the data to structured kwargs —
+`log.error(f"{LogTag.X} upload failed", error_type=type(e).__name__, user_id=user_id)`.
+Exception logs carry `error_type=`; add the ids already in scope. Never pass
+secrets or raw user content (tokens, message bodies, email addresses) as a field
+— log a count, a length, or a type instead.
+
 ---
 
 ## repository-boundaries
@@ -174,6 +215,41 @@ escape hatch on its own line for a reviewer to accept or reject.
 removed and suggests `--update` to lock the win in; until someone does, the
 baseline stays at the old high-water mark, so a removed entry can be re-added
 without failing. Running `--update` as part of the cleanup closes that window.
+
+---
+
+## suppression-baseline
+
+Not an AST rule — a checked-in baseline, so it runs as its own script/hook rather
+than through `run.py`:
+
+```bash
+python3 tools/lints/check_suppressions.py           # check
+python3 tools/lints/check_suppressions.py --update  # regenerate the baseline
+```
+
+**Rule:** inline lint-suppression comments (`# noqa`, `# type: ignore` in `*.py`;
+`// biome-ignore` in ts/tsx/js/jsx/mjs/cjs) may not grow beyond what
+`config/suppressions-baseline.json` records, per `(file, kind)`. The baseline is
+line-number-free (reordering lines within a file is always free) and tracks a
+content hash per file so a pure rename — byte-identical content moved to a new
+path — is free too, without ever consulting git history.
+
+**Why:** replaces a git-archaeology ratchet (`scripts/ci/check-suppression-ratchet.sh`,
+deleted) that diffed merge-base vs HEAD and had four verified bugs: pure renames
+false-failed, a force-push crashed it (`github.event.before` unfetched on that
+event), a same-file swap between suppression kinds netted to zero and stayed
+invisible, and failures printed counts instead of exact lines. This scans the
+current working tree instead — no fetch-depth, no base ref, no merge-base — so
+it is reproducible with the exact command CI runs, locally, every time.
+
+**Fix:** delete the suppression, or add it to the baseline in the same PR with
+`--update` — the baseline diff is the review surface, so justify it there. A
+baseline entry whose count exceeds the tree's is stale and must be shrunk the
+same way; the baseline may only ever match or shrink.
+
+**Not the same as `ignore-ratchet` below** — this guards inline comments in
+source files; `ignore-ratchet` guards the escape-hatch *lists* in `pyproject.toml`.
 
 ---
 

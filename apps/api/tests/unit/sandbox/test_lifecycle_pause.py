@@ -16,8 +16,6 @@ import pytest
 from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 
-pytestmark = pytest.mark.unit
-
 
 def _paused_state_written(repo: AsyncMock) -> bool:
     # mark_paused is the only paused-state write, so any await records the pause.

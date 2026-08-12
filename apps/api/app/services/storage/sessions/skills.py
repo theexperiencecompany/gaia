@@ -165,7 +165,8 @@ def materialize_instructions(user_root: Path, instructions: dict[str, str]) -> i
             ensure_safe_path_id(iid, label="integration_id")
         except ValueError:
             log.warning(
-                f"{LogTag.STORAGE} Skipping unsafe integration_id in instructions projection: {iid!r}"
+                f"{LogTag.STORAGE} Skipping unsafe integration_id in instructions projection",
+                iid=iid,
             )
             continue
         agent_dir = integrations_root / iid / "agent"

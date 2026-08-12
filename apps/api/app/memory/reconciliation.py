@@ -141,7 +141,7 @@ async def _reconcile_ambiguous(
     if not pairs:
         return decided
 
-    batch = await reconcile_facts(pairs)
+    batch = await reconcile_facts(pairs, user_id=user_id)
     for pair_index, decision in enumerate(batch.decisions):
         fact_index = llm_fact_indexes[pair_index]
         outcome = decision.decision

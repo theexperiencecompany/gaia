@@ -215,7 +215,10 @@ async def add_user_integration(
         )
     )
     log.info(
-        f"{LogTag.INTEGRATION} User {user_id} added integration {integration_id} with status {status}"
+        f"{LogTag.INTEGRATION} User added integration with status",
+        user_id=user_id,
+        integration_id=integration_id,
+        status=status,
     )
 
     return UserIntegration(
@@ -233,7 +236,11 @@ async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     log.set(integration={"provider": integration_id, "action": "remove_user_integration"})
     deleted = await user_integration_repository.delete_for_user(user_id, integration_id)
     if deleted:
-        log.info(f"{LogTag.INTEGRATION} User {user_id} removed integration {integration_id}")
+        log.info(
+            f"{LogTag.INTEGRATION} User removed integration",
+            user_id=user_id,
+            integration_id=integration_id,
+        )
     return deleted
 
 

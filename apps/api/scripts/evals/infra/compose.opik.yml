@@ -1,0 +1,195 @@
+name: gaia-evals-opik
+
+# Self-hosted Opik for the GAIA eval harness only — deliberately NOT part of
+# infra/docker. Managed via `mise eval:opik:up` / `mise eval:opik:down`.
+# Data lives on the named volumes (docker volume rm gaia-evals-opik_* to reset).
+
+services:
+  mysql:
+    image: mysql:8.4.2
+    pull_policy: always
+    hostname: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: opik
+      MYSQL_DATABASE: opik
+      MYSQL_USER: opik
+      MYSQL_PASSWORD: opik
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      timeout: 1s
+      interval: 1s
+      retries: 300
+    volumes:
+      - opik-mysql:/var/lib/mysql
+
+  redis:
+    image: redis:7.2.4-alpine3.19
+    pull_policy: always
+    hostname: redis
+    command: redis-server --requirepass opik
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "6379"]
+      interval: 2s
+      timeout: 4s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - opik-redis:/data
+
+  clickhouse-init:
+    image: alpine:latest
+    volumes:
+      - ./clickhouse_config:/clickhouse_config_files
+      - opik-clickhouse-config:/config
+    command: |
+      sh -c "
+        cp -r /clickhouse_config_files/* /config/ &&
+        chown -R 1000:1000 /config
+      "
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3.16.16-alpine
+    pull_policy: always
+    hostname: clickhouse
+    # clickhouse-init copies macros/zookeeper/remote_servers into the config
+    # volume this server mounts. Started in parallel, ClickHouse can come up
+    # before the copy lands and Opik's ReplicatedMergeTree migrations then fail
+    # — only ever on a fresh machine or after `mise eval:opik:reset`, because
+    # the named volume already holds the files on every later start.
+    depends_on:
+      clickhouse-init:
+        condition: service_completed_successfully
+    environment:
+      CLICKHOUSE_DB: opik
+      CLICKHOUSE_USER: opik
+      CLICKHOUSE_PASSWORD: opik
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "opik", "--password", "opik", "--query", "SELECT 1"]
+      interval: 2s
+      timeout: 4s
+      retries: 60
+      start_period: 10s
+    volumes:
+      - opik-clickhouse:/var/lib/clickhouse
+      - opik-clickhouse-server:/var/log/clickhouse-server
+      - opik-clickhouse-config:/etc/clickhouse-server/config.d
+      - ./clickhouse_config/users.d/enable_time_type.xml:/etc/clickhouse-server/users.d/enable_time_type.xml
+
+  zookeeper:
+    image: zookeeper:3.9.4
+    hostname: zookeeper
+
+  minio:
+    image: minio/minio:RELEASE.2025-03-12T18-04-18Z
+    hostname: minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server --console-address ":9090" /data
+    volumes:
+      - opik-minio:/data
+
+  mc:
+    image: minio/mc:RELEASE.2025-03-12T17-29-24Z
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc config host add myminio http://minio:9000 minioadmin minioadmin) do echo 'Waiting for minio...'; sleep 1; done;
+      /usr/bin/mc mb --ignore-existing myminio/opik;
+      /usr/bin/mc anonymous set download myminio/opik;
+      exit 0;
+      "
+
+  # Pinned like every other image here. On `latest` + `pull_policy: always`,
+  # each `mise eval:opik:up` could pull a different backend, python-backend and
+  # frontend, so two runs of the same suite stopped being comparable and a
+  # breaking Opik release changed the harness with no diff in this repo. Bump
+  # deliberately (all three move together): OPIK_VERSION=<tag> mise eval:opik:up.
+  backend:
+    image: ghcr.io/comet-ml/opik/opik-backend:${OPIK_VERSION:-2.2.23}
+    pull_policy: always
+    hostname: backend
+    command: ["bash", "-c", "./run_db_migrations.sh && ./entrypoint.sh"]
+    environment:
+      STATE_DB_PROTOCOL: "jdbc:mysql://"
+      STATE_DB_URL: "mysql:3306/opik?createDatabaseIfNotExist=true&rewriteBatchedStatements=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
+      STATE_DB_DATABASE_NAME: opik
+      STATE_DB_USER: opik
+      STATE_DB_PASS: opik
+      ANALYTICS_DB_MIGRATIONS_URL: "jdbc:clickhouse://clickhouse:8123"
+      ANALYTICS_DB_MIGRATIONS_USER: opik
+      ANALYTICS_DB_MIGRATIONS_PASS: opik
+      ANALYTICS_DB_PROTOCOL: "HTTP"
+      ANALYTICS_DB_HOST: "clickhouse"
+      ANALYTICS_DB_PORT: 8123
+      ANALYTICS_DB_DATABASE_NAME: opik
+      ANALYTICS_DB_USERNAME: opik
+      ANALYTICS_DB_PASS: opik
+      REDIS_URL: redis://:opik@redis:6379/
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      IS_MINIO: true
+      S3_URL: http://minio:9000
+      PYTHON_EVALUATOR_URL: http://python-backend:8000
+      TOGGLE_GUARDRAILS_ENABLED: "false"
+      TOGGLE_OPIK_AI_ENABLED: "false"
+      CORS: "true"
+      JAVA_OPTS: "-Dliquibase.propertySubstitutionEnabled=true -XX:+UseG1GC -XX:MaxRAMPercentage=80.0"
+    # Loopback only: this stack has no authentication and holds full eval
+    # transcripts, prompts and agent outputs, on static credentials.
+    ports:
+      - "127.0.0.1:8082:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        # Migrations run on backend startup, so "started" is not enough —
+        # ClickHouse must accept connections first (its healthcheck above).
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/is-alive/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  python-backend:
+    image: ghcr.io/comet-ml/opik/opik-python-backend:${OPIK_VERSION:-2.2.23}
+    pull_policy: always
+    hostname: python-backend
+    environment:
+      PYTHON_CODE_EXECUTOR_STRATEGY: process
+      PYTHON_CODE_EXECUTOR_CONTAINERS_NUM: 2
+      PYTHON_CODE_EXECUTOR_EXEC_TIMEOUT_IN_SECS: 3
+      PYTHON_CODE_EXECUTOR_ALLOW_NETWORK: "false"
+      REDIS_URL: redis://:opik@redis:6379/0
+      OPIK_URL_OVERRIDE: http://backend:8080
+    depends_on:
+      - backend
+
+  frontend:
+    image: ghcr.io/comet-ml/opik/opik-frontend:${OPIK_VERSION:-2.2.23}
+    pull_policy: always
+    ports:
+      - "127.0.0.1:5173:5173"
+    volumes:
+      - ./nginx_default_local.conf:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      NGINX_PORT: 5173
+      NGINX_CONF_SUFFIX: local
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  opik-mysql:
+  opik-redis:
+  opik-clickhouse:
+  opik-clickhouse-server:
+  opik-clickhouse-config:
+  opik-minio:

@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -62,7 +61,6 @@ def _make_record(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNotifications:
     """GET /api/v1/notifications"""
 
@@ -143,7 +141,6 @@ class TestGetNotifications:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetChannelPreferences:
     """GET /api/v1/notifications/preferences/channels"""
 
@@ -181,7 +178,6 @@ class TestGetChannelPreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateChannelPreferences:
     """PUT /api/v1/notifications/preferences/channels"""
 
@@ -241,7 +237,6 @@ class TestUpdateChannelPreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteAction:
     """POST /api/v1/notifications/{id}/actions/{aid}/execute"""
 
@@ -287,7 +282,6 @@ class TestExecuteAction:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMarkAsRead:
     """POST /api/v1/notifications/{id}/read"""
 
@@ -328,7 +322,6 @@ class TestMarkAsRead:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBulkActions:
     """POST /api/v1/notifications/bulk-actions"""
 
@@ -378,7 +371,6 @@ class TestBulkActions:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRegisterDevice:
     """POST /api/v1/notifications/register-device"""
 
@@ -448,7 +440,6 @@ class TestRegisterDevice:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUnregisterDevice:
     """POST /api/v1/notifications/unregister-device"""
 
@@ -497,7 +488,6 @@ class TestUnregisterDevice:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNotification:
     """GET /api/v1/notifications/{id}"""
 

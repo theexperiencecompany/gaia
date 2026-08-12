@@ -13,7 +13,7 @@ from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.image_utils import convert_image_to_text, generate_image
-from shared.py.wide_events import log
+from shared.py.wide_events import get_trace_id, log, log_context
 
 
 def generate_public_id(refined_text: str, max_length: int = 50) -> str:
@@ -36,7 +36,7 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
         HTTPException: If an error occurs during image generation or upload.
     """
     log.set(
-        service="image_service",
+        component="image_service",
         operation="generate_image",
         improve_prompt=improve_prompt,
     )
@@ -88,7 +88,7 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
         )
 
         image_url = upload_result.get("secure_url")
-        log.info(f"Image uploaded successfully. URL: {image_url}")
+        log.info("Image uploaded successfully. URL", image_url=image_url)
 
         return ImageData(
             url=image_url,
@@ -97,13 +97,17 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
         )
 
     except Exception as e:
-        log.error(f"Error occurred while processing image generation: {e!s}")
+        log.error(
+            "Error occurred while processing image generation",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 async def image_to_text_endpoint(message: str, file: UploadFile) -> ImageToTextResponse:
     """Describe an uploaded image, answering ``message`` about it."""
-    log.set(service="image_service", operation="image_to_text")
+    log.set(component="image_service", operation="image_to_text")
     try:
         response = await convert_image_to_text(file, message)
         log.set(outcome="success")
@@ -114,7 +118,11 @@ async def image_to_text_endpoint(message: str, file: UploadFile) -> ImageToTextR
         # status the conversion chose reach them.
         raise
     except Exception as e:
-        log.error(f"Error occurred while processing image-to-text: {e!s}")
+        log.error(
+            "Error occurred while processing image-to-text",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -129,17 +137,28 @@ async def generate_image_stream(query_text: str) -> AsyncGenerator[str, None]:
 
     Yields:
         str: Formatted response lines for streaming
+
+    The body runs while the response streams — after the request's
+    ``http_request`` event has emitted — so it needs its own boundary or the
+    generation outcome is silently discarded. The generator body inherits the
+    request's context, so ``get_trace_id()`` still returns the request's
+    trace_id.
     """
-    try:
-        yield f"data: {json.dumps({'status': 'generating_image'})}\n\n"
+    async with log_context(
+        "image_generation_stream",
+        trace_id=get_trace_id() or None,
+        prompt_length=len(query_text),
+    ):
+        try:
+            yield f"data: {json.dumps({'status': 'generating_image'})}\n\n"
 
-        # Get image result with the new structure
-        image_result = await api_generate_image(query_text)
+            # Get image result with the new structure
+            image_result = await api_generate_image(query_text)
 
-        # Format the response to match the expected frontend format
-        yield f"data: {json.dumps({'image_data': image_result.model_dump()})}\n\n"
-        yield "data: [DONE]\n\n"
-    except Exception as e:
-        log.error(f"Error generating image: {e!s}")
-        yield f"data: {json.dumps({'error': f'Failed to generate image: {e!s}'})}\n\n"
-        yield "data: [DONE]\n\n"
+            # Format the response to match the expected frontend format
+            yield f"data: {json.dumps({'image_data': image_result.model_dump()})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            log.error("Error generating image", error=str(e), error_type=type(e).__name__)
+            yield f"data: {json.dumps({'error': f'Failed to generate image: {e!s}'})}\n\n"
+            yield "data: [DONE]\n\n"

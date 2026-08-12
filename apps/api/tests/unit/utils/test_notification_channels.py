@@ -84,7 +84,6 @@ def _make_redirect_action(label: str = "View", url: str = "/test") -> Notificati
 # ========================================================================
 
 
-@pytest.mark.unit
 class TestChannelAdapterBaseHelpers:
     def test_success_helper(self) -> None:
         status = InAppChannelAdapter()._success()
@@ -110,7 +109,6 @@ class TestChannelAdapterBaseHelpers:
 # ========================================================================
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestInAppChannelAdapter:
     def test_channel_type(self) -> None:
@@ -155,7 +153,6 @@ class TestInAppChannelAdapter:
 # ========================================================================
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestExternalPlatformTransform:
     async def test_standard_message_parts(self) -> None:
@@ -204,7 +201,6 @@ class TestExternalPlatformTransform:
 # ========================================================================
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestExternalPlatformDeliver:
     async def test_deliver_publishes_and_maps_success(self) -> None:
@@ -243,7 +239,6 @@ class TestExternalPlatformDeliver:
         assert status.skipped is False
 
 
-@pytest.mark.unit
 class TestExternalAdapterIdentity:
     @pytest.mark.parametrize(
         "adapter_cls, channel_type, platform",
@@ -263,7 +258,6 @@ class TestExternalAdapterIdentity:
         assert DiscordChannelAdapter().can_handle(_make_request(channels=[])) is True
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestExternalTransformBrutalEdges:
     """Pin the exact CommonMark output: no stray leading/trailing whitespace,

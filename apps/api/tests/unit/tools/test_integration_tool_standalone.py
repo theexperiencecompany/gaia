@@ -3,8 +3,6 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Module-level patch for rate limiting
 # ---------------------------------------------------------------------------
@@ -59,7 +57,6 @@ def _make_integration(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBuildSearchPatterns:
     def test_basic_split(self) -> None:
         from app.agents.tools.integration_tool import build_search_patterns
@@ -97,7 +94,6 @@ class TestBuildSearchPatterns:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListIntegrations:
     @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.user_integration_repository")
@@ -202,7 +198,6 @@ class TestListIntegrations:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestConnectIntegration:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(
@@ -387,7 +382,6 @@ class TestConnectIntegration:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCheckIntegrationsStatus:
     @patch(
         f"{MODULE}.check_single_integration_status",
@@ -463,7 +457,6 @@ class TestCheckIntegrationsStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSuggestIntegrations:
     @patch(f"{MODULE}.list_integrations")
     async def test_delegates_to_list(self, mock_list: MagicMock) -> None:

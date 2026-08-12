@@ -213,7 +213,7 @@ class Cacheable:
             # Check if the value is already cached
             cached_value = await get_cache(cache_key, self.model)
             if cached_value is not None:
-                log.debug(f"{LogTag.API} Cache hit for key: {cache_key}")
+                log.debug(f"{LogTag.API} Cache hit for key", cache_key=cache_key)
                 if self.deserializer:
                     cached_value = self.deserializer(cached_value)
                 # What went into the cache came out of this same `func`.
@@ -233,8 +233,8 @@ class Cacheable:
             if self.serializer:
                 serialized_result = self.serializer(result)
 
-            log.debug(f"{LogTag.API} Cache miss for key: {cache_key}")
-            log.debug(f"{LogTag.API} Setting cache for key: {cache_key}")
+            log.debug(f"{LogTag.API} Cache miss for key", cache_key=cache_key)
+            log.debug(f"{LogTag.API} Setting cache for key", cache_key=cache_key)
 
             # Let set_cache handle Pydantic serialization
             await set_cache(key=cache_key, value=serialized_result, ttl=self.ttl, model=self.model)
@@ -352,7 +352,7 @@ class CacheInvalidator:
                     for pattern in self.key_patterns
                 ]
 
-            log.debug(f"{LogTag.API} Cache invalidation for keys: {cache_keys}")
+            log.debug(f"{LogTag.API} Cache invalidation for keys", cache_keys=cache_keys)
 
             # Invalidate the cache
             await asyncio.gather(*[delete_cache(key) for key in cache_keys])

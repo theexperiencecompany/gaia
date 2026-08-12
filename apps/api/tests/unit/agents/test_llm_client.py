@@ -31,6 +31,7 @@ from app.agents.llm.client import (
     register_llm_providers,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
+from app.constants.llm import DEFAULT_MODEL_NAME
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -54,7 +55,6 @@ def _make_llm_provider(name: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetAvailableProviders:
     @patch("app.agents.llm.client.providers")
     def test_all_providers_available(self, mock_providers: MagicMock) -> None:
@@ -104,7 +104,6 @@ class TestGetAvailableProviders:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetOrderedProviders:
     def test_default_priority_order(self) -> None:
         available: dict[str, Any] = {
@@ -115,7 +114,7 @@ class TestGetOrderedProviders:
 
         # Should follow PROVIDER_PRIORITY: 1=gemini, 2=openrouter
         names = [p["name"] for p in ordered]
-        assert names == ["gemini", "openrouter"]
+        assert names == ["openrouter", "gemini"]
 
     def test_preferred_provider_is_first(self) -> None:
         available: dict[str, Any] = {
@@ -130,7 +129,7 @@ class TestGetOrderedProviders:
         names = [p["name"] for p in ordered]
         assert names[0] == "openai"
         # Remaining follow priority order (gemini before openrouter)
-        assert names[1:] == ["gemini", "openrouter"]
+        assert names[1:] == ["openrouter", "gemini"]
 
     def test_preferred_provider_not_available_fallback_enabled(self) -> None:
         available: dict[str, Any] = {
@@ -180,7 +179,7 @@ class TestGetOrderedProviders:
 
         # No preferred, ordered is empty, so all providers by priority added
         names = [p["name"] for p in ordered]
-        assert names == ["gemini", "openrouter"]
+        assert names == ["openrouter", "gemini"]
 
     def test_empty_available(self) -> None:
         ordered = _get_ordered_providers({}, preferred_provider=None, fallback_enabled=True)
@@ -206,7 +205,6 @@ class TestGetOrderedProviders:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateConfigurableLlm:
     def test_no_alternatives_returns_primary_instance(self) -> None:
         primary = _make_llm_provider("gemini")
@@ -236,7 +234,6 @@ class TestCreateConfigurableLlm:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestInitLlm:
     @patch("app.agents.llm.client.log")
     @patch("app.agents.llm.client._create_configurable_llm")
@@ -359,7 +356,6 @@ class TestInitLlm:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetDefaultLlm:
     @pytest.fixture(autouse=True)
     def _fresh_cache(self):
@@ -368,33 +364,41 @@ class TestGetDefaultLlm:
         yield
         _build_default_llm.cache_clear()
 
-    @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
+    @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
-    def test_returns_gemini(self, mock_settings: MagicMock, mock_chat_google: MagicMock) -> None:
-        mock_settings.GAIA_SIM_MODE = False
-        mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
-        mock_chat_google.return_value = MagicMock()
-
-        assert get_default_llm() is mock_chat_google.return_value
-        mock_chat_google.assert_called_once()
-
-    @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
-    @patch("app.agents.llm.client.settings")
-    def test_caches_per_temperature(
-        self, mock_settings: MagicMock, mock_chat_google: MagicMock
+    def test_returns_the_openrouter_default_model(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
-        mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
-        mock_chat_google.side_effect = lambda **_: MagicMock()
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        mock_chat_openrouter.return_value = MagicMock()
+
+        assert get_default_llm() is mock_chat_openrouter.return_value
+        kwargs = mock_chat_openrouter.call_args.kwargs
+        assert kwargs["model"] == DEFAULT_MODEL_NAME
+        # stream_usage only attaches usage metadata to a STREAM; without
+        # streaming it is inert, and the model fallback built from this factory
+        # would arrive as one lump instead of streaming like the primary.
+        assert kwargs["streaming"] is True
+        assert kwargs["stream_usage"] is True
+
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_caches_per_temperature(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        mock_chat_openrouter.side_effect = lambda **_: MagicMock()
 
         assert get_default_llm() is get_default_llm()
         assert get_default_llm() is not get_default_llm(temperature=0.7)
-        assert mock_chat_google.call_count == 2
+        assert mock_chat_openrouter.call_count == 2
 
     @patch("app.agents.llm.client.settings")
-    def test_no_google_key_raises(self, mock_settings: MagicMock) -> None:
+    def test_no_openrouter_key_raises(self, mock_settings: MagicMock) -> None:
         mock_settings.GAIA_SIM_MODE = False
-        mock_settings.GOOGLE_API_KEY = None
+        mock_settings.OPENROUTER_API_KEY = None
 
         with pytest.raises(LLMNotConfiguredError, match="Default LLM not configured"):
             get_default_llm()
@@ -415,7 +419,6 @@ class TestGetDefaultLlm:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAinvokeLlm:
     @staticmethod
     def _runnable(side_effect: Any = None, result: Any = None) -> NonCallableMagicMock:
@@ -484,7 +487,6 @@ class TestAinvokeLlm:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRegisterLlmProviders:
     @patch("app.agents.llm.client.init_custom_llm")
     @patch("app.agents.llm.client.init_openrouter_llm")
@@ -525,7 +527,6 @@ class TestRegisterLlmProviders:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestConstants:
     def test_provider_models_keys(self) -> None:
         assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter", "custom"}
@@ -536,7 +537,7 @@ class TestConstants:
     def test_provider_priority_is_ordered(self) -> None:
         sorted_keys = sorted(PROVIDER_PRIORITY.keys())
         providers_in_order = [PROVIDER_PRIORITY[k] for k in sorted_keys]
-        assert providers_in_order == ["gemini", "openrouter", "custom"]
+        assert providers_in_order == ["openrouter", "gemini", "custom"]
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
         from google.genai.errors import ServerError
@@ -574,7 +575,6 @@ class TestConstants:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestChatbot:
     @patch("app.agents.llm.chatbot.ainvoke_llm")
     @patch("app.agents.llm.chatbot.get_default_llm")

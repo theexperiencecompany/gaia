@@ -8,7 +8,6 @@ only HTTP status codes, response shapes, and error handling are verified.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.user_models import UserDocument
 
@@ -78,7 +77,6 @@ def _resolved(
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestGetIntegrationsConfig:
     async def test_config_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import IntegrationsConfigResponse
@@ -113,7 +111,6 @@ class TestGetIntegrationsConfig:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestDisconnectIntegration:
     async def test_disconnect_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import IntegrationSuccessResponse
@@ -168,7 +165,6 @@ class TestDisconnectIntegration:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestConnectIntegration:
     async def test_connect_mcp_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import ConnectIntegrationResponse
@@ -365,7 +361,6 @@ _MODULE = "app.api.v1.endpoints.integrations.config"
 _VALID_UID = "507f1f77bcf86cd799439011"
 
 
-@pytest.mark.unit
 class TestConnectLinkEndpoint:
     """The login-free connect link: self-authenticating, redirects into OAuth."""
 

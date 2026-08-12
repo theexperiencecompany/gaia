@@ -29,6 +29,7 @@ from app.memory.pg_store.maintenance import (
     get_overview_counts,
 )
 from app.memory.pg_store.memories import (
+    count_live_memories,
     fts_search,
     get_all_live_memories,
     get_chain,
@@ -48,6 +49,7 @@ __all__ = [
     "EpisodeEntry",
     "MemoryOverviewCounts",
     "append_episode_entries",
+    "count_live_memories",
     "delete_all_memories",
     "fts_search",
     "get_all_live_memories",

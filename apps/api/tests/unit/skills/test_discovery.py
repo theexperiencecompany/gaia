@@ -11,12 +11,8 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-import pytest
-
 from app.agents.skills.discovery import get_available_skills_text
 from app.agents.workspace.skill_loader import BuiltinSkill
-
-pytestmark = pytest.mark.unit
 
 _GET_SKILLS_FOR_AGENT = "app.agents.skills.discovery.get_skills_for_agent"
 _LOAD_BUILTIN_SKILLS = "app.agents.skills.discovery.load_builtin_skills"
@@ -56,9 +52,9 @@ class TestMongoFailureFallback:
         assert "Test Skill" in result
         assert "does a thing" in result
         mock_log.warning.assert_called_once()
-        logged = mock_log.warning.call_args.args[0]
-        assert "mongo connection reset" in logged, (
-            f"the swallowed exception must be named in the log, got: {logged}"
+        kwargs = mock_log.warning.call_args.kwargs
+        assert "mongo connection reset" in kwargs.get("error", ""), (
+            f"the swallowed exception must be named in the log, got: {kwargs}"
         )
 
     async def test_mongo_failure_with_no_builtins_returns_empty_string(self):

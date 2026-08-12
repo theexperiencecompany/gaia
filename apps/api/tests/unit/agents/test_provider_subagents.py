@@ -114,7 +114,6 @@ _BASE_PATCHES = {
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateSubagent:
     async def test_internal_integration(self):
         # Internal subagents run on tools registered at startup: the branch must
@@ -347,7 +346,6 @@ class TestCreateSubagent:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateSubagentForUser:
     async def test_delegates_to_custom_when_integration_not_found(self):
         from app.agents.core.subagents.provider_subagents import (
@@ -521,7 +519,6 @@ class TestCreateSubagentForUser:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateCustomMcpSubagent:
     async def test_returns_none_when_not_found_in_mongo(self):
         from app.agents.core.subagents.provider_subagents import (
@@ -778,7 +775,6 @@ class TestCreateCustomMcpSubagent:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRegisterSubagentProviders:
     def test_registers_eligible_integrations(self):
         from app.agents.core.subagents.provider_subagents import (

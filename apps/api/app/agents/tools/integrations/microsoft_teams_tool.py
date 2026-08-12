@@ -51,7 +51,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                 "email": me.get("mail") or me.get("userPrincipalName"),
             }
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Teams /me fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Teams /me fetch failed", error_type=type(e).__name__)
 
         teams: list[dict[str, Any]] = []
         try:
@@ -74,7 +74,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                 for t in data.get("value", [])
             ]
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Teams joinedTeams fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Teams joinedTeams fetch failed", error_type=type(e).__name__)
 
         chats: list[dict[str, Any]] = []
         unread_count = 0
@@ -114,7 +114,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> list[str]:
                 for c in raw_chats
             ]
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Teams chats fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Teams chats fetch failed", error_type=type(e).__name__)
 
         return {
             "user": user_info,

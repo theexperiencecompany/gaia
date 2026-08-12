@@ -1,5 +1,5 @@
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
@@ -11,11 +11,8 @@ interface UseChatLayoutReturn {
   chatRef: React.RefObject<HTMLDivElement | null>;
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
-  droppedFiles: File[];
-  setDroppedFiles: (files: File[]) => void;
   fileUploadRef: React.RefObject<{
-    openFileUploadModal: () => void;
-    handleDroppedFiles: (files: File[]) => void;
+    attachFiles: (files: File[]) => Promise<void>;
   } | null>;
   appendToInputRef: React.RefObject<((text: string) => void) | null>;
   router: ReturnType<typeof useRouter>;
@@ -31,10 +28,8 @@ export const useChatLayout = (): UseChatLayoutReturn => {
   const chatRef = useRef<HTMLDivElement>(null);
   const dummySectionRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const fileUploadRef = useRef<{
-    openFileUploadModal: () => void;
-    handleDroppedFiles: (files: File[]) => void;
+    attachFiles: (files: File[]) => Promise<void>;
   } | null>(null);
   const appendToInputRef = useRef<((text: string) => void) | null>(null);
 
@@ -71,8 +66,6 @@ export const useChatLayout = (): UseChatLayoutReturn => {
     chatRef,
     dummySectionRef,
     inputRef,
-    droppedFiles,
-    setDroppedFiles,
     fileUploadRef,
     appendToInputRef,
     router,

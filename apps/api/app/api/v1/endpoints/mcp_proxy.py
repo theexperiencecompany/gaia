@@ -67,11 +67,17 @@ async def proxy_mcp_tool_call(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.MCP} MCP proxy tool call failed: {e}")
+        log.error(
+            f"{LogTag.MCP} MCP proxy tool call failed",
+            user_id=user_id,
+            tool_name=request.tool_name,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Tool call failed: {e!s}",
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -109,11 +115,16 @@ async def proxy_mcp_resources_list(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.MCP} MCP proxy resources/list failed: {e}")
+        log.error(
+            f"{LogTag.MCP} MCP proxy resources/list failed",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/list failed: {e!s}",
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -153,11 +164,16 @@ async def proxy_mcp_resource_templates_list(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.MCP} MCP proxy resources/templates/list failed: {e}")
+        log.error(
+            f"{LogTag.MCP} MCP proxy resources/templates/list failed",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/templates/list failed: {e!s}",
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -198,11 +214,17 @@ async def proxy_mcp_resource_read(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.MCP} MCP proxy resources/read failed: {e}")
+        log.error(
+            f"{LogTag.MCP} MCP proxy resources/read failed",
+            user_id=user_id,
+            resource_uri=request.uri,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/read failed: {e!s}",
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -240,8 +262,13 @@ async def proxy_mcp_prompts_list(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.MCP} MCP proxy prompts/list failed: {e}")
+        log.error(
+            f"{LogTag.MCP} MCP proxy prompts/list failed",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"prompts/list failed: {e!s}",
-        )
+        ) from e

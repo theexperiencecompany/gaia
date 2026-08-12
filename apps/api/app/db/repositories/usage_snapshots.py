@@ -38,7 +38,6 @@ class UsageSnapshotsRepository(UserScopedRepository[UserUsageSnapshot, UsageSnap
                     "$set": {
                         "plan_type": snapshot.plan_type,
                         "features": [feature.model_dump() for feature in snapshot.features],
-                        "credits": [credit.model_dump() for credit in snapshot.credits],
                     }
                 },
                 scope=snapshot.user_id,

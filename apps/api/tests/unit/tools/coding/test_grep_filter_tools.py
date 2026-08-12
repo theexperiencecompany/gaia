@@ -22,8 +22,6 @@ from app.agents.tools.coding.grep_tool import grep
 from app.constants.offload import FILTER_MAX_MEMORY_BYTES, MAX_FILTER_OUTPUT_CHARS
 from app.services.storage import JuiceFSUnavailable
 
-pytestmark = pytest.mark.unit
-
 PY = sys.executable
 GREP = shutil.which("grep") or "grep"
 CONFIG = {"configurable": {"user_id": "u1", "conversation_id": "c1"}}

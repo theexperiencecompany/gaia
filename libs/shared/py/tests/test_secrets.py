@@ -13,14 +13,12 @@ from shared.py.secrets import InfisicalConfigError, inject_infisical_secrets
 # ---------------------------------------------------------------------------
 
 _ALL_ENV_KEYS = [
-    "INFISICAL_TOKEN",
     "INFISICAL_PROJECT_ID",
     "INFISICAL_MACHINE_IDENTITY_CLIENT_ID",
     "INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET",
 ]
 
 _FULL_ENV = {
-    "INFISICAL_TOKEN": "tok-123",
     "INFISICAL_PROJECT_ID": "proj-abc",
     "INFISICAL_MACHINE_IDENTITY_CLIENT_ID": "cid-xyz",
     "INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET": "csec-xyz",
@@ -41,48 +39,26 @@ def _env_without(key: str, env: str = "production") -> dict[str, str]:
 
 
 class TestInjectInfisicalSecretsDev:
-    """In development, missing Infisical config should log a warning and return."""
+    """In development, missing Infisical config should log and return."""
 
     @patch("shared.py.secrets.log")
-    def test_missing_token_in_dev_returns_early(self, mock_logger: MagicMock):
-        env = _env_without("INFISICAL_TOKEN", env="development")
-        with patch.dict(os.environ, env, clear=True):
-            inject_infisical_secrets()
-        mock_logger.warning.assert_called_once()
-        assert "INFISICAL_TOKEN" in mock_logger.warning.call_args.args[0]
-
-    @patch("shared.py.secrets.log")
-    def test_missing_project_id_in_dev_returns_early(self, mock_logger: MagicMock):
-        env = _env_without("INFISICAL_PROJECT_ID", env="development")
-        with patch.dict(os.environ, env, clear=True):
-            inject_infisical_secrets()
-        mock_logger.warning.assert_called_once()
-        assert "INFISICAL_PROJECT_ID" in mock_logger.warning.call_args.args[0]
-
-    @patch("shared.py.secrets.log")
-    def test_missing_client_id_in_dev_returns_early(self, mock_logger: MagicMock):
-        env = _env_without("INFISICAL_MACHINE_IDENTITY_CLIENT_ID", env="development")
-        with patch.dict(os.environ, env, clear=True):
-            inject_infisical_secrets()
-        mock_logger.warning.assert_called_once()
-
-    @patch("shared.py.secrets.log")
-    def test_missing_client_secret_in_dev_returns_early(self, mock_logger: MagicMock):
-        env = _env_without("INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET", env="development")
-        with patch.dict(os.environ, env, clear=True):
-            inject_infisical_secrets()
-        mock_logger.warning.assert_called_once()
-
-    @patch("shared.py.secrets.log")
-    def test_all_missing_in_dev_returns_on_first_missing(self, mock_logger: MagicMock):
+    def test_no_config_in_dev_skips(self, mock_log: MagicMock):
         with patch.dict(os.environ, {"ENV": "development"}, clear=True):
             inject_infisical_secrets()
-        # Should return on the very first missing key (INFISICAL_TOKEN)
-        mock_logger.warning.assert_called_once()
-        assert "INFISICAL_TOKEN" in mock_logger.warning.call_args.args[0]
+        mock_log.info.assert_called_once()
+        assert "skipped" in mock_log.info.call_args.args[0]
+
+    @pytest.mark.parametrize("missing_key", _ALL_ENV_KEYS)
+    @patch("shared.py.secrets.log")
+    def test_partial_config_in_dev_warns(self, mock_log: MagicMock, missing_key: str):
+        env = _env_without(missing_key, env="development")
+        with patch.dict(os.environ, env, clear=True):
+            inject_infisical_secrets()
+        mock_log.warning.assert_called_once()
+        assert missing_key in mock_log.warning.call_args.args[0]
 
     @patch("shared.py.secrets.log")
-    def test_default_env_is_production(self, mock_logger: MagicMock):
+    def test_default_env_is_production(self, mock_log: MagicMock):
         """When ENV is not set at all, it defaults to 'production'."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(InfisicalConfigError):
@@ -97,6 +73,11 @@ class TestInjectInfisicalSecretsDev:
 class TestInjectInfisicalSecretsProd:
     """In production, missing Infisical config should raise InfisicalConfigError."""
 
+    def test_no_config_raises(self):
+        with patch.dict(os.environ, {"ENV": "production"}, clear=True):
+            with pytest.raises(InfisicalConfigError, match="required in production"):
+                inject_infisical_secrets()
+
     @pytest.mark.parametrize("missing_key", _ALL_ENV_KEYS)
     def test_missing_key_raises(self, missing_key: str):
         env = _env_without(missing_key, env="production")
@@ -106,7 +87,7 @@ class TestInjectInfisicalSecretsProd:
             assert missing_key in str(exc_info.value)
 
     def test_empty_string_treated_as_missing(self):
-        env = {**_FULL_ENV, "INFISICAL_TOKEN": ""}
+        env = {**_FULL_ENV, "INFISICAL_PROJECT_ID": ""}
         with patch.dict(os.environ, env, clear=True):
             with pytest.raises(InfisicalConfigError):
                 inject_infisical_secrets()
@@ -121,7 +102,7 @@ class TestInjectInfisicalSecretsSuccess:
     """Test the happy path: all config present, SDK called, secrets injected."""
 
     @patch("shared.py.secrets.log")
-    def test_secrets_injected_into_environ(self, mock_logger: MagicMock):
+    def test_secrets_injected_into_environ(self, mock_log: MagicMock):
         mock_secret = SimpleNamespace(secretKey="MY_SECRET", secretValue="s3cret")
         mock_secrets_response = SimpleNamespace(secrets=[mock_secret])
 
@@ -139,7 +120,7 @@ class TestInjectInfisicalSecretsSuccess:
             assert os.environ.get("MY_SECRET") == "s3cret"
 
     @patch("shared.py.secrets.log")
-    def test_local_env_takes_precedence(self, mock_logger: MagicMock):
+    def test_local_env_takes_precedence(self, mock_log: MagicMock):
         """Existing env vars should NOT be overwritten by Infisical."""
         mock_secret = SimpleNamespace(secretKey="EXISTING_KEY", secretValue="infisical_value")
         mock_secrets_response = SimpleNamespace(secrets=[mock_secret])
@@ -160,7 +141,7 @@ class TestInjectInfisicalSecretsSuccess:
             assert os.environ["EXISTING_KEY"] == "local_value"
 
     @patch("shared.py.secrets.log")
-    def test_sdk_authentication_called(self, mock_logger: MagicMock):
+    def test_sdk_authentication_called(self, mock_log: MagicMock):
         mock_client = MagicMock()
         mock_client.secrets.list_secrets.return_value = SimpleNamespace(secrets=[])
         mock_sdk_class = MagicMock(return_value=mock_client)
@@ -177,7 +158,7 @@ class TestInjectInfisicalSecretsSuccess:
         )
 
     @patch("shared.py.secrets.log")
-    def test_sdk_client_created_with_correct_host(self, mock_logger: MagicMock):
+    def test_sdk_client_created_with_correct_host(self, mock_log: MagicMock):
         mock_client = MagicMock()
         mock_client.secrets.list_secrets.return_value = SimpleNamespace(secrets=[])
         mock_sdk_class = MagicMock(return_value=mock_client)
@@ -194,7 +175,7 @@ class TestInjectInfisicalSecretsSuccess:
         )
 
     @patch("shared.py.secrets.log")
-    def test_list_secrets_called_with_correct_params(self, mock_logger: MagicMock):
+    def test_list_secrets_called_with_correct_params(self, mock_log: MagicMock):
         mock_client = MagicMock()
         mock_client.secrets.list_secrets.return_value = SimpleNamespace(secrets=[])
         mock_sdk_class = MagicMock(return_value=mock_client)
@@ -216,7 +197,7 @@ class TestInjectInfisicalSecretsSuccess:
         )
 
     @patch("shared.py.secrets.log")
-    def test_multiple_secrets_injected(self, mock_logger: MagicMock):
+    def test_multiple_secrets_injected(self, mock_log: MagicMock):
         secrets = [
             SimpleNamespace(secretKey="KEY_A", secretValue="val_a"),
             SimpleNamespace(secretKey="KEY_B", secretValue="val_b"),
@@ -246,7 +227,7 @@ class TestInjectInfisicalSecretsSDKFailure:
     """Test that SDK exceptions are wrapped in InfisicalConfigError."""
 
     @patch("shared.py.secrets.log")
-    def test_sdk_exception_wrapped(self, mock_logger: MagicMock):
+    def test_sdk_exception_wrapped(self, mock_log: MagicMock):
         mock_sdk_class = MagicMock(side_effect=ConnectionError("unreachable"))
 
         with patch.dict(os.environ, _FULL_ENV, clear=True):
@@ -257,7 +238,7 @@ class TestInjectInfisicalSecretsSDKFailure:
                     inject_infisical_secrets()
 
     @patch("shared.py.secrets.log")
-    def test_auth_failure_wrapped(self, mock_logger: MagicMock):
+    def test_auth_failure_wrapped(self, mock_log: MagicMock):
         mock_client = MagicMock()
         mock_client.auth.universal_auth.login.side_effect = RuntimeError("auth failed")
         mock_sdk_class = MagicMock(return_value=mock_client)
@@ -270,7 +251,7 @@ class TestInjectInfisicalSecretsSDKFailure:
                     inject_infisical_secrets()
 
     @patch("shared.py.secrets.log")
-    def test_list_secrets_failure_wrapped(self, mock_logger: MagicMock):
+    def test_list_secrets_failure_wrapped(self, mock_log: MagicMock):
         mock_client = MagicMock()
         mock_client.secrets.list_secrets.side_effect = TimeoutError("timed out")
         mock_sdk_class = MagicMock(return_value=mock_client)

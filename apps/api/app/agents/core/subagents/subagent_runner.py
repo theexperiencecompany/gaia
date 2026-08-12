@@ -412,7 +412,7 @@ async def execute_subagent_stream(
     ):
         # Check for cancellation
         if ctx.stream_id and await stream_manager.is_cancelled(ctx.stream_id):
-            log.info(f"{LogTag.AGENT} Subagent stream {ctx.stream_id} cancelled by user")
+            log.info(f"{LogTag.AGENT} Subagent stream cancelled by user", stream_id=ctx.stream_id)
             break
 
         # Handle 2-tuple format only (no subgraphs)

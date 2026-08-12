@@ -44,8 +44,6 @@ from app.services.storage.metrics import (
     set_sandbox_pool_size,
 )
 
-pytestmark = pytest.mark.unit
-
 
 @pytest.fixture(autouse=True)
 def _clean_bucket() -> Iterator[None]:

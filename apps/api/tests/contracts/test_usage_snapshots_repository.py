@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.db.repositories.usage_snapshots import UsageSnapshotsRepository
-from app.models.usage_models import CreditUsage, FeatureUsage, UsagePeriod, UserUsageSnapshot
+from app.models.usage_models import FeatureUsage, UsagePeriod, UserUsageSnapshot
 
 NOW = datetime.now(UTC)
 
@@ -28,7 +28,6 @@ def _snap(**overrides: object) -> UserUsageSnapshot:
         "user_id": "u1",
         "plan_type": "free",
         "features": [],
-        "credits": [],
     }
     data.update(overrides)
     return UserUsageSnapshot.model_validate(data)
@@ -52,7 +51,6 @@ class TestUsageSnapshotsRepository:
                 user_id="u",
                 plan_type="pro",
                 features=[_feature(5)],
-                credits=[CreditUsage(credits_used=2.5, reset_time=NOW)],
             )
         )
         assert second == first
@@ -61,7 +59,6 @@ class TestUsageSnapshotsRepository:
         assert len(history) == 1
         assert history[0].plan_type == "pro"  # merged latest tier
         assert history[0].features[0].used == 5
-        assert history[0].credits[0].credits_used == 2.5
         assert history[0].updated_at is not None  # base stamped the merge
 
     async def test_history_is_scoped_to_user_and_since(self, repo):

@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
     Integration,
@@ -44,6 +45,8 @@ from app.services.integrations.custom_crud import (
     update_custom_integration,
 )
 from app.services.integrations.integration_connection_service import (
+    _handle_auth_required,
+    _redirect_to_oauth,
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
@@ -158,7 +161,6 @@ def _make_custom_integration(**kwargs: Any) -> Integration:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIntegrationResolverResolve:
     """Tests for IntegrationResolver.resolve()."""
 
@@ -301,7 +303,6 @@ class TestIntegrationResolverResolve:
         assert result is None
 
 
-@pytest.mark.unit
 class TestIntegrationResolverHelpers:
     """Tests for IntegrationResolver helper methods."""
 
@@ -352,7 +353,6 @@ class TestIntegrationResolverHelpers:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUserAvailableToolNamespaces:
     """Tests for get_user_available_tool_namespaces."""
 
@@ -547,7 +547,6 @@ def _iwc(**overrides: object) -> IntegrationWithCreator:
     return IntegrationWithCreator.model_validate(data)
 
 
-@pytest.mark.unit
 class TestFormatCommunityIntegrations:
     def test_format_empty_list(self):
         assert format_community_integrations([]) == []
@@ -607,7 +606,6 @@ class TestFormatCommunityIntegrations:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateUserIntegrationStatus:
     """The service delegates to repo.set_status; the upsert/$set/connected_at
     shape is the repository's concern (covered by its contract suite)."""
@@ -667,7 +665,6 @@ def _ui_doc(integration_id: str, *, status: str = "connected", connected: bool =
     )
 
 
-@pytest.mark.unit
 class TestGetUserIntegrations:
     @patch("app.services.integrations.user_integrations.user_repository")
     @patch("app.services.integrations.user_integrations.integration_repository")
@@ -716,7 +713,6 @@ class TestGetUserIntegrations:
         assert result.integrations == []
 
 
-@pytest.mark.unit
 class TestGetUserConnectedIntegrations:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_returns_serialized_documents(self, mock_repo):
@@ -736,7 +732,6 @@ class TestGetUserConnectedIntegrations:
         assert result == []
 
 
-@pytest.mark.unit
 class TestAddUserIntegration:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     @patch(
@@ -846,7 +841,6 @@ class TestAddUserIntegration:
             await add_user_integration.__wrapped__(USER_ID, "dup")
 
 
-@pytest.mark.unit
 class TestRemoveUserIntegration:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_remove_success(self, mock_repo):
@@ -861,7 +855,6 @@ class TestRemoveUserIntegration:
         assert result is False
 
 
-@pytest.mark.unit
 class TestCheckUserHasIntegration:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_has_integration(self, mock_repo):
@@ -876,7 +869,6 @@ class TestCheckUserHasIntegration:
         assert result is False
 
 
-@pytest.mark.unit
 class TestGetUserIntegrationCapabilities:
     @patch(
         "app.services.integrations.user_integrations.get_integration_details",
@@ -981,7 +973,6 @@ class TestGetUserIntegrationCapabilities:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateCustomIntegration:
     @patch(
         "app.services.integrations.custom_crud.add_user_integration",
@@ -1084,7 +1075,6 @@ class TestCreateCustomIntegration:
         assert result.is_public is True
 
 
-@pytest.mark.unit
 class TestUpdateCustomIntegration:
     @patch("app.services.integrations.custom_crud.user_integration_repository")
     @patch("app.services.integrations.custom_crud.integration_repository")
@@ -1200,7 +1190,6 @@ class TestUpdateCustomIntegration:
         assert update_arg.mcp_config.requires_auth is True
 
 
-@pytest.mark.unit
 class TestDeleteCustomIntegration:
     @patch(
         "app.services.integrations.custom_crud.delete_cache_by_pattern",
@@ -1418,7 +1407,6 @@ class TestDeleteCustomIntegration:
         assert result is False
 
 
-@pytest.mark.unit
 class TestCreateAndConnectCustomIntegration:
     @patch(
         "app.services.integrations.custom_crud.create_custom_integration",
@@ -1668,7 +1656,6 @@ class TestCreateAndConnectCustomIntegration:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBuildIntegrationsConfig:
     @patch(
         "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
@@ -1743,7 +1730,6 @@ class TestBuildIntegrationsConfig:
         assert result.integrations == []
 
 
-@pytest.mark.unit
 class TestConnectMcpIntegration:
     @patch(
         "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
@@ -1944,7 +1930,7 @@ class TestConnectMcpIntegration:
     async def test_connect_catches_oauth_authentication_error(
         self, mock_get_client, mock_update_status
     ):
-        from mcp_use.exceptions import OAuthAuthenticationError
+        from mcp_use.client.exceptions import OAuthAuthenticationError
 
         mock_client = AsyncMock()
         mock_client.connect.side_effect = OAuthAuthenticationError("Need auth")
@@ -1991,7 +1977,6 @@ class TestConnectMcpIntegration:
         assert result.tools_count == 0
 
 
-@pytest.mark.unit
 class TestConnectComposioIntegration:
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",
@@ -2023,7 +2008,6 @@ class TestConnectComposioIntegration:
         mock_update_status.assert_awaited_once_with(USER_ID, "slack", "created")
 
 
-@pytest.mark.unit
 class TestConnectSelfIntegration:
     @patch(
         "app.services.integrations.integration_connection_service.build_google_oauth_url",
@@ -2077,7 +2061,6 @@ class TestConnectSelfIntegration:
         assert "not implemented" in result.error.lower()
 
 
-@pytest.mark.unit
 class TestDisconnectIntegration:
     @patch(
         "app.services.integrations.integration_connection_service._invalidate_caches",
@@ -2381,7 +2364,6 @@ class TestDisconnectIntegration:
             await disconnect_integration(USER_ID, "x")
 
 
-@pytest.mark.unit
 class TestInvalidateCaches:
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",
@@ -2497,3 +2479,203 @@ class TestInvalidateCaches:
 
         # Should not raise
         await _invalidate_caches(USER_ID, INTEGRATION_ID, "mcp")
+
+
+class TestRedirectToOauth:
+    """Direct tests for _redirect_to_oauth: the OAuth redirect response."""
+
+    async def test_builds_redirect_response(self) -> None:
+        mcp_client = AsyncMock()
+        mcp_client.build_oauth_auth_url.return_value = "https://auth.example.com/start"
+
+        with patch("app.services.integrations.integration_connection_service.log.set") as log_set:
+            response = await _redirect_to_oauth(mcp_client, "int-1", "gmail", "/callback/xyz")
+
+        assert response.status == "redirect"
+        assert response.integration_id == "int-1"
+        assert response.name == "gmail"
+        assert response.redirect_url == "https://auth.example.com/start"
+        assert response.message == "OAuth authentication required"
+        mcp_client.build_oauth_auth_url.assert_awaited_once_with(
+            integration_id="int-1",
+            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+            redirect_path="/callback/xyz",
+            challenge_data=None,
+        )
+        log_set.assert_called_once_with(
+            integration={
+                "provider": "gmail",
+                "action": "connect_mcp",
+                "status": "redirect",
+                "auth_type": "oauth",
+            }
+        )
+
+    async def test_passes_challenge_data_through(self) -> None:
+        mcp_client = AsyncMock()
+        mcp_client.build_oauth_auth_url.return_value = "https://auth.example.com/start"
+        challenge = {"state": "abc"}
+
+        await _redirect_to_oauth(mcp_client, "int-1", "gmail", "/cb", challenge_data=challenge)
+
+        args, kwargs = mcp_client.build_oauth_auth_url.await_args
+        assert kwargs["challenge_data"] == challenge
+
+
+class TestHandleAuthRequired:
+    """Direct tests for _handle_auth_required: bearer vs OAuth routing."""
+
+    async def test_bearer_branch_returns_error_response(self) -> None:
+        mcp_client = AsyncMock()
+
+        response = await _handle_auth_required(
+            "u1",
+            "int-1",
+            "gmail",
+            "/cb",
+            is_platform=True,
+            detected_auth_type="bearer",
+            probe_result=None,
+            mcp_client=mcp_client,
+        )
+
+        assert response.status == "error"
+        assert response.error == "bearer_required"
+        assert response.message == "This integration requires an API key."
+        mcp_client.build_oauth_auth_url.assert_not_awaited()
+
+    async def test_oauth_branch_redirects_with_challenge(self) -> None:
+        mcp_client = AsyncMock()
+        mcp_client.build_oauth_auth_url.return_value = "https://auth.example.com/start"
+        probe = {"oauth_challenge": {"state": "s"}}
+
+        response = await _handle_auth_required(
+            "u1",
+            "int-1",
+            "gmail",
+            "/cb",
+            is_platform=True,
+            detected_auth_type="oauth",
+            probe_result=probe,
+            mcp_client=mcp_client,
+        )
+
+        assert response.status == "redirect"
+        kwargs = mcp_client.build_oauth_auth_url.await_args.kwargs
+        assert kwargs["challenge_data"] == {"state": "s"}
+        assert kwargs["redirect_path"] == "/cb"
+
+
+class TestConnectProbeDetection:
+    """The probe-detection branch in connect_mcp_integration."""
+
+    @patch(
+        "app.services.integrations.integration_connection_service.update_user_integration_status",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_probe_detects_auth_and_records_it(
+        self, mock_get_client, mock_update_status
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        mock_get_client.return_value = mock_client
+
+        result = await connect_mcp_integration(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=False,
+            redirect_path="/integrations",
+            probe_result={"requires_auth": True, "auth_type": "custom"},
+        )
+
+        assert result.status == "redirect"
+        mock_client.update_integration_auth_status.assert_awaited_once_with(
+            INTEGRATION_ID, requires_auth=True, auth_type="custom"
+        )
+
+    @patch(
+        "app.services.integrations.integration_connection_service.update_user_integration_status",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_probe_ignored_when_auth_already_required(
+        self, mock_get_client, mock_update_status
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        mock_get_client.return_value = mock_client
+
+        result = await connect_mcp_integration(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=True,
+            redirect_path="/integrations",
+            probe_result={"requires_auth": True, "auth_type": "custom"},
+        )
+
+        assert result.status == "redirect"
+        mock_client.update_integration_auth_status.assert_not_awaited()
+
+
+class TestConnectMorePaths:
+    """The remaining connect_mcp_integration branches: default is_platform
+    and the connect-time OAuth discovery."""
+
+    @patch(
+        "app.services.integrations.integration_connection_service.update_user_integration_status",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_default_platform_false_records_status(
+        self, mock_get_client, mock_update_status
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        mock_get_client.return_value = mock_client
+
+        result = await connect_mcp_integration(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=True,
+            redirect_path="/integrations",
+        )
+
+        assert result.status == "redirect"
+        mock_update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
+
+    @patch(
+        "app.services.integrations.integration_connection_service.get_mcp_client",
+        new_callable=AsyncMock,
+    )
+    async def test_connect_time_oauth_discovery_routes_to_redirect(self, mock_get_client) -> None:
+        from mcp_use.client.exceptions import OAuthAuthenticationError
+
+        mock_client = AsyncMock()
+        mock_client.connect.side_effect = OAuthAuthenticationError("Need auth")
+        mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+        mock_get_client.return_value = mock_client
+
+        result = await connect_mcp_integration(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=False,
+            redirect_path="/integrations",
+            is_platform=True,
+        )
+
+        assert result.status == "redirect"
+        assert result.redirect_url == "https://auth.example.com"

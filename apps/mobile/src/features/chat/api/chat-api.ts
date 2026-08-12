@@ -363,4 +363,5 @@ export const chatApi = {
   postApprovalDecision,
 };
 
-export * from "./chat-stream";
+export type { ChatStreamRequest, StreamCallbacks } from "./chat-stream";
+export { fetchChatStream } from "./chat-stream";

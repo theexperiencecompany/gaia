@@ -159,7 +159,6 @@ def _summary(value: object) -> Iterator[AsyncMock]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFileServiceUpload:
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_success(
@@ -366,7 +365,6 @@ class TestFileServiceUpload:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessSummary:
     def test_string_input(self):
         description, page_wise = process_summary("Simple text summary")
@@ -422,7 +420,6 @@ class TestProcessSummary:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestInsertMetadata:
     async def test_success(self, mock_file_repo):
         doc = _file_doc()
@@ -443,7 +440,6 @@ class TestInsertMetadata:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIndexFile:
     async def test_list_summary_multi_page(self, mock_chroma_client, sample_document_summary_list):
         _, mock_chroma_col = mock_chroma_client
@@ -573,7 +569,6 @@ class TestIndexFile:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestReindexFile:
     async def test_delete_then_index_success(self, mock_chroma_client):
         _, mock_chroma_col = mock_chroma_client
@@ -651,7 +646,6 @@ class TestReindexFile:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFileServiceDelete:
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_success(
@@ -786,7 +780,6 @@ class TestFileServiceDelete:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFileServiceUpdate:
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_file_not_found_raises_404(self, mock_del_cache, mock_file_repo):

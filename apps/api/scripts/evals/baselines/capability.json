@@ -1,0 +1,96 @@
+{
+  "suite": "capability",
+  "run_id": "capability-20260808-125834-c73d49",
+  "app_version": "api-v0.17.0-341-gee0412b38-dirty",
+  "baseline_accuracy": 0.8037,
+  "graded": 214,
+  "errored": 0,
+  "per_category": {
+    "ambiguity": [
+      3,
+      8
+    ],
+    "canvas": [
+      10,
+      11
+    ],
+    "composition": [
+      5,
+      8
+    ],
+    "conflict": [
+      6,
+      8
+    ],
+    "gmail": [
+      25,
+      27
+    ],
+    "labels": [
+      7,
+      8
+    ],
+    "memory": [
+      8,
+      9
+    ],
+    "multihop": [
+      5,
+      8
+    ],
+    "multitool": [
+      10,
+      10
+    ],
+    "multiturn": [
+      8,
+      11
+    ],
+    "notifications": [
+      9,
+      10
+    ],
+    "precision": [
+      7,
+      8
+    ],
+    "projects": [
+      3,
+      8
+    ],
+    "reminders": [
+      8,
+      11
+    ],
+    "temporal": [
+      8,
+      8
+    ],
+    "todo_stats": [
+      8,
+      10
+    ],
+    "todos": [
+      9,
+      14
+    ],
+    "tracked_todos": [
+      7,
+      8
+    ],
+    "weather": [
+      8,
+      9
+    ],
+    "web": [
+      9,
+      9
+    ],
+    "workflows": [
+      9,
+      11
+    ]
+  },
+  "provisional": null,
+  "captured_at": "2026-08-08"
+}

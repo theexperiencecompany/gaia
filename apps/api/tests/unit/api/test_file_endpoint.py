@@ -9,7 +9,6 @@ from io import BytesIO
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.files_models import FileDocument
 from app.schemas.file import FileDeletedResponse
@@ -36,7 +35,6 @@ def _file_doc(**overrides: object) -> FileDocument:
     return FileDocument.model_validate(data)
 
 
-@pytest.mark.unit
 class TestUploadFile:
     """POST /api/v1/upload"""
 
@@ -157,7 +155,6 @@ class TestUploadFile:
         assert data["type"] == "text/csv"
 
 
-@pytest.mark.unit
 class TestUpdateFile:
     """PUT /api/v1/{file_id}"""
 
@@ -211,7 +208,6 @@ class TestUpdateFile:
         assert response.status_code == 500
 
 
-@pytest.mark.unit
 class TestDeleteFile:
     """DELETE /api/v1/{file_id}"""
 

@@ -45,8 +45,6 @@ from app.services.storage._vfs_common import (
     write_rw_if_changed,
 )
 
-pytestmark = pytest.mark.unit
-
 DOC_ID = "6512ab34cd56ef7890123456"
 
 not_root = pytest.mark.skipif(

@@ -1,0 +1,169 @@
+{
+  "$comment": [
+    "THE shared description of GAIA's log line shape. Both runtimes are checked",
+    "against this file and against each other by run.py, which emits real lines",
+    "from each and diffs them. Editing one runtime without editing this file (or",
+    "vice versa) fails CI.",
+    "",
+    "Producers:",
+    "  Python     libs/shared/py/logging.py::_build_json_entry  (envelope)",
+    "             libs/shared/py/wide_events.py                 (event fields)",
+    "  TypeScript libs/shared/ts/src/bots/utils/logger.ts::buildRecord (envelope)",
+    "             libs/shared/ts/src/bots/utils/wide-events.ts        (event fields)",
+    "",
+    "Types are JSON types: string | number | boolean | array | object."
+  ],
+
+  "envelope": {
+    "$comment": "Stamped on EVERY line by both runtimes, from the low-level emitter.",
+    "shared": {
+      "time": {
+        "type": "string",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        "why": "UTC, millisecond precision, 'Z'. A local-offset or microsecond serialization of the same instant is a different string, so any query that compares or groups on time stops spanning both surfaces."
+      },
+      "level": {
+        "type": "string",
+        "enum": [
+          "TRACE",
+          "DEBUG",
+          "INFO",
+          "SUCCESS",
+          "AUDIT",
+          "WARNING",
+          "ERROR",
+          "SECURITY",
+          "CRITICAL"
+        ],
+        "why": "Loguru level names on both surfaces — 'WARNING', never 'WARN'. Promtail promotes level to an indexed Loki label."
+      },
+      "env": {
+        "type": "string",
+        "why": "Deployment environment, resolved ENV -> NODE_ENV -> 'development' on both surfaces."
+      },
+      "service": {
+        "type": "string",
+        "why": "Must equal the Promtail label of the emitting process. Values differ per service by design; the key and type do not."
+      },
+      "commit": { "type": "string", "why": "Short git sha, or 'local'." },
+      "logger": { "type": "string" },
+      "message": { "type": "string", "why": "The event name. Never 'event'." }
+    },
+    "python_only": {
+      "$comment": "Loguru record provenance with no TypeScript equivalent. Declared here so it reads as a deliberate asymmetry, not drift. Do NOT add stack-parsed stand-ins on the TS side to 'fix' this.",
+      "module": "string",
+      "line": "number",
+      "worker": "string"
+    },
+    "typescript_envelope": {
+      "$comment": "The bots stamp these structurally on every line. Python carries the SAME key names with the SAME types as ordinary optional wide-event fields (see WideEventFields), so `| json | component=\"x\"` still spans both surfaces — it is just not guaranteed present on a Python line. Checked as required on TS, and type-checked on Python wherever it appears.",
+      "platform": "string",
+      "component": "string"
+    }
+  },
+
+  "resolution_probe": {
+    "$comment": [
+      "run.py runs BOTH emitters under exactly this environment and asserts both resolve",
+      "`env` and `commit` to the same value. Types alone cannot catch this class of drift:",
+      "reading NODE_ENV on one surface and ENV on the other keeps `env` a string on both",
+      "while making it mean 'Node build mode' here and 'deployment environment' there.",
+      "NODE_ENV is deliberately set to a DIFFERENT value than ENV, so a runtime that gets",
+      "the precedence backwards fails."
+    ],
+    "environment": {
+      "ENV": "conformance_env",
+      "NODE_ENV": "production",
+      "GIT_COMMIT_SHA": "0123456789abcdef"
+    },
+    "expected": {
+      "env": "conformance_env",
+      "commit": "01234567"
+    }
+  },
+
+  "collision_prefix": {
+    "value": "ctx_",
+    "why": "A caller field named like an envelope key is re-emitted under this prefix rather than corrupting the line's identity. One prefix on both surfaces, so there is one thing to grep for after the mistake."
+  },
+
+  "boundary": {
+    "$comment": "The one canonical event per unit of work.",
+    "messages": {
+      "python": ["http_request", "worker_task", "background_task"],
+      "typescript": ["bot_event"]
+    },
+    "fields": {
+      "task": {
+        "type": "string",
+        "why": "The boundary's unit-of-work name. NOT 'operation' — that is the domain verb app code sets on both surfaces and would clobber the boundary identity. `sum by (task)` must span workers and bots."
+      },
+      "trace_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+      "duration_ms": { "type": "number" },
+      "outcome": {
+        "type": "string",
+        "enum": ["success", "failed", "cancelled"]
+      },
+      "final_level": { "type": "string" }
+    },
+    "entry_arrays": ["errors", "warnings", "audit"]
+  },
+
+  "entry": {
+    "$comment": "One errors[]/warnings[]/audit[] element.",
+    "required": { "msg": "string" },
+    "exception": {
+      "$comment": "How a thrown value is described, on a real-time line AND inside an entry. Two flat scalars — never a nested object, which is the one shape `| json` cannot unwrap and which previously put a string on one surface and an object on the other under the same key.",
+      "error_type": "string",
+      "error": "string"
+    }
+  },
+
+  "scenarios": [
+    {
+      "id": "info",
+      "kind": "realtime",
+      "message": "conformance_info",
+      "level": "INFO"
+    },
+    {
+      "id": "warning",
+      "kind": "realtime",
+      "message": "conformance_warning",
+      "level": "WARNING"
+    },
+    {
+      "id": "error",
+      "kind": "realtime",
+      "message": "conformance_error",
+      "level": "ERROR",
+      "carries_exception": true
+    },
+    {
+      "id": "audit",
+      "kind": "realtime",
+      "message": "conformance_audit",
+      "level": "AUDIT"
+    },
+    {
+      "id": "collision",
+      "kind": "realtime",
+      "message": "conformance_collision",
+      "level": "ERROR",
+      "collides_with": ["service", "level"]
+    },
+    {
+      "id": "boundary_success",
+      "kind": "boundary",
+      "task": "conformance_success",
+      "outcome": "success"
+    },
+    {
+      "id": "boundary_failure",
+      "kind": "boundary",
+      "task": "conformance_failure",
+      "outcome": "failed",
+      "carries_exception": true
+    }
+  ]
+}

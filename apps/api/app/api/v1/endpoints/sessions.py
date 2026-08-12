@@ -110,10 +110,10 @@ async def _resolve_file(
 ) -> Path:
     try:
         host_path = await resolve_session_path(user_id, conv_id, role, path)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid path")
-    except JuiceFSUnavailable:
-        raise HTTPException(status_code=503, detail="Workspace storage offline")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid path") from e
+    except JuiceFSUnavailable as e:
+        raise HTTPException(status_code=503, detail="Workspace storage offline") from e
     if not host_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return host_path
@@ -129,7 +129,11 @@ async def list_session_artifacts(
     await _assert_owns(user_id, conv_id)
     try:
         items = await list_artifacts(user_id, conv_id)
-    except JuiceFSUnavailable:
+    except JuiceFSUnavailable as e:
+        log.warning(
+            "workspace storage offline — returning empty artifact list",
+            error_type=type(e).__name__,
+        )
         items = []
     return items
 
@@ -163,7 +167,11 @@ async def list_uploads(
     await _assert_owns(user_id, conv_id)
     try:
         items = await list_user_uploaded(user_id, conv_id)
-    except JuiceFSUnavailable:
+    except JuiceFSUnavailable as e:
+        log.warning(
+            "workspace storage offline — returning empty upload list",
+            error_type=type(e).__name__,
+        )
         items = []
     return items
 
@@ -209,12 +217,12 @@ async def pin_artifact(
         pinned_path = await pin_session_artifact(
             user_id, conv_id, payload.path, payload.target_name
         )
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid path")
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Artifact not found")
-    except JuiceFSUnavailable:
-        raise HTTPException(status_code=503, detail="Workspace storage offline")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid path") from e
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail="Artifact not found") from e
+    except JuiceFSUnavailable as e:
+        raise HTTPException(status_code=503, detail="Workspace storage offline") from e
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=PinResponse(pinned_path=pinned_path).model_dump(),

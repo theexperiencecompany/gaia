@@ -89,6 +89,13 @@ def _common_patches():
             "app.agents.core.agent.apply_plan_model",
             new_callable=AsyncMock,
         ),
+        # The dev-only model override runs after apply_plan_model and would
+        # otherwise pop model_name off the shared FAKE_CONFIG when
+        # use_default_models=True (the request default) with a DEV_DEFAULT_MODEL
+        # entry configured — polluting every later test in this module.
+        "apply_dev_model": patch(
+            "app.agents.core.agent.apply_dev_model_override",
+        ),
         "log": patch("app.agents.core.agent.log"),
     }
 
@@ -98,7 +105,6 @@ def _common_patches():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCoreAgentLogic:
     """Tests for the shared _core_agent_logic helper."""
 
@@ -111,6 +117,7 @@ class TestCoreAgentLogic:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"],
         ):
             graph, state, config = await _core_agent_logic(
@@ -134,6 +141,7 @@ class TestCoreAgentLogic:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"],
         ):
             await _core_agent_logic(
@@ -157,6 +165,7 @@ class TestCoreAgentLogic:
             patches["build_state"] as mock_build_state,
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"],
         ):
             await _core_agent_logic(
@@ -178,6 +187,7 @@ class TestCoreAgentLogic:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"] as mock_log,
         ):
             await _core_agent_logic(
@@ -197,7 +207,6 @@ class TestCoreAgentLogic:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCallAgent:
     """Tests for call_agent (streaming mode)."""
 
@@ -216,6 +225,7 @@ class TestCallAgent:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
@@ -261,6 +271,7 @@ class TestCallAgent:
                 },
             ),
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
@@ -300,6 +311,7 @@ class TestCallAgent:
                 },
             ),
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
@@ -329,6 +341,7 @@ class TestCallAgent:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"],
         ):
             gen = await call_agent(
@@ -383,7 +396,6 @@ class TestCallAgent:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCallAgentSilent:
     """Tests for call_agent_silent (background mode)."""
 
@@ -396,6 +408,7 @@ class TestCallAgentSilent:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -411,6 +424,33 @@ class TestCallAgentSilent:
 
         assert result == ("Hello!", {"tool": "data"})
 
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):
+        """A swallowed failure returned as a normal result reads as success to every
+        caller — which is how workflows reported success through the Gemini 429s."""
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("429 Too Many Requests"),
+            ),
+            pytest.raises(RuntimeError, match="429 Too Many Requests"),
+        ):
+            await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
     @pytest.mark.asyncio
     async def test_passes_trigger_context_to_core(self):
         trigger = {"type": "cron", "schedule": "daily"}
@@ -421,6 +461,7 @@ class TestCallAgentSilent:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -454,6 +495,7 @@ class TestCallAgentSilent:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -490,6 +532,7 @@ class TestCallAgentSilent:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -522,6 +565,7 @@ class TestCallAgentSilent:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -555,6 +599,7 @@ class TestCallAgentSilent:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -576,8 +621,8 @@ class TestCallAgentSilent:
         assert token_call.kwargs["token_output"] == 5
 
     @pytest.mark.asyncio
-    async def test_error_returns_error_tuple(self):
-        """On exception, call_agent_silent returns an error message and empty dict."""
+    async def test_a_message_construction_failure_propagates(self):
+        """Every seam inside call_agent_silent propagates, not just the graph run."""
         patches = _common_patches()
         with (
             patch(
@@ -589,39 +634,12 @@ class TestCallAgentSilent:
             patches["build_state"],
             patches["build_config"],
             patches["apply_plan"],
+            patches["apply_dev_model"],
             patches["log"],
+            pytest.raises(RuntimeError, match="silent boom"),
         ):
-            msg, data = await call_agent_silent(
+            await call_agent_silent(
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
             )
-
-        assert "silent boom" in msg
-        assert data == {}
-
-    @pytest.mark.asyncio
-    async def test_error_in_execute_returns_error_tuple(self):
-        """When execute_graph_silent raises, we get an error tuple."""
-        patches = _common_patches()
-        with (
-            patches["construct"],
-            patches["get_graph"],
-            patches["build_state"],
-            patches["build_config"],
-            patches["apply_plan"],
-            patches["log"],
-            patch(
-                "app.agents.core.agent.execute_graph_silent",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("execute failed"),
-            ),
-        ):
-            msg, data = await call_agent_silent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
-            )
-
-        assert "execute failed" in msg
-        assert data == {}

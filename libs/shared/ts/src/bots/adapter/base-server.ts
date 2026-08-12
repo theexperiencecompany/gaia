@@ -15,7 +15,6 @@ import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import type { PlatformName } from "../types";
-import { type BotLogger, createBotLogger } from "../utils/logger";
 
 /** A shared HTTP server that all bot adapters can extend with custom routes. */
 export class BotServer {
@@ -25,12 +24,10 @@ export class BotServer {
   private server: Server | null = null;
   private readonly port: number;
   private readonly platform: PlatformName;
-  private readonly logger: BotLogger;
 
   constructor(platform: PlatformName, port: number) {
     this.platform = platform;
     this.port = port;
-    this.logger = createBotLogger(platform, "server");
     this.app = new Hono();
 
     // Default health endpoint — always available.
@@ -39,17 +36,20 @@ export class BotServer {
     );
   }
 
-  /** Starts listening on the configured port. Call after adding custom routes. */
+  /**
+   * Starts listening on the configured port. Call after adding custom routes.
+   *
+   * Emits nothing of its own: this runs inside `BaseBotAdapter.boot()`'s
+   * `bot_boot` boundary, which already carries `server_port` and turns a bind
+   * failure into one failed event with the real error in errors[]. A
+   * "server_started" line beside it would be the same fact, twice, untraceable.
+   */
   async start(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const onError = (err: Error) => {
-        this.logger.error("server_error", undefined, err);
-        reject(err);
-      };
+      const onError = (err: Error) => reject(err);
 
       this.server = serve({ fetch: this.app.fetch, port: this.port }, () => {
         this.server?.off("error", onError);
-        this.logger.info("server_started", { port: this.port });
         resolve();
       }) as Server;
 

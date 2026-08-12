@@ -63,7 +63,6 @@ def sample_note_model():
     return NoteModel(content="<p>Hello</p>", plaintext="Hello")
 
 
-@pytest.mark.unit
 class TestGetNote:
     async def test_returns_note_from_repository(self, mock_repo):
         mock_repo.get.return_value = _note_doc(content="<p>Body</p>", plaintext="Body")
@@ -85,7 +84,6 @@ class TestGetNote:
         assert exc_info.value.detail == "Note not found"
 
 
-@pytest.mark.unit
 class TestGetAllNotes:
     async def test_maps_every_note_to_a_response(self, mock_repo):
         mock_repo.list_notes.return_value = [
@@ -104,7 +102,6 @@ class TestGetAllNotes:
         assert await get_all_notes(FAKE_USER_ID) == []
 
 
-@pytest.mark.unit
 class TestUpdateNote:
     async def test_updates_note_and_syncs_chromadb(self, mock_repo, mock_chroma):
         mock_repo.update.return_value = _note_doc(content="<p>Updated</p>", plaintext="Updated")
@@ -140,7 +137,6 @@ class TestUpdateNote:
         assert isinstance(result, NoteResponse)
 
 
-@pytest.mark.unit
 class TestDeleteNote:
     async def test_deletes_note_and_chromadb_entry(self, mock_repo, mock_chroma):
         mock_repo.delete.return_value = True
@@ -169,7 +165,6 @@ class TestDeleteNote:
             await delete_note(FAKE_NOTE_ID, FAKE_USER_ID)  # must not raise
 
 
-@pytest.mark.unit
 class TestCreateNoteService:
     async def test_creates_note_via_insert_note(self):
         expected = NoteResponse(

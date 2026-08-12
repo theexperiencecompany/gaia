@@ -42,7 +42,12 @@ def get_my_user_id(user_id: str) -> str | None:
         twitter_user_id: str | None = (data or {}).get("data", {}).get("id")
         return twitter_user_id
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error getting user ID: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error getting user ID",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None
 
 
@@ -62,7 +67,13 @@ def lookup_user_by_username(user_id: str, username: str) -> dict[str, Any] | Non
         user: dict[str, Any] | None = (data or {}).get("data")
         return user
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error looking up user {username}: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error looking up user",
+            username=username,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None
 
 

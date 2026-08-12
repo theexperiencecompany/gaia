@@ -30,7 +30,9 @@ class MongoDBNotificationStorage:
         """Update a notification's fields"""
         log.set_ns("notification", notification_id=notification_id)
         log.info(
-            f"{LogTag.NOTIFICATION} Updating notification {notification_id} with updates: {updates}"
+            f"{LogTag.NOTIFICATION} Updating notification with updates",
+            notification_id=notification_id,
+            updates=updates,
         )
         await notification_repository.update_fields(notification_id, **updates)
 

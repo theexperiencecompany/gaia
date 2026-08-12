@@ -62,6 +62,7 @@ SUPPORT_SENDER = f"GAIA Support <{SUPPORT_EMAIL}>"
 DISCORD_URL = "https://discord.heygaia.io"
 WHATSAPP_URL = "https://whatsapp.heygaia.io"
 TWITTER_URL = "https://twitter.com/trygaia"
+FOUNDER_MEETING_URL = "https://cal.com/aryanranderiya"
 
 # Email profile previews (email links in chat markdown)
 MAILTO_PREFIX = "mailto:"

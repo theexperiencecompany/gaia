@@ -90,10 +90,15 @@ async def seed_onboarding_todo(user_id: str) -> None:
 
         # Create the todo using the service
         await TodoService.create_todo(todo, user_id)
-        log.info(f"{LogTag.STARTUP} Seeded onboarding todo for user {user_id}")
+        log.info(f"{LogTag.STARTUP} Seeded onboarding todo for user", user_id=user_id)
 
     except Exception as e:
-        log.error(f"{LogTag.STARTUP} Failed to seed onboarding todo for user {user_id}: {e}")
+        log.error(
+            f"{LogTag.STARTUP} Failed to seed onboarding todo for user",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def seed_onboarding_conversation(user_id: str) -> str | None:
@@ -118,12 +123,17 @@ async def seed_onboarding_conversation(user_id: str) -> str | None:
         await conversation_repository.mark_onboarding_conversation(conversation_id, user_id=user_id)
 
         log.info(
-            f"{LogTag.STARTUP} Seeded onboarding conversation {conversation_id} for user {user_id}"
+            f"{LogTag.STARTUP} Seeded onboarding conversation for user",
+            conversation_id=conversation_id,
+            user_id=user_id,
         )
         return conversation_id
 
     except Exception as e:
         log.error(
-            f"{LogTag.STARTUP} Failed to seed onboarding conversation for user {user_id}: {e}"
+            f"{LogTag.STARTUP} Failed to seed onboarding conversation for user",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
         )
         return None

@@ -188,9 +188,9 @@ vi.mock("@gaia/shared", () => {
     }),
     sanitizeErrorForLog: vi.fn((error: unknown) => {
       if (error instanceof Error) {
-        return { error_name: error.name, error_message: error.message };
+        return { error_type: error.name, error: error.message };
       }
-      return { error_name: "Unknown", error_message: String(error) };
+      return { error_type: "Unknown", error: String(error) };
     }),
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",

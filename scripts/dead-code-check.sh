@@ -197,18 +197,19 @@ run_knip() {
     return
   fi
 
-  local raw_output
-  raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) || true
-
-  if [[ -z "$raw_output" ]]; then
-    echo -e "  ${GREEN}No unused code found.${RESET}"
-    echo ""
-    return
+  # Findings go to stdout; warnings (node's DEP0205, for one) go to stderr.
+  # Folding stderr into the findings buffer made a clean run look dirty, so
+  # stderr is reported separately and never counted as a finding.
+  local raw_output stderr_file knip_status=0
+  stderr_file=$(mktemp)
+  raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>"$stderr_file") \
+    || knip_status=$?
+  if [[ -s "$stderr_file" ]]; then
+    echo -e "  ${DIM}$(cat "$stderr_file")${RESET}"
   fi
+  rm -f "$stderr_file"
 
-  FOUND_ISSUES=true
-
-  # Count total knip findings
+  # Count total knip findings from its section headers ("Unused files (12)").
   local knip_total=0
   while IFS= read -r line; do
     if [[ "$line" =~ ^[A-Z][a-z]+.*\(([0-9]+)\)$ ]]; then
@@ -216,6 +217,28 @@ run_knip() {
       knip_total=$((knip_total + count))
     fi
   done <<< "$raw_output"
+
+  # Gate on findings and knip's exit status — never on whether it printed
+  # anything. Keying off emptiness alone let stderr chatter (today: a Node
+  # `module.register()` DeprecationWarning) set FOUND_ISSUES and fail the lane
+  # while reporting "0 dead code items found" — a contradiction no edit to the
+  # codebase could clear.
+  if ((knip_total == 0)); then
+    if ((knip_status == 0)); then
+      echo -e "  ${GREEN}No unused code found.${RESET}"
+      echo ""
+      return
+    fi
+    # Non-zero exit with no findings means knip never scanned (crash, config
+    # error, toolchain failure) — an empty report must not read as clean, or the
+    # gate goes green exactly when the scan stopped running.
+    echo -e "  ${YELLOW}knip exited ${knip_status} with no findings — the scan did not run,${RESET}"
+    echo -e "  ${YELLOW}so an empty report cannot mean clean. Failing the gate instead.${RESET}"
+    FOUND_ISSUES=true
+    return
+  fi
+
+  FOUND_ISSUES=true
   TOTAL_DEAD_CODE=$((TOTAL_DEAD_CODE + knip_total))
 
   if $VERBOSE; then

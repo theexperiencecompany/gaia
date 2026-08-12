@@ -35,6 +35,7 @@ from app.config.model_pricing import (
     calculate_token_cost,
     get_model_pricing,
 )
+from app.constants.llm import DEFAULT_LLM_PROVIDER
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
 
 
@@ -52,7 +53,8 @@ class TestProviderPriorityOrdering:
     """Verify provider ordering follows PROVIDER_PRIORITY and respects preferences."""
 
     def test_default_priority_order(self) -> None:
-        """Without a preferred provider, ordering follows PROVIDER_PRIORITY (gemini > openrouter)."""
+        """Without a preferred provider, ordering follows PROVIDER_PRIORITY
+        (openrouter > gemini — the default provider leads)."""
         mock_gemini = _make_mock_llm("gemini")
         mock_openrouter = _make_mock_llm("openrouter")
 
@@ -64,8 +66,8 @@ class TestProviderPriorityOrdering:
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
         assert len(ordered) == 2
-        assert ordered[0]["name"] == "gemini"
-        assert ordered[1]["name"] == "openrouter"
+        assert ordered[0]["name"] == "openrouter"
+        assert ordered[1]["name"] == "gemini"
 
     def test_preferred_provider_goes_first(self) -> None:
         """When a preferred_provider is given and available, it leads the list."""
@@ -152,10 +154,12 @@ class TestProviderInitialization:
         with patch("app.agents.llm.client._get_available_providers", return_value=available):
             init_llm()
 
-        # Primary is gemini, and configurable_alternatives is called with openrouter
-        mock_gemini.configurable_alternatives.assert_called_once()
-        call_kwargs = mock_gemini.configurable_alternatives.call_args[1]
-        assert "openrouter" in call_kwargs
+        # Primary is openrouter (priority 1), and configurable_alternatives is
+        # called on it with gemini as the alternative.
+        mock_openrouter.configurable_alternatives.assert_called_once()
+        call_kwargs = mock_openrouter.configurable_alternatives.call_args[1]
+        assert call_kwargs["default_key"] == "openrouter"
+        assert "gemini" in call_kwargs
 
     def test_init_llm_preferred_provider_openrouter(self) -> None:
         """Requesting openrouter as preferred provider makes it the primary."""
@@ -316,9 +320,10 @@ class TestProviderConstants:
                 f"PROVIDER_PRIORITY[{priority}] = '{provider_name}' not found in PROVIDER_MODELS"
             )
 
-    def test_default_priority_is_gemini(self) -> None:
-        """Priority 1 (the default) should be gemini."""
-        assert PROVIDER_PRIORITY[1] == "gemini"
+    def test_default_priority_matches_the_default_provider(self) -> None:
+        """Priority 1 is the provider serving DEFAULT_MODEL_NAME — the fallback
+        chain must start at the lane the app actually defaults to."""
+        assert PROVIDER_PRIORITY[1] == DEFAULT_LLM_PROVIDER == "openrouter"
 
     def test_provider_models_have_expected_keys(self) -> None:
         """PROVIDER_MODELS must contain gemini and openrouter."""

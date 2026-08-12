@@ -234,7 +234,11 @@ class RedisCache:
                 )
             except Exception as e:
                 log.set(db={"connection_status": "error", "backend": "redis"})
-                log.error(f"{LogTag.STORAGE} Failed to create Redis client: {e}")
+                log.error(
+                    f"{LogTag.STORAGE} Failed to create Redis client",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
         else:
             log.warning(f"{LogTag.STORAGE} REDIS_URL is not set. Caching will be disabled.")
 
@@ -250,7 +254,7 @@ class RedisCache:
         if self.redis is None:
             message = "Redis is UNAVAILABLE: REDIS_URL is not configured."
             log.set(db={"connection_status": "unavailable", "backend": "redis"})
-            log.error(f"{LogTag.STORAGE} {message}")
+            log.error(f"{LogTag.STORAGE} Redis is UNAVAILABLE: REDIS_URL is not configured")
             if settings.ENV == "production":
                 raise ConnectionError(message)
             return
@@ -262,7 +266,9 @@ class RedisCache:
         except Exception as e:
             message = f"Redis is UNAVAILABLE: ping failed ({type(e).__name__}: {e})"
             log.set(db={"connection_status": "error", "backend": "redis"})
-            log.error(f"{LogTag.STORAGE} {message}")
+            log.error(
+                f"{LogTag.STORAGE} Redis is UNAVAILABLE: ping failed", error_type=type(e).__name__
+            )
             if settings.ENV == "production":
                 raise ConnectionError(message) from e
 
@@ -366,7 +372,7 @@ class RedisCache:
 
         try:
             await self.redis.delete(key)
-            log.info(f"{LogTag.STORAGE} Cache deleted for key: {key}")
+            log.info(f"{LogTag.STORAGE} Cache deleted for key", key=key)
         except Exception as e:
             log.error(
                 "redis_op_failed",
@@ -488,7 +494,12 @@ async def get_and_delete_cache(key: str, model: type[T] | None = None) -> Any:
             return deserialize_any(value, model)
         return None
     except Exception as e:
-        log.error(f"{LogTag.STORAGE} Error in get_and_delete for key {key}: {e}")
+        log.error(
+            f"{LogTag.STORAGE} Error in get_and_delete for key",
+            key=key,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
 
 
@@ -517,13 +528,18 @@ async def delete_cache_by_pattern(pattern: str) -> None:
     try:
         keys = await redis_cache.redis.keys(pattern)
         if not keys:
-            log.info(f"{LogTag.STORAGE} No keys found for pattern: {pattern}")
+            log.info(f"{LogTag.STORAGE} No keys found for pattern", pattern=pattern)
             return
         for key in keys:
             await redis_cache.delete(key)
-            log.info(f"{LogTag.STORAGE} Cache deleted for key: {key}")
+            log.info(f"{LogTag.STORAGE} Cache deleted for key", key=key)
     except Exception as e:
-        log.error(f"{LogTag.STORAGE} Error deleting Redis keys by pattern {pattern}: {e}")
+        log.error(
+            f"{LogTag.STORAGE} Error deleting Redis keys by pattern",
+            pattern=pattern,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 # Caching decorators have been moved to app.decorators.caching

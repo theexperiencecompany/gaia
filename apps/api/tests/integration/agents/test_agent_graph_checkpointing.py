@@ -49,7 +49,7 @@ from tests.helpers import (
 )
 
 POSTGRES_TEST_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://gaia:gaia@localhost:5432/gaia_test"
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/gaia_test"
 )
 
 # The hooks build_comms_graph declares, in the order the graph must run them.
@@ -243,7 +243,8 @@ async def pg_checkpointer():
 
     Sets up the checkpoint tables and yields the checkpointer.
     Cleans up the connection pool on teardown.
-    Skips the test if PostgreSQL is not reachable.
+    Real-infra tier: skips at setup without dialing when USE_REAL_SERVICES is
+    not explicitly "1"; when opted in, a missing Postgres is a loud failure.
     """
     connection_kwargs = {
         "autocommit": True,
@@ -256,16 +257,12 @@ async def pg_checkpointer():
         open=False,
         timeout=10,
     )
-    try:
-        await pool.open(wait=True, timeout=10)
-    except Exception:
-        # USE_REAL_SERVICES must be *explicitly* set to "1" in the environment
-        # (e.g., in the Dagger CI container) for a connection failure to be
-        # treated as fatal. Without that env var the test is skipped, matching
-        # the pg_checkpointer_manager fixture's behaviour.
-        if os.environ.get("USE_REAL_SERVICES") == "1":
-            raise  # In CI with real services, Postgres must be running
+    if os.environ.get("USE_REAL_SERVICES") != "1":
+        # Not opted in: skip without ever dialing localhost (hermetic run).
         pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
+    # Opted in (e.g., the Dagger CI container): a missing Postgres propagates
+    # as a loud failure instead of a skip.
+    await pool.open(wait=True, timeout=10)
 
     checkpointer = AsyncPostgresSaver(conn=pool)
     await checkpointer.setup()
@@ -280,13 +277,13 @@ async def pg_checkpointer_manager():
     """Create a real CheckpointerManager backed by test PostgreSQL.
 
     Uses the production CheckpointerManager class directly.
-    Skips the test if PostgreSQL is not reachable.
+    Real-infra tier: skips at setup without dialing when USE_REAL_SERVICES is
+    not explicitly "1"; when opted in, a missing Postgres is a loud failure.
     """
-    manager = CheckpointerManager(conninfo=POSTGRES_TEST_URL, max_pool_size=5)
-    try:
-        await manager.setup()
-    except Exception:
+    if os.environ.get("USE_REAL_SERVICES") != "1":
         pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
+    manager = CheckpointerManager(conninfo=POSTGRES_TEST_URL, max_pool_size=5)
+    await manager.setup()
 
     yield manager
 
@@ -724,9 +721,9 @@ class TestPreModelHooksExecution:
 
     async def test_manage_system_prompts_keeps_latest_only(self, pg_checkpointer):
         """Send multiple non-memory system prompts. The
-        manage_system_prompts_node keeps only the latest one before the
-        LLM call, but the checkpoint retains all of them (pre-model hooks
-        modify state ephemerally). The graph must complete without error."""
+        manage_system_prompts_node keeps only the latest one, and since the
+        prompt-accumulation fix that pruning is durable: the stale copy is
+        tombstoned out of the checkpoint too."""
         from langgraph.store.memory import InMemoryStore
 
         fake_llm = create_fake_llm(["System prompt managed"])
@@ -756,15 +753,16 @@ class TestPreModelHooksExecution:
             config=config,
         )
 
-        # Both system prompts remain in persisted state (pre-model hooks
-        # only modify ephemerally for the LLM call)
+        # Only the latest system prompt persists — the stale copy is
+        # tombstoned out of the checkpoint by the model node.
         system_msgs = [m for m in result["messages"] if m.type == "system"]
         non_memory = [
             m for m in system_msgs if not m.additional_kwargs.get("memory_message", False)
         ]
-        assert len(non_memory) == 2, (
-            f"Both system prompts should remain in persisted state, found {len(non_memory)}"
+        assert len(non_memory) == 1, (
+            f"Exactly the latest system prompt should persist, found {len(non_memory)}"
         )
+        assert "New system prompt" in str(non_memory[0].content)
 
         # Graph completed with AI response
         ai_msgs = [m for m in result["messages"] if isinstance(m, AIMessage)]

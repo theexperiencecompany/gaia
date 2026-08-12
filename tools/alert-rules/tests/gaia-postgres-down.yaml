@@ -1,0 +1,34 @@
+# gaia-postgres-down — fires when the postgres_exporter reports the database
+# itself (not the exporter) is unreachable via pg_up.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-postgres-down fires when pg_up reports 0
+    interval: 1m
+    input_series:
+      - series: 'pg_up{instance="postgres_exporter:9187"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-postgres-down
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: postgres
+              incident: availability
+              instance: postgres_exporter:9187
+            exp_annotations:
+              description: >-
+                The langgraph database is the LangGraph checkpointer holding conversation thread state. While it is unreachable every chat turn fails to check out a connection and silently falls back to in-memory state, so users lose thread continuity with no error shown. The connection-saturation rule cannot see this — its metric disappears along with the database. This is the database, not its exporter: the exporter is still up and answering scrapes. Check the postgres container and its logs first.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-postgres-down
+
+  - name: gaia-postgres-down stays quiet when pg_up reports 1
+    interval: 1m
+    input_series:
+      - series: 'pg_up{instance="postgres_exporter:9187"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-postgres-down
+        exp_alerts: []

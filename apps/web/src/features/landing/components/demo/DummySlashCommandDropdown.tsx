@@ -530,7 +530,9 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
     return filtered;
   }, [selectedCategory, searchQuery]);
 
-  const handleToolClick = (_toolName: string) => {};
+  const handleToolClick = (_toolName: string) => {
+    /* dummy dropdown: clicks are inert on the landing page */
+  };
 
   return (
     <AnimatePresence>

@@ -55,7 +55,13 @@ async def store_canvas_embedding(
         )
         return True
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Failed to index canvas for todo {todo_id}: {e}")
+        log.error(
+            f"{LogTag.CHROMA} Failed to index canvas for todo",
+            todo_id=todo_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return False
 
 
@@ -101,7 +107,12 @@ async def delete_canvas_embedding(todo_id: str) -> bool:
         await chroma_collection.adelete(ids=[f"canvas_{todo_id}"])
         return True
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Failed to delete canvas index for todo {todo_id}: {e}")
+        log.error(
+            f"{LogTag.CHROMA} Failed to delete canvas index for todo",
+            todo_id=todo_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return False
 
 
@@ -173,5 +184,10 @@ async def search_canvas_context(
             )
         return matches
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Canvas search failed for user {user_id}: {e}")
+        log.error(
+            f"{LogTag.CHROMA} Canvas search failed for user",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return []

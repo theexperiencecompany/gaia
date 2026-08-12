@@ -47,16 +47,19 @@ async def create_execution(
             conversation_id=conversation_id,
         )
     )
-    log.set(
-        workflow={
-            "id": workflow_id,
-            "status": "running",
-            "execution_id": execution.execution_id,
-            "trigger_type": trigger_type,
-        }
+    # set_ns, not set(workflow=...): the caller already stamped the namespace with
+    # trigger_type/steps_count, and a whole-dict set replaces it rather than merging.
+    log.set_ns(
+        "workflow",
+        id=workflow_id,
+        status="running",
+        execution_id=execution.execution_id,
+        trigger_type=trigger_type,
     )
     log.info(
-        f"{LogTag.WORKFLOW} Created execution {execution.execution_id} for workflow {workflow_id}"
+        f"{LogTag.WORKFLOW} Created execution for workflow",
+        execution_id=execution.execution_id,
+        workflow_id=workflow_id,
     )
 
     return execution
@@ -90,21 +93,31 @@ async def complete_execution(
         conversation_id=conversation_id,
     )
     if updated is None:
-        log.warning(f"{LogTag.WORKFLOW} Execution {execution_id} not found for completion")
+        log.warning(
+            f"{LogTag.WORKFLOW} Execution not found for completion",
+            execution_id=execution_id,
+            conversation_id=conversation_id,
+        )
         return False
 
     duration_seconds = updated.duration_seconds
     duration_ms = int(duration_seconds * 1000) if duration_seconds is not None else None
-    log.set(
-        workflow={
-            "id": updated.workflow_id,
-            "status": status,
-            "execution_id": execution_id,
-            "duration_ms": duration_ms,
-        }
+    # set_ns, not set(workflow=...): this is the LAST write of the namespace on a
+    # run, so a whole-dict set is what erased trigger_type from 34,247 of 34,413
+    # production workflow fires — leaving no way to tell scheduled fires from
+    # webhook ones.
+    log.set_ns(
+        "workflow",
+        id=updated.workflow_id,
+        status=status,
+        execution_id=execution_id,
+        duration_ms=duration_ms,
     )
     log.info(
-        f"{LogTag.WORKFLOW} Completed execution {execution_id} with status {status}, duration {duration_seconds}s"
+        f"{LogTag.WORKFLOW} Completed execution",
+        execution_id=execution_id,
+        status=status,
+        duration_seconds=duration_seconds,
     )
 
     return True

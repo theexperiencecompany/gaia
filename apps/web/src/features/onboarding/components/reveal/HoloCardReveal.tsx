@@ -30,6 +30,131 @@ type RevealState = "idle" | "vibrating" | "bursting" | "revealed";
 
 const GIFTBOX_SRC = "/images/onboarding/giftbox.png";
 
+function buildHoloCardData(
+  personalizationData: PersonalizationData,
+): HoloCardDisplayData {
+  return {
+    house: personalizationData.house ?? "bluehaven",
+    name: personalizationData.name ?? "User",
+    personality_phrase:
+      personalizationData.personality_phrase ?? "Curious Adventurer",
+    user_bio:
+      personalizationData.user_bio ??
+      "A passionate individual exploring new possibilities and making an impact.",
+    account_number: personalizationData.account_number
+      ? `#${personalizationData.account_number}`
+      : "#00000",
+    member_since:
+      personalizationData.member_since ??
+      new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    overlay_color: personalizationData.overlay_color ?? "rgba(0,0,0,0)",
+    overlay_opacity: personalizationData.overlay_opacity ?? 40,
+    holo_card_id: personalizationData.holo_card_id,
+  };
+}
+
+interface GiftboxButtonProps {
+  revealState: RevealState;
+  onClick: () => void;
+  onVibrationComplete: () => void;
+  onBurstComplete: () => void;
+}
+
+// The tappable giftbox that vibrates then bursts. Double-buffered against the
+// revealed card so opening reads as the box unwrapping, not vanishing.
+function GiftboxButton({
+  revealState,
+  onClick,
+  onVibrationComplete,
+  onBurstComplete,
+}: GiftboxButtonProps) {
+  return (
+    <m.button
+      key="giftbox"
+      type="button"
+      aria-label="Tap to reveal your personalized GAIA card"
+      onClick={onClick}
+      disabled={revealState !== "idle"}
+      className={
+        revealState === "bursting"
+          ? "pointer-events-none absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent outline-none"
+          : "group relative flex cursor-pointer items-center justify-center bg-transparent outline-none"
+      }
+      style={{ perspective: 1000 }}
+      exit={{ opacity: 0, transition: { duration: 0.15 } }}
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={
+        revealState === "vibrating"
+          ? {
+              opacity: 1,
+              scale: [1, 1.04, 1.04, 1, 1, 1, 1, 1],
+              rotate: [0, -8, 8, -10, 10, -6, 6, -3, 3, 0],
+              x: [0, -4, 4, -6, 6, -4, 4, -2, 2, 0],
+            }
+          : revealState === "bursting"
+            ? {
+                opacity: [1, 1, 0],
+                scale: [1, 1.3, 1.6],
+                rotate: 0,
+                x: 0,
+              }
+            : { opacity: 1, scale: 1, rotate: 0, x: 0 }
+      }
+      whileHover={revealState === "idle" ? { scale: 1.06, y: -6 } : undefined}
+      whileTap={revealState === "idle" ? { scale: 0.97 } : undefined}
+      transition={
+        revealState === "vibrating"
+          ? { duration: 0.7, ease: "easeInOut" }
+          : revealState === "bursting"
+            ? { duration: 0.45, ease: "easeOut" }
+            : { type: "spring", stiffness: 320, damping: 22 }
+      }
+      onAnimationComplete={
+        revealState === "vibrating"
+          ? onVibrationComplete
+          : revealState === "bursting"
+            ? onBurstComplete
+            : undefined
+      }
+    >
+      <m.div
+        className="relative flex flex-col items-center"
+        style={{ width: HOLO_CARD_WIDTH }}
+        animate={revealState === "idle" ? { y: [0, -6, 0] } : { y: 0 }}
+        transition={
+          revealState === "idle"
+            ? { duration: 3, repeat: Infinity, ease: "easeInOut" }
+            : undefined
+        }
+      >
+        <Image
+          src={GIFTBOX_SRC}
+          alt=""
+          width={1360}
+          height={952}
+          priority
+          className="h-auto w-[240px] select-none"
+          draggable={false}
+        />
+        {revealState === "idle" && (
+          <m.p
+            className="mt-4 text-sm text-white/80"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 2.4, repeat: Infinity }}
+          >
+            Click to open
+          </m.p>
+        )}
+      </m.div>
+    </m.button>
+  );
+}
+
 export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
   const [revealState, setRevealState] = useState<RevealState>("idle");
   const cardWrapRef = useRef<HTMLDivElement>(null);
@@ -63,28 +188,7 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
     };
   }, [revealState]);
 
-  const holoCardData: HoloCardDisplayData = {
-    house: personalizationData.house ?? "bluehaven",
-    name: personalizationData.name ?? "User",
-    personality_phrase:
-      personalizationData.personality_phrase ?? "Curious Adventurer",
-    user_bio:
-      personalizationData.user_bio ??
-      "A passionate individual exploring new possibilities and making an impact.",
-    account_number: personalizationData.account_number
-      ? `#${personalizationData.account_number}`
-      : "#00000",
-    member_since:
-      personalizationData.member_since ??
-      new Date().toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
-    overlay_color: personalizationData.overlay_color ?? "rgba(0,0,0,0)",
-    overlay_opacity: personalizationData.overlay_opacity ?? 40,
-    holo_card_id: personalizationData.holo_card_id,
-  };
+  const holoCardData = buildHoloCardData(personalizationData);
 
   const handleGiftboxClick = () => {
     if (revealState !== "idle") return;
@@ -118,87 +222,13 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
       >
         <AnimatePresence>
           {revealState !== "revealed" && (
-            <m.button
+            <GiftboxButton
               key="giftbox"
-              type="button"
-              aria-label="Tap to reveal your personalized GAIA card"
+              revealState={revealState}
               onClick={handleGiftboxClick}
-              disabled={revealState !== "idle"}
-              className={
-                revealState === "bursting"
-                  ? "pointer-events-none absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent outline-none"
-                  : "group relative flex cursor-pointer items-center justify-center bg-transparent outline-none"
-              }
-              style={{ perspective: 1000 }}
-              exit={{ opacity: 0, transition: { duration: 0.15 } }}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={
-                revealState === "vibrating"
-                  ? {
-                      opacity: 1,
-                      scale: [1, 1.04, 1.04, 1, 1, 1, 1, 1],
-                      rotate: [0, -8, 8, -10, 10, -6, 6, -3, 3, 0],
-                      x: [0, -4, 4, -6, 6, -4, 4, -2, 2, 0],
-                    }
-                  : revealState === "bursting"
-                    ? {
-                        opacity: [1, 1, 0],
-                        scale: [1, 1.3, 1.6],
-                        rotate: 0,
-                        x: 0,
-                      }
-                    : { opacity: 1, scale: 1, rotate: 0, x: 0 }
-              }
-              whileHover={
-                revealState === "idle" ? { scale: 1.06, y: -6 } : undefined
-              }
-              whileTap={revealState === "idle" ? { scale: 0.97 } : undefined}
-              transition={
-                revealState === "vibrating"
-                  ? { duration: 0.7, ease: "easeInOut" }
-                  : revealState === "bursting"
-                    ? { duration: 0.45, ease: "easeOut" }
-                    : { type: "spring", stiffness: 320, damping: 22 }
-              }
-              onAnimationComplete={
-                revealState === "vibrating"
-                  ? handleVibrationComplete
-                  : revealState === "bursting"
-                    ? handleBurstComplete
-                    : undefined
-              }
-            >
-              <m.div
-                className="relative flex flex-col items-center"
-                style={{ width: HOLO_CARD_WIDTH }}
-                animate={revealState === "idle" ? { y: [0, -6, 0] } : { y: 0 }}
-                transition={
-                  revealState === "idle"
-                    ? { duration: 3, repeat: Infinity, ease: "easeInOut" }
-                    : undefined
-                }
-              >
-                <Image
-                  src={GIFTBOX_SRC}
-                  alt=""
-                  width={1360}
-                  height={952}
-                  priority
-                  className="h-auto w-[240px] select-none"
-                  draggable={false}
-                />
-                {revealState === "idle" && (
-                  <m.p
-                    className="mt-4 text-sm text-white/80"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: [0.5, 1, 0.5] }}
-                    transition={{ duration: 2.4, repeat: Infinity }}
-                  >
-                    Click to open
-                  </m.p>
-                )}
-              </m.div>
-            </m.button>
+              onVibrationComplete={handleVibrationComplete}
+              onBurstComplete={handleBurstComplete}
+            />
           )}
 
           {(revealState === "bursting" || revealState === "revealed") && (

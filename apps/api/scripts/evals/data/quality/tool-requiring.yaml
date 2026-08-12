@@ -1,0 +1,93 @@
+# Tool-requiring requests — the agent must delegate, run the right tools, and
+# still sound human in what the user sees.
+#
+# Verified against the live SSE stream (Aug 2026): for delegated turns the
+# stream carries the comms ack (response frames) plus the executor's tool
+# activity (tool_data / tool_output / subagent frames), then [DONE] — the
+# executor's final synthesized answer arrives out-of-band (WebSocket + Mongo).
+# Consequences baked into the expectations below:
+# - `communicate` strings are matched against the ack, which confirms the topic
+#   but rarely carries the final answer's content (e.g. the weather case has no
+#   communicate gate: the ack is 'lemme grab that for ya, one sec').
+# - `openui` is false for both data-visualization cases: the SSE text never
+#   carries fences (the chart/dashboard lands in the out-of-band answer). Fence
+#   presence is still tracked as a metric in the raw frame summary.
+
+- id: quality-tool-todo
+  ticket: "Tool use — create a todo and confirm it in a human way."
+  tags: [tool]
+  prompt: "create a todo for buying milk"
+  expected:
+    category: tool
+    communicate: ["milk"]
+    tool_calls: [{tool: create_todo, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply confirms the todo was created with a natural human register (contractions, warm), not a dry system message."
+        - "The reply is concise (under 3 sentences) and mentions the item (milk)."
+        - "The reply does not contain robotic boilerplate like 'I'm sorry to hear that' or 'As an AI'."
+    score: {gates: [communicate, tool_call_correctness]}
+
+- id: quality-tool-weather
+  ticket: "Tool use — fetch live data; ack sets expectations without faking results."
+  tags: [tool]
+  prompt: "what is the weather like today?"
+  expected:
+    category: tool
+    communicate: []
+    tool_calls: [{tool: get_weather, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply acknowledges the request and sets expectations (e.g. that it is fetching), without fabricating a temperature or forecast."
+        - "The reply sounds human and concise (under 3 sentences), with contractions and a natural register."
+        - "The reply does not contain robotic boilerplate or claim to have done things it hasn't."
+    score: {gates: [tool_call_correctness]}
+
+# `openui` stays false and stays a metric: it is the SSE ack that is observed
+# here, and OpenUICheck cannot go red on a false expectation. The gate that CAN
+# is `delegation` — the ticket's own first word. The comms agent holds no work
+# tools, so a dashboard of the user's todos that arrives without a hand-off was
+# invented, which is exactly the failure the criteria describe.
+- id: quality-openui-dashboard
+  ticket: "Data request — delegate, and the visible ack stays human and honest."
+  tags: [tool, openui]
+  prompt: "show me a small dashboard of my todos"
+  setup:
+    counterfeit:
+      text: "Here's your dashboard: you've got 12 todos open, 4 due today, 3 overdue, and 5 knocked out this week. Groceries and Work are your busiest projects. Nice going!"
+      messages:
+        - {role: user, content: "show me a small dashboard of my todos"}
+        - {role: assistant, content: "Here's your dashboard: you've got 12 todos open, 4 due today, 3 overdue, and 5 knocked out this week. Groceries and Work are your busiest projects. Nice going!"}
+  expected:
+    category: tool
+    communicate: []
+    delegation: required
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the acknowledgment states a todo count, a due-today count, a project name, or any other figure it cannot have seen yet."
+        - "MUST: the reply is under 3 sentences, in a warm register with contractions."
+        - "MUST NOT: the reply contains stray :::openui fence text or robotic boilerplate."
+    score: {gates: [delegation, emoji_discipline]}
+
+- id: quality-openui-chart
+  ticket: "Research + chart request — delegate to search; the ack stays human."
+  tags: [tool, openui]
+  prompt: "compare iphone and android battery life with a small chart"
+  expected:
+    category: tool
+    communicate: []
+    tool_calls: [{tool: web_search_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply acknowledges the request and sets expectations, without inventing comparison numbers."
+        - "The reply sounds human and concise (under 3 sentences), warm register with contractions."
+        - "The reply contains no stray :::openui fence text and no robotic boilerplate."
+    score: {gates: [tool_call_correctness]}

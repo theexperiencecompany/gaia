@@ -26,7 +26,7 @@ const getOffsetString = (timezone: string): string => {
 
   // shortOffset produces values like "GMT+5:30", "GMT-5", "GMT"
   const match = tzPart.match(/GMT([+-]\d+(?::\d+)?)?/);
-  if (!match || !match[1]) return "+00:00";
+  if (!match?.[1]) return "+00:00";
 
   const [hours, mins = "00"] = match[1].split(":");
   const sign = hours.startsWith("-") ? "-" : "+";

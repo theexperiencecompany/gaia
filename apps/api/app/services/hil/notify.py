@@ -54,7 +54,13 @@ async def _broadcast_in_app(
             },
         )
     except Exception as e:
-        log.warning(f"{LogTag.HIL} HIL notify: WebSocket broadcast failed: {e}")
+        log.warning(
+            f"{LogTag.HIL} HIL notify: WebSocket broadcast failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
 
 
 async def _push_to_devices(
@@ -71,7 +77,13 @@ async def _push_to_devices(
                 summary=summary,
             )
     except Exception as e:
-        log.warning(f"{LogTag.HIL} HIL notify: Expo push failed: {e}")
+        log.warning(
+            f"{LogTag.HIL} HIL notify: Expo push failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
 
 
 async def _active_device_tokens(user_id: str) -> list[str]:

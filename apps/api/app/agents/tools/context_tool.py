@@ -64,7 +64,9 @@ async def gather_context(
 
     total_time = time.time() - start_time
     log.info(
-        f"{LogTag.TOOL} Context fetched from {len(resolved_providers)} providers in {total_time:.2f}s"
+        f"{LogTag.TOOL} Context fetched",
+        provider_count=len(resolved_providers),
+        duration_seconds=round(total_time, 2),
     )
 
     return {

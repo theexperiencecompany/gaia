@@ -62,14 +62,24 @@ class SearchEngine:
                         "latency_ms": _elapsed_ms(start),
                     }
                 )
-                log.warning(f"search provider {provider.name} failed: {e}")
+                log.warning(
+                    "search provider failed",
+                    name=provider.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 continue
             latency_ms = _elapsed_ms(start)
 
             try:
                 await self._budget.record_call(provider.name)
             except Exception as e:
-                log.error(f"failed to record search budget for {provider.name}: {e}")
+                log.error(
+                    "failed to record search budget for",
+                    name=provider.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
             if response.is_empty:
                 attempts.append(

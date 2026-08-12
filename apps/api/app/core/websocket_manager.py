@@ -36,7 +36,7 @@ class WebSocketManager:
             self.connections[user_id] = set()
         self.connections[user_id].add(websocket)
         log.set(websocket={"user_id": user_id, "connection_id": id(websocket)})
-        log.info(f"{LogTag.STARTUP} Added WebSocket connection for user {user_id}")
+        log.info(f"{LogTag.STARTUP} Added WebSocket connection for user", user_id=user_id)
 
     def remove_connection(self, user_id: str, websocket: WebSocket) -> None:
         """Remove a WebSocket connection for a user"""
@@ -45,7 +45,7 @@ class WebSocketManager:
             if not self.connections[user_id]:
                 del self.connections[user_id]
         log.set(websocket={"user_id": user_id, "connection_id": id(websocket)})
-        log.info(f"{LogTag.STARTUP} Removed WebSocket connection for user {user_id}")
+        log.info(f"{LogTag.STARTUP} Removed WebSocket connection for user", user_id=user_id)
 
     async def broadcast_to_user(self, user_id: str, message: dict[str, Any]) -> None:
         """Broadcast message to all connections for a user"""
@@ -63,7 +63,12 @@ class WebSocketManager:
             try:
                 await websocket.send_json(message)
             except Exception as e:
-                log.warning(f"{LogTag.STARTUP} Failed to send to WebSocket: {e}")
+                log.warning(
+                    f"{LogTag.STARTUP} Failed to send to WebSocket",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
                 disconnected.add(websocket)
 
         # Remove disconnected websockets
@@ -87,12 +92,16 @@ class WebSocketManager:
             await publisher.publish("websocket-events", message_body)
 
             log.debug(
-                f"{LogTag.STARTUP} Published WebSocket message for user {user_id} to RabbitMQ"
+                f"{LogTag.STARTUP} Published WebSocket message for user to RabbitMQ",
+                user_id=user_id,
             )
 
         except Exception as e:
             log.error(
-                f"{LogTag.STARTUP} Failed to publish WebSocket message to RabbitMQ: {e}",
+                f"{LogTag.STARTUP} Failed to publish WebSocket message to RabbitMQ",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
                 exc_info=True,
             )
 

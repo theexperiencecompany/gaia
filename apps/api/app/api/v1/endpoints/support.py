@@ -13,6 +13,7 @@ from fastapi import (
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
+from app.constants.general import MAX_PAGE_NUMBER
 from app.models.support_models import (
     SupportRateLimits,
     SupportRateLimitStatusResponse,
@@ -85,7 +86,9 @@ async def submit_support_request(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to submit support request: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to submit support request: {e!s}"
+        ) from e
 
 
 @router.post(
@@ -136,11 +139,11 @@ async def submit_support_request_with_attachments(
         # Validate request type
         try:
             request_type = SupportRequestType(type)
-        except ValueError:
+        except ValueError as e:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid request type. Must be one of: {', '.join([t.value for t in SupportRequestType])}",
-            )
+            ) from e
 
         # Create request data
         request_data = SupportRequestCreate(
@@ -163,7 +166,9 @@ async def submit_support_request_with_attachments(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to submit support request: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to submit support request: {e!s}"
+        ) from e
 
 
 @router.get(
@@ -174,7 +179,7 @@ async def submit_support_request_with_attachments(
 @limiter.limit("30/minute")  # Rate limit: 30 requests per minute for fetching support requests
 async def get_my_support_requests(
     request: Request,
-    page: int = Query(1, ge=1, description="Page number"),
+    page: int = Query(1, ge=1, le=MAX_PAGE_NUMBER, description="Page number"),
     per_page: int = Query(10, ge=1, le=50, description="Items per page"),
     status: SupportRequestStatus | None = Query(None, description="Filter by status"),
     user_id: str = Depends(get_user_id),
@@ -191,7 +196,9 @@ async def get_my_support_requests(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch support requests: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch support requests: {e!s}"
+        ) from e
 
 
 @router.get(
@@ -222,4 +229,6 @@ async def get_support_rate_limit_status(
         log.set(outcome="success")
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get rate limit status: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get rate limit status: {e!s}"
+        ) from e

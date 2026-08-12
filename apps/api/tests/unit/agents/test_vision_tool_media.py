@@ -42,7 +42,6 @@ def _patch_lane(
 
 
 @pytest.mark.asyncio
-@pytest.mark.unit
 class TestNoOpGuards:
     async def test_a_plain_text_result_is_not_described(self):
         """Runs on EVERY tool call. Describing here would bill a vision call for
@@ -84,7 +83,6 @@ class TestNoOpGuards:
 
 
 @pytest.mark.asyncio
-@pytest.mark.unit
 class TestDescribing:
     async def test_the_description_is_cached_on_the_message(self):
         lane, vision = _patch_lane(can_see=False, description="A red login screen.")
@@ -148,7 +146,6 @@ class TestDescribing:
 
 
 @pytest.mark.asyncio
-@pytest.mark.unit
 class TestFailurePaths:
     async def test_a_failed_vision_call_degrades_instead_of_failing_the_tool(self):
         """describe_image returns None when the provider errors. The tool result
@@ -169,7 +166,6 @@ class TestFailurePaths:
 
 
 @pytest.mark.asyncio
-@pytest.mark.unit
 class TestMediaDescriptionMiddleware:
     async def test_it_describes_the_tool_result_it_wraps(self):
         described = _tool_msg(_img(), additional_kwargs={MEDIA_DESCRIPTIONS_KEY: ["prose"]})

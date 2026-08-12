@@ -50,7 +50,6 @@ def _queue_item(**overrides) -> str:
     return json.dumps(item)
 
 
-@pytest.mark.unit
 class TestLockValue:
     def test_roundtrip(self) -> None:
         value = build_lock_value("stream-1", "task-1")
@@ -63,7 +62,6 @@ class TestLockValue:
         assert parse_lock_value("legacy") == ("legacy", "")
 
 
-@pytest.mark.unit
 class TestPopNextQueuedRun:
     async def test_empty_queue_returns_none(self) -> None:
         with patch.object(eq, "redis_cache") as redis:
@@ -158,7 +156,6 @@ class TestPopNextQueuedRun:
         assert prepared.run.executor_owns_tool_data is True
 
 
-@pytest.mark.unit
 class TestLockOwnership:
     """The ownership contract behind safe finalize handoffs (BUG C fix)."""
 
@@ -192,7 +189,6 @@ class TestLockOwnership:
             redis.delete.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestReclaimStrandedTask:
     """The post-release recheck that closes the strand window (BUG A fix)."""
 
@@ -236,7 +232,6 @@ class TestReclaimStrandedTask:
             redis.delete.assert_awaited_once()  # don't block call_executor
 
 
-@pytest.mark.unit
 class TestEnqueueTask:
     async def test_serializes_scalars_and_drops_unsafe_values(self) -> None:
         with patch.object(eq, "redis_cache") as redis:

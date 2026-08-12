@@ -67,7 +67,7 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
                 <div className="flex items-center gap-2">
                   Yearly
                   <Chip color="primary" size="sm" variant="solid">
-                    Save 25%
+                    2 months free
                   </Chip>
                 </div>
               }

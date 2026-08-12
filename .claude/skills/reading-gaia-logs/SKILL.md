@@ -18,7 +18,7 @@ One structured line summarizes each request/task. Build it up with `log.set(...)
 - **Module:** `libs/shared/py/wide_events.py`. Import in app code: `from shared.py.wide_events import log`.
 - **API** (`wide_events.py`):
   - `log.set(**kwargs)` — merge structured fields into the current event (top-level).
-  - `log.set_ns(namespace, **kwargs)` — read-merge into a nested `event[namespace]` dict (use for multi-step paths so earlier keys aren't clobbered).
+  - `log.set_ns(namespace, **kwargs)` — merge into a nested `event[namespace]` dict; identical to `set(namespace={...})` (which also merges), with the namespace named explicitly. Prefer it on multi-step paths.
   - `log.info/debug(msg, ...)` — real-time Loguru line only; **not** recorded in the wide event.
   - `log.warning/error/critical/exception(msg, ...)` — Loguru line **and** appended to the event's `warnings`/`errors` array, bumping its final level.
 - **Emit boundaries** (exactly one line each):
@@ -74,7 +74,9 @@ Grafana comes pre-provisioned (`infra/docker/observability/grafana/provisioning/
 - Docker job: `container`, `service`, `service_name`, `stack`, `compose_project`, `stream`, `level`, `logger_name`
 - File job (`gaia_api_local`, for natively-run services shipped from mounted `apps/api/logs`): `service`, `service_name`, `container`, `level`, `logger_name`
 
-Service label values: `gaia-backend`, `arq_worker`, `voice-agent` (files) / `discord-bot`, `slack-bot`, `telegram-bot`, `whatsapp-bot` (docker). High-cardinality fields (`user_id`, `path`, `trace_id`) are deliberately **not** labels — filter them with `| json` or a line filter `|=`.
+Service label values: `gaia-backend`, `arq_worker`, `voice-agent-worker` (files) / the same three plus `discord-bot`, `slack-bot`, `telegram-bot`, `whatsapp-bot`, `embedding-sidecar` (docker). High-cardinality fields (`user_id`, `path`, `trace_id`) are deliberately **not** labels — filter them with `| json` or a line filter `|=`.
+
+**`| json` drops arrays.** `errors[]` / `warnings[]` / `audit[]` yield no field at all, and they're absent (not empty) on a clean request — so `| errors != "[]"` matches *every* line. Reach in with an explicit JSON expression, or filter on `final_level`.
 
 **Via curl** (Loki HTTP API, `query_range`):
 ```bash
@@ -99,6 +101,16 @@ curl -sG "$LOKI/loki/api/v1/query_range" \
 **Just the canonical HTTP summaries / errors:**
 ```logql
 {service="gaia-backend"} | json | message="http_request" | status_code>=500
+```
+
+**Every failed request** (`final_level` folds in the HTTP status, so it also catches a 5xx that logged nothing):
+```logql
+{service="gaia-backend"} | json | message="http_request" | final_level=~"ERROR|CRITICAL"
+```
+
+**Requests that logged an error mid-flight** (even if they returned 200) — the second `| json` is what reaches into the array:
+```logql
+{service="gaia-backend"} | json | message="http_request" | json first_error="errors[0].msg" | first_error != ""
 ```
 
 **Slow requests** (`duration_ms` is on the `http_request` line):

@@ -22,6 +22,9 @@ This applies to **everything** — coding, debugging, answering questions, decid
 - **State confidence honestly.** If something is unverified, say so and verify it before relying on it. Never present an assumption as a fact. A confident wrong answer is worse than "let me check."
 - **Understand before you change or delete.** Don't modify, refactor, or remove code whose purpose you haven't confirmed (Chesterton's fence) — the weird-looking line is often load-bearing. If you don't know why it's there, find out before touching it.
 - **Don't claim done without proof.** Never say "it works," "tests pass," or "this is fixed" unless you actually ran it and saw the result. Report outcomes faithfully — if a step was skipped or something failed, say so with the output. "Done" means verified, not "should be done."
+- **Name what the test did NOT exercise, as loudly as what it did.** A test of a simulation, translation, or proxy proves only that proxy — a fixture tests the fixture's assumptions, a unit test of extracted output proves the extraction, not the real engine. Before calling something verified, say exactly where the run stops being faithful to reality ("verified against a local webhook sink, not Slack"; "fired with synthetic series, not the real app's metrics"; "passed under `act`, not a real runner"). Then reach the highest-fidelity test that is feasible: run the real component, the real integration, the real delivery — first, not after being asked. Every silent-failure bug in a monitoring/alerting system survives precisely because its test stopped short of the real path.
+- **A green test suite is not proof that the feature works.** Passing tests, lint, and type-check only prove the checks you happened to write did not fail. They do not prove the thing actually works — tests exercise the paths you already thought of, with fakes standing in for the parts most likely to break, in a process that never boots the way production does. Plenty of shipped bugs had a fully green suite. **After the work is done, drive it manually the way a real human user would**: boot the stack, hit the real endpoint, click through the real UI, send the real message, then go look at the real artifact it produced — the response body, the database row, the log file, the queue. Do this *in addition to* the suite, never instead of it, and never treat "all tests pass" as the finish line. If you cannot drive it manually, say so explicitly rather than implying it was verified.
+
 - If after genuine investigation something is still ambiguous, stop and ask — do not paper over the gap with a guess.
 
 ### Maintainability & Tech Debt
@@ -38,6 +41,7 @@ Optimize for the next engineer who has to read, extend, or debug this code six m
 - **Tech debt compounds silently.** Each shortcut makes the next change a little harder, until a feature that should take a day takes a week. Treat "it works but it's ugly/duplicated/hacky" as unfinished, not done. Working and maintainable are different bars — we hold the second one.
 - **Keep diffs minimal and reviewable.** No drive-by reformatting, no reordering imports the formatter didn't ask for, no unrelated "while I'm here" changes. Every line in the diff should trace to the task — noise hides the real change from reviewers and pollutes the history.
 - **When you spot debt adjacent to your change, surface it.** Fix it if it's in scope and cheap; otherwise call it out explicitly so it's a decision, not an accident.
+- **Never defer cleanup to a "separate PR" — that PR never comes.** Scoping dead code, a duplicate implementation, or a known workaround out of the current change so some future PR can handle it is exactly how debt becomes permanent: the follow-up is never prioritized and the mess compounds. If your change touches an area that contains dead code, a duplicated implementation, or a stub, clean it up in the *same* PR — the context is loaded and the cost is never lower than right now. If a cleanup is genuinely too large to fold in, do not bury it in a commit message, a `# TODO`, or a PR description as "out of scope, follow-up later": announce it **loudly and explicitly to the user** and let them make the call out loud. Silent deferral is not a decision, it is how it never happens.
 
 ### Agent Guidelines (Karpathy-inspired)
 
@@ -76,6 +80,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution 
 mise tasks          # List all available tasks with descriptions
 mise run <task>     # Run a task (e.g. mise run lint, mise run dev)
 mise //apps/api:lint  # Run a task in a sub-project from the root
+mise infisical <task>  # Team members: run any task with Infisical secrets injected (e.g. mise infisical dev:full)
 ```
 
 Pre-commit hooks are managed via **prek** (installed by mise). Install once with `mise run pre-commit:install`. Hooks run automatically on `git commit` — to run manually: `mise run pre-commit`.
@@ -230,6 +235,7 @@ Area-specific rules live in nested `CLAUDE.md` files that load automatically whe
 - **Backend** (Python, FastAPI route contract, services, Pydantic): `apps/api/CLAUDE.md`
 - **Voice agent** (Python, LiveKit worker): `apps/voice-agent/CLAUDE.md`
 - **Bots** (TypeScript): `apps/bots/CLAUDE.md`
+- **Observability** (Prometheus scrape config, Grafana alert rules, Slack/email alerting, runbooks): `infra/docker/observability/CLAUDE.md`
 - **SEO** (marketing pages, metadata, schemas, sitemaps): `apps/web/src/app/[locale]/(landing)/CLAUDE.md`
 - **OpenUI system** (LLM-emitted generic components): `apps/web/src/config/openui/CLAUDE.md`
 - **Chat bubbles & tool cards**: `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`
@@ -272,9 +278,9 @@ When asked to find bugs or issues in the code, **only report problems that a rea
 
 ### Testing
 
-**Do NOT create test cases unless explicitly asked.** Do not add tests when adding a feature or refactoring unless the user specifically requests it.
+Tests are first-class: every new feature/refactor ships a test at the right tier; every bug ships a failing-then-passing test (see `apps/api/tests/CLAUDE.md` for which tier).
 
-**The one exception — every bug gets a test, no exceptions.** The moment a real issue is found (by you, by the user, in review, or in production), stop and run this loop before fixing anything:
+**The bug loop — every bug ships a failing-then-passing test, no exceptions.** The moment a real issue is found (by you, by the user, in review, or in production), stop and run this loop before fixing anything:
 
 1. **Ask why the suite missed it.** Name the specific gap — no test covered this path at all, a test covered it but asserted too weakly, the boundary was never exercised, or the test mocked away the very code that broke. That answer determines what to write and often exposes neighbouring blind spots.
 2. **Write the test that reproduces it, and watch it FAIL.** A test written after the fix, never observed red, proves nothing — it only asserts what the code now happens to do. Red first is the whole point.
@@ -311,6 +317,8 @@ Refer to `.env.example` files in each directory for required variables.
 
 To verify a change in the real running app (not just lint/type-check), operate the live stack instead of trusting stdout — use the `driving-gaia` skill (boot the stack, dev-bypass auth, drive API/browser/bots, verify in Mongo), `reading-gaia-logs` to debug a failing run, and `parallel-worktrees` to run branches in parallel.
 
+**On a machine with no Docker daemon** (cloud sandbox, CI runner, dev container), `mise dev` cannot start infra. Use `scripts/dev/sandbox-services.sh` + `scripts/dev/sandbox-env.sh` to run the same backing services natively — see the "No Docker daemon?" section of `driving-gaia`. Never conclude a change works because the test suite passed; boot it and drive it.
+
 ## Docker
 
 Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`.
@@ -339,13 +347,13 @@ Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-in
 ## Git Conventions
 
 - **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.
-- **`develop` is the base branch, not `master`.** All feature branches are created from and merged into `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `develop` as the base — not `master` or `main`.
+- **`master` is the single base branch.** All feature branches are created from and merged into `master`. There is no `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `master` as the base.
 - **NEVER merge pull requests.** Do not run `gh pr merge`, do not call any GitHub API merge endpoint, and do not take any action that merges a PR into any branch. PRs are merged by the team — not by Claude. This is an absolute rule with no exceptions.
 - Work is **not complete until `git push` succeeds.** Always push before ending a session.
-- **Never use `git pull --rebase` or `git rebase` when pulling/merging `origin/develop`.** Always use plain `git merge` — rebase inverts conflict markers (HEAD vs incoming) and causes confusion. Session close sequence (mandatory when code changed):
+- **Never use `git pull --rebase` or `git rebase` when pulling/merging `origin/master`.** Always use plain `git merge` — rebase inverts conflict markers (HEAD vs incoming) and causes confusion. Session close sequence (mandatory when code changed):
   ```bash
   git fetch origin
-  git merge origin/develop  # if syncing with develop; plain merge, no rebase
+  git merge origin/master  # if syncing with master; plain merge, no rebase
   git push
   git status  # must show "up to date with origin"
   ```

@@ -58,8 +58,6 @@ from app.memory.retrieval import (
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry
 
-pytestmark = pytest.mark.unit
-
 USER = "507f1f77bcf86cd799439011"
 
 

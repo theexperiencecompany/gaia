@@ -6,4 +6,5 @@ export enum NotificationSource {
   AI_TODO_ADDED = "ai_todo_added",
   EMAIL_TRIGGER = "email_trigger",
   BACKGROUND_JOB = "background_job",
+  USAGE_LIMIT = "usage_limit",
 }

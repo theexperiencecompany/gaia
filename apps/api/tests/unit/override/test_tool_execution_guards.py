@@ -31,8 +31,6 @@ from app.override.langgraph_bigtool.dynamic_tool_node import (
     timeout_guarded_tool_call,
 )
 
-pytestmark = pytest.mark.unit
-
 
 def _request(name: str = "GMAIL_FETCH_MESSAGES", call_id: str = "c1") -> MagicMock:
     request = MagicMock()

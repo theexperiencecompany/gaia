@@ -22,11 +22,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.override.langgraph_bigtool.hooks import execute_hooks
-
-pytestmark = pytest.mark.unit
 
 
 def _recorder(name: str, calls: list[str]):

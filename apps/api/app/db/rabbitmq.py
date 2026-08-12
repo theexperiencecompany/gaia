@@ -37,7 +37,7 @@ class RabbitMQPublisher:
         if queue_name not in self.declared_queues and self.channel:
             await self.channel.declare_queue(queue_name, durable=True)
             self.declared_queues.add(queue_name)
-            log.debug(f"{LogTag.STARTUP} RabbitMQ queue '{queue_name}' declared")
+            log.debug(f"{LogTag.STARTUP} RabbitMQ queue declared", queue_name=queue_name)
 
     async def is_connected(self) -> bool:
         """Check if the RabbitMQ connection is still active."""
@@ -91,7 +91,9 @@ class RabbitMQPublisher:
             await _attempt()
         except Exception as e:
             log.error(
-                f"{LogTag.STARTUP} Failed to publish to RabbitMQ: {e}. Attempting recovery..."
+                f"{LogTag.STARTUP} Failed to publish to RabbitMQ: . Attempting recovery...",
+                error=str(e),
+                error_type=type(e).__name__,
             )
             await _attempt()
             log.info(f"{LogTag.STARTUP} Successfully published after reconnection")
