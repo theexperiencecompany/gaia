@@ -330,10 +330,25 @@ class TestIndexToolsToStore:
         # Namespace containing "::" is invalid
         await index_tools_to_store([(tool, "bad::ns")])
 
-    async def test_cache_hit_skips_processing(self):
+    async def test_cache_hit_verified_against_the_store_skips_reindexing(self):
+        """A cache hit still READS the store, and skips only the write.
+
+        The Redis hash proves a past process believed it indexed this namespace,
+        never that ChromaDB still holds the docs, so the guard verifies before
+        trusting it. Skipping the read entirely is what made a wiped Chroma
+        permanent.
+        """
         tool = SimpleNamespace(name="t", description="d")
         tools_signature = "t:d"
         expected_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
+
+        mock_store = AsyncMock()
+        mock_collection = AsyncMock()
+        mock_collection.get.return_value = {
+            "ids": ["ns::t"],
+            "metadatas": [{"tool_hash": "h", "namespace": "ns"}],
+        }
+        mock_store._get_collection = AsyncMock(return_value=mock_collection)
 
         with (
             patch(
@@ -343,8 +358,45 @@ class TestIndexToolsToStore:
             ),
             patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
         ):
+            mock_providers.aget = AsyncMock(return_value=mock_store)
             await index_tools_to_store([(tool, "ns")])
-            mock_providers.aget.assert_not_called()
+
+        mock_collection.upsert.assert_not_called()
+        mock_collection.delete.assert_not_called()
+
+    async def test_cache_hit_with_an_empty_store_reindexes_anyway(self):
+        """The bug this guard exists for: Redis says indexed, Chroma holds none.
+
+        Trusting the hash alone left the namespace empty forever and tool
+        discovery silently returned nothing.
+        """
+        tool = SimpleNamespace(name="t", description="d")
+        tools_signature = "t:d"
+        expected_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
+
+        mock_store = AsyncMock()
+        mock_collection = AsyncMock()
+        mock_collection.get.return_value = {"ids": [], "metadatas": []}
+        mock_store._get_collection = AsyncMock(return_value=mock_collection)
+
+        with (
+            patch(
+                "app.db.chroma.chroma_tools_store.get_cache",
+                new_callable=AsyncMock,
+                return_value=expected_hash,
+            ),
+            patch("app.db.chroma.chroma_tools_store.set_cache", new_callable=AsyncMock),
+            patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
+            patch(
+                "app.db.chroma.chroma_tools_store._execute_batch_operations",
+                new_callable=AsyncMock,
+            ) as mock_execute,
+        ):
+            mock_providers.aget = AsyncMock(return_value=mock_store)
+            await index_tools_to_store([(tool, "ns")])
+
+        # Reached the write path instead of returning at the guard.
+        mock_execute.assert_awaited_once()
 
     async def test_skips_when_store_unavailable(self):
         tool = SimpleNamespace(name="t", description="d")

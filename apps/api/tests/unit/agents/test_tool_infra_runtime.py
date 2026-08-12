@@ -174,6 +174,15 @@ class _RetrieveRegistry:
             return SimpleNamespace(is_delegated=True)
         return SimpleNamespace(is_delegated=False)
 
+    def get_tool_meta(self, tool_name: str):
+        """Read by the JSON-bucketed discovery response for a tool's description.
+
+        None is a real registry answer (an unindexed name), and the entry
+        builder has to stay correct for it, so returning it here keeps the fake
+        honest rather than inventing metadata the tests never assert on.
+        """
+        return
+
 
 async def _run_provider_subagent_factory(
     *,
