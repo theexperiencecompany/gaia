@@ -44,29 +44,36 @@ set -euo pipefail
 : "${MANUAL_MODE_EVENT:=}"
 
 release_failed=false
-[ "$DOCKER_RELEASE_RESULT" = "failure" ] || [ "$DOCKER_RELEASE_RESULT" = "cancelled" ] && release_failed=true
+[[ "$DOCKER_RELEASE_RESULT" = "failure" ]] || [[ "$DOCKER_RELEASE_RESULT" = "cancelled" ]] && release_failed=true
 web_failed=false
-[ "$DOCKER_WEB_RESULT" = "failure" ] || [ "$DOCKER_WEB_RESULT" = "cancelled" ] && web_failed=true
+[[ "$DOCKER_WEB_RESULT" = "failure" ]] || [[ "$DOCKER_WEB_RESULT" = "cancelled" ]] && web_failed=true
 
 backend_affected=false
-[ "$API_AFFECTED" = "true" ] || [ "$BOTS_AFFECTED" = "true" ] && backend_affected=true
+[[ "$API_AFFECTED" = "true" ]] || [[ "$BOTS_AFFECTED" = "true" ]] && backend_affected=true
 
 both_touched=false
-[ "$backend_affected" = "true" ] && [ "$WEB_AFFECTED" = "true" ] && both_touched=true
+[[ "$backend_affected" = "true" ]] && [[ "$WEB_AFFECTED" = "true" ]] && both_touched=true
 
 backend_deploy=false
 frontend_deploy=false
 coupled_hold=false
+# Explicit operator modes deliberately skip a side. A side the operator chose
+# not to deploy is NOT drift — flagging it as an orphan turns every routine
+# `deployment_mode=backend-only` run into a false alarm (which is exactly what
+# happened: both backend-only dispatches on 2026-08-10 fired the orphan alert
+# for the deliberately-skipped frontend).
+deliberate_backend_skip=false
+deliberate_frontend_skip=false
 
 # Shared by the automatic push plan and workflow_dispatch's `auto` mode --
 # both derive the plan from affected-detection + lane results the same way.
 compute_auto_plan() {
-  if [ "$both_touched" = "true" ]; then
-    if [ "$release_failed" = "true" ] || [ "$web_failed" = "true" ]; then
+  if [[ "$both_touched" = "true" ]]; then
+    if [[ "$release_failed" = "true" ]] || [[ "$web_failed" = "true" ]]; then
       # Coupled push, one side red: hold both back rather than deploy a
       # frontend/backend pair that was never actually tested together.
       coupled_hold=true
-    elif [ "$DOCKER_RELEASE_RESULT" = "success" ] && [ "$DOCKER_WEB_RESULT" = "success" ]; then
+    elif [[ "$DOCKER_RELEASE_RESULT" = "success" ]] && [[ "$DOCKER_WEB_RESULT" = "success" ]]; then
       backend_deploy=true
       frontend_deploy=true
     fi
@@ -74,7 +81,7 @@ compute_auto_plan() {
     # affected lane) -- no verified success on both sides, so don't deploy,
     # but this isn't a failure either, so don't badge it as a coupled hold.
   else
-    if [ "$backend_affected" = "true" ] && [ "$DOCKER_RELEASE_RESULT" = "success" ]; then
+    if [[ "$backend_affected" = "true" ]] && [[ "$DOCKER_RELEASE_RESULT" = "success" ]]; then
       backend_deploy=true
     fi
     # Single-side push: frontend syncs from source, not docker-web's image,
@@ -85,19 +92,19 @@ compute_auto_plan() {
 }
 
 manual_mode="${MANUAL_MODE_INPUT:-}"
-if [ -z "$manual_mode" ]; then
+if [[ -z "$manual_mode" ]]; then
   manual_mode="${MANUAL_MODE_EVENT:-}"
 fi
-if [ -z "$manual_mode" ]; then
+if [[ -z "$manual_mode" ]]; then
   manual_mode="auto"
 fi
 
 on_master=false
-[ "$REF" = "refs/heads/master" ] && on_master=true
+[[ "$REF" = "refs/heads/master" ]] && on_master=true
 
-if [ "$on_master" = "false" ]; then
+if [[ "$on_master" = "false" ]]; then
   echo "Not on master; deploy jobs disabled."
-elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+elif [[ "$EVENT_NAME" = "workflow_dispatch" ]]; then
   case "$manual_mode" in
     auto)
       compute_auto_plan
@@ -109,15 +116,19 @@ elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
     # GHCR, regardless of what this run's build lanes decided.
     backend-only)
       backend_deploy=true
+      deliberate_frontend_skip=true
       ;;
     frontend-only)
       frontend_deploy=true
+      deliberate_backend_skip=true
       ;;
     both)
       backend_deploy=true
       frontend_deploy=true
       ;;
     none)
+      deliberate_backend_skip=true
+      deliberate_frontend_skip=true
       ;;
     *)
       echo "::error::Invalid deployment_mode '$manual_mode'. Use auto, backend-only, frontend-only, both, or none."
@@ -133,20 +144,28 @@ fi
 # would roll them out did not run this time, for ANY reason (lane failure,
 # cancellation, the plan deciding not to deploy, or a coupling hold).
 # Scoped to master: off-master manual builds intentionally never deploy and
-# must not be reported as drift.
+# must not be reported as drift. A side the operator explicitly excluded via
+# a manual mode is not drift either.
+#
+# The frontend check needs BOTH web-affected and lane success: docker-web
+# succeeds even when web isn't affected (it just skips the build/push), so
+# the job result alone is not publish evidence -- it once claimed "gaia-web
+# was published" on a run that never built a web image.
 backend_orphaned=false
 frontend_orphaned=false
-if [ "$on_master" = "true" ]; then
-  if [ "$BACKEND_IMAGES_PUBLISHED" = "true" ] && [ "$backend_deploy" != "true" ]; then
+if [[ "$on_master" = "true" ]]; then
+  if [[ "$BACKEND_IMAGES_PUBLISHED" = "true" ]] && [[ "$backend_deploy" != "true" ]] && [[ "$deliberate_backend_skip" != "true" ]]; then
     backend_orphaned=true
   fi
-  if [ "$DOCKER_WEB_RESULT" = "success" ] && [ "$frontend_deploy" != "true" ]; then
+  if [[ "$WEB_AFFECTED" = "true" ]] && [[ "$DOCKER_WEB_RESULT" = "success" ]] && [[ "$frontend_deploy" != "true" ]] && [[ "$deliberate_frontend_skip" != "true" ]]; then
     frontend_orphaned=true
   fi
   # A coupling hold strands BOTH sides together even when only one lane
   # actually failed -- e.g. web failed, backend published fine but is held
   # back anyway. Flag both explicitly so the healthy side isn't missed.
-  if [ "$coupled_hold" = "true" ]; then
+  # (Coupling holds only occur in auto plans, never in the explicit manual
+  # modes, so the deliberate-skip suppression can't apply here.)
+  if [[ "$coupled_hold" = "true" ]]; then
     backend_orphaned=true
     frontend_orphaned=true
   fi

@@ -188,7 +188,7 @@ def create_middleware_stack(
         middleware.append(subagent)
         log.debug(f"{LogTag.AGENT} SubagentMiddleware enabled with spawn_subagent tool")
 
-    # Summarization middleware (requires Gemini API key)
+    # Summarization middleware (dropped when the default model is unconfigured)
     if enable_summarization:
         summary_llm = get_summarization_llm()
         if summary_llm:
@@ -328,7 +328,12 @@ def create_subagent_middleware(
     Provider subagents handle focused integration work and should have:
     - SubagentMiddleware: For spawning focused sub-subagents
     - WorkspaceCompactionMiddleware: Persist oversized tool outputs to /workspace
-    - NO summarization
+    - Summarization: compaction bounds a single tool output, not the accumulated
+      history. Without summarization a run grows unbounded up to
+      EXECUTOR_RECURSION_LIMIT steps — in production this averaged 91k input
+      tokens per call against 43k for comms/executor, peaking at a full 1M-token
+      window. Trimming is safe here because the result is read from the
+      finish_task call, never from replayed history.
 
     Spawned sub-subagents will NOT have SubagentMiddleware (enforced by
     SubagentMiddleware itself which excludes spawn_subagent from child tools).
@@ -348,7 +353,7 @@ def create_subagent_middleware(
     return create_middleware_stack(
         agent_name="provider_subagent",
         enable_subagent=enable_subagent,
-        enable_summarization=False,
+        enable_summarization=True,
         enable_compaction=True,
         subagent_llm=subagent_llm,
         subagent_tools=subagent_tools,

@@ -592,9 +592,6 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
         )
         return "NEEDS_ATTENTION: Health check failed"
 
-    if complete_message and complete_message.startswith("Error when calling silent agent:"):
-        return "NEEDS_ATTENTION: Health check failed"
-
     return (complete_message or "").strip()
 
 

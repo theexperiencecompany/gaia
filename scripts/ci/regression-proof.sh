@@ -71,10 +71,10 @@ cp -f "$API_DIR/pytest.ini" "$WT/apps/api/pytest.ini"
 
 # Run from the worktree ROOT so the repo-root-relative test paths resolve
 # (pytest is given paths like apps/api/tests/...). PYTHONPATH points at the
-# BASE app code. Use the MAIN checkout's venv (the setup-python-test-env
-# action synced deps there; a fresh worktree has no venv and `uv run --no-sync`
-# would spawn a bare environment with no pytest — which must NOT read as
-# "tests fail on base"). Fail loud if that python is missing.
+# BASE app and shared code. Use the MAIN checkout's venv (the
+# setup-python-test-env action synced deps there; a fresh worktree has no venv
+# and `uv run --no-sync` would spawn a bare environment with no pytest — which
+# must NOT read as "tests fail on base"). Fail loud if that python is missing.
 for candidate in "$REPO_ROOT/.venv/bin/python" "$API_DIR/.venv/bin/python"; do
   if [ -x "$candidate" ]; then
     VENV_PY="$candidate"
@@ -94,7 +94,15 @@ fi
 # Those show up as errors rather than failures, and this lane counts an error as
 # "did not pass" — so the gate was reporting proof it had not actually obtained.
 cd "$WT/apps/api"
-export ENV=development PYTHONPATH="$WT/apps/api"
+# $WT/libs comes first so `shared.*` resolves to the BASE worktree too, not just
+# `app.*`. The venv is the MAIN checkout's, and gaia-shared is installed there as
+# an editable pointing at the main checkout's libs/ — so without this entry a PR
+# that fixes something in libs/shared/ runs BASE app code against its OWN fixed
+# shared code, the pinned bug is absent, and the test passes on base for a reason
+# that has nothing to do with the fix being unnecessary. This wins because the
+# editable install appends its finder to sys.meta_path, i.e. after the sys.path
+# PathFinder that PYTHONPATH feeds.
+export ENV=development PYTHONPATH="$WT/libs:$WT/apps/api"
 # Paths are repo-root-relative from git diff; make them relative to apps/api.
 rel_regression_files=()
 for f in "${regression_files[@]}"; do
