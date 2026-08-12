@@ -55,7 +55,7 @@ export function OfferBanner({ onVisibilityChange }: OfferBannerProps) {
 
   return (
     <div
-      className="fixed inset-x-0 top-0 z-[60] flex items-center justify-center gap-3 bg-primary px-10 text-black"
+      className="fixed inset-x-0 top-0 z-[60] flex items-center justify-center gap-3 overflow-hidden bg-primary pr-11 pl-4 text-black sm:px-10"
       style={{ height: OFFER_BANNER_HEIGHT }}
     >
       <Link
@@ -65,18 +65,20 @@ export function OfferBanner({ onVisibilityChange }: OfferBannerProps) {
             discount_code: OFFER_CODE,
           })
         }
-        className="group flex items-center gap-2 text-xs font-medium sm:text-sm"
+        className="group flex min-w-0 items-center gap-2 text-xs font-medium sm:text-sm"
       >
-        <span className="rounded-full bg-black/15 px-2 py-0.5 text-[11px] font-semibold">
+        <span className="shrink-0 rounded-full bg-black/15 px-2 py-0.5 text-[11px] font-semibold">
           Early bird
         </span>
-        <span>
+        {/* One line, always: on a narrow screen the sentence truncates rather
+         * than wrapping the strip to two rows and shifting the navbar. */}
+        <span className="truncate">
           <span className="font-semibold">{OFFER_PERCENT}% off</span>, which is{" "}
           {OFFER_MONTHS_FREE_PHRASE}, with{" "}
           <span className="font-semibold tracking-wide">{OFFER_CODE}</span>
           <span className="hidden sm:inline">, for a little while longer</span>
         </span>
-        <CircleArrowRight02Icon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+        <CircleArrowRight02Icon className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
       </Link>
       <button
         type="button"
