@@ -322,13 +322,13 @@ class TestDeliverResultHilResume:
             ) as set_resp,
             patch.object(
                 rd.conversation_repository,
-                "append_message_tool_data",
+                "set_message_tool_data",
                 new_callable=AsyncMock,
                 return_value=True,
-            ) as append_td,
+            ) as set_td,
         ):
             result = await rd.deliver_result(run, "raw result", "final")
-        return result, save, ws, get_msg, set_resp, append_td
+        return result, save, ws, get_msg, set_resp, set_td
 
     async def test_merges_onto_original_message_instead_of_appending(self) -> None:
         _session_with_cards("queued_s1")
@@ -339,22 +339,26 @@ class TestDeliverResultHilResume:
             bot_message_id="orig-msg-1",
         )
 
-        (text, message_id), save, ws, get_msg, set_resp, append_td = await self._deliver_resumed(
+        (text, message_id), save, ws, get_msg, set_resp, set_td = await self._deliver_resumed(
             run
         )
 
         assert message_id == "orig-msg-1"  # reconciles onto the ORIGINAL message, not task_id
         save.assert_not_awaited()  # never $push's a rival array element
 
-        get_msg.assert_awaited_once()
+        # Read twice on purpose: once by _approval_outcomes_note to ground the
+        # narration in this run's decided gates, once by the merge itself. What
+        # matters is that BOTH target the original message, never the task_id.
+        assert get_msg.await_count == 2
+        assert all(call.args[1] == "orig-msg-1" for call in get_msg.await_args_list)
         assert get_msg.await_args.args == ("conv-1", "orig-msg-1")
 
         set_resp.assert_awaited_once()
         assert set_resp.await_args.kwargs["message_id"] == "orig-msg-1"
         assert set_resp.await_args.kwargs["response"] == "new voiced"
 
-        append_td.assert_awaited_once()
-        assert append_td.await_args.kwargs["message_id"] == "orig-msg-1"
+        set_td.assert_awaited_once()
+        assert set_td.await_args.kwargs["message_id"] == "orig-msg-1"
 
         # A live task_id-keyed placeholder DOES exist for queued-kind runs
         # (real queue pops AND resumes), so task_id must still be emitted —
@@ -373,7 +377,7 @@ class TestDeliverResultHilResume:
         )
         existing_cards = [{"tool_name": "old_tool", "data": {}}]
 
-        (_text, _mid), _save, ws, _get_msg, _set_resp, _append_td = await self._deliver_resumed(
+        (_text, _mid), _save, ws, _get_msg, _set_resp, _set_td = await self._deliver_resumed(
             run, existing_tool_data=existing_cards
         )
 
