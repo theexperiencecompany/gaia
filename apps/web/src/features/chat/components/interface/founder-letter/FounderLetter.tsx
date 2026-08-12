@@ -3,9 +3,9 @@
 import {
   ArrowRightIcon,
   CancelIcon,
+  CheckmarkCircle02Icon,
   CircleArrowRight02Icon,
   Copy01Icon,
-  Tick02Icon,
 } from "@icons";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
@@ -59,8 +59,9 @@ const LETTER_TYPOGRAPHY = {
   "--letter-pad-b": "clamp(36px, 6vh, 52px)",
 } as CSSProperties;
 
-/** The offer button's gold: the envelope's, so the letter and its CTA agree. */
-const GOLD_CTA = "#e3b23c";
+/** The offer button's gold. Bright enough that RaisedButton's contrast check
+ * lands on black text, which is what the letter's ink is. */
+const GOLD_CTA = "#ffc21a";
 
 /** The sealed envelope the letter arrives in: the artwork file as it is. */
 const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.png";
@@ -96,10 +97,10 @@ function PaperBackdrop() {
         {/* Stationery: cool white where the light hits, warming into the
          * shadow at the bottom right, the way a real sheet sits on a desk. */}
         <linearGradient id="fl-paper" x1="0.05" y1="0" x2="0.85" y2="1">
-          <stop offset="0%" stopColor="#fffdf0" />
-          <stop offset="35%" stopColor="#fdf6d9" />
-          <stop offset="72%" stopColor="#f9edbf" />
-          <stop offset="100%" stopColor="#f0dfa4" />
+          <stop offset="0%" stopColor="#fdf7dc" />
+          <stop offset="35%" stopColor="#f9eec1" />
+          <stop offset="72%" stopColor="#f2e0a2" />
+          <stop offset="100%" stopColor="#e6cd85" />
         </linearGradient>
         <radialGradient
           id="fl-paper-light"
@@ -108,7 +109,7 @@ function PaperBackdrop() {
           r="0.75"
           gradientUnits="objectBoundingBox"
         >
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.7" />
           <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
         </radialGradient>
         {/* The sheet lifts very slightly at the left and right edges. */}
@@ -468,8 +469,8 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                       className="mx-1 inline-flex h-5 w-5 translate-y-[-1px] cursor-pointer items-center justify-center rounded-full align-middle outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-90"
                     >
                       {copied ? (
-                        <Tick02Icon
-                          className="h-3 w-3"
+                        <CheckmarkCircle02Icon
+                          className="h-3.5 w-3.5"
                           style={{ color: INK }}
                         />
                       ) : (
