@@ -10,21 +10,46 @@ import { del, get, set } from "idb-keyval";
 import { type ReactNode, useState } from "react";
 
 /**
- * Creates an Indexed DB persister
+ * Creates an IndexedDB persister that degrades to a no-op when IndexedDB
+ * cannot be opened. iOS Safari refuses to open it under private browsing,
+ * storage pressure, or the long-standing WebKit bug, throwing
+ * `DOMException: UnknownError: Unable to open database file on disk`. Rather
+ * than let every persist tick reject as an uncaught promise, the first failure
+ * disables persistence for the session — the query cache still works from
+ * memory, only cross-reload restoration is lost.
  * @see https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API
  */
-function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
+function createIDBPersister(
+  idbValidKey: IDBValidKey = "reactQuery",
+): Persister {
+  let disabled = false;
+  const run = async <T,>(
+    operation: () => Promise<T>,
+  ): Promise<T | undefined> => {
+    if (disabled) return undefined;
+    try {
+      return await operation();
+    } catch (error) {
+      disabled = true;
+      console.error(
+        "IndexedDB unavailable — query cache will not persist this session:",
+        error,
+      );
+      return undefined;
+    }
+  };
+
   return {
     persistClient: async (client: PersistedClient) => {
-      await set(idbValidKey, client);
+      await run(() => set(idbValidKey, client));
     },
     restoreClient: async () => {
-      return await get<PersistedClient>(idbValidKey);
+      return run(() => get<PersistedClient>(idbValidKey));
     },
     removeClient: async () => {
-      await del(idbValidKey);
+      await run(() => del(idbValidKey));
     },
-  } satisfies Persister;
+  };
 }
 
 export default function QueryProvider({ children }: { children: ReactNode }) {
@@ -44,8 +69,10 @@ export default function QueryProvider({ children }: { children: ReactNode }) {
       }),
   );
 
-  // Setup indexedDB for storage of cached queries
-  const persister = createIDBPersister();
+  // Setup indexedDB for storage of cached queries. Created once so the
+  // persister's disabled latch survives re-renders — a fresh persister per
+  // render would reset it and retry IndexedDB after the first failure.
+  const [persister] = useState(() => createIDBPersister());
 
   return (
     <PersistQueryClientProvider
