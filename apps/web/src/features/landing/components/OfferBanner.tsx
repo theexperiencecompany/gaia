@@ -3,7 +3,12 @@
 import { CancelIcon, CircleArrowRight02Icon } from "@icons";
 import { useEffect, useState } from "react";
 
-import { isOfferLive, OFFER_CODE, OFFER_PERCENT } from "@/config/offer";
+import {
+  isOfferLive,
+  OFFER_CODE,
+  OFFER_MONTHS_FREE_PHRASE,
+  OFFER_PERCENT,
+} from "@/config/offer";
 import { Link } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
@@ -66,8 +71,8 @@ export function OfferBanner({ onVisibilityChange }: OfferBannerProps) {
           Early bird
         </span>
         <span>
-          <span className="font-semibold">{OFFER_PERCENT}% off</span> your first
-          payment with{" "}
+          <span className="font-semibold">{OFFER_PERCENT}% off</span>, which is{" "}
+          {OFFER_MONTHS_FREE_PHRASE}, with{" "}
           <span className="font-semibold tracking-wide">{OFFER_CODE}</span>
           <span className="hidden sm:inline">, for a little while longer</span>
         </span>
