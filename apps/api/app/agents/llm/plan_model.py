@@ -1,5 +1,6 @@
-"""Per-plan LLM routing: free -> Gemini, any paid plan -> MiniMax (OpenRouter), hardcoded
-by subscription plan. Set on the comms configurable; executor/subagents inherit it.
+"""Per-plan LLM routing: free and paid tiers, hardcoded by subscription plan
+(see ``PAID_MODEL_NAME``). Set on the comms configurable; executor/subagents
+inherit it.
 
 Also the pro ECONOMIC guard: when a paid user's rolling monthly LLM spend
 exceeds ``PRO_MONTHLY_COST_BUDGET_USD``, routing degrades to the free-tier
@@ -8,18 +9,15 @@ hard-walled mid-month. All other pro entitlements (rate limits, memory,
 per-request ceiling) stay intact; only the model changes.
 """
 
-from typing import Any
-
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
 from app.constants.llm import (
-    COMMS_REASONING,
+    COMMS_REASONING_EFFORT,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MODEL_NAME,
     DEV_MODEL_OPTIONS,
+    EXECUTOR_REASONING_EFFORT,
     MONTHLY_BUDGET_TTL_SECONDS,
-    OPENROUTER_REASONING,
-    PAID_MODEL_MODEL_KWARGS,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
     PRO_MONTHLY_COST_BUDGET_USD,
@@ -45,14 +43,14 @@ _DEGRADE_NOTICE_KEY = "cost_budget_notified:{user_id}:{window}"
 
 
 def _pin_model(configurable: AgentConfigurable, provider: str, model: str) -> None:
-    # Gemini binds from ``model_name``, OpenRouter from ``model`` — set both.
+    # Gemini binds from ``model_name``, Concentrate from ``model`` — set both.
     configurable["provider"] = provider
     configurable["model"] = model
     configurable["model_name"] = model
 
 
 async def apply_plan_model(configurable: AgentConfigurable, user_id: str | None) -> None:
-    """Route the model by plan: free -> Gemini, any paid plan -> MiniMax. No-op without a user_id."""
+    """Route the model by plan (see ``PAID_MODEL_NAME``). No-op without a user_id."""
     if not user_id:
         return
 
@@ -86,12 +84,11 @@ async def apply_plan_model(configurable: AgentConfigurable, user_id: str | None)
         )
         spawn_background_task(_notify_degrade_once(user_id))
     else:
-        # Paid: MiniMax M3 via OpenRouter, comms-specific reasoning, first-party
-        # provider pin. The executor + provider subagents inherit this model and the
-        # provider pin from `configurable` (see agent_helpers._inherit_from_parent_configurable).
+        # Paid: the paid model via Concentrate, comms-specific reasoning effort.
+        # The executor + provider subagents inherit this model from `configurable`
+        # (see agent_helpers._inherit_from_parent_configurable).
         _pin_model(configurable, PAID_MODEL_PROVIDER, PAID_MODEL_NAME)
-        configurable["reasoning"] = COMMS_REASONING
-        configurable["model_kwargs"] = PAID_MODEL_MODEL_KWARGS
+        configurable["reasoning_effort"] = COMMS_REASONING_EFFORT
 
     log.set(plan_model={"plan": plan.value, "model": configurable["model"], "degraded": degraded})
 
@@ -149,11 +146,11 @@ async def _notify_degrade_once(user_id: str) -> None:
 
 
 def _apply_dev_model(
-    configurable: AgentConfigurable, option: DevModelOption, reasoning_cfg: dict[str, Any]
+    configurable: AgentConfigurable, option: DevModelOption, reasoning_effort: str
 ) -> None:
     """Pin a DEV_MODEL_OPTIONS entry onto a configurable, applying role-appropriate
-    reasoning. Clears `model_kwargs`/`reasoning` for models that don't use them so a
-    prior plan/inherited OpenRouter pin can't leak onto a Gemini-routed model."""
+    reasoning effort. Clears `reasoning_effort` for models that don't use it so a
+    prior plan setting can't leak onto a Gemini-routed model."""
     if option["model"]:
         _pin_model(configurable, option["provider"], option["model"])
     else:
@@ -163,14 +160,10 @@ def _apply_dev_model(
         configurable["provider"] = option["provider"]
         configurable.pop("model", None)
         configurable.pop("model_name", None)
-    if option["model_kwargs"] is not None:
-        configurable["model_kwargs"] = option["model_kwargs"]
-    else:
-        configurable.pop("model_kwargs", None)
     if option["reasoning"]:
-        configurable["reasoning"] = reasoning_cfg
+        configurable["reasoning_effort"] = reasoning_effort
     else:
-        configurable.pop("reasoning", None)
+        configurable.pop("reasoning_effort", None)
 
 
 def apply_dev_model_override(
@@ -198,7 +191,7 @@ def apply_dev_model_override(
         comms_model = executor_model = dev_default
     comms_option = DEV_MODEL_OPTIONS.get(comms_model or "")
     if comms_option:
-        _apply_dev_model(configurable, comms_option, COMMS_REASONING)
+        _apply_dev_model(configurable, comms_option, COMMS_REASONING_EFFORT)
     # The executor builds its own configurable (inheriting comms's), so it can't be
     # pinned here. Stash the id; apply_dev_executor_model pins it after inheritance.
     if (executor_model or "") in DEV_MODEL_OPTIONS:
@@ -214,4 +207,4 @@ def apply_dev_executor_model(
     overriding the model inherited from comms. No-op unless the parent stashed one."""
     option = DEV_MODEL_OPTIONS.get(parent_configurable.get("__dev_executor_model__") or "")
     if option:
-        _apply_dev_model(executor_configurable, option, OPENROUTER_REASONING)
+        _apply_dev_model(executor_configurable, option, EXECUTOR_REASONING_EFFORT)

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,7 +13,7 @@ class ModelProvider(str, Enum):
     OPENAI = "openai"
     GEMINI = "gemini"
     GROK = "grok"
-    OPENROUTER = "openrouter"
+    CONCENTRATE = "concentrate"
 
 
 class DevModelOption(TypedDict):
@@ -21,15 +21,10 @@ class DevModelOption(TypedDict):
 
     A TypedDict, not a model: it is a fixed in-process shape that is only ever
     spread onto a LangGraph configurable, so it crosses no validation boundary.
-
-    ``model_kwargs`` and ``reasoning``'s effort payload stay ``dict[str, Any]``
-    because that is exactly how ``ChatOpenRouter`` declares the fields they are
-    bound to — free-form OpenRouter request params, not a shape we own.
     """
 
     provider: str
     model: str
-    model_kwargs: dict[str, Any] | None
     reasoning: bool
 
 
@@ -61,8 +56,8 @@ class ModelConfig(MongoDocument):
         default=True,
         description=(
             "Whether the model can see images delivered inside a TOOL result. Not the "
-            "same as being multimodal: OpenRouter exposes nothing that answers it (two "
-            "models identical in `architecture` can disagree), so it is established by "
+            "same as being multimodal: Concentrate exposes nothing that answers it (two "
+            "models identical in `capabilities` can disagree), so it is established by "
             "tests/model_onboarding and declared here. False routes tool media through "
             "the caption fallback instead."
         ),

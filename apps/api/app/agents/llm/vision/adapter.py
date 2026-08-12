@@ -49,9 +49,8 @@ class MediaAdapter:
     storage shape — but each lane takes delivery differently:
 
     - Vision lanes read image blocks inside tool results natively. Direct Gemini
-      does so out of the box; OpenRouter needs
-      ``app/patches/openrouter_tool_multimodal_patch.py``, because the client
-      library converts blocks for user messages but not for tool messages.
+      does so out of the box; the Concentrate lane's client (``langchain-openai``)
+      converts tool-message image blocks to the wire format itself.
     - Text-only lanes get a notice instead; the `read` tool separately hands them
       a text description via `describe_image`.
 

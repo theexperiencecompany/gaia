@@ -78,8 +78,8 @@ def _capture_finish_task_content(chunk: ToolMessage, current_message: str) -> st
 def _extract_reasoning_delta(chunk: AIMessageChunk) -> str:
     """Pull this chunk's reasoning ("thinking") text, model-agnostic.
 
-    ChatOpenRouter surfaces reasoning as standard ``reasoning`` content blocks;
-    other providers (DeepSeek-style) put it in ``additional_kwargs.reasoning_content``.
+    Some providers surface reasoning as standard ``reasoning`` content blocks;
+    others (DeepSeek-style) put it in ``additional_kwargs.reasoning_content``.
     Returns "" when the chunk carries no thinking (e.g. non-reasoning models), so
     the caller emits nothing for them.
     """

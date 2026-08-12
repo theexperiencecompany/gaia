@@ -11,7 +11,7 @@ from langchain_core.language_models.chat_models import (
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openrouter import ChatOpenRouter
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, SecretStr
 from typing_extensions import TypedDict
 
@@ -22,18 +22,17 @@ from app.agents.llm.exceptions import (
 )
 from app.config.settings import settings
 from app.constants.llm import (
+    CONCENTRATE_API_BASE_URL,
+    CONCENTRATE_MAX_OUTPUT_TOKENS,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     DEV_LLM_MAX_OUTPUT_TOKENS,
+    EXECUTOR_REASONING_EFFORT,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
-    OPENROUTER_APP_CATEGORIES,
-    OPENROUTER_APP_TITLE,
-    OPENROUTER_MAX_OUTPUT_TOKENS,
-    OPENROUTER_REASONING,
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
@@ -78,13 +77,13 @@ def is_default_model_config(configurable: AgentConfigurable) -> bool:
 
 PROVIDER_MODELS = {
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
-    "openrouter": DEFAULT_MODEL_NAME,
+    "concentrate": DEFAULT_MODEL_NAME,
     # The env-defined custom dev endpoint; empty when unset — the provider is
     # only registered in development with all DEV_LLM_* settings present.
     "custom": settings.DEV_LLM_MODEL or "",
 }
 PROVIDER_PRIORITY = {
-    1: "openrouter",
+    1: "concentrate",
     2: "gemini",
     3: "custom",
 }
@@ -101,13 +100,13 @@ def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     client pointed at the local scripted stub (tools/llm-stub). Deliberately
     exposes no configurable fields — provider/model pinning is meaningless when
     every request lands on the stub, so pinned config is silently ignored."""
-    llm = ChatOpenRouter(
+    llm = ChatOpenAI(
         model=SIM_STUB_MODEL_NAME,
         temperature=temperature,
         streaming=True,
         stream_usage=True,
-        api_key=SecretStr(settings.OPENROUTER_API_KEY or SIM_STUB_API_KEY),
-        base_url=settings.OPENROUTER_BASE_URL or SIM_STUB_BASE_URL,
+        api_key=SecretStr(settings.CONCENTRATE_API_KEY or SIM_STUB_API_KEY),
+        base_url=settings.CONCENTRATE_BASE_URL or SIM_STUB_BASE_URL,
     )
     # Same reason as _build_default_llm: fractional-window middleware needs a
     # context-window profile at graph-build time.
@@ -118,22 +117,17 @@ def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
 _MODEL_FIELD = ConfigurableField(id="model_name", name="Model", description="Which model to use")
 
 
-def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
-    """Attach the per-request configurable fields shared by every OpenRouter-wire
-    client (the real OpenRouter and the env-defined custom endpoint). The field
-    ids form one namespace across provider alternatives (``prefix_keys=False``),
-    so every compatible client must expose identical ids."""
+def _openai_wire_configurables(llm: ChatOpenAI) -> LanguageModelLike:
+    """Attach the per-request configurable fields shared by every OpenAI-wire
+    client (Concentrate and the env-defined custom endpoint). The field ids form
+    one namespace across provider alternatives (``prefix_keys=False``), so every
+    compatible client must expose identical ids."""
     return llm.configurable_fields(
         model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
-        reasoning=ConfigurableField(
-            id="reasoning",
-            name="Reasoning",
+        reasoning_effort=ConfigurableField(
+            id="reasoning_effort",
+            name="Reasoning effort",
             description="Reasoning effort (per-agent thinking budget)",
-        ),
-        model_kwargs=ConfigurableField(
-            id="model_kwargs",
-            name="Model kwargs",
-            description="Extra request params (e.g. provider routing pin)",
         ),
     )
 
@@ -157,43 +151,34 @@ def init_gemini_llm() -> LanguageModelLike:
 
 
 @lazy_provider(
-    name="openrouter_llm",
-    required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.OPENROUTER_API_KEY],
+    name="concentrate_llm",
+    required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.CONCENTRATE_API_KEY],
     strategy=MissingKeyStrategy.WARN,
-    warning_message="OpenRouter API key not configured. Models provided via OpenRouter (Grok, etc.) will not work.",
+    warning_message="Concentrate API key not configured. Models provided via Concentrate (DeepSeek, MiniMax, etc.) will not work.",
 )
-def init_openrouter_llm() -> LanguageModelLike:
-    """Initialize the OpenRouter LLM (MiniMax M3, Grok, etc.).
+def init_concentrate_llm() -> LanguageModelLike:
+    """Initialize the Concentrate LLM (DeepSeek V4 Flash, MiniMax M3, etc.).
 
-    Uses ChatOpenRouter (langchain-openrouter), not ChatOpenAI, because it parses
-    OpenRouter's `reasoning`/`reasoning_details` fields into standard reasoning
-    content blocks — ChatOpenAI silently drops them. That is what lets us surface
-    the model's thinking. Reasoning effort is the native `reasoning` field; provider
-    routing (the first-party MiniMax pin) rides `model_kwargs` (OpenRouter's
-    `provider` request param). Both are per-request configurable.
+    Concentrate speaks the OpenAI chat-completions wire (POST /v1/chat/completions),
+    so this is plain ChatOpenAI with the Concentrate base URL. Reasoning effort
+    rides the OpenAI-style `reasoning_effort` request param and is per-request
+    configurable. Model ids are Concentrate's canonical (unprefixed) ids —
+    Concentrate routes to the first-party provider, so no routing pin is needed.
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    # No base_url kwarg here on purpose: passing None would override the field's
-    # OPENROUTER_API_BASE env default_factory. Redirecting to the stub is sim
-    # mode's job (_sim_llm); this construction is identical to pre-sim behavior.
-    return _openrouter_wire_configurables(
-        ChatOpenRouter(
-            model=PROVIDER_MODELS["openrouter"],
+    return _openai_wire_configurables(
+        ChatOpenAI(
+            model=PROVIDER_MODELS["concentrate"],
             temperature=DEFAULT_LLM_TEMPERATURE,
             streaming=True,
             stream_usage=True,
             # Output cap; must stay well under the model's shared input+output context
-            # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
-            max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-            api_key=settings.OPENROUTER_API_KEY,
-            # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
-            # these as dedicated params (NOT `default_headers`, which it forwards to
-            # send_async and crashes on). https://openrouter.ai/docs/app-attribution
-            app_url=settings.FRONTEND_URL,
-            app_title=OPENROUTER_APP_TITLE,
-            app_categories=OPENROUTER_APP_CATEGORIES,
-            reasoning=OPENROUTER_REASONING,
+            # window (see CONCENTRATE_MAX_OUTPUT_TOKENS) or the request is rejected.
+            max_completion_tokens=CONCENTRATE_MAX_OUTPUT_TOKENS,
+            api_key=SecretStr(settings.CONCENTRATE_API_KEY or ""),
+            base_url=CONCENTRATE_API_BASE_URL,
+            reasoning_effort=EXECUTOR_REASONING_EFFORT,
         )
     )
 
@@ -207,23 +192,23 @@ def init_openrouter_llm() -> LanguageModelLike:
     warning_message="DEV_LLM_BASE_URL / DEV_LLM_API_KEY / DEV_LLM_MODEL not configured. The custom dev LLM endpoint will not work.",
 )
 def init_custom_llm() -> LanguageModelLike:
-    """DEV-ONLY: the env-defined custom provider — any OpenRouter/OpenAI-compatible
-    endpoint, with base URL, key, and model all from the DEV_LLM_* settings. Routes
-    bulk test traffic to heavily discounted lanes (e.g. Nous Research's DeepSeek
-    models) without spending real credits. ChatOpenRouter works against such
-    endpoints unchanged, including reasoning parsing — only the base URL and key
-    differ. Registered only when ENV=development (see register_llm_providers).
+    """DEV-ONLY: the env-defined custom provider — any OpenAI-compatible endpoint,
+    with base URL, key, and model all from the DEV_LLM_* settings. Routes bulk
+    test traffic to heavily discounted lanes (e.g. Nous Research's DeepSeek
+    models) without spending real credits. ChatOpenAI works against such
+    endpoints unchanged — only the base URL and key differ. Registered only when
+    ENV=development (see register_llm_providers).
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    return _openrouter_wire_configurables(
-        ChatOpenRouter(
+    return _openai_wire_configurables(
+        ChatOpenAI(
             model=PROVIDER_MODELS["custom"],
             temperature=DEFAULT_LLM_TEMPERATURE,
             streaming=True,
             stream_usage=True,
-            max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
-            api_key=settings.DEV_LLM_API_KEY,
+            max_completion_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+            api_key=SecretStr(settings.DEV_LLM_API_KEY or ""),
             base_url=settings.DEV_LLM_BASE_URL,
         )
     )
@@ -283,7 +268,7 @@ def _get_available_providers() -> dict[str, Any]:
     # Mapping of provider names to their instance keys in the providers registry
     provider_instance_mapping = {
         "gemini": "gemini_llm",
-        "openrouter": "openrouter_llm",
+        "concentrate": "concentrate_llm",
         "custom": "custom_llm",
     }
 
@@ -353,7 +338,7 @@ def _create_configurable_llm(
 def register_llm_providers() -> None:
     """Register LLM providers in the lazy loader."""
     init_gemini_llm()
-    init_openrouter_llm()
+    init_concentrate_llm()
     # The custom endpoint is a dev/testing-only lane — never registered in
     # production, so DEV_LLM_* vars present in a prod environment can't route
     # real traffic.
@@ -362,36 +347,37 @@ def register_llm_providers() -> None:
 
 
 def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
-    """The single factory for the default model (direct Gemini, ``gemini-3.1-flash-lite``)
-    used by EVERY auxiliary LLM task — follow-ups, research, memory extraction,
-    integration inference, profile/holo cards, vision helpers, workflow generation,
-    context summarization, onboarding, one-shot helpers. The pro model is reserved
-    for the main chat agent (see ``plan_model``); auxiliary tasks never use it.
-    ``temperature`` lets creative tasks opt into more variation. Instances are
-    cached per temperature so hot paths reuse one HTTP client instead of
-    rebuilding it per call. Raises ``LLMNotConfiguredError`` if Google is not
-    configured."""
+    """The single factory for the default model (``DEFAULT_MODEL_NAME`` via
+    Concentrate) used by EVERY auxiliary LLM task — follow-ups, research, memory
+    extraction, integration inference, profile/holo cards, vision helpers,
+    workflow generation, context summarization, onboarding, one-shot helpers. The
+    pro model is reserved for the main chat agent (see ``plan_model``); auxiliary
+    tasks never use it. ``temperature`` lets creative tasks opt into more
+    variation. Instances are cached per temperature so hot paths reuse one HTTP
+    client instead of rebuilding it per call. Raises ``LLMNotConfiguredError`` if
+    Concentrate is not configured."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
-    if not settings.OPENROUTER_API_KEY:
-        raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
+    if not settings.CONCENTRATE_API_KEY:
+        raise LLMNotConfiguredError("Default LLM not configured. Set CONCENTRATE_API_KEY.")
     return _build_default_llm(temperature)
 
 
 @cache
 def _build_default_llm(temperature: float) -> BaseChatModel:
-    llm = ChatOpenRouter(
+    llm = ChatOpenAI(
         model=DEFAULT_MODEL_NAME,
         temperature=temperature,
-        # ChatOpenRouter defaults streaming to False, and stream_usage only
+        # ChatOpenAI defaults streaming to False, and stream_usage only
         # attaches usage metadata to a stream — set alone it is inert. Both are
-        # set so this matches init_openrouter_llm, and so the model fallback
+        # set so this matches init_concentrate_llm, and so the model fallback
         # (create_agent resolves it from here) streams like the primary it
         # replaces instead of arriving as one lump.
         streaming=True,
         stream_usage=True,
-        max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-        api_key=settings.OPENROUTER_API_KEY,
+        max_completion_tokens=CONCENTRATE_MAX_OUTPUT_TOKENS,
+        api_key=SecretStr(settings.CONCENTRATE_API_KEY or ""),
+        base_url=CONCENTRATE_API_BASE_URL,
     )
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).

@@ -1,7 +1,7 @@
-"""OpenAI/OpenRouter-compatible response shaping for the scripted LLM stub.
+"""OpenAI-compatible response shaping for the scripted LLM stub.
 
-Pure stdlib. Builds the exact JSON shapes the ``langchain-openrouter`` client
-(via the ``openrouter`` SDK) deserializes: a ``chat.completion`` object for
+Pure stdlib. Builds the exact JSON shapes the ``langchain-openai`` client
+(via the ``openai`` SDK) deserializes: a ``chat.completion`` object for
 non-streaming requests, and ``chat.completion.chunk`` objects for streaming.
 
 Streaming note: the SDK reads standard OpenAI SSE — each event is a

@@ -77,7 +77,7 @@ Exceptions are explicit declarations, never accidents:
   `HERMETIC_ALLOW_KEYS` (comma-separated) in its conftest at import time —
   e.g. `tests/composio/conftest.py` declares `COMPOSIO_KEY,
   COMPOSIO_WEBHOOK_SECRET`; `tests/model_onboarding/conftest.py` declares
-  `OPENROUTER_API_KEY`. Nothing else survives the fence.
+  `CONCENTRATE_API_KEY`. Nothing else survives the fence.
 
 Never hardcode real secrets in tests; never read a `~` path (the fence owns
 env, fixtures own paths). If a test needs a key, declare it via

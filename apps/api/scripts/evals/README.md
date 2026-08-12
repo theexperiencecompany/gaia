@@ -58,7 +58,7 @@ mise tasks: `eval:opik:up|down|reset`, `eval:smoke`, `eval:gate`, `eval:all`
 ## Providers & rotation
 
 `config.toml` is the provider catalog ("the checkbox"). Default order:
-**nous → opencode-go → openrouter → gemini**. The harness health-checks each
+**nous → opencode-go → concentrate → gemini**. The harness health-checks each
 provider at boot, skips dead ones, re-runs a case on the next provider when a
 provider errors, and rotates when a provider's `budget_usd` cap is hit (nous
 defaults to $5). Every case records the provider + model that actually served
@@ -103,6 +103,6 @@ against them. Re-baselining is a deliberate commit, never auto-adopted.
 ## Known gaps
 
 - GAIA real validation run: blocked on `HF_TOKEN` (gated dataset terms).
-- OpenRouter/Gemini rotation lanes: need `OPENROUTER_API_KEY` /
+- Concentrate/Gemini rotation lanes: need `CONCENTRATE_API_KEY` /
   `GOOGLE_API_KEY` in `.env`.
 - Calendar/messaging simulated backends: not yet built (gmail seam is).

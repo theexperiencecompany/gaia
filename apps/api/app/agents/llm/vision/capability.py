@@ -4,12 +4,12 @@ from enum import Enum
 
 from langchain_core.runnables import RunnableConfig
 
-from app.agents.llm.model_catalog import get_openrouter_catalog
+from app.agents.llm.model_catalog import get_concentrate_catalog
 from app.constants.llm import (
+    CONCENTRATE_PROVIDER,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MODEL_NAME,
     GEMINI_PROVIDER,
-    OPENROUTER_PROVIDER,
 )
 from app.models.agent_models import agent_configurable
 
@@ -30,7 +30,7 @@ class MediaDelivery(Enum):
 def active_lane(config: RunnableConfig) -> tuple[str, str]:
     """The (provider, model) this run will actually call.
 
-    Gemini binds its model from ``model_name`` and OpenRouter from ``model``, so
+    Gemini binds its model from ``model_name`` and Concentrate from ``model``, so
     ``plan_model._pin_model`` writes both and either key answers the question.
     """
     configurable = agent_configurable(config)
@@ -42,24 +42,23 @@ def active_lane(config: RunnableConfig) -> tuple[str, str]:
 async def resolve_media_delivery(config: RunnableConfig) -> MediaDelivery:
     """The delivery strategy for the active lane's tool-result images.
 
-    Direct Gemini is multimodal all the way down into tool results. OpenRouter
+    Direct Gemini is multimodal all the way down into tool results. Concentrate
     models are looked up in the live catalog. Unknown providers and catalog
     misses fall back to the text description — never to a provider request that
     will be rejected.
 
-    OpenRouter accepts media inside a tool message (its spec types tool content
-    as the same union the user role gets), but whether the *upstream* model
-    honours it is per-model and not exposed anywhere in the models API — two
-    models can be byte-identical in `architecture` and still differ. Older
-    OpenAI-family models 400 on it. That capability is therefore established by
-    running ``tests/model_onboarding`` before a model is seeded, not by a lookup
-    at request time.
+    Concentrate accepts media inside a tool message on the wire, but whether the
+    *upstream* model honours it is per-model and not exposed anywhere in the
+    models API — two models can be identical in `capabilities` and still differ.
+    Older OpenAI-family models 400 on it. That capability is therefore
+    established by running ``tests/model_onboarding`` before a model is seeded,
+    not by a lookup at request time.
     """
     provider, model = active_lane(config)
     if provider == GEMINI_PROVIDER:
         return MediaDelivery.KEEP_IN_TOOL_RESULTS
-    if provider == OPENROUTER_PROVIDER:
-        catalog = await get_openrouter_catalog()
+    if provider == CONCENTRATE_PROVIDER:
+        catalog = await get_concentrate_catalog()
         if await catalog.accepts_images(model):
             return MediaDelivery.KEEP_IN_TOOL_RESULTS
     return MediaDelivery.REPLACE_WITH_TEXT

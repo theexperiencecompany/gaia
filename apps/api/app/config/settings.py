@@ -89,7 +89,7 @@ class CommonSettings(BaseAppSettings):
     GAIA_SIM_MODE: bool = False
     # Where the scripted stub lives when sim mode is on; consumed only by
     # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
-    OPENROUTER_BASE_URL: str | None = None
+    CONCENTRATE_BASE_URL: str | None = None
     # Dev-only: lift every per-user rate limit (chat messages, uploads, ...).
     # Eval harnesses drive thousands of legitimate requests per day against a
     # free-plan dev user; without this they 429 at the free tier's 200/day.
@@ -171,7 +171,7 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     # Dev-only LLM overrides (honored only when ENV=development)
     # ----------------------------------------------
-    # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage
+    # Custom OpenAI-compatible endpoint for cheap bulk dev/test usage
     # (e.g. Nous Research's discounted DeepSeek lane). All three must be set; the
     # "custom" provider is registered exclusively in development (see
     # register_llm_providers), so these have no effect in production.
@@ -284,7 +284,7 @@ class ProductionSettings(CommonSettings):
     # AI & Machine Learning
     OPENAI_API_KEY: str
     GOOGLE_API_KEY: str
-    OPENROUTER_API_KEY: str
+    CONCENTRATE_API_KEY: str
 
     # Weather Services
     OPENWEATHER_API_KEY: str
@@ -504,7 +504,7 @@ class DevelopmentSettings(CommonSettings):
     # AI & Machine Learning
     OPENAI_API_KEY: str | None = None
     GOOGLE_API_KEY: str | None = None
-    OPENROUTER_API_KEY: str | None = None
+    CONCENTRATE_API_KEY: str | None = None
 
     # Weather Services
     OPENWEATHER_API_KEY: str | None = None
@@ -634,7 +634,7 @@ class DevelopmentSettings(CommonSettings):
     # production when this is set.
     DEV_AUTH_BYPASS_EMAIL: str | None = None
 
-    # GAIA_SIM_MODE and OPENROUTER_BASE_URL are declared on CommonSettings (the
+    # GAIA_SIM_MODE and CONCENTRATE_BASE_URL are declared on CommonSettings (the
     # production import path reads them) — see the note there.
 
     # Default to show warnings in development environment
@@ -749,13 +749,13 @@ def get_settings() -> Any:
                     "DEV_UNLIMITED_RATE_LIMITS is set but ENV=production — "
                     "lifting rate limits in production is never allowed."
                 )
-            # Same policy as the auth bypass: the OpenRouter base-URL override
+            # Same policy as the auth bypass: the Concentrate base-URL override
             # redirects the model to a local scripted stub, so production must
             # refuse to boot rather than run against it.
-            if os.getenv("OPENROUTER_BASE_URL"):
+            if os.getenv("CONCENTRATE_BASE_URL"):
                 raise RuntimeError(
-                    "OPENROUTER_BASE_URL is set but ENV=production — "
-                    "the OpenRouter base-URL override is a development-only stub hook."
+                    "CONCENTRATE_BASE_URL is set but ENV=production — "
+                    "the Concentrate base-URL override is a development-only stub hook."
                 )
             # Boolean-semantic var: an explicit "false"/"0"/"no"/"off" is a
             # legitimate way to DISABLE sim mode and must not trip the guard

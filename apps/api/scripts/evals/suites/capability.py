@@ -78,13 +78,13 @@ CASE_TIMEOUT_S = 300
 LANE_INSTANCE_KEYS: dict[str, str] = {
     "custom": "custom_llm",
     "gemini": "gemini_llm",
-    "openrouter": "openrouter_llm",
+    "concentrate": "concentrate_llm",
 }
 
 LANE_PROVIDER_NAMES: dict[str, str] = {
     "custom": "custom",
     "gemini": "gemini",
-    "openrouter": "openrouter",
+    "concentrate": "concentrate",
 }
 
 #: The Gmail tools whose effect cannot be undone, as the PRODUCT defines them —

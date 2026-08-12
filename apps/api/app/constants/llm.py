@@ -1,11 +1,9 @@
-from typing import Any
-
 from app.models.models_models import DevModelOption
 
 GEMINI_PROVIDER = "gemini"
-OPENROUTER_PROVIDER = "openrouter"
+CONCENTRATE_PROVIDER = "concentrate"
 
-DEFAULT_LLM_PROVIDER = OPENROUTER_PROVIDER
+DEFAULT_LLM_PROVIDER = CONCENTRATE_PROVIDER
 
 # How often the messages DeltaChannel writes a full snapshot blob (every Nth
 # update). Between snapshots only per-step deltas are persisted, so checkpoint
@@ -78,7 +76,7 @@ DEFAULT_LLM_TEMPERATURE = 0.1
 # whenever DEFAULT_MODEL_NAME changes.
 # Known limitation: middleware is constructed at graph-build time, so the fractional
 # triggers are denominated in THIS window even when a different chat model serves the
-# request (e.g. the paid OpenRouter model or a dev-menu override).
+# request (e.g. the paid Concentrate model or a dev-menu override).
 DEFAULT_MAX_TOKENS = 1_000_000
 # Changing the default model is high blast radius — it is NOT just a string. Before
 # you do, confirm for the new model:
@@ -88,14 +86,15 @@ DEFAULT_MAX_TOKENS = 1_000_000
 #     without one, calculate_token_cost falls back to DEFAULT_PRICING and the
 #     cost budgets meter at the wrong rate
 #   - it's multimodal if vision/file tools rely on it
-# Default model for every tier and every auxiliary call, served over OpenRouter.
+# Default model for every tier and every auxiliary call, served over Concentrate.
+# Concentrate model ids are canonical (unprefixed) — a `provider/` prefix pins the
+# SERVING provider, which we don't need since Concentrate routes first-party.
 # Text-only: tool results carrying images are captioned for it rather than shown
 # (see agents/llm/vision/capability.py).
-DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+DEFAULT_MODEL_NAME = "deepseek-v4-flash-0731"
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
-DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
 # The model behind every image -> text call: the vision fallback for a lane that
 # cannot take pixels (see vision/capability.py), plus the image-upload and
@@ -120,44 +119,41 @@ SIM_STUB_MODEL_NAME = "gaia-sim-stub"
 # monthly-budget degrade in apply_plan_model has nothing to degrade to — kept in
 # place deliberately, so re-pointing PAID_MODEL_NAME at a stronger model is the
 # only change needed to make that guard bite again.
-PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
+PAID_MODEL_PROVIDER = CONCENTRATE_PROVIDER
 PAID_MODEL_NAME = DEFAULT_MODEL_NAME
 
-# Which OpenRouter models accept image input, straight from the live catalog's
-# `architecture.input_modalities` — so vision support needs no per-model
+# The Concentrate chat-completions endpoint. Auth is a Bearer key (sk-cn-...);
+# see https://concentrate.ai/docs/migrations/openrouter for the wire contract.
+CONCENTRATE_API_BASE_URL = "https://api.concentrate.ai/v1"
+
+# Which Concentrate models accept image input, straight from the live catalog's
+# `capabilities.image_input.supported` — so vision support needs no per-model
 # curation here. See app/agents/llm/model_catalog.py for the cache, and
 # app/agents/llm/vision/ for how each lane then receives the media.
-OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
-OPENROUTER_MODEL_CATALOG_TTL_SECONDS = 3600
-OPENROUTER_MODEL_CATALOG_TIMEOUT_SECONDS = 10
+CONCENTRATE_MODELS_URL = "https://api.concentrate.ai/v1/models"
+CONCENTRATE_MODEL_CATALOG_TTL_SECONDS = 3600
+CONCENTRATE_MODEL_CATALOG_TIMEOUT_SECONDS = 10
 # How long a failed catalog refresh is remembered. The catalog is consulted on
-# the pre-model hook, so without a backoff an OpenRouter outage would cost every
+# the pre-model hook, so without a backoff a Concentrate outage would cost every
 # model call a full fetch timeout — turning a degraded dependency into an
 # unusable product.
-OPENROUTER_MODEL_CATALOG_RETRY_SECONDS = 300
+CONCENTRATE_MODEL_CATALOG_RETRY_SECONDS = 300
 
-# GLM 5.2's first-party (z-ai) lane exposes a 1M-token context window and a 131k
-# output ceiling. Cap output well under that; the summarization / compaction
+# DeepSeek V4 Flash exposes a 1M-token context window and a 393k output ceiling
+# on Concentrate. Cap output well under that; the summarization / compaction
 # middleware keeps input bounded (compaction at 0.40, summary at 0.60 of the
 # window), so 64k of output leaves ample headroom for the prompt.
-OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
+CONCENTRATE_MAX_OUTPUT_TOKENS = 64_000
 
-# Default reasoning effort for OpenRouter thinking models (executor + subagents),
-# passed to ChatOpenRouter's native `reasoning` field.
-OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
-# Pin the paid model to the first-party "z-ai" provider on OpenRouter. Without
-# this, OpenRouter may load-balance z-ai/glm-5.2 across resellers (DeepInfra,
-# Together, Parasail, etc.) whose shared pools get rate-limited upstream (429). `only`
-# forces the first-party lane. Passed via ChatOpenRouter's `model_kwargs` (the
-# OpenRouter `provider` routing param) and inherited by child agents via
-# agent_helpers._inherit_from_parent_configurable so subagents stay on the same lane.
-PAID_MODEL_PROVIDER_SLUG = "deepseek"
-PAID_MODEL_MODEL_KWARGS = {"provider": {"only": [PAID_MODEL_PROVIDER_SLUG]}}
-# Comms-specific reasoning: "low" instead of the executor's "medium". Comms is
+# Default reasoning effort for Concentrate thinking models (executor + subagents),
+# passed as the OpenAI-style `reasoning_effort` request param (Concentrate levels:
+# none/minimal/low/medium/high/xhigh/max).
+EXECUTOR_REASONING_EFFORT = "medium"
+# Comms-specific effort: "low" instead of the executor's "medium". Comms is
 # mostly routing/ack work, so the reasoning budget is most useful for the executor's
-# tool selection. GLM 5.2 also documents "high"/"xhigh" efforts — revisit these
-# levels if comms routing or executor tool-selection quality needs more headroom.
-COMMS_REASONING: dict[str, Any] = {"effort": "low"}
+# tool selection. Revisit these levels if comms routing or executor tool-selection
+# quality needs more headroom.
+COMMS_REASONING_EFFORT = "low"
 
 # Output cap for the env-defined custom dev provider (the "custom" entry below;
 # endpoint/key/model all come from the DEV_LLM_* settings). 64k fits under the
@@ -165,52 +161,39 @@ COMMS_REASONING: dict[str, Any] = {"effort": "low"}
 # Flash caps at 65,536).
 DEV_LLM_MAX_OUTPUT_TOKENS = 64_000
 
-# OpenRouter app attribution (https://openrouter.ai/docs/app-attribution). The
-# OpenRouter client surfaces these as the HTTP-Referer / X-Title /
-# X-OpenRouter-Categories headers so GAIA appears on OpenRouter's app rankings.
-# The referer URL is the public site (settings.FRONTEND_URL); title + categories
-# are fixed app identity.
-OPENROUTER_APP_TITLE = "GAIA"
-OPENROUTER_APP_CATEGORIES = ["personal-agent", "general-chat"]
-
 # DEV-ONLY model menu (ENV=development). The dev chat-header selector sends one of
 # these stable ids per role (comms / executor); the backend pins the matching model.
-# `reasoning` flags whether the model is an OpenRouter reasoning model — effort is
-# applied per-role at override time (comms -> COMMS_REASONING, executor ->
-# OPENROUTER_REASONING). Gemini models route direct via the "gemini" provider and
-# ignore OpenRouter `model_kwargs`/`reasoning`. This menu is NEVER used in production.
+# `reasoning` flags whether the model is a Concentrate reasoning model — effort is
+# applied per-role at override time (comms -> COMMS_REASONING_EFFORT, executor ->
+# EXECUTOR_REASONING_EFFORT). Gemini models route direct via the "gemini" provider
+# and ignore `reasoning_effort`. This menu is NEVER used in production.
 DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "minimax-m3": {
-        "provider": "openrouter",
-        "model": "minimax/minimax-m3",
-        "model_kwargs": {"provider": {"only": ["minimax"]}},
+        "provider": "concentrate",
+        "model": "minimax-m3",
         "reasoning": True,
     },
     "glm-5.2": {
-        "provider": "openrouter",
-        "model": "z-ai/glm-5.2",
-        "model_kwargs": {"provider": {"only": ["z-ai"]}},
+        "provider": "concentrate",
+        "model": "glm-5.2",
         "reasoning": True,
     },
     "gemini-3.5-flash": {
-        "provider": "openrouter",
-        "model": "google/gemini-3.5-flash",
-        "model_kwargs": None,
+        "provider": "concentrate",
+        "model": "gemini-3.5-flash",
         "reasoning": False,
     },
     "deepseek-v4": {
-        "provider": "openrouter",
-        "model": "deepseek/deepseek-v4-pro",
-        "model_kwargs": None,
+        "provider": "concentrate",
+        "model": "deepseek-v4-pro",
         "reasoning": False,
     },
     "deepseek-v4-flash": {
-        # Pinned snapshot — same id also served by the cheap OpenRouter-compatible
+        # Pinned snapshot — same model also served by the cheap OpenAI-compatible
         # lanes (e.g. Nous Research), so the custom endpoint below can run the
         # identical model for A/B-ing routes.
-        "provider": "openrouter",
-        "model": "deepseek/deepseek-v4-flash-0731",
-        "model_kwargs": None,
+        "provider": "concentrate",
+        "model": "deepseek-v4-flash-0731",
         "reasoning": False,
     },
     "custom": {
@@ -218,13 +201,11 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # one here; the client's own default (DEV_LLM_MODEL) serves the request.
         "provider": "custom",
         "model": None,
-        "model_kwargs": None,
         "reasoning": False,
     },
     "gemini-3.1-flash-lite": {
         "provider": "gemini",
         "model": "gemini-3.1-flash-lite",
-        "model_kwargs": None,
         "reasoning": False,
     },
 }

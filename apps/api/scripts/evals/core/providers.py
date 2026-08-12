@@ -71,7 +71,7 @@ def load_config(path: Path = CONFIG_PATH) -> EvalConfig:
     providers: dict[str, ProviderConfig] = {}
     for name, p in raw["providers"].items():
         # No DEV_LLM_BASE_URL fallback: a lane that declares no base URL is a
-        # native one (openrouter, gemini), and handing it the custom development
+        # native one (concentrate, gemini), and handing it the custom development
         # endpoint pointed its health probe — and any rotation retry — at the
         # very backend it exists to be an alternative to.
         base = _env_or_empty(p.get("base_url_env", ""))

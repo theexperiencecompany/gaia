@@ -105,12 +105,9 @@ class AgentConfigurable(TypedDict, total=False):
     model: str
     model_name: str
     max_tokens: int
-    #: OpenRouter provider-routing pin, inherited by subagents so they stay on
-    #: the first-party lane instead of load-balancing onto throttled resellers.
-    model_kwargs: dict[str, Any]
-    #: Reasoning-effort config; comms sets its own lower effort, the executor
+    #: Reasoning effort level; comms sets its own lower effort, the executor
     #: and provider subagents keep the client default.
-    reasoning: dict[str, Any]
+    reasoning_effort: str
 
     # --- run scope ----------------------------------------------------------
     selected_tool: str | None

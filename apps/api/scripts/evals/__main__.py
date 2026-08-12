@@ -165,7 +165,7 @@ def main() -> int | None:
     if args.command == "run" and args.sim:
         os.environ["GAIA_SIM_MODE"] = "1"
         os.environ.setdefault(
-            "OPENROUTER_BASE_URL",
+            "CONCENTRATE_BASE_URL",
             f"http://localhost:{os.environ.get('LLM_STUB_PORT', '9797')}/api/v1",
         )
 

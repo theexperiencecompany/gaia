@@ -5,9 +5,9 @@
 #     "uvicorn>=0.30",
 # ]
 # ///
-"""Scripted, deterministic LLM stub — an OpenAI/OpenRouter-compatible server.
+"""Scripted, deterministic LLM stub — an OpenAI-compatible server.
 
-Point GAIA's OpenRouter client at this process to drive the full stack with a
+Point GAIA's model client at this process to drive the full stack with a
 scripted model instead of a real provider. Every chat-completions request is
 answered by parsing inline directives from the latest user message (see
 ``directives.py``): ``[[tool:<name> <json-args>]]`` for scripted tool calls and
@@ -22,7 +22,7 @@ Wire it into GAIA (development only) with the one canonical switch:
 
     GAIA_SIM_MODE=1        # `mise dev --sim` sets this; every LLM factory
                            # resolves to this stub (see app/agents/llm/client.py)
-    OPENROUTER_BASE_URL=…  # optional: only to point sim mode at a non-default
+    CONCENTRATE_BASE_URL=…  # optional: only to point sim mode at a non-default
                            # stub address (defaults to http://localhost:9797/api/v1)
 
 Both ``/chat/completions`` and ``/api/v1/chat/completions`` are served so the

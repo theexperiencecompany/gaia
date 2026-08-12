@@ -20,7 +20,7 @@ One command per intent. Each starts infra in Docker (`nx run docker:docker:up`, 
 | You need… | Command | Why |
 |---|---|---|
 | **Agent driving, real LLM** (API + web natively, zero login) | `mise dev --agent` | Dev auth bypass ON — every request is `DEV_USER` (default `dev@gaia.local`), no WorkOS. Hot reload, API on host `:8000`. The default for this skill. JuiceFS-dependent paths raise `JuiceFSUnavailable` here — expected, not a bug. |
-| **Deterministic, credential-free** — scripted LLM, no OpenRouter cost | `mise dev --sim` | `--agent` + the scripted LLM stub (`tools/llm-stub`, `:9797`). Bypass also ON. Model replies come from directives in the chat message (§3). Run `mise seed` once the API is up. |
+| **Deterministic, credential-free** — scripted LLM, no Concentrate cost | `mise dev --sim` | `--agent` + the scripted LLM stub (`tools/llm-stub`, `:9797`). Bypass also ON. Model replies come from directives in the chat message (§3). Run `mise seed` once the API is up. |
 | **JuiceFS paths** — workspace v2, file uploads, artifact streaming, sandbox file ops | `mise dev:vm --agent` | Runs the API in a container with the FUSE mount; web stays native. `--agent` (or `--sim`, reaching the host stub via `host.docker.internal`) turns on the bypass; plain `mise dev:vm` is real login. Use the moment you hit `JuiceFSUnavailable`. |
 | **Real login flow** (human testing, no bypass) | `mise dev` | Same native stack, no flag — the real WorkOS login, for testing signup/auth as an actual user. Not for agent driving. |
 
@@ -113,7 +113,7 @@ curl -sfS -X DELETE "$API/dev/users/alice@gaia.local"
 
 ## 3. Script the LLM deterministically (`--sim`)
 
-Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — every LLM factory resolves to the stub; real keys in `.env` stay untouched and unused), the model is replaced by `tools/llm-stub` — an OpenRouter-wire-compatible server that scripts from the **newest user message carrying directives** (the graph appends context slots as trailing user messages; the stub skips them) and emits them in order (`tools/llm-stub/directives.py`, `wire.py`). No scenario files, no cost, fully deterministic.
+Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — every LLM factory resolves to the stub; real keys in `.env` stay untouched and unused), the model is replaced by `tools/llm-stub` — an OpenAI-wire-compatible server that scripts from the **newest user message carrying directives** (the graph appends context slots as trailing user messages; the stub skips them) and emits them in order (`tools/llm-stub/directives.py`, `wire.py`). No scenario files, no cost, fully deterministic.
 
 **When to use sim mode** — verifying plumbing, not intelligence: does a tool call flow comms → executor → real tool → Mongo; does the SSE stream shape render; does a bot/Playwright flow work end to end; any test that must pass identically every run with no credentials.
 **When NOT to use it** — anything judging real model behavior: prompt changes, tool-selection quality, response tone/format, memory extraction quality, model regressions. The stub does exactly what the directive says and nothing else, so "the agent chose the right tool" is meaningless under sim. Use `mise dev --agent` with real keys for those, and expect nondeterminism.
@@ -134,7 +134,7 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 
 Example message that files a todo then replies: `add a todo [[tool:create_todo {"title":"buy milk"}]] [[say:Added it.]]`
 
-Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1) on the stub process; `OPENROUTER_BASE_URL` on the API to point at a non-default stub address. The stub's own unit tests: `uv run --no-project --with pytest pytest tools/llm-stub -q`.
+Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1) on the stub process; `CONCENTRATE_BASE_URL` on the API to point at a non-default stub address. The stub's own unit tests: `uv run --no-project --with pytest pytest tools/llm-stub -q`.
 
 ---
 

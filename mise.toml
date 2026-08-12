@@ -190,7 +190,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:$api_port/api/v1/
 # Every backend client resolves the API from this, so \`gaia-sim\` and the bots
 # target THIS worktree's API instead of whatever owns port 8000.
 GAIA_API_URL=http://localhost:$api_port
-# Scripted LLM stub (\`mise dev --sim\`). --sim derives OPENROUTER_BASE_URL from it.
+# Scripted LLM stub (\`mise dev --sim\`). --sim derives CONCENTRATE_BASE_URL from it.
 LLM_STUB_PORT=$(( 9797 + offset ))
 BOT_DISCORD_PORT=$(( 3200 + offset ))
 BOT_SLACK_PORT=$(( 3201 + offset ))
@@ -226,10 +226,10 @@ run = "pnpm nx run web:e2e"
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.dev]
-description = "Run API + web natively + infra in Docker. API runs on host (hot reload, port 8000). Default is the REAL WorkOS login flow. Add --agent for zero-login agent driving (dev auth bypass, real LLM) or --sim (bypass + scripted LLM stub, no OpenRouter cost). Both fail loudly under ENV=production. JuiceFS-dependent paths (workspace v2, sandbox file ops, artifact streaming) raise JuiceFSUnavailable on this native path — use `mise dev:vm` for those."
+description = "Run API + web natively + infra in Docker. API runs on host (hot reload, port 8000). Default is the REAL WorkOS login flow. Add --agent for zero-login agent driving (dev auth bypass, real LLM) or --sim (bypass + scripted LLM stub, no Concentrate cost). Both fail loudly under ENV=production. JuiceFS-dependent paths (workspace v2, sandbox file ops, artifact streaming) raise JuiceFSUnavailable on this native path — use `mise dev:vm` for those."
 usage = '''
 flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (default dev@gaia.local), no WorkOS login. Real LLM."
-flag "--sim" help="Dev auth bypass ON + scripted LLM stub (tools/llm-stub) — deterministic, no OpenRouter credentials or cost. Replies come from [[tool:...]]/[[say:...]] directives."
+flag "--sim" help="Dev auth bypass ON + scripted LLM stub (tools/llm-stub) — deterministic, no Concentrate credentials or cost. Replies come from [[tool:...]]/[[say:...]] directives."
 '''
 run = '''
 set -eu
@@ -263,7 +263,7 @@ fi
 # LLM: scripted stub for --sim (native API reaches it on localhost), else real.
 if [ "${usage_sim:-}" = "true" ]; then
   export LLM_STUB_PORT="${LLM_STUB_PORT:-9797}"
-  export OPENROUTER_BASE_URL="${OPENROUTER_BASE_URL:-http://localhost:$LLM_STUB_PORT/api/v1}"
+  export CONCENTRATE_BASE_URL="${CONCENTRATE_BASE_URL:-http://localhost:$LLM_STUB_PORT/api/v1}"
   uv run tools/llm-stub/server.py &
   stub_pid=$!
   trap 'kill "$stub_pid" 2>/dev/null || true' EXIT INT TERM
@@ -286,7 +286,7 @@ description = "Run the API in a container (hot reload via the mounted apps/api/a
 env = { COMPOSE_PROFILES = "backend" }
 usage = '''
 flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (default dev@gaia.local), no WorkOS login. Real LLM."
-flag "--sim" help="Dev auth bypass ON + scripted LLM stub (tools/llm-stub) reached from the container via host.docker.internal. Deterministic, no OpenRouter cost."
+flag "--sim" help="Dev auth bypass ON + scripted LLM stub (tools/llm-stub) reached from the container via host.docker.internal. Deterministic, no Concentrate cost."
 '''
 run = '''
 set -eu

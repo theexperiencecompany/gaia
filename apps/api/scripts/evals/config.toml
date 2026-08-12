@@ -9,7 +9,7 @@
 #                    paid on this lane. The budget number.
 #
 # `price_*_per_1m` is therefore always LIST price for the model the lane serves
-# (nous, opencode and openrouter all serve deepseek-v4-flash: $0.14 in / $0.28
+# (nous, opencode and concentrate all serve deepseek-v4-flash: $0.14 in / $0.28
 # out per 1M), and `discount_pct` carries the lane's commercial reality.
 
 [providers.nous]
@@ -32,10 +32,10 @@ price_in_per_1m = 0.14
 price_out_per_1m = 0.28
 discount_pct = 50.0  # OpenCode Go subscription lane — half list
 
-[providers.openrouter]
-lane = "openrouter"
-api_key_env = "OPENROUTER_API_KEY"
-model_env = "OPENROUTER_MODEL"
+[providers.concentrate]
+lane = "concentrate"
+api_key_env = "CONCENTRATE_API_KEY"
+model_env = "CONCENTRATE_MODEL"
 budget_usd = 0.0
 price_in_per_1m = 0.14
 price_out_per_1m = 0.28
@@ -50,7 +50,7 @@ price_in_per_1m = 0.15
 price_out_per_1m = 0.60
 
 [rotation]
-order = ["nous", "opencode", "openrouter", "gemini"]
+order = ["nous", "opencode", "concentrate", "gemini"]
 
 [cost]
 default_max_usd = 8.0

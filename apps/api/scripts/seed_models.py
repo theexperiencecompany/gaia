@@ -61,7 +61,7 @@ def get_models_configuration() -> list[dict[str, Any]]:
     Define the desired models configuration.
     This is the single source of truth for what models should exist.
 
-    BEFORE ADDING A MODEL WITH inference_provider == OPENROUTER, RUN:
+    BEFORE ADDING A MODEL WITH inference_provider == CONCENTRATE, RUN:
 
         GAIA_ONBOARD_MODELS=<provider_model_name> \
           uv run pytest tests/model_onboarding -m model_onboarding -v
@@ -71,10 +71,10 @@ def get_models_configuration() -> list[dict[str, Any]]:
     producer reaches the model (the `read` tool, screenshots, MCP images), and
     the agent hands them over via `MediaDelivery.KEEP_IN_TOOL_RESULTS`.
 
-    There is no capability flag for this. OpenRouter's models API only reports
-    whether a model takes images at all — `openai/gpt-5-mini` and
-    `openai/gpt-4o-mini` are byte-identical in `architecture`, yet the first
-    accepts tool-result images and the second returns
+    There is no capability flag for this. Concentrate's models API only reports
+    whether a model takes images at all (`capabilities.image_input`) — two models
+    can be identical there and still differ on tool-result images, e.g. one
+    accepts them and the other returns
     "Image URLs are only allowed for messages with role 'user'". So it has to be
     measured, once, per model.
 
@@ -89,14 +89,15 @@ def get_models_configuration() -> list[dict[str, Any]]:
     """
     return [
         # Default model — available to all users, model selector is disabled.
-        # Prices are OpenRouter's published rates for this model; they are what
-        # the cost budgets meter against, so they must track the live catalog.
+        # Prices are Concentrate's published rates for this model (GET
+        # /v1/models/deepseek-v4-flash-0731); they are what the cost budgets
+        # meter against, so they must track the live catalog.
         {
-            "model_id": "deepseek/deepseek-v4-flash-0731",
+            "model_id": "deepseek-v4-flash-0731",
             "name": "DeepSeek V4 Flash 0731",
-            "model_provider": ModelProvider.OPENROUTER.value,
-            "inference_provider": ModelProvider.OPENROUTER.value,
-            "provider_model_name": "deepseek/deepseek-v4-flash-0731",
+            "model_provider": ModelProvider.CONCENTRATE.value,
+            "inference_provider": ModelProvider.CONCENTRATE.value,
+            "provider_model_name": "deepseek-v4-flash-0731",
             "description": "DeepSeek's fast, low-cost model with a 1M-token context window",
             "logo_url": "/images/icons/deepseek.webp",
             "max_tokens": 1_000_000,
@@ -110,9 +111,9 @@ def get_models_configuration() -> list[dict[str, Any]]:
             "lowest_tier": PlanType.FREE.value,
             "is_active": True,
             "is_default": True,
-            "pricing_per_1k_input_tokens": 0.00009,
-            "pricing_per_1k_output_tokens": 0.00018,
-            "pricing_per_1k_cached_input_tokens": 0.000018,
+            "pricing_per_1k_input_tokens": 0.00014,
+            "pricing_per_1k_output_tokens": 0.00028,
+            "pricing_per_1k_cached_input_tokens": 0.000028,
         },
         # Superseded as the default; kept seeded so the direct-Gemini lane and
         # the dev model menu still resolve pricing for it.
@@ -174,13 +175,13 @@ def get_models_configuration() -> list[dict[str, Any]]:
         #     "pricing_per_1k_output_tokens": 0.012,
         #     "pricing_per_1k_cached_input_tokens": 0.0005,
         # },
-        # Grok Models (via OpenRouter)
+        # Grok Models (via Concentrate)
         # {
-        #     "model_id": "x-ai/grok-4.1-fast",
+        #     "model_id": "grok-4.1-fast",
         #     "name": "Grok 4.1 Fast",
         #     "model_provider": ModelProvider.GROK.value,
-        #     "inference_provider": ModelProvider.OPENROUTER.value,
-        #     "provider_model_name": "x-ai/grok-4.1-fast",
+        #     "inference_provider": ModelProvider.CONCENTRATE.value,
+        #     "provider_model_name": "grok-4.1-fast",
         #     "description": "xAI's fast Grok model with strong reasoning capabilities",
         #     "logo_url": "/images/icons/grok.webp",
         #     "max_tokens": 128_000,
