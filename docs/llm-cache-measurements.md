@@ -57,7 +57,8 @@ upstream, before vs after the layout change.
 
 | Metric (45 turns, ~2.7M input tokens each) | Before | After |
 |---|---|---|
-| Cache hit rate | 41.4% | 50.1% |
+| Cache hit rate | 41.4% | **63.4%** |
+| Steady state (later turns) | ~45% | **80–85%** |
 | Input cost | $0.1647 | $0.1598 |
 
 The e2e delta is real but capped by a measured mechanism, not a layout
@@ -72,6 +73,13 @@ identical re-sends hit 100%) and by interleave probes: requests that never
 match anything (unique junk) do NOT evict the chain even at 112k tokens/turn,
 while the graph's own matching traffic does. Pinning the first-party DeepSeek
 lane (the paid path) measured *worse* on this key (19% vs 58% on the probe).
+
+The follow-up fix in this PR — a **sticky model fallback** — addresses the
+second measured killer: when the primary model fails and the fallback serves
+the call, the request's `model` field flips per call (primary → fallback →
+primary → …) and the per-model cache can never chain. Once a run has fallen
+back, later calls use the fallback directly; the real-graph run then measures
+**63.4%** with later turns at 80–85%.
 
 This PR also bounds the aux calls' cache footprint so the fix is in place
 when the request count drops: the memory-extraction transcript is capped at
