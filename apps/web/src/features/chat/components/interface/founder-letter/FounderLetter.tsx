@@ -52,9 +52,13 @@ const LETTER_TYPOGRAPHY = {
 
 /** Ivory stock with the faintest warmth, so the black ink stays the darkest
  * thing on the page. Used for the paper and for ink-on-paper reversals. */
-const PAPER_CREAM = "#fdf8ea";
+const PAPER_CREAM = "#fdf6d9";
 
-/** The sealed envelope the letter arrives in, at its intrinsic size. */
+/**
+ * The sealed envelope the letter arrives in: the artwork cut off its black
+ * ground, with the render's own contour faded out so nothing rings the
+ * envelope on a dark page.
+ */
 const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.webp";
 const ENVELOPE_WIDTH = 512;
 const ENVELOPE_HEIGHT = 355;
@@ -88,10 +92,10 @@ function PaperBackdrop() {
         {/* Stationery: cool white where the light hits, warming into the
          * shadow at the bottom right, the way a real sheet sits on a desk. */}
         <linearGradient id="fl-paper" x1="0.05" y1="0" x2="0.85" y2="1">
-          <stop offset="0%" stopColor="#fffefb" />
-          <stop offset="35%" stopColor="#fdfaf1" />
-          <stop offset="72%" stopColor="#f8f1e0" />
-          <stop offset="100%" stopColor="#efe4cd" />
+          <stop offset="0%" stopColor="#fffdf0" />
+          <stop offset="35%" stopColor="#fdf6d9" />
+          <stop offset="72%" stopColor="#f9edbf" />
+          <stop offset="100%" stopColor="#f0dfa4" />
         </linearGradient>
         <radialGradient
           id="fl-paper-light"
@@ -313,7 +317,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
           width={ENVELOPE_WIDTH}
           height={ENVELOPE_HEIGHT}
           priority
-          className="block w-16 rotate-[-3deg] drop-shadow-[0_12px_22px_rgba(0,0,0,0.5)]"
+          className="block w-16 rotate-[-3deg] drop-shadow-[0_10px_18px_rgba(0,0,0,0.55)]"
         />
         {/* Attention glow until the letter has been opened once */}
         {pulse && (
@@ -450,7 +454,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                       openPricingModal({ discountCode: DISCOUNT_CODE });
                       closeLetter();
                     }}
-                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full bg-black px-3 text-[calc(var(--letter-small)*0.95)] font-semibold text-[#fdf8ea] outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
+                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full bg-black px-3 text-[calc(var(--letter-small)*0.95)] font-semibold text-[#fdf6d9] outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
                   >
                     Get the discount
                     <ArrowRightIcon
