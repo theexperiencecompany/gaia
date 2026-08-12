@@ -652,7 +652,7 @@ def world(
         patch(f"{svc}.writing_style_service.ainvoke_structured", _structured),
         patch(f"{svc}.inbox_triage_service.ainvoke_structured", _structured),
         patch(f"{svc}.first_message_service.ainvoke_llm", _invoke_llm),
-        patch(f"{svc}.first_message_service.get_default_llm", lambda **_: AsyncMock()),
+        patch(f"{svc}.first_message_service.get_helper_llm", lambda **_: AsyncMock()),
         # --- downstream services ----------------------------------------
         patch(f"{svc}.intelligence_service.WorkflowService.create_workflow", _create_workflow),
         patch(f"{svc}.onboarding_service.WorkflowService.delete_workflow", _delete_workflow),
