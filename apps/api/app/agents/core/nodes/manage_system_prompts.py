@@ -81,13 +81,23 @@ def _is_dynamic_context(msg: AnyMessage) -> bool:
 
 
 def _is_memory_recall(msg: AnyMessage) -> bool:
-    """Volatile memory-recall system message emitted by
-    ``build_dynamic_context_messages`` — memory recall / knowledge / skills /
-    todos / run banners. Carries its own marker (never ``dynamic_context`` /
+    """The byte-stable core-memory documents slot emitted by
+    ``build_dynamic_context_messages`` (the always-on "what GAIA knows about
+    this user" block). Carries its own marker (never ``dynamic_context`` /
     ``memory_message``) so it slots at the tail of the system block instead of
     collapsing into the stable dynamic slot.
     """
     return _has_marker(msg, "memory_recall")
+
+
+def _is_memory_volatile(msg: AnyMessage) -> bool:
+    """The volatile per-turn tail (recent activity, per-query recall, GAIA
+    knowledge, skills, todos, run banners) emitted by
+    ``build_dynamic_context_messages``. Churns every turn, so it is placed
+    AFTER the time message — the last message in the request — where its
+    churn never shifts the byte-stable prefix ahead of it.
+    """
+    return _has_marker(msg, "memory_volatile")
 
 
 def _is_todo_context(msg: AnyMessage) -> bool:
@@ -167,6 +177,7 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         latest_bg_exec_idx: int | None = None
         latest_exec_status_idx: int | None = None
         latest_memory_recall_idx: int | None = None
+        latest_memory_volatile_idx: int | None = None
         latest_time_idx: int | None = None
         for idx in range(len(messages) - 1, -1, -1):
             msg = messages[idx]
@@ -180,6 +191,9 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                 elif _is_memory_recall(msg):
                     if latest_memory_recall_idx is None:
                         latest_memory_recall_idx = idx
+                elif _is_memory_volatile(msg):
+                    if latest_memory_volatile_idx is None:
+                        latest_memory_volatile_idx = idx
                 elif _is_todo_context(msg):
                     if latest_todo_idx is None:
                         latest_todo_idx = idx
@@ -197,6 +211,7 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                 and latest_bg_exec_idx is not None
                 and latest_exec_status_idx is not None
                 and latest_memory_recall_idx is not None
+                and latest_memory_volatile_idx is not None
                 and latest_time_idx is not None
             ):
                 break
@@ -235,6 +250,7 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         bg_exec_msg: AnyMessage | None = None
         exec_status_msg: AnyMessage | None = None
         memory_recall_msg: AnyMessage | None = None
+        memory_volatile_msg: AnyMessage | None = None
         time_msg: AnyMessage | None = None
         non_system: list[AnyMessage] = []
         for idx, msg in enumerate(messages):
@@ -251,6 +267,8 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                     exec_status_msg = msg
                 elif idx == latest_memory_recall_idx:
                     memory_recall_msg = msg
+                elif idx == latest_memory_volatile_idx:
+                    memory_volatile_msg = msg
                 else:
                     dropped_system += 1
                     if msg.id:
@@ -284,10 +302,20 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
             filtered.extend(non_system)
             filtered.extend(volatile_msgs)
         else:
+            # Gemini keeps every system message in the leading run.
+            if memory_volatile_msg is not None:
+                volatile_msgs.append(memory_volatile_msg)
             filtered.extend(volatile_msgs)
             filtered.extend(non_system)
         if time_msg is not None:
             filtered.append(time_msg)
+        # The volatile per-turn tail is the LAST message in the request (after
+        # the clock): it churns every turn and its bytes must never sit inside
+        # the cached prefix (measured: it was the dominant per-turn uncached
+        # chunk, capping the comms hit rate ~10 points below the harness
+        # ceiling).
+        if use_tail_layout and memory_volatile_msg is not None:
+            filtered.append(memory_volatile_msg)
 
         log.set(
             prompt_pruning={

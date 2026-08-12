@@ -170,4 +170,9 @@ async def construct_langchain_messages(
         content += f"\n\n{files_str}"
 
     human_msg = HumanMessage(content=content)
+    # The volatile per-turn tail (recent activity, per-query recall, todos,
+    # banners) goes AFTER the clock — the last message in the request — so its
+    # per-turn churn never shifts the byte-stable prefix ahead of it.
+    if dynamic_ctx.volatile_tail is not None:
+        return [*chain_msgs, human_msg, time_msg, dynamic_ctx.volatile_tail]
     return [*chain_msgs, human_msg, time_msg]

@@ -52,13 +52,19 @@ from shared.py.wide_events import log
 # manage_system_prompts_node can keep only the latest one.
 DYNAMIC_CONTEXT_MARKER = "dynamic_context"
 
-# Sentinel marker on the volatile memory-recall SystemMessage. This slot holds
-# the per-turn content (memory recall, GAIA knowledge, skills, tracked todos,
-# run-binding banners) that churns turn-to-turn. It carries its own marker so
-# manage_system_prompts_node can slot it at the TAIL of the system block —
-# after the byte-stable [static, dynamic] prefix — keeping that prefix
-# cacheable across turns.
+# Sentinel marker on the memory-recall SystemMessage. This slot holds the
+# byte-stable core memory documents (the always-on "what GAIA knows about this
+# user" block). It carries its own marker so manage_system_prompts_node can
+# slot it at the TAIL of the system block — after the byte-stable
+# [static, dynamic] prefix — keeping that prefix cacheable across turns.
 MEMORY_RECALL_MARKER = "memory_recall"
+
+# Sentinel marker on the volatile per-turn tail (recent-activity journal,
+# per-query memory recall, GAIA knowledge, skills, tracked todos, run-binding
+# banners). This content churns every turn, so it lives AFTER the time
+# message — the very last message in the request — where its churn never
+# shifts the cached prefix ahead of it.
+MEMORY_VOLATILE_MARKER = "memory_volatile"
 
 # Cache-bounded size for the volatile memory-recall slot (see the cap in
 # build_dynamic_context_messages). Head keeps the always-on core memory; the
@@ -154,15 +160,27 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
     return ""
 
 
-async def _get_core_memory_section(user_id: str) -> str:
-    """Always-injected memory core: user/memory/agenda docs + recent journal.
+_CORE_MEMORY_HEADING = "What you remember about this user (memory core)"
+_AGENDA_HEADING = "## Current agenda"
+_RECENT_ACTIVITY_HEADING = "## Recent activity"
 
-    Redis-cached inside the engine (plan F1, sub-5ms steady state).
+
+async def _get_core_memory_parts(user_id: str) -> tuple[str, str]:
+    """Split the memory core into the byte-stable documents and the volatile
+    per-turn tail content (agenda + recent-activity journal).
+
+    The stable part (the user / assistant-conventions documents — identity,
+    preferences, routines, ...) changes only when the consolidation pass
+    rewrites it — NOT per turn — so it can sit in the cached prefix. The
+    ``## Current agenda`` document (with its commitments / deadlines / owed
+    items) and the recent-activity journal both churn every turn, so they must
+    live in the volatile tail AFTER the time message. Redis-cached inside the
+    engine (plan F1, sub-5ms steady state).
+
+    Returns ``(stable_documents, volatile_tail_content)``; either may be "".
     """
     try:
         core_context = await memory_engine.get_core_context(user_id)
-        if core_context:
-            return f"What you remember about this user (memory core):\n{core_context}"
     except Exception as e:
         log.warning(
             "Error retrieving core memory context",
@@ -170,8 +188,33 @@ async def _get_core_memory_section(user_id: str) -> str:
             error_type=type(e).__name__,
             user_id=user_id,
         )
+        return "", ""
+    if not core_context:
+        return "", ""
 
-    return ""
+    volatile_parts: list[str] = []
+    # The agenda document churns every turn (reminders fire, deadlines move,
+    # owed items resolve) — measured as a per-turn byte-divergence inside the
+    # cached prefix; it belongs in the volatile tail.
+    agenda_marker = f"\n\n{_AGENDA_HEADING}"
+    if agenda_marker in core_context:
+        stable, agenda = core_context.split(agenda_marker, 1)
+        core_context = stable
+        volatile_parts.append(f"{_AGENDA_HEADING}{agenda}")
+    # The recent-activity journal grows/churns every turn (new entries land).
+    activity_marker = f"\n\n{_RECENT_ACTIVITY_HEADING}"
+    if activity_marker in core_context:
+        stable, activity = core_context.split(activity_marker, 1)
+        core_context = stable
+        volatile_parts.append(f"{_RECENT_ACTIVITY_HEADING}{activity}")
+
+    stable_core = f"{_CORE_MEMORY_HEADING}:\n{core_context}" if core_context else ""
+    return stable_core, "\n\n".join(volatile_parts)
+
+
+async def _core_memory_parts(user_id: str) -> tuple[str, str]:
+    """Awaitable wrapper over :func:`_get_core_memory_parts` for gathers."""
+    return await _get_core_memory_parts(user_id)
 
 
 async def _empty_section() -> str:
@@ -320,19 +363,34 @@ def _mark_memory_recall(msg: SystemMessage) -> SystemMessage:
     return msg
 
 
+def _mark_memory_volatile(msg: SystemMessage) -> SystemMessage:
+    """Mark a SystemMessage as the volatile per-turn tail slot.
+
+    Carries ``memory_volatile`` only, so ``manage_system_prompts_node`` places
+    it AFTER the time message — the last message in the request — where its
+    per-turn churn cannot shift the byte-stable prefix ahead of it.
+    """
+    msg.additional_kwargs[MEMORY_VOLATILE_MARKER] = True
+    return msg
+
+
 class DynamicContextMessages(NamedTuple):
-    """The two system messages that carry per-user, per-turn context.
+    """The system messages that carry per-user, per-turn context.
 
     ``stable`` holds identity content (name, timezone, preferences, connected
     integrations) that changes only when preferences/integrations change — it
     stays at index 1 so the ``[static, stable]`` prefix is cacheable across
-    turns. ``memory_recall`` holds the volatile per-turn content (memory
-    recall, GAIA knowledge, skills, tracked todos, run banners); it is ``None``
-    when there is no volatile content to inject.
+    turns. ``memory_recall`` holds the byte-stable core memory documents (the
+    always-on "what GAIA knows about this user" block); ``None`` when there is
+    no core to inject. ``volatile_tail`` holds the per-turn churning content
+    (recent-activity journal, per-query memory recall, GAIA knowledge, skills,
+    tracked todos, run banners) — placed after the time message, the last
+    message in the request, so its churn never shifts the cached prefix.
     """
 
     stable: SystemMessage
     memory_recall: SystemMessage | None
+    volatile_tail: SystemMessage | None = None
 
 
 # Default header for the comms agent: pure capability awareness.
@@ -480,31 +538,47 @@ async def build_dynamic_context_messages(
 
         # --- Fetches (may change turn-to-turn) -----------------------------
         # Core memory context (engine-cached, invalidated on ingestion) is
-        # fetched in the same gather as the per-query lookups and injected
-        # first: it is the always-on "what GAIA knows about this user" block.
+        # fetched in the same gather as the per-query lookups. It splits into
+        # the byte-stable documents (the memory_recall slot, inside the cached
+        # prefix) and the volatile recent-activity journal (the volatile tail,
+        # after the time message): the journal churns every turn and must not
+        # sit inside the prefix (measured: it was the dominant per-turn
+        # uncached chunk, capping the comms hit rate ~10 points below the
+        # harness ceiling).
         if memories_text is not None:
             memories_section = memories_text
             gaia_knowledge_section = ""
             if user_id:
-                core_memory_section, gaia_knowledge_section = await asyncio.gather(
-                    _get_core_memory_section(user_id),
+                (core_stable, recent_activity), gaia_knowledge_section = await asyncio.gather(
+                    _core_memory_parts(user_id),
                     _get_gaia_knowledge_section(query) if query else _empty_section(),
                 )
+                core_memory_section = core_stable
             else:
-                core_memory_section = ""
+                core_memory_section, recent_activity = "", ""
         elif user_id and query:
-            core_memory_section, memories_section, gaia_knowledge_section = await asyncio.gather(
-                _get_core_memory_section(user_id),
+            (
+                (core_stable, recent_activity),
+                memories_section,
+                gaia_knowledge_section,
+            ) = await asyncio.gather(
+                _core_memory_parts(user_id),
                 _get_user_memories_section(query, user_id),
                 _get_gaia_knowledge_section(query),
             )
+            core_memory_section = core_stable
         else:
-            core_memory_section = await _get_core_memory_section(user_id) if user_id else ""
+            core_stable, recent_activity = (
+                await _core_memory_parts(user_id) if user_id else ("", "")
+            )
+            core_memory_section = core_stable
             memories_section = ""
             gaia_knowledge_section = ""
 
         if core_memory_section:
             variable_parts.append(core_memory_section)
+        if recent_activity:
+            variable_parts.append(recent_activity.lstrip("\n"))
         if memories_section:
             variable_parts.append(memories_section.lstrip("\n"))
         if gaia_knowledge_section:
@@ -530,20 +604,29 @@ async def build_dynamic_context_messages(
             variable_parts.append(active_todo_banner)
 
         stable_content = "\n".join(user_stable_parts)
-        recall_content = "\n\n".join(variable_parts)
-        # Cache note: the memory-recall slot is rebuilt every turn (core memory
-        # grows as memories are ingested, per-query recall churns) and every
+        # The FIRST variable part is the byte-stable core memory documents
+        # (appended above as ``core_memory_section``); EVERYTHING after it
+        # churns turn-to-turn (recent activity, per-query recall, GAIA
+        # knowledge, skills, todos, banners) and must live in the volatile
+        # tail — after the time message — where its churn never shifts the
+        # cached prefix. The memory_recall slot keeps ONLY the stable core.
+        core_stable_parts: list[str] = []
+        volatile_parts: list[str] = []
+        for i, part in enumerate(variable_parts):
+            (core_stable_parts if i == 0 else volatile_parts).append(part)
+        recall_content = "\n\n".join(core_stable_parts)
+        volatile_content = "\n\n".join(volatile_parts)
+        # Cache note: the volatile tail is rebuilt every turn and every
         # changed byte writes NEW blocks to the provider's bounded prompt
-        # cache, competing with the conversation chain (measured: ~12-14k
-        # chars/turn of churn is a major eviction source). Keep the head (core
-        # memory) and the tail (todos/banners — the directives with recency
-        # value) and drop the middle, bounding the slot's cache footprint
-        # without dropping the always-on core.
-        if len(recall_content) > MEMORY_RECALL_MAX_CHARS:
-            recall_content = (
-                recall_content[:MEMORY_RECALL_HEAD_CHARS]
+        # cache. It sits after the time message so it can't break the prefix,
+        # but its SIZE still costs tokens per request — keep the head (recent
+        # activity) and the tail (todos/banners — the directives with recency
+        # value) and drop the middle, bounding the request-size footprint.
+        if len(volatile_content) > MEMORY_RECALL_MAX_CHARS:
+            volatile_content = (
+                volatile_content[:MEMORY_RECALL_HEAD_CHARS]
                 + "\n…[recall truncated to keep the prompt cache warm]…\n"
-                + recall_content[-MEMORY_RECALL_TAIL_CHARS:]
+                + volatile_content[-MEMORY_RECALL_TAIL_CHARS:]
             )
 
         log.set(
@@ -566,7 +649,14 @@ async def build_dynamic_context_messages(
         recall_msg = (
             _mark_memory_recall(SystemMessage(content=recall_content)) if recall_content else None
         )
-        return DynamicContextMessages(stable=stable_msg, memory_recall=recall_msg)
+        volatile_msg = (
+            _mark_memory_volatile(SystemMessage(content=volatile_content))
+            if volatile_content
+            else None
+        )
+        return DynamicContextMessages(
+            stable=stable_msg, memory_recall=recall_msg, volatile_tail=volatile_msg
+        )
 
     except Exception as e:
         log.error(
@@ -582,6 +672,7 @@ async def build_dynamic_context_messages(
         return DynamicContextMessages(
             stable=_mark_dynamic_context(SystemMessage(content="")),
             memory_recall=None,
+            volatile_tail=None,
         )
 
 
