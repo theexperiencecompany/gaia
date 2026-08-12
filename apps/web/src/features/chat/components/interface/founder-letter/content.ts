@@ -19,6 +19,9 @@ export const DISCOUNT_APPLIES = "monthly and yearly plans";
 /** Founder's booking link for the meeting CTA. */
 export const MEETING_URL = "https://cal.com/aryanranderiya";
 
+/** localStorage key: once dismissed, the envelope never returns on this device. */
+export const LETTER_DISMISSED_KEY = "gaia_founder_letter_dismissed";
+
 /** Ink: pure black on flat gold. No gray, no brown, no gradient. */
 export const INK = "#000000";
 export const INK_SOFT = "#000000";
@@ -31,7 +34,7 @@ export const BODY_FONT = "var(--font-inter), Inter, sans-serif";
 export const LETTER_PARAGRAPHS: readonly string[] = [
   "If you're reading this, you were here before almost anyone else, and I want you to know how much that means to me.",
   "I'll be straight with you. There were stretches where GAIA wasn't what I promised it would be, and you felt every one of them. I won't hand you excuses for those months. What I'll say is that I took it personally, and I never once considered stopping.",
-  "That work is in your hands now. GAIA is faster, steadier, it remembers, and the integrations simply work. Every change since has been for the people who stayed, which means every change has been for you.",
+  "Since then we have put the work into stability, and it shows: GAIA is faster, steadier, and it remembers. We run our own days on it too, automating a good chunk of our work with it every single day. Every change has been for the people who stayed, which means every change has been for you.",
 ];
 
 /** Salutation fallback when the user's name is unknown. */

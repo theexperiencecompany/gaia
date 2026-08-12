@@ -116,6 +116,7 @@ export function PricingCard({
       : null;
   const offerPerMonthDollars = offerDisplay?.perMonthDollars ?? null;
   const offerYearlyTotalDollars = offerDisplay?.yearlyTotalDollars ?? null;
+  const offerMonthsFree = offerDisplay?.monthsFree ?? null;
   const user = useUser();
   const router = useRouter();
 
@@ -307,7 +308,14 @@ export function PricingCard({
           )}
           {showSavings && (
             <Chip color="success" size="sm" variant="flat">
-              {monthsFree} months free
+              {offerMonthsFree === null ? (
+                `${monthsFree} months free`
+              ) : (
+                <span className="flex items-center gap-1">
+                  <span className="line-through opacity-60">{monthsFree}</span>
+                  <span>{offerMonthsFree} months free</span>
+                </span>
+              )}
             </Chip>
           )}
         </div>

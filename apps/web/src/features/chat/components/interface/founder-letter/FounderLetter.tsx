@@ -1,6 +1,12 @@
 "use client";
 
-import { ArrowRightIcon, CancelIcon, Copy01Icon, Tick02Icon } from "@icons";
+import {
+  ArrowRightIcon,
+  CancelIcon,
+  CircleArrowRight02Icon,
+  Copy01Icon,
+  Tick02Icon,
+} from "@icons";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
@@ -23,6 +29,7 @@ import {
   DISCOUNT_PERCENT,
   INK,
   INK_SOFT,
+  LETTER_DISMISSED_KEY,
   LETTER_PARAGRAPHS,
   MEETING_CTA,
   MEETING_SENTENCE,
@@ -216,6 +223,8 @@ interface FounderLetterProps {
 
 export function FounderLetter({ hidden = false }: FounderLetterProps) {
   const [isOpen, setIsOpen] = useState(false);
+  // Read in an effect, not in render, so server and client markup match.
+  const [dismissed, setDismissed] = useState(false);
   const [copied, setCopied] = useState(false);
   const userName = useUserStore((s) => s.name);
   const openPricingModal = usePricingModalStore((s) => s.openModal);
@@ -225,7 +234,17 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
 
   const firstName = userName.trim().split(" ")[0] || SALUTATION_FALLBACK;
 
+  useEffect(() => {
+    setDismissed(!!window.localStorage.getItem(LETTER_DISMISSED_KEY));
+  }, []);
+
   const openLetter = useCallback(() => setIsOpen(true), []);
+
+  // Dismissing hides the envelope for good on this device.
+  const dismissLetter = useCallback(() => {
+    window.localStorage.setItem(LETTER_DISMISSED_KEY, "1");
+    setDismissed(true);
+  }, []);
 
   const closeLetter = useCallback(() => setIsOpen(false), []);
 
@@ -267,43 +286,56 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
     window.setTimeout(() => setCopied(false), 2000);
   }, []);
 
-  if (hidden) return null;
+  if (hidden || dismissed) return null;
 
   return (
     <>
       {/* A folded letter, waiting in the bottom-right corner above the composer. */}
-      <m.button
-        ref={openButtonRef}
-        type="button"
-        onClick={openLetter}
-        aria-label="A letter from Aryan Randeriya"
-        title="A letter from Aryan"
-        className="fixed right-4 bottom-24 z-40 isolate cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#00bbff]"
-        initial={false}
-        whileHover={reduceMotion ? undefined : { y: -3, scale: 1.06 }}
-        whileTap={reduceMotion ? undefined : { scale: 0.94 }}
-        animate={reduceMotion ? undefined : { y: [0, -2, 0] }}
-        transition={
-          reduceMotion
-            ? undefined
-            : {
-                y: {
-                  duration: 3.4,
-                  repeat: Number.POSITIVE_INFINITY,
-                  ease: "easeInOut",
-                },
-              }
-        }
-      >
-        <Image
-          src={ENVELOPE_IMAGE}
-          alt=""
-          width={ENVELOPE_WIDTH}
-          height={ENVELOPE_HEIGHT}
-          priority
-          className="block w-20 rotate-[-3deg]"
-        />
-      </m.button>
+      <div className="fixed right-4 bottom-24 z-40 flex flex-col items-end gap-1">
+        <m.button
+          ref={openButtonRef}
+          type="button"
+          onClick={openLetter}
+          aria-label="A letter from Aryan Randeriya"
+          title="A letter from Aryan"
+          className="isolate cursor-pointer rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#00bbff]"
+          initial={false}
+          whileHover={reduceMotion ? undefined : { scale: 1.06 }}
+          whileTap={reduceMotion ? undefined : { scale: 0.94 }}
+          // A jump, not a float: two hops, then it sits still long enough to
+          // stop being noise.
+          animate={reduceMotion ? undefined : { y: [0, -16, 0, -7, 0] }}
+          transition={
+            reduceMotion
+              ? undefined
+              : {
+                  y: {
+                    duration: 1.1,
+                    times: [0, 0.28, 0.52, 0.72, 0.9],
+                    ease: "easeOut",
+                    repeat: Number.POSITIVE_INFINITY,
+                    repeatDelay: 2.6,
+                  },
+                }
+          }
+        >
+          <Image
+            src={ENVELOPE_IMAGE}
+            alt=""
+            width={ENVELOPE_WIDTH}
+            height={ENVELOPE_HEIGHT}
+            priority
+            className="block w-20 rotate-[-3deg]"
+          />
+        </m.button>
+        <button
+          type="button"
+          onClick={dismissLetter}
+          className="cursor-pointer pr-1 text-[11px] font-normal text-zinc-500 outline-none transition-colors hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-[#00bbff]"
+        >
+          Don't show again
+        </button>
+      </div>
 
       <AnimatePresence>
         {isOpen && (
@@ -433,11 +465,11 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                       });
                       closeLetter();
                     }}
-                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full bg-black px-3 text-[calc(var(--letter-small)*0.95)] font-semibold text-[#fdf6d9] outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
+                    className="mt-0.5 inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-black pr-2.5 pl-4 text-[calc(var(--letter-small)*1.1)] font-semibold text-[#fdf6d9] shadow-[0_6px_14px_-6px_rgba(0,0,0,0.55)] outline-none transition-all hover:-translate-y-0.5 hover:shadow-[0_10px_20px_-8px_rgba(0,0,0,0.65)] focus-visible:ring-2 focus-visible:ring-black/60 active:translate-y-0 active:scale-[0.98]"
                   >
-                    Get the discount
-                    <ArrowRightIcon
-                      className="h-3 w-3"
+                    Claim {DISCOUNT_PERCENT}% off
+                    <CircleArrowRight02Icon
+                      className="h-5 w-5"
                       style={{ color: PAPER_CREAM }}
                     />
                   </button>
