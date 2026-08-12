@@ -2,9 +2,7 @@
 
 import { Avatar } from "@heroui/avatar";
 import { PlayIcon, UserCircle02Icon } from "@icons";
-import Image from "next/image";
 import { useTransition } from "react";
-import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -171,13 +169,6 @@ export default function UseCaseDetailClient({
 
   return (
     <div className="relative">
-      <Image
-        src={wallpapers.useCases.webp}
-        alt="GAIA Use-Cases Wallpaper"
-        priority
-        fill
-        className="mask-[linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover opacity-15 z-0 w-screen fixed h-screen left-0 top-0 max-h-screen"
-      />
       <UseCaseDetailLayout
         breadcrumbs={breadcrumbs}
         title={title}

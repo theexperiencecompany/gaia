@@ -42,7 +42,7 @@ export default function LandingLayoutShell({
         />
 
         <BlurStack
-          className="fixed h-[100px] w-screen z-1000 bottom-0 pointer-events-none"
+          className="fixed h-[100px] w-screen z-10 bottom-0 pointer-events-none"
           config={BLUR_CONFIG}
         />
 

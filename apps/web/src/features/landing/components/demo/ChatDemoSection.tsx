@@ -454,9 +454,10 @@ function ChatDemoWindow() {
       <div
         className={cn(
           "overflow-hidden rounded-3xl h-[600px] sm:h-[720px] w-[95vw] sm:w-[85vw]",
+          "transition-[opacity,transform] duration-500 ease-out",
           isInView
-            ? "animate-in fade-in slide-in-from-bottom-6 zoom-in-95 duration-500"
-            : "opacity-0",
+            ? "opacity-100 translate-y-0 scale-100"
+            : "opacity-0 translate-y-6 scale-95",
         )}
         style={
           {
@@ -762,7 +763,7 @@ function ChatDemoWindow() {
       {/* Use case chips + retry — only for chat demo */}
       {activePage === "chats" && (
         <div
-          className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl px-4 sm:px-6 ${isInView ? "animate-in fade-in slide-in-from-bottom-3 duration-[400ms] delay-200" : "opacity-0"}`}
+          className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl px-4 sm:px-6 transition-[opacity,transform] duration-[400ms] ease-out ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}`}
         >
           <div className="hidden sm:block" />
           <div className="flex flex-wrap items-center justify-center gap-2">

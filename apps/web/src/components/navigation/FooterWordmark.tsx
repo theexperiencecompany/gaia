@@ -1,5 +1,6 @@
 "use client";
 
+import { useReducedMotion } from "motion/react";
 import { useEffect, useRef } from "react";
 
 const WORD = "GAIA";
@@ -11,10 +12,40 @@ const TEXT_RGB = "#e4e4e7";
 const COVERAGE_FLOOR = 0.08;
 const MIN_DOT_RADIUS = 0.45;
 
+// Pointer-interaction tuning.
+/** Extra swell at the pointer, fading to zero over RIPPLE_RADIUS. */
+const RIPPLE_LIFT = 0.45;
+const RIPPLE_RADIUS = 120;
+
+// Click-ripple tuning.
+/** Peak swell of the click wave at its origin. */
+const CLICK_AMP = 0.55;
+/** Wavefront speed across the wordmark, css px per second. */
+const CLICK_SPEED = 900;
+/** Seconds for one dot to complete its swell bump as the front passes. */
+const CLICK_RISE = 0.32;
+/** Fraction of the amplitude lost at the far edge of the canvas. */
+const CLICK_EDGE_FALLOFF = 0.45;
+
 interface WordRaster {
   pixels: Uint8ClampedArray;
   width: number;
   height: number;
+}
+
+interface Dot {
+  x: number;
+  y: number;
+  base: number;
+  radius: number;
+}
+
+/** A click-ripple wavefront expanding from a pointerdown point. */
+interface ClickWave {
+  x: number;
+  y: number;
+  /** performance.now() at pointerdown. */
+  start: number;
 }
 
 function smoothstep(a: number, b: number, x: number): number {
@@ -124,18 +155,17 @@ function sampleCell(
  * by dot size alone. The logo's three flat blues have a narrow luminance
  * spread, so we contrast-stretch it before mapping to size — otherwise the
  * shades come out within ~15% of each other and the detail is invisible. */
-function drawHalftone(
-  ctx: CanvasRenderingContext2D,
+function buildDots(
   raster: WordRaster,
   cssW: number,
   cssH: number,
   cell: number,
-): void {
+): Dot[] {
   const maxR = cell * 0.44;
   const cols = Math.floor(cssW / cell);
   const rows = Math.floor(raster.height / cell);
+  const dots: Dot[] = [];
 
-  ctx.clearRect(0, 0, cssW, cssH);
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const { coverage, r, g, b } = sampleCell(raster, col, row, cell);
@@ -152,31 +182,172 @@ function drawHalftone(
       const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
       const stretched = Math.min(1, Math.max(0, (lum - 0.1) / 0.55));
       const toneMul = stretched < 0.38 ? 0.28 : stretched < 0.72 ? 0.62 : 1.0;
-      const radius =
+      const base =
         maxR *
         Math.sqrt(coverage) *
         toneMul *
         (1 - 0.7 * smoothstep(0.2, 1.05, t));
-      if (radius < MIN_DOT_RADIUS) continue;
+      if (base < MIN_DOT_RADIUS) continue;
 
-      // Slightly translucent so the beams read through — glassy dots.
-      ctx.fillStyle = "rgba(255,255,255,0.82)";
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fill();
+      dots.push({ x, y, base, radius: base });
     }
   }
+  return dots;
+}
+
+/** Draw every dot as one batched path. Radius is read from each dot's current
+ * state, so the same call serves both the static draw and the animated loop. */
+function drawDots(ctx: CanvasRenderingContext2D, dots: Dot[]): void {
+  ctx.fillStyle = "rgba(255,255,255,0.82)";
+  ctx.beginPath();
+  for (const dot of dots) {
+    ctx.moveTo(dot.x + dot.radius, dot.y);
+    ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
+  }
+  ctx.fill();
+}
+
+/**
+ * Pointer interaction: dots inside a small circle around the cursor swell
+ * and track it 1:1 as it moves over the wordmark, and a pointerdown sends a
+ * wavefront rippling across the whole lockup. Dot sizes
+ * are computed straight from the cursor position every frame — no springs,
+ * no lag — smoothness comes from the falloff shape and the cursor's own
+ * continuous motion. The rAF loop only runs while a click wave is alive;
+ * returns a cleanup that detaches listeners and cancels the loop.
+ */
+function attachPointerInteraction(
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  dots: Dot[],
+  cssW: number,
+  cssH: number,
+): () => void {
+  let pointerInside = false;
+  let pointerX = 0;
+  let pointerY = 0;
+  const waves: ClickWave[] = [];
+  let raf = 0;
+
+  const toCanvasPoint = (e: PointerEvent): { x: number; y: number } => {
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const frame = (now: number): void => {
+    // Prune click waves whose front has crossed the whole canvas (all times
+    // in ms).
+    const waveLifetime = (cssW / CLICK_SPEED + CLICK_RISE + 0.25) * 1000;
+    for (let i = waves.length - 1; i >= 0; i--) {
+      if (now - waves[i].start > waveLifetime) waves.splice(i, 1);
+    }
+
+    for (const dot of dots) {
+      // Ripple center is the cursor itself — synced 1:1, no delay.
+      const dist = Math.hypot(dot.x - pointerX, dot.y - pointerY);
+      // Only dots inside the cursor's falloff circle are affected — the
+      // rest of the wordmark stays at rest.
+      const ripple = RIPPLE_LIFT * smoothstep(RIPPLE_RADIUS, 0, dist);
+      let target = pointerInside ? ripple : 0;
+
+      // Sum every active click wave: each dot swells on a sin bump as the
+      // wavefront reaches it (arrival time = distance / CLICK_SPEED), so the
+      // ripple physically travels across the whole lockup.
+      for (const wave of waves) {
+        const d = Math.hypot(dot.x - wave.x, dot.y - wave.y);
+        const phase =
+          ((now - wave.start) / 1000 - d / CLICK_SPEED) / CLICK_RISE;
+        if (phase < 0 || phase > 1) continue;
+        const edgeFalloff = 1 - CLICK_EDGE_FALLOFF * smoothstep(0, cssW, d);
+        target += CLICK_AMP * edgeFalloff * Math.sin(Math.PI * phase);
+      }
+
+      dot.radius = dot.base * (1 + target);
+    }
+
+    ctx.clearRect(0, 0, cssW, cssH);
+    drawDots(ctx, dots);
+
+    raf = waves.length > 0 ? requestAnimationFrame(frame) : 0;
+  };
+
+  const start = (): void => {
+    if (raf) return;
+    raf = requestAnimationFrame(frame);
+  };
+
+  const onEnter = (e: PointerEvent): void => {
+    const p = toCanvasPoint(e);
+    pointerInside = true;
+    pointerX = p.x;
+    pointerY = p.y;
+    start();
+  };
+
+  const onMove = (e: PointerEvent): void => {
+    const p = toCanvasPoint(e);
+    pointerX = p.x;
+    pointerY = p.y;
+    // A pointermove on the canvas implies the pointer is over it — adopt it
+    // unconditionally. Without this, a rebuild (resize) while hovering, or a
+    // pointer already inside when the interaction attached, would leave the
+    // swell dead until a leave/re-enter cycle.
+    pointerInside = true;
+    start();
+  };
+
+  const onDown = (e: PointerEvent): void => {
+    const p = toCanvasPoint(e);
+    waves.push({ x: p.x, y: p.y, start: performance.now() });
+    start();
+  };
+
+  const onLeave = (): void => {
+    pointerInside = false;
+    // Draw one final frame at rest (the loop stops on its own once no
+    // click wave is alive).
+    start();
+  };
+
+  canvas.addEventListener("pointerenter", onEnter);
+  canvas.addEventListener("pointermove", onMove);
+  canvas.addEventListener("pointerdown", onDown);
+  canvas.addEventListener("pointerleave", onLeave);
+  canvas.addEventListener("pointercancel", onLeave);
+
+  // If the pointer is already over the canvas when the interaction attaches
+  // (e.g. the page scrolled or resized under a stationary pointer), adopt it
+  // so the swell isn't dead until the pointer moves. The exact position is
+  // unknown — the first pointermove corrects the ripple center.
+  if (canvas.matches(":hover")) {
+    pointerInside = true;
+    pointerX = cssW / 2;
+    pointerY = cssH / 2;
+    start();
+  }
+
+  return () => {
+    canvas.removeEventListener("pointerenter", onEnter);
+    canvas.removeEventListener("pointermove", onMove);
+    canvas.removeEventListener("pointerdown", onDown);
+    canvas.removeEventListener("pointerleave", onLeave);
+    canvas.removeEventListener("pointercancel", onLeave);
+    if (raf) cancelAnimationFrame(raf);
+  };
 }
 
 /**
  * Halftone footer lockup: the colored circle mark and the display-font
  * lettering composed at equal height, rasterized offscreen and redrawn as a
- * color-sampled dot grid that fades toward the bottom. Decorative, static,
- * DPR-crisp.
+ * color-sampled dot grid that fades toward the bottom. Decorative, DPR-crisp.
+ * While the pointer is over the wordmark, dots inside a small circle around
+ * the cursor swell and track it 1:1, and a click ripples across every dot
+ * (skipped under reduced motion — static draw only).
  */
 export function FooterWordmark() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const probeRef = useRef<HTMLSpanElement>(null);
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -184,8 +355,12 @@ export function FooterWordmark() {
     if (!canvas || !probe) return;
 
     let cancelled = false;
+    let detachInteraction: (() => void) | null = null;
 
     const build = async () => {
+      detachInteraction?.();
+      detachInteraction = null;
+
       // next/font hashes the family name — resolve it from a probe element.
       const family = getComputedStyle(probe).fontFamily;
       const [logo] = await Promise.all([
@@ -209,7 +384,20 @@ export function FooterWordmark() {
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      drawHalftone(ctx, raster, cssW, cssH, cell);
+      const dots = buildDots(raster, cssW, cssH, cell);
+      if (shouldReduceMotion) {
+        drawDots(ctx, dots);
+        return;
+      }
+
+      drawDots(ctx, dots);
+      detachInteraction = attachPointerInteraction(
+        canvas,
+        ctx,
+        dots,
+        cssW,
+        cssH,
+      );
     };
 
     build();
@@ -222,10 +410,11 @@ export function FooterWordmark() {
     window.addEventListener("resize", onResize);
     return () => {
       cancelled = true;
+      detachInteraction?.();
       clearTimeout(timer);
       window.removeEventListener("resize", onResize);
     };
-  }, []);
+  }, [shouldReduceMotion]);
 
   return (
     <>

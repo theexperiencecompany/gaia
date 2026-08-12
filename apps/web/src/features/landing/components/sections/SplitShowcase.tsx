@@ -61,9 +61,10 @@ export function SplitShowcase({
       {/* On desktop the square tile is sized by the copy column's height
           (plus a little breathing room): the absolute wrapper opts it out of
           the grid row sizing, so the copy defines the row and the tile
-          floats centered as a slightly larger square. */}
+          floats centered as a slightly larger square. The cap keeps every
+          split section's tile the SAME size regardless of copy length. */}
       <div className={cn("relative", reverse && "lg:order-1")}>
-        <div className="relative aspect-square w-full overflow-hidden rounded-3xl border border-white/10 lg:absolute lg:top-1/2 lg:left-1/2 lg:h-[calc(100%+5rem)] lg:w-auto lg:-translate-x-1/2 lg:-translate-y-1/2">
+        <div className="relative aspect-square w-full overflow-hidden rounded-3xl border border-white/10 lg:absolute lg:top-1/2 lg:left-1/2 lg:h-[calc(100%+5rem)] lg:w-auto lg:max-h-[500px] lg:max-w-[500px] lg:-translate-x-1/2 lg:-translate-y-1/2">
           {children}
         </div>
       </div>

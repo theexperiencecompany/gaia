@@ -16,16 +16,12 @@ import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { LogoWithContextMenu } from "../shared/LogoWithContextMenu";
 import { RaisedButton } from "../ui/raised-button";
+import { NavbarMenu } from "./NavbarMenu";
 
-// Lazy-load below-the-fold / interaction-triggered components to shrink the
-// initial bundle without altering visuals.
+// MobileMenu is lazy-loaded — it is only reachable on small screens.
 const MobileMenu = dynamic(() => import("@/components/navigation/MobileMenu"), {
   ssr: false,
 });
-const NavbarMenu = dynamic(
-  () => import("./NavbarMenu").then((m) => ({ default: m.NavbarMenu })),
-  { ssr: false },
-);
 const NAVBAR_ITEMS = [
   { type: "dropdown", label: "Product", menu: "product" },
   { type: "link", label: "Pricing", href: "/pricing" },

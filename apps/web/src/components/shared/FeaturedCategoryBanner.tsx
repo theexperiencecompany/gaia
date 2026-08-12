@@ -8,6 +8,9 @@ const VISIBLE_ICONS = 4;
 const ROTATE_BASE_MS = 3400;
 const ROTATE_JITTER_MS = 1400;
 const FADE_MS = 300;
+/** Per-slot alternating tilt (deg) — icons lean slightly left/right so the
+ * row reads as a handful of scattered app icons instead of a rigid grid. */
+const ICON_TILTS = [-6, 5, -4, 6] as const;
 
 /** Stable per-banner jitter (0..ROTATE_JITTER_MS) derived from the name, so
  * sibling banners never swap in sync without needing a random source. */
@@ -28,7 +31,8 @@ interface FeaturedCategoryBannerProps {
 /**
  * Flat, icon-first category banner ("Lineup" style): four icons at rest on a
  * plain surface, one quietly swapping to another app from the pool every few
- * seconds. Deliberately no shadows, glows, gradients, or tilts.
+ * seconds. Icons sit at a small alternating tilt. Deliberately no shadows,
+ * glows, or gradients.
  */
 export function FeaturedCategoryBanner({
   name,
@@ -79,16 +83,19 @@ export function FeaturedCategoryBanner({
       onPress={onPress}
       className="w-full rounded-3xl bg-zinc-900 outline-1 outline-zinc-800/70 transition-colors hover:bg-zinc-800/70"
     >
-      <div className="flex h-36 w-full items-center justify-center gap-7">
+      <div className="flex h-32 w-full items-center justify-center gap-6">
         {visible.map((icon, slot) => (
           <Image
             key={icon}
             src={icon}
             alt=""
-            width={56}
-            height={56}
+            width={40}
+            height={40}
             className="object-contain transition-opacity duration-300"
-            style={{ opacity: fadingSlot === slot ? 0 : 1 }}
+            style={{
+              opacity: fadingSlot === slot ? 0 : 1,
+              transform: `rotate(${ICON_TILTS[slot]}deg)`,
+            }}
           />
         ))}
       </div>

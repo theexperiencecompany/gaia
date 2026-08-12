@@ -34,7 +34,6 @@ export default function MemorySection() {
   const inView = useInView(tileRef, { once: true, amount: 0.45 });
   return (
     <SplitShowcase
-      reverse
       title="It remembers, so you don't"
       subtitle="Say something once and GAIA files it away, then acts on it at exactly the right moment, even weeks later."
       rows={[

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect } from "react";
+import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
@@ -31,6 +32,10 @@ const TiredBoringAssistants = dynamic(
 );
 const RunsYourDaySection = dynamic(
   () => import("@/features/landing/components/sections/RunsYourDaySection"),
+  { loading: SectionLoader },
+);
+const WorkflowsSection = dynamic(
+  () => import("@/features/landing/components/sections/WorkflowsSection"),
   { loading: SectionLoader },
 );
 const MemorySection = dynamic(
@@ -81,20 +86,42 @@ export default function LandingPageClient({
   return (
     <LazyMotionProvider>
       <div className="relative overflow-hidden">
-        {/* Hero and the live demo share one section over the bands-gradient
-            wallpaper — the demo IS the hero image. */}
-        <section className="relative flex min-h-screen w-full flex-col items-center justify-center pb-16">
+        {/* Hero — alpine-valley wallpaper behind the headline */}
+        <section className="relative flex min-h-screen w-full flex-col items-center justify-center">
+          <div className="absolute inset-0 z-0 h-full w-full">
+            {/* Webp loads first for the LCP; the higher-quality PNG then
+                fades in on top (lazy + low priority, never blocks the LCP). */}
+            <ProgressiveImage
+              webpSrc="/images/wallpapers/ethereal_alpine_valley.webp"
+              pngSrc="/images/wallpapers/ethereal_alpine_valley.png"
+              alt="Hero wallpaper"
+              priority
+              sizes="100vw"
+            />
+          </div>
+          <div className="pointer-events-none absolute inset-0 z-0 bg-black/0" />
+          {/* Top fade under the fixed navbar so nav text stays legible
+              over the bright sky */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[20vh] bg-linear-to-b from-black/70 to-transparent" />
+          {/* Bottom fade into the demo section below */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[20vh] bg-linear-to-t from-black to-transparent" />
+
+          <HeroSection isDark latestRelease={latestRelease} />
+        </section>
+
+        {/* Live demo — its own section over the bands-gradient wallpaper */}
+        <section className="relative z-20 w-full py-16 sm:py-12 mb-12 sm:mb-16">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
           <Image
             src="/images/wallpapers/bands_gradient_1.webp"
             alt=""
             fill
-            priority
             sizes="100vw"
-            className="z-0 object-cover opacity-90"
+            className="z-0 object-cover"
           />
-
-          <HeroSection isDark latestRelease={latestRelease} />
-          <ChatDemoSection />
+          <div className="relative z-10">
+            <ChatDemoSection />
+          </div>
         </section>
 
         <div>
@@ -103,6 +130,9 @@ export default function LandingPageClient({
 
           {/* Capabilities — what GAIA does */}
           <TiredBoringAssistants />
+
+          {/* The mechanism — schedules and triggers, told in a text thread */}
+          <WorkflowsSection />
 
           {/* Depth — it knows you, not just your tools */}
           <MemorySection />

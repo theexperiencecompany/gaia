@@ -5,9 +5,7 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
-import { FeaturedCategoryBanner } from "@/components/shared/FeaturedCategoryBanner";
 import { ChevronUp } from "@/components/shared/icons";
-import { getIconPath } from "@/config/toolIconConfig";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
@@ -29,7 +27,6 @@ export default function UseCaseSection({
   rows,
   columns = 4,
   scroller,
-  showFeaturedBanners = false,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
@@ -46,8 +43,6 @@ export default function UseCaseSection({
   columns?: number;
   /** Pass null to skip scroll container detection (e.g. on landing page where window is the scroller). */
   scroller?: HTMLElement | null;
-  /** Render featured category banners (derived from the loaded data) above the filter chips. */
-  showFeaturedBanners?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -99,33 +94,6 @@ export default function UseCaseSection({
     ...(hideUserWorkflows ? [] : ["workflows"]),
     ...dynamicCategories.filter((cat) => cat !== "featured"),
   ];
-
-  // Featured banners are derived from the loaded data: the three largest real
-  // categories, each showing the brand icons of the tools its use cases touch.
-  const featuredBanners = showFeaturedBanners
-    ? dynamicCategories
-        .filter((cat) => cat !== "featured")
-        .map((cat) => {
-          const inCategory = exploreWorkflows.filter((uc) =>
-            uc.categories?.includes(cat),
-          );
-          const icons = Array.from(
-            new Set(
-              inCategory
-                .flatMap((uc) => uc.steps?.map((step) => step.category) ?? [])
-                .filter((tool): tool is string => !!tool)
-                .map((tool) => getIconPath(tool))
-                .filter((path): path is string => !!path),
-            ),
-          );
-          return { category: cat, count: inCategory.length, icons };
-        })
-        .filter((banner) => banner.icons.length >= 3)
-        .toSorted(
-          (a, b) => b.count - a.count || a.category.localeCompare(b.category),
-        )
-        .slice(0, 3)
-    : [];
 
   // Cache the scroll container to avoid repeated DOM traversals.
   // When `scroller` prop is provided (including null), skip traversal entirely.
@@ -238,20 +206,6 @@ export default function UseCaseSection({
 
   return (
     <div className="w-full" ref={dummySectionRef}>
-      {featuredBanners.length > 0 && (
-        <div className="mx-auto mb-8 grid w-full max-w-7xl grid-cols-1 gap-4 md:grid-cols-3">
-          {featuredBanners.map((banner) => (
-            <FeaturedCategoryBanner
-              key={banner.category}
-              name={banner.category}
-              description={`${banner.count} use case${banner.count === 1 ? "" : "s"}`}
-              icons={banner.icons}
-              onPress={() => handleCategoryClick(banner.category)}
-            />
-          ))}
-        </div>
-      )}
-
       <div
         className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
       >

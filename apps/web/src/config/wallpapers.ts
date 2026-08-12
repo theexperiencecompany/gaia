@@ -4,8 +4,8 @@ export const wallpapers = {
     webp: "/images/wallpapers/surreal.webp",
   },
   useCases: {
-    png: "/images/wallpapers/staircase.png",
-    webp: "/images/wallpapers/staircase.webp",
+    png: "/images/wallpapers/dreamy_rocket_launch.png",
+    webp: "/images/wallpapers/dreamy_rocket_launch.png",
   },
   integration: {
     png: "/images/wallpapers/earth_satellite.png",

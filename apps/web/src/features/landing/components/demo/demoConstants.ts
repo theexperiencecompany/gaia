@@ -96,66 +96,6 @@ export const DUMMY_NOTIFICATIONS = [
   },
 ];
 
-// ─── Demo models ──────────────────────────────────────────────────────────────
-export const DEMO_MODELS = [
-  {
-    id: "claude-sonnet-4-5-20250929",
-    name: "Claude Sonnet 4.5",
-    provider: "Anthropic",
-    description: "Balanced performance and intelligence.",
-    tier: "free",
-    is_default: true,
-    logo: "/images/logos/logo.webp",
-  },
-  {
-    id: "claude-haiku-4-5-20251001",
-    name: "Claude Haiku 4.5",
-    provider: "Anthropic",
-    description: "Fast and compact. Best for simple tasks.",
-    tier: "free",
-    is_default: false,
-    logo: "/images/logos/logo.webp",
-  },
-  {
-    id: "claude-opus-4-6",
-    name: "Claude Opus 4.6",
-    provider: "Anthropic",
-    description: "Most capable. Best for complex reasoning.",
-    tier: "pro",
-    is_default: false,
-    logo: "/images/logos/logo.webp",
-  },
-  {
-    id: "gemini-3-flash",
-    name: "Gemini 3 Flash",
-    provider: "Google",
-    description: "Fast and efficient for everyday tasks.",
-    tier: "free",
-    is_default: false,
-    logo: "/images/icons/gemini.webp",
-  },
-  {
-    id: "gemini-3-pro",
-    name: "Gemini 3 Pro",
-    provider: "Google",
-    description: "Google's most advanced reasoning model.",
-    tier: "pro",
-    is_default: false,
-    logo: "/images/icons/gemini.webp",
-  },
-  {
-    id: "grok-4-1",
-    name: "Grok 4.1",
-    provider: "xAI",
-    description: "xAI's latest model with real-time web access.",
-    tier: "pro",
-    is_default: false,
-    logo: "/images/icons/grok.webp",
-  },
-];
-
-export const MODEL_PROVIDERS = ["Anthropic", "Google", "xAI"];
-
 // ─── Founder email for EmailComposeCard ───────────────────────────────────────
 export const FOUNDER_EMAIL = {
   to: ["investors@sequoia.com"],
