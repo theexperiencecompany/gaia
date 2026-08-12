@@ -32,9 +32,6 @@ export const OFFER_SCOPE =
 export const OFFER_YEARLY_NOTE =
   "On yearly that is six months free compared with paying month to month.";
 
-/** The same saving, short enough for a one-line banner. */
-export const OFFER_MONTHS_FREE_PHRASE = "six months free on yearly";
-
 /** Last moment the code works, matching `expires_at` on the Dodo coupon. */
 export const OFFER_EXPIRES_AT = "2026-11-12T23:59:59Z";
 

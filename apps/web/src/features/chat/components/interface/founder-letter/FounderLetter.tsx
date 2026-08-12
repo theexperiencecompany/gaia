@@ -18,6 +18,7 @@ import {
 } from "react";
 
 import { RaisedButton } from "@/components/ui/raised-button";
+import { isOfferLive } from "@/config/offer";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
@@ -232,6 +233,9 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
   // Both read in an effect, not in render, so server and client markup match.
   const [dismissed, setDismissed] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
+  // An expired code fails loudly at Dodo's checkout, so the letter stops
+  // offering it rather than sending readers into a 500.
+  const [offerLive, setOfferLive] = useState(false);
   const [copied, setCopied] = useState(false);
   const userName = useUserStore((s) => s.name);
   const openPricingModal = usePricingModalStore((s) => s.openModal);
@@ -245,6 +249,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
     const isDismissed = !!window.localStorage.getItem(LETTER_DISMISSED_KEY);
     setDismissed(isDismissed);
     setHasOpened(!!window.localStorage.getItem(LETTER_OPENED_KEY));
+    setOfferLive(isOfferLive());
     // The denominator for every other event in this funnel: without it, an
     // open rate has no base to divide by.
     if (!isDismissed) {
@@ -458,64 +463,66 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                   ))}
                 </div>
 
-                {/* The offer, seamless and inline */}
-                <div className="mt-3 space-y-2">
-                  <p
-                    style={{
-                      fontSize: "var(--letter-body)",
-                      lineHeight: "var(--letter-body-lh)",
-                    }}
-                  >
-                    {OFFER_LEAD} But if you want back in, take{" "}
-                    <strong className="font-bold">
-                      {DISCOUNT_PERCENT}% off
-                    </strong>{" "}
-                    {DISCOUNT_SCOPE}. {DISCOUNT_YEARLY_NOTE} Use{" "}
-                    <strong className="font-bold">{DISCOUNT_CODE}</strong>
-                    <button
-                      type="button"
-                      onClick={copyCode}
-                      aria-label="Copy the discount code"
-                      title={copied ? "Copied" : "Copy code"}
-                      className="mx-1 inline-flex h-5 w-5 translate-y-[-1px] cursor-pointer items-center justify-center rounded-full align-middle outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-90"
+                {/* The offer, seamless and inline, while the code still works */}
+                {offerLive && (
+                  <div className="mt-3 space-y-2">
+                    <p
+                      style={{
+                        fontSize: "var(--letter-body)",
+                        lineHeight: "var(--letter-body-lh)",
+                      }}
                     >
-                      {copied ? (
-                        <CheckmarkCircle02Icon
-                          className="h-3.5 w-3.5"
-                          style={{ color: INK }}
-                        />
-                      ) : (
-                        <Copy01Icon
-                          className="h-3 w-3"
-                          style={{ color: INK }}
-                        />
-                      )}
-                    </button>
-                    {OFFER_TAIL} {DISCOUNT_DEADLINE}.
-                  </p>
-                  <RaisedButton
-                    color={CTA_BLACK}
-                    size="sm"
-                    className="mt-1 px-4 font-semibold"
-                    onClick={() => {
-                      trackEvent(
-                        ANALYTICS_EVENTS.FOUNDER_LETTER_DISCOUNT_CTA_CLICKED,
-                        {
-                          discount_code: DISCOUNT_CODE,
-                          discount_percent: DISCOUNT_PERCENT,
-                        },
-                      );
-                      openPricingModal({
-                        discountCode: DISCOUNT_CODE,
-                        discountPercent: DISCOUNT_PERCENT,
-                      });
-                      closeLetter();
-                    }}
-                  >
-                    Claim {DISCOUNT_PERCENT}% off
-                    <CircleArrowRight02Icon className="h-4 w-4" />
-                  </RaisedButton>
-                </div>
+                      {OFFER_LEAD} But if you want back in, take{" "}
+                      <strong className="font-bold">
+                        {DISCOUNT_PERCENT}% off
+                      </strong>{" "}
+                      {DISCOUNT_SCOPE}. {DISCOUNT_YEARLY_NOTE} Use{" "}
+                      <strong className="font-bold">{DISCOUNT_CODE}</strong>
+                      <button
+                        type="button"
+                        onClick={copyCode}
+                        aria-label="Copy the discount code"
+                        title={copied ? "Copied" : "Copy code"}
+                        className="mx-1 inline-flex h-5 w-5 translate-y-[-1px] cursor-pointer items-center justify-center rounded-full align-middle outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-90"
+                      >
+                        {copied ? (
+                          <CheckmarkCircle02Icon
+                            className="h-3.5 w-3.5"
+                            style={{ color: INK }}
+                          />
+                        ) : (
+                          <Copy01Icon
+                            className="h-3 w-3"
+                            style={{ color: INK }}
+                          />
+                        )}
+                      </button>
+                      {OFFER_TAIL} {DISCOUNT_DEADLINE}.
+                    </p>
+                    <RaisedButton
+                      color={CTA_BLACK}
+                      size="sm"
+                      className="mt-1 px-4 font-semibold"
+                      onClick={() => {
+                        trackEvent(
+                          ANALYTICS_EVENTS.FOUNDER_LETTER_DISCOUNT_CTA_CLICKED,
+                          {
+                            discount_code: DISCOUNT_CODE,
+                            discount_percent: DISCOUNT_PERCENT,
+                          },
+                        );
+                        openPricingModal({
+                          discountCode: DISCOUNT_CODE,
+                          discountPercent: DISCOUNT_PERCENT,
+                        });
+                        closeLetter();
+                      }}
+                    >
+                      Claim {DISCOUNT_PERCENT}% off
+                      <CircleArrowRight02Icon className="h-4 w-4" />
+                    </RaisedButton>
+                  </div>
+                )}
 
                 {/* Meeting */}
                 <p

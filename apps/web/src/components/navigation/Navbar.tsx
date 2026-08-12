@@ -29,15 +29,7 @@ const NAVBAR_ITEMS = [
   { type: "dropdown", label: "Resources", menu: "resources" },
 ] as const;
 
-/** The navbar's own breathing room above the pill. */
-const NAVBAR_TOP_PADDING = 16;
-
-interface NavbarProps {
-  /** Pixels of chrome above the navbar (the offer banner, when it is up). */
-  topOffset?: number;
-}
-
-export default function Navbar({ topOffset = 0 }: NavbarProps) {
+export default function Navbar() {
   const pathname = usePathname();
   const isMobileScreen = useMediaQuery("(max-width: 990px)");
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -148,8 +140,7 @@ export default function Navbar({ topOffset = 0 }: NavbarProps) {
 
   return (
     <div
-      className={`fixed top-0 left-0 z-50 w-full px-4 transition-all duration-300`}
-      style={{ paddingTop: topOffset + NAVBAR_TOP_PADDING }}
+      className={`fixed top-0 left-0 z-50 w-full px-4 pt-4 transition-all duration-300`}
     >
       <div
         ref={wrapperRef}

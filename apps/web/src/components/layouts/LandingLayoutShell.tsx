@@ -1,13 +1,9 @@
 "use client";
 import dynamic from "next/dynamic";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import Navbar from "@/components/navigation/Navbar";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
-import {
-  OFFER_BANNER_HEIGHT,
-  OfferBanner,
-} from "@/features/landing/components/OfferBanner";
 import { usePathname } from "@/i18n/navigation";
 import LandingProvidersLayout from "@/layouts/LandingProvidersLayout";
 
@@ -36,9 +32,6 @@ export default function LandingLayoutShell({
 }) {
   const pathname = usePathname();
   const isDesktopLogin = pathname === "/desktop-login";
-  // The banner decides whether it belongs on screen (offer live, not
-  // dismissed); the layout only reacts by making room for it.
-  const [bannerVisible, setBannerVisible] = useState(false);
 
   return (
     <LandingProvidersLayout>
@@ -54,12 +47,7 @@ export default function LandingLayoutShell({
         />
 
         <LazyMotionProvider>
-          {!isDesktopLogin && (
-            <>
-              <OfferBanner onVisibilityChange={setBannerVisible} />
-              <Navbar topOffset={bannerVisible ? OFFER_BANNER_HEIGHT : 0} />
-            </>
-          )}
+          {!isDesktopLogin && <Navbar />}
 
           <main id="main-content" className="min-h-screen">
             {children}
