@@ -709,3 +709,45 @@ class TestChatbot:
 
         with pytest.raises(RuntimeError, match="event loop is closed"):
             await chatbot([HumanMessage(content="hello")])
+
+
+class TestStickyFallback:
+    """Once a run falls back, later calls must use the fallback directly so the
+    request's model field stays constant — alternating per call resets the
+    provider's per-model prompt cache every call."""
+
+    def test_has_sticky_fallback_reads_marker(self) -> None:
+        from app.agents.llm.client import (
+            STICKY_FALLBACK_KEY,
+            has_sticky_fallback,
+        )
+
+        assert has_sticky_fallback(None) is False
+        assert has_sticky_fallback({"configurable": {}}) is False
+        assert has_sticky_fallback({"configurable": {STICKY_FALLBACK_KEY: True}}) is True
+
+    @pytest.mark.asyncio
+    async def test_fallback_stamps_the_run_configurable(self) -> None:
+        from langchain_core.language_models import FakeListChatModel
+
+        from app.agents.llm.client import STICKY_FALLBACK_KEY, ainvoke_llm
+
+        class _Failing(FakeListChatModel):
+            async def _agenerate(self, *args, **kwargs):
+                raise ConnectionError("provider down")
+
+        failing = _Failing(responses=[])
+        working = FakeListChatModel(responses=["ok"])
+        config = {"configurable": {"user_id": "u1"}}
+
+        result = await ainvoke_llm(
+            failing,
+            ["hello"],
+            fallback=working,
+            config=config,  # type: ignore[arg-type]
+            label="test",
+            max_attempts=1,
+            timeout=None,
+        )
+        assert result.content == "ok"
+        assert config["configurable"][STICKY_FALLBACK_KEY] is True
