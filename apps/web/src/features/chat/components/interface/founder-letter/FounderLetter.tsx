@@ -23,7 +23,6 @@ import {
   DISCOUNT_PERCENT,
   INK,
   INK_SOFT,
-  LETTER_OPENED_KEY,
   LETTER_PARAGRAPHS,
   MEETING_CTA,
   MEETING_SENTENCE,
@@ -54,15 +53,10 @@ const LETTER_TYPOGRAPHY = {
  * thing on the page. Used for the paper and for ink-on-paper reversals. */
 const PAPER_CREAM = "#fdf6d9";
 
-/**
- * The sealed envelope the letter arrives in: the artwork exactly as drawn,
- * on its own dark ground. Cutting it out was worse — the render paints a dark
- * contour around the envelope, and any cut leaves that contour ringing it.
- * Against the near-black chat page the ground simply disappears.
- */
-const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.webp";
-const ENVELOPE_WIDTH = 640;
-const ENVELOPE_HEIGHT = 427;
+/** The sealed envelope the letter arrives in: the artwork file as it is. */
+const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.png";
+const ENVELOPE_WIDTH = 1536;
+const ENVELOPE_HEIGHT = 1024;
 
 /**
  * The paper: a sheet torn out by hand, ragged on all four edges.
@@ -222,7 +216,6 @@ interface FounderLetterProps {
 
 export function FounderLetter({ hidden = false }: FounderLetterProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [pulse, setPulse] = useState(false);
   const [copied, setCopied] = useState(false);
   const userName = useUserStore((s) => s.name);
   const openPricingModal = usePricingModalStore((s) => s.openModal);
@@ -232,17 +225,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
 
   const firstName = userName.trim().split(" ")[0] || SALUTATION_FALLBACK;
 
-  // Pulse the envelope until the letter has been opened once. Read in an
-  // effect (not render) so server and client markup always match.
-  useEffect(() => {
-    setPulse(!window.localStorage.getItem(LETTER_OPENED_KEY));
-  }, []);
-
-  const openLetter = useCallback(() => {
-    window.localStorage.setItem(LETTER_OPENED_KEY, "1");
-    setPulse(false);
-    setIsOpen(true);
-  }, []);
+  const openLetter = useCallback(() => setIsOpen(true), []);
 
   const closeLetter = useCallback(() => setIsOpen(false), []);
 
@@ -320,14 +303,6 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
           priority
           className="block w-20 rotate-[-3deg]"
         />
-        {/* Attention glow until the letter has been opened once */}
-        {pulse && (
-          <span
-            aria-hidden
-            className="absolute inset-1 -z-10 animate-ping rounded-lg bg-amber-200/45"
-            style={{ animationDuration: "2.4s" }}
-          />
-        )}
       </m.button>
 
       <AnimatePresence>

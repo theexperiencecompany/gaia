@@ -19,9 +19,6 @@ export const DISCOUNT_APPLIES = "monthly and yearly plans";
 /** Founder's booking link for the meeting CTA. */
 export const MEETING_URL = "https://cal.com/aryanranderiya";
 
-/** localStorage key: pulses the envelope until the letter has been opened once. */
-export const LETTER_OPENED_KEY = "gaia_founder_letter_opened";
-
 /** Ink: pure black on flat gold. No gray, no brown, no gradient. */
 export const INK = "#000000";
 export const INK_SOFT = "#000000";
