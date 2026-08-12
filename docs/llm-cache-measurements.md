@@ -105,15 +105,10 @@ layout:
   non-leading system messages).
 - Missing provider: defaults to the leading layout (today's behavior).
 
-## How to re-run
+## How it was measured
 
-```bash
-# Harness A/B (isolated conversation bytes, real lane)
-uv run python apps/api/scripts/measure_llm_cache.py --scenario all --turns 30
-
-# End-to-end: boot the API, then one run per layout
-uv run python apps/api/scripts/drive_big_conversation.py --tag baseline  # pre-fix code
-uv run python apps/api/scripts/drive_big_conversation.py --tag fixed     # post-fix code
-uv run --with matplotlib python apps/api/scripts/plot_cache_comparison.py \
-    --baseline cache_run_baseline.jsonl --fixed cache_run_fixed.jsonl
-```
+A live harness drove graph-shaped conversations (real `manage_system_prompts_node`,
+real provider, per-run isolated bytes) for the layout A/B, and the real
+`/api/v1/chat-stream` endpoint was driven for the end-to-end runs. Requests
+were captured byte-level through a logging proxy to verify determinism and
+the exact divergence points.
