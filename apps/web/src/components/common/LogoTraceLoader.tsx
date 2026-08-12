@@ -244,7 +244,7 @@ export default function LogoTraceLoader({
                   phase === "loop"
                     ? {
                         animation: `logo-trace-loader-loop ${loopDurationSeconds}s linear infinite`,
-                        strokeDasharray: "0.16 0.84",
+                        strokeDasharray: "0.35 0.65",
                       }
                     : {
                         animation: `logo-trace-loader-loop ${loopDurationSeconds}s linear infinite`,
