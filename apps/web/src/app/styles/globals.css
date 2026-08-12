@@ -258,6 +258,25 @@
   }
 }
 
+/* LogoTraceLoader — the trace dash sweeps one full normalized path length
+   (pathLength=1; each subpath dashes independently, so all arms sweep in
+   sync). The `to` frame is the whole animation: offset -1 = one full lap. */
+@keyframes logo-trace-loader-loop {
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
+/* LogoTraceLoader — the filled logo fades in once the outline has closed. */
+@keyframes logo-trace-loader-fill-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
