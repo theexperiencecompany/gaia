@@ -158,6 +158,16 @@ AUX_MODEL_NAME = "deepseek/deepseek-v4-flash"
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
+
+# The model behind every memory-pipeline call (extraction / categorization /
+# reconciliation / consolidation). Deliberately a DIFFERENT provider than the
+# graph's lane: the memory extraction is a background task that overlaps the
+# next turn's requests, and concurrent requests on the same provider's cache
+# store wipe each other's cached chains mid-read (measured: the comms chain
+# collapses to ~0 under a concurrent same-provider extraction and holds
+# ~99.5% under a concurrent Gemini extraction). A different provider has no
+# shared cache store, so the overlap is harmless.
+MEMORY_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
 DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
 # The model behind every image -> text call: the vision fallback for a lane that

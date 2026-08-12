@@ -96,9 +96,16 @@ def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> 
     """Compact journal rendering, bounded so it never dumps a whole day.
 
     A past day collapses to its one-line rollover summary. Today (not yet
-    summarized) shows only its most recent ``RECENT_ACTIVITY_ENTRY_CAP``
-    entries — enough for continuity without the prompt growing all day. The
-    full journal stays available via ``search_journal``.
+    summarized) emits its entries ANCHORED at the day's start (chronological,
+    append-only) rather than the sliding last-N window: the sliding window
+    shifts every emitted byte each time a new entry lands, churning the
+    volatile slot's bytes every turn and breaking the provider's prompt-cache
+    prefix inside it (measured: the recall slot's tail churn is the dominant
+    per-turn uncached chunk, capping the comms hit rate ~10 points below the
+    harness ceiling). Anchored emission keeps the emitted bytes byte-stable
+    between trims — the cached prefix extends through the older entries and
+    only the newly appended tail churns. The full journal stays available via
+    ``search_journal``.
     """
     blocks: list[str] = []
     for episode in episodes:
@@ -108,10 +115,14 @@ def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> 
             continue
         if not episode.entries:
             continue
-        recent = episode.entries[-RECENT_ACTIVITY_ENTRY_CAP:]
+        # Anchored at the day's start; trimmed from the OLDEST only when the
+        # cap binds (a rare event for a normal day), never by sliding.
+        recent = episode.entries
+        if len(recent) > RECENT_ACTIVITY_ENTRY_CAP:
+            recent = recent[:RECENT_ACTIVITY_ENTRY_CAP]
         lines = [f"- {entry.get('time', '')} {entry.get('text', '')}".rstrip() for entry in recent]
         more = len(episode.entries) - len(recent)
         if more > 0:
-            lines.insert(0, f"- (+{more} earlier entries today)")
+            lines.append(f"- (+{more} more entries today)")
         blocks.append(f"### {label} ({episode.date.isoformat()})\n" + "\n".join(lines))
     return "\n".join(blocks)

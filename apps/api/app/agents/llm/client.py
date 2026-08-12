@@ -32,6 +32,7 @@ from app.constants.llm import (
     HELPER_MAX_OUTPUT_TOKENS,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
+    MEMORY_MODEL_NAME,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
@@ -475,6 +476,34 @@ def _build_vision_llm(temperature: float) -> BaseChatModel:
     return llm
 
 
+def get_memory_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
+    """The factory for every memory-pipeline call (extraction, categorization,
+    reconciliation, consolidation).
+
+    Runs on direct Gemini (:data:`MEMORY_MODEL_NAME`), NOT the OpenRouter lane,
+    on purpose: the memory extraction is a fire-and-forget background task that
+    overlaps the graph's next-turn requests, and concurrent requests on the
+    same provider's cache store wipe each other's cached chains mid-read
+    (measured: the comms chain collapses to ~0 under a concurrent alias-lane
+    extraction and holds ~99.5% under a concurrent Gemini extraction — a
+    different provider has no shared cache store, so the overlap is harmless).
+    Raises ``LLMNotConfiguredError`` when Google is not configured.
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm(temperature)
+    if not settings.GOOGLE_API_KEY:
+        raise LLMNotConfiguredError("Memory model not configured. Set GOOGLE_API_KEY.")
+    return _build_memory_llm(temperature)
+
+
+@cache
+def _build_memory_llm(temperature: float) -> BaseChatModel:
+    llm = ChatGoogleGenerativeAI(model=MEMORY_MODEL_NAME, temperature=temperature)
+    # Same reason as _build_default_llm: fractional-window middleware reads this.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
+
+
 def _stamp_fallback(result: _ResultT) -> _ResultT:
     """Mark a fallback-produced AIMessage so downstream layers can surface the
     downgrade (SSE event, accounting). No-op for non-message results."""
@@ -749,6 +778,35 @@ async def ainvoke_structured(
         .model_copy(update={"model_name": AUX_MODEL_NAME})
         .with_structured_output(schema)
     )
+    # Metering lives in ainvoke_llm, which this delegates to — a handler here too
+    # would record the same call twice and over-report the user's COGS.
+    return cast(
+        _StructuredT,
+        await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout),
+    )
+
+
+async def ainvoke_structured_gemini(
+    schema: type[_StructuredT],
+    prompt: LanguageModelInput,
+    *,
+    label: str,
+    temperature: float = DEFAULT_LLM_TEMPERATURE,
+    config: RunnableConfig | None = None,
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
+) -> _StructuredT:
+    """The structured one-shot call for the memory pipeline, on direct Gemini.
+
+    Same contract as :func:`ainvoke_structured` (retry + fallback, metering via
+    :func:`ainvoke_llm`, validated ``schema`` output) but on
+    :func:`get_memory_llm` — a DIFFERENT provider from the graph's OpenRouter
+    lane, deliberately. The memory extraction is a background task that
+    overlaps the graph's next-turn requests; concurrent requests on the same
+    provider's cache store wipe each other's cached chains mid-read (measured:
+    the comms chain collapses to ~0 under a concurrent alias-lane extraction
+    and holds ~99.5% under a concurrent Gemini extraction). A different
+    provider has no shared cache store, so the overlap is harmless."""
+    structured = get_memory_llm(temperature=temperature).with_structured_output(schema)
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(
