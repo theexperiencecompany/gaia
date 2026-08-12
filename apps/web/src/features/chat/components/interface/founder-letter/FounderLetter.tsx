@@ -57,7 +57,7 @@ const PAPER_CREAM = "#fdf8ea";
 /** The sealed envelope the letter arrives in, at its intrinsic size. */
 const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.webp";
 const ENVELOPE_WIDTH = 512;
-const ENVELOPE_HEIGHT = 356;
+const ENVELOPE_HEIGHT = 355;
 
 /**
  * The paper: a sheet torn out by hand, ragged on all four edges.
