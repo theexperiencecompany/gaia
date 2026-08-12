@@ -25,9 +25,11 @@ import { useUserStore } from "@/stores/userStore";
 
 import {
   BODY_FONT,
-  DISCOUNT_APPLIES,
   DISCOUNT_CODE,
+  DISCOUNT_EXPIRES,
   DISCOUNT_PERCENT,
+  DISCOUNT_SCOPE,
+  DISCOUNT_YEARLY_NOTE,
   INK,
   INK_SOFT,
   LETTER_DISMISSED_KEY,
@@ -36,6 +38,8 @@ import {
   MEETING_CTA,
   MEETING_SENTENCE,
   MEETING_URL,
+  OFFER_LEAD,
+  OFFER_TAIL,
   SALUTATION_FALLBACK,
   SIGNATURE_NAME,
   SIGNATURE_ROLE,
@@ -238,8 +242,16 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
   const firstName = userName.trim().split(" ")[0] || SALUTATION_FALLBACK;
 
   useEffect(() => {
-    setDismissed(!!window.localStorage.getItem(LETTER_DISMISSED_KEY));
+    const isDismissed = !!window.localStorage.getItem(LETTER_DISMISSED_KEY);
+    setDismissed(isDismissed);
     setHasOpened(!!window.localStorage.getItem(LETTER_OPENED_KEY));
+    // The denominator for every other event in this funnel: without it, an
+    // open rate has no base to divide by.
+    if (!isDismissed) {
+      trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_SHOWN, {
+        discount_code: DISCOUNT_CODE,
+      });
+    }
   }, []);
 
   const openLetter = useCallback(() => {
@@ -355,7 +367,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
           <button
             type="button"
             onClick={dismissLetter}
-            className="cursor-pointer pr-1 text-[11px] font-normal text-zinc-500 outline-none transition-colors hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-[#00bbff]"
+            className="cursor-pointer pr-1 text-[11px] font-normal text-zinc-400 outline-none transition-colors hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-[#00bbff]"
           >
             Don't show again
           </button>
@@ -454,11 +466,11 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                       lineHeight: "var(--letter-body-lh)",
                     }}
                   >
-                    As a thank-you for believing in us when it wasn't easy, take{" "}
+                    {OFFER_LEAD} But if you want back in, take{" "}
                     <strong className="font-bold">
-                      {DISCOUNT_PERCENT}% off your first year
-                    </strong>
-                    , on {DISCOUNT_APPLIES}. Use{" "}
+                      {DISCOUNT_PERCENT}% off
+                    </strong>{" "}
+                    {DISCOUNT_SCOPE}. {DISCOUNT_YEARLY_NOTE} Use{" "}
                     <strong className="font-bold">{DISCOUNT_CODE}</strong>
                     <button
                       type="button"
@@ -479,7 +491,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                         />
                       )}
                     </button>
-                    at checkout.
+                    {OFFER_TAIL} {DISCOUNT_EXPIRES}.
                   </p>
                   <RaisedButton
                     color={CTA_BLACK}

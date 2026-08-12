@@ -139,7 +139,13 @@ export const ANALYTICS_EVENTS = {
   ERROR_OCCURRED: "error:occurred",
   API_ERROR: "api:error",
 
+  // Early-bird offer banner events
+  OFFER_BANNER_SHOWN: "offer_banner:shown",
+  OFFER_BANNER_CLICKED: "offer_banner:clicked",
+  OFFER_BANNER_DISMISSED: "offer_banner:dismissed",
+
   // Founder letter events
+  FOUNDER_LETTER_SHOWN: "founder_letter:shown",
   FOUNDER_LETTER_OPENED: "founder_letter:opened",
   FOUNDER_LETTER_DISCOUNT_CTA_CLICKED: "founder_letter:discount_cta_clicked",
   FOUNDER_LETTER_CODE_COPIED: "founder_letter:code_copied",

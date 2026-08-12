@@ -6,15 +6,17 @@
  * honest. The letter is meant to read like a real letter, not a marketing page.
  */
 
-/** Discount code offered in the letter. Must exist as a coupon in Dodo Payments. */
-export const DISCOUNT_CODE = "THANKYOU40";
-
-/** The discount percentage shown alongside the code (copy only; the actual
- * terms live in the Dodo coupon). */
-export const DISCOUNT_PERCENT = 40;
-
-/** The discount applies to both billing periods. */
-export const DISCOUNT_APPLIES = "monthly and yearly plans";
+/**
+ * The offer itself lives in `@/config/offer` because the landing banner sells
+ * the same one; the letter only re-exports it under its own names.
+ */
+export {
+  OFFER_CODE as DISCOUNT_CODE,
+  OFFER_EXPIRES_LABEL as DISCOUNT_EXPIRES,
+  OFFER_PERCENT as DISCOUNT_PERCENT,
+  OFFER_SCOPE as DISCOUNT_SCOPE,
+  OFFER_YEARLY_NOTE as DISCOUNT_YEARLY_NOTE,
+} from "@/config/offer";
 
 /** Founder's booking link for the meeting CTA. */
 export const MEETING_URL = "https://cal.com/aryanranderiya";
@@ -35,13 +37,18 @@ export const BODY_FONT = "var(--font-inter), Inter, sans-serif";
 /** The letter's body, one entry per paragraph. The offer paragraph is
  * rendered separately (it carries the inline code + copy button). */
 export const LETTER_PARAGRAPHS: readonly string[] = [
-  "If you're reading this, you were here before almost anyone else, and I want you to know how much that means to me.",
-  "I'll be straight with you. There were stretches where GAIA wasn't what I promised it would be, and you felt every one of them. I won't hand you excuses for those months. What I'll say is that I took it personally, and I never once considered stopping.",
-  "Since then we have put the work into stability, and it shows: GAIA is faster, steadier, and it remembers. We run our own days on it too, automating a good chunk of our work with it every single day. Every change has been for the people who stayed, which means every change has been for you.",
+  "You were here before almost anyone else. That is not a small thing to me, and I have not forgotten it.",
+  "I'll be straight with you. I promised you things GAIA could not do yet, and there were months where it was slower and quieter than you deserved. I won't hand you excuses for that. What I'll say is that I took it personally, and I never once considered stopping.",
+  "The work since has gone into stability, and you can feel it: GAIA is faster, it holds on to what you tell it, and it stays up. I run my own days on it, automating a real chunk of my work with it daily, which is the only reason I can promise it is finally worth your time.",
 ];
 
 /** Salutation fallback when the user's name is unknown. */
 export const SALUTATION_FALLBACK = "friend";
+
+/** The offer, split around the inline code + copy button. Deliberately opens
+ * by letting the reader off the hook: the apology above is not a set-up. */
+export const OFFER_LEAD = "There are no strings on any of this.";
+export const OFFER_TAIL = "at checkout, any time before";
 
 export const MEETING_SENTENCE =
   "And if you have fifteen minutes, I'd love to hear what you need from a personal assistant, and what you dream it could do.";
