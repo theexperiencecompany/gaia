@@ -26,6 +26,7 @@ from tests.e2e._harness.graph_run import (
     SELECT_NODE,
     TOOLS_NODE,
     RecordingStore,
+    call,
     executor_graph,
     run_graph,
 )
@@ -35,10 +36,6 @@ pytestmark = pytest.mark.e2e
 #: A real registry tool that is NOT in the executor's initial_tool_ids, so it
 #: can only become callable by being retrieved.
 RETRIEVABLE = "web_search_tool"
-
-
-def call(name: str, args: dict[str, Any] | None = None, id: str = "c1") -> dict[str, Any]:
-    return {"name": name, "args": args or {}, "id": id}
 
 
 def retrieve(*names: str, id: str = "r1") -> dict[str, Any]:

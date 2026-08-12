@@ -26,15 +26,12 @@ from tests.e2e._harness.graph_run import (
     FINISH_NODE,
     REJECT_NODE,
     TOOLS_NODE,
+    call,
     executor_graph,
     run_graph,
 )
 
 pytestmark = pytest.mark.e2e
-
-
-def call(name: str, args: dict[str, Any] | None = None, id: str = "c1") -> dict[str, Any]:
-    return {"name": name, "args": args or {}, "id": id}
 
 
 def plan(*contents: str, id: str = "p1") -> dict[str, Any]:

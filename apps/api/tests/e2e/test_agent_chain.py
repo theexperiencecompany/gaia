@@ -59,7 +59,7 @@ from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat import stream as chat_stream
 from app.utils import background_tasks
-from tests.e2e._harness.graph_run import RecordingFakeModel, scripted_model
+from tests.e2e._harness.graph_run import RecordingFakeModel, call, scripted_model
 from tests.e2e._harness.transcript import UNKNOWN, Transcript
 
 pytestmark = pytest.mark.e2e
@@ -98,10 +98,6 @@ async def fake_redis() -> Any:
     redis_cache.redis = original
     await client.flushall()
     await client.connection_pool.disconnect()
-
-
-def call(name: str, args: dict[str, Any], id: str) -> dict[str, Any]:
-    return {"name": name, "args": args, "id": id}
 
 
 class StreamingScriptedModel(RecordingFakeModel):
