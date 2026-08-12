@@ -14,8 +14,14 @@ const MIN_DOT_RADIUS = 0.45;
 
 // Pointer-interaction tuning.
 /** Extra swell at the pointer, fading to zero over RIPPLE_RADIUS. */
-const RIPPLE_LIFT = 0.45;
-const RIPPLE_RADIUS = 120;
+const RIPPLE_LIFT = 0.55;
+const RIPPLE_RADIUS = 190;
+/** Seconds for the ripple center to catch up to the cursor (exp smoothing). */
+const CURSOR_FOLLOW_TAU = 0.06;
+/** Seconds for a dot's radius to reach its target swell (exp smoothing). */
+const SWELL_TAU = 0.09;
+/** Radius delta (css px) under which a dot counts as settled. */
+const SETTLE_EPSILON = 0.01;
 
 // Click-ripple tuning.
 /** Peak swell of the click wave at its origin. */
@@ -208,13 +214,13 @@ function drawDots(ctx: CanvasRenderingContext2D, dots: Dot[]): void {
 }
 
 /**
- * Pointer interaction: dots inside a small circle around the cursor swell
- * and track it 1:1 as it moves over the wordmark, and a pointerdown sends a
- * wavefront rippling across the whole lockup. Dot sizes
- * are computed straight from the cursor position every frame — no springs,
- * no lag — smoothness comes from the falloff shape and the cursor's own
- * continuous motion. The rAF loop only runs while a click wave is alive;
- * returns a cleanup that detaches listeners and cancels the loop.
+ * Pointer interaction: dots inside a circle around the cursor swell and
+ * trail it smoothly as it moves over the wordmark, and a pointerdown sends a
+ * wavefront rippling across the whole lockup. The ripple center follows the
+ * cursor with exponential smoothing and each dot's radius eases toward its
+ * target, so the swell glides instead of snapping. The rAF loop runs while
+ * the pointer is inside, a click wave is alive, or any dot is still easing
+ * back to rest; returns a cleanup that detaches listeners and cancels it.
  */
 function attachPointerInteraction(
   canvas: HTMLCanvasElement,
@@ -226,6 +232,11 @@ function attachPointerInteraction(
   let pointerInside = false;
   let pointerX = 0;
   let pointerY = 0;
+  // Smoothed ripple center trailing the raw pointer position.
+  let cursorX = 0;
+  let cursorY = 0;
+  let cursorAdopted = false;
+  let lastFrameAt = 0;
   const waves: ClickWave[] = [];
   let raf = 0;
 
@@ -235,6 +246,11 @@ function attachPointerInteraction(
   };
 
   const frame = (now: number): void => {
+    const dt = lastFrameAt
+      ? Math.min((now - lastFrameAt) / 1000, 0.05)
+      : 1 / 60;
+    lastFrameAt = now;
+
     // Prune click waves whose front has crossed the whole canvas (all times
     // in ms).
     const waveLifetime = (cssW / CLICK_SPEED + CLICK_RISE + 0.25) * 1000;
@@ -242,9 +258,21 @@ function attachPointerInteraction(
       if (now - waves[i].start > waveLifetime) waves.splice(i, 1);
     }
 
+    // The ripple center trails the cursor with exponential smoothing.
+    if (!cursorAdopted) {
+      cursorX = pointerX;
+      cursorY = pointerY;
+      cursorAdopted = true;
+    }
+    const follow = 1 - Math.exp(-dt / CURSOR_FOLLOW_TAU);
+    cursorX += (pointerX - cursorX) * follow;
+    cursorY += (pointerY - cursorY) * follow;
+
+    const ease = 1 - Math.exp(-dt / SWELL_TAU);
+    let settled = true;
+
     for (const dot of dots) {
-      // Ripple center is the cursor itself — synced 1:1, no delay.
-      const dist = Math.hypot(dot.x - pointerX, dot.y - pointerY);
+      const dist = Math.hypot(dot.x - cursorX, dot.y - cursorY);
       // Only dots inside the cursor's falloff circle are affected — the
       // rest of the wordmark stays at rest.
       const ripple = RIPPLE_LIFT * smoothstep(RIPPLE_RADIUS, 0, dist);
@@ -262,13 +290,19 @@ function attachPointerInteraction(
         target += CLICK_AMP * edgeFalloff * Math.sin(Math.PI * phase);
       }
 
-      dot.radius = dot.base * (1 + target);
+      const targetRadius = dot.base * (1 + target);
+      dot.radius += (targetRadius - dot.radius) * ease;
+      if (Math.abs(targetRadius - dot.radius) > SETTLE_EPSILON) {
+        settled = false;
+      }
     }
 
     ctx.clearRect(0, 0, cssW, cssH);
     drawDots(ctx, dots);
 
-    raf = waves.length > 0 ? requestAnimationFrame(frame) : 0;
+    const active = waves.length > 0 || pointerInside || !settled;
+    raf = active ? requestAnimationFrame(frame) : 0;
+    if (!raf) lastFrameAt = 0;
   };
 
   const start = (): void => {

@@ -3,14 +3,12 @@
 import { Pagination } from "@heroui/pagination";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FeaturedCategoryBanner } from "@/components/shared/FeaturedCategoryBanner";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { IntegrationsFilters } from "@/features/integrations/components/IntegrationsFilters";
 import {
   PublicIntegrationCard,
   PublicIntegrationCardSkeletonGrid,
 } from "@/features/integrations/components/PublicIntegrationCard";
-import { FEATURED_INTEGRATION_CATEGORIES } from "@/features/integrations/constants/categories";
 import type { CommunityIntegration } from "@/features/integrations/types";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 
@@ -164,21 +162,6 @@ export function IntegrationsPageClient() {
             community-built MCP integrations to connect Gmail, Slack, Notion,
             GitHub, and 50+ services to your AI assistant.
           </p>
-        </div>
-
-        <div className="mb-10">
-          <h2 className="mb-4 text-sm font-medium text-zinc-300">Featured</h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {FEATURED_INTEGRATION_CATEGORIES.map((featured) => (
-              <FeaturedCategoryBanner
-                key={featured.key}
-                name={featured.label}
-                description={featured.description}
-                icons={featured.icons}
-                onPress={() => handleFilterChange({ category: featured.key })}
-              />
-            ))}
-          </div>
         </div>
 
         <IntegrationsFilters
