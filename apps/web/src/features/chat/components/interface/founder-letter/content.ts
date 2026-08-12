@@ -27,10 +27,11 @@ export const LETTER_DATE = "12 August 2026";
 /** localStorage key: pulses the envelope until the letter has been opened once. */
 export const LETTER_OPENED_KEY = "gaia_founder_letter_opened";
 
-/** Ink + paper tones. Kept here so the letter keeps one voice. Warm and
- * soft: the paper is bright, the ink is a calm warm gray, never near-black. */
-export const INK = "#57534e";
-export const INK_SOFT = "#8f897d";
+/** Ink + paper tones. A golden letter: bright gold paper (Tailwind's
+ * yellow/amber scale) and deep amber ink (amber-900), matching the app's
+ * token language instead of invented hexes. */
+export const INK = "#78350f"; // amber-900
+export const INK_SOFT = "#92400e"; // amber-800
 
 /** Typography: the app's normal sans everywhere. */
 export const BODY_FONT = "var(--font-inter), Inter, sans-serif";

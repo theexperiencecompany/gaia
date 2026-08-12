@@ -51,14 +51,13 @@ const LETTER_TYPOGRAPHY = {
 } as CSSProperties;
 
 /**
- * The paper is drawn in SVG: a bright warm-white base, a whisper of vignette
- * and a faint grain, all passed through one feTurbulence + feDisplacementMap
- * filter so every edge gets the same subtle torn/deckle silhouette. The CSS
- * drop-shadow follows that silhouette (box-shadow would stay rectangular).
+ * The paper is drawn in SVG: bright golden yellow (Tailwind yellow-100 to
+ * amber-300), with a whisper of depth at the very edges, passed through a
+ * feTurbulence + feDisplacementMap filter so the silhouette gets a subtle
+ * hand-torn deckle. No grain: gold paper, amber ink, that's the whole palette.
  */
 const PAPER_TORN_ID = "founder-letter-torn";
 const PAPER_GRADIENT_ID = "founder-letter-paper";
-const PAPER_VIGNETTE_ID = "founder-letter-vignette";
 
 function PaperBackdrop() {
   return (
@@ -72,28 +71,11 @@ function PaperBackdrop() {
       <title>Decorative paper texture</title>
       <defs>
         <linearGradient id={PAPER_GRADIENT_ID} x1="0" y1="0" x2="0.55" y2="1">
-          <stop offset="0" stopColor="#fefcf6" />
-          <stop offset="0.5" stopColor="#faf5e9" />
-          <stop offset="1" stopColor="#f3ecda" />
+          <stop offset="0" stopColor="#fef9c3" /> {/* yellow-100 */}
+          <stop offset="0.5" stopColor="#fde68a" /> {/* amber-200 */}
+          <stop offset="1" stopColor="#fcd34d" /> {/* amber-300 */}
         </linearGradient>
-        <radialGradient id={PAPER_VIGNETTE_ID} cx="0.5" cy="0.32" r="0.95">
-          <stop offset="0.55" stopColor="#8a6a3f" stopOpacity="0" />
-          <stop offset="1" stopColor="#8a6a3f" stopOpacity="0.12" />
-        </radialGradient>
         <filter id={PAPER_TORN_ID} x="-4%" y="-4%" width="108%" height="108%">
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="0.9"
-            numOctaves="2"
-            seed="3"
-            result="grainTex"
-          />
-          <feColorMatrix
-            in="grainTex"
-            type="matrix"
-            values="0 0 0 0 0.45  0 0 0 0 0.38  0 0 0 0 0.28  0 0 0 0.4 0"
-            result="grain"
-          />
           <feTurbulence
             type="fractalNoise"
             baseFrequency="0.06"
@@ -101,7 +83,7 @@ function PaperBackdrop() {
             seed="7"
             result="tear"
           />
-          <feDisplacementMap in="grain" in2="tear" scale="4" />
+          <feDisplacementMap in="SourceGraphic" in2="tear" scale="3" />
         </filter>
       </defs>
       {/* Base paper */}
@@ -110,21 +92,6 @@ function PaperBackdrop() {
         height="800"
         fill={`url(#${PAPER_GRADIENT_ID})`}
         filter={`url(#${PAPER_TORN_ID})`}
-      />
-      {/* Soft vignette */}
-      <rect
-        width="600"
-        height="800"
-        fill={`url(#${PAPER_VIGNETTE_ID})`}
-        filter={`url(#${PAPER_TORN_ID})`}
-      />
-      {/* Faint grain */}
-      <rect
-        width="600"
-        height="800"
-        opacity="0.08"
-        filter={`url(#${PAPER_TORN_ID})`}
-        style={{ mixBlendMode: "multiply" }}
       />
     </svg>
   );
@@ -232,7 +199,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
           className="relative block h-10 w-14 rotate-[-3deg] rounded-[2px] shadow-[0_10px_24px_-6px_rgba(0,0,0,0.45)]"
           style={{
             background:
-              "linear-gradient(145deg, #fefcf6 0%, #f8f2e2 55%, #f1e8d2 100%)",
+              "linear-gradient(145deg, #fef9c3 0%, #fde68a 55%, #fcd34d 100%)",
           }}
         >
           {/* Second page peeking out behind */}
@@ -240,7 +207,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
             aria-hidden
             className="absolute -right-0.5 -bottom-0.5 -z-10 block h-10 w-14 rounded-[2px]"
             style={{
-              background: "linear-gradient(145deg, #efe5cd 0%, #e4d8ba 100%)",
+              background: "linear-gradient(145deg, #fde68a 0%, #fbbf24 100%)",
             }}
           />
           {/* Folded flap */}
@@ -248,7 +215,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
             aria-hidden
             className="absolute inset-x-0 top-0 h-3 rounded-t-[2px]"
             style={{
-              background: "linear-gradient(180deg, #f3ecda 0%, #faf5e9 100%)",
+              background: "linear-gradient(180deg, #fcd34d 0%, #fef3c7 100%)",
             }}
           />
           {/* The fold crease */}
@@ -257,7 +224,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
             className="absolute inset-x-0 top-3 h-px"
             style={{
               background:
-                "linear-gradient(90deg, transparent, rgba(138,106,63,0.35) 30%, rgba(138,106,63,0.35) 70%, transparent)",
+                "linear-gradient(90deg, transparent, rgba(217,119,6,0.45) 30%, rgba(217,119,6,0.45) 70%, transparent)",
             }}
           />
         </span>
@@ -265,7 +232,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
         {pulse && (
           <span
             aria-hidden
-            className="absolute inset-0 -z-10 animate-ping rounded-md bg-[#faf5e9]/50"
+            className="absolute inset-0 -z-10 animate-ping rounded-md bg-amber-200/50"
             style={{ animationDuration: "2.4s" }}
           />
         )}
@@ -323,7 +290,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                 type="button"
                 onClick={closeLetter}
                 aria-label="Close the letter"
-                className="absolute top-3 right-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-[#ece2c8]/70 focus-visible:ring-2 focus-visible:ring-[#a3926f]"
+                className="absolute top-3 right-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-amber-200/70 focus-visible:ring-2 focus-visible:ring-amber-700"
               >
                 <CancelIcon className="h-4 w-4" style={{ color: INK_SOFT }} />
               </button>
@@ -338,7 +305,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                   <span
                     className="font-semibold"
                     style={{
-                      color: "#a08a5f",
+                      color: "#b45309", // amber-700
                       fontSize: "calc(var(--letter-body) * 1.25)",
                     }}
                   >
@@ -355,7 +322,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                   className="mt-2 h-px w-full"
                   style={{
                     background:
-                      "linear-gradient(90deg, transparent, #c9b98f 25%, #c9b98f 75%, transparent)",
+                      "linear-gradient(90deg, transparent, #d97706 25%, #d97706 75%, transparent)",
                   }}
                 />
 
@@ -387,8 +354,8 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                   className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-sm px-4 py-2.5"
                   style={{
                     background:
-                      "linear-gradient(120deg, #f4edda 0%, #efe6cd 100%)",
-                    boxShadow: "inset 0 0 0 1px rgba(160,138,95,0.35)",
+                      "linear-gradient(120deg, #fef3c7 0%, #fde68a 100%)",
+                    boxShadow: "inset 0 0 0 1px rgba(217,119,6,0.4)",
                   }}
                 >
                   <div>
@@ -405,7 +372,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                     <p
                       className="mt-0.5 font-bold"
                       style={{
-                        color: "#57534e",
+                        color: "#78350f", // amber-900
                         fontSize: "var(--letter-code)",
                       }}
                     >
@@ -416,13 +383,13 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                     <button
                       type="button"
                       onClick={copyCode}
-                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-all hover:bg-[#e4d8ba]/70 focus-visible:ring-2 focus-visible:ring-[#a3926f] active:scale-90"
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-all hover:bg-amber-200/80 focus-visible:ring-2 focus-visible:ring-amber-700 active:scale-90"
                       aria-label="Copy the discount code"
                       title={copied ? "Copied" : "Copy code"}
                     >
                       <Copy01Icon
                         className="h-3.5 w-3.5"
-                        style={{ color: "#57534e" }}
+                        style={{ color: "#78350f" }} // amber-900
                       />
                     </button>
                     <button
@@ -431,13 +398,13 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                         openPricingModal();
                         closeLetter();
                       }}
-                      className="flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[calc(var(--letter-small)*1.05)] font-semibold outline-none transition-all hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[#a3926f] active:scale-95"
-                      style={{ background: "#57534e", color: "#fefcf6" }}
+                      className="flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[calc(var(--letter-small)*1.05)] font-semibold outline-none transition-all hover:opacity-85 focus-visible:ring-2 focus-visible:ring-amber-700 active:scale-95"
+                      style={{ background: "#78350f", color: "#fef9c3" }}
                     >
                       Get the discount
                       <ArrowRightIcon
                         className="h-3.5 w-3.5"
-                        style={{ color: "#fefcf6" }}
+                        style={{ color: "#fef9c3" }}
                       />
                     </button>
                   </div>
@@ -456,7 +423,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                 </p>
                 <a
                   href={MEETING_MAILTO}
-                  className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-[#a3926f]"
+                  className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-amber-700"
                   style={{ color: INK }}
                 >
                   {MEETING_CTA}
