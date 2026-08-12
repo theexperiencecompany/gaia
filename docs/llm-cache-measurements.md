@@ -29,11 +29,11 @@ DeepSeek's automatic prefix cache). Two complementary measurements:
 30-turn conversations, identical bytes per scenario (per-run isolated seeds),
 only the slot order differs. Same lane, same model, same tool binding.
 
-![Hit rate per turn](images/llm-cache/harness/hit_rate_per_turn.png)
+![Hit rate per turn](https://raw.githubusercontent.com/theexperiencecompany/gaia/pr-assets/997-llm-cache/harness/hit_rate_per_turn.png)
 
-![Uncached per turn](images/llm-cache/harness/uncached_per_turn.png)
+![Uncached per turn](https://raw.githubusercontent.com/theexperiencecompany/gaia/pr-assets/997-llm-cache/harness/uncached_per_turn.png)
 
-![Cumulative cost](images/llm-cache/harness/cumulative_cost.png)
+![Cumulative cost](https://raw.githubusercontent.com/theexperiencecompany/gaia/pr-assets/997-llm-cache/harness/cumulative_cost.png)
 
 | Metric (30 turns, ~1.19M input tokens each) | Before | After |
 |---|---|---|
@@ -51,9 +51,9 @@ prefix is a shrinking fraction); the after-layout rate *rises* toward ~99%
 memory extraction, follow-up actions, tool results) on the same machine and
 upstream, before vs after the layout change.
 
-![Hit rate per turn](images/llm-cache/e2e/hit_rate_per_turn.png)
+![Hit rate per turn](https://raw.githubusercontent.com/theexperiencecompany/gaia/pr-assets/997-llm-cache/e2e/hit_rate_per_turn.png)
 
-![Uncached per turn](images/llm-cache/e2e/uncached_per_turn.png)
+![Uncached per turn](https://raw.githubusercontent.com/theexperiencecompany/gaia/pr-assets/997-llm-cache/e2e/uncached_per_turn.png)
 
 | Metric (45 turns, ~2.7M input tokens each) | Before | After |
 |---|---|---|
