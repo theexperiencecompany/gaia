@@ -67,7 +67,18 @@ const LOGO_LAYERS = [
   },
 ] as const;
 
-/** How long the outline takes to sweep from the looping dash to a full outline. */
+/** How long one full draw cycle takes: the nine arm outlines draw in
+ *  sequence over 3×loopDurationSeconds (one color layer per lap), which is
+ *  90% of the cycle; the remaining 10% is the fade-out reset. */
+const DRAW_CYCLE_FRACTION = 0.9;
+
+/** The trace route, flattened into one entry per arm outline (3 per layer),
+ *  in draw order: mid-blue backbones first, then dark, then bright. */
+const TRACE_SUBPATHS = LOGO_LAYERS.flatMap((layer) =>
+  layer.tracePath.match(/M[^Z]*Z/g)!.map((subpath) => ({ layer, subpath })),
+);
+
+/** How long the outline takes to expand from its drawn state to the full outline. */
 const OUTLINE_CLOSE_MS = 600;
 
 /**
@@ -88,7 +99,9 @@ export type LogoTraceLoaderProps = {
   size?: number;
   /** Stroke width in viewBox units (the viewBox is 2441 × 2400). Default: 28 (~1.1px at 96px). */
   strokeWidth?: number;
-  /** Seconds per full sweep of the trace loop. Default: 2.4. */
+  /** Seconds per color layer's drawing lap — the nine arm outlines draw in
+   *  sequence (one layer of three arms per lap). The full draw cycle takes
+   *  ~3.7× this (drawing + the fade-out reset). Default: 2.4. */
   loopDurationSeconds?: number;
   /** Seconds for the fill to fade in after the outline closes. Default: 0.5. */
   fillFadeSeconds?: number;
@@ -135,6 +148,10 @@ export default function LogoTraceLoader({
   ariaLabel = "Loading",
   onDone,
 }: LogoTraceLoaderProps) {
+  // The nine arm outlines draw in sequence over 3×loopDurationSeconds
+  // (one color layer per lap); that drawing occupies 90% of the cycle, the
+  // rest is the fade-out reset.
+  const drawCycleSeconds = (3 * loopDurationSeconds) / DRAW_CYCLE_FRACTION;
   // Read synchronously so the first paint already shows the resolved logo
   // under prefers-reduced-motion (no loop flash before effects run).
   const [reducedMotion] = useState(
@@ -197,44 +214,54 @@ export default function LogoTraceLoader({
       height={size}
       className={cn("shrink-0", className)}
     >
-      {/* The animated trace: per layer, a short dash sweeping that layer's
-          region contour. On resolve, each element's dash expands to its full
-          outline while the sweep keeps running, so the close is seamless (no
-          dash-phase jump). pathLength normalizes each element's dash units,
-          so every arm sweeps in sync. */}
+      {/* The animated trace: one seamless drawing animation — each arm's
+          outline draws itself progressively, in order (mid-blue backbones →
+          dark → bright), and the next arm starts drawing the moment the
+          previous one finishes, so the logo builds up shape by shape with no
+          gaps. The group fades out briefly at the end of the cycle, then the
+          next cycle redraws from the first arm. On resolve, every element's
+          dash expands to its full outline. */}
       {phase === "loop" || phase === "closingOutline" ? (
-        <g>
-          {LOGO_LAYERS.map((layer) =>
-            // One element per subpath, each with pathLength={1}: with several
-            // subpaths in a single path, the browser normalizes the dash
-            // against the TOTAL length and applies the pattern per subpath,
-            // so "0.16" would draw ~half of each arm. Per-subpath elements
-            // make "0.16" exactly 16% of each arm.
-            layer.tracePath.match(/M[^Z]*Z/g)!.map((subpath) => (
-              <path
-                key={`${layer.color}:${subpath.slice(0, 16)}`}
-                d={subpath}
-                fill="none"
-                stroke={layerColor(layer)}
-                strokeWidth={strokeWidth}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                pathLength={1}
-                style={
-                  phase === "loop"
-                    ? {
-                        animation: `logo-trace-loader-loop ${loopDurationSeconds}s linear infinite`,
-                        strokeDasharray: "0.35 0.65",
-                      }
-                    : {
-                        animation: `logo-trace-loader-loop ${loopDurationSeconds}s linear infinite`,
-                        strokeDasharray: "1 0",
-                        transition: `stroke-dasharray ${OUTLINE_CLOSE_MS}ms ease-out`,
-                      }
+        <g
+          style={
+            phase === "loop"
+              ? {
+                  animation: `logo-trace-loader-cycle ${drawCycleSeconds}s linear infinite`,
                 }
-              />
-            )),
-          )}
+              : {
+                  animation: "none",
+                  opacity: 1,
+                  transition: `opacity ${OUTLINE_CLOSE_MS}ms ease-out`,
+                }
+          }
+        >
+          {TRACE_SUBPATHS.map(({ layer, subpath }, drawIndex) => (
+            <path
+              key={`${layer.color}:${subpath.slice(0, 16)}`}
+              d={subpath}
+              fill="none"
+              stroke={layerColor(layer)}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              pathLength={1}
+              style={
+                phase === "loop"
+                  ? {
+                      // Each arm draws during its own 10%-of-cycle window,
+                      // staggered in draw order — the previous arm finishes
+                      // right as the next one starts.
+                      animation: `logo-trace-loader-draw-${drawIndex} ${drawCycleSeconds}s linear infinite`,
+                      strokeDasharray: "0 1",
+                    }
+                  : {
+                      animation: "none",
+                      strokeDasharray: "1 0",
+                      transition: `stroke-dasharray ${OUTLINE_CLOSE_MS}ms ease-out`,
+                    }
+              }
+            />
+          ))}
         </g>
       ) : null}
 

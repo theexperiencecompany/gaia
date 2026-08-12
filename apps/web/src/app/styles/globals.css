@@ -258,12 +258,213 @@
   }
 }
 
-/* LogoTraceLoader — the trace dash sweeps one full normalized path length
-   (pathLength=1; each subpath dashes independently, so all arms sweep in
-   sync). The `to` frame is the whole animation: offset -1 = one full lap. */
-@keyframes logo-trace-loader-loop {
-  to {
-    stroke-dashoffset: -1;
+/* LogoTraceLoader — one arm's outline draws itself progressively (nothing →
+   full) during its own window in the draw cycle, then stays drawn so the
+   logo builds up shape by shape. Arm k draws during [k×10%, (k+1)×10%] of
+   the cycle; the next arm starts right when the previous finishes. The
+   reset back to nothing happens at the cycle's hidden tail (the group fades
+   out there), so the next cycle redraws cleanly from the first arm. */
+@keyframes logo-trace-loader-draw-0 {
+  0% {
+    stroke-dasharray: 0 1;
+  }
+  10% {
+    stroke-dasharray: 1 0;
+  }
+  95% {
+    stroke-dasharray: 1 0;
+  }
+  96% {
+    stroke-dasharray: 0 1;
+  }
+  100% {
+    stroke-dasharray: 0 1;
+  }
+}
+
+@keyframes logo-trace-loader-draw-1 {
+  0% {
+    stroke-dasharray: 0 1;
+  }
+  10% {
+    stroke-dasharray: 0 1;
+  }
+  20% {
+    stroke-dasharray: 1 0;
+  }
+  95% {
+    stroke-dasharray: 1 0;
+  }
+  96% {
+    stroke-dasharray: 0 1;
+  }
+  100% {
+    stroke-dasharray: 0 1;
+  }
+}
+
+@keyframes logo-trace-loader-draw-2 {
+  0% {
+    stroke-dasharray: 0 1;
+  }
+  20% {
+    stroke-dasharray: 0 1;
+  }
+  30% {
+    stroke-dasharray: 1 0;
+  }
+  95% {
+    stroke-dasharray: 1 0;
+  }
+  96% {
+    stroke-dasharray: 0 1;
+  }
+  100% {
+    stroke-dasharray: 0 1;
+  }
+}
+
+@keyframes logo-trace-loader-draw-3 {
+  0% {
+    stroke-dasharray: 0 1;
+  }
+  30% {
+    stroke-dasharray: 0 1;
+  }
+  40% {
+    stroke-dasharray: 1 0;
+  }
+  95% {
+    stroke-dasharray: 1 0;
+  }
+  96% {
+    stroke-dasharray: 0 1;
+  }
+  100% {
+    stroke-dasharray: 0 1;
+  }
+}
+
+@keyframes logo-trace-loader-draw-4 {
+  0% {
+    stroke-dasharray: 0 1;
+  }
+  40% {
+    stroke-dasharray: 0 1;
+  }
+  50% {
+    stroke-dasharray: 1 0;
+  }
+  95% {
+    stroke-dasharray: 1 0;
+  }
+  96% {
+    stroke-dasharray: 0 1;
+  }
+  100% {
+    stroke-dasharray: 0 1;
+  }
+}
+
+@keyframes logo-trace-loader-draw-5 {
+  0% {
+    stroke-dasharray: 0 1;
+  }
+  50% {
+    stroke-dasharray: 0 1;
+  }
+  60% {
+    stroke-dasharray: 1 0;
+  }
+  95% {
+    stroke-dasharray: 1 0;
+  }
+  96% {
+    stroke-dasharray: 0 1;
+  }
+  100% {
+    stroke-dasharray: 0 1;
+  }
+}
+
+@keyframes logo-trace-loader-draw-6 {
+  0% {
+    stroke-dasharray: 0 1;
+  }
+  60% {
+    stroke-dasharray: 0 1;
+  }
+  70% {
+    stroke-dasharray: 1 0;
+  }
+  95% {
+    stroke-dasharray: 1 0;
+  }
+  96% {
+    stroke-dasharray: 0 1;
+  }
+  100% {
+    stroke-dasharray: 0 1;
+  }
+}
+
+@keyframes logo-trace-loader-draw-7 {
+  0% {
+    stroke-dasharray: 0 1;
+  }
+  70% {
+    stroke-dasharray: 0 1;
+  }
+  80% {
+    stroke-dasharray: 1 0;
+  }
+  95% {
+    stroke-dasharray: 1 0;
+  }
+  96% {
+    stroke-dasharray: 0 1;
+  }
+  100% {
+    stroke-dasharray: 0 1;
+  }
+}
+
+@keyframes logo-trace-loader-draw-8 {
+  0% {
+    stroke-dasharray: 0 1;
+  }
+  80% {
+    stroke-dasharray: 0 1;
+  }
+  90% {
+    stroke-dasharray: 1 0;
+  }
+  95% {
+    stroke-dasharray: 1 0;
+  }
+  96% {
+    stroke-dasharray: 0 1;
+  }
+  100% {
+    stroke-dasharray: 0 1;
+  }
+}
+
+/* LogoTraceLoader — the trace group's visibility over one draw cycle: fully
+   visible while the nine arms draw in sequence, then a quick fade-out (the
+   reset), then the next cycle redraws from the first arm. */
+@keyframes logo-trace-loader-cycle {
+  0% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  95% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
   }
 }
 
