@@ -75,6 +75,10 @@ export interface CommunityWorkflow {
   title: string;
   description: string;
   prompt?: string;
+  /** User-chosen icon slug (gaia-icons component name) */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  icon_color?: string | null;
   steps: PublicWorkflowStep[];
   created_at: string;
   creator: ContentCreator;
@@ -103,6 +107,10 @@ export interface UseCase {
   description: string;
   detailed_description?: string;
   action_type: "prompt" | "workflow";
+  /** User-chosen icon slug (gaia-icons component name) */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  icon_color?: string | null;
   integrations: string[]; // Tool category names
   categories: string[]; // Same as CommunityWorkflow categories
   published_id: string;
@@ -140,6 +148,10 @@ export interface Workflow {
   title: string;
   description: string;
   prompt: string;
+  /** User-chosen icon slug (gaia-icons component name); shown when the workflow has no integration icons */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  icon_color?: string | null;
   steps: WorkflowStepType[];
   trigger_config: TriggerConfig;
   execution_config?: ExecutionConfig;
@@ -190,6 +202,10 @@ export interface CreateWorkflowRequest {
   title: string;
   description?: string;
   prompt: string;
+  /** User-chosen icon slug (gaia-icons component name) */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  icon_color?: string | null;
   trigger_config: TriggerConfig;
   steps?: WorkflowStepData[]; // Optional: pre-existing steps from explore/community workflows
   execution_config?: ExecutionConfig;

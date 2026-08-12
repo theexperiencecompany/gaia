@@ -64,6 +64,8 @@ export default function UseCaseSection({
       title: w.title,
       description: w.description,
       action_type: "workflow" as const,
+      icon: w.icon,
+      icon_color: w.icon_color,
       integrations:
         w.steps
           ?.map((s) => s.category)
@@ -311,6 +313,8 @@ export default function UseCaseSection({
                       useCase.slug ? `/use-cases/${useCase.slug}` : undefined
                     }
                     steps={useCase.steps}
+                    icon={useCase.icon}
+                    iconColor={useCase.icon_color}
                     totalExecutions={useCase.total_executions || 0}
                     showExecutions={true}
                     useBlurEffect={useBlurEffect}

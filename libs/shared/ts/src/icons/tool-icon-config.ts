@@ -36,6 +36,7 @@ export function normalizeCategoryName(name: string): string {
 
 export const iconAliases: Record<string, string> = {
   calendar: "googlecalendar",
+  google_calendar: "googlecalendar",
   planner: "plan_tasks",
   gaia_knowledge_guide: "gaia",
 };
@@ -332,9 +333,9 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
   },
   gaia: {
     icon: "gaia",
-    bgColor: "bg-zinc-700",
+    bgColor: "bg-[#00bbff]/15",
     iconColor: "text-zinc-200",
-    bgColorRaw: "#3f3f46",
+    bgColorRaw: "#00bbff26",
     iconColorRaw: "#e4e4e7",
     isImage: true,
   },

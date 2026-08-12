@@ -42,6 +42,10 @@ interface UnifiedWorkflowCardProps {
   title?: string;
   description?: string;
   steps?: PublicWorkflowStep[];
+  /** User-chosen icon slug (gaia-icons component name) */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  iconColor?: string | null;
   totalExecutions?: number;
   slug?: string;
   prompt?: string;
@@ -79,6 +83,8 @@ export default function UnifiedWorkflowCard({
   title: propTitle,
   description: propDescription,
   steps: propSteps,
+  icon: propIcon,
+  iconColor: propIconColor,
   totalExecutions: propTotalExecutions,
   slug,
   prompt,
@@ -116,6 +122,9 @@ export default function UnifiedWorkflowCard({
     communityWorkflow?.description ||
     "";
   const steps = propSteps || workflow?.steps || communityWorkflow?.steps || [];
+  const customIcon = propIcon ?? workflow?.icon ?? communityWorkflow?.icon;
+  const customIconColor =
+    propIconColor ?? workflow?.icon_color ?? communityWorkflow?.icon_color;
   const totalExecutions =
     propTotalExecutions ??
     workflow?.total_executions ??
@@ -273,7 +282,13 @@ export default function UnifiedWorkflowCard({
 
   // Render tool icons using the shared component
   const renderToolIcons = () => (
-    <WorkflowIcons steps={steps} iconSize={25} maxIcons={3} />
+    <WorkflowIcons
+      steps={steps}
+      icon={customIcon}
+      iconColor={customIconColor}
+      iconSize={25}
+      maxIcons={3}
+    />
   );
 
   const isClickable = !!href || onCardClick || resolvedAction !== "none";

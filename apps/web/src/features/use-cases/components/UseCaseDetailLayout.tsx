@@ -10,6 +10,8 @@ import YouMightAlsoLike from "./YouMightAlsoLike";
 interface UseCaseDetailLayoutProps {
   breadcrumbs: Array<{ label: string; href?: string }>;
   title: string;
+  /** Optional workflow icon rendered beside the title */
+  icon?: ReactNode;
   description?: string;
   id: string;
   isCreating: boolean;
@@ -24,6 +26,7 @@ interface UseCaseDetailLayoutProps {
 export default function UseCaseDetailLayout({
   breadcrumbs,
   title,
+  icon,
   description,
   id,
   isCreating,
@@ -49,7 +52,10 @@ export default function UseCaseDetailLayout({
 
         <div className="flex w-full items-start justify-between gap-2">
           <div className="flex-1 space-y-2">
-            <h1 className="text-5xl font-normal text-foreground">{title}</h1>
+            <div className="flex items-center gap-4">
+              {icon}
+              <h1 className="text-5xl font-normal text-foreground">{title}</h1>
+            </div>
             {description && (
               <p className="text-lg leading-relaxed text-zinc-500 max-w-5xl mt-6">
                 {description}
@@ -70,14 +76,15 @@ export default function UseCaseDetailLayout({
           </div>
         </div>
 
-        <div className="flex min-h-[40vh] gap-8 flex-col">
-          <div className="flex-1 space-y-4">
-            <div className="flex flex-wrap items-start gap-2">{metaInfo}</div>
+        <div className="flex min-h-[40vh] flex-col gap-8">
+          <div className="flex flex-wrap items-start gap-2">{metaInfo}</div>
 
-            {detailedContent}
+          <div className="grid gap-8 lg:grid-cols-3">
+            {detailedContent && (
+              <div className="lg:col-span-2">{detailedContent}</div>
+            )}
+            {steps}
           </div>
-
-          {steps}
         </div>
 
         {similarContent}

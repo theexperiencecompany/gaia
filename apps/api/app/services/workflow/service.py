@@ -212,7 +212,7 @@ class WorkflowService:
                 )
 
             # Use provided steps or initialize empty list for generation
-            workflow_steps = request.steps if request.steps else []
+            workflow_steps = request.steps or []
 
             # Step 1: Create workflow in PENDING state (activated=False). Keep
             # trigger_config.enabled in lockstep with activated (the single liveness
@@ -222,6 +222,8 @@ class WorkflowService:
                 title=request.title,
                 description=request.description or "",
                 prompt=request.prompt,
+                icon=request.icon,
+                icon_color=request.icon_color,
                 steps=workflow_steps,
                 trigger_config=trigger_config,
                 activated=False,  # Start in pending state
@@ -1088,6 +1090,8 @@ class WorkflowService:
             "description": row.description,
             "slug": row.slug,
             "prompt": row.prompt,
+            "icon": row.icon,
+            "icon_color": row.icon_color,
             "steps": normalized_steps,
             "created_at": row.created_at,
             "creator": format_creator(row, default_name=default_creator_name),

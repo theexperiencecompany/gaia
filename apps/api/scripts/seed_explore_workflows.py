@@ -42,9 +42,6 @@ from shared.py.utils.slugify import slugify  # noqa: E402
 
 workflows_collection = get_async_collection("workflows")
 
-# GAIA core tool categories - flows built on these alone need no integrations.
-CORE_CATEGORIES = {"memory", "todos", "search", "documents"}
-
 
 def create_step(
     step_number: int,
@@ -66,6 +63,8 @@ def get_study_workflows() -> list[dict[str, Any]]:
         {
             "title": "Assignment Tracker",
             "description": "Never be surprised by a due date again.",
+            "icon": "Task01Icon",
+            "icon_color": "#ad8dfe",
             "prompt": (
                 "Every Sunday at 6pm, review my calendar and todos, find "
                 "assignments due in the next two weeks, and create a todo for "
@@ -81,7 +80,7 @@ def get_study_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Find upcoming assignments",
-                    "google_calendar",
+                    "googlecalendar",
                     "Check calendar and todos for assignments due in the next two weeks.",
                 ),
                 create_step(
@@ -95,6 +94,8 @@ def get_study_workflows() -> list[dict[str, Any]]:
         {
             "title": "Study Plan Today",
             "description": "Every morning, a plan for what to study today.",
+            "icon": "StudyLampIcon",
+            "icon_color": "#e175d9",
             "prompt": (
                 "Every weekday at 7am, look at my class schedule and upcoming "
                 "exams, then give me a short study plan for today: what to "
@@ -110,13 +111,13 @@ def get_study_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Check class schedule and deadlines",
-                    "google_calendar",
+                    "googlecalendar",
                     "Pull today's classes and any exam or assignment deadlines.",
                 ),
                 create_step(
                     2,
                     "Build today's study plan",
-                    "memory",
+                    "gaia",
                     "Turn the schedule into a short, ordered study plan.",
                 ),
             ],
@@ -124,6 +125,8 @@ def get_study_workflows() -> list[dict[str, Any]]:
         {
             "title": "Lecture Notes Summarizer",
             "description": "Share your notes, get a clean summary you can actually revise from.",
+            "icon": "Book01Icon",
+            "icon_color": "#ad8dfe",
             "prompt": (
                 "Whenever I share lecture notes, summarize them into clear, "
                 "structured notes: key concepts, definitions, and anything "
@@ -146,6 +149,8 @@ def get_study_workflows() -> list[dict[str, Any]]:
         {
             "title": "Exam Revision Pack",
             "description": "A few weeks before each exam, get a condensed revision guide from your notes.",
+            "icon": "GraduationScrollIcon",
+            "icon_color": "#e175d9",
             "prompt": (
                 "Every Sunday at 10am, check for exams in the next three weeks. "
                 "For each one, gather my notes on the subject and build a "
@@ -181,6 +186,8 @@ def get_email_workflows() -> list[dict[str, Any]]:
         {
             "title": "Follow-up Reminders",
             "description": "Never let an important email go unanswered.",
+            "icon": "MailSend01Icon",
+            "icon_color": "#ff726b",
             "prompt": (
                 "Every weekday at 4pm, check my sent mail for messages that "
                 "haven't been replied to in three or more days. For each one, "
@@ -211,6 +218,8 @@ def get_email_workflows() -> list[dict[str, Any]]:
         {
             "title": "Monthly Subscription Audit",
             "description": "See every subscription in one report, so nothing bills you silently.",
+            "icon": "ReceiptDollarIcon",
+            "icon_color": "#5fbf49",
             "prompt": (
                 "On the 1st of every month, scan my inbox for subscription and "
                 "recurring-charge emails, then give me a report: service, "
@@ -233,7 +242,7 @@ def get_email_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Compile the report",
-                    "memory",
+                    "gaia",
                     "Build the service, amount, and renewal date report.",
                 ),
             ],
@@ -241,6 +250,8 @@ def get_email_workflows() -> list[dict[str, Any]]:
         {
             "title": "Email to Task",
             "description": "Flag an email and it becomes a to-do.",
+            "icon": "Mail01Icon",
+            "icon_color": "#f68001",
             "prompt": (
                 "Whenever I ask, turn the emails I point to into todos: a "
                 "clear title, what needs doing, and the deadline if one is "
@@ -269,6 +280,8 @@ def get_email_workflows() -> list[dict[str, Any]]:
         {
             "title": "Add Deadlines to Calendar",
             "description": "Deadline emails become calendar events, so nothing slips.",
+            "icon": "CalendarAdd01Icon",
+            "icon_color": "#f68001",
             "prompt": (
                 "Whenever a new email mentions a deadline, such as a bill due "
                 "date, an assignment, or a sign-up cutoff, create a calendar "
@@ -285,7 +298,7 @@ def get_email_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Create the calendar event",
-                    "google_calendar",
+                    "googlecalendar",
                     "Create a calendar event the day before the deadline.",
                 ),
             ],
@@ -298,9 +311,11 @@ def get_meetings_workflows() -> list[dict[str, Any]]:
         {
             "title": "Meeting Prep",
             "description": "Before every meeting, a one-page briefing on who you're meeting and what's on the agenda.",
+            "icon": "Calendar01Icon",
+            "icon_color": "#09b7dc",
             "prompt": (
-                "When a meeting is about to start, gather the calendar invite, "
-                "any related emails and notes, and summarize: who I'm meeting, "
+                "When a meeting is about to start, gather the calendar invite "
+                "and any notes I've saved, then summarize: who I'm meeting, "
                 "what they care about, and three things to cover."
             ),
             "categories": ["Meetings"],
@@ -319,7 +334,7 @@ def get_meetings_workflows() -> list[dict[str, Any]]:
                     1,
                     "Gather context",
                     "memory",
-                    "Pull the invite, related emails, and saved notes.",
+                    "Pull the invite details and any saved notes about the attendees.",
                 ),
                 create_step(
                     2,
@@ -332,6 +347,8 @@ def get_meetings_workflows() -> list[dict[str, Any]]:
         {
             "title": "Meeting Notes Summary",
             "description": "Share your meeting notes, get a clean summary with decisions and action items.",
+            "icon": "Note01Icon",
+            "icon_color": "#72a3fe",
             "prompt": (
                 "Whenever I share meeting notes, summarize them into key "
                 "decisions, open questions, and action items, each with an "
@@ -360,6 +377,8 @@ def get_meetings_workflows() -> list[dict[str, Any]]:
         {
             "title": "Post-meeting Follow-ups",
             "description": "After every meeting, follow-ups drafted, so nothing falls through.",
+            "icon": "MailSend01Icon",
+            "icon_color": "#09b7dc",
             "prompt": (
                 "Every weekday at 5pm, check my calendar for meetings that "
                 "ended today, review any notes I saved, and draft a follow-up "
@@ -375,6 +394,12 @@ def get_meetings_workflows() -> list[dict[str, Any]]:
             "steps": [
                 create_step(
                     1,
+                    "Find today's meetings",
+                    "googlecalendar",
+                    "Check calendar for meetings that ended today.",
+                ),
+                create_step(
+                    2,
                     "Draft follow-up emails",
                     "gmail",
                     "Draft a follow-up with decisions and action items.",
@@ -389,11 +414,13 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
         {
             "title": "Morning Briefing",
             "description": "Wake up to your calendar, emails, and priorities, all in one message.",
+            "icon": "Sun01Icon",
+            "icon_color": "#f68001",
             "prompt": (
-                "Every morning at 7:30am, gather today's calendar events, "
-                "urgent emails, and anything important from my tasks and "
-                "memory, then send me a short briefing: what's today, what "
-                "needs attention, and what I should know."
+                "Every morning at 7:30am, gather today's calendar events and "
+                "anything important from memory, then send me a short "
+                "briefing: what's today, what needs attention, and what I "
+                "should know."
             ),
             "categories": ["Home admin", "featured"],
             "trigger_config": {
@@ -405,13 +432,13 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Gather today's events and urgent items",
-                    "google_calendar",
+                    "googlecalendar",
                     "Collect today's calendar events and anything time-sensitive.",
                 ),
                 create_step(
                     2,
                     "Compile the briefing",
-                    "memory",
+                    "gaia",
                     "Write the short morning briefing from the gathered items.",
                 ),
             ],
@@ -419,10 +446,11 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
         {
             "title": "Rent Reminder",
             "description": "A heads-up three days before month-end, so rent is never late.",
+            "icon": "Money01Icon",
+            "icon_color": "#5fbf49",
             "prompt": (
                 "On the 25th of every month, remind me that rent is due at "
-                "month-end and check my calendar for any payment reminders. "
-                "Keep it short and friendly."
+                "month-end. Keep it short and friendly."
             ),
             "categories": ["Home admin", "featured"],
             "trigger_config": {
@@ -434,7 +462,7 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Send the reminder",
-                    "memory",
+                    "reminders",
                     "Send a short, friendly rent reminder.",
                 ),
             ],
@@ -442,6 +470,8 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
         {
             "title": "Weekly Meal Plan",
             "description": "Every Sunday, plan your week's dinners and get a matching grocery list.",
+            "icon": "Restaurant01Icon",
+            "icon_color": "#eebe0c",
             "prompt": (
                 "Every Sunday at 10am, plan dinners for the week: quick, "
                 "varied, and mindful of what I already have. Then give me a "
@@ -457,7 +487,7 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Plan the week's dinners",
-                    "memory",
+                    "gaia",
                     "Plan seven dinners using what I already have.",
                 ),
                 create_step(
@@ -471,6 +501,8 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
         {
             "title": "Birthday Gift Ideas",
             "description": "Never miss a birthday, and always have a gift idea ready.",
+            "icon": "GiftIcon",
+            "icon_color": "#fb6ca0",
             "prompt": (
                 "Every Sunday at 11am, scan my calendar and contacts for "
                 "birthdays in the next two weeks, and for each one suggest a "
@@ -486,7 +518,7 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Find upcoming birthdays",
-                    "google_calendar",
+                    "googlecalendar",
                     "Find birthdays in the next two weeks.",
                 ),
                 create_step(
@@ -505,6 +537,8 @@ def get_content_workflows() -> list[dict[str, Any]]:
         {
             "title": "Weekly Content Ideas",
             "description": "Every Monday, fresh content topics for your niche.",
+            "icon": "Idea01Icon",
+            "icon_color": "#ad8dfe",
             "prompt": (
                 "Every Monday at 9am, look at trending topics in my niche and "
                 "my past content, then give me five fresh content ideas with a "
@@ -526,7 +560,7 @@ def get_content_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Generate five ideas",
-                    "memory",
+                    "gaia",
                     "Give five fresh ideas with a one-line angle each.",
                 ),
             ],
@@ -534,6 +568,8 @@ def get_content_workflows() -> list[dict[str, Any]]:
         {
             "title": "Social Post Drafts",
             "description": "Turn your ideas into posts you can publish as-is.",
+            "icon": "Megaphone01Icon",
+            "icon_color": "#e175d9",
             "prompt": (
                 "Whenever I ask, turn my content ideas into ready-to-post "
                 "drafts: a hook, the body, and a call to action, sized for "
@@ -556,6 +592,8 @@ def get_content_workflows() -> list[dict[str, Any]]:
         {
             "title": "Research to Outline",
             "description": "Give GAIA a topic, get a structured outline ready for writing.",
+            "icon": "ClipboardIcon",
+            "icon_color": "#72a3fe",
             "prompt": (
                 "Whenever I give you a topic or links, research it and produce "
                 "a clean, structured outline with the key points and sources, "
@@ -584,6 +622,8 @@ def get_content_workflows() -> list[dict[str, Any]]:
         {
             "title": "Competitor Watch",
             "description": "A monthly rundown of what your competitors shipped and said, so you're never blindsided.",
+            "icon": "Telescope01Icon",
+            "icon_color": "#09b7dc",
             "prompt": (
                 "On the 1st of every month, research my competitors' recent "
                 "launches, pricing changes, and posts, then give me a short "
@@ -605,7 +645,7 @@ def get_content_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Write the rundown",
-                    "memory",
+                    "gaia",
                     "Summarize what changed and what it means.",
                 ),
             ],
@@ -618,6 +658,8 @@ def get_focus_workflows() -> list[dict[str, Any]]:
         {
             "title": "Morning Priority Map",
             "description": "Every morning, your top three tasks for today, in the order to do them.",
+            "icon": "Target01Icon",
+            "icon_color": "#f68001",
             "prompt": (
                 "Every morning at 8:30am, review my open tasks and deadlines, "
                 "pick the three that matter most today, and tell me what to do "
@@ -639,7 +681,7 @@ def get_focus_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Pick the top three",
-                    "memory",
+                    "gaia",
                     "Pick the three that matter most and order them.",
                 ),
             ],
@@ -647,6 +689,8 @@ def get_focus_workflows() -> list[dict[str, Any]]:
         {
             "title": "Focus Time",
             "description": "Every morning, block out uninterrupted time for your most important work.",
+            "icon": "Timer01Icon",
+            "icon_color": "#72a3fe",
             "prompt": (
                 "Every weekday at 9am, look at my calendar and open tasks, "
                 "then block 90 minutes of focus time today for the most "
@@ -668,7 +712,7 @@ def get_focus_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Block focus time",
-                    "google_calendar",
+                    "googlecalendar",
                     "Create a 90-minute calendar block for it.",
                 ),
             ],
@@ -676,6 +720,8 @@ def get_focus_workflows() -> list[dict[str, Any]]:
         {
             "title": "Nightly Review",
             "description": "Every evening, review what got done and set up tomorrow's list.",
+            "icon": "Moon01Icon",
+            "icon_color": "#ad8dfe",
             "prompt": (
                 "Every evening at 9pm, review what I completed today, note "
                 "anything left undone, and prepare tomorrow's task list."
@@ -696,7 +742,7 @@ def get_focus_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Prepare tomorrow",
-                    "memory",
+                    "todos",
                     "Set up tomorrow's task list.",
                 ),
             ],
@@ -709,6 +755,8 @@ def get_dev_workflows() -> list[dict[str, Any]]:
         {
             "title": "Weekly Work Summary",
             "description": "Every Friday, a summary of what you shipped this week, ready to paste into your team chat.",
+            "icon": "GitCommitIcon",
+            "icon_color": "#72a3fe",
             "prompt": (
                 "Every Friday at 4pm, review my commits, merged pull requests, "
                 "and completed tasks this week, and write a short summary I "
@@ -725,10 +773,16 @@ def get_dev_workflows() -> list[dict[str, Any]]:
                     1,
                     "Gather this week's work",
                     "github",
-                    "Collect commits, merged PRs, and completed tasks.",
+                    "Collect commits and merged pull requests.",
                 ),
                 create_step(
                     2,
+                    "Check completed tasks",
+                    "todos",
+                    "Collect tasks completed this week.",
+                ),
+                create_step(
+                    3,
                     "Write the summary",
                     "documents",
                     "Write a short summary ready to paste into team chat.",
@@ -738,6 +792,8 @@ def get_dev_workflows() -> list[dict[str, Any]]:
         {
             "title": "Code Review Reminders",
             "description": "When a teammate asks you to review code, GAIA keeps reminding you until it's done.",
+            "icon": "GitBranchIcon",
+            "icon_color": "#ad8dfe",
             "prompt": (
                 "Whenever I'm assigned a pull request, add it to my reminders "
                 "and keep surfacing it until I've reviewed it."
@@ -756,11 +812,19 @@ def get_dev_workflows() -> list[dict[str, Any]]:
                     "github",
                     "Track pull requests assigned to me.",
                 ),
+                create_step(
+                    2,
+                    "Keep surfacing the reminder",
+                    "reminders",
+                    "Add it to reminders and keep resurfacing until reviewed.",
+                ),
             ],
         },
         {
             "title": "Save the Bug",
             "description": "Describe a bug once; GAIA files it as a tracked issue, so nothing gets lost.",
+            "icon": "Bug01Icon",
+            "icon_color": "#ff726b",
             "prompt": (
                 "Whenever I describe a bug, file it as a GitHub issue with a "
                 "clear title, repro steps, and any error text I gave you."
@@ -787,6 +851,8 @@ def get_health_workflows() -> list[dict[str, Any]]:
         {
             "title": "Drink Water Reminder",
             "description": "Gentle hydration nudges all day, no apps needed.",
+            "icon": "RainIcon",
+            "icon_color": "#09b7dc",
             "prompt": (
                 "Every two hours between 8am and 10pm, send me a friendly "
                 "reminder to drink water. Keep it short and vary the wording "
@@ -802,7 +868,7 @@ def get_health_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Send the reminder",
-                    "memory",
+                    "reminders",
                     "Send a short, friendly hydration nudge.",
                 ),
             ],
@@ -810,6 +876,8 @@ def get_health_workflows() -> list[dict[str, Any]]:
         {
             "title": "Weekly Productivity Check-in",
             "description": "Review your wins every Friday, so the week doesn't blur past.",
+            "icon": "ChampionIcon",
+            "icon_color": "#eebe0c",
             "prompt": (
                 "Every Friday at 5pm, review what I completed this week, "
                 "celebrate the wins, and ask me one question: what's the one "
@@ -831,7 +899,7 @@ def get_health_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Write the check-in",
-                    "memory",
+                    "gaia",
                     "Summarize the wins and ask the carry-over question.",
                 ),
             ],
@@ -839,6 +907,8 @@ def get_health_workflows() -> list[dict[str, Any]]:
         {
             "title": "Nightly Gratitude",
             "description": "A 9pm moment to note what went well today.",
+            "icon": "SmileIcon",
+            "icon_color": "#fb6ca0",
             "prompt": (
                 "Every evening at 9:30pm, ask me what went well today and save "
                 "it to memory, so I can look back on the good days."
@@ -905,6 +975,8 @@ def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, 
         "user_id": user_id,
         "title": config["title"],
         "description": config["description"],
+        "icon": config["icon"],
+        "icon_color": config["icon_color"],
         "prompt": config.get("prompt", ""),
         "slug": slugify(config["title"]),
         "steps": steps,

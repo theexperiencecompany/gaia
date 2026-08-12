@@ -13,6 +13,11 @@ import ToolsList from "@/features/use-cases/components/ToolsList";
 import UseCaseDetailLayout from "@/features/use-cases/components/UseCaseDetailLayout";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
+import {
+  DEFAULT_WORKFLOW_ICON_COLOR,
+  WORKFLOW_ICON_BG_ALPHA,
+  WORKFLOW_ICON_MAP,
+} from "@/features/workflows/constants/workflowIconCatalog";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "@/features/workflows/triggers/utils";
 import { resolveCreatorAvatar } from "@/features/workflows/utils/creator";
@@ -64,6 +69,9 @@ export default function UseCaseDetailClient({
           title,
           description,
           prompt: useCase?.prompt || communityWorkflow?.prompt || description,
+          icon: useCase?.icon ?? communityWorkflow?.icon ?? undefined,
+          icon_color:
+            useCase?.icon_color ?? communityWorkflow?.icon_color ?? undefined,
           trigger_config: {
             type: "manual" as const,
             enabled: true,
@@ -92,6 +100,21 @@ export default function UseCaseDetailClient({
 
   // Prepare common data
   const title = "title" in data ? data.title : "";
+  const workflowPrompt = useCase?.prompt || communityWorkflow?.prompt;
+  const customIconDef = data.icon
+    ? WORKFLOW_ICON_MAP.get(data.icon)
+    : undefined;
+  const customIconColor = data.icon_color ?? DEFAULT_WORKFLOW_ICON_COLOR;
+  const heroIcon = customIconDef ? (
+    <div
+      className="flex size-12 shrink-0 items-center justify-center rounded-xl"
+      style={{
+        backgroundColor: `${customIconColor}${WORKFLOW_ICON_BG_ALPHA}`,
+      }}
+    >
+      <customIconDef.Icon size={26} style={{ color: customIconColor }} />
+    </div>
+  ) : undefined;
   const currentSlug = useCase?.slug ?? communityWorkflow?.slug ?? slug;
 
   // Prepare breadcrumbs
@@ -172,6 +195,7 @@ export default function UseCaseDetailClient({
       <UseCaseDetailLayout
         breadcrumbs={breadcrumbs}
         title={title}
+        icon={heroIcon}
         id={currentSlug}
         isCreating={isCreating}
         onCreateWorkflow={handleCreateWorkflow}
@@ -223,7 +247,18 @@ export default function UseCaseDetailClient({
             )}
           </>
         }
-        // detailedContent={}
+        detailedContent={
+          workflowPrompt ? (
+            <div className="h-full rounded-3xl bg-zinc-900 p-6">
+              <div className="mb-2 text-sm font-medium text-zinc-500">
+                Prompt
+              </div>
+              <p className="whitespace-pre-wrap text-zinc-300">
+                {workflowPrompt}
+              </p>
+            </div>
+          ) : undefined
+        }
         description={
           useCase?.detailed_description ||
           useCase?.description ||
@@ -232,9 +267,9 @@ export default function UseCaseDetailClient({
         steps={
           steps && steps.length > 0 ? (
             <div className="w-fit shrink-0">
-              <div className="sticky top-8 rounded-3xl bg-zinc-900 px-6 pt-4 pb-2">
-                <div className="text-sm font-medium text-zinc-500 mb-3">
-                  Workflow Steps:
+              <div className="sticky top-8 rounded-3xl bg-zinc-900 p-6 pb-2">
+                <div className="mb-2 text-sm font-medium text-zinc-500">
+                  Steps
                 </div>
                 <WorkflowSteps steps={stepsFormatted || []} size="large" />
               </div>

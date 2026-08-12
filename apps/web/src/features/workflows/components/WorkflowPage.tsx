@@ -70,6 +70,8 @@ export default function WorkflowPage() {
     title: workflow.title,
     description: workflow.description,
     action_type: "workflow",
+    icon: workflow.icon,
+    icon_color: workflow.icon_color,
     integrations:
       workflow.steps
         ?.map((s) => s.category)
