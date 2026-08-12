@@ -85,10 +85,27 @@ Two follow-up fixes in this PR close the biggest measured gaps:
   (`AUX_MODEL_NAME`), so their ~30k tokens/turn of new blocks can no longer
   evict the conversation from its namespace.
 
-Real-graph runs with all fixes measure **70–73%** (up from 41.4% baseline),
-with stretches at 90%+; the residual is the provider's cache retention vs
-the graph's per-turn traffic (periodic flushes), and the named next step is
-batching the memory-pipeline/executor calls to cut the request count.
+Real-graph runs with all fixes measure **70.5%** on a 15-turn driver
+(up from 41.4% baseline); the per-turn pattern is a ~19k-token cached
+plateau (the byte-stable system + head of the conversation) with the
+growing tail (~7k tokens/turn) never surviving between turns — the
+provider's cache retention window against the graph's per-turn request
+count (5–15 non-comms calls between comms calls, each occupying a cache
+slot). The named next step is batching the memory-pipeline/executor calls
+to cut the request count.
+
+**Tested and reverted: OpenRouter `session_id` sticky routing.** The
+conversation id was pinned on every request (comms, executor, subagents,
+aux) via a post-`bind_tools` bind — wire-verified at 100% coverage. The
+A/B on the same 15-turn driver measured **no benefit (64.2% pinned vs
+70.5% unpinned)** — OpenRouter's default routing already keeps a client's
+requests on the same upstream (turn-to-turn cache continuity was identical
+with and without the pin), and the pin has a real cost: it fragments the
+shared byte-identical ~19k system prefix across per-conversation upstreams,
+so a new conversation starts cold (turn 0: 0% cached pinned vs 79% cached
+unpinned — the unpinned run hit a warm upstream's copy of the shared
+prefix). Reverted on that evidence; the mechanism is documented here so it
+is not re-attempted without new data.
 
 This PR also bounds the aux calls' cache footprint so the fix is in place
 when the request count drops: the memory-extraction transcript is capped at
