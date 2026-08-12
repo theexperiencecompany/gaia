@@ -197,26 +197,6 @@ export default function LogoTraceLoader({
       height={size}
       className={cn("shrink-0", className)}
     >
-      {/* Static underlay: each layer's full outline at low emphasis, in its
-          color, so the mark's color structure reads even before the trace
-          segments pass. */}
-      <g opacity="0.18">
-        {LOGO_LAYERS.map((layer) =>
-          layer.tracePath
-            .match(/M[^Z]*Z/g)!
-            .map((subpath) => (
-              <path
-                key={`${layer.color}:${subpath.slice(0, 16)}`}
-                d={subpath}
-                fill="none"
-                stroke={layerColor(layer)}
-                strokeWidth={Math.max(1, strokeWidth / 2)}
-                strokeLinejoin="round"
-              />
-            )),
-        )}
-      </g>
-
       {/* The animated trace: per layer, a short dash sweeping that layer's
           region contour. On resolve, each element's dash expands to its full
           outline while the sweep keeps running, so the close is seamless (no
