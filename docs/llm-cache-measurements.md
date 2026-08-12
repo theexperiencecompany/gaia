@@ -57,9 +57,15 @@ upstream, before vs after the layout change.
 
 | Metric (45 turns, ~2.7M input tokens each) | Before | After |
 |---|---|---|
-| Cache hit rate | 41.4% | **70–73%** |
+| Cache hit rate | 41.4% | **70.5%** (15-turn driver; 72.4% wire-verified) |
 | Steady state (later turns) | ~45% | **80–85%** |
 | Input cost | $0.1647 | $0.1598 |
+
+The earlier "70–73%" figure was superseded: it came from a measurement run
+whose aux-namespace fix was later found to be dead code on the wire (the
+alias never reached the requests). After the real wire fix, the honest
+figures are 72.4% (wire capture + provider-reported usage, 56 requests) and
+70.5% (the 15-turn driver).
 
 The e2e delta is real but capped by a measured mechanism, not a layout
 defect: the provider's prompt cache retains only a small window of recent
