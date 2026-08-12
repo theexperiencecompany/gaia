@@ -37,7 +37,7 @@ export const BODY_FONT = "var(--font-inter), Inter, sans-serif";
 /** The letter's body, one entry per paragraph. The offer paragraph is
  * rendered separately (it carries the inline code + copy button). */
 export const LETTER_PARAGRAPHS: readonly string[] = [
-  "You were here before almost anyone else. That is not a small thing to me, and I have not forgotten it.",
+  "You have been here since before almost anyone else, and you are still here. That is not a small thing to me, and I have not forgotten it.",
   "You did not get the GAIA you signed up for right away. Some months were slower and quieter than they should have been, and that is on me. I spent them rebuilding the parts that kept breaking rather than shipping noise, and I never once considered stopping.",
   "The work since has gone into stability, and you can feel it: GAIA is faster, it holds on to what you tell it, and it stays up. I run my own days on it, automating a real chunk of my work with it daily, which is the only reason I can promise it is finally worth your time.",
 ];

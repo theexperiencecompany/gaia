@@ -477,24 +477,19 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                         {DISCOUNT_PERCENT}% off
                       </strong>{" "}
                       {DISCOUNT_SCOPE}. {DISCOUNT_YEARLY_NOTE} Use{" "}
-                      <strong className="font-bold">{DISCOUNT_CODE}</strong>
                       <button
                         type="button"
                         onClick={copyCode}
-                        aria-label="Copy the discount code"
+                        aria-label={`Copy the discount code ${DISCOUNT_CODE}`}
                         title={copied ? "Copied" : "Copy code"}
-                        className="mx-1 inline-flex h-5 w-5 translate-y-[-1px] cursor-pointer items-center justify-center rounded-full align-middle outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-90"
+                        className="mx-0.5 inline-flex translate-y-[-1px] cursor-pointer items-center gap-1 rounded px-1 align-middle font-bold outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
+                        style={{ color: INK }}
                       >
+                        {DISCOUNT_CODE}
                         {copied ? (
-                          <CheckmarkCircle02Icon
-                            className="h-3.5 w-3.5"
-                            style={{ color: INK }}
-                          />
+                          <CheckmarkCircle02Icon className="h-3.5 w-3.5" />
                         ) : (
-                          <Copy01Icon
-                            className="h-3 w-3"
-                            style={{ color: INK }}
-                          />
+                          <Copy01Icon className="h-3 w-3" />
                         )}
                       </button>
                       {OFFER_TAIL} {DISCOUNT_DEADLINE}.
