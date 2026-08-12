@@ -48,4 +48,6 @@ export const MEETING_SENTENCE =
 
 export const MEETING_CTA = "Let's set up a time to talk";
 
-export const SIGNATURE_CAPTION = "Aryan Randeriya, Founder & CEO, GAIA";
+/** Signature block: the name, then the role, on their own lines. */
+export const SIGNATURE_NAME = "Aryan Randeriya";
+export const SIGNATURE_ROLE = "Founder & CEO - GAIA";

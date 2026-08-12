@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowRightIcon,
   CancelIcon,
   CheckmarkCircle02Icon,
   CircleArrowRight02Icon,
@@ -38,7 +37,8 @@ import {
   MEETING_SENTENCE,
   MEETING_URL,
   SALUTATION_FALLBACK,
-  SIGNATURE_CAPTION,
+  SIGNATURE_NAME,
+  SIGNATURE_ROLE,
 } from "./content";
 import { Signature } from "./Signature";
 
@@ -59,9 +59,8 @@ const LETTER_TYPOGRAPHY = {
   "--letter-pad-b": "clamp(36px, 6vh, 52px)",
 } as CSSProperties;
 
-/** The offer button's gold. Bright enough that RaisedButton's contrast check
- * lands on black text, which is what the letter's ink is. */
-const GOLD_CTA = "#ffc21a";
+/** The offer button reads as ink on paper: RaisedButton's flat black treatment. */
+const CTA_BLACK = "#000000";
 
 /** The sealed envelope the letter arrives in: the artwork file as it is. */
 const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.png";
@@ -483,9 +482,9 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                     at checkout.
                   </p>
                   <RaisedButton
-                    color={GOLD_CTA}
+                    color={CTA_BLACK}
                     size="sm"
-                    className="mt-1 rounded-full px-4 font-semibold before:rounded-full"
+                    className="mt-1 px-4 font-semibold"
                     onClick={() => {
                       trackEvent(
                         ANALYTICS_EVENTS.FOUNDER_LETTER_DISCOUNT_CTA_CLICKED,
@@ -526,7 +525,6 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                   className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
                 >
                   {MEETING_CTA}
-                  <ArrowRightIcon className="h-3 w-3" style={{ color: INK }} />
                 </a>
 
                 {/* Signature: draws itself in, stroke by stroke */}
@@ -536,12 +534,13 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                     scale="clamp(1.05, 0.14vh, 1.35)"
                   />
                 </div>
-                <p
-                  className="mt-1 font-normal"
+                <div
+                  className="mt-1 flex flex-col leading-snug font-normal"
                   style={{ fontSize: "var(--letter-small)" }}
                 >
-                  {SIGNATURE_CAPTION}
-                </p>
+                  <span className="font-medium">{SIGNATURE_NAME}</span>
+                  <span>{SIGNATURE_ROLE}</span>
+                </div>
               </div>
             </m.div>
           </m.div>
