@@ -18,6 +18,8 @@ import {
   useState,
 } from "react";
 
+import { RaisedButton } from "@/components/ui/raised-button";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { useUserStore } from "@/stores/userStore";
@@ -30,6 +32,7 @@ import {
   INK,
   INK_SOFT,
   LETTER_DISMISSED_KEY,
+  LETTER_OPENED_KEY,
   LETTER_PARAGRAPHS,
   MEETING_CTA,
   MEETING_SENTENCE,
@@ -56,9 +59,8 @@ const LETTER_TYPOGRAPHY = {
   "--letter-pad-b": "clamp(36px, 6vh, 52px)",
 } as CSSProperties;
 
-/** Ivory stock with the faintest warmth, so the black ink stays the darkest
- * thing on the page. Used for the paper and for ink-on-paper reversals. */
-const PAPER_CREAM = "#fdf6d9";
+/** The offer button's gold: the envelope's, so the letter and its CTA agree. */
+const GOLD_CTA = "#e3b23c";
 
 /** The sealed envelope the letter arrives in: the artwork file as it is. */
 const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.png";
@@ -223,8 +225,9 @@ interface FounderLetterProps {
 
 export function FounderLetter({ hidden = false }: FounderLetterProps) {
   const [isOpen, setIsOpen] = useState(false);
-  // Read in an effect, not in render, so server and client markup match.
+  // Both read in an effect, not in render, so server and client markup match.
   const [dismissed, setDismissed] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
   const [copied, setCopied] = useState(false);
   const userName = useUserStore((s) => s.name);
   const openPricingModal = usePricingModalStore((s) => s.openModal);
@@ -236,14 +239,28 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
 
   useEffect(() => {
     setDismissed(!!window.localStorage.getItem(LETTER_DISMISSED_KEY));
+    setHasOpened(!!window.localStorage.getItem(LETTER_OPENED_KEY));
   }, []);
 
-  const openLetter = useCallback(() => setIsOpen(true), []);
+  const openLetter = useCallback(() => {
+    const firstOpen = !window.localStorage.getItem(LETTER_OPENED_KEY);
+    window.localStorage.setItem(LETTER_OPENED_KEY, "1");
+    setHasOpened(true);
+    setIsOpen(true);
+    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_OPENED, {
+      first_open: firstOpen,
+      discount_code: DISCOUNT_CODE,
+      discount_percent: DISCOUNT_PERCENT,
+    });
+  }, []);
 
   // Dismissing hides the envelope for good on this device.
   const dismissLetter = useCallback(() => {
     window.localStorage.setItem(LETTER_DISMISSED_KEY, "1");
     setDismissed(true);
+    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_DISMISSED, {
+      discount_code: DISCOUNT_CODE,
+    });
   }, []);
 
   const closeLetter = useCallback(() => setIsOpen(false), []);
@@ -282,6 +299,9 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
       textarea.remove();
     }
     setCopied(true);
+    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_CODE_COPIED, {
+      discount_code: DISCOUNT_CODE,
+    });
     toast.success(`Code ${DISCOUNT_CODE} copied, it's yours`);
     window.setTimeout(() => setCopied(false), 2000);
   }, []);
@@ -304,9 +324,12 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
           whileTap={reduceMotion ? undefined : { scale: 0.94 }}
           // A jump, not a float: two hops, then it sits still long enough to
           // stop being noise.
-          animate={reduceMotion ? undefined : { y: [0, -16, 0, -7, 0] }}
+          // It jumps for attention until it has been read, then settles.
+          animate={
+            reduceMotion || hasOpened ? undefined : { y: [0, -16, 0, -7, 0] }
+          }
           transition={
-            reduceMotion
+            reduceMotion || hasOpened
               ? undefined
               : {
                   y: {
@@ -328,13 +351,15 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
             className="block w-20 rotate-[-3deg]"
           />
         </m.button>
-        <button
-          type="button"
-          onClick={dismissLetter}
-          className="cursor-pointer pr-1 text-[11px] font-normal text-zinc-500 outline-none transition-colors hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-[#00bbff]"
-        >
-          Don't show again
-        </button>
+        {hasOpened && (
+          <button
+            type="button"
+            onClick={dismissLetter}
+            className="cursor-pointer pr-1 text-[11px] font-normal text-zinc-500 outline-none transition-colors hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-[#00bbff]"
+          >
+            Don't show again
+          </button>
+        )}
       </div>
 
       <AnimatePresence>
@@ -456,23 +481,28 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                     </button>
                     at checkout.
                   </p>
-                  <button
-                    type="button"
+                  <RaisedButton
+                    color={GOLD_CTA}
+                    size="sm"
+                    className="mt-1 rounded-full px-4 font-semibold before:rounded-full"
                     onClick={() => {
+                      trackEvent(
+                        ANALYTICS_EVENTS.FOUNDER_LETTER_DISCOUNT_CTA_CLICKED,
+                        {
+                          discount_code: DISCOUNT_CODE,
+                          discount_percent: DISCOUNT_PERCENT,
+                        },
+                      );
                       openPricingModal({
                         discountCode: DISCOUNT_CODE,
                         discountPercent: DISCOUNT_PERCENT,
                       });
                       closeLetter();
                     }}
-                    className="mt-0.5 inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-black pr-2.5 pl-4 text-[calc(var(--letter-small)*1.1)] font-semibold text-[#fdf6d9] shadow-[0_6px_14px_-6px_rgba(0,0,0,0.55)] outline-none transition-all hover:-translate-y-0.5 hover:shadow-[0_10px_20px_-8px_rgba(0,0,0,0.65)] focus-visible:ring-2 focus-visible:ring-black/60 active:translate-y-0 active:scale-[0.98]"
                   >
                     Claim {DISCOUNT_PERCENT}% off
-                    <CircleArrowRight02Icon
-                      className="h-5 w-5"
-                      style={{ color: PAPER_CREAM }}
-                    />
-                  </button>
+                    <CircleArrowRight02Icon className="h-4 w-4" />
+                  </RaisedButton>
                 </div>
 
                 {/* Meeting */}
@@ -489,6 +519,9 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                   href={MEETING_URL}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={() =>
+                    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_MEETING_CLICKED)
+                  }
                   className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
                 >
                   {MEETING_CTA}

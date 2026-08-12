@@ -19,6 +19,9 @@ export const DISCOUNT_APPLIES = "monthly and yearly plans";
 /** Founder's booking link for the meeting CTA. */
 export const MEETING_URL = "https://cal.com/aryanranderiya";
 
+/** localStorage key: set the first time the letter is opened on this device. */
+export const LETTER_OPENED_KEY = "gaia_founder_letter_opened";
+
 /** localStorage key: once dismissed, the envelope never returns on this device. */
 export const LETTER_DISMISSED_KEY = "gaia_founder_letter_dismissed";
 
