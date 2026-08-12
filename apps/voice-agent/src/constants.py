@@ -20,6 +20,10 @@ class LogTag:
 
 SSE_DATA_PREFIX = "data:"
 DONE_SENTINEL = "[DONE]"
+# Backend LoggingMiddleware echoes its wide event's trace id on every response
+# (apps/api/app/api/v1/middleware/logging.py); adopting it onto the voice
+# turn's wide event correlates the two sides of a turn in Loki.
+TRACE_ID_HEADER = "x-trace-id"
 FRONTEND_STREAM_TOPIC = "backend-stream-event"
 RESPONSE_KEY = "response"
 MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
@@ -113,6 +117,7 @@ __all__ = [
     "LogTag",
     "SSE_DATA_PREFIX",
     "DONE_SENTINEL",
+    "TRACE_ID_HEADER",
     "FRONTEND_STREAM_TOPIC",
     "RESPONSE_KEY",
     "MAIN_RESPONSE_COMPLETE_KEY",

@@ -22,8 +22,6 @@ from app.agents.tools.coding.query_json_tool import (
     query_json,
 )
 
-pytestmark = pytest.mark.unit
-
 CONFIG = {"configurable": {"user_id": "u1", "conversation_id": "c1"}}
 
 RECORDS = [

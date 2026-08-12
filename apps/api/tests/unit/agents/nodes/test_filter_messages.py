@@ -1,12 +1,10 @@
 from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-import pytest
 
 from app.agents.core.nodes.filter_messages import filter_messages_node
 
 
-@pytest.mark.unit
 class TestFilterMessages:
     def _make_state(self, messages):
         return {"messages": messages}
@@ -183,9 +181,10 @@ class TestFilterMessages:
 
         mock_log.error.assert_called_once()
         logged = mock_log.error.call_args.args[0]
+        kwargs = mock_log.error.call_args.kwargs
         assert "filter messages node" in logged
-        assert "has no attribute 'get'" in logged, (
-            f"The swallowed exception must be named in the log, got: {logged}"
+        assert "has no attribute 'get'" in kwargs.get("error", ""), (
+            f"The swallowed exception must be named in the log, got: {kwargs}"
         )
 
     def test_cross_message_tool_call_deduplication(self):

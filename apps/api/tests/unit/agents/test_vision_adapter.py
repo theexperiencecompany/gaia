@@ -15,7 +15,6 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-import pytest
 
 from app.agents.llm.vision.adapter import MediaAdapter
 from app.agents.llm.vision.capability import MediaDelivery
@@ -53,7 +52,6 @@ def _all_images(messages: Sequence[AnyMessage]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestToolMessageBlocksLane:
     def test_image_stays_inside_the_tool_message(self):
         msgs = [_ai_call(), _tool_msg({"type": "text", "text": "shot.png"}, _img())]
@@ -86,7 +84,6 @@ class TestToolMessageBlocksLane:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTextOnlyLane:
     def test_no_image_block_survives(self):
         msgs = [_ai_call(), _tool_msg({"type": "text", "text": "shot.png"}, _img())]
@@ -142,7 +139,6 @@ class TestTextOnlyLane:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBudget:
     def test_at_most_max_blocks_reach_the_provider(self):
         """Without this, a thread that read twenty screenshots re-sends all of

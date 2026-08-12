@@ -131,7 +131,11 @@ def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | N
         try:
             draft = FinalizedOutput(**data)
         except Exception as e:
-            log.warning(f"{LogTag.WORKFLOW} Failed to parse finalized output: {e}")
+            log.warning(
+                f"{LogTag.WORKFLOW} Failed to parse finalized output",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return ParseResult(
                 mode="parse_error",
                 parse_error=f"Invalid finalized output: {e!s}",
@@ -152,7 +156,7 @@ def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | N
                 raw_response=response,
             )
 
-        log.info(f"{LogTag.WORKFLOW} Successfully parsed finalized workflow: {draft.title}")
+        log.info(f"{LogTag.WORKFLOW} Successfully parsed finalized workflow", title=draft.title)
         return ParseResult(mode="finalized", draft=draft, raw_response=response)
 
     if output_type == "clarifying":

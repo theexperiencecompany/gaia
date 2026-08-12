@@ -70,7 +70,9 @@ async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
         return names
     except Exception as e:
         log.warning(
-            f"{LogTag.TOOL} _user_mcp_tool_names: failed for user {user_id}: {type(e).__name__}: {e}"
+            f"{LogTag.TOOL} _user_mcp_tool_names failed",
+            user_id=user_id,
+            error_type=type(e).__name__,
         )
         return set()
 
@@ -301,12 +303,16 @@ async def _get_user_context(
         if include_subagents:
             connected_integrations = await _resolve_connected_subagents(user_id)
             log.info(
-                f"{LogTag.TOOL} User {user_id} connected subagents: {set(connected_integrations)}"
+                f"{LogTag.TOOL} User connected subagents",
+                user_id=user_id,
+                connected_integrations=sorted(set(connected_integrations)),
             )
 
-        log.info(f"{LogTag.TOOL} User {user_id} namespaces: {user_namespaces}")
+        log.info(
+            f"{LogTag.TOOL} User namespaces resolved", user_id=user_id, namespaces=user_namespaces
+        )
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Failed to get user namespaces: {e}")
+        log.warning(f"{LogTag.TOOL} Failed to get user namespaces", error_type=type(e).__name__)
 
     return user_namespaces, connected_integrations, internal_subagents
 
@@ -333,7 +339,7 @@ def _build_search_tasks(
 
     # Search in tool_space
     if tool_space in user_namespaces or tool_space == "general":
-        log.info(f"{LogTag.TOOL} Adding search for tool_space: {tool_space}")
+        log.info(f"{LogTag.TOOL} Adding search for tool space", tool_space=tool_space)
         search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
     else:
         # Caller is in a subagent whose namespace they don't own. This is
@@ -484,11 +490,18 @@ async def _process_search_results(
                     for item in items[:20]
                 ]
                 log.debug(
-                    f"{LogTag.TOOL} Chroma search raw hits (task={idx}, tool_space={tool_space}): "
-                    f"{len(result)} items, preview={preview}"
+                    f"{LogTag.TOOL} Chroma search raw hits",
+                    task_index=idx,
+                    tool_space=tool_space,
+                    hit_count=len(result),
+                    preview=preview,
                 )
             except Exception as e:
-                log.debug(f"{LogTag.TOOL} Chroma search raw hits log failed (task={idx}): {e}")
+                log.debug(
+                    f"{LogTag.TOOL} Chroma search raw hits log failed",
+                    task_index=idx,
+                    error_type=type(e).__name__,
+                )
             processed = _process_chroma_search_result(
                 items,
                 available_tool_names,
@@ -657,7 +670,10 @@ def get_retrieve_tools_function(
 
         tool_registry = await get_tool_registry()
         available_tool_names = tool_registry.get_tool_names()
-        log.info(f"{LogTag.TOOL} Registry has {len(available_tool_names)} available tools")
+        log.info(
+            f"{LogTag.TOOL} Registry available tools",
+            available_tool_count=len(available_tool_names),
+        )
 
         # Desktop tools only surface for desktop-app conversations, and only
         # in the main agent context (subagents keep their own tool space).
@@ -888,9 +904,9 @@ def get_retrieve_tools_function(
         )
         if chroma_hits == 0 and tool_space != "general":
             log.warning(
-                f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits for tool_space='{tool_space}' "
-                f"user={user_id} query={query!r}. Check that index_tools_to_store "
-                f"actually wrote docs for this namespace."
+                f"{LogTag.TOOL} retrieve_tools: 0 ChromaDB hits — check that index_tools_to_store actually wrote docs for this namespace",
+                tool_space=tool_space,
+                user_id=user_id,
             )
 
         return RetrieveToolsResult(

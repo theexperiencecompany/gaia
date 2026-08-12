@@ -36,7 +36,6 @@ def sample_user_id():
     return str(ObjectId())
 
 
-@pytest.mark.unit
 class TestPlatform:
     def test_is_valid_known_platform(self):
         assert all(Platform.is_valid(p) for p in ("discord", "slack", "telegram", "whatsapp"))
@@ -49,7 +48,6 @@ class TestPlatform:
         assert set(Platform.values()) == {"discord", "slack", "telegram", "whatsapp"}
 
 
-@pytest.mark.unit
 class TestGetUserByPlatformId:
     async def test_finds_user_returns_legacy_dict(self, mock_repo, sample_user_id):
         mock_repo.get_by_platform_id.return_value = _user(
@@ -68,7 +66,6 @@ class TestGetUserByPlatformId:
         assert await PlatformLinkService.get_user_by_platform_id("slack", "nope") is None
 
 
-@pytest.mark.unit
 class TestLinkAccount:
     async def test_link_new_account(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
@@ -154,7 +151,6 @@ class TestLinkAccount:
         assert result.status == "linked"
 
 
-@pytest.mark.unit
 class TestUnlinkAccount:
     async def test_unlinks_successfully(self, mock_repo, sample_user_id):
         mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
@@ -172,7 +168,6 @@ class TestUnlinkAccount:
             await PlatformLinkService.unlink_account(sample_user_id, "discord")
 
 
-@pytest.mark.unit
 class TestGetLinkedPlatforms:
     async def test_returns_linked_platforms(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = _user(

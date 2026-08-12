@@ -121,7 +121,9 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
             except AppError as e:
-                log.error(f"{LogTag.TOOL} Error sharing with {recipient.email}: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Error sharing sheet with recipient", error_type=type(e).__name__
+                )
                 errors.append(
                     {
                         "email": recipient.email,
@@ -130,7 +132,9 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
             except Exception as e:
-                log.error(f"{LogTag.TOOL} Error sharing with {recipient.email}: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Error sharing sheet with recipient", error_type=type(e).__name__
+                )
                 errors.append(
                     {
                         "email": recipient.email,
@@ -395,7 +399,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
                 body=batch_request,
             )
         except AppError as e:
-            log.error(f"{LogTag.TOOL} Error setting data validation: {e.message}")
+            log.error(f"{LogTag.TOOL} Error setting data validation", error_type=type(e).__name__)
             raise RuntimeError(f"Failed to set data validation: {e.message}") from e
 
         url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
@@ -669,7 +673,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
                 body=batch_request,
             )
         except AppError as e:
-            log.error(f"{LogTag.TOOL} Error creating chart: {e.message}")
+            log.error(f"{LogTag.TOOL} Error creating chart", error_type=type(e).__name__)
             raise RuntimeError(f"Failed to create chart: {e.message}") from e
 
         chart_id = None
@@ -725,7 +729,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
                 for f in (data or {}).get("files", [])
             ]
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Google Sheets fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} Google Sheets fetch failed", error_type=type(e).__name__)
 
         return {"recent_spreadsheets": files, "spreadsheet_count": len(files)}
 

@@ -192,6 +192,8 @@ services:
       - ../../apps/api/.env
     environment:
       WORKER_TYPE: arq_worker
+      # Wide-event identity — must equal the Promtail label (see prod compose).
+      GAIA_SERVICE_NAME: arq_worker
       PYTHONPATH: /app/apps/api
       # Session/sandbox background tasks touch the workspace, so the worker
       # needs the same JuiceFS mount as the backend.
@@ -201,7 +203,7 @@ services:
     # in the API Dockerfile, so call python directly. `uv run` would try to
     # rewrite /app/uv.lock and fail (Permission denied) under the non-root
     # appuser the runtime image switches to.
-    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
+    command: ["python", "-m", "arq", "app.worker.WorkerSettings", "--custom-log-dict", "app.workers.config.log_config.ARQ_LOG_CONFIG"]
     restart: always
     # Same FUSE requirements as gaia-backend (see that service for details).
     cap_add:

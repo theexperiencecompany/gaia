@@ -11,13 +11,9 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 import uuid
 
-import pytest
-
 from app.constants.sandbox import SANDBOX_TIMEOUT_REFRESH_SECONDS
 from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
-
-pytestmark = pytest.mark.unit
 
 
 def _healthy_entry() -> PooledSandbox:
@@ -72,29 +68,38 @@ async def test_set_timeout_skipped_when_recently_refreshed() -> None:
 
 async def test_unhealthy_cached_handle_is_evicted() -> None:
     entry = _healthy_entry()
+    repo = AsyncMock()
     with (
         patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
         patch.object(lifecycle, "_stop_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
     ):
         user_id = _seed(entry)
         result = await lifecycle._reuse_cached_entry(user_id, {})
         assert result is None, "an unhealthy cached handle must not be reused"
         assert get_sandbox_pool().get(user_id) is None, "it must be evicted"
         entry.sandbox.set_timeout.assert_not_awaited()
+        # Evicting in-memory is not enough — Mongo must also record the
+        # sandbox as dead, or a stale doc lets _acquire_or_create resume a
+        # sandbox_id that no longer exists (the 404-on-resume bug).
+        repo.mark_dead.assert_awaited_once()
 
 
 async def test_stale_canary_is_evicted() -> None:
     entry = _healthy_entry()
+    repo = AsyncMock()
     with (
         patch.object(lifecycle, "_health_probe", AsyncMock(return_value=True)),
         patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
         patch.object(lifecycle, "_verify_canary_or_die", AsyncMock(return_value=False)),
         patch.object(lifecycle, "_stop_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
     ):
         user_id = _seed(entry)
         result = await lifecycle._reuse_cached_entry(user_id, {})
         assert result is None, "a stale-canary (stale FS) sandbox must be recreated"
         assert get_sandbox_pool().get(user_id) is None
+        repo.mark_dead.assert_awaited_once()
 
 
 async def test_returns_none_when_no_cached_entry() -> None:

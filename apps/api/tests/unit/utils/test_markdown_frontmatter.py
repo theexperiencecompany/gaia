@@ -1,11 +1,8 @@
 """Unit tests for markdown utilities: frontmatter splitting, detection, conversion."""
 
-import pytest
-
 from app.utils.markdown_utils import split_yaml_frontmatter
 
 
-@pytest.mark.unit
 class TestSplitYamlFrontmatter:
     def test_valid_frontmatter(self):
         content = "---\ntitle: Hello\nauthor: Test\n---\n# Body here\nParagraph."

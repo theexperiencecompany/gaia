@@ -12,7 +12,6 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.subagent_models import Subagent
 
 
-@pytest.mark.unit
 class TestBuiltinSubagentsTuple:
     def test_is_non_empty_tuple(self) -> None:
         assert isinstance(BUILTIN_SUBAGENTS, tuple)
@@ -68,7 +67,6 @@ class TestBuiltinSubagentsTuple:
         assert not overlap, f"Builtin ids collide with OAUTH_INTEGRATIONS ids: {sorted(overlap)}"
 
 
-@pytest.mark.unit
 class TestGaiaBuiltin:
     """Pin the GAIA Knowledge Guide builtin entry."""
 

@@ -48,12 +48,12 @@ from app.templates.docstrings.calendar_tool_docs import (
     CUSTOM_LIST_CALENDARS as CUSTOM_LIST_CALENDARS_DOC,
     CUSTOM_PATCH_EVENT as CUSTOM_PATCH_EVENT_DOC,
 )
+from app.utils.calendar_utils import calendar_events_endpoint
 from app.utils.context_utils import execute_tool
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone, home_timezone_from_config
 from shared.py.wide_events import log
 
-CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
 CALENDAR_TOOLKIT = "GOOGLECALENDAR"
 
 _T = TypeVar("_T")
@@ -246,8 +246,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     busy_minutes += duration
                 except (ValueError, TypeError) as e:
                     log.debug(
-                        f"{LogTag.TOOL} Excluding event from busy-hours total, "
-                        f"unparseable times {start_time!r}..{end_time!r}: {e}"
+                        f"{LogTag.TOOL} Excluding event from busy-hours total, unparseable times",
+                        start_time=start_time,
+                        end_time=end_time,
+                        error=str(e),
+                        error_type=type(e).__name__,
                     )
 
         next_event: dict[str, Any] | None = None
@@ -263,7 +266,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     except (ValueError, TypeError) as e:
                         log.debug(
                             f"{LogTag.TOOL} Skipping event when resolving next_event, "
-                            f"unparseable start time {start_time!r}: {e}"
+                            "unparseable start time",
+                            start_time=start_time,
+                            error=str(e),
+                            error_type=type(e).__name__,
                         )
 
         result_data = {
@@ -296,7 +302,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         result = _run_sync(
             calendar_service.get_calendar_events(
                 user_id=user_id,
-                selected_calendars=request.calendar_ids if request.calendar_ids else None,
+                selected_calendars=request.calendar_ids or None,
                 time_min=time_min,
                 time_max=request.time_max,
                 max_results=request.max_results,
@@ -382,10 +388,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 event = proxy_request_sync(
                     user_id=user_id,
                     toolkit=CALENDAR_TOOLKIT,
-                    endpoint=(
-                        f"{CALENDAR_API_BASE}/calendars/"
-                        f"{event_ref.calendar_id}/events/{event_ref.event_id}"
-                    ),
+                    endpoint=calendar_events_endpoint(event_ref.calendar_id, event_ref.event_id),
                     method="GET",
                 )
                 results.append(
@@ -396,7 +399,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
             except AppError as e:
-                log.error(f"{LogTag.TOOL} Error getting event {event_ref.event_id}: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Error getting event",
+                    event_id=event_ref.event_id,
+                    error_type=type(e).__name__,
+                )
                 errors.append(
                     {
                         "event_id": event_ref.event_id,
@@ -431,10 +438,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 proxy_request_sync(
                     user_id=user_id,
                     toolkit=CALENDAR_TOOLKIT,
-                    endpoint=(
-                        f"{CALENDAR_API_BASE}/calendars/"
-                        f"{event_ref.calendar_id}/events/{event_ref.event_id}"
-                    ),
+                    endpoint=calendar_events_endpoint(event_ref.calendar_id, event_ref.event_id),
                     method="DELETE",
                     query={"sendUpdates": request.send_updates},
                 )
@@ -445,7 +449,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
             except AppError as e:
-                log.error(f"{LogTag.TOOL} Error deleting event {event_ref.event_id}: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Error deleting event",
+                    event_id=event_ref.event_id,
+                    error_type=type(e).__name__,
+                )
                 errors.append(
                     {
                         "event_id": event_ref.event_id,
@@ -487,9 +495,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         event = proxy_request_sync(
             user_id=user_id,
             toolkit=CALENDAR_TOOLKIT,
-            endpoint=(
-                f"{CALENDAR_API_BASE}/calendars/{request.calendar_id}/events/{request.event_id}"
-            ),
+            endpoint=calendar_events_endpoint(request.calendar_id, request.event_id),
             method="PATCH",
             body=body,
             query={"sendUpdates": request.send_updates},
@@ -507,7 +513,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "add_recurrence"})
         user_id = _get_user_id(auth_credentials)
-        endpoint = f"{CALENDAR_API_BASE}/calendars/{request.calendar_id}/events/{request.event_id}"
+        endpoint = calendar_events_endpoint(request.calendar_id, request.event_id)
 
         event = proxy_request_sync(
             user_id=user_id,
@@ -619,7 +625,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 created_event = proxy_request_sync(
                     user_id=user_id,
                     toolkit=CALENDAR_TOOLKIT,
-                    endpoint=f"{CALENDAR_API_BASE}/calendars/{event.calendar_id}/events",
+                    endpoint=calendar_events_endpoint(event.calendar_id),
                     method="POST",
                     body=body,
                     query=query,

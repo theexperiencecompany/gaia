@@ -1,0 +1,34 @@
+# gaia-redis-down — fires when the redis_exporter reports the database itself
+# (not the exporter) is unreachable via redis_up.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-redis-down fires when redis_up reports 0
+    interval: 1m
+    input_series:
+      - series: 'redis_up{instance="redis_exporter:9121"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-redis-down
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: redis
+              incident: availability
+              instance: redis_exporter:9121
+            exp_annotations:
+              description: >-
+                Redis is not a cache here — it is the ARQ job queue, the SSE chat stream channels, the stream-cancellation flags and the rate limiter. While it is unreachable chat responses never reach the browser and nothing scheduled runs: reminders, workflows, tracked todos and Gmail-to-memory ingestion all stop. The Redis memory and eviction rules go silent during this outage because their metrics disappear with it, so this is the only signal. Check the redis container and its logs; a full disk is a common cause.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-down
+
+  - name: gaia-redis-down stays quiet when redis_up reports 1
+    interval: 1m
+    input_series:
+      - series: 'redis_up{instance="redis_exporter:9121"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-redis-down
+        exp_alerts: []

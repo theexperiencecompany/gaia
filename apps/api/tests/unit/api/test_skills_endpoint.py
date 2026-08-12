@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 if TYPE_CHECKING:
     from app.agents.skills.github_discovery import DiscoveredSkill
@@ -93,7 +92,6 @@ def _make_discovered_skill(**overrides) -> DiscoveredSkill:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDiscoverSkills:
     """Tests for the discover skills endpoint."""
 
@@ -165,7 +163,6 @@ class TestDiscoverSkills:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestInstallFromGitHub:
     """Tests for the install skill from GitHub endpoint."""
 
@@ -308,7 +305,6 @@ class TestInstallFromGitHub:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestInstallInline:
     """Tests for the create inline skill endpoint."""
 
@@ -415,7 +411,6 @@ class TestInstallInline:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListSkills:
     """Tests for the list skills endpoint."""
 
@@ -489,7 +484,6 @@ class TestListSkills:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetSkill:
     """Tests for the get skill by ID endpoint."""
 
@@ -530,7 +524,6 @@ class TestGetSkill:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestEnableSkill:
     """Tests for the enable skill endpoint."""
 
@@ -563,7 +556,6 @@ class TestEnableSkill:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDisableSkill:
     """Tests for the disable skill endpoint."""
 
@@ -596,7 +588,6 @@ class TestDisableSkill:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUninstallSkill:
     """Tests for the uninstall skill endpoint."""
 
@@ -636,7 +627,6 @@ class TestUninstallSkill:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListSkillTargets:
     """Tests for the skill-targets endpoint. Mocks only get_connected_integration_ids
     (the true I/O boundary) so get_skill_targets' own executor+connected-subagent
@@ -688,7 +678,6 @@ class TestListSkillTargets:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListBuiltinSkills:
     """Tests for the builtin-skills endpoint, including the _is_available /
     _group_label branch logic (executor-always-available, integration-backed
@@ -762,7 +751,6 @@ class TestListBuiltinSkills:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateSkill:
     """Tests for the update-skill endpoint, including _validate_target's real
     400-rejection — every prior test that touched this path mocked

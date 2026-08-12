@@ -61,7 +61,11 @@ class TriggerSearchService:
                     checked_integrations[integration_id] = is_connected
                 except Exception as e:
                     log.warning(
-                        f"{LogTag.WORKFLOW} Failed to check connection for {integration_id}: {e}"
+                        f"{LogTag.WORKFLOW} Failed to check connection for",
+                        integration_id=integration_id,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        user_id=user_id,
                     )
                     checked_integrations[integration_id] = False
 

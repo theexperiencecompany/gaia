@@ -1,0 +1,38 @@
+# Multi-turn conversations. Each case's `prompt` carries the turns separated by
+# a line containing exactly `---`. The transport sends every turn through
+# /api/v1/chat-stream with the SAME dev user and conversation_id (captured from
+# the first turn's conversation_initialized frame), collecting the full
+# transcript. `messages` sent per turn = accumulated transcript + current turn.
+
+- id: quality-followup-two-turn
+  ticket: "Multi-turn — remembers the conversation across turns; answers naturally. Suggestion gate disabled: the follow-up generator returned only 2 items on turn 2 in ~40% of observed runs (its FollowUpActions schema lacks min_length=3 — root fix belongs in the node), so a 3-4 gate here flips on model whim. The dedicated suggestion gates live on the everyday cases."
+  tags: [followup]
+  prompt: "hey!\n---\nwhat's the capital of france?"
+  expected:
+    category: followup
+    communicate: ["paris"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The second reply answers the question directly and naturally, as if continuing a conversation (no reintroducing itself)."
+        - "The reply sounds human: warm, contractions, concise (under 3 sentences), no 'As an AI' or other boilerplate."
+        - "The reply is factually correct (Paris)."
+    score: {gates: [communicate]}
+
+- id: quality-followup-todo-then-again
+  ticket: "Multi-turn tool continuity — the second turn acts on the first turn's context."
+  tags: [followup, tool]
+  prompt: "create a todo for buying milk\n---\nnow add one for bread too"
+  expected:
+    category: followup
+    communicate: ["bread"]
+    tool_calls: [{tool: create_todo, min_calls: 2}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The second reply confirms the second todo was created without re-asking what 'one' refers to (it knows the first todo was milk)."
+        - "The reply sounds human: warm, contractions, concise (under 3 sentences), no robotic boilerplate."
+        - "The reply does not claim a completed action it cannot see yet."
+    score: {gates: [communicate, tool_call_correctness]}

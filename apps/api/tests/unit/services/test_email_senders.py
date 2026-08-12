@@ -22,7 +22,6 @@ RESEND_PROVIDER = "app.services.email.providers.resend_provider"
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestSendWelcomeEmail:
     @patch(f"{SENDERS}.send_email")
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>Welcome</h1>")
@@ -55,7 +54,6 @@ class TestSendWelcomeEmail:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestAddMarketingContact:
     # add_contact exits early when RESEND_AUDIENCE_ID is empty (not configured).
     # All tests must patch settings so the guard passes and the real logic runs.
@@ -141,15 +139,16 @@ class TestAddMarketingContact:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestSendInactiveUserEmail:
     # Throttle policy lives in the check_inactive_users worker task, not here —
     # see tests/unit/workers/test_user_tasks.py.
 
+    @patch(f"{SENDERS}.build_unsubscribe_headers", return_value={"List-Unsubscribe": "<url>"})
+    @patch(f"{SENDERS}.build_unsubscribe_url", return_value="https://unsub")
     @patch(f"{SENDERS}.send_email")
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>Miss you</h1>")
-    async def test_success(self, mock_render, mock_send):
-        await send_inactive_user_email("user@example.com", "Alice")
+    async def test_success(self, mock_render, mock_send, mock_unsub_url, mock_unsub_headers):
+        await send_inactive_user_email("user@example.com", "user-123", "Alice")
 
         assert mock_render.call_args[0][0] == "inactive.html"
         assert mock_render.call_args[1]["user_name"] == "Alice"
@@ -157,9 +156,14 @@ class TestSendInactiveUserEmail:
         message = mock_send.call_args[0][0]
         assert message.to == ["user@example.com"]
         assert message.html == "<h1>Miss you</h1>"
+        assert message.headers == {"List-Unsubscribe": "<url>"}
 
+    @patch(f"{SENDERS}.build_unsubscribe_headers", return_value={})
+    @patch(f"{SENDERS}.build_unsubscribe_url", return_value="https://unsub")
     @patch(f"{SENDERS}.send_email", side_effect=Exception("send failed"))
     @patch(f"{SENDERS}.render_email_template", return_value="<h1>ok</h1>")
-    async def test_propagates_exception(self, mock_render, mock_send):
+    async def test_propagates_exception(
+        self, mock_render, mock_send, mock_unsub_url, mock_unsub_headers
+    ):
         with pytest.raises(Exception, match="send failed"):
-            await send_inactive_user_email("user@example.com")
+            await send_inactive_user_email("user@example.com", "user-123")

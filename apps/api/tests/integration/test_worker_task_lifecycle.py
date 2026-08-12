@@ -20,6 +20,7 @@ import pytest
 
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.user_models import OnboardingPhase, UserDocument
+from app.utils.errors import AppError
 from app.workers.lifecycle.startup import startup
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
 from app.workers.tasks.memory_email_tasks import process_gmail_emails_to_memory
@@ -348,13 +349,11 @@ class TestWorkflowTaskExecution:
         """When workflow ID does not exist, return a not-found message."""
 
         mock_scheduler = AsyncMock()
-        mock_scheduler.initialize = AsyncMock()
         mock_scheduler.get_task = AsyncMock(return_value=None)
-        mock_scheduler.close = AsyncMock()
 
         with patch(
-            "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-            return_value=mock_scheduler,
+            "app.workers.tasks.workflow_tasks.workflow_scheduler",
+            mock_scheduler,
         ):
             result = await execute_workflow_by_id(ARQ_CTX, "nonexistent-wf-id")
 
@@ -370,17 +369,15 @@ class TestWorkflowTaskExecution:
         mock_workflow.steps = [MagicMock(), MagicMock()]
 
         mock_scheduler = AsyncMock()
-        mock_scheduler.initialize = AsyncMock()
         mock_scheduler.get_task = AsyncMock(return_value=mock_workflow)
-        mock_scheduler.close = AsyncMock()
 
         mock_execution = MagicMock()
         mock_execution.execution_id = "exec-456"
 
         with (
             patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                return_value=mock_scheduler,
+                "app.workers.tasks.workflow_tasks.workflow_scheduler",
+                mock_scheduler,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.create_execution",
@@ -433,17 +430,15 @@ class TestWorkflowTaskExecution:
         mock_workflow.steps = [MagicMock()]
 
         mock_scheduler = AsyncMock()
-        mock_scheduler.initialize = AsyncMock()
         mock_scheduler.get_task = AsyncMock(return_value=mock_workflow)
-        mock_scheduler.close = AsyncMock()
 
         mock_execution = MagicMock()
         mock_execution.execution_id = "exec-err"
 
         with (
             patch(
-                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
-                return_value=mock_scheduler,
+                "app.workers.tasks.workflow_tasks.workflow_scheduler",
+                mock_scheduler,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.create_execution",
@@ -556,7 +551,9 @@ class TestUserTasks:
         ):
             result = await check_inactive_users(ARQ_CTX)
 
-            mock_send.assert_awaited_once_with("inactive@example.com", "Inactive User")
+            mock_send.assert_awaited_once_with(
+                "inactive@example.com", inactive_user.id, "Inactive User"
+            )
             mock_record.assert_awaited_once_with(inactive_user.id, 1)
             assert "1 inactive users" in result
             assert "sent 1 emails" in result
@@ -738,7 +735,7 @@ class TestWorkflowGenerationTask:
             mock_wf_svc.create_workflow = AsyncMock(return_value=None)
             mock_queue_svc.clear_workflow_generating_flag = AsyncMock()
 
-            with pytest.raises(ValueError, match="No workflow created"):
+            with pytest.raises(AppError, match="No workflow created"):
                 await process_workflow_generation_task(
                     ARQ_CTX,
                     todo_id="bbbbbbbbbbbbbbbbbbbbbbbb",

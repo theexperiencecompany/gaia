@@ -35,6 +35,7 @@ class TestBaseAppSettingsDefaults:
         # ENV doubles as the Infisical environment slug, which has three values.
         # This previously asserted "staging" was rejected, but the Literal has
         # allowed it since the slug was introduced (see shared/py/secrets.py).
+
         with patch.dict(os.environ, {"ENV": "staging"}, clear=True):
             settings = BaseAppSettings()
         assert settings.ENV == "staging"
@@ -52,7 +53,7 @@ class TestBaseAppSettingsDefaults:
     def test_extra_fields_allowed(self):
         with patch.dict(os.environ, {}, clear=True):
             settings = BaseAppSettings(CUSTOM_FIELD="hello")
-        assert settings.CUSTOM_FIELD == "hello"  # type: ignore[attr-defined]
+        assert settings.CUSTOM_FIELD == "hello"
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +140,7 @@ class TestCommonSettingsDefaults:
     def test_extra_fields_allowed(self):
         with patch.dict(os.environ, {}, clear=True):
             settings = CommonSettings(SOME_EXTRA="value")
-        assert settings.SOME_EXTRA == "value"  # type: ignore[attr-defined]
+        assert settings.SOME_EXTRA == "value"
 
 
 # ---------------------------------------------------------------------------

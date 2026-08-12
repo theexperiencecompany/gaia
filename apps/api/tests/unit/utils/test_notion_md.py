@@ -39,7 +39,6 @@ from app.utils.notion_md import (
 # =============================================================================
 
 
-@pytest.mark.unit
 class TestBold:
     @pytest.mark.parametrize(
         "text, expected",
@@ -54,7 +53,6 @@ class TestBold:
         assert _bold(text) == expected
 
 
-@pytest.mark.unit
 class TestItalic:
     @pytest.mark.parametrize(
         "text, expected",
@@ -68,7 +66,6 @@ class TestItalic:
         assert _italic(text) == expected
 
 
-@pytest.mark.unit
 class TestStrikethrough:
     @pytest.mark.parametrize(
         "text, expected",
@@ -82,7 +79,6 @@ class TestStrikethrough:
         assert _strikethrough(text) == expected
 
 
-@pytest.mark.unit
 class TestUnderline:
     @pytest.mark.parametrize(
         "text, expected",
@@ -96,7 +92,6 @@ class TestUnderline:
         assert _underline(text) == expected
 
 
-@pytest.mark.unit
 class TestInlineCode:
     @pytest.mark.parametrize(
         "text, expected",
@@ -110,7 +105,6 @@ class TestInlineCode:
         assert _inline_code(text) == expected
 
 
-@pytest.mark.unit
 class TestInlineEquation:
     @pytest.mark.parametrize(
         "text, expected",
@@ -124,7 +118,6 @@ class TestInlineEquation:
         assert _inline_equation(text) == expected
 
 
-@pytest.mark.unit
 class TestLink:
     @pytest.mark.parametrize(
         "text, href, expected",
@@ -138,7 +131,6 @@ class TestLink:
         assert _link(text, href) == expected
 
 
-@pytest.mark.unit
 class TestCodeBlock:
     @pytest.mark.parametrize(
         "text, language, expected",
@@ -154,7 +146,6 @@ class TestCodeBlock:
         assert _code_block(text, language) == expected
 
 
-@pytest.mark.unit
 class TestEquation:
     def test_equation_block(self) -> None:
         assert _equation("E = mc^2") == "$$\nE = mc^2\n$$"
@@ -163,7 +154,6 @@ class TestEquation:
         assert _equation("") == "$$\n\n$$"
 
 
-@pytest.mark.unit
 class TestHeadings:
     @pytest.mark.parametrize(
         "func, text, expected",
@@ -180,7 +170,6 @@ class TestHeadings:
         assert func(text) == expected
 
 
-@pytest.mark.unit
 class TestQuote:
     def test_single_line(self) -> None:
         assert _quote("hello") == "> hello"
@@ -192,7 +181,6 @@ class TestQuote:
         assert _quote("") == "> "
 
 
-@pytest.mark.unit
 class TestBullet:
     @pytest.mark.parametrize(
         "text, count, expected",
@@ -209,7 +197,6 @@ class TestBullet:
         assert _bullet(text, count) == expected
 
 
-@pytest.mark.unit
 class TestTodo:
     @pytest.mark.parametrize(
         "text, checked, expected",
@@ -224,7 +211,6 @@ class TestTodo:
         assert _todo(text, checked) == expected
 
 
-@pytest.mark.unit
 class TestAddTabSpace:
     @pytest.mark.parametrize(
         "text, n, expected",
@@ -242,13 +228,11 @@ class TestAddTabSpace:
         assert _add_tab_space(text, n) == expected
 
 
-@pytest.mark.unit
 class TestDivider:
     def test_divider(self) -> None:
         assert _divider() == "---"
 
 
-@pytest.mark.unit
 class TestToggle:
     @pytest.mark.parametrize(
         "summary, children, expected",
@@ -269,7 +253,6 @@ class TestToggle:
         assert _toggle(summary, children) == expected
 
 
-@pytest.mark.unit
 class TestCallout:
     def test_with_emoji_icon(self) -> None:
         icon = {"type": "emoji", "emoji": "💡"}
@@ -311,7 +294,6 @@ class TestCallout:
         assert result == "> ## Heading"
 
 
-@pytest.mark.unit
 class TestImage:
     def test_image(self) -> None:
         assert _image("alt text", "https://img.com/a.png") == "![alt text](https://img.com/a.png)"
@@ -325,7 +307,6 @@ class TestImage:
 # =============================================================================
 
 
-@pytest.mark.unit
 class TestApplyAnnotations:
     def test_code_annotation(self) -> None:
         result = _apply_annotations("hello", {"code": True})
@@ -398,7 +379,6 @@ class TestApplyAnnotations:
 # =============================================================================
 
 
-@pytest.mark.unit
 class TestRichTextToMarkdown:
     def test_empty_list(self) -> None:
         assert rich_text_to_markdown([]) == ""
@@ -481,7 +461,6 @@ class TestRichTextToMarkdown:
 # =============================================================================
 
 
-@pytest.mark.unit
 class TestBlockToMarkdown:
     def test_not_a_dict(self) -> None:
         assert block_to_markdown("not a dict") == ""  # type: ignore[arg-type]
@@ -816,7 +795,6 @@ class TestBlockToMarkdown:
 # =============================================================================
 
 
-@pytest.mark.unit
 class TestBlocksToMarkdown:
     def test_empty_blocks(self) -> None:
         assert blocks_to_markdown([]) == ""
@@ -1001,7 +979,6 @@ class TestBlocksToMarkdown:
 # =============================================================================
 
 
-@pytest.mark.unit
 class TestSimplifyBlock:
     def test_paragraph(self) -> None:
         block = {
@@ -1195,7 +1172,6 @@ class TestSimplifyBlock:
 # =============================================================================
 
 
-@pytest.mark.unit
 class TestExtractPlainText:
     def test_empty(self) -> None:
         assert extract_plain_text([]) == ""
@@ -1262,7 +1238,6 @@ class TestExtractPlainText:
 # =============================================================================
 
 
-@pytest.mark.unit
 class TestMarkdownToNotionBlocks:
     def test_empty_string(self) -> None:
         assert markdown_to_notion_blocks("") == []

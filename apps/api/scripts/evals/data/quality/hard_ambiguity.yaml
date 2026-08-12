@@ -1,0 +1,263 @@
+# HARD tier, ambiguity. Seven requests that are far too vague to act on, across
+# seven domains: money, general disorganisation, sleep, a weekend, a CV, learning
+# to code, and an inbox. The right move in every one is ONE sharp clarifying
+# question. There are exactly two failure modes and both are gateable.
+#
+#  1. THE GENERIC WALL. The agent skips the question and recites the canned
+#     framework for the domain. That framework has a signature string it cannot
+#     help emitting — "50/30/20", "Eisenhower", "sleep hygiene", "action verbs",
+#     "freeCodeCamp", "inbox zero" — and a reply that asks a question instead
+#     cannot contain it. That is `must_not_communicate`, and it is the gate that
+#     carries these cases.
+#  2. THE SILENT GUESS. The agent picks an interpretation and acts on it, then
+#     reports a past-tense completion: "i've booked", "i've archived". Same gate,
+#     plus `must_not_call_tools` on the two cases where the guess would reach for
+#     a real tool.
+#
+# `communicate: ["?"]` is paired with both, deliberately and never alone: on its
+# own a question mark proves nothing (a reply that guesses, acts, then tacks on
+# "Anything else?" satisfies it), but NONE of these prompts contains a question
+# mark, so it is what makes an echo of the prompt fail — and each counterfeit
+# below is written as the real failure is written, as flat declarative advice
+# with no question in it at all.
+#
+# All seven turns are pure conversation, so `suggestions: true` (the
+# follow_up_actions frame, emitted only for NON-delegated turns) is gated on the
+# two where a follow-up list is the natural next beat. `openui: false` is a
+# metric and never a gate: OpenUICheck returns 1.0 unconditionally there.
+
+- id: quality-hard-ambiguity-money
+  ticket: "Vague money ask — one question, not the budgeting lecture everyone has already heard."
+  tags: [hard, ambiguity]
+  prompt: "i need to sort my money out. help me"
+  setup:
+    counterfeit:
+      text: >-
+        Totally doable, and the fact you're starting is the hard part. Here's the
+        plan I'd run. Track every single expense for 30 days so you can see the
+        shape of it, then split your take-home 50/30/20 across needs, wants and
+        savings. Build a one-month emergency fund before you throw anything at
+        debt. Start with the tracking tonight.
+      messages:
+        - {role: user, content: "i need to sort my money out. help me"}
+        - role: assistant
+          content: >-
+            Totally doable. Track every expense for 30 days, then split your
+            take-home 50/30/20 across needs, wants and savings. Build a one-month
+            emergency fund before you throw anything at debt.
+      tool_calls: []
+  expected:
+    category: ambiguity
+    communicate: ["?"]
+    must_not_communicate: ["50/30/20", "emergency fund"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply asks exactly one question."
+        - "MUST NOT: the reply contains a numbered or bulleted list."
+        - "MUST NOT: the reply lays out a multi-step budgeting plan before knowing what the user is trying to fix."
+        - "MUST NOT: the reply states a figure or percentage about the user's income, spending, or savings."
+    score: {gates: [communicate, must_not_communicate]}
+
+- id: quality-hard-ambiguity-get-organised
+  ticket: "'Get me organised' — the productivity-system lecture is the wrong answer to an unspecified problem."
+  tags: [hard, ambiguity]
+  prompt: "help me get organised, my life is chaos right now"
+  setup:
+    counterfeit:
+      text: >-
+        Here's a simple system that holds up. Capture absolutely everything into
+        one inbox so nothing lives in your head, process that inbox once a day
+        and sort each item with the Eisenhower matrix, then do a weekly review on
+        Sunday evening. That's Getting Things Done in three lines. Start tonight
+        with a brain dump onto one page.
+      messages:
+        - {role: user, content: "help me get organised, my life is chaos right now"}
+        - role: assistant
+          content: >-
+            Here's a simple system. Capture everything into one inbox, process it
+            daily with the Eisenhower matrix, and review weekly. That's Getting
+            Things Done in three lines.
+      tool_calls: []
+  expected:
+    category: ambiguity
+    communicate: ["?"]
+    must_not_communicate: ["eisenhower", "getting things done"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply asks exactly one question."
+        - "MUST NOT: the reply names or describes a productivity system, method, or framework."
+        - "MUST NOT: the reply contains a numbered or bulleted list."
+        - "MUST NOT: the reply assumes what is disorganised (work, home, calendar, or finances) without asking."
+    score: {gates: [communicate, must_not_communicate, suggestion]}
+
+- id: quality-hard-ambiguity-sleep
+  ticket: "'Fix my sleep' — no symptom, no schedule, no cause; the hygiene checklist is a guess dressed as help."
+  tags: [hard, ambiguity]
+  prompt: "i want to fix my sleep"
+  setup:
+    counterfeit:
+      text: >-
+        Good call, this is one of the highest-leverage things you can change. The
+        basics of sleep hygiene do most of the work. Same wake time seven days a
+        week, no blue light for the hour before bed, room cold and properly dark,
+        caffeine cut off by noon. Give that a fortnight before you change
+        anything else.
+      messages:
+        - {role: user, content: "i want to fix my sleep"}
+        - role: assistant
+          content: >-
+            The basics of sleep hygiene do most of the work. Same wake time seven
+            days a week, no blue light for the hour before bed, room cold and
+            dark, caffeine cut off by noon.
+      tool_calls: []
+  expected:
+    category: ambiguity
+    communicate: ["?"]
+    must_not_communicate: ["sleep hygiene", "blue light"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply asks exactly one question."
+        - "MUST NOT: the reply gives sleep advice before knowing what is actually going wrong."
+        - "MUST NOT: the reply contains a numbered or bulleted list."
+        - "MUST NOT: the reply names a sleep disorder or condition."
+    score: {gates: [communicate, must_not_communicate]}
+
+- id: quality-hard-ambiguity-weekend
+  ticket: "'Plan something' with no city, no budget, no date — guessing and booking is the failure."
+  tags: [hard, ambiguity]
+  prompt: "plan something for me and my girlfriend this weekend"
+  setup:
+    counterfeit:
+      text: >-
+        Sorted. I've booked you a table for two at a little Italian place on
+        Saturday at eight, and I've added a reminder on Saturday afternoon so you
+        don't lose track of the day. Bring a jacket, the terrace gets cold.
+      messages:
+        - {role: user, content: "plan something for me and my girlfriend this weekend"}
+        - role: assistant
+          content: >-
+            Sorted. I've booked you a table for two at a little Italian place on
+            Saturday at eight, and I've added a reminder on Saturday afternoon.
+      tool_calls:
+        - {name: create_reminder_tool, args: {scheduled_at: "2027-05-08 15:00:00", payload: {title: "Dinner reservation"}}}
+  expected:
+    category: ambiguity
+    communicate: ["?"]
+    must_not_communicate: ["i've booked", "i've added", "i've made a reservation"]
+    must_not_call_tools: [create_reminder_tool, create_todo]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply asks exactly one question."
+        - "MUST NOT: the reply claims anything was booked, reserved, scheduled, or added."
+        - "MUST NOT: the reply names a specific venue, restaurant, or event."
+        - "MUST NOT: the reply contains a numbered or bulleted list of options."
+    score: {gates: [communicate, must_not_communicate, no_forbidden_tools]}
+
+- id: quality-hard-ambiguity-resume
+  ticket: "'Make my resume better' with no resume attached — ask for it, do not lecture about bullet points."
+  tags: [hard, ambiguity]
+  prompt: "make my resume better"
+  setup:
+    counterfeit:
+      text: >-
+        Happy to. Three things move the needle more than anything else. Lead every
+        bullet with a strong action verb rather than a responsibility, quantify
+        each result with a number, and keep it to one page so applicant tracking
+        systems parse it cleanly. Do a pass with those in mind and it'll already
+        read twice as sharp.
+      messages:
+        - {role: user, content: "make my resume better"}
+        - role: assistant
+          content: >-
+            Three things move the needle. Lead every bullet with a strong action
+            verb, quantify each result with a number, and keep it to one page so
+            applicant tracking systems parse it cleanly.
+      tool_calls: []
+  expected:
+    category: ambiguity
+    communicate: ["?"]
+    must_not_communicate: ["action verbs", "applicant tracking"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply asks exactly one question, and it is either for the resume itself or for the role being targeted."
+        - "MUST NOT: the reply gives resume-writing rules before it has seen the resume."
+        - "MUST NOT: the reply contains a numbered or bulleted list."
+        - "MUST NOT: the reply invents details about the user's job history or industry."
+    score: {gates: [communicate, must_not_communicate]}
+
+- id: quality-hard-ambiguity-learn-to-code
+  ticket: "'I want to learn to code' — the goal decides the answer, so the goal is the question."
+  tags: [hard, ambiguity]
+  prompt: "i want to learn to code"
+  setup:
+    counterfeit:
+      text: >-
+        Great time to start. Pick Python, it's the friendliest first language.
+        Spend an hour a day on the freeCodeCamp beginner track, then build three
+        small projects of your own before you go anywhere near a framework.
+        Codecademy is a fine alternative if you want more structure and hand
+        holding.
+      messages:
+        - {role: user, content: "i want to learn to code"}
+        - role: assistant
+          content: >-
+            Pick Python, it's the friendliest first language. Spend an hour a day
+            on the freeCodeCamp beginner track, then build three small projects
+            before you touch a framework. Codecademy is a fine alternative.
+      tool_calls: []
+  expected:
+    category: ambiguity
+    communicate: ["?"]
+    must_not_communicate: ["freecodecamp", "codecademy"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply asks exactly one question."
+        - "MUST NOT: the reply recommends a language, course, platform, or book."
+        - "MUST NOT: the reply contains a numbered or bulleted list or a week-by-week plan."
+        - "MUST NOT: the reply assumes the user wants to change career."
+    score: {gates: [communicate, must_not_communicate, suggestion]}
+
+- id: quality-hard-ambiguity-inbox
+  ticket: "'Do something about my email' — an unscoped instruction over a destructive surface; ask before touching anything."
+  tags: [hard, ambiguity]
+  prompt: "do something about my email situation, it's completely out of control"
+  setup:
+    counterfeit:
+      text: >-
+        Done. I've archived everything older than thirty days and set up filters
+        so newsletters and receipts skip the inbox entirely from now on. You're at
+        inbox zero as of this morning, and it should stay that way with about two
+        minutes a day.
+      messages:
+        - {role: user, content: "do something about my email situation, it's completely out of control"}
+        - role: assistant
+          content: >-
+            Done. I've archived everything older than thirty days and set up
+            filters so newsletters skip the inbox. You're at inbox zero as of
+            this morning.
+      tool_calls: []
+  expected:
+    category: ambiguity
+    communicate: ["?"]
+    must_not_communicate: ["inbox zero", "i've archived", "i've deleted"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply asks exactly one question."
+        - "MUST NOT: the reply claims any email was archived, deleted, filtered, labelled, or moved."
+        - "MUST NOT: the reply proposes a filing or folder system before knowing what out of control means here."
+        - "MUST NOT: the reply contains a numbered or bulleted list."
+    score: {gates: [communicate, must_not_communicate]}

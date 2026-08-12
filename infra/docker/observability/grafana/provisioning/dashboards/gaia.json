@@ -311,7 +311,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({service=~\"$service\"} | json | level=\"ERROR\" [$__range]))",
+          "expr": "sum(count_over_time({service=~\"$service\"} | json | level=~\"ERROR|CRITICAL\" [$__range]))",
           "instant": true,
           "legendFormat": "",
           "refId": "A"
@@ -707,12 +707,12 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service=~\"$service\"} | json | level=~\"ERROR|WARNING\"",
+          "expr": "{service=~\"$service\"} | json | level=~\"ERROR|CRITICAL|WARNING\"",
           "legendFormat": "",
           "refId": "A"
         }
       ],
-      "title": "Errors & Warnings",
+      "title": "Errors, Critical & Warnings",
       "type": "logs"
     },
     {

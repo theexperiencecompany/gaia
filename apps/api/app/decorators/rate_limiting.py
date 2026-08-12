@@ -14,14 +14,21 @@ from fastapi import HTTPException
 from langgraph.config import get_stream_writer
 
 from app.api.v1.middleware.tiered_rate_limiter import (
+    CostBudgetExceededException,
     RateLimitExceededException,
     tiered_limiter,
+)
+from app.config.rate_limits import (
+    RateLimitPeriod,
+    get_reset_time,
 )
 from app.constants.log_tags import LogTag
 from app.core.request_context import get_authenticated_user
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.models.user_models import AuthenticatedUser
+from app.services.cost_budget import get_cost, is_daily_budget_exhausted
+from app.services.limit_upsell import schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -87,7 +94,8 @@ def with_rate_limiting(
                 # Skip rate limiting for system operations if configured
                 if bypass_for_system and initiator == "backend":
                     log.debug(
-                        f"{LogTag.API} Bypassing rate limiting for system operation: {actual_feature_key}"
+                        f"{LogTag.API} Bypassing rate limiting for system operation",
+                        actual_feature_key=actual_feature_key,
                     )
                 else:
                     try:
@@ -114,13 +122,19 @@ def with_rate_limiting(
                         )
 
                         log.debug(
-                            f"{LogTag.API} Rate limit check passed for user {user_id}, feature {actual_feature_key}"
+                            f"{LogTag.API} Rate limit check passed",
+                            user_id=user_id,
+                            actual_feature_key=actual_feature_key,
                         )
 
                     except RateLimitExceededException as e:
                         # Convert to agent-friendly exception
                         log.warning(
-                            f"{LogTag.API} Rate limit exceeded for user {user_id}, feature {actual_feature_key}"
+                            f"{LogTag.API} Rate limit exceeded",
+                            user_id=user_id,
+                            actual_feature_key=actual_feature_key,
+                            error=str(e),
+                            error_type=type(e).__name__,
                         )
                         detail_dict = {}
                         reset_time = None
@@ -165,7 +179,10 @@ def with_rate_limiting(
                             # background tasks); the card is decoration, the
                             # LangChainRateLimitException below is the real outcome.
                             log.debug(
-                                f"{LogTag.API} Rate limit card not streamed for {actual_feature_key}: {stream_error}"
+                                f"{LogTag.API} Rate limit card not streamed",
+                                actual_feature_key=actual_feature_key,
+                                error=str(stream_error),
+                                error_type=type(stream_error).__name__,
                             )
 
                         raise LangChainRateLimitException(
@@ -175,12 +192,17 @@ def with_rate_limiting(
                         )
                     except Exception as e:
                         log.error(
-                            f"{LogTag.API} Rate limiting failed for user {user_id}, feature {actual_feature_key}: {e!s}"
+                            f"{LogTag.API} Rate limiting failed",
+                            user_id=user_id,
+                            actual_feature_key=actual_feature_key,
+                            error=str(e),
+                            error_type=type(e).__name__,
                         )
                         raise
             else:
                 log.warning(
-                    f"{LogTag.API} No user context for {actual_feature_key}, skipping rate limiting"
+                    f"{LogTag.API} No user context, skipping rate limiting",
+                    actual_feature_key=actual_feature_key,
                 )
 
             # Execute the original function
@@ -215,7 +237,9 @@ def with_rate_limiting(
                 tokens_used = result.get("tokens_used", 0)
                 if tokens_used > 0:
                     log.debug(
-                        f"{LogTag.API} Token usage recorded: {tokens_used} tokens for feature {actual_feature_key}"
+                        f"{LogTag.API} Token usage recorded",
+                        tokens_used=tokens_used,
+                        feature_key=actual_feature_key,
                     )
 
             return result
@@ -225,8 +249,26 @@ def with_rate_limiting(
     return rate_limit_decorator
 
 
+async def enforce_tiered_limit(user_id: str, feature_key: str) -> None:
+    """Charge ``feature_key`` against ``user_id``'s plan quota.
+
+    The imperative half of :func:`tiered_rate_limit`, extracted so an entry point
+    that resolves its caller in the body rather than from the auth middleware
+    still meters through the same code. The bot chat stream is the case: it
+    resolves a platform link after the decorator would already have run, so
+    before this existed it went entirely unmetered — no plan quota, and no
+    ``usage_daily`` row, since ``record_activity`` fires from the limiter.
+    """
+    subscription = await payment_service.get_user_subscription_status(user_id)
+    await tiered_limiter.check_and_increment(
+        user_id=user_id,
+        feature_key=feature_key,
+        user_plan=subscription.plan_type or PlanType.FREE,
+    )
+
+
 def tiered_rate_limit(
-    feature_key: str, count_tokens: bool = False
+    feature_key: str,
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Rate limiting decorator for API endpoints."""
 
@@ -256,39 +298,12 @@ def tiered_rate_limit(
             if not user_id:
                 raise HTTPException(status_code=401, detail="User ID not found")
 
-            # Get user subscription
-            subscription = await payment_service.get_user_subscription_status(user_id)
-            user_plan = subscription.plan_type or PlanType.FREE
-
             # Check rate limits before executing function
-            await tiered_limiter.check_and_increment(
-                user_id=user_id,
-                feature_key=feature_key,
-                user_plan=user_plan,
-            )
+            await enforce_tiered_limit(user_id, feature_key)
 
             # Execute the original function
             result = await func(*args, **kwargs)
-
-            # Handle token counting post-execution
-            # if count_tokens and isinstance(result, dict):
-            #     tokens_used = result.get("tokens_used", 0)
-            #     if tokens_used > 0:
-            #         # Validate token limits
-            #         current_limits = get_limits_for_plan(feature_key, user_plan)
-            #         if (
-            #             current_limits.tokens_per_request > 0
-            #             and tokens_used > current_limits.tokens_per_request
-            #         ):
-            #             plan_required = "pro" if user_plan == PlanType.FREE else None
-            #             raise RateLimitExceededException(
-            #                 f"{feature_key} (token limit)", plan_required
-            #             )
-
             return result
-
-        # Store metadata for usage tracking
-        wrapper._rate_limit_metadata = {"feature_key": feature_key}  # type: ignore[attr-defined]
 
         return wrapper
 
@@ -333,11 +348,47 @@ async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageI
     )
 
 
+async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
+    """Block when the user's rolling daily USD cost budget is exhausted.
+
+    The message-count limiter caps HOW MANY requests a user makes; this caps
+    HOW EXPENSIVE they were. Free budgets are a real usage wall; pro budgets
+    are abuse-level guards a legitimate user never hits. Raises the same
+    ``RateLimitExceededException`` (429) as the count limiter so the frontend
+    toast / upgrade-modal path renders identically.
+
+    ``feature_key`` names the surface being blocked (e.g. ``chat_messages``,
+    ``trigger_workflow_executions``) for the 429 payload and reset copy.
+    """
+    plan_type = await payment_service.get_cached_plan_type(user_id)
+    # The tier this request was priced against, on the wide event — this gate is
+    # the one place on the chat path that resolves the plan before any work runs.
+    log.set(user_plan=plan_type.value)
+    spent = await get_cost(user_id, RateLimitPeriod.DAY)
+    if is_daily_budget_exhausted(spent, plan_type):
+        log.warning(
+            f"{LogTag.API} Daily cost budget exhausted",
+            user={"id": user_id},
+            user_plan=plan_type.value,
+            spent_usd=round(spent, 6),
+            feature_key=feature_key,
+        )
+        schedule_limit_upsell(user_id, feature_key, plan_type)
+        raise CostBudgetExceededException(
+            feature=feature_key,
+            plan_required=PlanType.PRO.value if plan_type == PlanType.FREE else None,
+            reset_time=get_reset_time(RateLimitPeriod.DAY),
+            current_plan=plan_type.value,
+        )
+
+
 def set_user_context(user_id: str, initiator: str = "frontend", **kwargs: object) -> dict[str, Any]:
     """Set user context to avoid parameter pollution."""
     context = {"user_id": user_id, "initiator": initiator, **kwargs}
     user_context.set(context)
-    log.debug(f"{LogTag.API} Set user context for {user_id} (initiator: {initiator})")
+    log.debug(
+        f"{LogTag.API} Set user context for (initiator: )", user_id=user_id, initiator=initiator
+    )
     return context
 
 

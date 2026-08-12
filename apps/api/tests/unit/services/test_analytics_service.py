@@ -42,7 +42,6 @@ def mock_posthog_none():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAnalyticsEvents:
     def test_event_constants_exist(self):
         assert AnalyticsEvents.USER_SIGNED_UP == "user:signed_up"
@@ -61,7 +60,6 @@ class TestAnalyticsEvents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIdentifyUser:
     def test_identify_with_properties(self, mock_posthog):
         identify_user("user@example.com", {"email": "user@example.com"})
@@ -100,7 +98,6 @@ class TestIdentifyUser:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCaptureEvent:
     def test_capture_basic_event(self, mock_posthog):
         capture_event("user1", "test:event", {"key": "value"})
@@ -136,7 +133,6 @@ class TestCaptureEvent:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTrackSignup:
     def test_calls_identify_and_capture(self, mock_posthog):
         track_signup("user1", "user@example.com", name="Alice")
@@ -179,7 +175,6 @@ class TestTrackSignup:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTrackSubscriptionEvent:
     def test_captures_subscription_event(self, mock_posthog):
         track_subscription_event(
@@ -270,7 +265,6 @@ class TestTrackSubscriptionEvent:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTrackPaymentEvent:
     def test_captures_payment_event(self, mock_posthog):
         track_payment_event(

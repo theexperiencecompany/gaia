@@ -29,8 +29,6 @@ from app.services.storage import JuiceFSUnavailable
 from app.services.storage.sessions import lifecycle as lc
 from app.services.storage.sessions.meta import SESSION_META_FILENAME
 
-pytestmark = pytest.mark.unit
-
 USER = "user-1"
 OTHER_USER = "user-2"
 CONV = "conv-a"

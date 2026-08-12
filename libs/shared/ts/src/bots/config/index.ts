@@ -2,12 +2,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as dotenv from "dotenv";
 import type { BotConfig } from "../types";
-import { createBotLogger } from "../utils/logger";
+import { wideLog } from "../utils/wide-events";
 import { injectInfisicalSecrets } from "./secrets";
 
 export { injectInfisicalSecrets } from "./secrets";
-
-const logger = createBotLogger("shared", "config");
 
 /**
  * Loads and validates the bot configuration from environment variables.
@@ -22,21 +20,29 @@ const logger = createBotLogger("shared", "config");
  * @throws Error if required env vars are missing after all sources are checked.
  */
 export async function loadConfig(): Promise<BotConfig> {
+  // Runs inside boot()'s `bot_boot` boundary, so which env sources answered —
+  // and every optional key that did not — lands on that one event instead of
+  // being scattered across half a dozen start-up lines nobody correlates.
+
   // 1. Shared .env — apps/bots/.env (cwd is apps/bots/<platform>)
   const sharedEnvPath = path.resolve(process.cwd(), "..", ".env");
-  if (fs.existsSync(sharedEnvPath)) {
+  const sharedEnvFound = fs.existsSync(sharedEnvPath);
+  if (sharedEnvFound) {
     dotenv.config({ path: sharedEnvPath });
-    logger.info("env_loaded", { source: "shared", path: sharedEnvPath });
   } else {
-    logger.warn("env_not_found", { source: "shared", path: sharedEnvPath });
+    wideLog.warning("env_file_missing", { path: sharedEnvPath });
   }
 
   // 2. Local .env in cwd — Docker / standalone fallback
   const localEnvPath = path.resolve(process.cwd(), ".env");
-  if (fs.existsSync(localEnvPath)) {
+  const localEnvFound = fs.existsSync(localEnvPath);
+  if (localEnvFound) {
     dotenv.config({ path: localEnvPath });
-    logger.info("env_loaded", { source: "local", path: localEnvPath });
   }
+  wideLog.setNs("config", {
+    shared_env: sharedEnvFound,
+    local_env: localEnvFound,
+  });
 
   // 3. Infisical — fills any vars not already set
   await injectInfisicalSecrets();
@@ -76,7 +82,7 @@ export async function loadConfig(): Promise<BotConfig> {
 
   const posthogApiKey = process.env.POSTHOG_API_KEY;
   if (!posthogApiKey) {
-    logger.warn("config_optional_missing", {
+    wideLog.warning("config_optional_missing", {
       key: "POSTHOG_API_KEY",
       effect: "bot_analytics_disabled",
     });
@@ -84,13 +90,12 @@ export async function loadConfig(): Promise<BotConfig> {
 
   const rabbitmqUrl = process.env.RABBITMQ_URL;
   if (!rabbitmqUrl) {
-    logger.warn("config_optional_missing", {
+    wideLog.warning("config_optional_missing", {
       key: "RABBITMQ_URL",
       effect: "outbound_consumer_disabled",
     });
   }
 
-  logger.info("config_loaded");
   return {
     gaiaApiUrl: gaiaApiUrl!,
     gaiaApiKey: gaiaApiKey!,

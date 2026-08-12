@@ -28,8 +28,6 @@ from app.constants.cache import (
 from app.core.stream_manager import StreamManager
 from app.db.redis import redis_cache
 
-pytestmark = pytest.mark.unit
-
 SID = "stream-long-turn"
 CONV = "conv-1"
 USER = "user-1"

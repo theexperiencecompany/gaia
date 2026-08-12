@@ -62,6 +62,10 @@ async def add_workflow_execution_messages(
 
     except Exception as e:
         log.error(
-            f"{LogTag.WORKFLOW} Failed to store messages in conversation {conversation_id}: {e!s}"
+            f"{LogTag.WORKFLOW} Failed to store messages in conversation",
+            conversation_id=conversation_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
         )
         raise

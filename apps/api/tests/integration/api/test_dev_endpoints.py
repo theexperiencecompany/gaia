@@ -6,9 +6,12 @@ Covers three surfaces:
 - the ``X-Dev-User`` per-request impersonation in the real WorkOSAuthMiddleware.
 """
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+import io
+from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
+import zipfile
 
 from bson import ObjectId
 from fastapi import FastAPI, Request
@@ -53,6 +56,112 @@ def _build_app() -> FastAPI:
 async def _client(app: FastAPI) -> httpx.AsyncClient:
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     return httpx.AsyncClient(transport=transport, base_url="http://testserver")
+
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+_XLSX_PARTS = {
+    "[Content_Types].xml": (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.'
+        'relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.'
+        'openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.'
+        'openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'
+    ),
+    "_rels/.rels": (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+        'relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'
+    ),
+    "xl/workbook.xml": (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheets><sheet name="Inventory" sheetId="1" r:id="rId1"/></sheets></workbook>'
+    ),
+    "xl/_rels/workbook.xml.rels": (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+        'relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'
+    ),
+    "xl/worksheets/sheet1.xml": (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        "<sheetData>"
+        '<row r="1"><c r="A1" t="inlineStr"><is><t>Title</t></is></c>'
+        '<c r="B1" t="inlineStr"><is><t>Year</t></is></c></row>'
+        '<row r="2"><c r="A2" t="inlineStr"><is><t>Time-Parking 2</t></is></c>'
+        '<c r="B2"><v>2009</v></c></row>'
+        '<row r="3"><c r="A3" t="inlineStr"><is><t>The Widest Goalpost</t></is></c>'
+        '<c r="B3"><v>2021</v></c></row>'
+        "</sheetData></worksheet>"
+    ),
+}
+
+
+def _minimal_xlsx() -> bytes:
+    """A genuine OOXML spreadsheet, built inline (this repo ships no xlsx writer).
+
+    Real bytes matter: the point of the attachment tests is that anydoc actually
+    parses them, so a fake payload would defeat the test.
+    """
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, body in _XLSX_PARTS.items():
+            archive.writestr(name, body)
+    return buffer.getvalue()
+
+
+@contextmanager
+def _ingestion_edges_stubbed(capture_metadata=None):
+    """Stub only the external edges of FileService.upload.
+
+    Validation, MIME/magic-byte checks, and the local anydoc extraction all run
+    for real — those are the behaviour under test. Cloudinary, Mongo, ChromaDB,
+    the JuiceFS mirror, and the summarization LLM are the process boundaries a
+    CI run cannot reach.
+    """
+    user = UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL, "name": "dev"})
+
+    async def summarize(inputs, config=None):
+        del config
+        return [SimpleNamespace(text="stub summary") for _ in inputs]
+
+    llm = MagicMock()
+    llm.abatch = AsyncMock(side_effect=summarize)
+
+    with (
+        patch(
+            "app.services.dev_service.require_dev_user",
+            new_callable=AsyncMock,
+            return_value=user,
+        ),
+        patch(
+            "app.services.files.service.upload_to_cloudinary",
+            new_callable=AsyncMock,
+            return_value="https://cdn.test/file",
+        ),
+        patch(
+            "app.services.files.service.insert_metadata",
+            new_callable=AsyncMock,
+            side_effect=capture_metadata,
+        ),
+        patch("app.services.files.service.index_file", new_callable=AsyncMock),
+        patch(
+            "app.services.files.service.mirror_upload",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("app.services.files.service.write_summary_sidecar", new_callable=AsyncMock),
+        patch("app.utils.file_utils.get_default_llm", MagicMock()),
+        patch("app.utils.file_utils.with_llm_retry", MagicMock(return_value=llm)),
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +219,7 @@ class TestDevRouterMounting:
     HIGH_BLAST_RADIUS_ROUTES: ClassVar[list[tuple[str, str, dict[str, str] | None]]] = [
         ("POST", "/api/v1/dev/executor", {"email": DEV_EMAIL, "task": "noop"}),
         ("POST", "/api/v1/dev/subagents/some_agent", {"email": DEV_EMAIL, "task": "noop"}),
+        ("POST", "/api/v1/dev/attachments", None),
         ("GET", "/api/v1/dev/subagents", None),
         ("DELETE", "/api/v1/dev/users/dev@gaia.local", None),
     ]
@@ -391,3 +501,76 @@ class TestDevUserImpersonation:
         response = await probe_client.get("/probe", headers={"X-Dev-User": "ghost@nope.local"})
         assert response.status_code == 401
         assert DEV_USER_MISSING_HINT in response.text
+
+
+# ---------------------------------------------------------------------------
+# Attachments
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestDevAttachments:
+    """The dev attachment route must run the product's ingestion, not a copy of it.
+
+    The GAIA-Bench harness skipped 34 of 165 rows on the belief that attachments
+    were a product gap; they were not — only this endpoint was missing. A dev
+    route that re-implemented extraction would make the benchmark green while
+    testing code no user runs, so these tests let the REAL anydoc extraction run
+    and assert on cell text only a real .xlsx parse can produce. Only the
+    genuinely external edges (Cloudinary, Mongo, ChromaDB, the summary LLM, the
+    JuiceFS mirror) are stubbed.
+    """
+
+    @pytest.fixture
+    def app(self, monkeypatch):
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
+        return _build_app()
+
+    async def test_upload_extracts_real_spreadsheet_content(self, app):
+        """A real .xlsx POSTed to the route comes back with its actual cells."""
+        stored: dict[str, object] = {}
+
+        async def capture_metadata(document):
+            stored["document"] = document
+
+        with _ingestion_edges_stubbed(capture_metadata):
+            client = await _client(app)
+            async with client:
+                response = await client.post(
+                    "/api/v1/dev/attachments",
+                    data={"email": DEV_EMAIL, "conversation_id": "conv-xlsx-1"},
+                    files={"file": ("inventory.xlsx", _minimal_xlsx(), XLSX_MIME)},
+                )
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["type"] == XLSX_MIME
+        assert body["conversation_id"] == "conv-xlsx-1"
+
+        pages = body["page_wise_summary"]
+        assert isinstance(pages, list) and pages, body
+        content = pages[0]["data"]["content"]
+        # Cell values that exist only inside the .xlsx bytes — a stubbed or
+        # re-implemented extractor cannot produce them.
+        assert "Time-Parking 2" in content
+        assert "The Widest Goalpost" in content
+        assert "2009" in content
+
+        # Persisted with the conversation id, which is what makes the file
+        # reachable from a later /dev/executor run on the same conversation.
+        assert stored["document"].conversation_id == "conv-xlsx-1"
+
+    async def test_upload_rejects_a_content_type_the_product_rejects(self, app):
+        """The dev route inherits the shipped allowlist — it does not widen it."""
+        with _ingestion_edges_stubbed():
+            client = await _client(app)
+            async with client:
+                response = await client.post(
+                    "/api/v1/dev/attachments",
+                    data={"email": DEV_EMAIL, "conversation_id": "conv-zip-1"},
+                    files={"file": ("archive.zip", b"PK\x03\x04zip", "application/zip")},
+                )
+
+        assert response.status_code == 415, response.text

@@ -24,13 +24,14 @@ def shard_for(user_id: str) -> int:
 
 
 def shard_meta_url(shard_id: int) -> str:
-    """Resolve the JuiceFS PostgreSQL metadata URL for the given shard.
+    """Resolve the JuiceFS metadata URL for the given shard.
 
     The template in settings contains `{shard}` which is substituted. Single-
     shard deployments may use a template with no `{shard}` placeholder.
 
-    JuiceFS expects scheme `postgres://`, not `postgresql://` — managed
-    Postgres providers (Neon, Supabase, etc.) hand out the latter, so we
+    Redis meta uses the DB number as the shard (redis://host:6379/{shard}).
+    For Postgres, JuiceFS expects scheme `postgres://`, not `postgresql://` —
+    managed providers (Neon, Supabase, etc.) hand out the latter, so we
     rewrite at the boundary.
     """
     template = settings.JUICEFS_META_URL_TEMPLATE or ""

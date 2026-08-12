@@ -46,6 +46,71 @@ const buildRecurrencePayload = (
   return recurrenceMap[type];
 };
 
+const getEventTimezone = (event: GoogleCalendarEvent): string =>
+  // Preserve original event timezone if available, otherwise use user's current timezone
+  event.start?.timeZone || event.end?.timeZone || getBrowserTimezone();
+
+// For all-day events, use just the date part; for timed events, ISO with timezone.
+const resolveDatePart = (value: string): string =>
+  value.includes("T") ? value.split("T")[0] : value;
+
+const resolveEventDates = (
+  isAllDay: boolean,
+  startDate: string,
+  endDate: string,
+): { start: string; end: string } =>
+  isAllDay
+    ? { start: resolveDatePart(startDate), end: resolveDatePart(endDate) }
+    : {
+        start: dateTimeLocalToISO(startDate),
+        end: dateTimeLocalToISO(endDate),
+      };
+
+interface UpdatePayloadContext {
+  selectedEvent: GoogleCalendarEvent;
+  selectedCalendarId: string;
+  startDate: string;
+  endDate: string;
+  originalTimezone: string;
+}
+
+const buildUpdatePayload = (
+  field: string,
+  value: string | boolean,
+  {
+    selectedEvent,
+    selectedCalendarId,
+    startDate,
+    endDate,
+    originalTimezone,
+  }: UpdatePayloadContext,
+): Record<string, unknown> => {
+  const payload: Record<string, unknown> = {
+    event_id: selectedEvent.id,
+    calendar_id: selectedEvent.calendarId || selectedCalendarId || "primary",
+  };
+
+  if (field === "summary") {
+    payload.summary = value;
+  } else if (field === "description") {
+    payload.description = value;
+  } else if (field === "start" || field === "end") {
+    // Convert datetime-local to ISO string with timezone info
+    payload[field] = dateTimeLocalToISO(value as string);
+    payload.timezone = originalTimezone;
+  } else if (field === "isAllDay") {
+    payload.is_all_day = value;
+    const { start, end } = resolveEventDates(!!value, startDate, endDate);
+    payload.start = start;
+    payload.end = end;
+    if (!value) {
+      payload.timezone = originalTimezone;
+    }
+  }
+
+  return payload;
+};
+
 interface UseEventSidebarProps {
   onEventUpdate?: () => void;
 }
@@ -172,78 +237,45 @@ export const useEventSidebar = ({
     setTimeout(resetForm, 300);
   }, [resetForm]);
 
+  // Sync the local form state with an event returned by the API.
+  const syncFormFromEvent = useCallback((event: GoogleCalendarEvent) => {
+    setSelectedEvent(event);
+    setSummary(event.summary || "");
+    setDescription(event.description || "");
+
+    const startDateTime = event.start?.dateTime || event.start?.date;
+    const endDateTime = event.end?.dateTime || event.end?.date;
+
+    if (startDateTime) {
+      setStartDate(isoToDateTimeLocal(startDateTime));
+    }
+    if (endDateTime) {
+      setEndDate(isoToDateTimeLocal(endDateTime));
+    }
+    setIsAllDay(!!event.start?.date);
+  }, []);
+
   const updateEventField = useCallback(
     async (field: string, value: string | boolean) => {
       if (!selectedEvent || isCreating) return;
 
       setIsSaving(true);
       try {
-        // Preserve original event timezone if available, otherwise use user's current timezone
-        const originalTimezone =
-          selectedEvent.start?.timeZone ||
-          selectedEvent.end?.timeZone ||
-          getBrowserTimezone();
+        const originalTimezone = getEventTimezone(selectedEvent);
+        const updatePayload = buildUpdatePayload(field, value, {
+          selectedEvent,
+          selectedCalendarId,
+          startDate,
+          endDate,
+          originalTimezone,
+        });
 
-        const updatePayload: Record<string, unknown> = {
-          event_id: selectedEvent.id,
-          calendar_id:
-            selectedEvent.calendarId || selectedCalendarId || "primary",
-        };
-
-        if (field === "summary") {
-          updatePayload.summary = value;
-        } else if (field === "description") {
-          updatePayload.description = value;
-        } else if (field === "start" || field === "end") {
-          // Convert datetime-local to ISO string with timezone info
-          const isoString = dateTimeLocalToISO(value as string);
-          updatePayload[field] = isoString;
-          updatePayload.timezone = originalTimezone; // Preserve original timezone
-        } else if (field === "isAllDay") {
-          updatePayload.is_all_day = value;
-          if (value) {
-            // For all-day events, send just the date part safely
-            updatePayload.start = startDate.includes("T")
-              ? startDate.split("T")[0]
-              : startDate;
-            updatePayload.end = endDate.includes("T")
-              ? endDate.split("T")[0]
-              : endDate;
-          } else {
-            // For timed events, send ISO strings with timezone
-            updatePayload.start = dateTimeLocalToISO(startDate);
-            updatePayload.end = dateTimeLocalToISO(endDate);
-            updatePayload.timezone = originalTimezone; // Preserve original timezone
-          }
-        }
-
-        // Call the API
         const updatedEvent = await calendarApi.updateEventByAgent(
           updatePayload as Parameters<typeof calendarApi.updateEventByAgent>[0],
         );
 
-        // Update the event in the store
         updateEventInStore(selectedEvent.id, updatedEvent);
-
-        // Update local selected event state to reflect changes immediately
-        setSelectedEvent(updatedEvent);
-
-        // Sync local form state with updated event
-        setSummary(updatedEvent.summary || "");
-        setDescription(updatedEvent.description || "");
-
-        const updatedStartDateTime =
-          updatedEvent.start?.dateTime || updatedEvent.start?.date;
-        const updatedEndDateTime =
-          updatedEvent.end?.dateTime || updatedEvent.end?.date;
-
-        if (updatedStartDateTime) {
-          setStartDate(isoToDateTimeLocal(updatedStartDateTime));
-        }
-        if (updatedEndDateTime) {
-          setEndDate(isoToDateTimeLocal(updatedEndDateTime));
-        }
-        setIsAllDay(!!updatedEvent.start?.date);
+        syncFormFromEvent(updatedEvent);
 
         onEventUpdate?.();
       } catch (error) {
@@ -263,6 +295,7 @@ export const useEventSidebar = ({
       endDate,
       updateEventInStore,
       onEventUpdate,
+      syncFormFromEvent,
     ],
   );
 
@@ -356,97 +389,57 @@ export const useEventSidebar = ({
     async (calendarId: string) => {
       setSelectedCalendarId(calendarId);
 
-      if (!isCreating && selectedEvent) {
-        const oldCalendarId = selectedEvent.calendarId || "primary";
+      if (isCreating || !selectedEvent) return;
 
-        if (oldCalendarId === calendarId) {
-          return;
-        }
+      const oldCalendarId = selectedEvent.calendarId || "primary";
+      if (oldCalendarId === calendarId) return;
 
-        setIsSaving(true);
-        try {
-          // Preserve original event timezone if available, otherwise use user's current timezone
-          const originalTimezone =
-            selectedEvent.start?.timeZone ||
-            selectedEvent.end?.timeZone ||
-            getBrowserTimezone();
+      setIsSaving(true);
+      try {
+        const originalTimezone = getEventTimezone(selectedEvent);
+        const { start, end } = resolveEventDates(isAllDay, startDate, endDate);
 
-          // For all-day events, extract date safely
-          let startDateValue: string;
-          let endDateValue: string;
+        const createPayload = {
+          summary,
+          description,
+          is_all_day: isAllDay,
+          start,
+          end,
+          fixedTime: !isAllDay,
+          calendar_id: calendarId,
+          timezone: originalTimezone, // Preserve original timezone
+        };
 
-          if (isAllDay) {
-            // Extract date from datetime-local format or use as-is if already in date format
-            startDateValue = startDate.includes("T")
-              ? startDate.split("T")[0]
-              : startDate;
-            endDateValue = endDate.includes("T")
-              ? endDate.split("T")[0]
-              : endDate;
-          } else {
-            // For timed events, convert to ISO preserving the timezone
-            startDateValue = dateTimeLocalToISO(startDate);
-            endDateValue = dateTimeLocalToISO(endDate);
-          }
+        // Create in new calendar first
+        const newEvent = await calendarApi.createEventDefault(createPayload);
 
-          const createPayload = {
-            summary,
-            description,
-            is_all_day: isAllDay,
-            start: startDateValue,
-            end: endDateValue,
-            fixedTime: !isAllDay,
-            calendar_id: calendarId,
-            timezone: originalTimezone, // Preserve original timezone
-          };
+        // Delete from old calendar
+        await calendarApi.deleteEventByAgent({
+          event_id: selectedEvent.id,
+          calendar_id: oldCalendarId,
+          summary: selectedEvent.summary,
+        });
 
-          // Create in new calendar first
-          const newEvent = await calendarApi.createEventDefault(createPayload);
+        // Update store: remove old event and add new event
+        removeEventFromStore(selectedEvent.id);
+        addEventToStore(newEvent);
 
-          // Delete from old calendar
-          await calendarApi.deleteEventByAgent({
-            event_id: selectedEvent.id,
-            calendar_id: oldCalendarId,
-            summary: selectedEvent.summary,
-          });
+        // Update local state with the new event and sync all form fields
+        syncFormFromEvent(newEvent);
+        setSelectedCalendarId(newEvent.calendarId || calendarId);
 
-          // Update store: remove old event and add new event
-          removeEventFromStore(selectedEvent.id);
-          addEventToStore(newEvent);
-
-          // Update local state with the new event and sync all form fields
-          setSelectedEvent(newEvent);
-          setSelectedCalendarId(newEvent.calendarId || calendarId);
-
-          // Sync form state with the new event
-          setSummary(newEvent.summary || "");
-          setDescription(newEvent.description || "");
-
-          const newStartDateTime =
-            newEvent.start?.dateTime || newEvent.start?.date;
-          const newEndDateTime = newEvent.end?.dateTime || newEvent.end?.date;
-
-          if (newStartDateTime) {
-            setStartDate(isoToDateTimeLocal(newStartDateTime));
-          }
-          if (newEndDateTime) {
-            setEndDate(isoToDateTimeLocal(newEndDateTime));
-          }
-          setIsAllDay(!!newEvent.start?.date);
-
-          onEventUpdate?.();
-          toast.success("Event moved to new calendar");
-        } catch (error) {
-          console.error("Calendar change error:", error);
-          const errorMsg =
-            error instanceof Error
-              ? error.message
-              : "Failed to move event to new calendar";
-          toast.error(errorMsg);
-          setSelectedCalendarId(selectedEvent.calendarId || "primary");
-        } finally {
-          setIsSaving(false);
-        }
+        onEventUpdate?.();
+        toast.success("Event moved to new calendar");
+      } catch (error) {
+        console.error("Calendar change error:", error);
+        const errorMsg =
+          error instanceof Error
+            ? error.message
+            : "Failed to move event to new calendar";
+        toast.error(errorMsg);
+        setSelectedCalendarId(selectedEvent.calendarId || "primary");
+      } finally {
+        setIsSaving(false);
       }
     },
     [
@@ -460,6 +453,7 @@ export const useEventSidebar = ({
       removeEventFromStore,
       addEventToStore,
       onEventUpdate,
+      syncFormFromEvent,
     ],
   );
 

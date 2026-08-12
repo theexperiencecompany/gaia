@@ -9,7 +9,6 @@ Usage:
     result = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
 """
 
-import asyncio
 from collections.abc import Callable
 import json
 from typing import Any
@@ -17,10 +16,13 @@ from typing import Any
 from app.agents.core.background.session import get_session
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from shared.py.wide_events import log
+from app.utils.background_tasks import spawn_background_task
 
-# Prevent GC of in-flight publish tasks (asyncio.create_task is weakly referenced)
-_publish_tasks: set[asyncio.Task[None]] = set()
+#: Task name for the fire-and-forget stream publishes. Tests drain by this name
+#: to wait out exactly the XADDs a turn scheduled, rather than every background
+#: task in the process (some of which outlive any single turn).
+STREAM_PUBLISH_TASK_NAME = "stream-publish"
+from shared.py.wide_events import log
 
 
 def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]:
@@ -39,9 +41,10 @@ def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]
     def writer(data: dict[str, Any]) -> None:
         chunk = f"data: {json.dumps(data)}\n\n"
         try:
-            task = asyncio.create_task(stream_manager.publish_chunk(stream_id, chunk))
-            _publish_tasks.add(task)
-            task.add_done_callback(_publish_tasks.discard)
+            spawn_background_task(
+                stream_manager.publish_chunk(stream_id, chunk),
+                name=STREAM_PUBLISH_TASK_NAME,
+            )
         except RuntimeError:
             log.error(f"{LogTag.AGENT} redis_writer: no event loop for stream", stream_id=stream_id)
 

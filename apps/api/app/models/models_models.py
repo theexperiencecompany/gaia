@@ -57,6 +57,16 @@ class ModelConfig(MongoDocument):
     supports_function_calling: bool = Field(
         default=True, description="Whether model supports function calling"
     )
+    supports_tool_result_images: bool = Field(
+        default=True,
+        description=(
+            "Whether the model can see images delivered inside a TOOL result. Not the "
+            "same as being multimodal: OpenRouter exposes nothing that answers it (two "
+            "models identical in `architecture` can disagree), so it is established by "
+            "tests/model_onboarding and declared here. False routes tool media through "
+            "the caption fallback instead."
+        ),
+    )
     available_in_plans: list[PlanType] = Field(
         ..., description="Plans where this model is available"
     )

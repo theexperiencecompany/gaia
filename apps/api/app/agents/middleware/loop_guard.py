@@ -115,8 +115,10 @@ class LoopGuardMiddleware(AgentMiddleware):
             )
             if stopped is not None:
                 log.warning(
-                    f"{LogTag.AGENT} Loop guard hard-stopped {tool_name} "
-                    f"(identical={identical_before}, same_tool={same_tool_before}) — tool not executed"
+                    f"{LogTag.AGENT} Loop guard hard-stopped tool — tool not executed",
+                    tool_name=tool_name,
+                    identical=identical_before,
+                    same_tool=same_tool_before,
                 )
                 return stopped
 
@@ -137,8 +139,10 @@ class LoopGuardMiddleware(AgentMiddleware):
         note = self._warning_note(tool_name, identical, same_tool)
         if note:
             log.warning(
-                f"{LogTag.AGENT} Loop guard warning appended for {tool_name} "
-                f"(identical={identical}, same_tool={same_tool})"
+                f"{LogTag.AGENT} Loop guard warning appended",
+                tool_name=tool_name,
+                identical=identical,
+                same_tool=same_tool,
             )
             self._append_note(result, note)
         return result

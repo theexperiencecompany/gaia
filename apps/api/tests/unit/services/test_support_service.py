@@ -160,7 +160,6 @@ def _make_support_doc(
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestDeleteUploadedFiles:
     async def test_success_deletion(self, mock_cloudinary):
         """Cloudinary destroy is called and succeeds for a well-formed URL."""
@@ -205,7 +204,8 @@ class TestDeleteUploadedFiles:
             await _delete_uploaded_files(urls)
 
             mock_log.error.assert_called_once()
-            assert "network error" in mock_log.error.call_args[0][0]
+            assert mock_log.error.call_args.kwargs["error"] == "network error"
+            assert mock_log.error.call_args.kwargs["ticket_id"] == "TICKET"
 
     async def test_multiple_urls_processed_independently(self, mock_cloudinary):
         """All URLs are processed even if one fails."""
@@ -255,7 +255,6 @@ class TestDeleteUploadedFiles:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestUploadSingleAttachment:
     async def test_success_upload(self, mock_upload_file_to_cloudinary):
         """Happy path: valid file is uploaded and metadata is returned."""
@@ -429,7 +428,6 @@ class TestUploadSingleAttachment:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCreateSupportRequest:
     async def test_success(
         self,
@@ -619,7 +617,6 @@ class TestCreateSupportRequest:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCreateSupportRequestWithAttachments:
     async def test_success_with_attachments(
         self,
@@ -943,7 +940,6 @@ class TestCreateSupportRequestWithAttachments:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestSendSupportEmailNotifications:
     @pytest.fixture
     def notification_data(self):
@@ -1008,7 +1004,6 @@ class TestSendSupportEmailNotifications:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestGetUserSupportRequests:
     async def test_success_returns_requests_and_pagination(
         self,

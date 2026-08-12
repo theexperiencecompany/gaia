@@ -83,7 +83,6 @@ def _patches(
     }
 
 
-@pytest.mark.unit
 class TestConstructLangchainMessages:
     """Exercise the [static, dynamic, human] assembly."""
 
@@ -191,7 +190,6 @@ class TestConstructLangchainMessages:
         assert mock_sys.call_args.kwargs["source"] == "telegram"
 
 
-@pytest.mark.unit
 class TestContentPriority:
     """Workflow > calendar > tool selection > raw user message."""
 
@@ -294,7 +292,6 @@ class TestContentPriority:
         assert result[-2].content == "plain text"
 
 
-@pytest.mark.unit
 class TestUserContentExtraction:
     """User content edge cases."""
 
@@ -324,7 +321,6 @@ class TestUserContentExtraction:
                 )
 
 
-@pytest.mark.unit
 class TestReplyContext:
     @pytest.mark.asyncio
     async def test_reply_context_added(self) -> None:
@@ -360,7 +356,6 @@ class TestReplyContext:
         mock_reply.assert_not_called()
 
 
-@pytest.mark.unit
 class TestFileContext:
     @pytest.mark.asyncio
     async def test_files_appended_to_content(self) -> None:
@@ -431,7 +426,6 @@ class TestFileContext:
         mock_files.assert_not_called()
 
 
-@pytest.mark.unit
 class TestTriggerContext:
     @pytest.mark.asyncio
     async def test_trigger_context_passed_to_workflow(self) -> None:

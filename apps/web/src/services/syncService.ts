@@ -221,6 +221,40 @@ const identifyDeletedConversations = (
   return deletedIds;
 };
 
+// DEBUG: surface cases where a sync merge would blank out or shrink an existing
+// bot message's content — the symptom of a known overwrite bug.
+const warnOnMessageContentLoss = (
+  mergedMessages: IMessage[],
+  localMessages: IMessage[],
+  conversationId: string,
+): void => {
+  for (const merged of mergedMessages) {
+    if (merged.role !== "assistant") continue;
+
+    const local = localMessages.find((m) => m.id === merged.id);
+    if (local?.content && !merged.content) {
+      console.warn(
+        `[SyncService] ⚠️ SYNC OVERWRITING bot message ${merged.id} — local has content (${local.content.length} chars), merged is EMPTY. This is the bug!`,
+        {
+          conversationId,
+          localStatus: local.status,
+          mergedStatus: merged.status,
+        },
+      );
+    }
+    if (
+      local?.content &&
+      merged.content &&
+      local.content.length > merged.content.length
+    ) {
+      console.warn(
+        `[SyncService] ⚠️ SYNC SHRINKING bot message ${merged.id} — local: ${local.content.length} chars, merged: ${merged.content.length} chars`,
+        { conversationId },
+      );
+    }
+  }
+};
+
 export const batchSyncConversations = async (): Promise<void> => {
   // CRITICAL: Skip sync while any turn streams to prevent data corruption —
   // per-conversation guards above handle the fine-grained cases, this is the
@@ -308,32 +342,7 @@ export const batchSyncConversations = async (): Promise<void> => {
           await db.getMessagesForConversation(conversationId);
         const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
 
-        // DEBUG: detect sync overwriting bot messages with empty content
-        for (const merged of mergedMessages) {
-          if (merged.role === "assistant") {
-            const local = localMessages.find((m) => m.id === merged.id);
-            if (local?.content && !merged.content) {
-              console.warn(
-                `[SyncService] ⚠️ SYNC OVERWRITING bot message ${merged.id} — local has content (${local.content.length} chars), merged is EMPTY. This is the bug!`,
-                {
-                  conversationId,
-                  localStatus: local.status,
-                  mergedStatus: merged.status,
-                },
-              );
-            }
-            if (
-              local?.content &&
-              merged.content &&
-              local.content.length > merged.content.length
-            ) {
-              console.warn(
-                `[SyncService] ⚠️ SYNC SHRINKING bot message ${merged.id} — local: ${local.content.length} chars, merged: ${merged.content.length} chars`,
-                { conversationId },
-              );
-            }
-          }
-        }
+        warnOnMessageContentLoss(mergedMessages, localMessages, conversationId);
 
         await Promise.allSettled([
           db.putConversation(mappedConversation),

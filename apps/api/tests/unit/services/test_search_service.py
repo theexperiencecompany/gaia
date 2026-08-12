@@ -76,7 +76,6 @@ def _note_hits() -> list[NoteSearchHit]:
     ]
 
 
-@pytest.mark.unit
 class TestSearchMessagesHappyPath:
     async def test_returns_all_three_sources_with_snippets(
         self, mock_conversation_repo, mock_note_repo, mock_get_context_window
@@ -95,7 +94,6 @@ class TestSearchMessagesHappyPath:
         assert result.notes[0].id == "n1"
 
 
-@pytest.mark.unit
 class TestSearchMessagesEmpty:
     async def test_returns_empty_when_no_results(
         self, mock_conversation_repo, mock_note_repo, mock_get_context_window
@@ -110,7 +108,6 @@ class TestSearchMessagesEmpty:
         assert result.notes == []
 
 
-@pytest.mark.unit
 class TestSearchMessagesErrors:
     async def test_raises_500_on_repository_error(
         self, mock_conversation_repo, mock_note_repo, mock_get_context_window
@@ -134,7 +131,6 @@ class TestSearchMessagesErrors:
         assert "timeout reached" in exc_info.value.detail
 
 
-@pytest.mark.unit
 class TestSearchMessagesRegexEscaping:
     async def test_query_is_regex_escaped_before_reaching_repositories(
         self, mock_conversation_repo, mock_note_repo, mock_get_context_window

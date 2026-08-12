@@ -3,8 +3,6 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.models.notification.notification_models import (
     NotificationContentView,
     NotificationSourceEnum,
@@ -58,7 +56,6 @@ def _make_notification(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNotifications:
     """Tests for the get_notifications tool."""
 
@@ -153,7 +150,6 @@ class TestGetNotifications:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSearchNotifications:
     """Tests for the search_notifications tool."""
 
@@ -286,7 +282,6 @@ class TestSearchNotifications:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNotificationCount:
     """Tests for the get_notification_count tool."""
 
@@ -344,7 +339,6 @@ class TestGetNotificationCount:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMarkNotificationsRead:
     """Tests for the mark_notifications_read tool."""
 

@@ -58,14 +58,21 @@ ext_regex="\.(${ext_alt})$"
 
 # Ensure the PR base ref is available for the merge-base diff. Best-effort:
 # on a fetch-depth:0 checkout this is a cheap no-op; on a shallow one it
-# unshallows just enough to resolve the base.
+# unshallows the base.
+#
+# MUST NOT use `--depth=1`: a depth-limited fetch records the fetched tip in
+# .git/shallow even when the repository already has full history, and once the
+# base ref is shallow `git diff origin/$BASE...HEAD` fails with "no merge
+# base" — turning a quiet no-op fetch into four red lanes (file-size,
+# types-location, components-per-file, observability). A full-depth fetch is
+# bounded by the timeout below either way.
 #
 # Hard timeout + low-speed guard so a stalled HTTPS connection fails fast
 # instead of hanging until the job's timeout-minutes cap (which surfaces as a
 # `cancelled` lane and fails the quality gate). If the fetch dies, the diff
 # below falls back to whatever base ref is already local.
 timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
-  fetch --no-tags --depth=1 origin "$GITHUB_BASE_REF" 2>/dev/null || true
+  fetch --no-tags origin "$GITHUB_BASE_REF" 2>/dev/null || true
 
 # `...HEAD` diffs against the merge-base of the base ref and HEAD — the same set
 # of files GitHub shows as "Files changed" in the PR. --diff-filter=ACMR drops
@@ -73,8 +80,13 @@ timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
 # `|| true` on grep: a PR that changes zero matching files is a valid "skip"
 # case, not an error. Without it, grep's no-match exit 1 + `set -o pipefail`
 # would make this script exit 1 and fail the lane's `FILES=$(...)` step.
+# The existence guard is a full `if` on purpose: `[[ -f ]] && printf` leaves
+# the loop (and via pipefail, the whole script) with exit 1 when the LAST
+# path fails the test — turning one dead symlink into a hard lane failure.
 git diff --name-only --diff-filter=ACMR "origin/${GITHUB_BASE_REF}...HEAD" \
   | { grep -E "$ext_regex" || true; } \
   | while IFS= read -r f; do
-      [[ -f "$f" ]] && printf '%s\n' "$f"
+      if [[ -f "$f" ]]; then
+        printf '%s\n' "$f"
+      fi
     done

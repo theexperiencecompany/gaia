@@ -9,10 +9,18 @@ apiVersion: 1
 # AND inbox without needing `continue` route trickery.
 #
 # Secrets are NOT committed. Grafana reads them at provision time from swarm
-# secrets via $__file{}; the destination email comes from an env var via
-# $__env{}. Both are wired into the grafana service in docker-compose.prod.yml.
+# secrets via $__file{}; the destination email and Slack channel come from env
+# vars via $__env{}. All are wired into the grafana service in
+# docker-compose.prod.yml — an unset $__env{} or missing secret file makes
+# provisioning fail and Grafana crash-loop, so compose must always provide them.
 #   printf '%s' "$WEBHOOK"      | docker secret create gaia_grafana_slack_webhook -
 #   printf '%s' "$APP_PASSWORD" | docker secret create gaia_grafana_smtp_password -
+#
+# The Slack receivers render `gaia.slack.*` from templates.yaml. Do NOT point
+# them back at `slack.default.text`: that built-in is defined as the empty
+# string upstream, so it produces a titled Slack message with a completely empty
+# body. The email receiver intentionally sets no title/text — Grafana's default
+# HTML email template already renders every annotation.
 contactPoints:
   # All alerts (Slack only). Root notification policy points here.
   - orgId: 1
@@ -22,8 +30,9 @@ contactPoints:
         type: slack
         settings:
           url: $__file{/run/secrets/gaia_grafana_slack_webhook}
-          title: "{{ template \"slack.default.title\" . }}"
-          text: "{{ template \"slack.default.text\" . }}"
+          recipient: $__env{SLACK_ALERT_CHANNEL}
+          title: '{{ template "gaia.slack.title" . }}'
+          text: '{{ template "gaia.slack.message" . }}'
         disableResolveMessage: false
 
   # Critical alerts: Slack + email. The severity=critical route targets this.
@@ -34,8 +43,9 @@ contactPoints:
         type: slack
         settings:
           url: $__file{/run/secrets/gaia_grafana_slack_webhook}
-          title: "{{ template \"slack.default.title\" . }}"
-          text: "{{ template \"slack.default.text\" . }}"
+          recipient: $__env{SLACK_ALERT_CHANNEL}
+          title: '{{ template "gaia.slack.title" . }}'
+          text: '{{ template "gaia.slack.message" . }}'
         disableResolveMessage: false
       - uid: critical-email
         type: email

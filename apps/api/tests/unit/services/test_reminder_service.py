@@ -132,7 +132,6 @@ def sample_reminder_doc(future_time, sample_payload):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateReminder:
     async def test_creates_one_time_reminder(
         self, scheduler, mock_repo, mock_scheduler_base, future_time, sample_payload
@@ -257,7 +256,6 @@ class TestCreateReminder:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateReminder:
     async def test_updates_reminder_successfully(self, scheduler, mock_repo, mock_scheduler_base):
         mock_repo.update_for_user.return_value = _reminder_document()
@@ -326,7 +324,6 @@ class TestUpdateReminder:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListUserReminders:
     async def test_lists_all_reminders_for_user(self, scheduler, mock_repo):
         mock_repo.list_for_user.return_value = [_reminder_document()]
@@ -360,7 +357,6 @@ class TestListUserReminders:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetReminder:
     async def test_get_task_without_user_uses_global_get(self, scheduler, mock_repo):
         doc = _reminder_document()
@@ -410,7 +406,6 @@ class TestGetReminder:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteTask:
     async def test_executes_reminder_successfully(self, scheduler, sample_reminder_doc):
         reminder = ReminderModel(**sample_reminder_doc)
@@ -452,7 +447,6 @@ class TestExecuteTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateTaskStatus:
     async def test_threads_status_and_rearm_fields(self, scheduler, mock_repo):
         mock_repo.set_status.return_value = True
@@ -496,7 +490,6 @@ class TestUpdateTaskStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetPendingTask:
     """The due-scan (and its ObjectId->string mapping) now lives on
     ``reminder_repository.find_pending_before`` — contract-tested against real Mongo
@@ -545,7 +538,6 @@ class TestGetPendingTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestJobName:
     def test_get_job_name(self, scheduler):
         assert scheduler.get_job_name() == "process_reminder"

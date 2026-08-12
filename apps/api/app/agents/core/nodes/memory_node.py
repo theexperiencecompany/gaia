@@ -6,7 +6,6 @@ background task that feeds the transcript through
 zero added latency on the turn.
 """
 
-import asyncio
 import contextlib
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
@@ -22,19 +21,11 @@ from app.constants.memory import (
 from app.memory.engine import memory_engine
 from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import State
+from app.utils.background_tasks import spawn_background_task
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import UserContext, log, wide_task
 
 MAX_TOOL_OUTPUT_SIZE = 500
-
-# Module-level set to hold references to background tasks, preventing GC
-# Tasks are automatically removed from the set when they complete via done callback
-_background_tasks: set[asyncio.Task] = set()
-
-
-def _task_done_callback(task: asyncio.Task) -> None:
-    """Callback to remove completed tasks from the background tasks set."""
-    _background_tasks.discard(task)
 
 
 def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
@@ -164,11 +155,11 @@ async def memory_node(
     # Quick validation - skip trivial conversations
     should_learn, reason = _check_worth_learning(messages)
     if not should_learn:
-        log.debug(f"{LogTag.AGENT} Memory learning skipped: {reason}")
+        log.debug(f"{LogTag.AGENT} Memory learning skipped", reason=reason)
         return state
 
     if user_id:
-        task = asyncio.create_task(
+        task = spawn_background_task(
             _store_user_memory_background(
                 messages=messages,
                 user_id=user_id,
@@ -179,11 +170,10 @@ async def memory_node(
             ),
             name="user_memory",
         )
-
-        _background_tasks.add(task)
-        task.add_done_callback(_task_done_callback)
         log.debug(
-            f"{LogTag.AGENT} Memory learning spawned ({subagent_id or 'agent'}): {task.get_name()}"
+            f"{LogTag.AGENT} Memory learning spawned",
+            subagent_id=subagent_id,
+            task_name=task.get_name(),
         )
 
     return state

@@ -63,6 +63,11 @@ _SUMMARY_PROJECTION: dict[str, object] = {
 
 
 class ConversationRepository(UserScopedRepository[ConversationDocument, ConversationUpdate]):
+    """The ``conversations`` collection repository (the chat hot path).
+
+    Identity is the business key ``conversation_id``; caching is disabled
+    (see the module docstring for why)."""
+
     collection_name = "conversations"
     document_model = ConversationDocument
     update_model = ConversationUpdate
@@ -73,6 +78,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     # ---- conversation-list reads (projected: no messages) ----
 
     async def list_starred_summaries(self, user_id: str) -> list[ConversationSummary]:
+        """The user's starred conversations (projected summaries, newest first)."""
         return await self._aggregate(
             [
                 {"$match": {"user_id": user_id, "starred": True, **self._non_bot()}},
@@ -85,6 +91,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def list_active_summaries(
         self, user_id: str, *, skip: int, limit: int
     ) -> list[ConversationSummary]:
+        """Paginated active conversation summaries for the sidebar, newest first."""
         return await self._aggregate(
             [
                 {"$match": self._active_filter(user_id)},
@@ -97,22 +104,68 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
 
     async def count_active(self, user_id: str) -> int:
+        """How many active (non-starred, non-bot) conversations the user has."""
         return await self._count(self._active_filter(user_id))
 
+    async def count_non_onboarding(self, user_id: str) -> int:
+        """Real (non-onboarding) conversations for a user — the chat-usage signal.
+
+        Excludes both the onboarding walkthrough conversation and onboarding
+        demo conversations (either marker true = not real usage)."""
+        return await self._count(
+            {
+                "user_id": user_id,
+                "is_onboarding_conversation": {"$ne": True},
+                "is_onboarding_demo": {"$ne": True},
+            }
+        )
+
+    async def has_activity_since(self, user_id: str, since: datetime) -> bool:
+        """Whether the user touched any conversation at or after ``since``.
+
+        The transport-agnostic usage signal. Every chat turn appends messages,
+        which stamps ``updatedAt``, whether it arrived from the web app or a bot
+        — unlike ``users.last_active_at``, which only a WorkOS web login bumps.
+        ``createdAt`` covers conversations created but never appended to.
+
+        The two are compared differently ON PURPOSE, per this module's timestamp
+        contract: ``updatedAt`` is a BSON date, ``createdAt`` an ISO string. Mongo
+        does not compare across BSON types, so a date ``$gte`` against
+        ``createdAt`` matches NOTHING — silently, which is how it read as "this
+        user has no activity". ISO-8601 sorts lexicographically in time order, so
+        the string form is a real comparison, not a workaround.
+        """
+        return (
+            await self._count(
+                {
+                    "user_id": user_id,
+                    "$or": [
+                        {"updatedAt": {"$gte": since}},
+                        {"createdAt": {"$gte": since.isoformat()}},
+                    ],
+                }
+            )
+            > 0
+        )
+
     async def exists(self, conversation_id: str, *, user_id: str) -> bool:
+        """Whether the user owns a conversation with this id."""
         return await self._count({"conversation_id": conversation_id, "user_id": user_id}) > 0
 
     # ---- conversation-level writes (bump updatedAt) ----
 
     async def set_starred(self, conversation_id: str, *, user_id: str, starred: bool) -> bool:
+        """Set the conversation's starred flag."""
         return await self._set_fields(conversation_id, user_id, {"starred": starred})
 
     async def set_description(
         self, conversation_id: str, *, user_id: str, description: str
     ) -> bool:
+        """Set the conversation's summary description."""
         return await self._set_fields(conversation_id, user_id, {"description": description})
 
     async def set_unread(self, conversation_id: str, *, user_id: str, unread: bool) -> bool:
+        """Set the conversation's unread flag."""
         return await self._set_fields(conversation_id, user_id, {"is_unread": unread})
 
     async def set_workflow_binding(
@@ -189,6 +242,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def set_message_pinned(
         self, conversation_id: str, *, user_id: str, message_id: str, pinned: bool
     ) -> bool:
+        """Set one message's pinned flag (positional update into the messages array)."""
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$set": {"messages.$.pinned": pinned}, "$currentDate": {"updatedAt": True}},
@@ -231,6 +285,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
 
     async def remove_artifact(self, conversation_id: str, *, user_id: str, path: str) -> None:
+        """Remove one artifact entry from the conversation's artifact registry."""
         await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
             {"$pull": {"artifacts": {"path": path}}, "$currentDate": {"updatedAt": True}},
@@ -300,6 +355,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return row.messages[0]
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
+        """The conversation's source enum, or None when it doesn't exist."""
         row = await self._find_one_projected(
             {"conversation_id": conversation_id, "user_id": user_id},
             {"_id": 0, "source": 1},
@@ -338,6 +394,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def find_workflow_conversation(
         self, user_id: str, workflow_id: str
     ) -> ConversationDocument | None:
+        """The system-generated conversation bound to a workflow execution."""
         return await self._find_one(
             {
                 "user_id": user_id,
@@ -348,6 +405,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
 
     async def recent_for_user(self, user_id: str, *, limit: int) -> list[ConversationDocument]:
+        """The user's most recent conversations."""
         return await self._find({"user_id": user_id}, sort=[("createdAt", -1)], limit=limit)
 
     async def find_updated_since(
@@ -379,6 +437,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     # ---- search / pinned aggregations ----
 
     async def list_pinned_messages(self, user_id: str) -> list[ConversationMessageHit]:
+        """Every pinned message across the user's conversations."""
         return await self._aggregate(
             [
                 {"$match": {"user_id": user_id}},
@@ -423,6 +482,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return ids
 
     async def delete_onboarding_demos(self, user_id: str) -> int:
+        """Delete the user's onboarding-demo conversations."""
         return await self._delete_many(
             {"user_id": user_id, "is_onboarding_demo": True}, scope=user_id
         )

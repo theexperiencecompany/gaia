@@ -63,7 +63,6 @@ def sample_doc():
     }
 
 
-@pytest.mark.unit
 class TestSkillNameValidation:
     def test_valid_names(self):
         assert _validate_skill_name("my-skill") == "my-skill"
@@ -103,7 +102,6 @@ class TestSkillNameValidation:
             _validate_skill_name("my.skill")
 
 
-@pytest.mark.unit
 class TestSkillDescriptionValidation:
     def test_valid_description(self):
         assert _validate_skill_description("Does something useful") == "Does something useful"
@@ -117,7 +115,6 @@ class TestSkillDescriptionValidation:
             _validate_skill_description("   ")
 
 
-@pytest.mark.unit
 class TestSkillModel:
     def test_valid_skill(self, sample_skill):
         assert sample_skill.name == "my-skill"
@@ -167,7 +164,6 @@ class TestSkillModel:
             )
 
 
-@pytest.mark.unit
 class TestSkillMetadata:
     def test_valid(self):
         m = SkillMetadata(name="my-skill", description="A skill")
@@ -191,7 +187,6 @@ class TestSkillMetadata:
             SkillMetadata(name="BAD NAME", description="test")
 
 
-@pytest.mark.unit
 class TestSkillSource:
     def test_all_sources(self):
         assert SkillSource.GITHUB.value == "github"
@@ -222,7 +217,6 @@ def mock_skill_repo():
         yield repo
 
 
-@pytest.mark.unit
 class TestSkillRegistryCRUD:
     """The registry delegates to SkillsRepository; mock that seam."""
 
@@ -284,7 +278,6 @@ class TestSkillRegistryCRUD:
         mock_skill_repo.find_by_name.assert_awaited_once_with("u1", "my-skill", "gmail_agent")
 
 
-@pytest.mark.unit
 class TestGetSkillsForAgent:
     """get_skills_for_agent — the cached path, delegating to repo.for_agent."""
 
@@ -317,7 +310,6 @@ class TestGetSkillsForAgent:
         assert result == cached
 
 
-@pytest.mark.unit
 class TestInstallSkill:
     """install_skill — duplicate guard, created Skill shape, return value."""
 

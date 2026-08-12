@@ -58,6 +58,7 @@ ignore_decorators = [
   "@register_before_hook",
   "@register_after_hook",
   "@register_schema_modifier",
+  "@register_suite", # eval suite classes, resolved by name via SUITE_REGISTRY
   "@*.on",          # LiveKit event handlers (@session.on / @ctx.room.on)
   "@app.get",       # bare-FastAPI route handlers (embedding sidecar)
   "@app.post",      # bare-FastAPI route handlers (embedding sidecar)
@@ -69,6 +70,13 @@ ignore_names = [
   "__getattr__",    # module-level dunder called by Python's import machinery
   "wrap_tools",     # AgenticProvider abstract-method override (called by Composio SDK)
   "on_llm_end",     # LangChain BaseCallbackHandler override (called by the framework)
+  "build_from_config",  # chroma EmbeddingFunction contract: called dynamically via
+                        # chroma's registered-embedding-function map when a
+                        # collection config is reconstructed (see chroma_store.py)
+  "reindex_note",   # notes repair API consumed only by unit tests (vulture excludes tests)
+  "reclassify_all", # rescore CLI surface consumed only by unit tests (vulture excludes tests)
+  "render_by_suite",  # rescore report helper consumed only by unit tests (vulture excludes tests)
+  "contract_failures",  # prompt-contract API consumed only by test_prompt_contracts.py (vulture excludes tests)
 ]
 
 # ---------------------------------------------------------------------------
@@ -285,11 +293,6 @@ ignore = [
   "RUF001",
   "RUF002",
   "RUF043",
-  # RUF100 (unused noqa) stays off until BLE001 is enabled. All 60 of its current
-  # findings are `# noqa: BLE001` markers on deliberate blind excepts — redundant
-  # only because BLE001 is ignored below. Removing them would delete the intent
-  # they document and have to be undone the moment BLE001 is turned on.
-  "RUF100",
   # Other naming / misc.
   "N803",   # arg name should be snake_case (pydantic-camelCase passthroughs)
   "N806",   # variable in function should be snake_case
@@ -449,6 +452,20 @@ unfixable = [
 "apps/api/app/workers/tasks/hil_sweep_tasks.py" = ["ARG001"]
 "apps/api/app/workers/tasks/memory_backfill_tasks.py" = ["ARG001"]
 "apps/api/app/workers/tasks/memory_email_tasks.py" = ["ARG001"]
+# ARG001: ARQ injects the job context (`ctx`) into every task function; the
+# nurture task doesn't use it.
+# ANN401: ARQ's job API is dynamically typed — enqueue_worker_job forwards an
+# arbitrary per-task arg bag into pool.enqueue_job (typed *args: Any upstream in
+# arq's ArqRedis), and task_envelope's wrapper mirrors the registered task's own
+# signature, which ARQ calls positionally regardless of how the task is typed.
+"apps/api/app/workers/queue.py" = ["ANN401"]
+"apps/api/app/workers/task_envelope.py" = ["ANN401"]
+# ANN401: _iso() accepts an arbitrary decoded JSON value from a log line (a
+# field that is typed as JSON, so str/int/float/None are all reachable) and
+# str()-normalizes it before the ISO check — object would force a cast for
+# zero benefit.
+"tools/logcheck/logcheck.py" = ["ANN401"]
+"apps/api/app/workers/tasks/nurture_tasks.py" = ["ARG001"]
 # ANN401: recursively processes arbitrary JSON-serializable data (dict, list,
 # str, or scalar) for an MCP-UI iframe payload -- not dict-shaped.
 "apps/api/app/helpers/agent_helpers.py" = ["ANN401"]
@@ -584,6 +601,7 @@ no_implicit_optional = true
 ignore_missing_imports = true
 follow_imports = "silent"
 show_error_codes = true
+enable_error_code = ["ignore-without-code"]
 show_column_numbers = true
 pretty = true
 # The legacy app code is untyped at many seams; tightening these is staged work.
@@ -600,7 +618,7 @@ disallow_untyped_decorators = false
 disallow_any_generics = false
 warn_return_any = true
 warn_unreachable = true
-warn_unused_ignores = false
+warn_unused_ignores = true
 # Builtin-skill resource files (templates/, scripts/) are sandbox-executed assets,
 # not importable API modules — they run in the docgen sandbox toolchain (Typst,
 # openpyxl, docx-js), so they are not type-checked against the API environment.
@@ -714,6 +732,9 @@ exclude_dirs = [
 # - B101: assert used (legitimate in pydantic validators / dev guards)
 # - B311: random module for non-crypto (sampling, jitter)
 # - B404: subprocess import (we run trusted commands)
+# B603 (subprocess call without shell=True) is NOT skipped repo-wide — it stays
+# enforced so any *new* subprocess.run call is checked. The one legitimate
+# trusted-constant-argv call site is silenced locally with `# nosec B603`.
 skips = ["B101", "B311", "B404"]
 
 # ---------------------------------------------------------------------------

@@ -55,10 +55,16 @@ def _extract_token(websocket: WebSocket) -> str | None:
 
 @router.websocket("/device")
 async def device_ws(websocket: WebSocket) -> None:
-    """Device tunnel socket: authenticate the daemon, then relay MCP frames both ways."""
+    """Device tunnel socket: authenticate the daemon, then relay MCP frames both ways.
+
+    WebSocketWideEventMiddleware emits the connection's wide event — one
+    ``ws_connection`` line per connection lifetime, covering auth rejections
+    too — so this handler just calls ``log.set()`` like an HTTP handler.
+    """
     token = _extract_token(websocket)
     info = verify_device_token(token) if token else None
     if not info:
+        log.set(disconnect_reason="auth_failure")
         await websocket.close(code=1008)
         return
 
@@ -68,6 +74,7 @@ async def device_ws(websocket: WebSocket) -> None:
 
     # A revoked/deleted device must not be able to reconnect on a still-valid JWT.
     if await get_active_device(device_id) is None:
+        log.set(disconnect_reason="device_revoked")
         await websocket.close(code=1008)
         return
 
@@ -87,10 +94,18 @@ async def device_ws(websocket: WebSocket) -> None:
     ]
     try:
         await _receive_loop(websocket, device_id, state)
+    # evlog-map-disable-next-line error-handling -- normal websocket disconnect; info-level is correct
     except WebSocketDisconnect:
+        log.set(disconnect_reason="client_close")
         log.info(f"{LogTag.API} Device disconnected", device_id=device_id)
     except Exception as e:
-        log.warning(f"{LogTag.API} Device socket error: {e}", device_id=device_id)
+        log.set(disconnect_reason="server_error")
+        log.warning(
+            f"{LogTag.API} Device socket error",
+            device_id=device_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
     finally:
         for task in tasks:
             task.cancel()

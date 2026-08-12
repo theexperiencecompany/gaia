@@ -32,7 +32,6 @@ def sample_user() -> UserDocument:
     )
 
 
-@pytest.mark.unit
 class TestGetUserById:
     async def test_returns_user_with_string_id(self, mock_repo, sample_user):
         mock_get, _ = mock_repo
@@ -61,7 +60,6 @@ class TestGetUserById:
         assert exc_info.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestUpdateUserProfile:
     async def test_updates_name(self, mock_repo, sample_user):
         mock_get, mock_update = mock_repo

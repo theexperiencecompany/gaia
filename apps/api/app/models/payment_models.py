@@ -128,6 +128,7 @@ class SubscriptionDocument(MongoDocument):
     user_id: str
     product_id: str | None = None
     status: str = "pending"
+    cancel_at_next_billing_date: bool | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -155,6 +156,7 @@ class SubscriptionUpdate(BaseModel):
     next_billing_date: str | None = None
     previous_billing_date: str | None = None
     cancelled_at: str | None = None
+    cancel_at_next_billing_date: bool | None = None
 
 
 class ProcessedWebhookDocument(MongoDocument):

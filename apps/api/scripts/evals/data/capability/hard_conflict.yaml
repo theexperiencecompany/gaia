@@ -1,0 +1,268 @@
+# HARD tier — conflicting instruction streams. Siblings of hard.yaml's single
+# conflict case; this file brings the category to eight.
+#
+# Each case gives the agent two instructions that cannot both be honoured: a
+# mid-sentence reversal, a later turn overturning an earlier one, a "do X —
+# actually don't", a deliberate one-off override of a standing rule the user
+# themselves set. The claim is always TWO-SIDED — the final instruction was
+# carried out AND the abandoned one left no trace.
+#
+# Gate choice, and why `end_state` carries these almost alone:
+#
+# * "The abandoned instruction was NOT acted on" is an absence, and in this
+#   suite the only mechanism that can express an absence is a COUNT in
+#   `end_state` (`todos: [{count: 1}]`, `reminders: [{count: 1}]`,
+#   `projects: [{count: 0}]`). `must_not_call_tools` is inert here: the
+#   capability suite's `score()` produces values for `communicate`, `end_state`
+#   and `tool_call_correctness` only, so naming any other gate would score 0.0
+#   forever rather than checking anything.
+# * `tool_call_correctness` cannot see absence either — an agent that does the
+#   right final thing AND leaves the abandoned artifact behind makes every
+#   expected call. It is declared as a gate only where its `args` actually
+#   discriminate (hard-conflict-priority-swap-mid-request), and omitted
+#   elsewhere rather than padded in as a gate that a wrong answer passes.
+# * `communicate` is absent throughout: every noun worth asserting is one the
+#   user supplied, so the gate would be satisfied by parroting. The prose claims
+#   live in MUST-shaped judge criteria beside the real gate.
+#
+# Every counterfeit below is the plausible failure: the agent that hedges and
+# keeps both, or that obeys whichever instruction it saw first.
+
+- id: hard-conflict-mid-sentence-reversal-gym
+  ticket: "A reversal inside one sentence; the abandoned todo must never exist."
+  tags: [hard, conflict]
+  prompt: >-
+    add a todo to cancel the gym membership — actually no, don't cancel it, add
+    a todo to downgrade it to off-peak instead, and tag that one money.
+  setup:
+    counterfeit:
+      text: >-
+        Both added and tagged money: 'cancel the gym membership' and 'downgrade
+        the gym membership to off-peak'. You can tick off whichever you go with.
+      messages:
+        - {role: user, content: "add a todo to cancel the gym membership — actually no, downgrade it to off-peak instead, tag it money"}
+        - {role: assistant, content: "Both added and tagged money: 'cancel the gym membership' and 'downgrade the gym membership to off-peak'. You can tick off whichever you go with."}
+      tool_calls:
+        - {name: create_todo, args: {title: "cancel the gym membership", labels: ["money"]}}
+        - {name: create_todo, args: {title: "downgrade the gym membership to off-peak", labels: ["money"]}}
+      end_state:
+        todos: [{count: 2}, {title_contains: "downgrade", completed: false, labels_contains: "money"}]
+        labels: [{count: 1}, {name: "money"}]
+  expected:
+    category: conflict
+    end_state:
+      todos: [{count: 1}, {title_contains: "downgrade", completed: false, labels_contains: "money"}]
+      labels: [{count: 1}, {name: "money"}]
+    score: {gates: [end_state]}
+    judge:
+      criteria:
+        - "MUST: the reply confirms exactly one todo, about downgrading to off-peak."
+        - "MUST NOT: a todo about cancelling the gym membership exists or is offered as a second option."
+
+- id: hard-conflict-later-turn-overturns-earlier
+  ticket: "Turn 2 replaces turn 1's reminder; leaving the original standing is the failure."
+  tags: [hard, conflict, multiturn]
+  setup:
+    turns:
+      - "set a reminder for saturday at 09:30 to drive to the coast"
+      - "change of plan, priya can't do saturday. bin that one and make it sunday at 14:40 instead — i only want the one reminder."
+    counterfeit:
+      text: >-
+        Done — I've added the Sunday 14:40 coast reminder for you. You're all
+        set for the trip.
+      messages:
+        - {role: user, content: "set a reminder for saturday at 09:30 to drive to the coast"}
+        - {role: assistant, content: "Reminder set for Saturday at 09:30 to drive to the coast."}
+        - {role: user, content: "bin that one and make it sunday at 14:40 instead"}
+        - {role: assistant, content: "Done — I've added the Sunday 14:40 coast reminder for you. You're all set for the trip."}
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Drive to the coast"}, scheduled_at: "2027-02-06 09:30:00"}}
+        - {name: create_reminder_tool, args: {payload: {title: "Drive to the coast"}, scheduled_at: "2027-02-07 14:40:00"}}
+      end_state:
+        reminders: [{count: 2}, {title_contains: "coast", datetime_contains: "14:40"}]
+  prompt: "set a reminder for saturday at 09:30 to drive to the coast"
+  expected:
+    category: conflict
+    end_state:
+      reminders: [{count: 1}, {title_contains: "coast", datetime_contains: "14:40"}]
+    score: {gates: [end_state]}
+    judge:
+      criteria:
+        - "MUST: the second reply confirms the coast reminder is now on Sunday at 14:40."
+        - "MUST NOT: the Saturday 09:30 reminder is still scheduled after the second turn."
+
+- id: hard-conflict-standing-rule-overridden-once
+  ticket: "An explicit one-off override of the user's own standing rule; obeying the rule anyway is the failure."
+  tags: [hard, conflict, multiturn, memory]
+  setup:
+    turns:
+      - "standing rule for you, remember it: i never want anything left in the Inbox project — every todo goes in a named project."
+      - "quick one — add 'chase the landlord about the boiler'. just leave it in Inbox this once, i know what i said, don't make me a project for it."
+    counterfeit:
+      text: >-
+        Following your rule, I've created a 'Home' project and filed 'chase the
+        landlord about the boiler' in there rather than leaving it in Inbox.
+      messages:
+        - {role: user, content: "standing rule: never leave anything in Inbox, every todo goes in a named project"}
+        - {role: assistant, content: "Got it — I'll always file your todos into a named project."}
+        - {role: user, content: "add 'chase the landlord about the boiler', just leave it in Inbox this once"}
+        - {role: assistant, content: "Following your rule, I've created a 'Home' project and filed 'chase the landlord about the boiler' in there rather than leaving it in Inbox."}
+      tool_calls:
+        - {name: create_project, args: {name: "Home"}}
+        - {name: create_todo, args: {title: "chase the landlord about the boiler"}}
+      end_state:
+        projects: [{count: 1}]
+        todos: [{count: 1}, {title_contains: "landlord", completed: false}]
+  prompt: "standing rule for you, remember it: i never want anything left in the Inbox project — every todo goes in a named project."
+  expected:
+    category: conflict
+    end_state:
+      projects: [{count: 0}]
+      todos: [{count: 1}, {title_contains: "landlord", completed: false}]
+    score: {gates: [end_state]}
+    judge:
+      criteria:
+        - "MUST: the second reply says the todo has been left in Inbox as asked."
+        - "MUST NOT: a new project is created for this todo."
+
+- id: hard-conflict-delete-target-swapped
+  ticket: "'Delete A — no, delete B instead': A must survive and B must be gone."
+  tags: [hard, conflict, multiturn]
+  setup:
+    turns:
+      - "add three todos: descale the kettle, replace the smoke alarm battery, book the chimney sweep"
+      - "delete the chimney sweep one. no wait — leave that, delete the kettle one instead."
+    counterfeit:
+      text: >-
+        Deleted the chimney sweep todo. You're left with the kettle and the
+        smoke alarm battery.
+      messages:
+        - {role: user, content: "add three todos: descale the kettle, replace the smoke alarm battery, book the chimney sweep"}
+        - {role: assistant, content: "Added all three."}
+        - {role: user, content: "delete the chimney sweep one. no wait — leave that, delete the kettle one instead."}
+        - {role: assistant, content: "Deleted the chimney sweep todo. You're left with the kettle and the smoke alarm battery."}
+      tool_calls:
+        - {name: create_todo, args: {title: "descale the kettle"}}
+        - {name: create_todo, args: {title: "replace the smoke alarm battery"}}
+        - {name: create_todo, args: {title: "book the chimney sweep"}}
+        - {name: delete_todo, args: {title: "book the chimney sweep"}}
+      end_state:
+        todos:
+          - {count: 2}
+          - {title_contains: null, completed: false}
+          - {title_contains: "smoke alarm", completed: false}
+  prompt: "add three todos: descale the kettle, replace the smoke alarm battery, book the chimney sweep"
+  expected:
+    category: conflict
+    end_state:
+      todos:
+        - {count: 2}
+        - {title_contains: "chimney", completed: false}
+        - {title_contains: "smoke alarm", completed: false}
+    score: {gates: [end_state]}
+    judge:
+      criteria:
+        - "MUST: the kettle todo is the one that was deleted."
+        - "MUST NOT: the chimney sweep todo was deleted or marked complete."
+
+- id: hard-conflict-time-reversal-single-turn
+  ticket: "A time corrected mid-request; hedging by keeping both times is the failure."
+  tags: [hard, conflict, temporal]
+  prompt: >-
+    remind me at 18:00 on the 9th to put the bins out — hang on, i'm on the train
+    then. make it 21:40 the same evening instead, and i only want one reminder.
+  setup:
+    counterfeit:
+      text: >-
+        I've put both in so you can't miss it — 18:00 and 21:40 on the 9th for
+        the bins.
+      messages:
+        - {role: user, content: "remind me at 18:00 on the 9th to put the bins out — hang on, make it 21:40 instead"}
+        - {role: assistant, content: "I've put both in so you can't miss it — 18:00 and 21:40 on the 9th for the bins."}
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Put the bins out"}, scheduled_at: "2027-03-09 18:00:00"}}
+        - {name: create_reminder_tool, args: {payload: {title: "Put the bins out"}, scheduled_at: "2027-03-09 21:40:00"}}
+      end_state:
+        reminders: [{count: 2}, {title_contains: "bins", datetime_contains: "21:40"}]
+  expected:
+    category: conflict
+    end_state:
+      reminders: [{count: 1}, {title_contains: "bins", datetime_contains: "21:40"}]
+    score: {gates: [end_state]}
+    judge:
+      criteria:
+        - "MUST: the reply confirms a single bins reminder at 21:40."
+        - "MUST NOT: a reminder at 18:00 was also created 'just in case'."
+
+- id: hard-conflict-priority-swap-mid-request
+  ticket: "Two todos declared high, then corrected to high/low; both must carry the corrected priority."
+  tags: [hard, conflict, precision]
+  prompt: >-
+    add these two as high priority: file the vat return, and renew the
+    insurance. actually scrap that — the vat one is high, the insurance one is
+    low, i had them muddled.
+  setup:
+    counterfeit:
+      text: >-
+        Added both as high priority: 'file the vat return' and 'renew the
+        insurance'. Shout if you want either bumped down.
+      messages:
+        - {role: user, content: "add these two as high priority: file the vat return, renew the insurance. actually the vat one is high, the insurance one is low"}
+        - {role: assistant, content: "Added both as high priority: 'file the vat return' and 'renew the insurance'. Shout if you want either bumped down."}
+      tool_calls:
+        - {name: create_todo, args: {title: "file the vat return", priority: "high"}}
+        - {name: create_todo, args: {title: "renew the insurance", priority: "high"}}
+      end_state:
+        todos:
+          - {count: 2}
+          - {title_contains: "vat", completed: false, priority: "high"}
+          - {title_contains: "insurance", completed: false, priority: null}
+  expected:
+    category: conflict
+    tool_calls:
+      - {tool: create_todo, args: {title: "insurance", priority: "low"}}
+    end_state:
+      todos:
+        - {count: 2}
+        - {title_contains: "vat", completed: false, priority: "high"}
+        - {title_contains: "insurance", completed: false, priority: "low"}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the insurance todo is stored at low priority."
+        - "MUST NOT: both todos are stored at high priority."
+
+- id: hard-conflict-drop-container-keep-contents
+  ticket: "The container is retracted but its contents are not; deleting the todo with the project is the failure."
+  tags: [hard, conflict, multiturn, projects]
+  setup:
+    turns:
+      - "make me a project called Sourdough and put a todo in it: feed the starter"
+      - "actually forget the project, delete it — but keep the todo, just leave it in my Inbox."
+    counterfeit:
+      text: >-
+        Sourdough project deleted along with everything filed inside it, so
+        you're back to a clean slate.
+      messages:
+        - {role: user, content: "make me a project called Sourdough and put a todo in it: feed the starter"}
+        - {role: assistant, content: "Created the Sourdough project with 'feed the starter' inside it."}
+        - {role: user, content: "actually forget the project, delete it — but keep the todo"}
+        - {role: assistant, content: "Sourdough project deleted along with everything filed inside it, so you're back to a clean slate."}
+      tool_calls:
+        - {name: create_project, args: {name: "Sourdough"}}
+        - {name: create_todo, args: {title: "feed the starter"}}
+        - {name: delete_project, args: {project_id: "sourdough"}}
+      end_state:
+        projects: [{count: 0}]
+        todos: [{count: 0}, {title_contains: null, completed: false}]
+  prompt: "make me a project called Sourdough and put a todo in it: feed the starter"
+  expected:
+    category: conflict
+    end_state:
+      projects: [{count: 0}]
+      todos: [{count: 1}, {title_contains: "starter", completed: false}]
+    score: {gates: [end_state]}
+    judge:
+      criteria:
+        - "MUST: the feed-the-starter todo still exists after the project is deleted."
+        - "MUST NOT: the todo is deleted along with the project."

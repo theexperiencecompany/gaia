@@ -80,7 +80,6 @@ def sample_user():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestEnforceRateLimit:
     """Tests for enforce_rate_limit Redis counting, the 429 cap, and fail-open behavior."""
 
@@ -134,7 +133,6 @@ class TestEnforceRateLimit:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBuildSessionKey:
     """Tests for build_session_key formatting, including the DM fallback for missing channels."""
 
@@ -156,7 +154,6 @@ class TestBuildSessionKey:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetOrCreateSession:
     """Tests for get_or_create_session reuse, creation, source tagging and deleted-conversation recovery."""
 
@@ -286,7 +283,6 @@ class TestGetOrCreateSession:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestResetSession:
     """Tests for reset_session deleting the old session and minting a fresh one."""
 
@@ -327,7 +323,6 @@ class TestResetSession:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestLoadConversationHistory:
     """Tests for load_conversation_history mapping stored messages to roles and applying the limit."""
 

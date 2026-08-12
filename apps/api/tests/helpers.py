@@ -1,5 +1,6 @@
 """Shared test utilities for GAIA API tests."""
 
+import math
 import os
 import re
 import socket
@@ -9,8 +10,25 @@ from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage, BaseMessage
+import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+
+from app.config.rate_limits import RateLimitConfig
+
+
+def effective_limit(config: RateLimitConfig, period: str) -> float:
+    """Comparable allowance for a period under RateLimitConfig's 0-semantics.
+
+    ``0`` is overloaded: a tier with BOTH periods 0 has no access at all
+    (returns ``0.0``); otherwise a period of 0 means that period is uncapped
+    (returns ``math.inf``). Lets free and pro allowances be ordered directly
+    despite 0 meaning either "no access" or "unlimited" by context.
+    """
+    if config.day <= 0 and config.month <= 0:
+        return 0.0
+    value = getattr(config, period)
+    return math.inf if value <= 0 else float(value)
 
 
 def pick_free_port() -> int:
@@ -124,7 +142,7 @@ class MockAuthMiddleware(BaseHTTPMiddleware):
     WorkOS SSO can't be driven headlessly in a test, so every API-level test in
     this repo that needs "a signed-in user" swaps this in for the real auth
     middleware instead (see tests/integration/api/conftest.py and
-    tests/service/conftest.py). It does not touch any of the business logic
+    tests/integration/real/conftest.py). It does not touch any of the business logic
     under test — only the login step no automated test can perform for real.
     """
 
@@ -167,3 +185,83 @@ class HeaderDrivenAuthMiddleware(BaseHTTPMiddleware):
             request.state.authenticated = False
             request.state.user = None
         return await call_next(request)
+
+
+def real_services_available() -> bool:
+    """True when the run is allowed to dial real service containers.
+
+    CI (the Dagger service container) sets USE_REAL_SERVICES=1 explicitly; a
+    bare local run must stay offline.
+    """
+    return os.environ.get("USE_REAL_SERVICES", "0") == "1"
+
+
+def skip_items_without_real_services(
+    items: list[pytest.Item],
+    reason: str = "requires USE_REAL_SERVICES=1 (Docker + real Postgres/Redis/MongoDB/ChromaDB)",
+) -> None:
+    """Skip collected items in place unless real services are available.
+
+    Collection-time skip: fast (no connections, no imports of the real-infra
+    stack) so a bare run reports an instant, visible skip instead of hanging
+    on dead ports or failing with connection errors minutes later.
+    """
+    if real_services_available():
+        return
+    marker = pytest.mark.skip(reason=reason)
+    for item in items:
+        item.add_marker(marker)
+
+
+class AssertNumDbCalls:
+    """Assert exactly N SQL statements executed inside the block (Django's
+    assertNumQueries pattern).
+
+    Listens for SQLAlchemy ``before_cursor_execute`` on the given engine
+    (sync or async — the event fires on both) and asserts the count,
+    dumping every captured statement on mismatch so the accidental query is
+    visible, not just counted. ``warmup`` excludes the first statements that
+    only establish the pool, so a warm-up connection is never mistaken for
+    a query.
+    """
+
+    def __init__(self, expected: int, engine: Any, *, warmup: int = 0) -> None:
+        self.expected = expected
+        self.engine = engine
+        self.warmup = warmup
+        self.statements: list[str] = []
+
+    def _record(
+        self,
+        _conn: Any,
+        _cursor: Any,
+        statement: str,
+        _parameters: Any,
+        _context: Any,
+        _executemany: Any,
+    ) -> None:
+        self.statements.append(statement)
+
+    def __enter__(self) -> "AssertNumDbCalls":
+        from sqlalchemy import event
+
+        event.listen(self.engine, "before_cursor_execute", self._record)
+        return self
+
+    def __exit__(self, *_exc: Any) -> bool:
+        from sqlalchemy import event
+
+        event.remove(self.engine, "before_cursor_execute", self._record)
+        actual = max(0, len(self.statements) - self.warmup)
+        assert actual == self.expected, (
+            f"expected {self.expected} DB query(ies), got {actual}:\n"
+            + "\n".join(f"  {statement}" for statement in self.statements)
+        )
+        return False
+
+
+def assert_num_db_calls(expected: int, engine: Any, *, warmup: int = 0) -> AssertNumDbCalls:
+    """Context manager: fail if the block runs anything but ``expected`` SQL
+    statements against ``engine``. Attach to a real engine at the repository
+    layer — N+1 and accidental-query regressions die here."""
+    return AssertNumDbCalls(expected, engine, warmup=warmup)

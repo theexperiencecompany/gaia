@@ -1,0 +1,66 @@
+# Voice under pressure: two registers the existing voice.yaml cases do not cover
+# — a terse, already-annoyed user, and a non-native speaker who opens with an
+# emoji. Read voice.yaml's header for what `emoji_discipline` is and why the
+# prompt's absolutes are gated in code rather than judged.
+#
+# The two cases use emoji_discipline in opposite directions on purpose, because
+# a one-directional check is half a check:
+#
+# - In the frustrated case the user uses NO emoji, so the gate can genuinely go
+#   red — an apologetic 🙏 in the reply is exactly the failure it was written for
+#   (the live regression that motivated it was a 🌱 on a plain-text turn). The
+#   falsifiable gate beside it is tool_call_correctness: an annoyed user asking
+#   for the third time must get the reminder, not another apology.
+# - In the emoji-opener case the user has already used one, so the check permits
+#   mirroring and CANNOT go red on content — it is declared to catch a
+#   regression where the check starts firing on legitimate mirroring, not to
+#   catch the agent. The falsifiable gate there is `must_not_communicate` on
+#   "contact support", the exact fob-off the user says they have already had.
+#   Because that phrase is in the user's own words, it also rejects an echo,
+#   which is what keeps the case from being content-blind.
+
+- id: quality-voice-x-terse-frustrated
+  ticket: "Third time of asking — do the thing, once, without a grovelling apology chain."
+  tags: [voice, tone, tool]
+  prompt: "third time asking. set a reminder for 7am tomorrow to take the bins out."
+  setup:
+    counterfeit:
+      text: "I apologize for the confusion! I'm really sorry this has taken so many attempts. Could you just confirm the time you'd like and what the reminder should say, so I can make absolutely sure I get it right this time? 🙏"
+      messages:
+        - {role: user, content: "third time asking. set a reminder for 7am tomorrow to take the bins out."}
+        - {role: assistant, content: "I apologize for the confusion! I'm really sorry this has taken so many attempts. Could you just confirm the time you'd like and what the reminder should say, so I can make absolutely sure I get it right this time? 🙏"}
+  expected:
+    category: voice
+    communicate: []
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply asks the user to repeat the time or the task, both of which they already gave."
+        - "MUST NOT: the reply apologises more than once."
+        - "MUST: the reply is one line."
+    score: {gates: [emoji_discipline, tool_call_correctness, tool_card]}
+
+- id: quality-voice-x-emoji-open-nonnative
+  ticket: "Emoji opener, non-native phrasing, and a user who has already been fobbed off once."
+  tags: [voice, emoji, tone]
+  prompt: "🙄 hi, my parcel is 'out for delivery' since 3 days and the courier chat only tell me to contact support. what i can do now?"
+  setup:
+    counterfeit:
+      text: "Sorry for the hassle! 😊 The best thing to do here is contact support directly and ask them to open an investigation on the parcel — they're the only ones who can see the courier's internal tracking."
+      messages:
+        - {role: user, content: "🙄 hi, my parcel is 'out for delivery' since 3 days and the courier chat only tell me to contact support. what i can do now?"}
+        - {role: assistant, content: "Sorry for the hassle! 😊 The best thing to do here is contact support directly and ask them to open an investigation on the parcel — they're the only ones who can see the courier's internal tracking."}
+  expected:
+    category: voice
+    communicate: []
+    must_not_communicate: ["contact support"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply names a concrete next move other than contacting the courier's support chat."
+        - "MUST: the reply is written in plain English, the language the user wrote in."
+        - "MUST NOT: the reply corrects or comments on the user's grammar or phrasing."
+    score: {gates: [must_not_communicate, emoji_discipline]}

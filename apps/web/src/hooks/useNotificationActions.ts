@@ -20,12 +20,61 @@ interface UseNotificationActionsOptions {
   onModalOpen?: (config: ModalConfig) => void;
 }
 
+// Loading state is only tracked for actions that hit the backend.
+const isLoadingAction = (action: NotificationAction): boolean =>
+  action.type === ActionType.API_CALL || action.type === ActionType.WORKFLOW;
+
 export function useNotificationActions(
   options: UseNotificationActionsOptions = {},
 ) {
   const [loading, setLoading] = useState<string | null>(null);
   const router = useRouter();
   const { confirm, confirmationProps } = useConfirmation();
+
+  // Prompt for confirmation on workflow/api_call actions that request it.
+  // Returns whether the caller should proceed.
+  const confirmActionIfNeeded = async (
+    action: NotificationAction,
+  ): Promise<boolean> => {
+    const needsConfirmation =
+      (action.type === ActionType.WORKFLOW ||
+        action.type === ActionType.API_CALL) &&
+      (action.requires_confirmation || action.confirmation_message);
+    if (!needsConfirmation) return true;
+
+    return confirm({
+      title: "Confirm Action",
+      message:
+        action.confirmation_message ||
+        "Are you sure you want to perform this action?",
+      confirmText: "Continue",
+      cancelText: "Cancel",
+      variant: action.style === ActionStyle.DANGER ? "destructive" : "default",
+    });
+  };
+
+  // Route an action to its type-specific handler.
+  const dispatchAction = async (
+    notificationId: string,
+    action: NotificationAction,
+  ): Promise<void> => {
+    switch (action.type) {
+      case ActionType.API_CALL:
+        await handleApiCall(notificationId, action);
+        break;
+      case ActionType.REDIRECT:
+        await handleRedirect(notificationId, action);
+        break;
+      case ActionType.MODAL:
+        await handleModal(notificationId, action);
+        break;
+      case ActionType.WORKFLOW:
+        await handleWorkflow(notificationId, action);
+        break;
+      default:
+        throw new Error(`Unsupported action type: ${action.type}`);
+    }
+  };
 
   const executeAction = async (
     notificationId: string,
@@ -41,50 +90,16 @@ export function useNotificationActions(
       return;
     }
 
-    // Show confirmation dialog for workflow and api_call actions
-    if (
-      (action.type === ActionType.WORKFLOW ||
-        action.type === ActionType.API_CALL) &&
-      (action.requires_confirmation || action.confirmation_message)
-    ) {
-      const confirmed = await confirm({
-        title: "Confirm Action",
-        message:
-          action.confirmation_message ||
-          "Are you sure you want to perform this action?",
-        confirmText: "Continue",
-        cancelText: "Cancel",
-        variant:
-          action.style === ActionStyle.DANGER ? "destructive" : "default",
-      });
-      if (!confirmed) return;
-    }
+    const proceed = await confirmActionIfNeeded(action);
+    if (!proceed) return;
 
     // Set loading state only for API_CALL and WORKFLOW actions
-    if (
-      action.type === ActionType.API_CALL ||
-      action.type === ActionType.WORKFLOW
-    ) {
+    if (isLoadingAction(action)) {
       setLoading(action.id);
     }
 
     try {
-      switch (action.type) {
-        case ActionType.API_CALL:
-          await handleApiCall(notificationId, action);
-          break;
-        case ActionType.REDIRECT:
-          await handleRedirect(notificationId, action);
-          break;
-        case ActionType.MODAL:
-          await handleModal(notificationId, action);
-          break;
-        case ActionType.WORKFLOW:
-          await handleWorkflow(notificationId, action);
-          break;
-        default:
-          throw new Error(`Unsupported action type: ${action.type}`);
-      }
+      await dispatchAction(notificationId, action);
     } catch (error) {
       console.error("Action execution failed:", error);
       const errorMessage =
@@ -95,10 +110,7 @@ export function useNotificationActions(
       );
     } finally {
       // Only clear loading for API_CALL and WORKFLOW actions
-      if (
-        action.type === ActionType.API_CALL ||
-        action.type === ActionType.WORKFLOW
-      ) {
+      if (isLoadingAction(action)) {
         setLoading(null);
       }
     }

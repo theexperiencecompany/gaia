@@ -213,6 +213,7 @@ def mock_subscription_repository():
         mock_repo.get_active_for_user = AsyncMock(return_value=None)
         mock_repo.get_latest_active_for_user = AsyncMock(return_value=None)
         mock_repo.get_user_id_by_dodo_id = AsyncMock(return_value=None)
+        mock_repo.apply_update_by_dodo_id = AsyncMock(return_value=True)
         yield mock_repo
 
 
@@ -341,7 +342,6 @@ def mock_payment_service_invalidation():
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestGetPlans:
     """Tests for DodoPaymentService.get_plans."""
 
@@ -483,7 +483,6 @@ class TestGetPlans:
         assert plans[0].features == []
 
 
-@pytest.mark.unit
 class TestCreateSubscription:
     """Tests for DodoPaymentService.create_subscription."""
 
@@ -701,6 +700,101 @@ class TestCreateSubscription:
 
 
 @pytest.mark.unit
+class TestCancelSubscription:
+    """Tests for DodoPaymentService.cancel_subscription."""
+
+    async def test_cancels_at_next_billing_date(
+        self,
+        payment_service,
+        mock_subscription_repository,
+        mock_plan_repository,
+        mock_redis_cache,
+        mock_dodo_client,
+    ):
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            return_value=SAMPLE_SUBSCRIPTION
+        )
+        mock_subscription_repository.get_user_id_by_dodo_id = AsyncMock(return_value=FAKE_USER_ID)
+
+        updated = MagicMock()
+        updated.status = "active"
+        updated.cancelled_at = None
+        updated.next_billing_date = None
+        mock_dodo_client.subscriptions = MagicMock()
+        mock_dodo_client.subscriptions.update = MagicMock(return_value=updated)
+
+        result = await payment_service.cancel_subscription(FAKE_USER_ID)
+
+        mock_dodo_client.subscriptions.update.assert_called_once_with(
+            "sub_xyz789",
+            cancel_at_next_billing_date=True,
+        )
+        # The local row is mirrored with the flag set and status kept.
+        update_call = mock_subscription_repository.apply_update_by_dodo_id.call_args
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
+        assert set_data["cancel_at_next_billing_date"] is True
+        assert set_data["status"] == "active"
+        assert "cancelled_at" not in set_data
+        assert isinstance(result, UserSubscriptionStatus)
+
+    async def test_cancels_with_cancelled_at(
+        self,
+        payment_service,
+        mock_subscription_repository,
+        mock_plan_repository,
+        mock_redis_cache,
+        mock_dodo_client,
+    ):
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            return_value=SAMPLE_SUBSCRIPTION
+        )
+        mock_subscription_repository.get_user_id_by_dodo_id = AsyncMock(return_value=FAKE_USER_ID)
+
+        updated = MagicMock()
+        updated.status = "active"
+        updated.cancelled_at = datetime(2025, 6, 15, tzinfo=UTC)
+        updated.next_billing_date = None
+        mock_dodo_client.subscriptions = MagicMock()
+        mock_dodo_client.subscriptions.update = MagicMock(return_value=updated)
+
+        await payment_service.cancel_subscription(FAKE_USER_ID)
+
+        update_call = mock_subscription_repository.apply_update_by_dodo_id.call_args
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
+        assert set_data["cancelled_at"] == "2025-06-15T00:00:00+00:00"
+
+    async def test_raises_404_without_active_subscription(
+        self,
+        payment_service,
+        mock_subscription_repository,
+    ):
+        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await payment_service.cancel_subscription(FAKE_USER_ID)
+
+        assert exc_info.value.status_code == 404
+
+    async def test_raises_502_on_dodo_error(
+        self,
+        payment_service,
+        mock_subscription_repository,
+        mock_dodo_client,
+    ):
+        mock_subscription_repository.get_active_for_user = AsyncMock(
+            return_value=SAMPLE_SUBSCRIPTION
+        )
+        mock_dodo_client.subscriptions = MagicMock()
+        mock_dodo_client.subscriptions.update = MagicMock(side_effect=Exception("Dodo API down"))
+
+        with pytest.raises(HTTPException) as exc_info:
+            await payment_service.cancel_subscription(FAKE_USER_ID)
+
+        assert exc_info.value.status_code == 502
+        assert "Payment service error" in str(exc_info.value.detail)
+
+
+@pytest.mark.unit
 class TestVerifyPaymentCompletion:
     """Tests for DodoPaymentService.verify_payment_completion."""
 
@@ -802,7 +896,6 @@ class TestVerifyPaymentCompletion:
         mock_send_email.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestGetUserSubscriptionStatus:
     """Tests for DodoPaymentService.get_user_subscription_status."""
 
@@ -907,7 +1000,6 @@ class TestGetUserSubscriptionStatus:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestDodoPaymentServiceInit:
     """Tests for DodoPaymentService.__init__."""
 
@@ -915,6 +1007,7 @@ class TestDodoPaymentServiceInit:
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "production"
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_live_test"
+            mock_settings.DODO_PAYMENTS_BASE_URL = None
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
                 DodoPaymentService()
                 mock_cls.assert_called_once_with(
@@ -926,11 +1019,26 @@ class TestDodoPaymentServiceInit:
         with patch("app.services.payments.payment_service.settings") as mock_settings:
             mock_settings.ENV = "development"
             mock_settings.DODO_PAYMENTS_API_KEY = "sk_test_test"
+            mock_settings.DODO_PAYMENTS_BASE_URL = None
             with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
                 DodoPaymentService()
                 mock_cls.assert_called_once_with(
                     bearer_token="sk_test_test",
                     environment="test_mode",
+                )
+
+    def test_base_url_override_wins_over_environment(self):
+        """When DODO_PAYMENTS_BASE_URL is set, it points the SDK at that URL
+        instead of the real environment endpoint."""
+        with patch("app.services.payments.payment_service.settings") as mock_settings:
+            mock_settings.ENV = "development"
+            mock_settings.DODO_PAYMENTS_API_KEY = "sk_test_test"
+            mock_settings.DODO_PAYMENTS_BASE_URL = "http://localhost:8899"
+            with patch("app.services.payments.payment_service.DodoPayments") as mock_cls:
+                DodoPaymentService()
+                mock_cls.assert_called_once_with(
+                    bearer_token="sk_test_test",
+                    base_url="http://localhost:8899",
                 )
 
     def test_client_init_failure_is_logged_not_raised(self):
@@ -942,10 +1050,14 @@ class TestDodoPaymentServiceInit:
                 "app.services.payments.payment_service.DodoPayments",
                 side_effect=Exception("Bad API key"),
             ):
-                # Should not raise
-                svc = DodoPaymentService()
-                # client attribute may not exist, which is expected
-                assert not hasattr(svc, "client") or svc.client is not None or True
+                with patch("app.services.payments.payment_service.log") as mock_log:
+                    # Should not raise
+                    svc = DodoPaymentService()
+
+                # Init failure leaves the service without a usable client
+                assert not hasattr(svc, "client")
+                # The failure must be surfaced in the logs, not swallowed
+                mock_log.error.assert_called_once()
 
 
 # ============================================================================
@@ -953,7 +1065,6 @@ class TestDodoPaymentServiceInit:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestVerifyWebhookSignature:
     """Tests for PaymentWebhookService.verify_webhook_signature."""
 
@@ -1059,7 +1170,6 @@ class TestVerifyWebhookSignature:
         assert svc.webhook_verifier is None
 
 
-@pytest.mark.unit
 class TestProcessWebhookIdempotency:
     """Tests for idempotency / deduplication in process_webhook."""
 
@@ -1121,7 +1231,6 @@ class TestProcessWebhookIdempotency:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestHandlePaymentSucceeded:
     """Tests for _handle_payment_succeeded via process_webhook."""
 
@@ -1199,7 +1308,6 @@ class TestHandlePaymentSucceeded:
         assert "Processing error" in result.message
 
 
-@pytest.mark.unit
 class TestHandlePaymentFailed:
     """Tests for _handle_payment_failed."""
 
@@ -1232,7 +1340,6 @@ class TestHandlePaymentFailed:
         assert call_kwargs["event_type"] == "payment:failed"
 
 
-@pytest.mark.unit
 class TestHandlePaymentProcessing:
     """Tests for _handle_payment_processing."""
 
@@ -1248,7 +1355,6 @@ class TestHandlePaymentProcessing:
         assert "processing" in result.message.lower()
 
 
-@pytest.mark.unit
 class TestHandlePaymentCancelled:
     """Tests for _handle_payment_cancelled."""
 
@@ -1269,7 +1375,6 @@ class TestHandlePaymentCancelled:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionActive:
     """Tests for _handle_subscription_active."""
 
@@ -1403,7 +1508,6 @@ class TestHandleSubscriptionActive:
         assert "Processing error" in result.message
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionRenewed:
     """Tests for _handle_subscription_renewed."""
 
@@ -1489,7 +1593,6 @@ class TestHandleSubscriptionRenewed:
         assert call_kwargs["event_type"] == "subscription:renewed"
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionCancelled:
     """Tests for _handle_subscription_cancelled."""
 
@@ -1558,8 +1661,55 @@ class TestHandleSubscriptionCancelled:
         call_kwargs = mock_track_subscription.call_args[1]
         assert call_kwargs["event_type"] == "subscription:cancelled"
 
+    async def test_scheduled_cancel_keeps_status_and_sets_flag(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+    ):
+        """A cancel-at-next-billing-date keeps the subscription active and just
+        records the flag — the user retains Pro access until the period ends."""
+        payload = {
+            **SUBSCRIPTION_DATA_PAYLOAD,
+            "status": "active",
+            "cancel_at_next_billing_date": True,
+        }
+        event_data = _make_webhook_event("subscription.cancelled", payload)
 
-@pytest.mark.unit
+        await webhook_service.process_webhook(event_data, "wh_cancel_sub_005")
+
+        update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
+        # Status is deliberately NOT in the update — only the flag records the
+        # scheduled cancellation. A later `subscription.expired` flips status.
+        assert "status" not in set_data
+        assert set_data["cancel_at_next_billing_date"] is True
+
+    async def test_scheduled_cancel_ignores_payload_status(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+    ):
+        """Even if Dodo ever reported status "cancelled" in a scheduled-cancel
+        payload, the user is not downgraded early — status stays untouched."""
+        payload = {
+            **SUBSCRIPTION_DATA_PAYLOAD,
+            "status": "cancelled",
+            "cancel_at_next_billing_date": True,
+        }
+        event_data = _make_webhook_event("subscription.cancelled", payload)
+
+        await webhook_service.process_webhook(event_data, "wh_cancel_sub_006")
+
+        update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
+        assert "status" not in set_data
+        assert set_data["cancel_at_next_billing_date"] is True
+
+
 class TestHandleSubscriptionExpired:
     """Tests for _handle_subscription_expired."""
 
@@ -1594,7 +1744,6 @@ class TestHandleSubscriptionExpired:
         assert call_kwargs["event_type"] == "subscription:expired"
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionFailed:
     """Tests for _handle_subscription_failed."""
 
@@ -1614,7 +1763,6 @@ class TestHandleSubscriptionFailed:
         assert set_data["status"] == "failed"
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionOnHold:
     """Tests for _handle_subscription_on_hold."""
 
@@ -1634,7 +1782,6 @@ class TestHandleSubscriptionOnHold:
         assert set_data["status"] == "on_hold"
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionPlanChanged:
     """Tests for _handle_subscription_plan_changed."""
 
@@ -1661,7 +1808,6 @@ class TestHandleSubscriptionPlanChanged:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestSendWelcomeEmail:
     """Tests for _send_welcome_email."""
 
@@ -1715,7 +1861,6 @@ class TestSendWelcomeEmail:
         await webhook_service._send_welcome_email(FAKE_USER_ID)
 
 
-@pytest.mark.unit
 class TestGetUserEmailFromMetadata:
     """Tests for _get_user_email_from_metadata."""
 
@@ -1746,7 +1891,6 @@ class TestGetUserEmailFromMetadata:
         assert email is None
 
 
-@pytest.mark.unit
 class TestIsWebhookProcessed:
     """Tests for _is_webhook_processed."""
 
@@ -1771,7 +1915,6 @@ class TestIsWebhookProcessed:
         assert result is False
 
 
-@pytest.mark.unit
 class TestMarkWebhookAsProcessed:
     """Tests for _mark_webhook_as_processed."""
 
@@ -1823,7 +1966,6 @@ class TestMarkWebhookAsProcessed:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestPaymentWebhookServiceInit:
     """Tests for PaymentWebhookService.__init__."""
 
@@ -1859,7 +2001,6 @@ class TestPaymentWebhookServiceInit:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestProcessWebhookCustomerIdExtraction:
     """Verify customer_id is correctly extracted from nested and flat payloads."""
 

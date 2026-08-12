@@ -54,11 +54,11 @@ async def coalesce_request(key: str, factory: Callable[[], Coroutine[Any, Any, T
     async with _lock:
         if key in _pending_requests:
             # Another request is already running, wait for it
-            log.debug(f"{LogTag.STARTUP} Request coalescing: waiting for in-flight '{key}'")
+            log.debug(f"{LogTag.STARTUP} Request coalescing: waiting for in-flight", key=key)
             task = _pending_requests[key]
         else:
             # We're the first, create the task
-            log.debug(f"{LogTag.STARTUP} Request coalescing: starting new request for '{key}'")
+            log.debug(f"{LogTag.STARTUP} Request coalescing: starting new request for", key=key)
             coro = factory()
             task = asyncio.create_task(coro)
             _pending_requests[key] = task

@@ -9,6 +9,7 @@ from fastapi.responses import RedirectResponse
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
+from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser
@@ -99,12 +100,18 @@ async def disconnect_integration_endpoint(
         error_message = str(e)
         # Only return 404 if the integration itself doesn't exist
         if "not found" in error_message.lower() and "account" not in error_message.lower():
-            raise HTTPException(status_code=404, detail=error_message)
+            raise HTTPException(status_code=404, detail=error_message) from e
         # For "no active connected account" or other cases, return 400
-        raise HTTPException(status_code=400, detail=error_message)
+        raise HTTPException(status_code=400, detail=error_message) from e
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error disconnecting {integration_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to disconnect integration")
+        log.error(
+            f"{LogTag.INTEGRATION} Error disconnecting integration",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to disconnect integration") from e
 
 
 @router.post("/connect/{integration_id}", response_model=ConnectIntegrationResponse)
@@ -208,7 +215,13 @@ async def connect_integration_endpoint(
             error=f"Unsupported integration type: {resolved.managed_by}",
         )
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Failed to connect {integration_id}: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Failed to connect integration",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         log.set(integration={"id": integration_id, "status": "error"})
         return ConnectIntegrationResponse(
             status="error",
@@ -243,17 +256,55 @@ async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse
     log.set(operation="connect_link")
     verified = await resolve_and_consume_connect_code(code)
     if not verified:
+        # Recorded, not swallowed: the redirect is a 307 that reads like success,
+        # and this endpoint is auth-excluded and rate-limited precisely because
+        # the code is brute-forceable — failed redemptions must be queryable.
+        log.set(outcome="rejected")
+        log.warning(
+            f"{LogTag.INTEGRATION} Connect link redemption rejected",
+            failure="unknown_or_consumed_code",
+        )
+        # The code IS the credential and it resolved to no binding — the record
+        # carries the outcome, never the code that was presented.
+        log.audit(
+            "connect link redemption rejected",
+            actor=AUDIT_ACTOR_UNAUTHENTICATED,
+            reason="unknown_or_consumed_code",
+        )
         return _connect_link_error("invalid_or_expired_link")
 
     user_id, integration_id = verified
     log.set(user={"id": user_id}, integration={"id": integration_id})
+    # The single-use code is spent here: this is the state change, and it grants
+    # the holder the bound user's OAuth flow without a session.
+    log.audit(
+        "connect link redeemed",
+        actor=user_id,
+        resource=integration_id,
+    )
 
     # Self-managed (Google) connectors use email as an OAuth login hint; others
     # ignore it. user_id is trusted (it came from a server-bound, single-use code).
     user_email = ""
     try:
         user_doc = await user_repository.get(user_id)
-    except InvalidId:
+    except InvalidId as e:
+        # A server-issued code that carries a non-ObjectId user_id means the
+        # stored binding is corrupt — same opaque bounce for the client, but a
+        # distinct failure in telemetry.
+        log.set(outcome="rejected")
+        log.warning(
+            f"{LogTag.INTEGRATION} Connect link redemption rejected",
+            failure="malformed_user_id",
+            error_type=type(e).__name__,
+        )
+        log.audit(
+            "connect link redemption rejected",
+            actor=user_id,
+            resource=integration_id,
+            reason="malformed_user_id",
+            error_type=type(e).__name__,
+        )
         return _connect_link_error("invalid_or_expired_link")
     if user_doc:
         user_email = user_doc.email or ""

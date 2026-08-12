@@ -21,7 +21,7 @@ from bs4 import BeautifulSoup  # For HTML cleaning
 import ftfy
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
@@ -380,7 +380,7 @@ def _deduplicate_emails(emails: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 async def extract_username_with_llm(
-    platform: str, emails: list[dict[str, Any]], user_name: str | None = None
+    platform: str, emails: list[dict[str, Any]], user_name: str | None = None, *, user_id: str
 ) -> str:
     """Use an LLM with structured output to extract the user's username from
     platform emails. Returns the username or "NOT_FOUND"."""
@@ -392,7 +392,10 @@ async def extract_username_with_llm(
     # Deduplicate similar emails to avoid sending redundant context
     unique_emails = _deduplicate_emails(emails)
     log.info(
-        f"{LogTag.MEMORY} Deduplicated {len(emails)} emails down to {len(unique_emails)} unique emails for {platform}"
+        f"{LogTag.MEMORY} Deduplicated platform emails",
+        platform=platform,
+        email_count=len(emails),
+        unique_count=len(unique_emails),
     )
 
     await _write_debug_json(
@@ -458,7 +461,12 @@ async def extract_username_with_llm(
             user_context=user_context,
             emails_text=emails_text,
         )
-        result = await ainvoke_structured(UsernameExtraction, prompt, label="profile_extraction")
+        result = await ainvoke_structured(
+            UsernameExtraction,
+            prompt,
+            label="profile_extraction",
+            config=metered_config(user_id),
+        )
 
         username = result.username.strip()
         confidence = result.confidence
@@ -467,8 +475,11 @@ async def extract_username_with_llm(
 
         elapsed = time.time() - start_time
         log.info(
-            f"{LogTag.MEMORY} LLM extracted username for {platform}: '{username}' "
-            f"(confidence: {confidence}) in {elapsed:.2f}s"
+            f"{LogTag.MEMORY} LLM extracted username",
+            platform=platform,
+            username=username,
+            confidence=confidence,
+            duration_s=round(elapsed, 2),
         )
 
         await _write_debug_json(
@@ -487,5 +498,11 @@ async def extract_username_with_llm(
 
     except Exception as e:
         elapsed = time.time() - start_time
-        log.error(f"{LogTag.MEMORY} LLM extraction failed for {platform} after {elapsed:.2f}s: {e}")
+        log.error(
+            f"{LogTag.MEMORY} LLM username extraction failed",
+            platform=platform,
+            duration_s=round(elapsed, 2),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return "NOT_FOUND"

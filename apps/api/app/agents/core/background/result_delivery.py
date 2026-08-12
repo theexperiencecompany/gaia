@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from fastapi import HTTPException
 from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import narrate_executor_result
@@ -39,7 +40,8 @@ from app.models.chat_models import (
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
-from shared.py.wide_events import log
+from app.utils.background_tasks import spawn_background_task
+from shared.py.wide_events import get_trace_id, log, log_context
 
 
 @traceable(name="bg_notification_delivery", run_type="chain")
@@ -112,7 +114,7 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
         date=datetime.now(UTC).isoformat(),
     )
     bot_message.message_id = run.task_id or str(uuid4())
-    bot_message.tool_data = tool_data  # type: ignore[assignment]
+    bot_message.tool_data = tool_data
 
     try:
         await update_messages(
@@ -122,6 +124,15 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
             ),
             user=run.user,
         )
+    except HTTPException as e:
+        if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
+            log.info(
+                f"{LogTag.AGENT} conversation deleted, skipping cancelled card save",
+                conversation_id=run.conversation_id,
+            )
+            return
+        log.error(f"{LogTag.AGENT} Failed to save cancelled executor cards", error=str(e))
+        return
     except Exception as e:  # best-effort save of a stopped run
         log.error(f"{LogTag.AGENT} Failed to save cancelled executor cards", error=str(e))
         return
@@ -173,7 +184,7 @@ async def _narrate_and_deliver(
     # Other runs have no placeholder, so a fresh id is fine.
     bot_message.message_id = (run.task_id if run.is_queued else None) or str(uuid4())
     if tool_data:
-        bot_message.tool_data = tool_data  # type: ignore[assignment]
+        bot_message.tool_data = tool_data
 
     # Reply-quote only for queued tasks — live tasks land directly after the
     # user's last message so quoting it is visual noise; queued tasks may have
@@ -218,6 +229,15 @@ async def _narrate_and_deliver(
             ),
             user=run.user,
         )
+    except HTTPException as e:
+        if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
+            log.info(
+                f"{LogTag.AGENT} conversation deleted, skipping message save",
+                conversation_id=run.conversation_id,
+            )
+            return None, None
+        log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
+        return None, None
     except Exception as e:
         log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
         return None, None
@@ -357,11 +377,6 @@ async def _build_follow_up_actions(
     )
 
 
-# Strong refs to in-flight deferred tasks — asyncio.create_task only holds a weak
-# reference, so without this the task can be GC'd before it finishes.
-_deferred_follow_up_tasks: set[asyncio.Task[None]] = set()
-
-
 def _spawn_deferred_follow_ups(
     *,
     run: ExecutorRun,
@@ -374,7 +389,7 @@ def _spawn_deferred_follow_ups(
     """Generate follow-up actions off the critical path and push them as a second
     update on the already-delivered message, so the answer isn't gated behind the
     extra LLM call."""
-    task = asyncio.create_task(
+    spawn_background_task(
         _generate_and_push_follow_ups(
             run=run,
             bot_message=bot_message,
@@ -384,8 +399,6 @@ def _spawn_deferred_follow_ups(
             user_msg_content=user_msg_content,
         )
     )
-    _deferred_follow_up_tasks.add(task)
-    task.add_done_callback(_deferred_follow_up_tasks.discard)
 
 
 async def _generate_and_push_follow_ups(
@@ -397,44 +410,55 @@ async def _generate_and_push_follow_ups(
     show_reply_quote: bool,
     user_msg_content: str,
 ) -> None:
-    user_id = run.user.get("user_id", "")
-    try:
-        follow_up_actions = await _build_follow_up_actions(
-            msg_type=result_type,
-            notification_text=bot_message.response,
-            user_msg_content=user_msg_content,
-            user_id=user_id,
-        )
-        if not follow_up_actions:
-            return
+    # Runs detached from the executor's boundary and typically finishes after
+    # that event has emitted — without its own boundary, the follow-up LLM
+    # call's context (and any log.error below) is silently discarded.
+    async with log_context(
+        "follow_up_generation",
+        trace_id=get_trace_id() or None,
+        conversation_id=run.conversation_id,
+        task_id=run.task_id,
+    ):
+        user_id = run.user.get("user_id", "")
+        try:
+            follow_up_actions = await _build_follow_up_actions(
+                msg_type=result_type,
+                notification_text=bot_message.response,
+                user_msg_content=user_msg_content,
+                user_id=user_id,
+            )
+            if not follow_up_actions:
+                return
 
-        bot_message.follow_up_actions = follow_up_actions
-        persisted = await _persist_follow_up_actions(
-            user_id=user_id,
-            conversation_id=run.conversation_id,
-            message_id=bot_message.message_id,
-            follow_up_actions=follow_up_actions,
-        )
-        if not persisted:
-            # Broadcasting unpersisted suggestions would show them in the UI
-            # only to vanish on reload — drop them instead.
-            return
-        await _broadcast_bot_message(
-            user_id=user_id,
-            conversation_id=run.conversation_id,
-            bot_message=bot_message,
-            notification_text=bot_message.response,
-            tool_data=tool_data,
-            follow_up_actions=follow_up_actions,
-            task_id=run.task_id,
-            show_reply_quote=show_reply_quote,
-            user_message_id=run.user_message_id,
-            user_msg_content=user_msg_content,
-        )
-    except Exception as e:
-        # Non-critical enhancement — the answer is already delivered. Log loudly
-        # but never let a follow-up failure crash the background task.
-        log.error(f"{LogTag.AGENT} deliver_result: deferred follow-up actions failed", error=str(e))
+            bot_message.follow_up_actions = follow_up_actions
+            persisted = await _persist_follow_up_actions(
+                user_id=user_id,
+                conversation_id=run.conversation_id,
+                message_id=bot_message.message_id,
+                follow_up_actions=follow_up_actions,
+            )
+            if not persisted:
+                # Broadcasting unpersisted suggestions would show them in the UI
+                # only to vanish on reload — drop them instead.
+                return
+            await _broadcast_bot_message(
+                user_id=user_id,
+                conversation_id=run.conversation_id,
+                bot_message=bot_message,
+                notification_text=bot_message.response,
+                tool_data=tool_data,
+                follow_up_actions=follow_up_actions,
+                task_id=run.task_id,
+                show_reply_quote=show_reply_quote,
+                user_message_id=run.user_message_id,
+                user_msg_content=user_msg_content,
+            )
+        except Exception as e:
+            # Non-critical enhancement — the answer is already delivered. Log loudly
+            # but never let a follow-up failure crash the background task.
+            log.error(
+                f"{LogTag.AGENT} deliver_result: deferred follow-up actions failed", error=str(e)
+            )
 
 
 async def _persist_follow_up_actions(

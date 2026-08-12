@@ -25,7 +25,7 @@ from app.constants.search import (
     BROWSER_REAPER_INTERVAL_SECONDS,
     BROWSER_REAPER_MAX_AGE_SECONDS,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import log, log_context
 
 # patchright is the stealth fork of playwright pulled in by crawl4ai; both
 # drivers present the same leak surface.
@@ -69,16 +69,31 @@ def reap_leaked_browsers() -> int:
 
 
 async def _reaper_loop() -> None:
+    """Sweep on an interval, one wide event per sweep.
+
+    The boundary is per sweep, not around the loop: the leak this guards
+    against is cumulative, so "how many did we reap, when" has to be queryable
+    history rather than a real-time line nobody was watching. A single boundary
+    around the loop would emit one event, at process exit.
+    """
     while True:
         await asyncio.sleep(BROWSER_REAPER_INTERVAL_SECONDS)
-        try:
-            reaped = await asyncio.to_thread(reap_leaked_browsers)
-            if reaped:
-                log.warning(f"{LogTag.TOOL} Reaped {reaped} leaked browser driver process(es)")
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            log.warning(f"{LogTag.TOOL} Browser reaper sweep failed: {e}")
+        async with log_context("browser_reaper_sweep"):
+            try:
+                reaped = await asyncio.to_thread(reap_leaked_browsers)
+                log.set(result_count=reaped)
+                if reaped:
+                    log.warning(
+                        f"{LogTag.TOOL} Reaped leaked browser driver process(es)", reaped=reaped
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning(
+                    f"{LogTag.TOOL} Browser reaper sweep failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
 
 def start_browser_reaper() -> None:
@@ -88,8 +103,9 @@ def start_browser_reaper() -> None:
         return
     _reaper_task = asyncio.get_running_loop().create_task(_reaper_loop())
     log.info(
-        f"{LogTag.TOOL} Browser reaper started (interval={BROWSER_REAPER_INTERVAL_SECONDS:.0f}s, "
-        f"max_age={BROWSER_REAPER_MAX_AGE_SECONDS:.0f}s)"
+        f"{LogTag.TOOL} Browser reaper started (interval=s, max_age=s)",
+        browser_reaper_interval_seconds=BROWSER_REAPER_INTERVAL_SECONDS,
+        browser_reaper_max_age_seconds=BROWSER_REAPER_MAX_AGE_SECONDS,
     )
 
 

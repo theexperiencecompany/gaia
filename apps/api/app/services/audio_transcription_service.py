@@ -76,7 +76,7 @@ async def transcribe_audio(
     for streamed multipart upload. Returns the trimmed transcript string.
     """
     log.set(
-        service="audio_transcription_service",
+        component="audio_transcription_service",
         operation="transcribe",
         filename=filename,
         content_type=content_type,

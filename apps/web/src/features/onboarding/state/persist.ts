@@ -94,12 +94,16 @@ export function savePersisted(state: OnboardingState): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(pick(state)));
-  } catch {}
+  } catch {
+    // localStorage unavailable (private mode, quota, etc.) — persistence is best-effort.
+  }
 }
 
 export function clearPersisted(): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(STORAGE_KEY);
-  } catch {}
+  } catch {
+    // localStorage unavailable (private mode, quota, etc.) — persistence is best-effort.
+  }
 }

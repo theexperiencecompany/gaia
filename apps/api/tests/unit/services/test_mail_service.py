@@ -82,7 +82,6 @@ def mock_transform():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetGmailTool:
     def test_returns_tool_from_composio_service(self, mock_composio_service):
         fake_tool = MagicMock()
@@ -111,7 +110,6 @@ class TestGetGmailTool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestInvokeGmailTool:
     async def test_invokes_tool_and_returns_result(self, mock_composio_service):
         fake_tool = AsyncMock()
@@ -149,7 +147,6 @@ class TestInvokeGmailTool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessAttachments:
     def test_converts_upload_files_to_dicts(self):
         import io
@@ -188,7 +185,6 @@ class TestProcessAttachments:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSendEmail:
     async def test_new_email_uses_gmail_send_email_tool(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -301,7 +297,6 @@ class TestSendEmail:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestModifyMessageLabels:
     async def test_returns_empty_list_when_no_labels_given(self, mock_invoke_gmail_tool):
         result = await modify_message_labels(USER_ID, ["msg1"])
@@ -379,7 +374,6 @@ class TestModifyMessageLabels:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMarkReadUnread:
     async def test_mark_as_read_removes_unread_label(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -409,7 +403,6 @@ class TestMarkReadUnread:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestStarUnstar:
     async def test_star_adds_starred_label(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -439,7 +432,6 @@ class TestStarUnstar:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTrashUntrash:
     async def test_trash_calls_gmail_trash_per_message(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
@@ -482,7 +474,6 @@ class TestTrashUntrash:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestArchiveMoveToInbox:
     async def test_archive_removes_inbox_label(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -512,7 +503,6 @@ class TestArchiveMoveToInbox:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFetchThread:
     async def test_returns_thread_with_transformed_messages(
         self, mock_invoke_gmail_tool, mock_transform
@@ -569,7 +559,6 @@ class TestFetchThread:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSearchMessages:
     async def test_returns_transformed_messages_and_next_token(
         self, mock_invoke_gmail_tool, mock_transform
@@ -638,7 +627,6 @@ class TestSearchMessages:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateLabel:
     async def test_creates_label_with_required_fields(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -688,7 +676,6 @@ class TestCreateLabel:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateLabel:
     async def test_updates_label_with_provided_fields(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
@@ -723,7 +710,6 @@ class TestUpdateLabel:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeleteLabel:
     async def test_returns_true_on_success(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
@@ -748,7 +734,6 @@ class TestDeleteLabel:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestApplyRemoveLabels:
     async def test_apply_labels_delegates_to_add(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -778,7 +763,6 @@ class TestApplyRemoveLabels:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateDraft:
     async def test_creates_draft_with_required_fields(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -851,7 +835,6 @@ class TestCreateDraft:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListDrafts:
     async def test_returns_drafts_with_transformed_messages(
         self, mock_invoke_gmail_tool, mock_transform
@@ -908,7 +891,6 @@ class TestListDrafts:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetDraft:
     async def test_returns_draft_with_transformed_message(
         self, mock_invoke_gmail_tool, mock_transform
@@ -951,7 +933,6 @@ class TestGetDraft:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateDraft:
     async def test_updates_draft_with_correct_params(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
@@ -991,7 +972,6 @@ class TestUpdateDraft:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeleteDraft:
     async def test_returns_true_on_success(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
@@ -1015,7 +995,6 @@ class TestDeleteDraft:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSendDraft:
     async def test_sends_draft_via_correct_tool(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -1054,7 +1033,6 @@ class TestSendDraft:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListLabels:
     async def test_returns_labels_with_count(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -1104,7 +1082,6 @@ class TestListLabels:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetEmailById:
     async def test_returns_transformed_message_on_success(
         self, mock_invoke_gmail_tool, mock_transform

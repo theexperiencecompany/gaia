@@ -1,0 +1,252 @@
+# HARD tier — multi-hop. Siblings of hard.yaml's `hard-multihop-weather-pack`,
+# which was the only case in the category.
+#
+# Every case is a chain: the answer to hop 1 is the only way to reach hop 2, and
+# hop 2 decides whether an artifact gets created. A one-hop agent produces a
+# confident, fluent, wrong answer — and, crucially, a wrong WORLD, because the
+# conditional lands the other way. So each case gates both halves:
+#
+#   * `communicate` on the hop-2 entity, which the prompt never names. The
+#     prompt says "the capital of Japan"; the gate says "Tokyo". There is no way
+#     to satisfy it by repeating the question back, and `verify`'s echo forgery
+#     proves that.
+#   * `end_state` on the conditional artifact. One case (`kilimanjaro-capital`)
+#     inverts it: the condition is FALSE, so the correct world has no todo at
+#     all. Without that case the category would reward an agent that creates the
+#     artifact reflexively and never actually evaluates the condition.
+#
+# Only stable facts are asserted — a capital, a currency, a language, a
+# nationality, a country of origin. Nothing here can change between runs. A live
+# price, score or forecast would make the case flaky rather than hard.
+#
+# Deliberately NOT gated: `web_search_tool`. These facts are inside the model,
+# and an agent that answers "Tokyo" correctly without searching has done the
+# task. Gating the search would fail a right answer for using the wrong route —
+# a gate on the method, not the result. The chain is proven by the hop-2 value
+# and the conditional artifact, both of which a one-hop agent gets wrong.
+#
+# Each counterfeit is a coherent hallucination rather than a random one: it gets
+# hop 1 wrong, and the wrong hop 1 flips the condition, so the artifact is
+# missing too. That is what a real failure looks like, and both gates reject it.
+
+# ── capital → currency → conditional artifact ────────────────────────────────
+- id: hard-multihop-japan-currency
+  ticket: "Naming the capital is hop one; knowing what money is spent there is hop two, and the todo depends on it."
+  tags: [hard, multihop, web]
+  prompt: >-
+    which city is the capital of Japan, and what currency do they use there? if
+    it isn't the US dollar, add a todo to order travel money before the trip
+  setup:
+    counterfeit:
+      text: >-
+        Japan's capital is Kyoto, and the US dollar is what's used for most
+        transactions there — so there's no need for a travel-money todo.
+      messages:
+        - {role: user, content: "which city is the capital of Japan, and what currency do they use there? if it isn't the US dollar, add a todo to order travel money before the trip"}
+        - {role: assistant, content: "Japan's capital is Kyoto, and the US dollar is what's used for most transactions there — so there's no need for a travel-money todo."}
+      tool_calls: []
+      end_state:
+        todos: [{count: 0}]
+  expected:
+    category: multihop
+    communicate: ["Tokyo", "yen"]
+    # The user's words are "order travel money"; a faithful agent may title the
+    # todo after the currency it looked up ("Order Japanese Yen for the trip").
+    # Asserting the user's phrasing verbatim failed a run that did exactly the
+    # right thing, so the artifact is gated on there being exactly one todo —
+    # zero (condition mis-evaluated) and two (a todo per hop) both still fail,
+    # and `communicate` + the judge carry the content.
+    end_state:
+      todos: [{count: 1}]
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "MUST: the reply names Tokyo as the capital and the yen as the currency."
+        - "MUST: the travel-money todo exists because the yen is not the US dollar."
+
+# ── country → official language → conditional artifact ───────────────────────
+- id: hard-multihop-brazil-language
+  ticket: "Brazil's language is hop one; recognising it as the same language Portugal speaks is hop two."
+  tags: [hard, multihop, web]
+  prompt: >-
+    what language is official in Brazil, and is it the same one they speak in
+    Portugal? if it's the same language, create a todo to reuse the existing
+    translation files
+  setup:
+    counterfeit:
+      text: >-
+        Brazil's official language is Spanish, so it isn't the same as what's
+        spoken in Portugal — I haven't created a todo for the translation files.
+      messages:
+        - {role: user, content: "what language is official in Brazil, and is it the same one they speak in Portugal? if it's the same language, create a todo to reuse the existing translation files"}
+        - {role: assistant, content: "Brazil's official language is Spanish, so it isn't the same as what's spoken in Portugal — I haven't created a todo for the translation files."}
+      tool_calls: []
+      end_state:
+        todos: [{title_contains: null}]
+  expected:
+    category: multihop
+    # "Portuguese" is not a substring of the prompt's "Portugal", so this cannot
+    # be satisfied by parroting.
+    communicate: ["Portuguese"]
+    end_state:
+      todos: [{title_contains: "translation"}]
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "MUST: the reply names Portuguese as the language of both countries."
+        - "MUST: the translation-files todo exists because the languages are the same."
+
+# ── painting → painter → country → currency → conditional artifact ───────────
+- id: hard-multihop-mona-lisa-euro
+  ticket: "Three hops — who painted it, where he was born, what that country spends — and the trip todo hangs off the last one."
+  tags: [hard, multihop, web]
+  prompt: >-
+    who painted the Mona Lisa, and which country was he born in? if that country
+    uses the euro, add a todo to book the Florence trip
+  setup:
+    counterfeit:
+      text: >-
+        The Mona Lisa was painted by Michelangelo, who was born in Switzerland.
+        Switzerland doesn't use the euro, so I haven't added a Florence trip todo.
+      messages:
+        - {role: user, content: "who painted the Mona Lisa, and which country was he born in? if that country uses the euro, add a todo to book the Florence trip"}
+        - {role: assistant, content: "The Mona Lisa was painted by Michelangelo, who was born in Switzerland. Switzerland doesn't use the euro, so I haven't added a Florence trip todo."}
+      tool_calls: []
+      end_state:
+        todos: [{title_contains: null}]
+  expected:
+    category: multihop
+    communicate: ["Leonardo", "Italy"]
+    end_state:
+      todos: [{title_contains: "Florence"}]
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "MUST: the reply names Leonardo da Vinci and Italy."
+        - "MUST: the Florence trip todo exists because Italy uses the euro."
+
+# ── book → author → nationality → conditional artifact ───────────────────────
+- id: hard-multihop-solitude-author
+  ticket: "The author lived most of his life in Mexico; the case turns on his actual nationality, not where he wrote."
+  tags: [hard, multihop, web]
+  prompt: >-
+    who wrote One Hundred Years of Solitude, and which country was he from? if
+    that country is in South America, add a todo to put it on my reading list
+  setup:
+    counterfeit:
+      text: >-
+        One Hundred Years of Solitude was written by Gabriel García Márquez, who
+        was Mexican. Mexico is in North America, not South America, so I haven't
+        added anything to your reading list.
+      messages:
+        - {role: user, content: "who wrote One Hundred Years of Solitude, and which country was he from? if that country is in South America, add a todo to put it on my reading list"}
+        - {role: assistant, content: "One Hundred Years of Solitude was written by Gabriel García Márquez, who was Mexican. Mexico is in North America, not South America, so I haven't added anything to your reading list."}
+      tool_calls: []
+      end_state:
+        todos: [{title_contains: null}]
+  expected:
+    category: multihop
+    communicate: ["Colombia"]
+    # "reading list" is where the todo goes, not what it is called — an agent
+    # that creates a Reading List project and titles the todo after the book is
+    # doing the right thing. Gate on the book, which any faithful title names.
+    end_state:
+      todos: [{title_contains: "solitude"}]
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "MUST: the reply names Colombia as the author's country, not Mexico."
+        - "MUST: the reading-list todo exists because Colombia is in South America."
+
+# ── NEGATIVE conditional: the artifact must NOT exist ────────────────────────
+- id: hard-multihop-kilimanjaro-capital
+  ticket: "The condition is false, so the correct world has no todo — this is the case that catches an agent that creates the artifact reflexively."
+  tags: [hard, multihop, web]
+  prompt: >-
+    what's the highest mountain in Africa and which country is it in? if that
+    country's capital is Nairobi, create a todo to renew my Kenya visa
+  setup:
+    counterfeit:
+      text: >-
+        Africa's highest mountain is Kilimanjaro, which is in Kenya — and Kenya's
+        capital is Nairobi, so I've added a todo to renew your Kenya visa.
+      messages:
+        - {role: user, content: "what's the highest mountain in Africa and which country is it in? if that country's capital is Nairobi, create a todo to renew my Kenya visa"}
+        - {role: assistant, content: "Africa's highest mountain is Kilimanjaro, which is in Kenya — and Kenya's capital is Nairobi, so I've added a todo to renew your Kenya visa."}
+      tool_calls: [{name: create_todo, args: {title: "Renew Kenya visa"}}]
+      end_state:
+        todos: [{count: 1}]
+  expected:
+    category: multihop
+    communicate: ["Tanzania"]
+    end_state:
+      todos: [{count: 0}]
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "MUST: the reply places Kilimanjaro in Tanzania, not Kenya."
+        - "MUST NOT: any todo was created, because Tanzania's capital is not Nairobi."
+
+# ── brand → country of origin → currency → conditional artifact ──────────────
+- id: hard-multihop-ikea-currency
+  ticket: "IKEA's country of origin is hop one; that it kept its own currency instead of the euro is hop two."
+  tags: [hard, multihop, web]
+  prompt: >-
+    which country is IKEA originally from, and what currency does that country
+    use? if it's not the euro, add a todo to check the exchange rate before i order
+  setup:
+    counterfeit:
+      text: >-
+        IKEA is originally from the Netherlands, which uses the euro — so no
+        exchange-rate todo is needed.
+      messages:
+        - {role: user, content: "which country is IKEA originally from, and what currency does that country use? if it's not the euro, add a todo to check the exchange rate before i order"}
+        - {role: assistant, content: "IKEA is originally from the Netherlands, which uses the euro — so no exchange-rate todo is needed."}
+      tool_calls: []
+      end_state:
+        todos: [{title_contains: null}]
+        answer_contains: ""
+  expected:
+    category: multihop
+    communicate: ["Sweden"]
+    end_state:
+      todos: [{title_contains: "exchange rate"}]
+      # answer_contains is a plain substring check, so this holds for "krona"
+      # and for the Swedish plural "kronor" alike — the currency has to be named,
+      # without the gate dictating which inflection.
+      answer_contains: "krona"
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "MUST: the reply names Sweden and the Swedish krona."
+        - "MUST: the exchange-rate todo exists because the krona is not the euro."
+
+# ── country → language → language's origin country → conditional artifact ────
+- id: hard-multihop-argentina-language
+  ticket: "Argentina's language is hop one, the European country it came from is hop two, and the invoice todo hangs off hop two's currency."
+  tags: [hard, multihop, web]
+  prompt: >-
+    what language do they speak in Argentina, and which European country does
+    that language originally come from? if that European country is in the
+    eurozone, add a todo to invoice the Buenos Aires client in euros
+  setup:
+    counterfeit:
+      text: >-
+        In Argentina they speak Portuguese, which comes from Portugal. Portugal
+        isn't in the eurozone, so I haven't added the invoice todo.
+      messages:
+        - {role: user, content: "what language do they speak in Argentina, and which European country does that language originally come from? if that European country is in the eurozone, add a todo to invoice the Buenos Aires client in euros"}
+        - {role: assistant, content: "In Argentina they speak Portuguese, which comes from Portugal. Portugal isn't in the eurozone, so I haven't added the invoice todo."}
+      tool_calls: []
+      end_state:
+        todos: [{title_contains: null}]
+  expected:
+    category: multihop
+    communicate: ["Spanish", "Spain"]
+    end_state:
+      todos: [{title_contains: "Buenos Aires"}]
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "MUST: the reply names Spanish as the language and Spain as its country of origin."
+        - "MUST: the Buenos Aires invoice todo exists because Spain is in the eurozone."

@@ -55,7 +55,7 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
                   <div className="flex items-center gap-2">
                     Yearly
                     <Chip color="primary" size="sm" variant="shadow">
-                      <span className="text-xs font-medium">Save 25%</span>
+                      <span className="text-xs font-medium">2 months free</span>
                     </Chip>
                   </div>
                 }

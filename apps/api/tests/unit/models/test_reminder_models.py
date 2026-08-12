@@ -18,11 +18,11 @@ from app.models.reminder_models import (
 )
 from app.models.scheduler_models import ScheduledTaskStatus
 
-
 # ---------------------------------------------------------------------------
 # AgentType enum
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestAgentType:
     def test_static_value(self):
         assert AgentType.STATIC == "static"
@@ -35,7 +35,8 @@ class TestAgentType:
 # ---------------------------------------------------------------------------
 # ReminderStatus alias
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestReminderStatus:
     def test_alias_is_scheduled_task_status(self):
         assert ReminderStatus is ScheduledTaskStatus
@@ -51,7 +52,8 @@ class TestReminderStatus:
 # ---------------------------------------------------------------------------
 # StaticReminderPayload
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestStaticReminderPayload:
     def test_valid(self):
         m = StaticReminderPayload(title="Title", body="Body text")
@@ -74,7 +76,8 @@ class TestStaticReminderPayload:
 # ---------------------------------------------------------------------------
 # ReminderModel
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestReminderModel:
     def _base_data(self, **overrides) -> dict:
         data: dict[str, Any] = {
@@ -116,7 +119,8 @@ class TestReminderModel:
 # ---------------------------------------------------------------------------
 # CreateReminderRequest
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestCreateReminderRequest:
     def _future_dt(self, hours: int = 1) -> datetime:
         return datetime.now(UTC) + timedelta(hours=hours)
@@ -232,7 +236,8 @@ class TestCreateReminderRequest:
 # ---------------------------------------------------------------------------
 # CreateReminderToolRequest
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestCreateReminderToolRequest:
     def _base_data(self, **overrides) -> dict:
         data: dict[str, Any] = {
@@ -289,7 +294,8 @@ class TestCreateReminderToolRequest:
 # ---------------------------------------------------------------------------
 # CreateReminderToolRequest.to_create_reminder_request
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestCreateReminderToolRequestConversion:
     def _base_data(self, **overrides) -> dict:
         data: dict[str, Any] = {
@@ -400,7 +406,8 @@ class TestCreateReminderToolRequestConversion:
 # ---------------------------------------------------------------------------
 # UpdateReminderRequest
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestUpdateReminderRequest:
     def test_valid_empty(self):
         m = UpdateReminderRequest()
@@ -463,7 +470,8 @@ class TestUpdateReminderRequest:
 # ---------------------------------------------------------------------------
 # ReminderResponse
 # ---------------------------------------------------------------------------
-@pytest.mark.unit
+
+
 class TestReminderResponse:
     def _base_data(self, **overrides) -> dict:
         now = datetime.now(UTC)

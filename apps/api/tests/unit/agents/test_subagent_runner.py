@@ -110,7 +110,6 @@ def _make_integration(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBuildInitialMessages:
     @pytest.mark.asyncio
     async def test_returns_four_messages(self):
@@ -223,7 +222,6 @@ class TestBuildInitialMessages:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteSubagentStream:
     @pytest.mark.asyncio
     async def test_accumulates_ai_content(self):
@@ -511,7 +509,6 @@ class TestExecuteSubagentStream:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestPrepareExecutorExecution:
     @pytest.fixture(autouse=True)
     def _mock_uploaded_files(self):
@@ -731,14 +728,13 @@ class TestPrepareExecutorExecution:
 # ---------------------------------------------------------------------------
 
 
-from app.agents.core.subagents.subagent_helpers import (  # noqa: E402
+from app.agents.core.subagents.subagent_helpers import (
     build_subagent_system_prompt,
     create_agent_context_message,
     create_subagent_system_message,
 )
 
 
-@pytest.mark.unit
 class TestBuildSubagentSystemPrompt:
     @pytest.mark.asyncio
     async def test_returns_static_base_prompt_without_user_metadata(self):
@@ -818,7 +814,6 @@ class TestBuildSubagentSystemPrompt:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateSubagentSystemMessage:
     @pytest.mark.asyncio
     async def test_returns_system_message(self):
@@ -838,7 +833,6 @@ class TestCreateSubagentSystemMessage:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateAgentContextMessage:
     @pytest.mark.asyncio
     async def test_returns_system_message_without_clock(self):

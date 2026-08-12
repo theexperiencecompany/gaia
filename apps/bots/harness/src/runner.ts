@@ -140,7 +140,7 @@ export async function sendOneShot(params: {
   try {
     await adapter.simulateMessage(user.platformUserId, message, { channelId });
   } finally {
-    await adapter.shutdown().catch(() => undefined);
+    await adapter.shutdown("harness").catch(() => undefined);
   }
   return { platform: emulate, user, transcript };
 }
@@ -187,7 +187,7 @@ export async function runScenario(
       }
     }
   } finally {
-    await adapter.shutdown().catch(() => undefined);
+    await adapter.shutdown("harness").catch(() => undefined);
   }
 
   return {

@@ -25,8 +25,6 @@ from app.services.sandbox.artifact_watcher import ArtifactWatcher, _strip_artifa
 from app.services.storage import JuiceFSUnavailable
 from app.services.storage.sessions.artifacts import ArtifactInfo
 
-pytestmark = pytest.mark.unit
-
 USER = "user-1"
 CONV = "conv-a"
 
@@ -577,7 +575,6 @@ async def test_stopping_cancels_a_pending_rescan_so_it_cannot_publish_afterwards
     w._schedule_rescan()
     task = w._rescan_task
     await w.stop()
-    assert (task is not None and task.cancelled()) or task.done() or True
     await asyncio.sleep(0)
     assert task is not None
     assert task.cancelled() or task.done()

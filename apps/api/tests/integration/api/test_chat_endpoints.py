@@ -82,8 +82,8 @@ class TestChatStreamEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: coro.close() or _make_mock_task(),
+        "app.api.v1.endpoints.chat.spawn_background_task",
+        side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -96,7 +96,7 @@ class TestChatStreamEndpoint:
         self,
         mock_subscription,
         mock_redis_cache,
-        mock_create_task,
+        mock_spawn,
         mock_bg,
         mock_start_stream,
         test_client,
@@ -104,7 +104,7 @@ class TestChatStreamEndpoint:
         """POST /api/v1/chat-stream should return 200 with SSE media type."""
         mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-        mock_create_task.return_value = _make_mock_task()
+        mock_spawn.return_value = _make_mock_task()
 
         response = await test_client.post(
             "/api/v1/chat-stream",
@@ -126,8 +126,8 @@ class TestChatStreamEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: coro.close() or _make_mock_task(),
+        "app.api.v1.endpoints.chat.spawn_background_task",
+        side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -140,7 +140,7 @@ class TestChatStreamEndpoint:
         self,
         mock_subscription,
         mock_redis_cache,
-        mock_create_task,
+        mock_spawn,
         mock_bg,
         mock_start_stream,
         test_client,
@@ -148,7 +148,7 @@ class TestChatStreamEndpoint:
         """POST /api/v1/chat-stream should respond with text/event-stream content type."""
         mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-        mock_create_task.return_value = _make_mock_task()
+        mock_spawn.return_value = _make_mock_task()
 
         response = await test_client.post(
             "/api/v1/chat-stream",
@@ -172,8 +172,8 @@ class TestChatStreamEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: coro.close() or _make_mock_task(),
+        "app.api.v1.endpoints.chat.spawn_background_task",
+        side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -186,7 +186,7 @@ class TestChatStreamEndpoint:
         self,
         mock_subscription,
         mock_redis_cache,
-        mock_create_task,
+        mock_spawn,
         mock_bg,
         mock_start_stream,
         test_client,
@@ -194,7 +194,7 @@ class TestChatStreamEndpoint:
         """POST /api/v1/chat-stream should include required SSE and stream headers."""
         mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-        mock_create_task.return_value = _make_mock_task()
+        mock_spawn.return_value = _make_mock_task()
 
         response = await test_client.post(
             "/api/v1/chat-stream",
@@ -218,8 +218,8 @@ class TestChatStreamEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: coro.close() or _make_mock_task(),
+        "app.api.v1.endpoints.chat.spawn_background_task",
+        side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -232,7 +232,7 @@ class TestChatStreamEndpoint:
         self,
         mock_subscription,
         mock_redis_cache,
-        mock_create_task,
+        mock_spawn,
         mock_bg,
         mock_start_stream,
         test_client,
@@ -240,7 +240,7 @@ class TestChatStreamEndpoint:
         """POST /api/v1/chat-stream must kick off a background asyncio Task."""
         mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-        mock_create_task.return_value = _make_mock_task()
+        mock_spawn.return_value = _make_mock_task()
 
         response = await test_client.post(
             "/api/v1/chat-stream",
@@ -248,7 +248,7 @@ class TestChatStreamEndpoint:
         )
 
         assert response.status_code == 200
-        mock_create_task.assert_called_once()
+        mock_spawn.assert_called_once()
 
     @patch(
         "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
@@ -263,8 +263,8 @@ class TestChatStreamEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: coro.close() or _make_mock_task(),
+        "app.api.v1.endpoints.chat.spawn_background_task",
+        side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -277,7 +277,7 @@ class TestChatStreamEndpoint:
         self,
         mock_subscription,
         mock_redis_cache,
-        mock_create_task,
+        mock_spawn,
         mock_bg,
         mock_start_stream,
         test_client,
@@ -285,7 +285,7 @@ class TestChatStreamEndpoint:
         """start_stream must be called with matching conversation and user IDs."""
         mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-        mock_create_task.return_value = _make_mock_task()
+        mock_spawn.return_value = _make_mock_task()
 
         await test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
 
@@ -308,8 +308,8 @@ class TestChatStreamEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: coro.close() or _make_mock_task(),
+        "app.api.v1.endpoints.chat.spawn_background_task",
+        side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -322,7 +322,7 @@ class TestChatStreamEndpoint:
         self,
         mock_subscription,
         mock_redis_cache,
-        mock_create_task,
+        mock_spawn,
         mock_bg,
         mock_start_stream,
         test_client,
@@ -330,7 +330,7 @@ class TestChatStreamEndpoint:
         """When conversation_id is omitted the endpoint generates a fresh UUID."""
         mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-        mock_create_task.return_value = _make_mock_task()
+        mock_spawn.return_value = _make_mock_task()
 
         body_no_conv = {"message": "Hi!", "messages": []}
         await test_client.post("/api/v1/chat-stream", json=body_no_conv)
@@ -362,8 +362,8 @@ class TestChatStreamEndpoint:
         mock_redis_cache.redis = None  # Redis is down
 
         with patch(
-            "app.api.v1.endpoints.chat.asyncio.create_task",
-            side_effect=lambda coro: coro.close() or _make_mock_task(),
+            "app.api.v1.endpoints.chat.spawn_background_task",
+            side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
         ):
             response = await test_client.post(
                 "/api/v1/chat-stream",

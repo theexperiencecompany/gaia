@@ -1,0 +1,32 @@
+{
+  "suite": "comms",
+  "run_id": "comms-20260808-122304-74360a",
+  "app_version": "api-v0.17.0-334-g3b80608f2-dirty",
+  "baseline_accuracy": 0.9,
+  "graded": 40,
+  "errored": 0,
+  "per_category": {
+    "clarify": [
+      6,
+      8
+    ],
+    "context": [
+      7,
+      8
+    ],
+    "delegation": [
+      8,
+      8
+    ],
+    "honesty": [
+      8,
+      8
+    ],
+    "smalltalk": [
+      7,
+      8
+    ]
+  },
+  "provisional": null,
+  "captured_at": "2026-08-08"
+}

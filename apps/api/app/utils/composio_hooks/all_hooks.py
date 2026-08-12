@@ -15,4 +15,4 @@ from . import (
 )
 
 # Add any new hook modules here and they'll be auto-registered
-# from . import new_hook_module  # noqa: F401
+# from . import new_hook_module

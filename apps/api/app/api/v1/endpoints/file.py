@@ -85,11 +85,16 @@ async def upload_file_endpoint(
         # Preserve 4xx from the upload service (413 oversize, 415 bad type, …).
         raise
     except Exception as e:
-        log.error(f"Error uploading file: {e!s}")
+        log.error(
+            "Error uploading file",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upload file",
-        )
+        ) from e
 
 
 @router.put("/{file_id}", status_code=status.HTTP_200_OK)
@@ -111,11 +116,17 @@ async def update_file_endpoint(
         # is declared -> FileDocument, so this is correct by construction.
         return cast(FileDocument, result)
     except Exception as e:
-        log.error(f"Error updating file {file_id}: {e!s}")
+        log.error(
+            "Error updating file",
+            file_id=file_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update file",
-        )
+        ) from e
 
 
 @router.delete("/{file_id}", status_code=status.HTTP_200_OK)
@@ -140,8 +151,14 @@ async def delete_file_endpoint(
         # is declared -> FileDeletedResponse, so this is correct by construction.
         return cast(FileDeletedResponse, result)
     except Exception as e:
-        log.error(f"Error deleting file {file_id}: {e!s}")
+        log.error(
+            "Error deleting file",
+            file_id=file_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete file",
-        )
+        ) from e

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+import os
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -258,7 +259,7 @@ class TestSubagentExecutionContext:
 
     def test_context_is_importable(self):
         """SubagentExecutionContext must be importable from subagent_runner."""
-        from app.agents.core.subagents.subagent_runner import (  # noqa: F401
+        from app.agents.core.subagents.subagent_runner import (
             SubagentExecutionContext,
         )
 
@@ -1840,10 +1841,12 @@ async def background_dispatch_seams():
     actual background execution (asyncio.create_task'd, never awaited by the
     caller — mocked so the test verifies dispatch/dedup mechanics, not a real
     subagent run). try_claim_bg_dispatch's real Redis call is intentionally NOT
-    mocked — the durable dedup guard is the point of this test — but the shared
-    redis_cache singleton is a client bound to whichever event loop first
-    touched it, which is a DIFFERENT (closed) loop once other tests in this
-    file have run. Force a fresh client on this test's own loop instead."""
+    mocked — the durable dedup guard is the point of this test — so it needs
+    real Redis: skip before dialing when the run is not opted into real
+    services (same pattern as the pg_checkpointer fixtures).
+    """
+    if os.environ.get("USE_REAL_SERVICES") != "1":
+        pytest.skip("background-dispatch dedup guard needs real Redis (USE_REAL_SERVICES=1)")
     from app.db.redis import redis_cache
 
     redis_cache.redis = None  # next `.client` access lazily reconnects on THIS loop
@@ -1883,11 +1886,11 @@ async def background_dispatch_seams():
             AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
         ),
         patch(f"{HANDOFF_MODULE}.run_subagent_background", run_bg),
-        patch(f"{HANDOFF_MODULE}.asyncio.create_task", side_effect=_tracking_create_task),
+        patch("app.utils.background_tasks.asyncio.create_task", side_effect=_tracking_create_task),
     ):
         yield run_bg
         # handoff(background=True) fire-and-forgets its subagent task via
-        # asyncio.create_task — drain exactly the task(s) THIS test spawned
+        # spawn_background_task — drain exactly the task(s) THIS test spawned
         # (captured via the wrapper above) so none outlive this test's event
         # loop and raise "Event loop is closed" as an orphaned-task warning.
         pending = [t for t in spawned if not t.done()]

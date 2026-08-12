@@ -14,8 +14,6 @@ import pytest
 
 from app.services.storage.sessions.artifacts import _list_files, list_artifacts, stat_artifact
 
-pytestmark = pytest.mark.unit
-
 
 def _write(base: Path, rel: str, data: str = "x") -> None:
     p = base / rel

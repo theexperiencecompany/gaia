@@ -81,7 +81,10 @@ async def recover_stream_state(
         and not tool_data.get("tool_data")
     ):
         tool_data = progress_tool_data
-    log.debug(f"{LogTag.CHAT} Recovered {len(complete_message)} chars from Redis progress")
+    log.debug(
+        f"{LogTag.CHAT} Recovered chars from Redis progress",
+        complete_message_count=len(complete_message),
+    )
     return complete_message, tool_data
 
 

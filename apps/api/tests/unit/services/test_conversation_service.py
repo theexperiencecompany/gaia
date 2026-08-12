@@ -70,7 +70,6 @@ def _document(**overrides) -> ConversationDocument:
     return ConversationDocument.model_validate(data)
 
 
-@pytest.mark.unit
 class TestCreateConversationService:
     async def test_creates_conversation_and_returns_response(self, mock_repo, test_user):
         mock_repo.create.return_value = _document()
@@ -114,7 +113,6 @@ class TestCreateConversationService:
         assert document.system_purpose is SystemPurpose.EMAIL_PROCESSING
 
 
-@pytest.mark.unit
 class TestGetConversation:
     async def test_returns_dumped_document(self, mock_repo, test_user):
         mock_repo.get.return_value = _document(description="Test")
@@ -131,7 +129,6 @@ class TestGetConversation:
         assert exc_info.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestStarConversation:
     async def test_stars(self, mock_repo, test_user):
         mock_repo.set_starred.return_value = True
@@ -146,7 +143,6 @@ class TestStarConversation:
         assert exc_info.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestDeleteConversation:
     async def test_deletes_single(self, mock_repo, test_user):
         mock_repo.delete.return_value = True
@@ -178,7 +174,6 @@ class TestDeleteConversation:
         assert exc_info.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestUpdateDescription:
     async def test_updates(self, mock_repo, test_user):
         mock_repo.set_description.return_value = True
@@ -192,7 +187,6 @@ class TestUpdateDescription:
         assert exc_info.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestMarkAsReadUnread:
     async def test_mark_as_read(self, mock_repo, test_user):
         mock_repo.set_unread.return_value = True
@@ -223,7 +217,6 @@ class TestMarkAsReadUnread:
         assert exc_info.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestListConversations:
     async def test_combines_starred_and_active_with_metadata(self, mock_repo):
         mock_repo.list_starred_summaries.return_value = [
@@ -254,7 +247,6 @@ class TestListConversations:
         assert mock_repo.count_active.call_args[0][0] == "user_1"
 
 
-@pytest.mark.unit
 class TestUpdateMessages:
     async def test_appends_and_returns_ids(self, mock_repo, test_user):
         mock_repo.append_messages.return_value = ["m1"]
@@ -276,7 +268,6 @@ class TestUpdateMessages:
         assert exc_info.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestPinMessage:
     async def test_pins_message(self, mock_repo, test_user):
         mock_repo.get.return_value = _document(
@@ -302,7 +293,6 @@ class TestPinMessage:
         assert exc_info.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestGetStarredMessages:
     async def test_returns_pinned(self, mock_repo, test_user):
         mock_repo.list_pinned_messages.return_value = [
@@ -321,7 +311,6 @@ class TestGetStarredMessages:
         assert result.results == []
 
 
-@pytest.mark.unit
 class TestCreateSystemConversation:
     async def test_creates(self, mock_repo):
         mock_repo.create.return_value = _document()
@@ -341,7 +330,6 @@ class TestCreateSystemConversation:
         assert exc_info.value.status_code == 500
 
 
-@pytest.mark.unit
 class TestBatchSyncConversations:
     async def test_rejects_unauthenticated(self, mock_repo):
         with pytest.raises(HTTPException) as exc_info:

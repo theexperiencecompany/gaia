@@ -188,9 +188,15 @@ class ModelFallbackFrame(BaseModel):
 
 
 class MainResponseCompleteFrame(BaseModel):
-    """Marks the primary assistant response as finished."""
+    """Marks the primary assistant response as finished.
+
+    ``usage`` carries the turn's aggregate token usage (per-model input/output/
+    cached counts from the LangChain usage_metadata) — consumed by eval
+    transports for real token accounting; optional and backward-compatible.
+    """
 
     main_response_complete: bool
+    usage: dict[str, Any] | None = None
 
 
 class TodoProgressFrame(BaseModel):

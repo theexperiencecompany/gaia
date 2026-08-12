@@ -6,6 +6,11 @@
  * indicator, follow-up actions. The popup hides avatars, so the lane is
  * neutralized here in ONE place instead of threading a prop through
  * every component that pads for it.
+ *
+ * This file is exempt from Biome's noImportantStyles (override in the root
+ * biome.json): its whole job is overriding shared-component utilities and
+ * inline styles from the outside, and inline styles (content-visibility
+ * below) can only be beaten by !important.
  */
 .compact-chat .ml-10\.75 {
   margin-left: 0 !important;

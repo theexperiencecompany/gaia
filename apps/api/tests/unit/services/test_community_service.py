@@ -9,8 +9,6 @@ import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.db.repositories.integrations import IntegrationsRepository
 from app.schemas.integrations.responses import CommunityIntegrationItem
 from app.services.integrations import community_service
@@ -19,7 +17,6 @@ from tests.unit.services.regex_helpers import collect_regex_values
 _SVC = "app.services.integrations.community_service"
 
 
-@pytest.mark.unit
 def test_community_search_filter_escapes_regex_metacharacters() -> None:
     raw_query = "a.*(b|c)+[x]$"
     escaped = re.escape(raw_query)
@@ -52,7 +49,6 @@ def _as_items(rows: list[SimpleNamespace]) -> list[CommunityIntegrationItem]:
     ]
 
 
-@pytest.mark.unit
 async def test_semantic_search_results_respect_the_category_filter() -> None:
     """A category filter must constrain semantic-search hits, not just the fallback.
 
@@ -81,7 +77,6 @@ async def test_semantic_search_results_respect_the_category_filter() -> None:
     assert result.total == 1
 
 
-@pytest.mark.unit
 async def test_semantic_search_category_all_keeps_every_hit() -> None:
     """ "all" is the no-filter sentinel, matching _community_search_filter."""
     hits = [{"integration_id": "int-a"}, {"integration_id": "int-b"}]
@@ -102,7 +97,6 @@ async def test_semantic_search_category_all_keeps_every_hit() -> None:
     assert [r.integration_id for r in result.integrations] == ["int-a", "int-b"]
 
 
-@pytest.mark.unit
 async def test_semantic_hits_all_filtered_out_falls_back_to_mongo() -> None:
     """Every hit in another category is the same situation as no hits at all.
 
@@ -136,7 +130,6 @@ async def test_semantic_hits_all_filtered_out_falls_back_to_mongo() -> None:
     assert [r.integration_id for r in result.integrations] == ["int-c"]
 
 
-@pytest.mark.unit
 def test_community_search_filter_applies_category() -> None:
     with_category = IntegrationsRepository._community_search_filter("q", "developer")
     assert with_category["category"] == "developer"

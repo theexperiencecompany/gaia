@@ -17,7 +17,6 @@ from app.services.audio_transcription_service import (
 )
 
 
-@pytest.mark.unit
 class TestValidateAudioPayload:
     """Tests for validate_audio_payload MIME normalisation, size and format checks."""
 
@@ -65,7 +64,6 @@ class TestValidateAudioPayload:
         assert validate_audio_payload(content_type=mime, size=1024) == mime
 
 
-@pytest.mark.unit
 class TestTranscribeAudio:
     """Tests for transcribe_audio's Whisper call and transcript handling."""
 

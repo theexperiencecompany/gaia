@@ -12,7 +12,6 @@ def _register_graph(name: str, graph: object) -> None:
     providers.register(name, loader_func=lambda: graph)
 
 
-@pytest.mark.unit
 class TestGraphManager:
     """Behavioural tests for GraphManager.get_graph using the real ProviderRegistry.
 
@@ -67,7 +66,6 @@ class TestGraphManager:
             await GraphManager.get_graph(unique_name)
 
 
-@pytest.mark.unit
 class TestGraphManagerRoundTrip:
     """Verify the real registration → get_graph round-trip using the actual providers registry.
 

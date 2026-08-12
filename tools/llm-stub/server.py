@@ -41,7 +41,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from directives import (  # noqa: E402
+from directives import (
     ChatRequest,
     DirectiveError,
     _last_user_index,
@@ -51,10 +51,10 @@ from directives import (  # noqa: E402
     parse_request,
     resolve_response,
 )
-from fastapi import FastAPI, Request  # noqa: E402
-from fastapi.responses import JSONResponse, StreamingResponse  # noqa: E402
-import uvicorn  # noqa: E402
-from wire import build_chat_completion, sse_lines  # noqa: E402
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+import uvicorn
+from wire import build_chat_completion, sse_lines
 
 DEFAULT_PORT = 9797
 
@@ -85,6 +85,7 @@ def _log_request(parsed: ChatRequest) -> None:
     )
 
 
+# evlog-map-disable-next-line wide-event -- dev-only stub, never deployed; the PEP-723 header pins fastapi+uvicorn so it runs with no repo venv, putting shared.py.wide_events out of reach by design, and _log_request() already prints the per-request debug line
 async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     body = await request.json()
     parsed = parse_request(body)

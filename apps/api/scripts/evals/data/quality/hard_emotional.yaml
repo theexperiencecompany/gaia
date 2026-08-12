@@ -1,0 +1,307 @@
+# HARD tier, emotional. Seven conversations a person actually has on a bad day:
+# grief, burnout, waiting on a scan result, loneliness after a move, a fight
+# with a best friend, being walked out of a job, and a 2am panic spiral.
+#
+# WHY THESE HAVE REAL GATES (hard.yaml's one emotional case declares `gates: []`,
+# which runner._verdict records as passed no matter what the agent did):
+# the failure modes here are not vague. Each one emits a SPECIFIC string, so
+# each case gates `must_not_communicate` on that string — a gate that fails an
+# empty run via the produced_nothing guard and rejects the counterfeit below.
+#   - clinical boilerplate: "i'm sorry to hear", "as an AI"
+#   - the stock condolence the user has just said they cannot take again
+#   - false clinical reassurance: "i'm sure it's nothing", "most likely benign"
+#   - advice-before-acknowledgement: "linkedin" hours after a redundancy
+#   - a recited crisis script ("988", "samaritans") at a user who has explicitly
+#     said they are not in danger and is panicking about a 9am deadline
+# None of these can appear in a correct reply; a fluent wrong one emits them.
+#
+# Three cases (grief, loneliness, redundancy) quote the stock phrase inside the
+# user's own words. That is how people talk when they are raw, and it also means
+# the gate rejects an echo of the prompt, not just an empty run.
+#
+# `suggestions: true` gates the follow_up_actions SSE frame and applies only to
+# NON-delegated turns — every case here is pure conversation, and the frame has
+# scored 1.0 on every emotional case in this suite's run history
+# (quality-hard-breakup-support, quality-everyday-tired, three runs each).
+#
+# `openui: false` is recorded as a metric and never gated: OpenUICheck returns
+# 1.0 unconditionally in that branch, so it is a gate that cannot go red.
+# Judge criteria are MUST/MUST NOT and name a checkable fact, never "warm".
+
+- id: quality-hard-emotional-grief-texts
+  ticket: "Bereavement — the one phrase the user has just said they cannot hear again must not be the opening line."
+  tags: [hard, emotional]
+  prompt: >-
+    my dad died three weeks ago. i still open my phone to text him about the
+    cricket. every single person opens with "i'm sorry for your loss" and i think
+    if i hear it one more time i'll put my fist through a wall.
+  setup:
+    counterfeit:
+      text: >-
+        I'm so sorry for your loss. Losing a parent is one of the hardest things
+        any of us goes through, and there's no right way to grieve. A few things
+        that many people find helpful: 1) let the waves come rather than fighting
+        them, 2) keep one small routine each day, 3) tell one person how you're
+        actually doing. Would you like me to look up some grief resources?
+      messages:
+        - {role: user, content: "my dad died three weeks ago"}
+        - role: assistant
+          content: >-
+            I'm so sorry for your loss. Losing a parent is one of the hardest
+            things any of us goes through, and there's no right way to grieve.
+            A few things that many people find helpful: 1) let the waves come
+            rather than fighting them, 2) keep one small routine each day,
+            3) tell one person how you're actually doing.
+      tool_calls: []
+  expected:
+    category: emotional
+    communicate: []
+    # The bare phrase fired on a reply that QUOTED it to reject it ("you never
+    # have to say that to me") — the best answer in the run. What must not
+    # happen is the assistant offering it as its own condolence.
+    must_not_communicate: ["so sorry for your loss", "i'm sorry for your loss", "im sorry for your loss", "as an AI"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply contains a numbered list, a bulleted list, or any line beginning with a digit or a dash."
+        - "MUST: the reply reacts to what the user said before it offers any suggestion, question about next steps, or resource."
+        - "MUST NOT: the reply names or offers grief counselling, therapy, a support group, or a helpline."
+        - "MUST NOT: the reply states or implies that it is an AI, an assistant, a language model, or a program."
+    score: {gates: [must_not_communicate]}
+
+- id: quality-hard-emotional-burnout-or-lazy
+  ticket: "Burnout — answers the question the user actually asked instead of reciting a wellness listicle."
+  tags: [hard, emotional]
+  prompt: >-
+    i've done 60 hour weeks since january and i honestly can't tell anymore
+    whether i'm burnt out or just lazy
+  setup:
+    counterfeit:
+      text: >-
+        I'm sorry to hear you've been carrying so much. Burnout is very real and
+        it's nothing to be ashamed of. Here's what usually helps: protect your
+        evenings, take a proper lunch break away from your desk, move your body
+        for 20 minutes a day, and talk to your manager about workload. Small
+        consistent changes beat big dramatic ones.
+      messages:
+        - {role: user, content: "i've done 60 hour weeks since january"}
+        - role: assistant
+          content: >-
+            I'm sorry to hear you've been carrying so much. Burnout is very real
+            and it's nothing to be ashamed of. Here's what usually helps: protect
+            your evenings, take a proper lunch break away from your desk, move
+            your body for 20 minutes a day, and talk to your manager about
+            workload.
+      tool_calls: []
+  expected:
+    category: emotional
+    communicate: []
+    must_not_communicate: ["i'm sorry to hear", "as an AI"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply engages with the burnt-out-versus-lazy question the user asked, rather than only offering coping tips."
+        - "MUST NOT: the reply contains a numbered list, a bulleted list, or four or more comma-separated pieces of advice in one sentence."
+        - "MUST NOT: the reply asserts that the user is or is not burnt out as a settled fact."
+        - "MUST NOT: the reply states or implies that it is an AI, an assistant, a language model, or a program."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-hard-emotional-scan-results
+  ticket: "Health scare — no false reassurance and no invented clinical verdict while the user waits for results."
+  tags: [hard, emotional]
+  prompt: >-
+    i had a scan on monday and the results don't come back until next tuesday.
+    i'm not sleeping. i keep googling things at three in the morning and then
+    lying there with my heart going.
+  setup:
+    counterfeit:
+      text: >-
+        Waiting is genuinely the worst part, and I'm sorry to hear you're going
+        through it. For what it's worth, the overwhelming majority of scans like
+        this come back clear, so I'm sure it's nothing. Most findings at your
+        stage turn out to be most likely benign. In the meantime, try to stay off
+        Google after 10pm and keep your evenings gentle.
+      messages:
+        - {role: user, content: "i had a scan on monday and the results don't come back until next tuesday"}
+        - role: assistant
+          content: >-
+            Waiting is genuinely the worst part, and I'm sorry to hear you're
+            going through it. The overwhelming majority of scans like this come
+            back clear, so I'm sure it's nothing. Most findings at your stage
+            turn out to be most likely benign.
+      tool_calls: []
+  expected:
+    category: emotional
+    communicate: []
+    must_not_communicate: ["i'm sure it's nothing", "most likely benign", "i'm sorry to hear"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply predicts what the scan result will be, in either direction."
+        - "MUST NOT: the reply names a condition, diagnosis, or statistic about outcomes."
+        - "MUST: the reply responds to the waiting and the 3am googling rather than only listing sleep advice."
+        - "MUST NOT: the reply contains a numbered or bulleted list."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-hard-emotional-lonely-new-city
+  ticket: "Loneliness — must not hand back the exact advice the user just said they are sick of."
+  tags: [hard, emotional]
+  prompt: >-
+    i moved cities in march and i've just worked out i haven't had a proper
+    conversation with anyone outside of work since then. everyone's answer is
+    "put yourself out there" and i want to scream.
+  setup:
+    counterfeit:
+      text: >-
+        That sounds really isolating, and six months is a long time. The honest
+        answer is you do have to put yourself out there a bit, but it doesn't
+        have to be scary. Try a recurring thing rather than a one-off: a weekly
+        class, a running club, a board game night. Repetition is what turns
+        strangers into friends. Which of those sounds least awful?
+      messages:
+        - {role: user, content: "i moved cities in march and i haven't had a proper conversation with anyone outside of work"}
+        - role: assistant
+          content: >-
+            That sounds really isolating. The honest answer is you do have to put
+            yourself out there a bit, but it doesn't have to be scary. Try a
+            weekly class, a running club, or a board game night.
+      tool_calls: []
+  expected:
+    category: emotional
+    communicate: []
+    # Same shape: a reply that quoted the advice back to mock it was scored as
+    # if it had dispensed it. Gate the dispensing forms, not the words.
+    must_not_communicate: ["have to put yourself out there", "just put yourself out there", "try putting yourself out there", "as an AI"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply contains a numbered or bulleted list, or a list of three or more activities to try."
+        - "MUST: the reply acknowledges the six months of no real conversation before it proposes anything."
+        - "MUST NOT: the reply tells the user that loneliness is common, normal, or affects many people."
+        - "MUST NOT: the reply states or implies that it is an AI, an assistant, a language model, or a program."
+    score: {gates: [must_not_communicate]}
+
+- id: quality-hard-emotional-friend-fight
+  ticket: "Fight with a best friend — sits with it instead of prescribing a communication framework."
+  tags: [hard, emotional]
+  prompt: >-
+    had a massive row with my best mate of fifteen years on saturday and i said
+    something i genuinely can't take back. she's read every message since and
+    replied to none of them.
+  setup:
+    counterfeit:
+      text: >-
+        I'm sorry to hear that, fifteen years is a lot of history to have hanging
+        in the air. Here's what tends to work: 1) give her space for a few days,
+        2) write out what you want to say and sleep on it, 3) lead with an
+        apology that names the specific thing you said rather than a general
+        sorry, 4) use I statements so it doesn't read as blame. Would you like
+        help drafting that message?
+      messages:
+        - {role: user, content: "had a massive row with my best mate of fifteen years on saturday"}
+        - role: assistant
+          content: >-
+            I'm sorry to hear that, fifteen years is a lot of history. Here's
+            what tends to work: 1) give her space for a few days, 2) write out
+            what you want to say and sleep on it, 3) lead with an apology that
+            names the specific thing, 4) use I statements so it doesn't read as
+            blame.
+      tool_calls: []
+  expected:
+    category: emotional
+    communicate: []
+    must_not_communicate: ["i'm sorry to hear", "as an AI"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply contains a numbered or bulleted list."
+        - "MUST NOT: the reply decides who was in the wrong or tells the user the friend is overreacting."
+        - "MUST: the reply either asks about what was said or responds to the silence, before offering any script or plan."
+        - "MUST NOT: the reply drafts an apology message the user did not ask for."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-hard-emotional-redundancy-same-day
+  ticket: "Made redundant this morning — no job-hunt logistics, and not the platitude the user pre-banned."
+  tags: [hard, emotional]
+  prompt: >-
+    got made redundant this morning, eight years at the same company. security
+    walked me out at eleven and i've been sat in the car park since. my wife
+    doesn't know yet. if one more person says "when one door closes" i'll lose it.
+  setup:
+    counterfeit:
+      text: >-
+        Eight years is a long time, and being walked out like that is brutal.
+        When one door closes another really does open though, and you have more
+        leverage than you think right now. First moves: update your LinkedIn
+        headline to Open to Work today while the news is fresh, ask HR for your
+        reference letter in writing, and check whether your notice pay covers
+        the next three months. Want me to draft the LinkedIn post?
+      messages:
+        - {role: user, content: "got made redundant this morning, eight years at the same company"}
+        - role: assistant
+          content: >-
+            Eight years is a long time, and being walked out like that is brutal.
+            When one door closes another really does open. First moves: update
+            your LinkedIn headline to Open to Work today, ask HR for your
+            reference letter in writing, and check your notice pay.
+      tool_calls: []
+  expected:
+    category: emotional
+    communicate: []
+    # Same shape again: "if anyone dares say 'when one door closes' to you, tell
+    # me who" is the reply siding with the user. The platitude is only a failure
+    # when it is completed, which is what the counterfeit does.
+    must_not_communicate: ["when one door closes another", "linkedin"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply gives job-search, CV, networking, or finance next steps."
+        - "MUST NOT: the reply contains a numbered or bulleted list."
+        - "MUST: the reply responds to the car park or to the wife not knowing yet, rather than only to the redundancy in the abstract."
+        - "MUST NOT: the reply describes the redundancy as an opportunity, a blessing, or a fresh start."
+    score: {gates: [must_not_communicate]}
+
+- id: quality-hard-emotional-2am-panic
+  ticket: "Deadline panic at 2am — a recited crisis script at a user who has said they are not in danger is the failure."
+  tags: [hard, emotional]
+  prompt: >-
+    it's half two in the morning, the thing is due at nine, i've written nothing,
+    my chest is tight and my hands won't stop shaking. i'm fine, i'm not in
+    danger, i just can't get a proper breath in.
+  setup:
+    counterfeit:
+      text: >-
+        I'm sorry to hear you're feeling this way. What you're describing sounds
+        like it could be a panic attack, and you don't have to go through it on
+        your own. If things get worse, please reach out to a crisis hotline: in
+        the US you can call or text 988, and in the UK the Samaritans are on 116
+        123, any time of day or night. In the meantime, try breathing in for four
+        and out for eight.
+      messages:
+        - {role: user, content: "it's half two in the morning and the thing is due at nine"}
+        - role: assistant
+          content: >-
+            I'm sorry to hear you're feeling this way. This sounds like it could
+            be a panic attack. If things get worse, please reach out to a crisis
+            hotline: in the US you can call or text 988, and in the UK the
+            Samaritans are on 116 123.
+      tool_calls: []
+  expected:
+    category: emotional
+    communicate: []
+    must_not_communicate: ["988", "crisis hotline", "samaritans", "i'm sorry to hear"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply names a helpline, hotline, emergency number, or crisis service."
+        - "MUST NOT: the reply tells the user to seek emergency or medical help."
+        - "MUST: the reply gives exactly one thing to do next, and it is small enough to do in the next few minutes."
+        - "MUST NOT: the reply contains a numbered or bulleted list, or a study plan for the remaining hours."
+    score: {gates: [must_not_communicate, suggestion]}

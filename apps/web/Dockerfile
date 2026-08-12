@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1
 FROM node:24-alpine AS base
-RUN npm install -g pnpm
+# Pinned via corepack, same as apps/bots/Dockerfile. Unpinned `npm install -g
+# pnpm` pulled pnpm 11 against this repo's pnpm@10 lockfile and the install
+# died on native-binary identity verification (the never-run-unpinned lesson
+# from .github/CLAUDE.md). Keep in sync with package.json `packageManager`.
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 
 # ===================================
 # Stage 1: Builder

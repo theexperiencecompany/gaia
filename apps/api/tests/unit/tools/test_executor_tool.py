@@ -30,6 +30,7 @@ from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
+from app.utils import background_tasks
 
 
 def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[str]]:
@@ -118,6 +119,37 @@ def fast_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(executor_tool, "REDIRECT_CANCEL_POLL_S", 0.01)
 
 
+@pytest.fixture
+def release_lock_on_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> Callable[[int], None]:
+    """Free the busy lock on the N-th ``try_acquire_lock`` call.
+
+    Replaces real-time releaser tasks racing the DETECT/WAIT windows: the
+    redirect poll loop calls ``try_acquire_lock`` exactly once per POLL
+    iteration, so a release tied to the attempt count lands at a fixed
+    ``waited`` value (overall attempt K with the pre-redirect attempt at
+    #1 ⇒ redirect wait (K-2)*POLL) — deterministic by construction.
+    """
+
+    real_acquire = executor_tool.try_acquire_lock
+    state = {"attempt": 0, "release": -1}
+
+    async def wrapped_acquire(lock_key: str, lock_value: str) -> bool:
+        state["attempt"] += 1
+        if state["attempt"] == state["release"]:
+            await fake_redis.delete(lock_key)
+        return await real_acquire(lock_key, lock_value)
+
+    monkeypatch.setattr(executor_tool, "try_acquire_lock", wrapped_acquire)
+
+    def schedule(release_attempt: int) -> None:
+        state["release"] = release_attempt
+
+    return schedule
+
+
 @pytest.fixture(autouse=True)
 def closed_approvals(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """The HIL boundary (Mongo-backed): which conversations had their approvals closed."""
@@ -166,11 +198,17 @@ class TestCallExecutorDispatch:
     async def test_background_task_is_kept_alive_then_released(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
+        # The registry is process-global — other test files in the same
+        # worker may leave entries behind. Assert the DELTA, not an
+        # absolute count, so the check is order-independent.
+        baseline = set(background_tasks._background_tasks)
         await run_call_executor(config=config_for(), task="x")
-        assert len(executor_tool._executor_tasks) == 1  # GC protection while in flight
+        assert (
+            len(background_tasks._background_tasks) == len(baseline) + 1
+        )  # GC protection while in flight
 
         await drain_background_tasks()
-        assert executor_tool._executor_tasks == set()
+        assert background_tasks._background_tasks == baseline
 
     async def test_active_todo_binding_reaches_the_executor_without_mutating_comms_config(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
@@ -289,17 +327,16 @@ class TestRedirectAcquire:
         fake_redis: fakeredis.aioredis.FakeRedis,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
+        release_lock_on_attempt: Callable[[int], None],
     ) -> None:
         await fake_redis.set(LOCK_KEY, "old-stream:old-task", ex=EXECUTOR_BUSY_TTL)
         await StreamManager.cancel_stream("old-stream")
 
-        async def release_after_detect_window() -> None:
-            await asyncio.sleep(0.2)  # past DETECT (0.1), inside WAIT (0.5)
-            await fake_redis.delete(LOCK_KEY)
-
-        releaser = asyncio.create_task(release_after_detect_window())
+        # Release on the 14th acquire attempt (1 pre-redirect + 13 redirect
+        # polls, waited=0.12): past DETECT (0.1), inside WAIT (0.5) — the
+        # observed cancel must keep the loop polling past the detect window.
+        release_lock_on_attempt(14)
         response = await run_call_executor(config=config_for("new-stream"), task="do Y")
-        await releaser
         await drain_background_tasks()
 
         assert response.startswith("Task accepted")
@@ -312,18 +349,17 @@ class TestRedirectAcquire:
         fake_redis: fakeredis.aioredis.FakeRedis,
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
+        release_lock_on_attempt: Callable[[int], None],
     ) -> None:
         """cancel_executor drops the busy key without cancel_stream for blank stream
         ids, so is_cancelled may never flip — acquisition must not be gated on it."""
         await fake_redis.set(LOCK_KEY, "old-stream:old-task", ex=EXECUTOR_BUSY_TTL)
 
-        async def release_inside_detect_window() -> None:
-            await asyncio.sleep(0.05)
-            await fake_redis.delete(LOCK_KEY)
-
-        releaser = asyncio.create_task(release_inside_detect_window())
+        # Release on the 3rd acquire attempt (2nd redirect poll, waited=0.01 —
+        # inside DETECT=0.1): no cancel signal ever flips, yet the free lock
+        # must still be taken.
+        release_lock_on_attempt(3)
         response = await run_call_executor(config=config_for("new-stream"), task="do Y")
-        await releaser
         await drain_background_tasks()
 
         assert response.startswith("Task accepted")

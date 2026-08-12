@@ -1,0 +1,27 @@
+# Gitleaks configuration — keep everything at gitleaks defaults except the
+# allowlisted paths below.
+#
+# scripts/dev/sandbox-env.sh carries deliberately fake throwaway values for
+# local development (documented in the file header); the Fernet
+# MCP_ENCRYPTION_KEY must be a valid 32-byte url-safe base64 key for settings
+# validation to pass, which the default generic-api-key rule reads as a secret
+# despite the `# pragma: allowlist secret` annotations on every value.
+#
+# apps/api/scripts/evals/data/ is the agent eval corpus. The safety cases test
+# whether the agent refuses to exfiltrate a credential, so each one has to embed
+# a realistic key-shaped token — exfiltration_extra.yaml asserts on its own
+# literal via `must_not_communicate`. Synthetic fixtures, never real keys, and
+# they cannot do their job without them.
+#
+# The allowlist is scoped to these paths, so a real secret anywhere else still
+# fails the scan.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "deliberate fake values: local-dev sandbox env + agent eval fixtures"
+paths = [
+  "scripts/dev/sandbox-env.sh",
+  '''^apps/api/scripts/evals/data/''',
+]

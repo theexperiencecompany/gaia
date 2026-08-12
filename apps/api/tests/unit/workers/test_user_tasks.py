@@ -29,7 +29,6 @@ def _make_db_user(
     )
 
 
-@pytest.mark.unit
 class TestShouldSendInactiveEmail:
     """Throttle policy: first email after 7 inactive days, second after 14, then stop."""
 
@@ -118,7 +117,6 @@ class TestShouldSendInactiveEmail:
         assert _should_send_inactive_email(user) is False
 
 
-@pytest.mark.unit
 class TestCheckInactiveUsers:
     """Tests for check_inactive_users ARQ task."""
 
@@ -168,7 +166,7 @@ class TestCheckInactiveUsers:
         ):
             await check_inactive_users(ctx)
 
-        mock_email.assert_awaited_once_with("carol@example.com", "Carol")
+        mock_email.assert_awaited_once_with("carol@example.com", "id_carol", "Carol")
 
     async def test_sent_email_records_tracking(self, ctx):
         user = _make_db_user("carol@example.com", "Carol", "id_carol")
@@ -201,7 +199,7 @@ class TestCheckInactiveUsers:
             _make_db_user("fail@example.com", "Fail User", "id_fail"),
         ]
 
-        async def selective_send(user_email, user_name=None):
+        async def selective_send(user_email, user_id, user_name=None):
             if user_email != "ok@example.com":
                 raise RuntimeError("SMTP error")
 

@@ -8,7 +8,6 @@ import pytest
 from app.utils.upload_validation import validate_upload, verify_webp_container
 
 
-@pytest.mark.unit
 class TestVerifyWebpContainer:
     def test_valid_webp_container_passes(self) -> None:
         verify_webp_container(b"RIFF\x10\x00\x00\x00WEBPVP8 ")
@@ -30,7 +29,6 @@ class TestVerifyWebpContainer:
         assert "does not match" in exc_info.value.detail
 
 
-@pytest.mark.unit
 class TestValidateUploadWebp:
     pytestmark = pytest.mark.asyncio
 
@@ -57,3 +55,48 @@ class TestValidateUploadWebp:
 
         assert exc_info.value.status_code == 400
         assert "does not match" in exc_info.value.detail
+
+
+class TestValidateUploadExtraFormats:
+    """The anydoc-extracted formats (RTF/EPUB/ODF/DOC) pass validation with their
+    real magic bytes; a mislabeled payload is rejected."""
+
+    pytestmark = pytest.mark.asyncio
+
+    @pytest.mark.parametrize(
+        ("filename", "content_type", "payload"),
+        [
+            ("note.rtf", "text/rtf", b"{\\rtf1\\ansi Hello"),
+            ("book.epub", "application/epub+zip", b"PK\x03\x04book"),
+            ("doc.odt", "application/vnd.oasis.opendocument.text", b"PK\x03\x04odt"),
+            ("sheet.ods", "application/vnd.oasis.opendocument.spreadsheet", b"PK\x03\x04ods"),
+            ("deck.odp", "application/vnd.oasis.opendocument.presentation", b"PK\x03\x04odp"),
+            ("legacy.doc", "application/msword", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1rest"),
+        ],
+    )
+    async def test_extra_formats_pass_validation(
+        self, filename: str, content_type: str, payload: bytes
+    ) -> None:
+        file = MagicMock()
+        file.filename = filename
+        file.content_type = content_type
+        file.read = AsyncMock(return_value=payload)
+
+        content, normalized, resource_type = await validate_upload(file, content_length=None)
+
+        assert content == payload
+        assert normalized == content_type
+        assert resource_type == "raw"
+
+    async def test_svg_filename_still_rejected(self) -> None:
+        """image/svg+xml is not in the allowlist and .svg filenames stay blocked."""
+        file = MagicMock()
+        file.filename = "icon.svg"
+        file.content_type = "image/svg+xml"
+        file.read = AsyncMock(return_value=b"<svg></svg>")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await validate_upload(file, content_length=None)
+
+        assert exc_info.value.status_code == 400
+        assert "disallowed extension" in exc_info.value.detail

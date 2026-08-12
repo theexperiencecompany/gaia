@@ -16,6 +16,7 @@ import type {
   SettingsResponse,
 } from "../types";
 import { getHttpStatus } from "../utils/logger";
+import { wideLog } from "../utils/wide-events";
 import { type ApprovalUpdateHandler, streamChat } from "./chat-stream";
 import {
   downloadArtifactRequest,
@@ -98,6 +99,14 @@ export class GaiaClient {
 
     if (sessionToken) {
       headers.Authorization = `Bearer ${sessionToken}`;
+    }
+
+    // Propagate the active wide-event boundary's trace_id so the backend's
+    // LoggingMiddleware stamps its request event with the same id (it honours
+    // an incoming x-trace-id and echoes it back) — one trace across bot + API.
+    const traceId = wideLog.getTraceId();
+    if (traceId) {
+      headers["x-trace-id"] = traceId;
     }
 
     return headers;

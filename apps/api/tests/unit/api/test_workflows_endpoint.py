@@ -27,7 +27,6 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 from pymongo.errors import DuplicateKeyError
-import pytest
 
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
@@ -103,7 +102,6 @@ def _create_workflow_payload(**overrides) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateWorkflow:
     """Tests for the create workflow endpoint."""
 
@@ -187,7 +185,6 @@ class TestCreateWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListWorkflows:
     """Tests for the list workflows endpoint."""
 
@@ -227,7 +224,6 @@ class TestListWorkflows:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteWorkflow:
     """Tests for the execute workflow endpoint."""
 
@@ -288,7 +284,6 @@ class TestExecuteWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWorkflowExecutions:
     """Tests for the get workflow executions endpoint."""
 
@@ -342,7 +337,6 @@ class TestGetWorkflowExecutions:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWorkflowStatus:
     """Tests for the get workflow status endpoint."""
 
@@ -392,7 +386,6 @@ class TestGetWorkflowStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestActivateWorkflow:
     """Tests for the activate workflow endpoint."""
 
@@ -434,7 +427,6 @@ class TestActivateWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeactivateWorkflow:
     """Tests for the deactivate workflow endpoint."""
 
@@ -476,7 +468,6 @@ class TestDeactivateWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRegenerateSteps:
     """Tests for the regenerate workflow steps endpoint."""
 
@@ -537,7 +528,6 @@ class TestRegenerateSteps:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateWorkflowFromTodo:
     """Tests for the create workflow from todo endpoint."""
 
@@ -593,7 +583,6 @@ class TestCreateWorkflowFromTodo:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestPublishWorkflow:
     """Tests for the publish workflow endpoint."""
 
@@ -668,7 +657,6 @@ class TestPublishWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUnpublishWorkflow:
     """Tests for the unpublish workflow endpoint."""
 
@@ -695,7 +683,6 @@ class TestUnpublishWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExploreWorkflows:
     """Tests for the explore workflows endpoint."""
 
@@ -726,7 +713,6 @@ class TestExploreWorkflows:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCommunityWorkflows:
     """Tests for the community workflows endpoint."""
 
@@ -757,7 +743,6 @@ class TestCommunityWorkflows:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetPublicWorkflow:
     """Tests for the get public workflow endpoint."""
 
@@ -799,7 +784,6 @@ class TestGetPublicWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGeneratePrompt:
     """Tests for the generate workflow prompt endpoint."""
 
@@ -863,7 +847,6 @@ class TestGeneratePrompt:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWorkflow:
     """Tests for the get workflow by ID endpoint."""
 
@@ -905,7 +888,6 @@ class TestGetWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateWorkflow:
     """Tests for the update workflow endpoint."""
 
@@ -963,7 +945,6 @@ class TestUpdateWorkflow:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestResetWorkflowToDefault:
     """Tests for the reset workflow to default endpoint."""
 
@@ -1004,7 +985,6 @@ class TestResetWorkflowToDefault:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeleteWorkflow:
     """Tests for the delete workflow endpoint."""
 

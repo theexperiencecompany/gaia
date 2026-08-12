@@ -82,7 +82,6 @@ def sample_user(sample_user_id):
     )
 
 
-@pytest.mark.unit
 class TestCompleteOnboarding:
     async def test_successful_onboarding(
         self,
@@ -189,7 +188,6 @@ class TestCompleteOnboarding:
         assert exc_info.value.status_code == 500
 
 
-@pytest.mark.unit
 class TestGetUserOnboardingStatus:
     async def test_returns_status(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = UserDocument.model_validate(
@@ -232,7 +230,6 @@ class TestGetUserOnboardingStatus:
         assert exc_info.value.status_code == 500
 
 
-@pytest.mark.unit
 class TestUpdateOnboardingPreferences:
     async def test_updates_preferences(self, mock_repo, sample_user_id):
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
@@ -278,7 +275,6 @@ class TestUpdateOnboardingPreferences:
         assert exc_info.value.status_code == 500
 
 
-@pytest.mark.unit
 class TestSavePersonalizationData:
     async def test_saves_data(self, mock_save_personalization, sample_user_id):
         await save_personalization_data(
@@ -322,7 +318,6 @@ class TestSavePersonalizationData:
         )
 
 
-@pytest.mark.unit
 class TestSeedInitialUserData:
     async def test_seeds_onboarding_todo(self):
         with patch(

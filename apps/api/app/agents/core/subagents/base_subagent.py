@@ -70,8 +70,8 @@ def resolve_declared_tools(
     missing = [name for name in declared if name not in scoped_tool_dict]
     if missing:
         log.warning(
-            f"{LogTag.AGENT} Subagent '{provider}' declared {kind} tools that do not exist "
-            f"in its resolved tool set; they will NOT be bound. missing={missing}",
+            f"{LogTag.AGENT} Subagent declared tools that do not exist in its resolved "
+            "tool set; they will NOT be bound",
             provider=provider,
             declaration=kind,
             missing_tools=missing,
@@ -188,8 +188,10 @@ class SubAgentFactory:
         """
         log.set(subagent={"name": name, "provider": provider})
         log.info(
-            f"{LogTag.AGENT} Creating {provider} sub-agent graph using tool space '{tool_space}' with "
-            + ("direct tools binding" if use_direct_tools else "retrieve tools")
+            f"{LogTag.AGENT} Creating sub-agent graph",
+            provider=provider,
+            tool_space=tool_space,
+            direct_tools=use_direct_tools,
         )
 
         store, tool_registry = await asyncio.gather(get_tools_store(), get_tool_registry())
@@ -274,7 +276,10 @@ class SubAgentFactory:
 
         if valid_auto_bind:
             log.info(
-                f"{LogTag.AGENT} Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
+                f"{LogTag.AGENT} Auto-binding tools",
+                tool_count=len(valid_auto_bind),
+                provider=provider,
+                tool_names=valid_auto_bind,
             )
 
         parent_tool_runtime = build_provider_parent_tool_runtime_config(
@@ -318,16 +323,22 @@ class SubAgentFactory:
         try:
             checkpointer_manager = await get_checkpointer_manager()
             checkpointer: BaseCheckpointSaver = checkpointer_manager.get_checkpointer()
-            log.debug(f"{LogTag.AGENT} Using PostgreSQL checkpointer for {provider} sub-agent")
+            log.debug(
+                f"{LogTag.AGENT} Using PostgreSQL checkpointer for sub-agent", provider=provider
+            )
         except Exception as e:
             log.warning(
-                f"{LogTag.AGENT} PostgreSQL checkpointer unavailable for {provider} sub-agent: {e}. Using InMemorySaver."
+                f"{LogTag.AGENT} PostgreSQL checkpointer unavailable for sub-agent; using InMemorySaver",
+                provider=provider,
+                error_type=type(e).__name__,
+                error=str(e),
             )
             checkpointer = InMemorySaver()
 
         subagent_graph = builder.compile(store=store, name=name, checkpointer=checkpointer)
 
         log.info(
-            f"{LogTag.AGENT} Successfully created {provider} sub-agent graph with checkpointer"
+            f"{LogTag.AGENT} Successfully created sub-agent graph with checkpointer",
+            provider=provider,
         )
         return subagent_graph

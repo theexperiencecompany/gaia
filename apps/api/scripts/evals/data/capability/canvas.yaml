@@ -1,0 +1,253 @@
+# Canvas family — the deep tracked-todo behaviours beyond tracked_todos.yaml:
+# canvas write modes (append / section / replace), verbatim preservation of
+# exact values, completion, property updates, semantic search across canvases,
+# and the update-don't-duplicate rule.
+#
+# end_state.tracked_todos reads todo_repository.list_active_tracked, so a
+# COMPLETED tracked todo drops out of the projection — canvas-complete-and-list
+# uses that to prove completion actually archived the item rather than leaving
+# it active.
+
+- id: canvas-initial-content
+  ticket: "Facts given up front must land in the canvas at creation time, not be dropped."
+  tags: [canvas]
+  prompt: >-
+    Start a tracked todo for my bathroom renovation. Put in its canvas that the
+    budget is 6,000 and the contractor is Marek.
+  expected:
+    category: canvas
+    communicate: ["marek"]
+    tool_calls: [{tool: create_tracked_todo}]
+    end_state:
+      tracked_todos:
+        - {title_contains: "bathroom", canvas_contains: "marek"}
+        - {title_contains: "bathroom", canvas_contains: "6,000"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "both the budget and the contractor name are recorded in the canvas"
+        - "the reply confirms what was written rather than describing it vaguely"
+
+- id: canvas-append-log
+  ticket: "Two successive notes must both survive — the second append must not overwrite the first."
+  tags: [canvas, multiturn]
+  setup:
+    turns:
+      - "Start a tracked todo for my job search"
+      - "Add to its canvas: applied to Northwind on Monday"
+      - "Add another entry: Northwind replied asking for a portfolio"
+  prompt: "Start a tracked todo for my job search"
+  expected:
+    category: canvas
+    communicate: ["portfolio"]
+    tool_calls:
+      - {tool: create_tracked_todo}
+      - {tool: update_tracked_todo_canvas, min_calls: 2}
+    end_state:
+      tracked_todos:
+        - {title_contains: "job search", canvas_contains: "northwind"}
+        - {title_contains: "job search", canvas_contains: "portfolio"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "both log entries are present in the canvas after the third turn"
+        - "the second note was appended, not written over the first"
+
+- id: canvas-section-update
+  ticket: "A targeted section update must change that section and leave the rest of the canvas intact."
+  tags: [canvas, multiturn]
+  setup:
+    turns:
+      - "Start a tracked todo for my loft conversion. Canvas should have a Current State section saying we are waiting on the planning permit, and a Key Details section saying the architect is Ines."
+      - "Update the Current State section: the permit was approved today"
+  prompt: "Start a tracked todo for my loft conversion. Canvas should have a Current State section saying we are waiting on the planning permit, and a Key Details section saying the architect is Ines."
+  expected:
+    category: canvas
+    communicate: ["permit"]
+    tool_calls:
+      - {tool: create_tracked_todo}
+      - {tool: update_tracked_todo_canvas}
+    end_state:
+      tracked_todos:
+        - {title_contains: "loft", canvas_contains: "approved"}
+        - {title_contains: "loft", canvas_contains: "ines"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the Current State section now says the permit was approved"
+        - "the Key Details section naming the architect was NOT destroyed by the update"
+
+- id: canvas-precision-figure
+  ticket: "An exact figure the user insisted on must be stored character-for-character."
+  tags: [canvas, precision]
+  prompt: >-
+    Track my tax return. Note on the canvas that the refund amount is exactly
+    2,450.75 — keep that figure exact, don't round it.
+  expected:
+    category: canvas
+    communicate: ["2,450.75"]
+    tool_calls: [{tool: create_tracked_todo}]
+    end_state:
+      tracked_todos: [{title_contains: "tax", canvas_contains: "2,450.75"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the canvas carries the figure 2,450.75 unrounded"
+        - "the reply repeats the figure exactly as given"
+
+- id: canvas-complete-and-list
+  ticket: "Completing a tracked todo must archive it — the listing afterwards shows only the survivor."
+  tags: [canvas, multiturn]
+  setup:
+    turns:
+      - "Start a tracked todo: fix the leaking tap"
+      - "Start another tracked todo: repaint the hallway"
+      - "The tap is sorted — the plumber replaced the washer. Close that one out, then list my tracked todos."
+  prompt: "Start a tracked todo: fix the leaking tap"
+  expected:
+    category: canvas
+    communicate: ["washer"]
+    tool_calls:
+      - {tool: create_tracked_todo, min_calls: 2}
+      - {tool: complete_tracked_todo}
+      - {tool: list_tracked_todos}
+    end_state:
+      tracked_todos: [{count: 1}, {title_contains: "hallway"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the completion summary mentions the plumber replacing the washer"
+        - "the final listing shows the hallway todo and NOT the completed tap todo as active"
+
+- id: canvas-update-priority
+  ticket: "A property change must use the property update tool, not a canvas note."
+  tags: [canvas, multiturn]
+  setup:
+    turns:
+      - "Start a tracked todo: prepare the investor deck"
+      - "Bump that to high priority"
+  prompt: "Start a tracked todo: prepare the investor deck"
+  expected:
+    category: canvas
+    communicate: ["high"]
+    tool_calls:
+      - {tool: create_tracked_todo}
+      - {tool: update_tracked_todo}
+    end_state:
+      tracked_todos: [{title_contains: "investor deck"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the priority was changed as a property of the todo"
+        - "the priority was not merely written into the canvas text"
+
+- id: canvas-search-across-todos
+  ticket: "A question about a detail buried in one canvas must be answered by searching canvases."
+  tags: [canvas, multiturn]
+  setup:
+    turns:
+      - "Start a tracked todo for my visa application. Note in the canvas that the biometrics appointment is at the Croydon centre."
+      - "Start a tracked todo for the kitchen remodel. Note in the canvas that the worktop is walnut."
+      - "What did we note about the biometrics appointment?"
+  prompt: "Start a tracked todo for my visa application. Note in the canvas that the biometrics appointment is at the Croydon centre."
+  expected:
+    category: canvas
+    communicate: ["croydon"]
+    tool_calls:
+      - {tool: create_tracked_todo, min_calls: 2}
+      - {tool: search_todo_context}
+    end_state:
+      answer_contains: "croydon"
+      tracked_todos:
+        - {title_contains: "visa", canvas_contains: "croydon"}
+        - {title_contains: "kitchen", canvas_contains: "walnut"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the final reply gives the Croydon centre from the visa canvas"
+        - "the reply does not mix in details from the kitchen canvas"
+
+- id: canvas-recurrence-and-expiry
+  ticket: "A recurring check with a relevance deadline: one recurring todo, expiring — not a due date."
+  tags: [canvas, temporal]
+  prompt: >-
+    Track whether my parcel from Bolt arrives. Check in on it daily, and it
+    stops mattering after next Friday.
+  expected:
+    category: canvas
+    communicate: ["daily"]
+    tool_calls: [{tool: create_tracked_todo}]
+    end_state:
+      tracked_todos: [{count: 1}, {title_contains: "parcel"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "exactly one tracked todo was created with a daily recurrence, not several"
+        - "next Friday was set as when it stops being relevant, not as a deadline to complete it by"
+
+- id: canvas-update-not-duplicate
+  ticket: "'Add a note to it' must update the existing tracked todo, never create a second one."
+  tags: [canvas, multiturn, conflict]
+  setup:
+    turns:
+      - "Start a tracked todo: plan the team offsite"
+      - "Add a note to it: the venue shortlist is Brighton and Bath"
+  prompt: "Start a tracked todo: plan the team offsite"
+  expected:
+    category: canvas
+    communicate: ["brighton"]
+    tool_calls:
+      - {tool: create_tracked_todo, min_calls: 1}
+      - {tool: update_tracked_todo_canvas, min_calls: 1}
+    end_state:
+      tracked_todos: [{count: 1}, {title_contains: "offsite", canvas_contains: "brighton"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "exactly ONE tracked todo about the offsite exists afterwards"
+        - "the note went onto the existing todo's canvas, not into a newly created todo"
+
+- id: canvas-ambiguous-target
+  ticket: "Two tracked todos, an unqualified 'the tracked todo': the agent must ask which."
+  tags: [canvas, multiturn, ambiguity]
+  setup:
+    turns:
+      - "Start a tracked todo: move house"
+      - "Start another tracked todo: change jobs"
+      - "Add a note about the deposit to the tracked todo"
+  prompt: "Start a tracked todo: move house"
+  expected:
+    category: canvas
+    communicate: ["which"]
+    tool_calls: [{tool: create_tracked_todo, min_calls: 2}]
+    end_state:
+      answer_contains: "which"
+      tracked_todos: [{count: 2}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the agent asks which of the two tracked todos the note belongs to"
+        - "the agent must NOT silently pick one and write the note there"
+
+- id: canvas-list-metadata
+  ticket: "Listing tracked todos must relay their real metadata, not a generic acknowledgement."
+  tags: [canvas, multiturn]
+  setup:
+    turns:
+      - "Start a high priority tracked todo: file the insurance claim"
+      - "List my tracked todos with their priorities"
+  prompt: "Start a high priority tracked todo: file the insurance claim"
+  expected:
+    category: canvas
+    communicate: ["insurance claim"]
+    tool_calls:
+      - {tool: create_tracked_todo}
+      - {tool: list_tracked_todos}
+    end_state:
+      answer_contains: "insurance claim"
+      tracked_todos: [{title_contains: "insurance claim"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the listing shows the insurance claim todo with high priority"
+        - "no tracked todo that was never created appears in the listing"

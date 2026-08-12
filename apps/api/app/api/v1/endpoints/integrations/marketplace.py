@@ -22,8 +22,12 @@ async def list_marketplace_integrations(category: str | None = None) -> Marketpl
         log.set(outcome="success")
         return result
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error fetching marketplace: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch integrations")
+        log.error(
+            f"{LogTag.INTEGRATION} Error fetching marketplace",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to fetch integrations") from e
 
 
 @router.get("/{integration_id}", response_model=IntegrationResponse)

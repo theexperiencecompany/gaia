@@ -7,7 +7,7 @@
     }
   },
   "useDaemonProcess": false,
-  "defaultBase": "develop",
+  "defaultBase": "master",
   "namedInputs": {
     "default": ["{projectRoot}/**/*"],
     "production": ["!{projectRoot}/**/*.spec.ts", "!{projectRoot}/**/*.test.ts"]

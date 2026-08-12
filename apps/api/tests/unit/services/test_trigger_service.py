@@ -37,7 +37,7 @@ _stub_injected = "app.services.workflow.trigger_service" not in sys.modules
 if _stub_injected:
     sys.modules["app.services.workflow.trigger_service"] = _trigger_service_stub
 
-from app.models.trigger_configs import (  # noqa: E402
+from app.models.trigger_configs import (
     CalendarEventCreatedConfig,
     CalendarEventStartingSoonConfig,
     GitHubCommitEventConfig,
@@ -52,43 +52,43 @@ from app.models.trigger_configs import (  # noqa: E402
     SlackChannelCreatedConfig,
     SlackNewMessageConfig,
 )
-from app.models.workflow_models import (  # noqa: E402
+from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
     Workflow,
     WorkflowStep,
 )
-from app.services.triggers.base import TriggerHandler  # noqa: E402
-from app.services.triggers.handlers.calendar import (  # noqa: E402
+from app.services.triggers.base import TriggerHandler
+from app.services.triggers.handlers.calendar import (
     CalendarTriggerHandler,
     calendar_trigger_handler,
 )
-from app.services.triggers.handlers.github import (  # noqa: E402
+from app.services.triggers.handlers.github import (
     GitHubTriggerHandler,
     github_trigger_handler,
 )
-from app.services.triggers.handlers.gmail import (  # noqa: E402
+from app.services.triggers.handlers.gmail import (
     GmailTriggerHandler,
     gmail_trigger_handler,
 )
-from app.services.triggers.handlers.gmail_poll import (  # noqa: E402
+from app.services.triggers.handlers.gmail_poll import (
     GmailPollTriggerHandler,
     gmail_poll_trigger_handler,
 )
-from app.services.triggers.handlers.linear import (  # noqa: E402
+from app.services.triggers.handlers.linear import (
     LinearTriggerHandler,
     linear_trigger_handler,
 )
-from app.services.triggers.handlers.slack import (  # noqa: E402
+from app.services.triggers.handlers.slack import (
     SlackTriggerHandler,
     slack_trigger_handler,
 )
-from app.services.triggers.registry import (  # noqa: E402
+from app.services.triggers.registry import (
     TriggerRegistry,
     get_handler_by_event,
     get_handler_by_name,
 )
-from app.utils.exceptions import TriggerRegistrationError  # noqa: E402
+from app.utils.exceptions import TriggerRegistrationError
 
 # ---------------------------------------------------------------------------
 # Restore real module after breaking circular import for initial loading

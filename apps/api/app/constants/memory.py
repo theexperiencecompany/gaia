@@ -145,6 +145,12 @@ MEMORY_SEARCH_CACHE_TTL = 60
 MEMORY_SEARCH_CACHE_PATTERN = "user:{user_id}:memories:*"
 CORE_CONTEXT_CACHE_KEY = "user:{user_id}:memory:core"
 
+# Optimistic per-user counter mirroring count_live_memories, so the free-cap
+# check avoids a Postgres COUNT on the hot path. 24h TTL so any drift self-heals
+# on expiry; maintained by INCR/DECR at every mutation site (app/memory/cap_counter.py).
+MEMORY_LIVE_COUNT_CACHE_KEY = "user:{user_id}:memory:live_count"
+MEMORY_LIVE_COUNT_CACHE_TTL = 86_400
+
 # Reconciliation looks at this many nearest existing memories per new fact.
 RECONCILE_CANDIDATES = 5
 
@@ -157,6 +163,19 @@ RECENT_FACTS_LIMIT = 10
 # least this many characters of real text — the extraction LLM then decides if
 # anything durable is present, so trivial turns ("hi", "thanks") cost nothing.
 MIN_USER_CONTENT_CHARS = 8
+
+# Max number of LIVE memory facts (is_latest, not forgotten) a free user may
+# accumulate. At the cap, NEW fact inserts are skipped (passive ingestion
+# silently, the explicit add_memory tool with an upsell card); UPDATES to
+# existing facts still apply and reads are never gated. Pro is uncapped.
+# The free pricing-card copy ("N saved memories") is derived from this constant
+# in scripts/payment_setup.py, so it stays in sync automatically when it changes.
+FREE_MEMORY_FACT_LIMIT = 50  # TUNE
+
+# Headroom below FREE_MEMORY_FACT_LIMIT within which the cached live count is
+# NOT trusted: the free-cap check takes an authoritative COUNT instead, so a
+# batch near the cap can never overshoot the hard maximum on stale/drifted cache.
+FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN = 10
 
 # Max length of an agent/user-supplied forget reason (matches the DB column).
 FORGET_REASON_MAX_CHARS = 200

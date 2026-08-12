@@ -213,7 +213,9 @@ async def _fetch_first_success(url: str, fetchers: list[WebpageFetcher] | None =
                 }
             )
             errors.append(f"{fetcher.name}: {e}")
-            log.warning(f"{fetcher.name} fetch failed: {e}")
+            log.warning(
+                "fetch failed", name=fetcher.name, error=str(e), error_type=type(e).__name__
+            )
             continue
         attempts.append(
             {

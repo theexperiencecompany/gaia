@@ -21,7 +21,6 @@ def _make_mock_tool(name: str) -> BaseTool:
     return tool
 
 
-@pytest.mark.unit
 class TestToolCategory:
     def test_add_tool(self):
         category = ToolCategory(name="test_cat")
@@ -86,7 +85,6 @@ class TestToolCategory:
         assert category.get_core_tools() == []
 
 
-@pytest.mark.unit
 class TestDynamicToolDict:
     def _make_registry_with_tools(self, tool_names: list[str]) -> ToolRegistry:
         registry = ToolRegistry()
@@ -178,7 +176,6 @@ class TestDynamicToolDict:
         assert isinstance(dtd, Mapping)
 
 
-@pytest.mark.unit
 class TestToolRegistry:
     def test_add_category(self):
         registry = ToolRegistry()
@@ -286,7 +283,6 @@ class TestToolRegistry:
         assert "ignore" not in result
 
 
-@pytest.mark.unit
 class TestToolWrapper:
     def test_tool_defaults_name_from_base_tool(self):
         base = _make_mock_tool("auto_name")
@@ -354,7 +350,6 @@ def _patch_index_category_tools():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestToolRegistryAsync:
     async def test_setup_initializes_all_categories(self):
         """setup() must populate registry.categories with the expected structure."""

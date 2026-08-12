@@ -1,0 +1,57 @@
+# Multi-turn family — two turns on one executor thread: turn 1 seeds state,
+# turn 2 follows up. Turns are carried in `setup.turns`; the transport runs
+# them sequentially on the same thread id.
+
+- id: multiturn-seed-and-list
+  ticket: "Seed a todo in turn 1, ask for the list in turn 2; thread state must persist."
+  tags: [multiturn]
+  setup:
+    turns:
+      - "Add a todo: buy milk"
+      - "What todos do I have?"
+  prompt: "Add a todo: buy milk"
+  expected:
+    category: multiturn
+    communicate: ["buy milk"]
+    tool_calls: [{tool: create_todo}]
+    end_state: {todos: [{title_contains: "milk", completed: false}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply lists the todo created in the first turn"
+
+- id: multiturn-seed-and-complete
+  ticket: "Seed a todo in turn 1, complete it in turn 2; end_state shows completed."
+  tags: [multiturn]
+  setup:
+    turns:
+      - "Add a todo: finish the quarterly report"
+      - "Mark the quarterly report todo as complete"
+  prompt: "Add a todo: finish the quarterly report"
+  expected:
+    category: multiturn
+    communicate: ["quarterly report"]
+    tool_calls: [{tool: create_todo}, {tool: update_todo}]
+    end_state: {todos: [{title_contains: "quarterly report", completed: true}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply confirms the todo was marked complete"
+
+- id: multiturn-tracked-followup
+  ticket: "Seed a tracked todo in turn 1, update its canvas in turn 2."
+  tags: [multiturn]
+  setup:
+    turns:
+      - "Start a tracked todo: plan the office move"
+      - "Add a note to the office move tracked todo: 'moving date is October 1'"
+  prompt: "Start a tracked todo: plan the office move"
+  expected:
+    category: multiturn
+    communicate: ["moving date"]
+    tool_calls: [{tool: create_tracked_todo}, {tool: update_tracked_todo_canvas}]
+    end_state: {tracked_todos: [{title_contains: "office move", canvas_contains: "moving date"}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second reply confirms the note was added to the canvas"
