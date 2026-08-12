@@ -55,13 +55,14 @@ const LETTER_TYPOGRAPHY = {
 const PAPER_CREAM = "#fdf6d9";
 
 /**
- * The sealed envelope the letter arrives in: the artwork cut off its black
- * ground, with the render's own contour faded out so nothing rings the
- * envelope on a dark page.
+ * The sealed envelope the letter arrives in: the artwork exactly as drawn,
+ * on its own dark ground. Cutting it out was worse — the render paints a dark
+ * contour around the envelope, and any cut leaves that contour ringing it.
+ * Against the near-black chat page the ground simply disappears.
  */
 const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.webp";
-const ENVELOPE_WIDTH = 512;
-const ENVELOPE_HEIGHT = 355;
+const ENVELOPE_WIDTH = 640;
+const ENVELOPE_HEIGHT = 427;
 
 /**
  * The paper: a sheet torn out by hand, ragged on all four edges.
@@ -317,7 +318,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
           width={ENVELOPE_WIDTH}
           height={ENVELOPE_HEIGHT}
           priority
-          className="block w-16 rotate-[-3deg] drop-shadow-[0_10px_18px_rgba(0,0,0,0.55)]"
+          className="block w-20 rotate-[-3deg]"
         />
         {/* Attention glow until the letter has been opened once */}
         {pulse && (
