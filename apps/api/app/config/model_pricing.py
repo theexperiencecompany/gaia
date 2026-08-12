@@ -5,6 +5,7 @@ Uses model_service to fetch models with caching support.
 
 from typing import NamedTuple
 
+from app.constants.llm import AUX_MODEL_NAME, DEFAULT_MODEL_NAME
 from app.constants.log_tags import LogTag
 from app.services.model_service import get_model_by_id
 from shared.py.wide_events import log
@@ -40,9 +41,14 @@ async def get_model_pricing(model_name: str) -> ModelPricing:
     Returns:
         ModelPricing with cost per 1k tokens
     """
+    # The aux calls run the SAME underlying model as the default under a
+    # different id (AUX_MODEL_NAME) so they get their own prompt-cache
+    # namespace; price them identically instead of falling back to the 11x
+    # DEFAULT_PRICING.
+    pricing_model = DEFAULT_MODEL_NAME if model_name == AUX_MODEL_NAME else model_name
     try:
         # Try exact match first using model_service (uses caching)
-        model = await get_model_by_id(model_name)
+        model = await get_model_by_id(pricing_model)
 
         if model:
             input_cost = getattr(model, "pricing_per_1k_input_tokens", None)

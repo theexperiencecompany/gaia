@@ -751,3 +751,50 @@ class TestStickyFallback:
         )
         assert result.content == "ok"
         assert config["configurable"][STICKY_FALLBACK_KEY] is True
+
+
+class TestAuxModelNamespace:
+    """Aux one-shot calls run the same underlying model under a different id
+    (AUX_MODEL_NAME) so their prompt-cache namespace is separate from the
+    conversation's — their per-turn blocks must not evict the conversation."""
+
+    def test_aux_model_constant_is_distinct_from_default(self) -> None:
+        from app.constants.llm import AUX_MODEL_NAME, DEFAULT_MODEL_NAME
+
+        assert AUX_MODEL_NAME != DEFAULT_MODEL_NAME
+
+    @pytest.mark.asyncio
+    async def test_ainvoke_structured_binds_the_aux_model(self) -> None:
+        from pydantic import BaseModel
+
+        from app.agents.llm import client as llm_client
+        from app.constants.llm import AUX_MODEL_NAME as AUX
+
+        class _Out(BaseModel):
+            ok: bool
+
+        captured: dict = {}
+
+        class _Spy:
+            def bind(self, **kwargs):
+                captured.update(kwargs)
+                return self
+
+            def with_structured_output(self, schema):
+                return self
+
+            async def ainvoke(self, *args, **kwargs):
+                return _Out(ok=True)
+
+        async def _fake_ainvoke(*a, **k):
+            return _Out(ok=True)
+
+        with (
+            patch.object(llm_client, "get_helper_llm", return_value=_Spy()),
+            patch.object(llm_client, "ainvoke_llm", new=_fake_ainvoke),
+        ):
+            result = await llm_client.ainvoke_structured(
+                _Out, "hello", label="test", config={"configurable": {"user_id": "u1"}}
+            )
+        assert result.ok is True
+        assert captured.get("model") == AUX

@@ -22,6 +22,7 @@ from app.agents.llm.exceptions import (
 )
 from app.config.settings import settings
 from app.constants.llm import (
+    AUX_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_LLM_TEMPERATURE,
@@ -727,8 +728,20 @@ async def ainvoke_structured(
     is what the call's spend is metered against). Adds the transient-retry + fallback
     of :func:`ainvoke_llm`. Runs on :func:`get_helper_llm` — structured output is
     always a small JSON blob, never the large-output case. Returns the validated
-    ``schema`` instance. Raises if Google is not configured (see ``get_default_llm``)."""
-    structured = get_helper_llm(temperature=temperature).with_structured_output(schema)
+    ``schema`` instance. Raises if Google is not configured (see ``get_default_llm``).
+
+    Runs on :data:`AUX_MODEL_NAME` — the same underlying model as the default
+    under a different id — so these calls live in their own prompt-cache
+    namespace. The agent graph's calls share the conversation's namespace; if
+    the aux calls did too, their ~30k tokens/turn of new blocks would evict
+    the conversation between turns (measured)."""
+    # The helper LLM is the cached default instance; bind the alias id for the
+    # separate cache namespace (same model, different key).
+    structured = (
+        get_helper_llm(temperature=temperature)
+        .bind(model=AUX_MODEL_NAME)
+        .with_structured_output(schema)
+    )
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(

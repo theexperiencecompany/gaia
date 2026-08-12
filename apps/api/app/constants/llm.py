@@ -142,6 +142,16 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # Text-only: tool results carrying images are captioned for it rather than shown
 # (see agents/llm/vision/capability.py).
 DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+# The SAME underlying model under a different id, used by the auxiliary
+# one-shot calls (memory pipeline, follow-ups, vision, …). The provider's
+# prompt cache is keyed per model id, so these calls must NOT share the
+# conversation's cache namespace: their ~30k tokens/turn of new blocks were
+# evicting the conversation between turns (measured: real-graph hit rate
+# capped at ~63% while the intra-turn steady state is 87–91%). A separate id
+# gives the aux calls their own namespace — they chain with each other and
+# can no longer evict the conversation. Must stay the same underlying model
+# as DEFAULT_MODEL_NAME (pricing is normalized in model_pricing).
+AUX_MODEL_NAME = "deepseek/deepseek-v4-flash"
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
