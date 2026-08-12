@@ -10,7 +10,7 @@ import {
 export const ACCENT = "#00bbff"; // brand blue — capacity meters
 export const HEALTHY = "#30d158"; // apple green — the activity trend
 export const NEAR = "#fbbf24"; // amber — approaching the limit
-export const HIT = "#ff453a"; // vibrant red — limit reached
+const HIT = "#ff453a"; // vibrant red — limit reached; only severityColor picks it
 
 export const CARD = "rounded-2xl bg-zinc-900/60";
 

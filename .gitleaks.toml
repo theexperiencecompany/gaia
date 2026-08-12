@@ -25,3 +25,13 @@ paths = [
   "scripts/dev/sandbox-env.sh",
   '''^apps/api/scripts/evals/data/''',
 ]
+# apps/api/scripts/harness_triage_demo.py was deleted, but the fake throwaway
+# env values it set (the same structurally-required Fernet MCP_ENCRYPTION_KEY as
+# sandbox-env.sh) still exist in the two commits that carried it. Scanning is
+# history-wide, so the finding outlives the file; these two SHAs are the whole
+# of it. Scoped to the commits rather than the path so a future file at that
+# path gets scanned normally.
+commits = [
+  "d9fb57712cb8d7bd5b7287a32d10eb5f9f2a1ffe",
+  "7a42e0cb738d059dfa5971e6119cfd90a2685fc4",
+]

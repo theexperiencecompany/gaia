@@ -1002,6 +1002,7 @@ export default function WorkflowModal({
                           errors={errors}
                           currentWorkflow={currentWorkflow}
                           isActivated={isActivated}
+                          needsSetup={missingIntegrations.length > 0}
                           isTogglingActivation={isTogglingActivation}
                           onToggleActivation={handleActivationToggle}
                           isPublic={!!currentWorkflow?.is_public}
