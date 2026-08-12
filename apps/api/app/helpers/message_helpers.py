@@ -60,6 +60,13 @@ DYNAMIC_CONTEXT_MARKER = "dynamic_context"
 # cacheable across turns.
 MEMORY_RECALL_MARKER = "memory_recall"
 
+# Cache-bounded size for the volatile memory-recall slot (see the cap in
+# build_dynamic_context_messages). Head keeps the always-on core memory; the
+# tail keeps the todo/run-banner directives; the churning middle is dropped.
+MEMORY_RECALL_MAX_CHARS = 8_000
+MEMORY_RECALL_HEAD_CHARS = 4_000
+MEMORY_RECALL_TAIL_CHARS = 4_000
+
 
 def create_system_message(
     user_id: str | None = None,
@@ -524,6 +531,20 @@ async def build_dynamic_context_messages(
 
         stable_content = "\n".join(user_stable_parts)
         recall_content = "\n\n".join(variable_parts)
+        # Cache note: the memory-recall slot is rebuilt every turn (core memory
+        # grows as memories are ingested, per-query recall churns) and every
+        # changed byte writes NEW blocks to the provider's bounded prompt
+        # cache, competing with the conversation chain (measured: ~12-14k
+        # chars/turn of churn is a major eviction source). Keep the head (core
+        # memory) and the tail (todos/banners — the directives with recency
+        # value) and drop the middle, bounding the slot's cache footprint
+        # without dropping the always-on core.
+        if len(recall_content) > MEMORY_RECALL_MAX_CHARS:
+            recall_content = (
+                recall_content[:MEMORY_RECALL_HEAD_CHARS]
+                + "\n…[recall truncated to keep the prompt cache warm]…\n"
+                + recall_content[-MEMORY_RECALL_TAIL_CHARS:]
+            )
 
         log.set(
             dynamic_context={

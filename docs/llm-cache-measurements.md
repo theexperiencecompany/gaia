@@ -60,15 +60,28 @@ upstream, before vs after the layout change.
 | Cache hit rate | 41.4% | 50.1% |
 | Input cost | $0.1647 | $0.1598 |
 
-The e2e delta is real but modest, and the reason is measured, not guessed:
-the graph runs ~4–6 auxiliary LLM calls per turn (memory extraction is 18–21k
-tokens alone, follow-up actions ~3k, reconcile/consolidate ~2k — ≈25–30k
-tokens/turn). Those calls write new prefix blocks between turns and evict the
-conversation chain from the provider's bounded LRU cache before the next turn
-reads it. The conversation *does* join the cached prefix (per-turn hits grow
-to 25–30k and occasionally 80–99% when the chain survives), but the aux-call
-churn caps the average. Trimming the memory-extraction input or batching aux
-calls is the follow-up that unlocks the full 95% in the real graph.
+The e2e delta is real but capped by a measured mechanism, not a layout
+defect: the provider's prompt cache retains only a small window of recent
+*request entries*, and every graph call that hits its own chain (the executor's
+3–9 calls per turn at 20–26k tokens, the memory-extraction/follow-up calls)
+occupies a slot. Between two comms calls the graph runs 5–15 such requests,
+so the comms conversation's entry is evicted before the next turn reads it —
+the comms hits collapse to the static prefix. This was established by
+byte-level capture of the real requests (the shared prefix is byte-identical;
+identical re-sends hit 100%) and by interleave probes: requests that never
+match anything (unique junk) do NOT evict the chain even at 112k tokens/turn,
+while the graph's own matching traffic does. Pinning the first-party DeepSeek
+lane (the paid path) measured *worse* on this key (19% vs 58% on the probe).
+
+This PR also bounds the aux calls' cache footprint so the fix is in place
+when the request count drops: the memory-extraction transcript is capped at
+10k chars (was 24k) and the volatile memory-recall slot at 8k chars
+(head+tail), cutting ~30k tokens/turn of new cache blocks. The remaining
+lever to unlock the layout's demonstrated 95% ceiling in the real graph is
+reducing the number of requests between comms calls — batching the
+memory-pipeline calls (extraction/reconcile/consolidate run 2× per turn, once
+per agent thread) and/or the executor's per-turn loop — a memory/agent
+pipeline change, not a cache-layout one.
 
 ## Semantics (verified, not assumed)
 

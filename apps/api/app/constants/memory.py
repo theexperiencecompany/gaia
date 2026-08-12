@@ -221,9 +221,16 @@ CATEGORY_PATH_MAX_DEPTH = 3
 # (most recent exchanges) and drop the middle. Sized so a long single session
 # (~20k chars) survives whole — truncation loses mid-conversation details
 # that the user may ask about weeks later.
-EXTRACTION_TRANSCRIPT_MAX_CHARS = 24_000
+#
+# Cache note: the extraction call runs 1-2x per turn at 18-21k input tokens;
+# every byte it writes is a NEW cache block that competes with the
+# conversation chain for the provider's bounded prompt cache (measured: the
+# conversation is evicted between turns, capping the real-graph hit rate at
+# ~50% vs ~95% for the layout alone). 10k chars still covers the full turn in
+# the common case while roughly halving the extraction call's cache footprint.
+EXTRACTION_TRANSCRIPT_MAX_CHARS = 10_000
 EXTRACTION_TRANSCRIPT_HEAD_CHARS = 4_000
-EXTRACTION_TRANSCRIPT_TAIL_CHARS = 20_000
+EXTRACTION_TRANSCRIPT_TAIL_CHARS = 6_000
 
 # Default importance assigned to a fact when the extractor omits it.
 DEFAULT_MEMORY_IMPORTANCE = 0.5
