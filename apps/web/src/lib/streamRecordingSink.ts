@@ -32,7 +32,9 @@ let inFlight: Promise<void> = Promise.resolve();
 const getRecordingId = (): string => {
   if (recordingId === null) {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    recordingId = `${stamp}-${Math.random().toString(36).slice(2, 8)}`;
+    // crypto over Math.random: same job (keep two recordings started in the same
+    // second apart) without shipping a pseudorandom generator into the bundle.
+    recordingId = `${stamp}-${crypto.randomUUID().slice(0, 6)}`;
   }
   return recordingId;
 };

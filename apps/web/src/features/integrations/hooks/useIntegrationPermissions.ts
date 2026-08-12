@@ -64,7 +64,12 @@ export function useIntegrationPermissions(
     },
     isSavingMode,
     asks,
-    askCount: useMemo(() => tools.filter(asks).length, [tools, asks]),
+    // Wrapped rather than passed by reference: filter also hands the callback an
+    // index and the array, which would silently become extra arguments.
+    askCount: useMemo(
+      () => tools.filter((tool) => asks(tool)).length,
+      [tools, asks],
+    ),
     toggle: (tool, next) => setToolApproval(tool.name, next, tool.destructive),
     deviations: deviating.length,
     resetToDefaults: () =>
