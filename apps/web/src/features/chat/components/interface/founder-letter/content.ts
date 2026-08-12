@@ -27,18 +27,13 @@ export const LETTER_DATE = "12 August 2026";
 /** localStorage key: pulses the envelope until the letter has been opened once. */
 export const LETTER_OPENED_KEY = "gaia_founder_letter_opened";
 
-/** Ink + paper tones. Kept here so the letter keeps one voice. */
-export const INK = "#46301f";
-export const INK_SOFT = "#8a6a3f";
+/** Ink + paper tones. Kept here so the letter keeps one voice. Warm and
+ * soft: the paper is bright, the ink is a calm warm gray, never near-black. */
+export const INK = "#57534e";
+export const INK_SOFT = "#8f897d";
 
-/** The vibrant accent (coral) used for the letterhead, link and buttons. */
-export const ACCENT = "#e2533f";
-
-/** Typography. The letter is set in the app's own editorial serif, with the
- * GAIA mark in PP Editorial and the discount code in the app's mono. */
-export const BODY_FONT = "var(--font-instrument-serif), Georgia, serif";
-export const MARK_FONT = "var(--font-pp-editorial-new), Georgia, serif";
-export const CODE_FONT = "var(--font-geist-mono), ui-monospace, monospace";
+/** Typography: the app's normal sans everywhere. */
+export const BODY_FONT = "var(--font-inter), Inter, sans-serif";
 
 /** The letter's body, one entry per paragraph. */
 export const LETTER_PARAGRAPHS: readonly string[] = [
@@ -48,14 +43,12 @@ export const LETTER_PARAGRAPHS: readonly string[] = [
   "As a thank-you for believing in us when it wasn't easy, take 40% off your first year, on both monthly and yearly plans.",
 ];
 
-export const SALUTATION = "Dear friend,";
+/** Salutation fallback when the user's name is unknown. */
+export const SALUTATION_FALLBACK = "friend";
 
 export const MEETING_SENTENCE =
   "And if you have fifteen minutes, I'd love to hear what you need from a personal assistant, and what you dream it could do.";
 
 export const MEETING_CTA = "Let's set up a time to talk";
 
-export const HANDWRITTEN_NOTE =
-  "The signature below is mine, written by hand. From my desk to yours.";
-
-export const SIGNATURE_CAPTION = "Aryan Randeriya · Founder & CEO, GAIA";
+export const SIGNATURE_CAPTION = "Aryan Randeriya, Founder & CEO, GAIA";
