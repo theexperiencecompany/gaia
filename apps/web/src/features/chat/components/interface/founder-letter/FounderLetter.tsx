@@ -27,9 +27,8 @@ import { useUserStore } from "@/stores/userStore";
 import {
   BODY_FONT,
   DISCOUNT_CODE,
-  DISCOUNT_DEADLINE,
   DISCOUNT_PERCENT,
-  DISCOUNT_SCOPE,
+  DISCOUNT_TERMS,
   DISCOUNT_YEARLY_NOTE,
   INK,
   INK_SOFT,
@@ -40,7 +39,6 @@ import {
   MEETING_SENTENCE,
   MEETING_URL,
   OFFER_LEAD,
-  OFFER_TAIL,
   SALUTATION_FALLBACK,
   SIGNATURE_NAME,
   SIGNATURE_ROLE,
@@ -472,11 +470,11 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                         lineHeight: "var(--letter-body-lh)",
                       }}
                     >
-                      {OFFER_LEAD} But if you want back in, take{" "}
+                      {OFFER_LEAD} Take{" "}
                       <strong className="font-bold">
                         {DISCOUNT_PERCENT}% off
                       </strong>{" "}
-                      {DISCOUNT_SCOPE}. {DISCOUNT_YEARLY_NOTE} Use{" "}
+                      with{" "}
                       <button
                         type="button"
                         onClick={copyCode}
@@ -492,7 +490,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                           <Copy01Icon className="h-3 w-3" />
                         )}
                       </button>
-                      {OFFER_TAIL} {DISCOUNT_DEADLINE}.
+                      at checkout. {DISCOUNT_YEARLY_NOTE}
                     </p>
                     <RaisedButton
                       color={CTA_BLACK}
@@ -516,6 +514,12 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                       Claim {DISCOUNT_PERCENT}% off
                       <CircleArrowRight02Icon className="h-4 w-4" />
                     </RaisedButton>
+                    <p
+                      className="opacity-60"
+                      style={{ fontSize: "calc(var(--letter-small) * 0.92)" }}
+                    >
+                      {DISCOUNT_TERMS}
+                    </p>
                   </div>
                 )}
 

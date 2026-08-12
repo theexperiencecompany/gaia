@@ -18,9 +18,8 @@
  */
 export {
   OFFER_CODE as DISCOUNT_CODE,
-  OFFER_DEADLINE_PHRASE as DISCOUNT_DEADLINE,
   OFFER_PERCENT as DISCOUNT_PERCENT,
-  OFFER_SCOPE as DISCOUNT_SCOPE,
+  OFFER_TERMS as DISCOUNT_TERMS,
   OFFER_YEARLY_NOTE as DISCOUNT_YEARLY_NOTE,
 } from "@/config/offer";
 
@@ -51,10 +50,9 @@ export const LETTER_PARAGRAPHS: readonly string[] = [
 /** Salutation fallback when the user's name is unknown. */
 export const SALUTATION_FALLBACK = "friend";
 
-/** The offer, split around the inline code + copy button. Opens by letting the
- * reader off the hook, so the paragraph above doesn't read as a set-up. */
-export const OFFER_LEAD = "No strings on any of this.";
-export const OFFER_TAIL = "at checkout, any time before";
+/** Opens the offer by letting the reader off the hook, so the paragraph above
+ * doesn't read as a set-up for it. */
+export const OFFER_LEAD = "No strings here.";
 
 export const MEETING_SENTENCE =
   "If you've got fifteen minutes, tell me what you'd want it to take off your plate.";
