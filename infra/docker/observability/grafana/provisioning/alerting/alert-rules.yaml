@@ -1048,10 +1048,11 @@ groups:
 
       # 23. Voice agent worker is not running. prometheus.yml's comment claims
       # this service is "scaled to 0 by default" — that is stale.
-      # docker-compose.prod.yml:910 declares `replicas: 1`, `docker stack deploy`
-      # reconciles the replica count back to the compose file on every deploy, and
-      # .github/workflows/deploy-swarm-prod.yml:96-121 hard-fails the deploy
-      # unless voice-agent-worker has at least one running task. The service runs
+      # docker-compose.prod.yml's `voice-agent-worker` service declares
+      # `replicas: 1`, `docker stack deploy` reconciles the replica count back to
+      # the compose file on every deploy, and the "Wait for convergence" step in
+      # .github/workflows/deploy-swarm-prod.yml hard-fails the deploy unless
+      # voice-agent-worker has at least one running task. The service runs
       # in production, so this rule is not a permanent firing state.
       # No dashboard link: the voice-agent dashboard charts lk_agents_* only,
       # nothing charts `up` for this job.
@@ -1409,7 +1410,8 @@ groups:
           service: host
 
       # 25. Redis cannot write to disk. Prod runs `--appendonly yes` alongside
-      # `--save 60 1000` (docker-compose.prod.yml:515-519), so both status gauges
+      # `--save 60 1000` (the `redis` service's command in
+      # docker-compose.prod.yml), so both status gauges
       # are present in INFO persistence. The product form is 1 only when both are
       # 1 and 0 if either fails — a single scalar with no set-operator semantics
       # to get wrong — and it degrades to an empty result if Redis is unreachable,

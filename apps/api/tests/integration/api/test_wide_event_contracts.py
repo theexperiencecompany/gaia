@@ -114,6 +114,70 @@ def test_handler_fields_reach_the_emitted_event(emitted):
     assert event["status_code"] == 200
 
 
+@pytest.mark.regression
+def test_a_second_set_of_a_namespace_merges_instead_of_replacing(emitted):
+    """`log.set(ns={...})` must accumulate, exactly like `set_ns`.
+
+    The shipped bug: `set` did a flat `fields.update()`, so a later whole-dict
+    write REPLACED the namespace instead of merging into it. In production
+    complete_execution's `log.set(workflow={...})` — the last write on a run, and
+    the one that carries no trigger_type — erased that field from 34,247 of
+    34,413 workflow fires, leaving no way to tell a scheduled fire from a webhook
+    one. Every layer of a request writes the same namespace; whichever wrote last
+    silently won.
+    """
+    app = _app_with_logging()
+
+    @app.get("/t")
+    async def handler():
+        log.set(workflow={"id": "wf_1", "trigger_type": "schedule", "steps_count": 3})
+        log.set(workflow={"id": "wf_1", "status": "success", "duration_ms": 12})
+        return {"ok": True}
+
+    TestClient(app).get("/t")
+    (event,) = emitted
+    assert event["workflow"] == {
+        "id": "wf_1",
+        "trigger_type": "schedule",
+        "steps_count": 3,
+        "status": "success",
+        "duration_ms": 12,
+    }
+
+
+def test_set_and_set_ns_are_interchangeable(emitted):
+    """Both setters merge into the namespace, in either order and either mix."""
+    app = _app_with_logging()
+
+    @app.get("/t")
+    async def handler():
+        log.set(todo={"operation": "create"})
+        log.set_ns("todo", id="t_1")
+        log.set(todo={"result_count": 2})
+        return {"ok": True}
+
+    TestClient(app).get("/t")
+    (event,) = emitted
+    assert event["todo"] == {"operation": "create", "id": "t_1", "result_count": 2}
+
+
+def test_a_non_dict_value_still_replaces(emitted):
+    """Only dict-into-dict merges. A scalar (or a scalar over a dict) overwrites —
+    merging is about accumulating a namespace, not about never overwriting."""
+    app = _app_with_logging()
+
+    @app.get("/t")
+    async def handler():
+        log.set(outcome="pending", todo={"operation": "create"})
+        log.set(outcome="done", todo="replaced-by-scalar")
+        return {"ok": True}
+
+    TestClient(app).get("/t")
+    (event,) = emitted
+    assert event["outcome"] == "done"
+    assert event["todo"] == "replaced-by-scalar"
+
+
 def test_user_identity_attached_from_request_state(emitted):
     """user.id auto-attaches from auth state (email stays out of the logs); handler-set fields win."""
 

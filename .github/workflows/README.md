@@ -66,8 +66,9 @@ flowchart TD
     direction TB
     DEPLOY_BACKEND --> D_AUTH["SSH key setup + GHCR login"]:::deploy
     D_AUTH --> D_CTX["Create Docker context over SSH"]:::deploy
-    D_CTX --> D_STACK["docker stack deploy gaia-prod"]:::deploy
-    D_STACK --> D_NOTIFY["Loki annotation + Discord notify"]:::deploy
+    D_CTX --> D_STACK["docker stack deploy gaia-prod<br/>pinned to immutable tags (or :latest fallback)"]:::deploy
+    D_STACK --> D_RETAG["after convergence:<br/>re-point :latest at deployed tags"]:::deploy
+    D_RETAG --> D_NOTIFY["Loki annotation + Discord notify"]:::deploy
   end
 
   subgraph FRONTEND_DEPLOY["deploy-frontend.yml (frontend)"]
@@ -116,29 +117,30 @@ flowchart TD
 
 ### `.github/workflows/build.yml`
 1. Start three build lanes: `docker-release`, `docker-web`, `docker-grafana`.
-2. `docker-release`: detect affected backend/bot projects, publish images to GHCR, optionally sync Discord commands. Records `images_published` right after its push steps (before Discord command sync), so a later, unrelated step failure never misreports a real publish as "nothing published".
+2. `docker-release`: detect affected backend/bot projects, publish images to GHCR, optionally sync Discord commands. Records `images_published` right after its push steps (before Discord command sync), so a later, unrelated step failure never misreports a real publish as "nothing published". After the release steps, `scripts/ci/resolve-image-tags.sh` resolves the immutable per-commit tags nx pushed (production versionScheme `YYMM.DD.<shortsha>`, read from the local image store, never recomputed) and guarantees they exist in GHCR (pushing them if nx skipped publishing), emitting `apps_tag` (gaia + gaia-voice-agent) and `bots_tag` (the four bot images) — empty when that group wasn't released this run.
 3. `docker-web`: detect `web` changes and build/push the web image only when affected.
 4. `docker-grafana`: builds/pushes the Grafana image unconditionally every run (tiny COPY layer over the upstream image). Not part of coupling or orphan detection — it has no "affected" concept and its `:latest` is always safe for the stack to pick up.
 5. `deployment-plan` runs with `if: always()` — it is never skipped by a lane failing or being cancelled — and needs all three build lanes purely for sequencing (deploy planning must not race ahead of the build lanes). It evaluates `docker-release`'s and `docker-web`'s `.result`, plus each side's affected-detection (`docker-release.outputs.api_affected`/`bots_affected`, `docker-web.outputs.web_affected`), via `scripts/ci/compute-deploy-plan.sh`:
    - **Single-side push** (only backend or only web affected): each side deploys independently. `backend_deploy` is `true` only when `docker-release` succeeded AND api/bots affected. A failed/cancelled `docker-release` never deploys, but a failed `docker-web` no longer blocks it either — the old implicit needs-all-success gate did. `frontend_deploy` follows the existing rule (always true on a master push) and is not gated on `docker-web`'s result — the Vercel deploy path syncs from source, not from the `docker-web` image.
    - **Coupled push** (both backend AND web affected by the same commit): the two deploys are treated as one unit. Both `docker-release` and `docker-web` must succeed for either to deploy; if either lane failed or was cancelled, `coupled_hold` is set and BOTH `backend_deploy`/`frontend_deploy` stay `false` — this prevents shipping one half (e.g. a new frontend) against a stale, untested other half. This is the one case where a lane failure still blocks a deploy on the healthy side, by design.
-   - `backend_orphaned` / `frontend_orphaned` flag when an image lane published to GHCR as `:latest` but its corresponding deploy did not run this time, for any reason (lane failure, cancellation, the plan itself deciding not to deploy, or a `coupled_hold` — which flags both sides even if only one side's lane actually failed, since the healthy side is held back too). Scoped to `master` only.
+   - `backend_orphaned` / `frontend_orphaned` flag when an image lane actually published to GHCR but its corresponding deploy did not run this time (lane failure, cancellation, the plan itself deciding not to deploy, or a `coupled_hold` — which flags both sides even if only one side's lane actually failed, since the healthy side is held back too). Publish evidence is required on both sides: `images_published` for backend, `web_affected` AND lane success for frontend (docker-web succeeds even when it skips the build, so its result alone proves nothing). Scoped to `master` only, and a side the operator deliberately excluded via a manual mode (`backend-only` skips frontend, `frontend-only` skips backend, `none` skips both) is never flagged — an operator choice is not drift.
    - Manual `workflow_dispatch` modes (`backend-only` / `frontend-only` / `both`) bypass affected-detection, lane-result gating, AND the coupling rule — this is the intended one-command remedy for drift: `gh workflow run build.yml --ref master -f deployment_mode=both` redeploys whatever is currently tagged `:latest` in GHCR regardless of what this run's own build lanes did. Manual `auto` mode applies the same coupling rule as an automatic push.
-6. `notify-publish-without-deploy` fires a Discord alert (same webhook/action the deploy workflows use) when either orphan flag is set, naming which images are published-but-undeployed (or held together, for a `coupled_hold`) and the `gh workflow run` remedy above.
-7. Trigger `deploy-swarm-prod.yml` and/or `deploy-frontend.yml` based on `backend_deploy` / `frontend_deploy`.
+6. `notify-publish-without-deploy` fires a Discord alert when either orphan flag is set, naming which images are published-but-undeployed (or held together, for a `coupled_hold`) and the `gh workflow run` remedy above. All deploy-pipeline Discord sends go through `scripts/ci/notify-discord.sh` (single webhook embed; the previous appleboy action 400'd on messages over 256 chars and fragmented comma-containing ones), with `continue-on-error` on the send step only — the message is fully logged in the run either way, and a dropped webhook must not turn an otherwise-green run red.
+7. Trigger `deploy-swarm-prod.yml` and/or `deploy-frontend.yml` based on `backend_deploy` / `frontend_deploy`. `trigger-deploy` passes the immutable tags through (`apps_image_tag` / `bots_image_tag` from `docker-release`, `grafana_image_tag` = the commit sha when `docker-grafana` succeeded); empty tags mean the deploy falls back to `:latest` (the manual-mode drift remedy keeps exactly its old semantics).
 
 ### `.github/workflows/deploy-swarm-prod.yml`
 1. Install SSH private key from `PROD_VM_SSH_KEY` via the `setup-swarm-context` composite action and log in to GHCR.
 2. Create Docker context pointing at the Hetzner VM over SSH.
-3. Run `docker --context prod stack deploy --with-registry-auth` for the app stack (`gaia-prod`).
-   Swarm handles rolling update; the workflow polls both `gaia-backend` and `arq_worker` for convergence and fails on auto-rollback.
-4. Push a deploy annotation to Loki and send status to Discord.
-5. Manual `workflow_dispatch` supports `action=rollback` with `rollback_mode=last` (Docker service rollback) or `rollback_mode=digest` (redeploy pinned image).
+3. Run `docker --context prod stack deploy --with-registry-auth` for the app stack (`gaia-prod`), exporting the `apps_image_tag` / `bots_image_tag` / `grafana_image_tag` inputs as `GAIA_IMAGE_TAG` / `GAIA_BOTS_IMAGE_TAG` / `GAIA_GRAFANA_IMAGE_TAG` so the stack is pinned to the exact images this run verified. Empty inputs fall through to the compose file's `${VAR:-latest}` defaults — the pre-parameterization behavior, used by manual dispatches that just want to redeploy `:latest`.
+   Swarm handles rolling update; the workflow polls `gaia-backend`, `arq_worker`, and `voice-agent-worker` for convergence and fails on auto-rollback.
+4. Only after convergence succeeds, `scripts/ci/retag-latest-alias.sh` re-points each deployed repo's `:latest` at the deployed tag registry-side (`docker buildx imagetools create`, no layer transfer) — `:latest` is a deploy-time alias meaning "what prod runs", not "what was last built". A failed deploy does not move `:latest`.
+5. Push a deploy annotation to Loki (including the deployed tags) and send status to Discord via `scripts/ci/notify-discord.sh`.
+6. Manual `workflow_dispatch` supports `action=rollback` with `rollback_mode=last` (Docker service rollback) or `rollback_mode=digest` (redeploy pinned image). After a successful rollback, the same retag script re-points `:latest` at the images the rolled-back services now run (digest mode: the pinned gaia ref; last mode: each rolled-back service's restored image spec), so the alias keeps tracking production through rollbacks too.
 
 ### `.github/workflows/deploy-frontend.yml`
 1. Sync `master` to the private fork used as Vercel source.
 2. Vercel performs deploy/no-op based on its own change detection.
-3. Send deployment status to Discord.
+3. Send deployment status to Discord via `scripts/ci/notify-discord.sh`.
 
 ### `.github/workflows/release-please.yml`
 1. Enforce `master` ref (manual runs on non-master fail fast).

@@ -28,7 +28,7 @@ jobs:
     steps:
       # Checkout repo so metadata and commit context are available.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -44,15 +44,18 @@ jobs:
           target_branch: master
           force: true
 
-      # Always send deploy outcome to Discord for visibility.
+      # Always send deploy outcome to Discord for visibility. Sent via
+      # scripts/ci/notify-discord.sh (appleboy's action 400s on long messages
+      # and fragments comma-containing ones); continue-on-error because the
+      # message is logged by the script either way and a dropped webhook must
+      # not repaint an otherwise-decided run.
       - name: Notify Discord of deployment
         if: always()
-        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
-        with:
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
-          username: "Gaia Deploy Bot"
-          color: ${{ job.status == 'success' && '#00d4aa' || job.status == 'cancelled' && '#ffa500' || '#ff6b6b' }}
-          message: |
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: ${{ job.status == 'success' && '#00d4aa' || job.status == 'cancelled' && '#ffa500' || '#ff6b6b' }}
+          MESSAGE: |
             🌐 **Web Deployment ${{ job.status == 'success' && 'Triggered' || job.status == 'cancelled' && 'Cancelled' || 'Failed' }}**
             **Repo:** ${{ github.repository }}
             **Branch:** master
@@ -60,3 +63,4 @@ jobs:
             **Status:** ${{ job.status == 'success' && 'Synced to private fork' || job.status == 'cancelled' && 'Sync cancelled' || 'Sync failed' }}
             **Next Step:** ${{ job.status == 'success' && 'Vercel will auto-deploy' || job.status == 'cancelled' && 'N/A' || 'Check logs' }}
             **Triggered by:** ${{ github.actor }}
+        run: bash scripts/ci/notify-discord.sh

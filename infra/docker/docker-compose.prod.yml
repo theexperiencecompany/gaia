@@ -3,6 +3,19 @@
 # (baked into each image) reads them and exports env vars before exec.
 # This file can also be used with `docker compose` for local rehearsal — see
 # scripts/swarm/lab-rehearsal.sh.
+#
+# Image tags are deploy-time parameters: deploy-swarm-prod.yml exports the
+# immutable per-commit tags built by CI (nx production scheme
+# YYMM.DD.<shortsha>, e.g. 2608.10.fa2b2a9) so the stack is pinned to exactly
+# the build the deploy run verified, and re-points :latest at those images
+# only AFTER convergence succeeds — :latest is a deploy-time alias for "what
+# prod runs", not "what was last built".
+#   GAIA_IMAGE_TAG          gaia + gaia-voice-agent (nx release group "apps")
+#   GAIA_BOTS_IMAGE_TAG     the four bot images (nx release group "bots")
+#   GAIA_GRAFANA_IMAGE_TAG  gaia-grafana (built every run, tagged by full sha)
+# The `:-latest` defaults are the rollout-safety property: any invocation that
+# does not pass tags (lab rehearsal, manual `docker stack deploy` on the VM,
+# older workflow runs) behaves exactly as before this parameterization.
 
 secrets:
   # One Infisical machine identity (Universal Auth), shared by every service.
@@ -64,7 +77,7 @@ services:
   # ---------------------------------------------------------------------------
 
   gaia-backend:
-    image: ghcr.io/theexperiencecompany/gaia:latest
+    image: ghcr.io/theexperiencecompany/gaia:${GAIA_IMAGE_TAG:-latest}
     working_dir: /app/apps/api
     command: python -m uvicorn app.main:app --host 0.0.0.0 --port 80 --no-access-log --workers 1 --timeout-keep-alive 65 --timeout-graceful-shutdown 30 --h11-max-incomplete-event-size 16777216
     volumes:
@@ -144,7 +157,7 @@ services:
   # ---------------------------------------------------------------------------
 
   arq_worker:
-    image: ghcr.io/theexperiencecompany/gaia:latest
+    image: ghcr.io/theexperiencecompany/gaia:${GAIA_IMAGE_TAG:-latest}
     working_dir: /app/apps/api
     command: python -m arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG
     volumes:
@@ -232,7 +245,7 @@ services:
   # their own. Memory: with the ONNX CPU mem arena OFF (see embeddings.py) RSS
   # settles near the ~2GB weights; 3G limit leaves headroom over the ~2.4GB peak.
   embedding-sidecar:
-    image: ghcr.io/theexperiencecompany/gaia:latest
+    image: ghcr.io/theexperiencecompany/gaia:${GAIA_IMAGE_TAG:-latest}
     working_dir: /app/apps/api
     command: python -m uvicorn app.services.embedding_sidecar.server:app --host 0.0.0.0 --port 8200 --workers 1
     environment:
@@ -298,7 +311,7 @@ services:
   # ---------------------------------------------------------------------------
 
   discord-bot:
-    image: ghcr.io/theexperiencecompany/gaia-bot-discord:latest
+    image: ghcr.io/theexperiencecompany/gaia-bot-discord:${GAIA_BOTS_IMAGE_TAG:-latest}
     environment:
       BOT_SERVER_PORT: "3200"
       LOG_FORMAT: json
@@ -342,7 +355,7 @@ services:
         delay: 5s
 
   slack-bot:
-    image: ghcr.io/theexperiencecompany/gaia-bot-slack:latest
+    image: ghcr.io/theexperiencecompany/gaia-bot-slack:${GAIA_BOTS_IMAGE_TAG:-latest}
     environment:
       BOT_SERVER_PORT: "3201"
       LOG_FORMAT: json
@@ -386,7 +399,7 @@ services:
         delay: 5s
 
   telegram-bot:
-    image: ghcr.io/theexperiencecompany/gaia-bot-telegram:latest
+    image: ghcr.io/theexperiencecompany/gaia-bot-telegram:${GAIA_BOTS_IMAGE_TAG:-latest}
     environment:
       BOT_SERVER_PORT: "3202"
       LOG_FORMAT: json
@@ -430,7 +443,7 @@ services:
         delay: 5s
 
   whatsapp-bot:
-    image: ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest
+    image: ghcr.io/theexperiencecompany/gaia-bot-whatsapp:${GAIA_BOTS_IMAGE_TAG:-latest}
     environment:
       BOT_SERVER_PORT: "3203"
       LOG_FORMAT: json
@@ -938,7 +951,7 @@ services:
     # Provisioning (datasources, dashboards, alerting) is baked into this image
     # — see infra/docker/observability/grafana/Dockerfile — so prod needs no host
     # bind mount and the stack deploys cleanly from CI via a remote context.
-    image: ghcr.io/theexperiencecompany/gaia-grafana:latest
+    image: ghcr.io/theexperiencecompany/gaia-grafana:${GAIA_GRAFANA_IMAGE_TAG:-latest}
     ports:
       # Loopback only — Nginx on the host proxies logs.heygaia.io to this.
       - target: 3000
@@ -1014,7 +1027,7 @@ services:
   # ---------------------------------------------------------------------------
 
   voice-agent-worker:
-    image: ghcr.io/theexperiencecompany/gaia-voice-agent:latest
+    image: ghcr.io/theexperiencecompany/gaia-voice-agent:${GAIA_IMAGE_TAG:-latest}
     working_dir: /app/apps/voice-agent
     environment:
       PYTHONUNBUFFERED: "1"

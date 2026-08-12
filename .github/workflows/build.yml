@@ -49,11 +49,16 @@ jobs:
       # in GHCR, which would otherwise misreport a real publish as "nothing
       # published" and hide drift instead of surfacing it.
       images_published: ${{ steps.publish-status.outputs.published }}
+      # Immutable per-commit tags (nx production scheme YYMM.DD.<shortsha>)
+      # for this run's releases; empty when a group wasn't released. The
+      # deploy pins the Swarm stack to these instead of :latest.
+      apps_tag: ${{ steps.image-tags.outputs.apps_tag }}
+      bots_tag: ${{ steps.image-tags.outputs.bots_tag }}
 
     steps:
       # Prepare repository + tooling so Nx can calculate affected projects.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -200,6 +205,22 @@ jobs:
           fi
           echo "published=$published" >> "$GITHUB_OUTPUT"
 
+      # Resolve the immutable tags the release steps just pushed (read from the
+      # local image store, never recomputed) and guarantee they exist in GHCR,
+      # so the deploy can pin services to exactly this run's images. Placed
+      # after publish-status deliberately: this step can fail, and the publish
+      # outcome must already be recorded when it does — a resolve failure then
+      # fails the lane, blocks the deploy, and surfaces as an orphan alert
+      # rather than as a silent "nothing published".
+      - name: Resolve immutable image tags
+        id: image-tags
+        if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
+        env:
+          VERSION_SCHEME: ${{ steps.version.outputs.scheme }}
+          APPS_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
+          BOTS_RELEASE_OUTCOME: ${{ steps.release-bots.outcome }}
+        run: bash scripts/ci/resolve-image-tags.sh
+
       # Discord command sync is only meaningful for production bot deploys.
       - name: Register Discord slash commands
         if: steps.affected.outputs.bots == 'true' && github.ref == 'refs/heads/master'
@@ -230,7 +251,7 @@ jobs:
       # which a shallow clone does not contain ("fatal: bad object" in the
       # affected check). docker-release fetches full history for the same reason.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -312,7 +333,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
@@ -366,8 +387,17 @@ jobs:
       coupled_hold: ${{ steps.plan.outputs.coupled_hold }}
       docker_release_result: ${{ steps.plan.outputs.docker_release_result }}
       docker_web_result: ${{ steps.plan.outputs.docker_web_result }}
+      # Immutable tag pass-through for trigger-deploy (it can't `needs:` the
+      # build lanes directly without re-gating on their success). Empty tags
+      # mean "deploy whatever :latest currently points at" — the manual-mode
+      # drift remedy and the pre-parameterization behavior.
+      apps_image_tag: ${{ needs.docker-release.outputs.apps_tag || '' }}
+      bots_image_tag: ${{ needs.docker-release.outputs.bots_tag || '' }}
+      # docker-grafana pushes :<full sha> unconditionally every run; pin it
+      # only when that lane actually succeeded this run.
+      grafana_image_tag: ${{ needs.docker-grafana.result == 'success' && github.sha || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Single decision point that translates lane results + affected +
       # manual mode into deploy booleans, applies the backend/web coupling
       # rule for pushes that touch both, and flags any image lane that
@@ -398,13 +428,17 @@ jobs:
     if: always() && (needs.deployment-plan.outputs.backend_orphaned == 'true' || needs.deployment-plan.outputs.frontend_orphaned == 'true')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      # continue-on-error on the send step only: the alert content is fully
+      # logged by the script either way, and a webhook hiccup must not turn
+      # an otherwise-green run red — the run didn't get worse because Discord
+      # dropped a message about it.
       - name: Notify Discord — publish without deploy
-        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
-        with:
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
-          username: "Gaia Deploy Bot"
-          color: "#ff6b6b"
-          message: |
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ff6b6b"
+          MESSAGE: |
             🚨 **Publish Without Deploy Detected**
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
@@ -414,6 +448,7 @@ jobs:
             ${{ needs.deployment-plan.outputs.coupled_hold != 'true' && needs.deployment-plan.outputs.frontend_orphaned == 'true' && format('**Web image (gaia-web) was published to GHCR as `:latest` but the frontend deploy did NOT run.** docker-web result: `{0}`.', needs.deployment-plan.outputs.docker_web_result) || '' }}
             Production may now be running a stale image while a newer one sits in GHCR tagged `:latest`. Any container restart on the Swarm host will silently pick up the undeployed build.
             **To deploy now:** fix the red lane, then run `gh workflow run build.yml --ref master -f deployment_mode=both` (or `backend-only` / `frontend-only` for a non-coupled case) — this redeploys whatever is currently tagged `:latest` in GHCR regardless of this run's affected-detection or lane results.
+        run: bash scripts/ci/notify-discord.sh
 
   # Trigger backend production deploy only when deploy plan allows it.
   trigger-deploy:
@@ -422,6 +457,9 @@ jobs:
     uses: ./.github/workflows/deploy-swarm-prod.yml
     with:
       action: deploy
+      apps_image_tag: ${{ needs.deployment-plan.outputs.apps_image_tag }}
+      bots_image_tag: ${{ needs.deployment-plan.outputs.bots_image_tag }}
+      grafana_image_tag: ${{ needs.deployment-plan.outputs.grafana_image_tag }}
     secrets: inherit
 
   # Trigger web production deploy only when deploy plan allows it.

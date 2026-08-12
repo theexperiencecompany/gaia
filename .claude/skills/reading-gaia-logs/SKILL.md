@@ -18,7 +18,7 @@ One structured line summarizes each request/task. Build it up with `log.set(...)
 - **Module:** `libs/shared/py/wide_events.py`. Import in app code: `from shared.py.wide_events import log`.
 - **API** (`wide_events.py`):
   - `log.set(**kwargs)` — merge structured fields into the current event (top-level).
-  - `log.set_ns(namespace, **kwargs)` — read-merge into a nested `event[namespace]` dict (use for multi-step paths so earlier keys aren't clobbered).
+  - `log.set_ns(namespace, **kwargs)` — merge into a nested `event[namespace]` dict; identical to `set(namespace={...})` (which also merges), with the namespace named explicitly. Prefer it on multi-step paths.
   - `log.info/debug(msg, ...)` — real-time Loguru line only; **not** recorded in the wide event.
   - `log.warning/error/critical/exception(msg, ...)` — Loguru line **and** appended to the event's `warnings`/`errors` array, bumping its final level.
 - **Emit boundaries** (exactly one line each):

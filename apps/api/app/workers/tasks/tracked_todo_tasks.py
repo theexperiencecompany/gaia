@@ -354,9 +354,6 @@ async def _execute_via_agent(
             user_model_config=user_model_config,
             trigger_context=trigger_context,
         )
-
-        if complete_message and complete_message.startswith("Error when calling silent agent:"):
-            raise RuntimeError(complete_message)
     except Exception as exc:
         # End marker: failure
         fail_iso = datetime.now(UTC).isoformat()
