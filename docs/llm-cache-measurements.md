@@ -68,21 +68,32 @@ figures are 72.4% (wire capture + provider-reported usage, 56 requests) and
 70.5% (the 15-turn driver).
 
 The e2e delta is real but the residual gap is NOT a layout defect and NOT
-eviction by the graph's own traffic — that earlier hypothesis was measured
-and disproved. Controlled probes on the real lane (identical re-sends,
-growing chains, changing volatile tails, bound tools, interleaved
-follow-up/summarize calls at real sizes, 23k alias-namespace extractions)
-all cache at 97–100%, and **replaying the graph's exact captured request
-bytes hits 100%**. What actually varies is the provider's cache itself:
-the same byte-identical request flaps between ~81% (static prefix only)
-and ~99% (full chain) across calls minutes apart — six consecutive turns
-of the same driver measured 81/98/79/78/99/98% on the comms call with
-identical interleaves, and the identical follow-up request strictly
-alternated 0/67/0/69%. The same driver that measured 70.5% at one hour
-measured 84.8% (89% comms-only) two hours later with zero code changes.
-The layout's demonstrated 94.9% ceiling is reachable whenever the
-provider's cache cooperates; the residual is provider-side cache
-reliability, not request structure.
+provider-side flakiness — both of those earlier hypotheses were measured and
+disproved. The shadow test settled it: replaying the graph's exact captured
+request bytes seconds after the live call hits 99.5% while the live call
+itself reported 80% — the cache is a byte-prefix cache working exactly as
+specified, and the live hit rate is the shared-prefix fraction. The per-turn
+byte divergence has two measured sources:
+
+1. **The memory-recall slot churns inside the cached prefix.** The volatile
+   slot is rebuilt every turn; its tail (recent-activity journal + tracked
+   todos) changed bytes every turn — the journal's sliding last-6 window
+   shifted every emitted entry each time a new one landed. The comms'
+   shared-with-previous-turn prefix was capped at ~18k (static + docs) while
+   the request grew to 23k+. **Fixed**: the journal is now anchored
+   (append-only) — shared-with-previous-turn went 50% → 74%, and the comms'
+   cached prefix now grows with the conversation instead of staying flat.
+2. **Concurrent same-provider requests wipe each other's chains mid-read.**
+   The memory extraction is a fire-and-forget background task that overlaps
+   the next turn's requests. A/B on the same lane: the comms chain collapsed
+   to 0/72.6% under a concurrent alias-lane extraction and held 99.5%+ under
+   a concurrent Gemini extraction. **Fixed**: the memory pipeline runs on
+   direct Gemini — a different provider has no shared cache store.
+
+The layout's demonstrated 94.9% ceiling (the harness uses byte-stable slots)
+is reachable once the volatile tail stops churning inside the prefix; the
+remaining lever is moving the recall slot's newest entries + todo statuses
+after the time message so the prefix extends through the stable core.
 
 Two follow-up fixes in this PR close the biggest measured gaps:
 
