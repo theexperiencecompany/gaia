@@ -339,9 +339,7 @@ class TestDeliverResultHilResume:
             bot_message_id="orig-msg-1",
         )
 
-        (text, message_id), save, ws, get_msg, set_resp, set_td = await self._deliver_resumed(
-            run
-        )
+        (text, message_id), save, ws, get_msg, set_resp, set_td = await self._deliver_resumed(run)
 
         assert message_id == "orig-msg-1"  # reconciles onto the ORIGINAL message, not task_id
         save.assert_not_awaited()  # never $push's a rival array element
