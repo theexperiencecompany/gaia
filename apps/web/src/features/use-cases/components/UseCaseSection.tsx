@@ -111,6 +111,7 @@ function CategoryChip({
 }) {
   return (
     <m.div
+      className="shrink-0"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
@@ -297,7 +298,7 @@ export default function UseCaseSection({
   return (
     <div className="w-full" ref={dummySectionRef}>
       <div
-        className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
+        className={`mb-6 flex flex-nowrap overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${setShowUseCases ? "max-w-5xl" : ""} ${centered || setShowUseCases ? "mx-auto w-fit max-w-full" : ""} items-center gap-2`}
       >
         {allCategories.map((category, index) => (
           <CategoryChip
