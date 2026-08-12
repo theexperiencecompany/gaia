@@ -3,12 +3,7 @@
 import { CancelIcon, CircleArrowRight02Icon } from "@icons";
 import { useEffect, useState } from "react";
 
-import {
-  isOfferLive,
-  OFFER_CODE,
-  OFFER_EXPIRES_LABEL,
-  OFFER_PERCENT,
-} from "@/config/offer";
+import { isOfferLive, OFFER_CODE, OFFER_PERCENT } from "@/config/offer";
 import { Link } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
@@ -74,9 +69,7 @@ export function OfferBanner({ onVisibilityChange }: OfferBannerProps) {
           <span className="font-semibold">{OFFER_PERCENT}% off</span> your first
           payment with{" "}
           <span className="font-semibold tracking-wide">{OFFER_CODE}</span>
-          <span className="hidden sm:inline">
-            , until {OFFER_EXPIRES_LABEL}
-          </span>
+          <span className="hidden sm:inline">, for a little while longer</span>
         </span>
         <CircleArrowRight02Icon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
       </Link>

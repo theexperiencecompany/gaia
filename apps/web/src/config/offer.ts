@@ -35,8 +35,12 @@ export const OFFER_YEARLY_NOTE =
 /** Last moment the code works, matching `expires_at` on the Dodo coupon. */
 export const OFFER_EXPIRES_AT = "2026-11-12T23:59:59Z";
 
-/** The same deadline as the reader sees it. */
-export const OFFER_EXPIRES_LABEL = "12 November 2026";
+/**
+ * How the deadline is said out loud. Deliberately not a date: a printed date
+ * ages the letter the moment it passes, and the real gate is OFFER_EXPIRES_AT,
+ * which removes the offer on its own.
+ */
+export const OFFER_DEADLINE_PHRASE = "while it lasts";
 
 /** Whether the offer is still live. Every surface gates on this, so an expired
  * offer disappears on its own instead of waiting for a deploy. */

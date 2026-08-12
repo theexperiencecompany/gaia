@@ -26,7 +26,7 @@ import { useUserStore } from "@/stores/userStore";
 import {
   BODY_FONT,
   DISCOUNT_CODE,
-  DISCOUNT_EXPIRES,
+  DISCOUNT_DEADLINE,
   DISCOUNT_PERCENT,
   DISCOUNT_SCOPE,
   DISCOUNT_YEARLY_NOTE,
@@ -491,7 +491,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                         />
                       )}
                     </button>
-                    {OFFER_TAIL} {DISCOUNT_EXPIRES}.
+                    {OFFER_TAIL} {DISCOUNT_DEADLINE}.
                   </p>
                   <RaisedButton
                     color={CTA_BLACK}
