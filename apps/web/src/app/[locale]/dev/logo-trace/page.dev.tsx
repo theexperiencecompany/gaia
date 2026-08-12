@@ -7,14 +7,21 @@ import LogoTraceLoader from "@/components/common/LogoTraceLoader";
 
 /**
  * Dev playground for LogoTraceLoader (dev-only route). Drives a live instance
- * through loading → resolved with an adjustable draw speed, and shows static
- * variants at different sizes plus the monochrome (currentColor) mode.
+ * through loading → resolved with an adjustable draw speed (total cycle, per
+ * layer, per arm), and shows static variants at different sizes plus the
+ * monochrome (currentColor) mode.
  */
 export default function LogoTraceDevPage() {
   const [runId, setRunId] = useState(0);
   const [loading, setLoading] = useState(true);
   const [doneCount, setDoneCount] = useState(0);
-  const [loopDurationSeconds, setLoopDurationSeconds] = useState(2.4);
+  const [drawCycleSeconds, setDrawCycleSeconds] = useState(8);
+
+  const PRESETS = [
+    { label: "Fast", seconds: 3 },
+    { label: "Normal", seconds: 8 },
+    { label: "Slow", seconds: 20 },
+  ];
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-12 bg-[#111111] p-8 text-zinc-100">
@@ -24,7 +31,7 @@ export default function LogoTraceDevPage() {
           loading={loading}
           size={112}
           strokeWidth={30}
-          loopDurationSeconds={loopDurationSeconds}
+          drawCycleSeconds={drawCycleSeconds}
           onDone={() => setDoneCount((count) => count + 1)}
         />
         <div className="flex items-center gap-2">
@@ -50,21 +57,46 @@ export default function LogoTraceDevPage() {
             Restart
           </Button>
         </div>
-        <div className="flex w-64 flex-col gap-1">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-zinc-400">Draw speed</span>
-            <span className="font-mono text-xs text-zinc-500">
-              {loopDurationSeconds.toFixed(1)}s / layer
-            </span>
+        <div className="flex w-72 flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-zinc-400">Total draw time</span>
+              <span className="font-mono text-xs text-zinc-500">
+                {drawCycleSeconds.toFixed(1)}s / cycle
+              </span>
+            </div>
+            <Slider
+              size="sm"
+              step={0.5}
+              minValue={1}
+              maxValue={30}
+              value={drawCycleSeconds}
+              onChange={(value) => setDrawCycleSeconds(value as number)}
+            />
+            <div className="flex items-center justify-between font-mono text-[11px] text-zinc-600">
+              <span>1s</span>
+              <span>{`${(drawCycleSeconds * 0.3).toFixed(1)}s / layer · ${(
+                drawCycleSeconds * 0.1
+              ).toFixed(1)}s / arm`}</span>
+              <span>30s</span>
+            </div>
           </div>
-          <Slider
-            size="sm"
-            step={0.1}
-            minValue={0.5}
-            maxValue={6}
-            value={loopDurationSeconds}
-            onChange={(value) => setLoopDurationSeconds(value as number)}
-          />
+          <div className="flex items-center justify-center gap-2">
+            {PRESETS.map((preset) => (
+              <Button
+                key={preset.label}
+                size="sm"
+                radius="full"
+                variant={drawCycleSeconds === preset.seconds ? "solid" : "flat"}
+                color={
+                  drawCycleSeconds === preset.seconds ? "primary" : "default"
+                }
+                onPress={() => setDrawCycleSeconds(preset.seconds)}
+              >
+                {preset.label}
+              </Button>
+            ))}
+          </div>
         </div>
         <p className="font-mono text-xs text-zinc-500">
           onDone fired: {doneCount}

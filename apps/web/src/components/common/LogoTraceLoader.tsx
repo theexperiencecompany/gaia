@@ -100,9 +100,12 @@ export type LogoTraceLoaderProps = {
   /** Stroke width in viewBox units (the viewBox is 2441 × 2400). Default: 28 (~1.1px at 96px). */
   strokeWidth?: number;
   /** Seconds per color layer's drawing lap — the nine arm outlines draw in
-   *  sequence (one layer of three arms per lap). The full draw cycle takes
-   *  ~3.7× this (drawing + the fade-out reset). Default: 2.4. */
+   *  sequence (one layer of three arms per lap); the full draw cycle takes
+   *  3.33× this. Default: 2.4. Ignored when `drawCycleSeconds` is set. */
   loopDurationSeconds?: number;
+  /** Total duration of one full draw cycle (all nine arms drawn in sequence
+   *  plus the fade-out reset), in seconds. Overrides `loopDurationSeconds`. */
+  drawCycleSeconds?: number;
   /** Seconds for the fill to fade in after the outline closes. Default: 0.5. */
   fillFadeSeconds?: number;
   /**
@@ -142,16 +145,18 @@ export default function LogoTraceLoader({
   size = 96,
   strokeWidth = 28,
   loopDurationSeconds = 2.4,
+  drawCycleSeconds: drawCycleSecondsProp,
   fillFadeSeconds = 0.5,
   monochrome = false,
   className,
   ariaLabel = "Loading",
   onDone,
 }: LogoTraceLoaderProps) {
-  // The nine arm outlines draw in sequence over 3×loopDurationSeconds
-  // (one color layer per lap); that drawing occupies 90% of the cycle, the
-  // rest is the fade-out reset.
-  const drawCycleSeconds = (3 * loopDurationSeconds) / DRAW_CYCLE_FRACTION;
+  // The nine arm outlines draw in sequence; that drawing occupies 90% of the
+  // cycle (one color layer per 30%), the rest is the fade-out reset. The
+  // total cycle is either given directly or derived from the per-layer lap.
+  const drawCycleSeconds =
+    drawCycleSecondsProp ?? (3 * loopDurationSeconds) / DRAW_CYCLE_FRACTION;
   // Read synchronously so the first paint already shows the resolved logo
   // under prefers-reduced-motion (no loop flash before effects run).
   const [reducedMotion] = useState(
