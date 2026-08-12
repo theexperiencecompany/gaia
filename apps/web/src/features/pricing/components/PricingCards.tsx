@@ -38,11 +38,14 @@ const ENTERPRISE_CONTACT_HREF =
 interface PricingCardsProps {
   durationIsMonth?: boolean;
   initialPlans?: Plan[];
+  /** The upgrade modal sells the paid tiers; Enterprise lives on the pricing page. */
+  showEnterprise?: boolean;
 }
 
 export function PricingCards({
   durationIsMonth = false,
   initialPlans = [],
+  showEnterprise = true,
 }: PricingCardsProps) {
   const { plans, isLoading, error, subscriptionStatus } =
     usePricing(initialPlans);
@@ -96,7 +99,7 @@ export function PricingCards({
     plan.name.toLowerCase().includes("enterprise");
 
   // Enterprise is shown as a full-width bar below the grid, not as a card.
-  const enterprisePlan = plans.find(isEnterprise);
+  const enterprisePlan = showEnterprise ? plans.find(isEnterprise) : undefined;
 
   // Priced tiers in the grid (Free + the paid plans for the chosen billing period).
   const cardPlans = plans.filter((plan: Plan) => {

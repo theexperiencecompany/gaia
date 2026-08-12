@@ -427,7 +427,10 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                   <button
                     type="button"
                     onClick={() => {
-                      openPricingModal({ discountCode: DISCOUNT_CODE });
+                      openPricingModal({
+                        discountCode: DISCOUNT_CODE,
+                        discountPercent: DISCOUNT_PERCENT,
+                      });
                       closeLetter();
                     }}
                     className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full bg-black px-3 text-[calc(var(--letter-small)*0.95)] font-semibold text-[#fdf6d9] outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
