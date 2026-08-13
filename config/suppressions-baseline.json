@@ -735,7 +735,7 @@
     {
       "path": "apps/web/src/features/landing/components/iphone/ChatDemo.tsx",
       "kind": "biome-ignore",
-      "count": 12,
+      "count": 4,
       "hash": "05ccc52e5dec0e208656fb875b657e7b9b4c9ac4302f61c3e192a0eb3c6885a0"
     },
     {
