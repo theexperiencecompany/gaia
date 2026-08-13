@@ -54,7 +54,7 @@ export default function Footer() {
 
         {/* Film-grain over the wallpaper — breaks up gradient banding in the
             glow and gives the footer a tactile, printed feel. */}
-        <GrainOverlay className="z-20" />
+        <GrainOverlay variant="surface" className="z-20" />
 
         {/* Content: link columns and the halftone wordmark. This is what sets
             the footer's height — the top padding leaves the dark upper part of
