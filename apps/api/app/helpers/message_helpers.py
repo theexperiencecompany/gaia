@@ -79,12 +79,12 @@ MEMORY_RECALL_TAIL_CHARS = 4_000
 # request); the caps below bound it to ~2300 chars so the hit rate can reach
 # ~95%. The stable parts (user_stable_parts, core_memory_section) are NOT
 # capped — they sit inside the cached prefix.
-RECENT_ACTIVITY_CAP_CHARS = 600
-MEMORIES_CAP_CHARS = 500
-GAIA_KNOWLEDGE_CAP_CHARS = 200
-SKILLS_CAP_CHARS = 200
-TRACKED_TODOS_CAP_CHARS = 300
-AGENDA_CAP_CHARS = 500
+RECENT_ACTIVITY_CAP_CHARS = 300
+MEMORIES_CAP_CHARS = 300
+GAIA_KNOWLEDGE_CAP_CHARS = 100
+SKILLS_CAP_CHARS = 100
+TRACKED_TODOS_CAP_CHARS = 150
+AGENDA_CAP_CHARS = 300
 
 # Byte-stable truncation markers: identical every turn, so an overflowing
 # section always emits marker + exactly `limit` chars regardless of how long
