@@ -9,7 +9,6 @@ import {
   TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
-import { GrainOverlay } from "@/components/ui/GrainOverlay";
 
 import GetStartedButton from "../shared/GetStartedButton";
 import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
@@ -48,11 +47,7 @@ export default function FinalSection({
 }) {
   return (
     <div className="relative w-full px-4 py-10 sm:px-6 sm:py-14">
-      {/* The artwork is 16:9 and the panel is wider than that, so object-cover
-          always trims some height. These heights keep the trim to roughly 8%
-          per edge at desktop width — enough that the composition reads whole,
-          without making the section tall enough to push the CTA off-screen. */}
-      <div className="relative mx-auto flex min-h-[500px] w-full max-w-7xl flex-col items-center justify-center gap-4 overflow-hidden rounded-[2.5rem] px-4 py-20 sm:min-h-[600px] sm:px-6">
+      <div className="relative mx-auto flex min-h-[440px] w-full max-w-7xl flex-col items-center justify-center gap-4 overflow-hidden rounded-[2.5rem] px-4 py-20 sm:min-h-[520px] sm:px-6">
         <Image
           src="/images/wallpapers/creation_of_adam.png"
           alt=""
@@ -62,7 +57,6 @@ export default function FinalSection({
         />
         {/* Legibility scrim over the Earth photo. */}
         <div className="pointer-events-none absolute inset-0 z-10 bg-black/30" />
-        <GrainOverlay className="z-10" />
         {/* Soft outline in the design language — slightly thick, low opacity. */}
         <div className="pointer-events-none absolute inset-0 z-30 rounded-[2.5rem] border-2 border-white/10" />
 
