@@ -70,7 +70,7 @@ def get_study_workflows() -> list[dict[str, Any]]:
                 "assignments due in the next two weeks, and create a todo for "
                 "each one with its due date."
             ),
-            "categories": ["Study", "featured"],
+            "categories": ["Study"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 18 * * 0",
@@ -157,7 +157,7 @@ def get_study_workflows() -> list[dict[str, Any]]:
                 "revision pack: condensed summaries, key formulas or dates, "
                 "and practice questions."
             ),
-            "categories": ["Study"],
+            "categories": ["Study", "featured"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 10 * * 0",
@@ -385,7 +385,7 @@ def get_meetings_workflows() -> list[dict[str, Any]]:
                 "email for each one: the decisions made and each person's "
                 "action items, ready for me to send."
             ),
-            "categories": ["Meetings"],
+            "categories": ["Meetings", "featured"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 17 * * 1-5",
@@ -413,7 +413,7 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
     return [
         {
             "title": "Morning Briefing",
-            "description": "Wake up to your calendar, emails, and priorities, all in one message.",
+            "description": "Wake up to your day and your priorities, all in one message.",
             "icon": "Sun01Icon",
             "icon_color": "#f68001",
             "prompt": (
@@ -452,7 +452,7 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
                 "On the 25th of every month, remind me that rent is due at "
                 "month-end. Keep it short and friendly."
             ),
-            "categories": ["Home admin", "featured"],
+            "categories": ["Home admin"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 9 25 * *",
@@ -629,7 +629,7 @@ def get_content_workflows() -> list[dict[str, Any]]:
                 "launches, pricing changes, and posts, then give me a short "
                 "rundown of what changed and what it means for me."
             ),
-            "categories": ["Content"],
+            "categories": ["Content", "featured"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 9 1 * *",
@@ -762,7 +762,7 @@ def get_dev_workflows() -> list[dict[str, Any]]:
                 "and completed tasks this week, and write a short summary I "
                 "can paste into my team chat."
             ),
-            "categories": ["Dev"],
+            "categories": ["Dev", "featured"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 16 * * 5",
@@ -858,7 +858,7 @@ def get_health_workflows() -> list[dict[str, Any]]:
                 "reminder to drink water. Keep it short and vary the wording "
                 "so it doesn't get annoying."
             ),
-            "categories": ["Health & habits", "featured"],
+            "categories": ["Health & habits"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 8-22/2 * * *",
@@ -883,7 +883,7 @@ def get_health_workflows() -> list[dict[str, Any]]:
                 "celebrate the wins, and ask me one question: what's the one "
                 "thing I want to carry into next week?"
             ),
-            "categories": ["Health & habits", "featured"],
+            "categories": ["Health & habits"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 17 * * 5",
