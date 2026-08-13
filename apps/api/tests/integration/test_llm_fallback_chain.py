@@ -28,6 +28,7 @@ from app.agents.llm.client import (
     _get_ordered_providers,
     ainvoke_llm,
     init_llm,
+    register_llm_providers,
 )
 from app.config.model_pricing import (
     DEFAULT_PRICING,
@@ -35,6 +36,7 @@ from app.config.model_pricing import (
     calculate_token_cost,
     get_model_pricing,
 )
+from app.config.settings import settings
 from app.constants.llm import DEFAULT_LLM_PROVIDER
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
 
@@ -386,6 +388,42 @@ class TestGetAvailableProviders:
             available = _get_available_providers()
 
         assert available == {}
+
+
+@pytest.mark.integration
+class TestProductionProviderRegistration:
+    """Drives the REAL register_llm_providers().
+
+    `_build_registry` above always registers all four slots and varies only the
+    keys, so production's actual state — custom_llm never registered, because it
+    is gated on ENV=development — was unrepresentable, and the KeyError it raised
+    went unseen by every tier.
+    """
+
+    @pytest.mark.regression
+    def test_production_registration_leaves_provider_lookup_working(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        registry = ProviderRegistry()
+        # Registration writes to lazy_loader.providers, the lookup reads
+        # client.providers; both must point at the throwaway or the global
+        # singleton leaks into every later test.
+        monkeypatch.setattr("app.core.lazy_loader.providers", registry)
+        monkeypatch.setattr("app.agents.llm.client.providers", registry)
+        monkeypatch.setattr(settings, "ENV", "production")
+
+        register_llm_providers()
+
+        # Literals rather than LLMProviderKey/LLMProviderName: the regression
+        # gate re-runs this file against the base revision, where those enums
+        # do not exist yet, and an import error there proves nothing.
+        with pytest.raises(KeyError):
+            registry.get("custom_llm")
+
+        # That KeyError went straight out through init_llm and took every agent
+        # graph down. Which providers stay available depends on the ambient keys
+        # (CI has none), so only the never-registered slot is asserted.
+        assert "custom" not in _get_available_providers()
 
 
 @pytest.mark.integration
