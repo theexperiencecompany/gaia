@@ -20,6 +20,10 @@ import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 // run emitting many tool events doesn't trigger one full-message write per chunk.
 const DB_WRITE_THROTTLE_MS = 500;
 
+// Shown when a background executor's stream dies before it delivered a result.
+const EXECUTOR_STREAM_FAILED =
+  "This background task stopped before it finished.";
+
 interface ExecutorStreamStartedEvent {
   type: "executor.stream_started";
   stream_id: string;
@@ -146,7 +150,7 @@ export function useExecutorStream() {
     // Mark the placeholder sent so the loading indicator clears. Runs on every
     // terminal outcome — normal close AND error/abort — otherwise an SSE error
     // leaves the placeholder status:'sending' and the card spins forever.
-    const finalizePlaceholder = () => {
+    const finalizePlaceholder = (error?: string) => {
       if (writeTimer !== null) {
         clearTimeout(writeTimer);
         writeTimer = null;
@@ -158,7 +162,8 @@ export function useExecutorStream() {
       if (current) {
         const finalized: IMessage = {
           ...applyAccumulatorToMessage(current, acc),
-          status: "sent",
+          status: error ? "failed" : "sent",
+          error: error ?? null,
         };
         state.updateMessageInPlace(finalized);
         void db.putMessage(finalized);
@@ -208,12 +213,14 @@ export function useExecutorStream() {
       );
     } catch (err) {
       // subscribeToExecutorStream re-throws on SSE error/abort. Finalize here so
-      // the error path clears the spinner too (not only the clean-close path).
+      // the error path clears the spinner too (not only the clean-close path) —
+      // and carry the reason, or a dead background run persists as a finished
+      // one and renders as a complete answer.
       console.error(
         "[useExecutorStream] Executor stream ended with error:",
         err,
       );
-      finalizePlaceholder();
+      finalizePlaceholder(EXECUTOR_STREAM_FAILED);
     } finally {
       controllersRef.current.delete(controller);
       activeStreamsRef.current.delete(stream_id);

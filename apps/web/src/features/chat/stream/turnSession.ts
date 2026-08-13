@@ -885,7 +885,16 @@ export class TurnSession {
     }
 
     this.markUserMessageFailed();
-    useChatStore.getState().clearOptimisticMessage();
+    // A turn that never learned its conversation id persisted nothing, anywhere:
+    // the optimistic bubble is the only record of what the user sent, so clearing
+    // it erases the message from the thread and leaves just a fading toast. Mark
+    // it undelivered instead. Once ids exist the real rows are in IndexedDB and
+    // the optimistic copy is a duplicate that must go.
+    if (this.conversationId) {
+      useChatStore.getState().clearOptimisticMessage();
+    } else {
+      useChatStore.getState().markOptimisticMessageFailed();
+    }
     this.end();
   }
 
@@ -909,6 +918,7 @@ export class TurnSession {
       return;
     }
     this.markUserMessageFailed();
+    useChatStore.getState().markOptimisticMessageFailed();
     this.end();
   }
 

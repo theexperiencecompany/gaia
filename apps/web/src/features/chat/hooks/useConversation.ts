@@ -90,6 +90,7 @@ export const useConversation = () => {
           optimisticMessage.selectedCalendarEvent ?? undefined,
         replyToMessage: optimisticMessage.replyToMessage ?? undefined,
         loading: false,
+        failed: optimisticMessage.failed,
       };
 
       return [...messages, optimisticMsg];
