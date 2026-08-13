@@ -142,6 +142,15 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # Text-only: tool results carrying images are captioned for it rather than shown
 # (see agents/llm/vision/capability.py).
 DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+# OpenRouter provider-routing pin for the default DeepSeek lane. Without a
+# pin, OpenRouter load-balances the model id across multiple upstream
+# providers, and the provider's prompt cache lives PER upstream — so a
+# conversation's cached chain is only visible when the request lands on the
+# upstream that wrote it, and consecutive turns rotate on and off the chain
+# (measured: unpinned requests flapped 0/0/99/99/99/0; pinned hold 99-100%).
+# `order` (not `only`) keeps DeepSeek first with fallbacks still allowed, so
+# an upstream outage degrades instead of failing.
+DEEPSEEK_PROVIDER_PIN: dict[str, object] = {"provider": {"order": ["DeepSeek"]}}
 # A separate id in the same series as the default, used by the auxiliary
 # one-shot calls (memory pipeline, follow-ups, vision, …). OpenRouter serves
 # it as a DIFFERENT checkpoint of the v4-flash series ("0423", vs the default's
@@ -294,7 +303,9 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # identical model for A/B-ing routes.
         "provider": "openrouter",
         "model": "deepseek/deepseek-v4-flash-0731",
-        "model_kwargs": None,
+        # Provider-routing pin: without it the upstream rotates per request and
+        # the per-upstream prompt cache never chains (measured).
+        "model_kwargs": DEEPSEEK_PROVIDER_PIN,
         "reasoning": False,
     },
     "custom": {
