@@ -29,8 +29,8 @@ import httpx
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
-from app.models.workflow_models import TriggerConfig, TriggerType  # noqa: E402
+from app.db.mongodb.collections import get_async_collection
+from app.models.workflow_models import TriggerConfig, TriggerType
 
 PROD_EXPLORE_URL = "https://api.heygaia.io/api/v1/workflows/explore"
 PAGE_SIZE = 50

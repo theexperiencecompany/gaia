@@ -5,6 +5,7 @@
 "use client";
 
 import { DiscordIcon, SlackIcon, TelegramIcon, WhatsappIcon } from "@icons";
+import Image from "next/image";
 import type React from "react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
@@ -107,11 +108,12 @@ function DemoCtaIcon({
       return <DiscordIcon {...size} />;
     case "imessage":
       return (
-        // biome-ignore lint/performance/noImgElement: tiny local logo
-        <img
+        <Image
           src={DEFAULT_AVATAR}
           alt=""
-          style={{ width: 16, height: 16, borderRadius: 4 }}
+          width={16}
+          height={16}
+          className="rounded"
         />
       );
     default: {

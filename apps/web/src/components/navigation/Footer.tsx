@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 import { FooterWordmark } from "@/components/navigation/FooterWordmark";
 import JsonLd from "@/components/seo/JsonLd";
+import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import { footerSections } from "@/config/appConfig";
 import { siteConfig } from "@/lib/seo";
 
@@ -51,17 +52,9 @@ export default function Footer() {
             of a straight ramp. */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-48 bg-linear-to-b from-background via-background/50 to-transparent" />
 
-        {/* Film-grain noise over the wallpaper — breaks up gradient banding
-            on the beams and gives the footer a tactile, printed feel. SVG
-            feTurbulence tile, stitched, blended at low opacity. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-20 opacity-[0.05] mix-blend-overlay"
-          style={{
-            backgroundImage:
-              "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E\")",
-          }}
-        />
+        {/* Film-grain over the wallpaper — breaks up gradient banding in the
+            glow and gives the footer a tactile, printed feel. */}
+        <GrainOverlay className="z-20" />
 
         {/* Content: link columns and the halftone wordmark. This is what sets
             the footer's height — the top padding leaves the dark upper part of
