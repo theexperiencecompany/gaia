@@ -31,6 +31,7 @@ const mapStoredMessageToConversationMessage = (
     selectedCalendarEvent: message.selectedCalendarEvent ?? undefined,
     loading: message.status === "sending",
     queued: message.status === "queued",
+    failed: message.status === "failed",
     tool_data: message.tool_data ?? undefined,
     follow_up_actions: message.follow_up_actions ?? undefined,
     image_data: message.image_data ?? undefined,

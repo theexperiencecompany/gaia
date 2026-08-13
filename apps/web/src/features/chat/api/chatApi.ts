@@ -59,7 +59,9 @@ export interface ChatStreamRequest {
   onMessage: (
     event: EventSourceMessage,
   ) => undefined | string | Promise<undefined | string>;
-  onClose: () => void;
+  /** `sawDone` is false when the connection ended without `[DONE]` — a
+   *  truncated turn, not a finished one. */
+  onClose: (sawDone: boolean) => void;
   onError: (err: Error) => void;
   controller: AbortController;
   fileData: FileData[];
@@ -411,7 +413,7 @@ export const chatApi = {
 
           if (event.data === "[DONE]") {
             doneReceived = true;
-            onClose();
+            onClose(true);
             return;
           }
 
@@ -437,7 +439,7 @@ export const chatApi = {
           // Only call onClose if [DONE] didn't already trigger it.
           // Connection drops without [DONE] (e.g. network failure) still need cleanup.
           if (!doneReceived) {
-            onClose();
+            onClose(false);
           }
         },
         onerror: (err) => {
@@ -460,7 +462,7 @@ export const chatApi = {
   subscribeToExecutorStream: async (
     streamId: string,
     onMessage: (event: EventSourceMessage) => void,
-    onClose: () => void,
+    onClose: (sawDone: boolean) => void,
     onError: (err: Error) => void,
     signal: AbortSignal,
     lastEventId?: string,
@@ -483,7 +485,7 @@ export const chatApi = {
         onmessage(event) {
           if (event.data === "[DONE]") {
             doneReceived = true;
-            onClose();
+            onClose(true);
             return;
           }
           onMessage(event);
@@ -491,7 +493,7 @@ export const chatApi = {
         onclose() {
           streamLog("sse", "connection-closed");
           if (!doneReceived) {
-            onClose();
+            onClose(false);
           }
         },
         onerror(err) {

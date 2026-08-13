@@ -64,6 +64,10 @@ from app.utils.chat_utils import generate_and_update_description
 from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
+# Last resort when a provider exception carries no message of its own. Names the
+# exception type so a support report still identifies the failure.
+_GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."
+
 
 async def run_chat_stream_background(
     stream_id: str,
@@ -641,7 +645,15 @@ async def _handle_stream_error(
             "Ask me to continue and I'll pick up where I left off."
         )
     else:
-        user_error = str(error)
+        # Provider SDKs can carry a blank message — the OpenRouter client builds
+        # its message from the error body and its __str__ returns it verbatim, so
+        # str(exc) is "" when the body's message is empty. A blank string is
+        # FALSY on the client: no error bubble renders and the empty-message
+        # filter drops the turn from the thread, so the failure vanishes
+        # completely. Never let one through; name the error type instead.
+        user_error = str(error).strip() or _GENERIC_TURN_ERROR.format(
+            error_type=type(error).__name__
+        )
     await stream_manager.publish_chunk(
         stream_id, f"data: {json.dumps(ErrorFrame(error=user_error).model_dump())}\n\n"
     )
