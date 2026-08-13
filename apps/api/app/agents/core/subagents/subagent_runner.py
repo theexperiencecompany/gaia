@@ -231,7 +231,7 @@ async def build_initial_messages(
     """
     log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
 
-    context_message = await create_agent_context_message(
+    context_messages = await create_agent_context_message(
         configurable=configurable,
         user_id=user_id,
         query=retrieval_query if retrieval_query is not None else task,
@@ -250,15 +250,22 @@ async def build_initial_messages(
         user_timezone=configurable.get("user_timezone"),
     )
 
-    return [
+    messages: list[AnyMessage] = [
         system_message,
-        context_message,
+        context_messages.stable,
         time_message,
         HumanMessage(
             content=task,
             additional_kwargs={"visible_to": {agent_name}},
         ),
     ]
+    # The volatile per-turn tail (memories, skills, metadata, instructions)
+    # goes AFTER the task — the last message — so its churn never shifts the
+    # byte-stable prefix ahead of it (the conversation + stable context stay
+    # cacheable across turns).
+    if context_messages.volatile_tail is not None:
+        messages.append(context_messages.volatile_tail)
+    return messages
 
 
 def _with_current_time(resume: Command, configurable: AgentConfigurable) -> Command:

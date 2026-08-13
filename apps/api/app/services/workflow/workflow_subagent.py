@@ -184,12 +184,13 @@ class WorkflowSubagentRunner:
             additional_kwargs={"visible_to": {"workflow_agent"}},
         )
 
-        context_message = await create_agent_context_message(
+        context_messages = await create_agent_context_message(
             configurable=configurable,
             user_id=user_id,
             query=task,
             subagent_id=None,  # No subagent_id for skill retrieval
         )
+        context_message = context_messages.stable
 
         # Compact ground truth (which integrations THIS user has connected) folded
         # into the task. It must NOT be a separate SystemMessage: the subagent's
@@ -203,7 +204,12 @@ class WorkflowSubagentRunner:
         )
 
         initial_state: dict[str, Any] = {
-            "messages": [system_message, context_message, human_message],
+            "messages": [
+                system_message,
+                context_message,
+                human_message,
+                *([context_messages.volatile_tail] if context_messages.volatile_tail else []),
+            ],
             "intent": task,
             "integration_usernames": {},
         }

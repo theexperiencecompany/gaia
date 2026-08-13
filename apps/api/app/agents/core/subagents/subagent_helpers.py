@@ -10,6 +10,7 @@ message emitted alongside the static prompt — not inside the static prompt.
 """
 
 import asyncio
+from typing import NamedTuple
 
 from langchain_core.messages import SystemMessage
 
@@ -25,6 +26,7 @@ from app.helpers.message_helpers import (
     DYNAMIC_CONTEXT_MARKER,
     EXECUTOR_CONNECTED_INTEGRATIONS_HEADER,
     _build_active_todo_banner,
+    _mark_memory_volatile,
     build_connected_integrations_manifest,
     build_workspace_session_banner,
 )
@@ -139,6 +141,22 @@ async def _fetch_instructions_block(integration_id: str | None, user_id: str | N
     )
 
 
+class AgentContextMessages(NamedTuple):
+    """The executor/subagent context messages, split by volatility.
+
+    ``stable`` holds the byte-stable identity + run-binding content (name,
+    timezone, session banner, banners, integrations manifest) — it stays at
+    index 1 so the ``[static, stable]`` prefix is cacheable across turns.
+    ``volatile_tail`` holds the per-turn fetched sections (memories, skills,
+    provider metadata, integration instructions) — marked ``memory_volatile``
+    so ``manage_system_prompts_node`` places it AFTER the time message, where
+    its churn never shifts the cached prefix.
+    """
+
+    stable: SystemMessage
+    volatile_tail: SystemMessage | None
+
+
 async def create_agent_context_message(
     configurable: AgentConfigurable,
     user_id: str | None = None,
@@ -149,7 +167,7 @@ async def create_agent_context_message(
     skills_text: str | None = None,
     provider_metadata: dict[str, str] | None = None,
     include_connected_integrations: bool = False,
-) -> SystemMessage:
+) -> AgentContextMessages:
     """Build the dynamic-context system message for executor/subagent runs.
 
     Carries everything that varies per request: user name, static home
@@ -305,11 +323,22 @@ async def create_agent_context_message(
     if integrations_section:
         parts.append(integrations_section)
 
-    content = (
-        "\n".join(parts)
-        + memories_section
-        + skills_section
-        + metadata_section
-        + instructions_section
+    stable_content = "\n".join(parts)
+    # The per-turn fetched sections (memories, skills, provider metadata,
+    # integration instructions) churn every turn and used to sit INSIDE the
+    # context message — which is placed BEFORE the conversation — so the
+    # executor's prompt-cache prefix broke at the first churning byte and its
+    # conversation never joined the cache (same disease the comms agent had).
+    # Split them into a volatile tail placed AFTER the conversation/time: the
+    # stable context stays in the cached prefix, the churn sits at the very
+    # end of the request where it cannot shift anything.
+    volatile_content = (
+        memories_section + skills_section + metadata_section + instructions_section
+    ).lstrip("\n")
+    volatile_msg = (
+        _mark_memory_volatile(SystemMessage(content=volatile_content)) if volatile_content else None
     )
-    return _mark_dynamic(SystemMessage(content=content))
+    return AgentContextMessages(
+        stable=_mark_dynamic(SystemMessage(content=stable_content)),
+        volatile_tail=volatile_msg,
+    )

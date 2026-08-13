@@ -10,7 +10,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import StreamWriter
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured_gemini
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
@@ -59,7 +59,7 @@ async def generate_follow_up_actions(
     dynamic_context = f"Available tools: {tool_names}\nContext: {context_text}"
 
     try:
-        result = await ainvoke_structured(
+        result = await ainvoke_structured_gemini(
             FollowUpActions,
             [
                 SystemMessage(content=SUGGEST_FOLLOW_UP_ACTIONS),
