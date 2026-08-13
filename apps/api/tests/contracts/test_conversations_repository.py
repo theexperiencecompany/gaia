@@ -469,3 +469,49 @@ class TestSearchAndSweeps:
         assert doc.conversation_id in await repo.all_conversation_ids()
         since = datetime.now(UTC) - timedelta(minutes=5)
         assert user in await repo.active_user_ids_since(since)
+
+
+class TestActivitySignal:
+    """`has_activity_since` — the dormancy sweep's transport-agnostic usage signal.
+
+    Against real Mongo specifically: the bug this pins is a BSON type mismatch,
+    which every mocked collection in the unit tier happily reports as a match.
+    """
+
+    async def test_a_conversation_created_since_the_cutoff_counts(self, repo):
+        """`createdAt` is an ISO STRING (see the module's timestamp contract), so a
+        date `$gte` against it matches nothing at all — silently, reading as "this
+        user has no activity" and making the sweep pause a live user's workflows."""
+        doc = _doc()
+        await repo.create(doc)
+
+        cutoff = datetime.now(UTC) - timedelta(days=1)
+        assert await repo.has_activity_since(doc.user_id, cutoff) is True
+
+    async def test_an_appended_conversation_counts_via_updatedat(self, repo):
+        doc = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="hi")],
+        )
+
+        cutoff = datetime.now(UTC) - timedelta(days=1)
+        assert await repo.has_activity_since(doc.user_id, cutoff) is True
+
+    async def test_an_untouched_old_conversation_does_not_count(self, repo):
+        doc = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
+        await repo.create(doc)
+
+        cutoff = datetime.now(UTC) - timedelta(days=1)
+        assert await repo.has_activity_since(doc.user_id, cutoff) is False
+
+    async def test_another_users_activity_does_not_count(self, repo):
+        mine = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
+        theirs = _doc()
+        await repo.create(mine)
+        await repo.create(theirs)
+
+        cutoff = datetime.now(UTC) - timedelta(days=1)
+        assert await repo.has_activity_since(mine.user_id, cutoff) is False

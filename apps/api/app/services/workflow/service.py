@@ -14,6 +14,7 @@ from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
 from app.models.workflow_models import (
     CreateWorkflowRequest,
+    DeactivationReason,
     PublicWorkflowRow,
     PublicWorkflowsResponse,
     TriggerConfig,
@@ -216,7 +217,7 @@ class WorkflowService:
                 )
 
             # Use provided steps or initialize empty list for generation
-            workflow_steps = request.steps if request.steps else []
+            workflow_steps = request.steps or []
 
             # Step 1: Create workflow in PENDING state (activated=False). Keep
             # trigger_config.enabled in lockstep with activated (the single liveness
@@ -1020,9 +1021,14 @@ class WorkflowService:
 
     @staticmethod
     async def deactivate_workflow(
-        workflow_id: str, user_id: str, user_timezone: str | None = None
+        workflow_id: str,
+        user_id: str,
+        user_timezone: str | None = None,
+        *,
+        reason: DeactivationReason | None = None,
     ) -> Workflow | None:
-        """Deactivate a workflow (disable its trigger)."""
+        """Deactivate a workflow (disable its trigger). ``reason`` marks a system
+        pause; a user switching the workflow off passes none."""
         try:
             workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not workflow:
@@ -1054,7 +1060,7 @@ class WorkflowService:
                     )
 
             # Update trigger to disabled and clear trigger IDs
-            deactivated = await workflow_repository.deactivate(workflow_id, user_id)
+            deactivated = await workflow_repository.deactivate(workflow_id, user_id, reason=reason)
 
             if deactivated is None:
                 return None

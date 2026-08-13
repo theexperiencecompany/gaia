@@ -122,6 +122,22 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             }
         )
 
+    async def find_dormant_since(self, before: datetime) -> list[UserDocument]:
+        """Users with no activity since ``before`` — the dormancy sweep's cohort.
+        ``last_active_at`` missing means the account has never been seen active, so
+        those count as dormant too; without the ``$exists`` arm a `$lt` comparison
+        silently skips them."""
+        return await self._find(
+            {
+                "is_active": {"$ne": False},
+                "$or": [
+                    {"last_active_at": {"$lt": before}},
+                    {"last_active_at": {"$exists": False}},
+                    {"last_active_at": None},
+                ],
+            }
+        )
+
     async def find_nurture_candidates(self, created_since: datetime) -> list[UserDocument]:
         """Recently-signed-up, still-active users — the nurture-sequence cohort.
         Send eligibility (timezone hour, frequency caps, step windows) is decided

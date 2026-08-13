@@ -39,6 +39,14 @@ class TriggerType(str, Enum):
     INTEGRATION = "integration"
 
 
+class DeactivationReason(str, Enum):
+    """Why a workflow was deactivated by the system, so an automatic resume can tell
+    its own pauses apart from a workflow the user deliberately switched off. A
+    user-initiated deactivation records no reason at all."""
+
+    USER_DORMANT = "user_dormant"
+
+
 class IntegrationRef(BaseModel):  # type: ignore[explicit-any]
     """Lightweight integration reference for workflow responses."""
 
@@ -196,6 +204,13 @@ class Workflow(BaseScheduledTask):  # type: ignore[explicit-any]
     activated: bool = Field(
         default=True,
         description="Whether the workflow is activated and can be executed",
+    )
+    deactivated_reason: DeactivationReason | None = Field(
+        default=None,
+        description=(
+            "Why the workflow is not activated. None means the user turned it off "
+            "themselves — only system-paused workflows may be resumed automatically."
+        ),
     )
     notify_on_completion: bool = Field(
         default=True,

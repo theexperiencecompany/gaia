@@ -66,7 +66,14 @@ _JSON_TYPE_NAMES = {
 
 
 def json_type(value: object) -> str:
-    """The JSON type name of a decoded value (bool before int, as in JSON)."""
+    """The JSON type name of a decoded value (bool before int, as in JSON).
+
+    A namespace object also carries its sorted key names. Plain ``"object"`` made
+    the two runtimes look identical whenever both merely HAD the namespace, so a
+    runtime that dropped keys from it (the ``set`` clobbering bug) diffed clean.
+    """
+    if isinstance(value, dict):
+        return "object{" + ",".join(sorted(str(k) for k in value)) + "}"
     return _JSON_TYPE_NAMES.get(type(value), "unknown")
 
 
