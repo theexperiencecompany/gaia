@@ -38,6 +38,8 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
+from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
+from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
 from shared.py.utils.slugify import slugify
 
 workflows_collection = get_async_collection("workflows")
@@ -287,7 +289,7 @@ def get_email_workflows() -> list[dict[str, Any]]:
                 "date, an assignment, or a sign-up cutoff, create a calendar "
                 "event for it the day before so I get a heads-up in time."
             ),
-            "categories": ["Email", "featured"],
+            "categories": ["Email"],
             "trigger_config": {
                 "type": "integration",
                 "enabled": True,
@@ -385,7 +387,7 @@ def get_meetings_workflows() -> list[dict[str, Any]]:
                 "email for each one: the decisions made and each person's "
                 "action items, ready for me to send."
             ),
-            "categories": ["Meetings", "featured"],
+            "categories": ["Meetings"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 17 * * 1-5",
@@ -931,9 +933,73 @@ def get_health_workflows() -> list[dict[str, Any]]:
     ]
 
 
+# Presentation for the built-in cards. Everything else about them — title,
+# description, prompt, steps, trigger — is read from the system-workflow
+# definitions so the explore card can never drift from what gets provisioned.
+SYSTEM_WORKFLOW_PRESENTATION: dict[str, dict[str, Any]] = {
+    "gmail:email_intelligence": {
+        "icon": "InboxIcon",
+        "icon_color": "#ff726b",
+        "categories": ["Email", "featured"],
+    },
+    "gmail:smart_reply_drafts": {
+        "icon": "MailSend01Icon",
+        "icon_color": "#f68001",
+        "categories": ["Email"],
+    },
+    "calendar:meeting_prep": {
+        "icon": "UserGroupIcon",
+        "icon_color": "#09b7dc",
+        "categories": ["Meetings", "featured"],
+    },
+    "calendar:meeting_reminder": {
+        "icon": "AlarmClockIcon",
+        "icon_color": "#72a3fe",
+        "categories": ["Meetings"],
+    },
+}
+
+
+def get_system_workflows() -> list[dict[str, Any]]:
+    """The auto-provisioned workflows, as explore cards.
+
+    Same definitions the provisioner uses, so the card shows exactly what a user
+    gets when they connect the integration. The ``system_workflow_key`` rides
+    along to the client, which is what stops "add this" from creating a second
+    copy of one the user already has.
+    """
+    configs: list[dict[str, Any]] = []
+    for key, factory in [*GMAIL_SYSTEM_WORKFLOWS, *CALENDAR_SYSTEM_WORKFLOWS]:
+        request = factory()
+        presentation = SYSTEM_WORKFLOW_PRESENTATION[key]
+        configs.append(
+            {
+                "title": request.title,
+                "description": request.description,
+                "prompt": request.prompt,
+                "trigger_config": request.trigger_config.model_dump(mode="json"),
+                "steps": [
+                    {
+                        "id": step.id,
+                        "title": step.title,
+                        "category": step.category,
+                        "description": step.description,
+                    }
+                    for step in (request.steps or [])
+                ],
+                "is_system_workflow": True,
+                "source_integration": request.source_integration,
+                "system_workflow_key": key,
+                **presentation,
+            }
+        )
+    return configs
+
+
 def get_all_workflows() -> list[dict[str, Any]]:
     """Combine all workflow categories."""
     all_workflows = []
+    all_workflows.extend(get_system_workflows())
     all_workflows.extend(get_study_workflows())
     all_workflows.extend(get_email_workflows())
     all_workflows.extend(get_meetings_workflows())
@@ -977,6 +1043,12 @@ def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, 
         "description": config["description"],
         "icon": config["icon"],
         "icon_color": config["icon_color"],
+        # Set only on the built-in cards (see get_system_workflows). Carrying the
+        # key through the explore payload is what lets "add this" resolve to the
+        # workflow the user was already provisioned instead of duplicating it.
+        "is_system_workflow": config.get("is_system_workflow", False),
+        "source_integration": config.get("source_integration"),
+        "system_workflow_key": config.get("system_workflow_key"),
         "prompt": config.get("prompt", ""),
         "slug": slugify(config["title"]),
         "steps": steps,

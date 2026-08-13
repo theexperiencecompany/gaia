@@ -236,14 +236,14 @@ export function CreatorAvatar({
 
   const avatar = (
     <div className="flex items-center gap-2">
-      <div className="flex h-7 w-7 items-center justify-center rounded-full">
+      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800">
         {avatarSrc ? (
           <Image
             src={avatarSrc}
             alt={displayName}
             width={size}
             height={size}
-            className="rounded-full h-7 w-7"
+            className="rounded-full h-7 w-7 object-contain"
           />
         ) : (
           <UserCircle02Icon className="h-7 w-7 text-zinc-400" />

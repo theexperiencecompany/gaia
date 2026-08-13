@@ -2,10 +2,12 @@
 
 import { Avatar } from "@heroui/avatar";
 import { PlayIcon, UserCircle02Icon } from "@icons";
+import { getToolDisplayName } from "@shared/icons";
 import { useTransition } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import MetaInfoCard from "@/features/use-cases/components/MetaInfoCard";
@@ -54,10 +56,16 @@ function buildWorkflowRequest(
     icon: useCase?.icon ?? communityWorkflow?.icon ?? undefined,
     icon_color:
       useCase?.icon_color ?? communityWorkflow?.icon_color ?? undefined,
-    trigger_config: {
-      type: "manual" as const,
-      enabled: true,
-    },
+    // Reproduce the advertised trigger; manual only as a fallback.
+    trigger_config: useCase?.trigger_config ??
+      communityWorkflow?.trigger_config ?? {
+        type: "manual" as const,
+        enabled: true,
+      },
+    system_workflow_key:
+      useCase?.system_workflow_key ??
+      communityWorkflow?.system_workflow_key ??
+      undefined,
     // Pass formatted steps if available to avoid regeneration
     ...(formattedSteps &&
       formattedSteps.length > 0 && {
@@ -68,7 +76,38 @@ function buildWorkflowRequest(
   };
 }
 
-function deriveCreatorInfo(communityWorkflow: Workflow | null) {
+/** The workflow's chosen icon, on its own tinted tile, beside the page title. */
+function renderHeroIcon(
+  icon: string | null | undefined,
+  iconColor: string | null | undefined,
+) {
+  const def = icon ? WORKFLOW_ICON_MAP.get(icon) : undefined;
+  if (!def) return undefined;
+  const color = iconColor ?? DEFAULT_WORKFLOW_ICON_COLOR;
+  return (
+    <div
+      className="flex size-12 shrink-0 items-center justify-center rounded-xl"
+      style={{ backgroundColor: `${color}${WORKFLOW_ICON_BG_ALPHA}` }}
+    >
+      <def.Icon size={26} style={{ color }} />
+    </div>
+  );
+}
+
+function deriveCreatorInfo(
+  communityWorkflow: Workflow | null,
+  useCase: UseCase | null,
+) {
+  // Explore cards carry a creator (the GAIA team by default) just like community
+  // ones — without this the built-in and curated pages showed no author at all.
+  if (!communityWorkflow && useCase?.creator) {
+    return {
+      creatorName: useCase.creator.name,
+      creatorAvatar: resolveCreatorAvatar(useCase.creator),
+      showCreator: true,
+    };
+  }
+
   const hasCreatorObject =
     communityWorkflow &&
     "creator" in communityWorkflow &&
@@ -126,6 +165,7 @@ export default function UseCaseDetailClient({
   const { createWorkflow } = useWorkflowCreation();
   const { selectWorkflow } = useWorkflowSelection();
   const { integrations } = useIntegrations();
+  const { getIntegrationName } = useIntegrationLookup();
 
   // Auth check
   const { isAuthenticated, openLoginModal } = useAuth();
@@ -158,20 +198,9 @@ export default function UseCaseDetailClient({
   // Prepare common data
   const title = "title" in data ? data.title : "";
   const workflowPrompt = useCase?.prompt || communityWorkflow?.prompt;
-  const customIconDef = data.icon
-    ? WORKFLOW_ICON_MAP.get(data.icon)
-    : undefined;
-  const customIconColor = data.icon_color ?? DEFAULT_WORKFLOW_ICON_COLOR;
-  const heroIcon = customIconDef ? (
-    <div
-      className="flex size-12 shrink-0 items-center justify-center rounded-xl"
-      style={{
-        backgroundColor: `${customIconColor}${WORKFLOW_ICON_BG_ALPHA}`,
-      }}
-    >
-      <customIconDef.Icon size={26} style={{ color: customIconColor }} />
-    </div>
-  ) : undefined;
+  const sourceIntegration =
+    useCase?.source_integration ?? communityWorkflow?.source_integration;
+  const heroIcon = renderHeroIcon(data.icon, data.icon_color);
   const currentSlug = useCase?.slug ?? communityWorkflow?.slug ?? slug;
 
   // Prepare breadcrumbs
@@ -186,8 +215,10 @@ export default function UseCaseDetailClient({
     },
   ];
 
-  const { creatorName, creatorAvatar, showCreator } =
-    deriveCreatorInfo(communityWorkflow);
+  const { creatorName, creatorAvatar, showCreator } = deriveCreatorInfo(
+    communityWorkflow,
+    useCase,
+  );
 
   // Prepare tools - Type-safe extraction from steps, mapped to Tool format for ToolsList.
   // Dedupe by category so a workflow with multiple steps using the same tool only
@@ -232,6 +263,7 @@ export default function UseCaseDetailClient({
                     src={creatorAvatar}
                     name={creatorName}
                     size="sm"
+                    classNames={{ base: "bg-zinc-800", img: "object-contain" }}
                     fallback={
                       <UserCircle02Icon className="h-8 w-8 text-zinc-300" />
                     }
@@ -244,6 +276,27 @@ export default function UseCaseDetailClient({
 
             {/* Tools */}
             {tools && tools.length > 0 && <ToolsList tools={tools} />}
+
+            {/* Built-in provenance — explains why the user may already have this */}
+            {sourceIntegration && (
+              <MetaInfoCard
+                icon={getToolCategoryIcon(sourceIntegration, {
+                  size: 20,
+                  width: 20,
+                  height: 20,
+                  showBackground: false,
+                })}
+                label="Set up automatically"
+                value={
+                  <span className="text-xs">
+                    {`When you connect ${
+                      getIntegrationName(sourceIntegration) ??
+                      getToolDisplayName(sourceIntegration)
+                    }`}
+                  </span>
+                }
+              />
+            )}
 
             {/* Run Count */}
             <MetaInfoCard

@@ -632,6 +632,36 @@ export function getToolIconConfig(
   return config;
 }
 
+/**
+ * Proper display name for a tool/integration id. The authenticated app can read
+ * a name off the integrations catalog, but public pages have no catalog — this
+ * keeps "googlecalendar" from rendering as "Googlecalendar" there.
+ */
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  gaia: "GAIA",
+  gmail: "Gmail",
+  googlecalendar: "Google Calendar",
+  googledocs: "Google Docs",
+  googlesheets: "Google Sheets",
+  googledrive: "Google Drive",
+  github: "GitHub",
+  linkedin: "LinkedIn",
+  whatsapp: "WhatsApp",
+  youtube: "YouTube",
+  todos: "Todos",
+  reminders: "Reminders",
+  documents: "Documents",
+  memory: "Memory",
+  search: "Search",
+};
+
+export function getToolDisplayName(category: string): string {
+  const normalized = normalizeCategoryName(category);
+  const known = TOOL_DISPLAY_NAMES[normalized];
+  if (known) return known;
+  return category.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function getCategoryInitial(category: string): string {
   const name = category.replace(/_/g, " ");
   return name.charAt(0).toUpperCase();
