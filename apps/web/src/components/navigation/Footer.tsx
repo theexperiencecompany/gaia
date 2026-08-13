@@ -1,10 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { cloneElement, isValidElement } from "react";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 import { FooterWordmark } from "@/components/navigation/FooterWordmark";
 import JsonLd from "@/components/seo/JsonLd";
 import { GrainOverlay } from "@/components/ui/GrainOverlay";
-import { footerSections } from "@/config/appConfig";
+import { connect, footerSections } from "@/config/appConfig";
 import { siteConfig } from "@/lib/seo";
 
 export default function Footer() {
@@ -88,6 +89,58 @@ export default function Footer() {
 
           <div className="mx-auto w-full max-w-7xl">
             <FooterWordmark />
+          </div>
+
+          {/* Bottom bar under the wordmark. A 3-column grid rather than
+              flex+space-between, so the company mark is centered against the
+              footer itself and does not drift as the status badge and the
+              social row change width. */}
+          <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center justify-items-center gap-6 sm:grid-cols-3">
+            {/* Cross-origin frame: `ph-no-capture` stops PostHog from reaching
+                into it, which throws a SecurityError. */}
+            <iframe
+              src="https://status.heygaia.io/badge?theme=dark"
+              title="GAIA API Status"
+              className="ph-no-capture sm:justify-self-start"
+              scrolling="no"
+              height={30}
+              width={186}
+              style={{ colorScheme: "normal" }}
+            />
+
+            <Link
+              href="https://twitter.com/madebyexp"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="The Experience Company"
+            >
+              <Image
+                src="/brand/experience_logo_white.svg"
+                alt="The Experience Company"
+                width={70}
+                height={70}
+              />
+            </Link>
+
+            <div className="flex items-center gap-4 sm:justify-self-end">
+              {connect.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  target={link.external ? "_blank" : undefined}
+                  rel={link.external ? "noopener noreferrer" : undefined}
+                  title={link.description}
+                  aria-label={link.label}
+                  className="text-zinc-200 transition-colors hover:text-primary"
+                >
+                  {/* Drop each icon's brand color so the row reads as one set
+                      and inherits the hover state. */}
+                  {isValidElement<{ color?: string }>(link.icon)
+                    ? cloneElement(link.icon, { color: undefined })
+                    : link.icon}
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
       </footer>
