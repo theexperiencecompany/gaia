@@ -798,11 +798,14 @@ async def ainvoke_structured(
         .with_structured_output(schema)
     )
     # OpenRouter sticky-routing key: bound AFTER with_structured_output (which
-    # rebuilds the runnable via bind_tools and drops outer bindings). Pins
-    # this one-shot to the conversation's provider.
+    # rebuilds the runnable via bind_tools and drops outer bindings). The aux
+    # one-shots get their OWN sticky session (a suffixed id): the sticky
+    # routing is per session, and sharing the conversation's session_id made
+    # the aux requests re-pin the conversation's provider (measured: the
+    # comms' rotation dips).
     session_id = (config or {}).get("configurable", {}).get("session_id")
     if session_id:
-        structured = structured.bind(session_id=session_id)
+        structured = structured.bind(session_id=f"{session_id}-aux")
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(
