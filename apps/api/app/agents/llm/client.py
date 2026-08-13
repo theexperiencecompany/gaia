@@ -56,21 +56,17 @@ _ResultT = TypeVar("_ResultT")
 
 
 def without_sdk_retry(llm: ChatOpenRouter) -> ChatOpenRouter:
-    """Hand the OpenRouter SDK's own retry loop off to :func:`with_llm_retry`.
-
-    ``langchain-openrouter`` defaults ``max_retries=2``, which becomes an SDK
-    backoff window of ``max_retries * 150_000`` ms — 300 seconds of retrying
-    inside a SINGLE ``ainvoke``, nested under our 3 attempts and then repeated
-    for the fallback model. One failing turn measured 40 upstream requests over
-    4 minutes, bounded only by the 120 s timeout in :func:`ainvoke_llm`.
-
-    Note ``max_retries=0`` is NOT the fix and makes it worse: it only stops
-    langchain passing a ``retry_config``, and the SDK then falls back to its own
-    default of a **one hour** elapsed budget. Retry is off only when the config
-    it actually reads names a strategy other than ``backoff``.
-    """
+    """Leave retrying to :func:`with_llm_retry`; the SDK's own loop nests under
+    ours and turned 3 attempts into 40 requests. ``max_retries=0`` does NOT
+    disable it — the SDK then applies a one-hour default; only this does."""
     llm.client.sdk_configuration.retry_config = RetryConfig(
-        "none", BackoffStrategy(0, 0, 1.0, 0), False
+        # Any strategy but "backoff" skips the retry path, so the (required)
+        # backoff values below are never read.
+        strategy="none",
+        backoff=BackoffStrategy(
+            initial_interval=0, max_interval=0, exponent=1.0, max_elapsed_time=0
+        ),
+        retry_connection_errors=False,
     )
     return llm
 

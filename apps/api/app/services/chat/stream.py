@@ -29,6 +29,7 @@ from app.agents.core.background.executor_capture import (
 )
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
+from app.constants.chat import GENERIC_TURN_ERROR, RECURSION_LIMIT_MESSAGE
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -63,10 +64,6 @@ from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
-
-# Last resort when a provider exception carries no message of its own. Names the
-# exception type so a support report still identifies the failure.
-_GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."
 
 
 async def run_chat_stream_background(
@@ -637,21 +634,12 @@ async def _handle_stream_error(
     breaks the subscriber loop, so the error chunk must go on the wire first.
     """
     log.error(f"{LogTag.CHAT} Background stream error for", stream_id=stream_id, error=error)
-    # A recursion-limit stop is an expected degradation, not an infrastructure
-    # failure - never show the raw "Recursion limit of N reached..." internals.
     if isinstance(error, GraphRecursionError):
-        user_error = (
-            "I hit my step limit on this one before finishing. "
-            "Ask me to continue and I'll pick up where I left off."
-        )
+        user_error = RECURSION_LIMIT_MESSAGE
     else:
-        # Provider SDKs can carry a blank message — the OpenRouter client builds
-        # its message from the error body and its __str__ returns it verbatim, so
-        # str(exc) is "" when the body's message is empty. A blank string is
-        # FALSY on the client: no error bubble renders and the empty-message
-        # filter drops the turn from the thread, so the failure vanishes
-        # completely. Never let one through; name the error type instead.
-        user_error = str(error).strip() or _GENERIC_TURN_ERROR.format(
+        # str(exc) is genuinely "" for some provider errors, and a blank string is
+        # falsy on the client: no error bubble renders and the turn is filtered out.
+        user_error = str(error).strip() or GENERIC_TURN_ERROR.format(
             error_type=type(error).__name__
         )
     await stream_manager.publish_chunk(

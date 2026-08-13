@@ -118,11 +118,8 @@ async def _stream_from_redis(
                 error_type=type(e).__name__,
                 error=str(e),
             )
-            # Returning silently here ends a well-formed SSE stream with no
-            # [DONE] and no error, which the client cannot tell apart from a
-            # finished turn — it would render a truncated answer as complete.
-            # The message is deliberately generic: this is an infrastructure
-            # failure between us and the browser, not the model's error.
+            # Closing silently is indistinguishable from a finished turn, so the
+            # client would render a truncated answer as complete.
             yield format_sse_data(ErrorFrame(error=_DELIVERY_FAILED).model_dump())
 
 
