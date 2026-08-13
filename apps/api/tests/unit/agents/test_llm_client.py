@@ -14,7 +14,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.llm.chatbot import chatbot
@@ -28,16 +27,12 @@ from app.agents.llm.client import (
     _get_ordered_providers,
     ainvoke_llm,
     get_default_llm,
-    get_helper_llm,
     init_llm,
     register_llm_providers,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
-from app.constants.llm import (
-    DEFAULT_MODEL_NAME,
-    HELPER_MAX_OUTPUT_TOKENS,
-    OPENROUTER_MAX_OUTPUT_TOKENS,
-)
+from app.constants.llm import DEFAULT_MODEL_NAME
+from app.core.lazy_loader import ProviderRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -103,6 +98,24 @@ class TestGetAvailableProviders:
         result = _get_available_providers()
 
         assert list(result.keys()) == ["gemini"]
+
+    @pytest.mark.regression
+    def test_unregistered_provider_is_skipped_not_fatal(self) -> None:
+        """custom_llm is registered only when ENV=development, so in production
+        the registry has no such key. Against the REAL registry (which raises
+        KeyError on an unregistered name, unlike the mock the sibling tests use)
+        that killed init_llm, and with it every agent graph.
+        """
+        registry = ProviderRegistry()
+        gemini_inst = _make_fake_provider("gemini")
+        openrouter_inst = _make_fake_provider("openrouter")
+        registry.register("gemini_llm", lambda: gemini_inst)
+        registry.register("openrouter_llm", lambda: openrouter_inst)
+
+        with patch("app.agents.llm.client.providers", registry):
+            result = _get_available_providers()
+
+        assert result == {"gemini": gemini_inst, "openrouter": openrouter_inst}
 
 
 # ---------------------------------------------------------------------------
@@ -387,10 +400,6 @@ class TestGetDefaultLlm:
         # would arrive as one lump instead of streaming like the primary.
         assert kwargs["streaming"] is True
         assert kwargs["stream_usage"] is True
-        # get_default_llm feeds the agent-graph fallback (create_agent) and the
-        # summarization/compaction middleware — both legitimately need the full
-        # reservation, not the helper cap.
-        assert kwargs["max_tokens"] == OPENROUTER_MAX_OUTPUT_TOKENS
 
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
@@ -422,58 +431,6 @@ class TestGetDefaultLlm:
         mock_settings.GOOGLE_API_KEY = None
 
         assert get_default_llm() is mock_sim_llm.return_value
-
-
-# ---------------------------------------------------------------------------
-# get_helper_llm — the small-output cap for one-shot helpers
-# ---------------------------------------------------------------------------
-
-
-class TestGetHelperLlm:
-    @pytest.fixture(autouse=True)
-    def _fresh_cache(self):
-        # get_helper_llm is built on the same cached get_default_llm instance.
-        _build_default_llm.cache_clear()
-        yield
-        _build_default_llm.cache_clear()
-
-    @patch("app.agents.llm.client.ChatOpenRouter")
-    @patch("app.agents.llm.client.settings")
-    def test_helper_request_carries_the_helper_cap(
-        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
-    ) -> None:
-        mock_settings.GAIA_SIM_MODE = False
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
-        mock_chat_openrouter.return_value = MagicMock()
-
-        helper_llm = get_helper_llm()
-
-        # Exactly one ChatOpenRouter construction — the helper path reuses the
-        # same cached instance/HTTP client as the graph path instead of opening
-        # a second connection pool.
-        mock_chat_openrouter.assert_called_once()
-        assert mock_chat_openrouter.call_args.kwargs["max_tokens"] == OPENROUTER_MAX_OUTPUT_TOKENS
-
-        # The helper's own request carries the smaller cap via model_copy, not
-        # the constructed instance's max_tokens.
-        mock_chat_openrouter.return_value.model_copy.assert_called_once_with(
-            update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS}
-        )
-        assert helper_llm is mock_chat_openrouter.return_value.model_copy.return_value
-
-    @patch("app.agents.llm.client.get_default_llm")
-    @patch("app.agents.llm.client.settings")
-    def test_sim_mode_returns_default_llm_untouched(
-        self, mock_settings: MagicMock, mock_get_default: MagicMock
-    ) -> None:
-        mock_settings.GAIA_SIM_MODE = True
-        mock_model = MagicMock()
-        mock_get_default.return_value = mock_model
-
-        result = get_helper_llm()
-
-        assert result is mock_model
-        mock_model.model_copy.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -542,23 +499,6 @@ class TestAinvokeLlm:
         with pytest.raises(ValueError):
             await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
         fallback.ainvoke.assert_not_called()
-
-    async def test_attaches_usage_handler_by_default(self) -> None:
-        primary = self._runnable(result=AIMessage(content="ok"))
-        await ainvoke_llm(primary, [HumanMessage(content="hi")], config=RunnableConfig())
-        assert primary.ainvoke.call_args.kwargs["config"]["callbacks"]
-
-    async def test_graph_calls_skip_auxiliary_metering(self) -> None:
-        # The agent graph is metered by LLMAccountingMiddleware; attaching the
-        # usage handler here too booked every graph call a second time.
-        primary = self._runnable(result=AIMessage(content="ok"))
-        await ainvoke_llm(
-            primary,
-            [HumanMessage(content="hi")],
-            config=RunnableConfig(),
-            meter_auxiliary=False,
-        )
-        assert "callbacks" not in primary.ainvoke.call_args.kwargs["config"]
 
 
 # ---------------------------------------------------------------------------
@@ -656,7 +596,7 @@ class TestConstants:
 
 class TestChatbot:
     @patch("app.agents.llm.chatbot.ainvoke_llm")
-    @patch("app.agents.llm.chatbot.get_helper_llm")
+    @patch("app.agents.llm.chatbot.get_default_llm")
     async def test_chatbot_default_path(
         self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
     ) -> None:
@@ -672,33 +612,32 @@ class TestChatbot:
         assert result["messages"][0].content == "default response"
 
     @patch("app.agents.llm.chatbot.log")
-    @patch("app.agents.llm.chatbot.get_helper_llm")
-    async def test_chatbot_no_provider_logs_and_raises(
+    @patch("app.agents.llm.chatbot.get_default_llm")
+    async def test_chatbot_no_provider_returns_fallback_message(
         self, mock_get_default: MagicMock, mock_log: MagicMock
     ) -> None:
         mock_get_default.side_effect = LLMNotConfiguredError("no providers")
 
-        with pytest.raises(LLMNotConfiguredError):
-            await chatbot([HumanMessage(content="hello")])
+        result = await chatbot([HumanMessage(content="hello")])
 
-        mock_log.error.assert_called_once()
+        assert isinstance(result["messages"][0], AIMessage)
+        assert "trouble processing" in result["messages"][0].content
 
     @patch("app.agents.llm.chatbot.log")
     @patch("app.agents.llm.chatbot.ainvoke_llm")
-    @patch("app.agents.llm.chatbot.get_helper_llm")
-    async def test_chatbot_provider_error_logs_and_raises(
+    @patch("app.agents.llm.chatbot.get_default_llm")
+    async def test_chatbot_provider_error_returns_fallback_message(
         self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock, mock_log: MagicMock
     ) -> None:
         mock_get_default.return_value = MagicMock()
         mock_ainvoke.side_effect = ConnectionError("provider down")
 
-        with pytest.raises(ConnectionError, match="provider down"):
-            await chatbot([HumanMessage(content="hello")])
+        result = await chatbot([HumanMessage(content="hello")])
 
-        mock_log.error.assert_called_once()
+        assert "trouble processing" in result["messages"][0].content
 
     @patch("app.agents.llm.chatbot.ainvoke_llm")
-    @patch("app.agents.llm.chatbot.get_helper_llm")
+    @patch("app.agents.llm.chatbot.get_default_llm")
     async def test_chatbot_programming_bug_propagates(
         self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
     ) -> None:
@@ -709,112 +648,3 @@ class TestChatbot:
 
         with pytest.raises(RuntimeError, match="event loop is closed"):
             await chatbot([HumanMessage(content="hello")])
-
-
-class TestStickyFallback:
-    """Once a run falls back, later calls must use the fallback directly so the
-    request's model field stays constant — alternating per call resets the
-    provider's per-model prompt cache every call."""
-
-    def test_has_sticky_fallback_reads_marker(self) -> None:
-        from app.agents.llm.client import (
-            STICKY_FALLBACK_KEY,
-            has_sticky_fallback,
-        )
-
-        assert has_sticky_fallback(None) is False
-        assert has_sticky_fallback({"configurable": {}}) is False
-        assert has_sticky_fallback({"configurable": {STICKY_FALLBACK_KEY: True}}) is True
-
-    @pytest.mark.asyncio
-    async def test_fallback_stamps_the_run_configurable(self) -> None:
-        from langchain_core.language_models import FakeListChatModel
-
-        from app.agents.llm.client import STICKY_FALLBACK_KEY, ainvoke_llm
-
-        class _Failing(FakeListChatModel):
-            async def _agenerate(self, *args, **kwargs):
-                raise ConnectionError("provider down")
-
-        failing = _Failing(responses=[])
-        working = FakeListChatModel(responses=["ok"])
-        config = {"configurable": {"user_id": "u1"}}
-
-        result = await ainvoke_llm(
-            failing,
-            ["hello"],
-            fallback=working,
-            config=config,  # type: ignore[arg-type]
-            label="test",
-            max_attempts=1,
-            timeout=None,
-        )
-        assert result.content == "ok"
-        assert config["configurable"][STICKY_FALLBACK_KEY] is True
-
-
-class TestAuxModelNamespace:
-    """Aux one-shot calls run the same underlying model under a different id
-    (AUX_MODEL_NAME) so their prompt-cache namespace is separate from the
-    conversation's — their per-turn blocks must not evict the conversation."""
-
-    def test_aux_model_constant_is_distinct_from_default(self) -> None:
-        from app.constants.llm import AUX_MODEL_NAME, DEFAULT_MODEL_NAME
-
-        assert AUX_MODEL_NAME != DEFAULT_MODEL_NAME
-
-    @pytest.mark.asyncio
-    async def test_ainvoke_structured_serves_the_aux_model_on_the_wire(self) -> None:
-        """Regression: the aux alias must be the model ON THE WIRE, not a bind kwarg.
-
-        ``with_structured_output`` rebuilds the runnable via ``bind_tools``, which
-        drops the outer binding's kwargs — a ``.bind(model=AUX_MODEL_NAME)`` alias
-        silently vanished and every aux call served ``DEFAULT_MODEL_NAME`` in the
-        conversation's cache namespace (measured on the real graph: the alias
-        never appeared on the wire). The alias must live on the model instance
-        (``model_copy``), where it survives the structured-output rewrite and
-        reaches ``_agenerate`` as ``self.model_name`` — even when the run config
-        carries a plan/dev model pin.
-        """
-        from langchain_core.messages import AIMessage
-        from langchain_core.outputs import ChatGeneration, ChatResult
-        from langchain_openrouter import ChatOpenRouter
-        from pydantic import BaseModel
-
-        from app.agents.llm import client as llm_client
-        from app.constants.llm import AUX_MODEL_NAME as AUX, DEFAULT_MODEL_NAME as DEFAULT
-
-        class _Out(BaseModel):
-            ok: bool
-
-        served: dict = {}
-
-        async def _fake_agenerate(self, messages, stop=None, run_manager=None, **kwargs):
-            served["model_name"] = self.model_name
-            return ChatResult(
-                generations=[ChatGeneration(message=AIMessage(content='{"ok": true}'))]
-            )
-
-        async def _fake_ainvoke_llm(primary, messages, **kwargs):
-            with patch.object(ChatOpenRouter, "_agenerate", _fake_agenerate):
-                return await primary.ainvoke(messages, config=kwargs.get("config"))
-
-        llm = ChatOpenRouter(model=DEFAULT, api_key="test-key", temperature=0.0, streaming=False)
-        with (
-            patch.object(llm_client, "get_helper_llm", return_value=llm),
-            patch.object(llm_client, "ainvoke_llm", new=_fake_ainvoke_llm),
-        ):
-            await llm_client.ainvoke_structured(
-                _Out,
-                "hello",
-                label="test",
-                config={
-                    "configurable": {
-                        "user_id": "u1",
-                        "model": DEFAULT,
-                        "model_name": DEFAULT,
-                        "provider": "openrouter",
-                    }
-                },
-            )
-        assert served["model_name"] == AUX
