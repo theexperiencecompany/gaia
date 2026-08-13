@@ -124,6 +124,10 @@ class AgentConfigurable(TypedDict, total=False):
     #: Shared VFS session, held constant across the executor and the handoff
     #: subagents it spawns so all resolve paths against one workspace.
     vfs_session_id: str | None
+    #: OpenRouter sticky-routing key — the conversation id, pinned on every
+    #: request so OpenRouter routes the whole conversation tree to the
+    #: provider holding the warm prompt cache (see build_agent_config).
+    session_id: str | None
     stream_id: str | None
     active_todo_id: str | None
     execution_mode: ExecutionMode

@@ -191,6 +191,10 @@ def _inherit_from_parent_configurable(
     merged["conversation_id"] = (
         base_configurable.get("conversation_id") or merged["conversation_id"]
     )
+    # Sticky-routing key, conversation-scoped: every agent in the tree must
+    # hit the provider holding the conversation's warm cache.
+    if "session_id" in base_configurable:
+        merged["session_id"] = base_configurable["session_id"]
     # Parent overrides, same reason: the user's VERBATIM turns, established once by
     # comms. Every child agent's own "task" is an agent-authored paraphrase (comms →
     # call_executor → handoff), so a child must never overwrite these — the HIL intent
@@ -298,6 +302,11 @@ def build_agent_config(  # NOSONAR python:S107
         "max_tokens": max_tokens,
         "model_name": model_name,
         "conversation_id": conversation_id,
+        # OpenRouter sticky-routing key: pins every request of this
+        # conversation to the provider holding its warm prompt cache
+        # (OpenRouter forces sticky routing from the first request when a
+        # session_id is present — see the routing note in constants/llm.py).
+        "session_id": conversation_id,
         "selected_tool": selected_tool,
         "tool_category": tool_category,
         "subagent_id": subagent_id,
@@ -373,6 +382,9 @@ def build_agent_config(  # NOSONAR python:S107
         "execution_mode": resolved.get("execution_mode") or "interactive",
         "conversation_source": resolved_source,
         "source_category": source_category,
+        # Re-emitted in the literal below (a fresh dict — a key dropped here
+        # never reaches the graph config).
+        "session_id": resolved.get("session_id"),
     }
 
     # plan_type is stamped by apply_plan_model on the top-level configurable and

@@ -28,7 +28,7 @@ from app.agents.llm.types import (
 from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
-    DEEPSEEK_PROVIDER_PIN,
+    DEEPSEEK_PROVIDER_ROUTING,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_LLM_TEMPERATURE,
@@ -424,7 +424,7 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
         # Provider-routing pin: without it OpenRouter rotates this model id
         # across upstreams and the per-upstream prompt cache never chains
         # (measured: unpinned flapped 0/0/99/99/99/0; pinned holds 99-100%).
-        model_kwargs=DEEPSEEK_PROVIDER_PIN,
+        model_kwargs=DEEPSEEK_PROVIDER_ROUTING,
     )
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).
@@ -522,10 +522,21 @@ def _stamp_fallback(result: _ResultT) -> _ResultT:
     return result
 
 
-def _resolve_fallback(fallback: LLMFallback, label: str, primary_error: BaseException) -> Runnable:
+def _resolve_fallback(
+    fallback: LLMFallback,
+    label: str,
+    primary_error: BaseException,
+    *,
+    session_id: str | None = None,
+) -> Runnable:
     """Materialize the fallback (calling a factory if one was passed), log the
     downgrade, and return the retry-wrapped runnable. Re-raises ``primary_error``
-    when no fallback is available."""
+    when no fallback is available.
+
+    ``session_id`` (OpenRouter sticky-routing key) is bound on the resolved
+    runnable so the fallback's requests stay on the conversation's provider —
+    the config-based value is dropped before the wire, while a bind survives
+    bind_tools and reaches the request params."""
     resolved = fallback() if callable(fallback) and not isinstance(fallback, Runnable) else fallback
     if resolved is None:
         raise primary_error
@@ -534,6 +545,8 @@ def _resolve_fallback(fallback: LLMFallback, label: str, primary_error: BaseExce
         llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
         error=str(primary_error),
     )
+    if session_id:
+        resolved = resolved.bind(session_id=session_id)
     return with_llm_retry(resolved)
 
 
@@ -599,9 +612,12 @@ async def ainvoke_llm(
                 # call resets the provider's per-model prompt cache every call.
                 _mark_sticky_fallback(config)
                 return _stamp_fallback(
-                    await _resolve_fallback(fallback, label, primary_error).ainvoke(
-                        messages, config=_with_usage_handler(config, usage_handler)
-                    )
+                    await _resolve_fallback(
+                        fallback,
+                        label,
+                        primary_error,
+                        session_id=(config or {}).get("configurable", {}).get("session_id"),
+                    ).ainvoke(messages, config=_with_usage_handler(config, usage_handler))
                 )
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
@@ -786,6 +802,12 @@ async def ainvoke_structured(
         .model_copy(update={"model_name": AUX_MODEL_NAME})
         .with_structured_output(schema)
     )
+    # OpenRouter sticky-routing key: bound AFTER with_structured_output (which
+    # rebuilds the runnable via bind_tools and drops outer bindings). Pins
+    # this one-shot to the conversation's provider.
+    session_id = (config or {}).get("configurable", {}).get("session_id")
+    if session_id:
+        structured = structured.bind(session_id=session_id)
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(
