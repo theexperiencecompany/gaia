@@ -455,9 +455,8 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
                     lineHeight: "var(--letter-body-lh)",
                   }}
                 >
-                  {LETTER_PARAGRAPHS.map((paragraph, i) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: static copy, order never changes
-                    <p key={i}>{paragraph}</p>
+                  {LETTER_PARAGRAPHS.map((paragraph) => (
+                    <p key={paragraph}>{paragraph}</p>
                   ))}
                 </div>
 

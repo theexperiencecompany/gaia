@@ -173,11 +173,20 @@ const LETTERS_LAST_NAME: LetterDef[] = [
   },
 ];
 
-const ALL_ITEMS: (LetterDef | "space")[] = [
+/**
+ * The signature is one frozen sequence of glyphs, so a glyph's position in it
+ * *is* its identity — "the second a in Randeriya" is a different mark from the
+ * first. The key is therefore computed once here, as data, rather than from a
+ * render-time index.
+ */
+const ALL_ITEMS: { key: string; item: LetterDef | "space" }[] = [
   ...LETTERS,
   SPACE,
   ...LETTERS_LAST_NAME,
-];
+].map((item, position) => ({
+  key: item === "space" ? `space-${position}` : `${item.char}-${position}`,
+  item,
+}));
 
 interface SignatureProps {
   /** The letters draw in once this flips true. */
@@ -225,26 +234,16 @@ export function Signature({ active, scale = 1.6, className }: SignatureProps) {
         className="flex h-[51px] origin-[0_50%] scale-[var(--sig-scale)] items-center justify-start"
         style={{ "--sig-scale": scale } as CSSProperties}
       >
-        {ALL_ITEMS.map((item, i) => {
+        {ALL_ITEMS.map(({ key, item }) => {
           if (item === "space") {
-            return (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: static array, order never changes
-                key={`space-${i}`}
-                className="h-[51px] w-3"
-              />
-            );
+            return <div key={key} className="h-[51px] w-3" />;
           }
 
           const currentIndex = letterIndex;
           letterIndex++;
 
           return (
-            <div
-              // biome-ignore lint/suspicious/noArrayIndexKey: static array, order never changes
-              key={`${item.char}-${i}`}
-              style={{ margin: item.margin }}
-            >
+            <div key={key} style={{ margin: item.margin }}>
               <svg
                 viewBox={item.viewBox}
                 height={item.height}

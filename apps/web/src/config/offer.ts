@@ -30,8 +30,9 @@ export const OFFER_YEARLY_NOTE = "On yearly that's six months free.";
 export const OFFER_TERMS =
   "Covers your first payment: one month on monthly, a full year on yearly. While it lasts.";
 
-/** Last moment the code works, matching `expires_at` on the Dodo coupon. */
-export const OFFER_EXPIRES_AT = "2026-11-12T23:59:59Z";
+/** Last moment the code works, matching `expires_at` on the Dodo coupon.
+ * Read only through `isOfferLive` — the date itself is never rendered. */
+const OFFER_EXPIRES_AT = "2026-11-12T23:59:59Z";
 
 /** Whether the offer is still live. Every surface gates on this, so an expired
  * offer disappears on its own instead of waiting for a deploy. */
