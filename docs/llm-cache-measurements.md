@@ -106,16 +106,19 @@ Two follow-up fixes in this PR close the biggest measured gaps:
   (`AUX_MODEL_NAME`), so their ~30k tokens/turn of new blocks can no longer
   evict the conversation from its namespace.
 
-Real-graph runs measure **70.5% → 75.7%** on the same 15-turn driver
-across the three fixes (the anchored journal emission, the Gemini memory
-lane, and the volatile-tail layout split), with the comms' cached prefix
-now growing with the conversation (was flat) and individual turns spiking
-to 93%. The residual uncached bytes per turn are the content that SHOULD
-change — the volatile tail (recent activity, current agenda, per-query
-recall, todos) and the new turn's messages — so the practical ceiling for
-the real graph is ~90% (the 94.9% harness figure used byte-stable slots).
-The follow-up one-shot (alias lane) still contributes a flappy ~2k/turn
-at a ~60% ceiling because its tool-result message changes every turn.
+Real-graph runs measure **63–76%** on the same 15-turn driver across
+provider-cache windows (best single window: **75.7%**; per-turn spikes to
+**93–99%**). The request side is at the measured ceiling: the volatile
+tail is now ~370 tokens, the core-stable slot is 100% byte-identical
+across turns, and the shadow test (replaying the graph's exact captured
+bytes seconds later) hits 99.7% while the live call misses the same bytes.
+The residual is the provider's SHARED cache: a comms-only control with
+ZERO interleaving still flaps 0/99/99/99/0/99/0 — the chain is evicted by
+external traffic on the shared model id (the 94.9% harness and the 99.7%
+shadow prove the 95%+ ceiling is reachable when the cache holds). The
+remaining lever is a lane with a private cache (the GAIA-only dev lane is
+rate-limited; the less-trafficked alias checkpoint holds chains slightly
+longer — 5 stable hits vs 3 — at 1.75x pricing).
 
 **Tested and reverted: OpenRouter `session_id` sticky routing.** The
 conversation id was pinned on every request (comms, executor, subagents,
