@@ -43,7 +43,7 @@ from shared.py.wide_events import log
 DORMANCY_THRESHOLD = timedelta(days=90)
 
 
-class DormantUserWorkflows(BaseModel):
+class DormantUserWorkflows(BaseModel):  # type: ignore[explicit-any]
     """One dormant user and the workflows the sweep would pause for them."""
 
     user_id: str
@@ -51,7 +51,7 @@ class DormantUserWorkflows(BaseModel):
     workflow_ids: list[str]
 
 
-class DormancySweepResult(BaseModel):
+class DormancySweepResult(BaseModel):  # type: ignore[explicit-any]
     """What one sweep found and did. ``candidates`` is populated on a dry run too,
     which is what the CLI reports before anything is written."""
 

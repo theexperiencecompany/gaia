@@ -466,6 +466,26 @@ def test_a_registry_whose_wiring_moved_raises_instead_of_finding_nothing(tmp_pat
         collect_router_mounts(factory, tmp_path / "apps/api")
 
 
+def test_a_subscripted_generic_llm_base_is_still_discovered(tmp_path: Path) -> None:
+    """``class VoiceLLM(LLM[Never])`` — the typed generic form — must score the
+    same as the bare ``class VoiceLLM(LLM)`` form the scanner first matched."""
+    agent = _write(
+        tmp_path,
+        "voice/agent.py",
+        "def entrypoint(ctx):\n    return None\n\n"
+        "WorkerOptions(entrypoint_fnc=entrypoint)\n",
+    )
+    llm = _write(
+        tmp_path,
+        "voice/llm.py",
+        "class VoiceLLM(LLM[Never]):\n    def chat(self):\n        return _VoiceTurn(self).run()\n\n"
+        "class _VoiceTurn:\n    def run(self):\n        return None\n",
+    )
+    registry = collect_voice_registry(agent, llm)
+
+    assert registry[llm.resolve().as_posix()] == frozenset({"_VoiceTurn.run"})
+
+
 def test_a_map_with_no_entry_points_scores_zero_not_100(tmp_path: Path) -> None:
     """An empty map is the scanner going blind, not a perfect score — it must
     fail the --min-score gate instead of reporting 100 over nothing."""

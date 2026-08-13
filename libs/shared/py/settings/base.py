@@ -5,7 +5,7 @@ These classes provide the foundation for application-specific settings.
 Each app should extend these classes with their own configuration.
 """
 
-from typing import Any, Literal, Self
+from typing import Literal, Self
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -25,23 +25,29 @@ class BaseAppSettings(BaseSettings):  # type: ignore[explicit-any]
     )
 
     @classmethod
-    def from_env(cls, **kwargs: Any) -> Self:  # type: ignore[explicit-any]
-        """Create settings from environment variables with fallback handling."""
+    def from_env(cls, **kwargs: object) -> Self:
+        """Create settings from environment variables with fallback handling.
+
+        ``model_validate``, not ``cls(**kwargs)``: the generated per-field
+        ``__init__`` (``ENV`` is a Literal, ``SHOW_MISSING_KEY_WARNINGS`` a bool)
+        cannot accept an ``object``-typed kwargs bag, and ``Any`` is not welcome
+        here — ``model_validate`` takes the bag through pydantic's own
+        (untyped) validation seam, which is the runtime path either way."""
         try:
-            return cls(**kwargs)
+            return cls.model_validate(kwargs)
         except Exception as e:
             log.warning(f"Error creating settings: {e!s}")
             fields = cls.model_fields
-            # dict[str, Any], not dict[str, str]: this is a kwargs bag aimed at
+            # dict[str, object], not dict[str, str]: this is a kwargs bag aimed at
             # per-field types (ENV is a Literal, SHOW_MISSING_KEY_WARNINGS a bool).
             # The annotation filter below — not the type system — is what keeps
             # only str-annotated fields in it.
-            defaults: dict[str, Any] = {  # type: ignore[explicit-any]
+            defaults: dict[str, object] = {
                 field_name: ""
                 for field_name in fields
                 if field_name not in kwargs and "str" in str(fields[field_name].annotation)
             }
-            return cls(**defaults, **kwargs)
+            return cls.model_validate({**defaults, **kwargs})
 
 
 class CommonSettings(BaseAppSettings):  # type: ignore[explicit-any]

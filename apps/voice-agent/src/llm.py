@@ -5,10 +5,11 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 import json
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Never
 
 import aiohttp
-from livekit import rtc  # type: ignore[attr-defined]
+from livekit import rtc
+from livekit.agents import AgentSession
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 
 from shared.py.wide_events import VoiceContext, get_trace_id, log, log_context, wide_task
@@ -40,12 +41,12 @@ from src.utils import (
     sanitize_for_tts,
 )
 
-if TYPE_CHECKING:
-    from livekit.agents import AgentSession
 
+class CustomLLM(LLM[Never]):
+    """LLM adapter that streams SSE from POST /api/v1/chat-stream on the GAIA backend.
 
-class CustomLLM(LLM[Any]):  # type: ignore[misc]  # livekit is not installed in the CI/typecheck env, so LLM resolves to Any
-    """LLM adapter that streams SSE from POST /api/v1/chat-stream on the GAIA backend."""
+    ``LLM[Never]``: the adapter emits none of the custom events ``LLM``'s type
+    parameter declares, so the parameter is the empty set."""
 
     def __init__(
         self,
@@ -68,7 +69,8 @@ class CustomLLM(LLM[Any]):  # type: ignore[misc]  # livekit is not installed in 
         self._http_session: aiohttp.ClientSession | None = None
         # Set by the entrypoint once the AgentSession exists. The drain uses it
         # to speak each delegated executor answer as its own utterance.
-        self.session: AgentSession[Any] | None = None
+        # `object`, not Any: nothing here ever reads session.userdata.
+        self.session: AgentSession[object] | None = None
         # Keep drain tasks referenced so they aren't garbage-collected mid-run.
         self._drain_tasks: set[asyncio.Task[None]] = set()
 
@@ -249,8 +251,12 @@ class CustomLLM(LLM[Any]):  # type: ignore[misc]  # livekit is not installed in 
     # The pipeline also passes tools/tool_choice/conn_options (voice/agent.py), which
     # this override does not use — the catch-all has to stay or those calls TypeError.
     # `object`, not Any: nothing here ever reads them.
+    # The override stays on the pre-1.5 context-manager contract: livekit-agents 1.6
+    # turned LLMStream into a class, but the pipeline's actual usage (async-with +
+    # async-for) is satisfied by the yielded generator, so this override is kept as-is
+    # rather than re-implementing the LLMStream class protocol.
     @asynccontextmanager
-    async def chat(
+    async def chat(  # type: ignore[override]
         self, *, chat_ctx: ChatContext, **_kwargs: object
     ) -> AsyncGenerator[AsyncGenerator[ChatChunk, None], None]:
         """Stream SSE from the backend and yield ChatChunks for TTS."""

@@ -123,6 +123,18 @@ dev = [
   "mutmut>=3.7.0",
 ]
 
+# The voice agent is type-checked in THIS project's environment (see the mypy
+# lane in code-quality.yml), so livekit and the voice plugins must resolve to
+# their real typed packages here — otherwise every livekit symbol degrades to
+# Any and the voice surface cannot be type-checked at all. Mirrors
+# apps/voice-agent's runtime dependencies (same pins).
+voice_agent = [
+  "livekit>=1.0.12",
+  "livekit-agents[turn-detector,silero,deepgram]~=1.2",
+  "livekit-plugins-noise-cancellation~=0.2",
+  "livekit-plugins-elevenlabs~=1.2",
+]
+
 backend = [
   "fastapi[standard]>=0.119.0",
   "uvicorn>=0.34.1",

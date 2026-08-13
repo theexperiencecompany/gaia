@@ -393,7 +393,10 @@ jobs:
       - name: Install api dev + backend dependencies (uv sync)
         run: |
           echo "::group::uv sync"
-          uv sync --project apps/api --group backend --group dev
+          # voice_agent: livekit + plugins so the voice surface type-checks against
+          # REAL livekit types instead of degrading to Any (see the group's comment
+          # in apps/api/pyproject.toml).
+          uv sync --project apps/api --group backend --group dev --group voice_agent
           echo "::endgroup::"
           echo "deps: OK"
       - name: mypy across api + voice-agent + shared + lint tooling (staged-strict + shared.* strict override)
@@ -419,7 +422,7 @@ jobs:
             # locks every resolved version from uv.lock, which is the part we do control.
             # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
             # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
-            uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports
+            uv run --project apps/api --frozen --group backend --group dev --group voice_agent mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports
           elif [ -z "$FILES" ]; then
             echo "No changed Python files — skipping."
           else
@@ -441,7 +444,7 @@ jobs:
               # locks every resolved version from uv.lock, which is the part we do control.
               # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
               # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
-              uv run --project apps/api --frozen --group backend --group dev mypy $TARGETS --ignore-missing-imports
+              uv run --project apps/api --frozen --group backend --group dev --group voice_agent mypy $TARGETS --ignore-missing-imports
             fi
           fi
           echo "::endgroup::"

@@ -82,7 +82,7 @@ Usage
         return await _go()
 
     # or, when the caller already has a duration:
-    record_fs_op(FsOps.WRITE_SESSION_FILE, duration_ms=4.2, bytes=size)
+    record_fs_op(FsOps.WRITE_SESSION_FILE, duration_ms=4.2, bytes_written=size)
 
 At the end of a `wide_task`, call::
 
@@ -100,7 +100,7 @@ import contextlib
 import contextvars
 from dataclasses import dataclass, field
 import time
-from typing import Any, Final, NotRequired, TypedDict, TypeVar, cast
+from typing import Final, NotRequired, TypedDict, TypeVar, cast
 
 from prometheus_client import (  # Gauge used via lambda factories below
     REGISTRY,
@@ -367,7 +367,7 @@ def record_fs_op(
     *,
     duration_ms: float,
     error: BaseException | None = None,
-    bytes: int = 0,
+    bytes_written: int = 0,
     **labels: str,
 ) -> None:
     """Record one completed FS op.
@@ -386,8 +386,8 @@ def record_fs_op(
     stats.count += 1
     stats.total_ms += duration_ms
     stats.max_ms = max(stats.max_ms, duration_ms)
-    if bytes:
-        stats.bytes += bytes
+    if bytes_written:
+        stats.bytes += bytes_written
     if error is not None:
         stats.errors += 1
         stats.last_error_type = type(error).__name__
@@ -402,8 +402,8 @@ def record_fs_op(
         )
         _FS_OP_TOTAL.labels(operation=op, mode=mode, status=status).inc()
         _FS_OP_LAST_SEEN.labels(operation=op).set(time.time())
-        if bytes > 0:
-            _FS_OP_BYTES_TOTAL.labels(operation=op).inc(bytes)
+        if bytes_written > 0:
+            _FS_OP_BYTES_TOTAL.labels(operation=op).inc(bytes_written)
     except Exception as e:  # dashboard surface must not break callers
         log.warning(
             "[metrics] prometheus observe failed",
@@ -473,10 +473,11 @@ async def fs_timer(op: str, **labels: str) -> AsyncIterator[None]:
                 op=op,
                 error_type=type(e).__name__,
             )
-        # cast: **labels is homogeneously str, but record_fs_op also has a
-        # same-spelled `bytes: int` keyword — mypy can't rule out a collision
-        # from the splat alone, even though no caller ever passes that label.
-        record_fs_op(op, duration_ms=elapsed_ms, error=err, **cast(dict[str, Any], labels))  # type: ignore[explicit-any]
+        # **labels is homogeneously str and its keys (role/outcome labels) never
+        # collide with record_fs_op's named keyword params, but mypy must treat
+        # a dict[str, str] splat as a potential str for `bytes_written: int` —
+        # a known limitation of **kwargs expansion, not a real risk.
+        record_fs_op(op, duration_ms=elapsed_ms, error=err, **labels)  # type: ignore[arg-type]
 
 
 def flush_fs_metrics() -> dict[str, OpStatsSnapshot]:

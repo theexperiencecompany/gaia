@@ -60,6 +60,7 @@ from app.constants.general import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
+from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 # A conversation_id is normally a uuid; derived thread ids embed it verbatim
@@ -197,7 +198,11 @@ async def sweep_orphan_threads(
             )
             count_row = await cur.fetchone()
             if count_row is None:
-                raise RuntimeError("checkpoint count query returned no rows")
+                raise create_error(
+                    message="checkpoint count query returned no rows",
+                    why="count(*) over the checkpoints table always yields exactly one row",
+                    fix="investigate the checkpoints table/connection — a missing row means the query or schema changed",
+                )
             checkpoints_deleted = count_row[0]
 
     for tid in orphans:
@@ -352,7 +357,11 @@ async def prune_checkpoint_versions(_ctx: dict[str, object]) -> str:
     manager = await get_checkpointer_manager()
     pool = manager.pool
     if pool is None:
-        raise RuntimeError("checkpointer manager has no connection pool — cannot prune")
+        raise create_error(
+            message="checkpointer manager has no connection pool — cannot prune",
+            why="pruning needs a live pool to scan and delete checkpoint rows",
+            fix="ensure the checkpointer manager was initialized (API startup) before this task runs",
+        )
     checkpointer = manager.get_checkpointer()
 
     orphan = await sweep_orphan_threads(pool, checkpointer)

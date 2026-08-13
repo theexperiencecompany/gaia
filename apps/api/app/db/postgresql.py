@@ -56,14 +56,14 @@ def _ensure_timestamptz_columns(connection: Connection) -> None:
         ).scalar()
         if data_type is None or data_type == "timestamp with time zone":
             continue
-        # DDL-shaped statement, run via text(): identifiers can never be bind
-        # parameters in any dialect, so they are interpolated directly. They come
-        # from the _TIMESTAMPTZ_COLUMNS whitelist rather than user input, and the
-        # dialect's preparer quotes them so a reserved word or mixed-case name
-        # stays valid.
         quoted_table = preparer.quote(table)
         quoted_column = preparer.quote(column)
         connection.execute(
+            # DDL-shaped statement: identifiers can never be bind parameters in
+            # any dialect, so they are interpolated directly. They come from the
+            # _TIMESTAMPTZ_COLUMNS whitelist (not user input), and the dialect's
+            # preparer quotes them, so no user-controlled value can reach the SQL.
+            # nosemgrep: avoid-sqlalchemy-text
             text(
                 f"ALTER TABLE {quoted_table} ALTER COLUMN {quoted_column} "
                 f"TYPE timestamptz USING {quoted_column} AT TIME ZONE 'UTC'"

@@ -56,6 +56,16 @@ def _methods(cls: ast.ClassDef) -> dict[str, ast.FunctionDef | ast.AsyncFunction
     }
 
 
+def _base_name(base: ast.expr) -> str | None:
+    """The bare name of a class base — plain (``LLM``) or subscripted
+    (``LLM[Never]``), since generic subclassing is the typed form."""
+    if isinstance(base, ast.Name):
+        return base.id
+    if isinstance(base, ast.Subscript) and isinstance(base.value, ast.Name):
+        return base.value.id
+    return None
+
+
 def _turn_entries(llm_module: Path) -> frozenset[str]:
     """Qualified name(s) of the per-turn coroutine in the LLM adapter module.
 
@@ -71,7 +81,7 @@ def _turn_entries(llm_module: Path) -> frozenset[str]:
         (
             cls
             for cls in classes.values()
-            if any(isinstance(base, ast.Name) and base.id == _LLM_BASE for base in cls.bases)
+            if any(_base_name(base) == _LLM_BASE for base in cls.bases)
         ),
         None,
     )

@@ -1,12 +1,10 @@
 """Daily sweep pausing the workflows of users who have gone dormant."""
 
-from typing import Any
-
 from app.services.workflow.dormancy import sweep_dormant_workflows
 from shared.py.wide_events import log
 
 
-async def sweep_dormant_user_workflows(_ctx: dict[str, Any]) -> str:
+async def sweep_dormant_user_workflows(_ctx: dict[str, object]) -> str:
     """Pause every activated workflow owned by a user dormant past the threshold.
 
     Idempotent: a workflow already paused is no longer ``activated``, so the next

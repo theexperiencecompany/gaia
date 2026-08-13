@@ -7,9 +7,8 @@ from functools import partial
 import os
 from pathlib import Path
 import time
-from typing import Any
 
-from livekit import rtc  # type: ignore[attr-defined]
+from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentFalseInterruptionEvent,
@@ -115,7 +114,7 @@ class _SessionStats:
 
 
 def _register_session_logging(
-    ctx: JobContext, session: AgentSession[Any], identity: dict[str, str | None], trace_id: str
+    ctx: JobContext, session: AgentSession[object], identity: dict[str, str | None], trace_id: str
 ) -> None:
     """Wire per-session lifecycle logging: user/agent state, STT, metrics, usage.
 
@@ -127,7 +126,7 @@ def _register_session_logging(
     """
     stats = _SessionStats()
 
-    @session.on("user_state_changed")  # type: ignore[untyped-decorator]
+    @session.on("user_state_changed")
     def _on_user_state_changed(ev: UserStateChangedEvent) -> None:
         if ev.new_state == "speaking":
             stats.speaking_start = time.monotonic()
@@ -145,7 +144,7 @@ def _register_session_logging(
                 **identity,
             )
 
-    @session.on("user_input_transcribed")  # type: ignore[untyped-decorator]
+    @session.on("user_input_transcribed")
     def _on_user_input_transcribed(ev: UserInputTranscribedEvent) -> None:
         stt_latency_ms = ms_since(stats.speaking_start or time.monotonic())
         if ev.is_final:
@@ -168,7 +167,7 @@ def _register_session_logging(
                 **identity,
             )
 
-    @session.on("agent_state_changed")  # type: ignore[untyped-decorator]
+    @session.on("agent_state_changed")
     def _on_agent_state_changed(ev: AgentStateChangedEvent) -> None:
         if ev.new_state == "thinking":
             log.debug(f"{LogTag.AGENT} agent thinking", phase="agent_thinking", **identity)
@@ -179,7 +178,7 @@ def _register_session_logging(
         elif ev.old_state == "speaking":
             log.debug(f"{LogTag.AGENT} agent speaking end", phase="agent_speaking_end", **identity)
 
-    @session.on("agent_false_interruption")  # type: ignore[untyped-decorator]
+    @session.on("agent_false_interruption")
     def _on_agent_false_interruption(ev: AgentFalseInterruptionEvent) -> None:
         # Framework handles automatic resume when ev.resumed is True
         stats.false_interruptions += 1
@@ -192,7 +191,7 @@ def _register_session_logging(
 
     usage_collector = metrics.UsageCollector()
 
-    @session.on("metrics_collected")  # type: ignore[untyped-decorator]
+    @session.on("metrics_collected")
     def _on_metrics_collected(ev: MetricsCollectedEvent) -> None:
         metrics.log_metrics(ev.metrics)
         usage_collector.collect(ev.metrics)
@@ -393,7 +392,7 @@ async def entrypoint(ctx: JobContext) -> None:
             model=settings.ELEVENLABS_TTS_MODEL,
         )
 
-        session: AgentSession[Any] = AgentSession(
+        session: AgentSession[object] = AgentSession(
             llm=custom_llm,
             stt=deepgram.STT(model="nova-3", language="multi"),
             tts=tts,
@@ -430,7 +429,7 @@ async def entrypoint(ctx: JobContext) -> None:
             trace_id=session_trace_id,
         )
 
-        @ctx.room.on("participant_connected")  # type: ignore[untyped-decorator]
+        @ctx.room.on("participant_connected")
         def _on_participant_connected(p: rtc.RemoteParticipant) -> None:
             log.info(
                 f"{LogTag.AGENT} participant joined",
@@ -440,7 +439,7 @@ async def entrypoint(ctx: JobContext) -> None:
             )
             spawn_credentials(getattr(p, "metadata", None), "participant_connected", p.identity)
 
-        @ctx.room.on("participant_metadata_changed")  # type: ignore[untyped-decorator]
+        @ctx.room.on("participant_metadata_changed")
         def _on_participant_metadata_changed(p: rtc.Participant, _old_md: str, new_md: str) -> None:
             spawn_credentials(new_md, "participant_metadata_changed", p.identity)
 
