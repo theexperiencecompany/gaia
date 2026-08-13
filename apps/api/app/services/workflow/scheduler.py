@@ -18,7 +18,7 @@ from app.models.scheduler_models import (
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
-from app.utils.json_helpers import int_bag, text_opt_bag
+from app.utils.json_helpers import int_opt_bag, text_opt_bag
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -165,7 +165,12 @@ class WorkflowScheduler(BaseSchedulerService):
                 status,
                 user_id=user_id,
                 scheduled_at=cast(datetime | None, data.get("scheduled_at", UNSET)),
-                occurrence_count=int_bag(data, "occurrence_count"),
+                # int_opt_bag, not int_bag: callers that don't carry an
+                # occurrence_count (reschedule, reap, cancel) pass None, and
+                # set_status leaves the stored counter untouched for None — a
+                # 0 default here would silently restart the run counter on
+                # every schedule edit and worker-crash recovery.
+                occurrence_count=int_opt_bag(data, "occurrence_count"),
                 repeat=text_opt_bag(data, "repeat"),
                 next_run=cast(datetime | None, data.get("trigger_config.next_run", UNSET)),
             )

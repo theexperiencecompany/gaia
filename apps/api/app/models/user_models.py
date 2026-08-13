@@ -440,7 +440,12 @@ class UserDocument(MongoDocument):  # type: ignore[explicit-any]
     # These nested subdocuments are Mongo-owned JSON; the structured ones are
     # typed via TypedDict and validated at the consumption boundary, the rest
     # stay object-typed bags read through isinstance/accessor helpers.
-    onboarding: OnboardingDocument | None = None
+    # SkipValidation: legacy rows predate the OnboardingDocument shape (floats
+    # where ints are declared, string-shaped social_profiles, dict houses) and
+    # onboarding sits on the AUTH read path — validating would fail every such
+    # legacy user load. The TypedDict still checks reads statically; the
+    # structured blobs inside are model_validated at their consumption sites.
+    onboarding: Annotated[OnboardingDocument | None, SkipValidation()] = None
     provider_metadata: dict[str, object] | None = None
     hil_preferences: dict[str, object] | None = None
     notification_channel_prefs: dict[str, object] | None = None
@@ -472,7 +477,9 @@ class UserDocument(MongoDocument):  # type: ignore[explicit-any]
     highest_activity_tier: str | None = None
     highest_activity_tier_at: datetime | None = None
     # Nurture email sequence state (workers): completed_steps + send history.
-    nurture: NurtureState | None = None
+    # SkipValidation: same legacy-row argument as ``onboarding`` — rows written
+    # before NurtureState's shape was declared must still load.
+    nurture: Annotated[NurtureState | None, SkipValidation()] = None
 
 
 class OnboardingStatusResponse(BaseModel):  # type: ignore[explicit-any]

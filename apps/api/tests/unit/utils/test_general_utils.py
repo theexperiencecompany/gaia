@@ -674,3 +674,23 @@ class TestDescribeStructure:
         obj: dict[str, Any] = {"field": None}
         result = describe_structure(obj)
         assert "field" in result
+
+    def test_multipart_skips_non_dict_parts(self) -> None:
+        """A malformed part (not a dict) must be skipped, not crash the loop —
+        real Gmail payloads occasionally carry scalar entries in parts."""
+        plain = "survives a malformed sibling"
+        plain_encoded = base64.urlsafe_b64encode(plain.encode()).decode()
+        msg: dict[str, Any] = {
+            "payload": {
+                "parts": [
+                    "not-a-dict",
+                    None,
+                    {
+                        "mimeType": "text/plain",
+                        "body": {"data": plain_encoded},
+                    },
+                ]
+            }
+        }
+        result = decode_message_body(msg)
+        assert result == plain

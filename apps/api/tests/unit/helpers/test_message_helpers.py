@@ -1,5 +1,6 @@
 """Tests for app/helpers/message_helpers.py"""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import SystemMessage
@@ -8,6 +9,7 @@ import pytest
 from app.helpers.message_helpers import (
     _get_gaia_knowledge_section,
     _get_user_memories_section,
+    get_onboarding_system_prompt_if_applicable,
     create_system_message,
     format_calendar_event_context,
     format_files_list,
@@ -15,6 +17,7 @@ from app.helpers.message_helpers import (
     format_tool_selection_message,
     format_workflow_execution_message,
 )
+from app.models.user_models import OnboardingPhase, UserDocument
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -495,3 +498,60 @@ class TestFormatFilesList:
         result = format_files_list(files, conversation_id="conv123")
         assert "read the file at its path" in result
         assert "/workspace/sessions/conv123/user-uploaded/a.txt.summary.md" in result
+
+
+class TestGetOnboardingSystemPrompt:
+    """get_onboarding_system_prompt_if_applicable — onboarding/demo turns get
+    the profession/inbox-triage prompt; everything else gets None."""
+
+    async def test_onboarding_turn_builds_profession_context(self) -> None:
+        user = UserDocument(
+            id="u-1",
+            name="Alice",
+            onboarding={
+                "phase": OnboardingPhase.INITIAL,
+                "preferences": {"profession": "developer"},
+                "triage_summary": {"summary": "17 unread from work", "total_scanned": 40},
+            },
+        )
+        with (
+            patch(
+                "app.helpers.message_helpers.conversation_repository.get_onboarding_probe",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(is_onboarding_conversation=True, message_count=1),
+            ),
+            patch(
+                "app.helpers.message_helpers.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+        ):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u-1", "conv-1", latest_user_message="hello"
+            )
+
+        assert prompt is not None
+        assert "Profession: developer" in prompt
+        assert "Inbox summary: 17 unread from work" in prompt
+        assert "Alice" in prompt
+
+    async def test_no_profession_falls_back_to_not_specified(self) -> None:
+        user = UserDocument(id="u-1", onboarding={"phase": OnboardingPhase.INITIAL})
+        with (
+            patch(
+                "app.helpers.message_helpers.conversation_repository.get_onboarding_probe",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(is_onboarding_conversation=True, message_count=1),
+            ),
+            patch(
+                "app.helpers.message_helpers.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+        ):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u-1", "conv-1", latest_user_message="hello"
+            )
+
+        assert prompt is not None
+        assert "Profession: not specified" in prompt

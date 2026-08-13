@@ -41,6 +41,9 @@ def _make_sentry_loguru_sink() -> Callable[[object], None]:
     """
 
     def _sink(message: object) -> None:
+        # loguru passes its internal Message object (which exposes ``.record``);
+        # the type is private (no public import exists), so the object-shaped
+        # parameter is the honest surface and the record access is the seam.
         record = message.record  # type: ignore[attr-defined]
         if record["level"].no < 40:  # below ERROR — skip
             return

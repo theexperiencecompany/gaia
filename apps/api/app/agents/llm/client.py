@@ -553,10 +553,13 @@ def invoke_llm(  # type: ignore[explicit-any]
 # ``metadata.silent`` is the canonical location, the top-level key mirrors it for the
 # other consumers. Pass as ``config=SILENT_LLM_CONFIG``; it merges with the ambient run
 # config, so tracing and thread context are preserved.
-SILENT_LLM_CONFIG: RunnableConfig = {
-    "silent": True,
-    "metadata": {"silent": True},
-}  # type: ignore[typeddict-unknown-key]
+SILENT_LLM_CONFIG: RunnableConfig = cast(
+    RunnableConfig,
+    {
+        "silent": True,
+        "metadata": {"silent": True},
+    },
+)
 
 
 def metered_config(user_id: str) -> RunnableConfig:

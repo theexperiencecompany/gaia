@@ -5,7 +5,7 @@ This module provides functionality to remove unanswered tool calls from AI messa
 while preserving all other message types in their original order.
 """
 
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -64,7 +64,7 @@ def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> 
                 # Keep all other messages as-is (SystemMessage, HumanMessage, ToolMessage, etc.)
                 filtered_messages.append(msg)
 
-        return {**state, "messages": filtered_messages}  # type: ignore[return-value]
+        return cast(T, {**state, "messages": filtered_messages})
 
     except Exception as e:
         log.error(

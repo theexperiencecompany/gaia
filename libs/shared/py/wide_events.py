@@ -782,6 +782,18 @@ class WideEventLogger:
         if isinstance(category_list, list):
             category_list.append(entry)
         else:
+            if category_list is not None:
+                # A non-list value under a reserved errors/warnings/audit key
+                # means app code overwrote it — log the collision loudly instead
+                # of silently discarding the app's value (or crashing like the
+                # old setdefault().append did). Straight to loguru, never back
+                # through log.warning: a corrupt `warnings` key would recurse.
+                _loguru.opt(depth=1).warning(
+                    "wide_event category overwritten by a non-list value; discarding it — "
+                    "category={!r} value_type={}",
+                    category,
+                    type(category_list).__name__,
+                )
             fields[category] = [entry]
 
     def _bump(self, level: str) -> None:

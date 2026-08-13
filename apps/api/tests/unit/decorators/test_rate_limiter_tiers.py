@@ -18,6 +18,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     TieredRateLimiter,
 )
 from app.config.rate_limits import get_limits_for_plan
+from app.decorators.rate_limiting import LangChainRateLimitException
 from app.models.payment_models import PlanType
 
 
@@ -149,3 +150,16 @@ class TestTieredLimiterRealDecision:
 
         assert result["day"].limit == 200
         assert result["month"].limit == 6000
+
+
+class TestLangChainRateLimitException:
+    def test_plan_required_upgrade_message_names_the_plan(self) -> None:
+        exc = LangChainRateLimitException(
+            "chat", detail={"plan_required": "pro", "reset_time": "tomorrow"}
+        )
+        assert "Rate limit exceeded for chat." in str(exc)
+        assert "Upgrade to PRO" in str(exc)
+
+    def test_no_plan_required_no_upgrade_clause(self) -> None:
+        exc = LangChainRateLimitException("chat", detail={"limit": 10})
+        assert "Upgrade" not in str(exc)

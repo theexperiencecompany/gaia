@@ -73,11 +73,14 @@ def transform_gmail_message(msg: dict[str, object]) -> dict[str, object]:
         # Gmail API fallback — internalDate is string-millis, not an int.
         raw_internal = m.get("internalDate")
         if raw_internal:
-            if isinstance(raw_internal, (int, str)):
+            if isinstance(raw_internal, (int, float, str)):
                 try:
                     timestamp = int(raw_internal) / 1000
                     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, OverflowError, OSError):
+                    # OverflowError/OSError: fromtimestamp rejects out-of-range
+                    # timestamps on some platforms — master's broad except fell
+                    # back to the raw value here, so those must too.
                     pass
             return str(raw_internal)
         return ""

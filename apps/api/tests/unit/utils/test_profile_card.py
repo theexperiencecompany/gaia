@@ -7,8 +7,10 @@ from unittest.mock import AsyncMock, patch
 from bson import ObjectId
 import pytest
 
-from app.models.user_models import UserDocument
+from app.models.user_models import BioStatus, UserDocument
 from app.utils.profile_card import (
+    generate_holo_card_content,
+
     HOUSES,
     assign_random_house,
     generate_profile_card_design,
@@ -251,3 +253,34 @@ class TestGetUserMetadata:
 
         assert result.account_number == _EXPECTED_ACCOUNT_NUMBER
         assert result.member_since == _today()
+
+
+class TestGenerateHoloCardContent:
+    """The no-Gmail fallback path: an empty context summary returns the
+    profession-based phrase and a default bio without any LLM call."""
+
+    async def test_empty_summary_returns_no_gmail_fallback(self) -> None:
+        user = UserDocument(_id="u1", name="Alice", onboarding={"preferences": {"profession": "developer"}})
+        with patch(
+            "app.utils.profile_card.ainvoke_structured",
+            new_callable=AsyncMock,
+        ) as mock_llm:
+            phrase, bio, status = await generate_holo_card_content(
+                user_id="u1", context_summary="   ", user=user
+            )
+
+        mock_llm.assert_not_awaited()
+        assert status == BioStatus.NO_GMAIL
+        assert phrase == "Curious Developer"
+        assert isinstance(bio, str) and bio
+
+    async def test_missing_user_and_preferences_still_fall_back(self) -> None:
+        user = UserDocument(_id="u1")
+        with patch("app.utils.profile_card.ainvoke_structured", new_callable=AsyncMock):
+            phrase, bio, status = await generate_holo_card_content(
+                user_id="u1", context_summary="", user=user
+            )
+
+        assert status == BioStatus.NO_GMAIL
+        assert isinstance(phrase, str)
+        assert isinstance(bio, str) and bio

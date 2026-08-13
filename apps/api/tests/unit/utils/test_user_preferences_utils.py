@@ -10,6 +10,7 @@ from app.utils.user_preferences_utils import (
     format_profession_for_display,
     format_response_style_instruction,
     format_user_preferences_for_agent,
+    format_writing_style_for_prompt,
 )
 
 # ---------------------------------------------------------------------------
@@ -244,3 +245,48 @@ class TestFormatUserPreferencesForAgent:
         ):
             result = format_user_preferences_for_agent({"profession": "doctor"})
             assert result is None
+
+
+# ---------------------------------------------------------------------------
+# format_writing_style_for_prompt / _example_blocks_to_text
+# ---------------------------------------------------------------------------
+
+
+class TestFormatWritingStyleForPrompt:
+    def test_user_edited_summary_wins_over_summary(self) -> None:
+        text = format_writing_style_for_prompt(
+            {"summary": "learned", "user_edited_summary": "edited by user"}
+        )
+        assert "Style: edited by user" in text
+        assert "learned" not in text
+
+    def test_summary_used_when_no_user_edit(self) -> None:
+        text = format_writing_style_for_prompt({"summary": "concise and warm"})
+        assert "Style: concise and warm" in text
+
+    def test_example_blocks_render_greeting_signoff_and_name(self) -> None:
+        text = format_writing_style_for_prompt(
+            {
+                "summary": "warm",
+                "example": {
+                    "greeting": "Hi Alice,",
+                    "body": ["Hope you're well.", "Talk soon."],
+                    "signoff": "Best,",
+                    "name": "Bob",
+                },
+            }
+        )
+        assert "Hi Alice," in text
+        assert "Hope you're well." in text
+        assert "Best,\nBob" in text
+
+    def test_blank_greeting_and_signoff_are_skipped(self) -> None:
+        text = format_writing_style_for_prompt(
+            {"summary": "warm", "example": {"greeting": "  ", "signoff": "", "name": ""}}
+        )
+        assert "Example email" not in text
+
+    def test_empty_writing_style_returns_empty(self) -> None:
+        assert format_writing_style_for_prompt(None) == ""
+        assert format_writing_style_for_prompt({}) == ""
+        assert format_writing_style_for_prompt({"summary": ""}) == ""

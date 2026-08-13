@@ -11,6 +11,7 @@ from app.db.repositories.files import file_repository
 from app.decorators import with_doc, with_rate_limiting
 from app.models.files_models import FileDocument
 from app.templates.docstrings.file_tool_docs import SEARCH_UPLOADED_FILES
+from app.utils.json_helpers import text_bag
 from shared.py.wide_events import log
 
 
@@ -189,9 +190,17 @@ def _construct_content(
                     break
         elif isinstance(document_content, dict):
             data = document_content.get("data")
-            if isinstance(data, dict):
-                content += f"Document ID: {document_id}\n"
-                content += f"Description: {data.get('content', 'Description not available!')}\n\n"
+            # Always emit the document line — a dict-shaped document with a
+            # missing/non-dict data block still contributes its id and the
+            # placeholder, instead of silently dropping out of the context
+            # (the pre-strict behavior every caller expects).
+            description = (
+                text_bag(data, "content", "Description not available!")
+                if isinstance(data, dict)
+                else "Description not available!"
+            )
+            content += f"Document ID: {document_id}\n"
+            content += f"Description: {description}\n\n"
 
     log.info(f"{LogTag.TOOL} Constructed document content", content_length=len(content))
 

@@ -69,6 +69,10 @@ def _sheets_proxy(
 ) -> dict[str, object]:
     # proxy_request_sync returns object; every call site here treats the
     # Sheets/Drive proxy response as a JSON object, so narrow it once here.
+    # proxy_request_sync returns object; every call site here treats the
+    # Sheets/Drive proxy response as a JSON object, so narrow it once here —
+    # and fail loud instead of masking a non-object payload as an empty dict,
+    # which would make every caller report success on nothing.
     response = proxy_request_sync(
         user_id=user_id,
         toolkit=SHEETS_TOOLKIT,
@@ -77,7 +81,13 @@ def _sheets_proxy(
         body=body,
         query=query,
     )
-    return response if isinstance(response, dict) else {}
+    if not isinstance(response, dict):
+        raise AppError(
+            message=f"Sheets proxy returned a non-object payload ({type(response).__name__})",
+            why="the Sheets/Drive proxy response is a JSON object on every supported path",
+            fix="inspect the proxied endpoint's response shape",
+        )
+    return response
 
 
 def register_google_sheets_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]

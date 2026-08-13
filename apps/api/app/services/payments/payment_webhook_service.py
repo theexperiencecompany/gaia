@@ -220,8 +220,11 @@ class PaymentWebhookService:
     async def _get_user_email_from_metadata(self, metadata: dict[str, object]) -> str | None:
         """Get user email from metadata or database lookup."""
         user_id = metadata.get("user_id")
-        if isinstance(user_id, str) and user_id:
-            user = await user_repository.get(user_id)
+        if user_id is not None:
+            # Coerce, don't silently skip: we set this field as str(user_id) at
+            # checkout, so a provider-side type mangle (JSON number echo) is
+            # recovered by str() — and a malformed value just yields no match.
+            user = await user_repository.get(str(user_id))
             if user:
                 return user.email
         return None
@@ -342,7 +345,7 @@ class PaymentWebhookService:
         # Find user by email or metadata
         user_id = sub_data.metadata.get("user_id")
         user_email = sub_data.customer.email
-        if not isinstance(user_id, str) or not user_id:
+        if not user_id:
             user = await user_repository.get_by_email(user_email)
             if not user:
                 log.error(
@@ -356,6 +359,13 @@ class PaymentWebhookService:
                     subscription_id=sub_data.subscription_id,
                 )
             user_id = str(user.id)
+        else:
+            # Coerce rather than fall back to email: the metadata id IS the
+            # identity source for this subscription. We set it as str(user_id)
+            # at checkout, so a provider-side type mangle (JSON number echo)
+            # is recovered by str() — silently re-binding the subscription to
+            # whoever owns the customer email would be a worse failure mode.
+            user_id = str(user_id)
 
         # Create subscription record
         subscription_doc = {

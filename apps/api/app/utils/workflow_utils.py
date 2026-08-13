@@ -1,7 +1,9 @@
 """Workflow utility functions for GAIA workflow system."""
 
+from __future__ import annotations
+
 import asyncio
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
@@ -15,8 +17,15 @@ from app.models.workflow_models import (
     UpdateWorkflowRequest,
     Workflow,
 )
-from app.services.workflow.subagent_output import FinalizedOutput
 from shared.py.wide_events import log
+
+if TYPE_CHECKING:
+    # Imported under TYPE_CHECKING on purpose: importing this module at runtime
+    # runs app/services/workflow/__init__.py, which imports .service, which
+    # imports THIS module back — a circular import that broke every path
+    # reaching workflow_utils before workflow.service was loaded. The model is
+    # only used in annotations here.
+    from app.services.workflow.subagent_output import FinalizedOutput
 
 
 class WorkflowConfigError(Exception):

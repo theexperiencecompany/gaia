@@ -202,13 +202,20 @@ def _match_condition(record: JSONRecord, cond: dict[str, object]) -> bool:
     if op == "in":  # value is present in a list-valued field (e.g. labels)
         return isinstance(actual, list) and value in actual
     if op in ("gt", "lt"):
-        # Same-kind orderable scalars compare (strings lexicographically,
-        # numbers numerically); mixed kinds are a non-match, exactly like the
-        # runtime TypeError path.
+        # Same-kind orderable values compare (strings lexicographically,
+        # numbers numerically); same-kind lists compare lexicographically with
+        # the same TypeError-on-mixed-elements fallback master had; everything
+        # else (dicts — unordered in py3, mixed kinds) is a non-match, exactly
+        # like the runtime TypeError path.
         if isinstance(actual, str) and isinstance(value, str):
             return actual > value if op == "gt" else actual < value
         if isinstance(actual, (int, float)) and isinstance(value, (int, float)):
             return actual > value if op == "gt" else actual < value
+        if isinstance(actual, list) and isinstance(value, list):
+            try:
+                return bool(actual > value if op == "gt" else actual < value)
+            except TypeError:
+                return False
         return False
     return False
 

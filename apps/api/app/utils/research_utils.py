@@ -10,7 +10,7 @@ from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.constants.cache import SIX_HOUR_TTL
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
-from app.utils.json_helpers import int_bag, list_bag, text_bag
+from app.utils.json_helpers import float_bag, int_bag, list_bag, text_bag
 from shared.py.wide_events import log
 
 
@@ -125,7 +125,11 @@ def rank_and_deduplicate_urls(
                 score = 0.5
             if url in url_map:
                 entry = url_map[url]
-                entry["score"] = int_bag(entry, "score") + score
+                # float_bag, not int_bag: scores are floats (SearchResultItem.score
+                # is float 0.5 default, providers emit real similarity floats) —
+                # int_bag would treat every float as absent (0), resetting the
+                # accumulated score to the latest one and zeroing the sort key.
+                entry["score"] = float_bag(entry, "score") + score
                 entry["appearances"] = int_bag(entry, "appearances") + 1
             else:
                 url_map[url] = {
@@ -138,7 +142,7 @@ def rank_and_deduplicate_urls(
 
     ranked = sorted(
         url_map.values(),
-        key=lambda x: int_bag(x, "appearances") * 2 + int_bag(x, "score"),
+        key=lambda x: int_bag(x, "appearances") * 2 + float_bag(x, "score"),
         reverse=True,
     )
     return ranked[:max_urls]

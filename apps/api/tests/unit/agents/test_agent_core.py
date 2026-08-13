@@ -179,6 +179,38 @@ class TestCoreAgentLogic:
         assert mock_build_state.call_args.args[4] is trigger
 
     @pytest.mark.asyncio
+    async def test_workflow_trigger_stamps_workflow_routing_fields(self):
+        """A workflow-triggered run must carry workflow_id/title/notify on the
+        configurable — the background executor's delivery path routes on them."""
+        patches = _common_patches()
+        trigger = {
+            "type": "schedule",
+            "workflow_id": "wf-1",
+            "workflow_title": "Morning brief",
+            "workflow_notify_on_completion": False,
+        }
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+        ):
+            _, _, config = await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                trigger_context=trigger,
+            )
+
+        configurable = config["configurable"]
+        assert configurable["workflow_id"] == "wf-1"
+        assert configurable["workflow_title"] == "Morning brief"
+        assert configurable["workflow_notify_on_completion"] is False
+
+    @pytest.mark.asyncio
     async def test_log_set_called_with_agent_metadata(self):
         patches = _common_patches()
         with (

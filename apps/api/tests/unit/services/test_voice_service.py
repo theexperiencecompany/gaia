@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+import respx
 
 from app.constants.voices import DEFAULT_STARRED_VOICE_IDS, DEFAULT_VOICE_ID, VOICE_CATALOG
 from app.models.voice_models import ElevenLabsAccountVoice, ElevenLabsSharedVoice
@@ -307,3 +308,62 @@ class TestListVoices:
         option = next(v for v in result.voices if v.voice_id == entry["voice_id"])
         assert option.preview_url == "https://preview.example/rachel"
         assert option.languages == ["English", "German"]
+
+
+class TestElevenLabsFetchers:
+    """The HTTP fetchers trim the provider's raw voice dicts into our shape —
+    every non-dict entry in `voices` is dropped, and empty voice_ids are too."""
+
+    async def test_account_fetcher_trims_raw_voices(self, mock_settings) -> None:
+        from app.services.voice_service import _fetch_elevenlabs_voices
+
+        with respx.mock(assert_all_called=False) as router:
+            router.get("https://api.elevenlabs.io/v1/voices").mock(
+                return_value=httpx.Response(
+                    200,
+                    json={
+                        "voices": [
+                            {
+                                "voice_id": "v1",
+                                "name": "Rachel",
+                                "preview_url": "https://p/1.mp3",
+                                "extra": "ignored",
+                            },
+                            "not-a-dict",
+                            {"voice_id": "", "name": "empty-id"},
+                        ]
+                    },
+                )
+            )
+            voices = await _fetch_elevenlabs_voices()
+
+        # Non-dict entries are dropped; dict entries pass through as-is (the
+        # caller validates ids further down).
+        assert [v.voice_id for v in voices] == ["v1", ""]
+        assert voices[0].name == "Rachel"
+        assert voices[0].preview_url == "https://p/1.mp3"
+
+    async def test_shared_fetcher_trims_raw_voices(self, mock_settings) -> None:
+        from app.services.voice_service import _fetch_shared_voices
+
+        with respx.mock(assert_all_called=False) as router:
+            router.get("https://api.elevenlabs.io/v1/shared-voices").mock(
+                return_value=httpx.Response(
+                    200,
+                    json={
+                        "voices": [
+                            {
+                                "voice_id": "s1",
+                                "name": "Shared One",
+                                "public_owner_id": "owner-1",
+                            },
+                            None,
+                            {"voice_id": "s2", "name": "No owner"},
+                        ]
+                    },
+                )
+            )
+            voices = await _fetch_shared_voices()
+
+        # Only voices with a public owner pass the filter.
+        assert [v.voice_id for v in voices] == ["s1"]

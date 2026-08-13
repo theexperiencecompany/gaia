@@ -72,7 +72,12 @@ class DodoPaymentService:
 
         # Try cache first
         cached = await redis_cache.get(cache_key)
-        if isinstance(cached, list):
+        # An empty list is a miss, not a hit: `list_plans()` returning [] means
+        # the catalog had no active plans AT THAT MOMENT, and the only
+        # invalidation paths (subscription webhooks) cannot fire while it is
+        # empty — so caching the emptiness would keep a newly-added plan
+        # invisible for the full TTL. Only a non-empty list may short-circuit.
+        if isinstance(cached, list) and cached:
             try:
                 # Try to create PlanResponse objects from cached data
                 plan_responses = []

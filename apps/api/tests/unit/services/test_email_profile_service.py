@@ -17,6 +17,7 @@ from app.constants.email import (
 )
 from app.models.search_models import URLResponse
 from app.services.email_profile_service import (
+    _search_google_people,
     _domain_favicon_profile,
     _merge_profiles,
     _person_to_profile,
@@ -281,3 +282,37 @@ class TestDomainFaviconProfile:
 
         assert profile is not None
         assert profile.favicon == DOMAIN_FAVICON_URL_TEMPLATE.format(domain="acme-corp.com")
+
+
+class TestSearchGooglePeople:
+    """_search_google_people: warmup retry + non-dict results skipped."""
+
+    async def test_non_dict_results_are_skipped(self) -> None:
+        with patch(
+            "app.services.email_profile_service._people_search",
+            new_callable=AsyncMock,
+            return_value={
+                "results": [
+                    "not-a-dict",
+                    None,
+                    {
+                        "person": {
+                            "resourceName": "people/1",
+                            "names": [{"displayName": "Alice Example"}],
+                            "emailAddresses": [{"value": "alice@example.com"}],
+                        }
+                    },
+                ]
+            },
+        ), patch(
+            "app.services.email_profile_service._fetch_profile_photo",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            profile = await _search_google_people(
+                "u1", "people:searchContacts", "alice@example.com", "names,emailAddresses,photos"
+            )
+
+        assert profile is not None
+        assert profile.title == "Alice Example"
+        assert profile.website_name == "Google Contacts"

@@ -190,6 +190,20 @@ class TestSendStep:
         assert render_kwargs["cta_url"].startswith("https://app.example.com/c?")
         assert render_kwargs["cta_label"] == "Go"
 
+    async def test_user_without_email_is_skipped_loudly(self) -> None:
+        user = UserDocument(id="u-1", email=None)
+        step = _step()
+        with (
+            patch("app.services.nurture.service.send_email", new_callable=AsyncMock) as mock_send,
+            patch("app.services.nurture.service.render_email_template", return_value="<html>"),
+            patch("app.services.nurture.service.log") as mock_log,
+        ):
+            result = await _send_step(user, step)
+
+        assert result is None
+        mock_send.assert_not_awaited()
+        assert "no email address" in mock_log.warning.call_args.args[0]
+
     async def test_context_builder_overrides_cta_label(self) -> None:
         user = UserDocument(id="u-1", email="u@example.com")
         step = _step(cta_path="/c", cta_label="Default", context_builder="google_connection_status")

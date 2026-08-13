@@ -7,7 +7,7 @@ in test_timezone.py / test_cron_utils.py; here we assert the composition.
 
 from datetime import UTC, datetime
 
-from app.models.workflow_models import TriggerConfig, TriggerType
+from app.models.workflow_models import TriggerConfig, TriggerType, UpdateWorkflowRequest
 
 BASE = datetime(2025, 1, 1, 0, 0, tzinfo=UTC)  # midnight UTC
 
@@ -71,3 +71,14 @@ class TestTriggerConfigUpdateNextRun:
         tc.update_next_run(base_time=BASE)
         # Same base + zone => same next_run => no change on the second call.
         assert tc.update_next_run(base_time=BASE) is False
+
+
+class TestUpdateWorkflowRequestValidators:
+    def test_description_blank_and_whitespace_coerce_to_none(self) -> None:
+        assert UpdateWorkflowRequest(description="").description is None
+        assert UpdateWorkflowRequest(description="   ").description is None
+
+    def test_description_real_text_is_stripped(self) -> None:
+        assert UpdateWorkflowRequest(description="  plan the week  ").description == (
+            "plan the week"
+        )

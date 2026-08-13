@@ -91,6 +91,25 @@ def test_match_condition_type_mismatch_is_false_not_error() -> None:
     assert _match_condition({"n": "abc"}, {"field": "n", "op": "gt", "value": 5}) is False
 
 
+def test_match_condition_same_kind_lists_compare_lexicographically() -> None:
+    """List fields are legal Python comparisons — a list value query must
+    match lexicographically, not silently return False (regression: the strict
+    rewrite narrowed gt/lt to scalars only)."""
+    assert _match_condition({"scores": [2, 1]}, {"field": "scores", "op": "gt", "value": [1, 9]}) is True
+    assert _match_condition({"scores": [1, 1]}, {"field": "scores", "op": "lt", "value": [1, 9]}) is True
+    assert _match_condition({"scores": [1, 1]}, {"field": "scores", "op": "gt", "value": [1, 9]}) is False
+
+
+def test_match_condition_dict_values_are_a_non_match() -> None:
+    """dicts have no ordering in py3 — the comparison raises TypeError inside
+    the try and must surface as a non-match, not an error."""
+    assert _match_condition({"cfg": {"a": 1}}, {"field": "cfg", "op": "gt", "value": {"a": 2}}) is False
+
+
+def test_match_condition_mixed_element_lists_are_a_non_match() -> None:
+    assert _match_condition({"xs": [1, "a"]}, {"field": "xs", "op": "gt", "value": [1, 2]}) is False
+
+
 # --- _apply_query ------------------------------------------------------------ #
 
 

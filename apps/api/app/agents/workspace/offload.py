@@ -10,7 +10,7 @@ read path — no content parsing.
 from __future__ import annotations
 
 import json
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, cast
 
 from langchain_core.messages import ToolMessage
 
@@ -43,7 +43,7 @@ def read_offload(message: ToolMessage) -> OffloadInfo | None:
         return None
     info = kwargs.get(OFFLOAD_KEY)
     if isinstance(info, dict) and isinstance(info.get("path"), str):
-        return info  # type: ignore[return-value]
+        return cast(OffloadInfo, info)
     return None
 
 
@@ -58,7 +58,7 @@ def pop_offload_descriptor(result: object) -> OffloadInfo | None:
         return None
     info = result.pop(OFFLOAD_RESULT_KEY, None)
     if isinstance(info, dict) and isinstance(info.get("path"), str):
-        return info  # type: ignore[return-value]
+        return cast(OffloadInfo, info)
     return None
 
 

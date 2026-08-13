@@ -773,7 +773,13 @@ async def get_onboarding_system_prompt_if_applicable(
         name = user_doc.name or "there"
         prefs = OnboardingPreferences.model_validate(onboarding.get("preferences") or {})
         profession = prefs.profession or ""
-        triage_summary = text_bag(onboarding, "triage_summary")
+        # The persisted subdoc is a dict (PersistedTriageSummary) whose
+        # ``summary`` field is the text; reading the raw value directly
+        # renders a dict repr into the prompt. (A legacy plain-string shape
+        # cannot reach this line — UserDocument validation coerces the
+        # subdoc, and rows that fail it degrade in the caller's except.)
+        raw_triage = onboarding.get("triage_summary")
+        triage_summary = text_bag(raw_triage, "summary") if isinstance(raw_triage, dict) else ""
 
         onboarding_context = (
             f"Profession: {profession}" if profession else "Profession: not specified"

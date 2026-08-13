@@ -15,10 +15,12 @@ from unittest.mock import AsyncMock, patch
 from langgraph.checkpoint.base.id import uuid6
 import pytest
 
+from app.utils.errors import AppError
 from app.workers.tasks import checkpoint_retention_tasks as tasks
 from app.workers.tasks.checkpoint_retention_tasks import (
     _checkpoint_written_at,
     prune_checkpoint_versions,
+    sweep_orphan_threads,
     sweep_stale_spawn_threads,
 )
 
@@ -38,6 +40,7 @@ def uuid6_aged(days_ago: float) -> str:
 class FakeCursor:
     def __init__(self, rows: list[tuple[str, str]]) -> None:
         self.rows = rows
+        self.fetchone_rows: list[tuple[Any, ...] | None] = []
         self.executed: list[tuple[str, Any]] = []
 
     async def __aenter__(self) -> "FakeCursor":
@@ -51,6 +54,11 @@ class FakeCursor:
 
     async def fetchall(self) -> list[tuple[str, str]]:
         return self.rows
+
+    async def fetchone(self) -> tuple[Any, ...] | None:
+        if self.fetchone_rows:
+            return self.fetchone_rows.pop(0)
+        return self.rows[0] if self.rows else None
 
 
 class FakeConnection:
@@ -171,3 +179,42 @@ class TestNightlyJobComposition:
         spawn.assert_awaited_once()
         prune.assert_awaited_once()
         assert "stale_spawns=2" in summary
+
+    async def test_a_manager_without_a_pool_fails_loud(self) -> None:
+        """Pruning needs a live pool — a missing one is an infrastructure
+        failure that must name itself, not an AttributeError three frames later."""
+        manager = SimpleNamespace(pool=None)
+
+        with patch.object(tasks, "get_checkpointer_manager", AsyncMock(return_value=manager)):
+            with pytest.raises(AppError, match="no connection pool"):
+                await prune_checkpoint_versions({})
+
+
+class TestSweepOrphanThreads:
+    async def test_count_query_returning_no_row_fails_loud(self) -> None:
+        """count(*) always yields one row — None means the query/schema moved,
+        which must surface as a structured error instead of a TypeError."""
+        cursor = FakeCursor([("orphan_tid",)])
+        cursor.fetchone_rows = [None]  # fetchone() on the count query sees nothing
+        checkpointer = FakeCheckpointer()
+
+        with (
+            patch.object(
+                tasks.conversation_repository, "all_conversation_ids", AsyncMock(return_value=[])
+            ),
+        ):
+            with pytest.raises(AppError, match="count query returned no rows"):
+                await sweep_orphan_threads(FakePool(cursor), checkpointer)  # type: ignore[arg-type]
+
+    async def test_count_row_feeds_the_deleted_checkpoints_total(self) -> None:
+        cursor = FakeCursor([("orphan_tid",)])
+        cursor.fetchone_rows = [(3,)]
+        checkpointer = FakeCheckpointer()
+
+        with patch.object(
+            tasks.conversation_repository, "all_conversation_ids", AsyncMock(return_value=[])
+        ):
+            result = await sweep_orphan_threads(FakePool(cursor), checkpointer)  # type: ignore[arg-type]
+
+        assert result["orphan_checkpoints_deleted"] == 3
+        assert checkpointer.deleted == ["orphan_tid"]

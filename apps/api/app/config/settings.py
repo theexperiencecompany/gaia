@@ -49,10 +49,16 @@ class BaseAppSettings(BaseSettings):  # type: ignore[explicit-any]
 
     # For handling both normal env var loading and dict constructor
     @classmethod
-    def from_env(cls, **kwargs: Any) -> Self:  # type: ignore[explicit-any]
-        """Create settings from environment variables."""
+    def from_env(cls, **kwargs: object) -> Self:
+        """Create settings from environment variables.
+
+        ``model_validate``, not ``cls(**kwargs)``: the generated per-field
+        ``__init__`` cannot accept an ``object``-typed kwargs bag, and ``Any``
+        is not welcome here — ``model_validate`` takes the bag through
+        pydantic's own (untyped) validation seam, which is the runtime path
+        either way."""
         try:
-            return cls(**kwargs)
+            return cls.model_validate(kwargs)
         except Exception as e:
             log.warning(
                 f"{LogTag.STARTUP} Error creating settings",
@@ -62,7 +68,7 @@ class BaseAppSettings(BaseSettings):  # type: ignore[explicit-any]
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
-            defaults: dict[str, Any] = {}  # type: ignore[explicit-any]
+            defaults: dict[str, object] = {}
             for field_name, field_info in fields.items():
                 if field_name in kwargs:
                     continue
@@ -72,7 +78,7 @@ class BaseAppSettings(BaseSettings):  # type: ignore[explicit-any]
                     continue
                 if "str" in str(field_info.annotation):
                     defaults[field_name] = ""
-            return cls(**defaults, **kwargs)
+            return cls.model_validate({**defaults, **kwargs})
 
 
 class CommonSettings(BaseAppSettings):  # type: ignore[explicit-any]

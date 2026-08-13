@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 
 from app.constants.general import MAX_PAGE_NUMBER
+from app.models.blog_models import BlogPost
 
 BLOG_SERVICE = "app.api.v1.endpoints.blog"
 
@@ -42,3 +43,59 @@ class TestGetBlogs:
         assert resp.status_code == 200
         assert resp.json() == []
         get_all.assert_awaited_once_with(page=1, limit=20, include_content=False)
+
+
+class TestGetBlogsSearch:
+    """GET /api/v1/blogs?search=… — the search branch funnels to BlogService.search_blogs."""
+
+    async def test_search_routes_to_search_blogs(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{BLOG_SERVICE}.BlogService.search_blogs",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as search,
+            patch(
+                "app.decorators.caching.get_cache",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
+        ):
+            resp = await client.get("/api/v1/blogs?search=gaia")
+
+        assert resp.status_code == 200
+        assert resp.json() == []
+        search.assert_awaited_once_with("gaia", page=1, limit=20, include_content=False)
+
+
+class TestGetBlog:
+    """GET /api/v1/blogs/{slug}"""
+
+    async def test_slug_routes_to_get_blog_by_slug(self, client: AsyncClient) -> None:
+        blog = BlogPost(
+            id="b1",
+            title="Hello GAIA",
+            slug="hello-gaia",
+            date="2026-01-01",
+            authors=["team"],
+            category="product",
+            content="Welcome.",
+        )
+        with (
+            patch(
+                f"{BLOG_SERVICE}.BlogService.get_blog_by_slug",
+                new_callable=AsyncMock,
+                return_value=blog,
+            ) as get_slug,
+            patch(
+                "app.decorators.caching.get_cache",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
+        ):
+            resp = await client.get("/api/v1/blogs/hello-gaia")
+
+        assert resp.status_code == 200
+        get_slug.assert_awaited_once_with("hello-gaia")

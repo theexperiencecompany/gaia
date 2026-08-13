@@ -32,7 +32,8 @@ import functools
 from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
-from langchain_core.language_models import LanguageModelLike
+from langchain_core.language_models import LanguageModelInput, LanguageModelLike
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolCall, ToolMessage
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
@@ -86,11 +87,11 @@ from shared.py.wide_events import log
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
 
-def _prepare_fallback(  # type: ignore[explicit-any]
-    fallback_llm: Runnable[Any, Any] | None,
+def _prepare_fallback(
+    fallback_llm: BaseChatModel | None,
     tools_to_bind: list[BaseTool],
     model_configurations: AgentConfigurable,
-) -> Callable[[], Runnable[Any, Any]] | None:
+) -> Callable[[], Runnable[LanguageModelInput, AIMessage]] | None:
     """Factory that binds the default fallback model with the same tools as the
     primary. Returned as a zero-arg callable so the (per-turn, tool-list-sized)
     binding only happens if the primary actually fails. None when no fallback is
@@ -98,7 +99,7 @@ def _prepare_fallback(  # type: ignore[explicit-any]
     falling back to itself)."""
     if fallback_llm is None or is_default_model_config(model_configurations):
         return None
-    return lambda: fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+    return lambda: fallback_llm.bind_tools(tools_to_bind)
 
 
 def create_agent(  # type: ignore[explicit-any]
@@ -208,7 +209,7 @@ def create_agent(  # type: ignore[explicit-any]
     # Default model used as the last-resort fallback when the selected model
     # keeps failing; None when Google isn't configured (fallback then skipped).
     try:
-        fallback_llm: Runnable[Any, Any] | None = get_default_llm()  # type: ignore[explicit-any]
+        fallback_llm: BaseChatModel | None = get_default_llm()
     except LLMNotConfiguredError:
         fallback_llm = None
 

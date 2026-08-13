@@ -31,7 +31,7 @@ from app.services.integrations.integration_connection_service import (
 from app.services.integrations.user_integrations import add_user_integration
 from app.services.mcp.mcp_tools_service import get_integration_tools
 from app.utils.creator import format_creator
-from app.utils.json_helpers import int_bag, text_bag, text_opt_bag
+from app.utils.json_helpers import float_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -235,7 +235,10 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
             return SearchIntegrationsResponse(integrations=[], query=q)
 
         relevance_map = {
-            text_bag(r, "integration_id"): int_bag(r, "relevance_score")
+            # float_bag, not int_bag: similarity_search_with_relevance_scores
+            # returns FLOAT similarity scores — int_bag would zero every one
+            # and the marketplace would rank every integration at 0.0.
+            text_bag(r, "integration_id"): float_bag(r, "relevance_score")
             for r in results
             if isinstance(r, dict)
         }

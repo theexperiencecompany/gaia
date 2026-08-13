@@ -13,6 +13,7 @@ Covers:
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
+from langchain_core.callbacks import BaseCallbackHandler, BaseCallbackManager
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
 
@@ -25,6 +26,7 @@ from app.agents.llm.client import (
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
+    _with_usage_handler,
     ainvoke_llm,
     get_default_llm,
     init_llm,
@@ -648,3 +650,27 @@ class TestChatbot:
 
         with pytest.raises(RuntimeError, match="event loop is closed"):
             await chatbot([HumanMessage(content="hello")])
+
+
+class TestWithUsageHandler:
+    """_with_usage_handler — attach a metering handler without mutating the
+    caller's config, and reject config shapes it cannot merge."""
+
+    def test_non_manager_callbacks_value_fails_loud(self) -> None:
+        """callbacks must be a list or a BaseCallbackManager — anything else is
+        a config-shape bug and must name itself instead of AttributeError-ing
+        three frames later."""
+        handler = BaseCallbackHandler()
+        with pytest.raises(TypeError, match="Unexpected 'callbacks' value"):
+            _with_usage_handler({"callbacks": "not-a-manager"}, handler)
+
+    def test_manager_callbacks_is_copied_not_mutated(self) -> None:
+        """A live manager must be copied (callers share a module-level config),
+        so the original never grows the metering handler."""
+        handler = BaseCallbackHandler()
+        original = BaseCallbackManager(handlers=[])
+        merged = _with_usage_handler({"callbacks": original}, handler)
+
+        assert merged["callbacks"] is not original
+        assert merged["callbacks"].handlers == [handler]
+        assert original.handlers == []
