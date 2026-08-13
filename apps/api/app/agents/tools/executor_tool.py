@@ -99,7 +99,7 @@ async def call_executor(
     config: RunnableConfig,
     task: Annotated[
         str,
-        "The task to execute - describe what needs to be done",
+        "The task to execute",
     ],
     acceptance_criteria: Annotated[
         list[str],

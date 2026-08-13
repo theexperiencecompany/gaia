@@ -304,10 +304,10 @@ def _resolve_doc_type(doc_type: str) -> MemoryDocType | None:
 @with_doc(ADD_MEMORY)
 async def add_memory(
     config: RunnableConfig,
-    content: Annotated[str, "The fact to remember, as one self-contained assertion"],
+    content: Annotated[str, "The fact to remember"],
     folder: Annotated[
         str | None,
-        "Optional folder to file under (e.g. 'work/gaia'); omit to auto-categorize",
+        "Folder path; omit to auto-categorize",
     ] = None,
 ) -> str:
     user_id = get_user_id_from_config(config)
@@ -380,11 +380,11 @@ async def add_memory(
 @with_doc(SEARCH_MEMORY)
 async def search_memory(
     config: RunnableConfig,
-    query: Annotated[str, "Query string to search for"],
-    limit: Annotated[int, "Maximum number of results to return"] = 5,
+    query: Annotated[str, "Search query"],
+    limit: Annotated[int, "Max results"] = 5,
     folder: Annotated[
         str | None,
-        "Optional folder to search within (e.g. 'relationships'); includes subfolders",
+        "Folder path to scope to",
     ] = None,
 ) -> str:
     user_id = get_user_id_from_config(config)
@@ -567,7 +567,7 @@ async def search_journal(
 @tool
 async def search_conversations(
     config: RunnableConfig,
-    query: Annotated[str, "What to look for verbatim in past conversations"],
+    query: Annotated[str, "What to look for"],
 ) -> str:
     """Search past-conversation transcripts for verbatim details memory search
     does not surface ("that list you gave me", "what did we say about X")."""
@@ -609,7 +609,7 @@ async def search_conversations(
 @with_doc(GET_JOURNAL)
 async def get_journal(
     config: RunnableConfig,
-    date: Annotated[str, "The day to read, as YYYY-MM-DD"],
+    date: Annotated[str, "Day as YYYY-MM-DD"],
 ) -> str:
     user_id = get_user_id_from_config(config)
     if not user_id:
