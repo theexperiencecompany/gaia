@@ -32,6 +32,10 @@ const CLICK_SPEED = 900;
 const CLICK_RISE = 0.32;
 /** Fraction of the amplitude lost at the far edge of the canvas. */
 const CLICK_EDGE_FALLOFF = 0.45;
+/** Opacity of the un-blended white layer at the peak of the click wave. */
+const CLICK_GLOW_ALPHA = 0.9;
+/** Below this the white layer is invisible — skip the fill entirely. */
+const GLOW_EPSILON = 0.02;
 
 interface WordRaster {
   pixels: Uint8ClampedArray;
@@ -44,6 +48,8 @@ interface Dot {
   y: number;
   base: number;
   radius: number;
+  /** 0..1 share of the click wave at this dot, drives the white layer. */
+  glow: number;
 }
 
 /** A click-ripple wavefront expanding from a pointerdown point. */
@@ -195,7 +201,7 @@ function buildDots(
         (1 - 0.7 * smoothstep(0.2, 1.05, t));
       if (base < MIN_DOT_RADIUS) continue;
 
-      dots.push({ x, y, base, radius: base });
+      dots.push({ x, y, base, radius: base, glow: 0 });
     }
   }
   return dots;
@@ -214,6 +220,35 @@ function drawDots(ctx: CanvasRenderingContext2D, dots: Dot[]): void {
 }
 
 /**
+
+ * Draw the white layer that rides the click wave. It lives on its own canvas
+ * with NO blend mode, so where the wave peaks the dots read as plain white
+ * instead of the overlay-blended base — the blend appears to change as the
+ * ripple passes. Dots are bucketed by opacity so the whole layer still draws
+ * in a handful of batched paths rather than one fill per dot.
+ */
+function drawGlow(ctx: CanvasRenderingContext2D, dots: Dot[]): void {
+  const buckets = new Map<number, Dot[]>();
+  for (const dot of dots) {
+    if (dot.glow < GLOW_EPSILON) continue;
+    const step = Math.round(dot.glow * 10);
+    const bucket = buckets.get(step);
+    if (bucket) bucket.push(dot);
+    else buckets.set(step, [dot]);
+  }
+
+  for (const [step, bucketDots] of buckets) {
+    ctx.fillStyle = `rgba(255,255,255,${(step / 10) * CLICK_GLOW_ALPHA})`;
+    ctx.beginPath();
+    for (const dot of bucketDots) {
+      ctx.moveTo(dot.x + dot.radius, dot.y);
+      ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
+    }
+    ctx.fill();
+  }
+}
+
+/**
  * Pointer interaction: dots inside a circle around the cursor swell and
  * trail it smoothly as it moves over the wordmark, and a pointerdown sends a
  * wavefront rippling across the whole lockup. The ripple center follows the
@@ -221,10 +256,12 @@ function drawDots(ctx: CanvasRenderingContext2D, dots: Dot[]): void {
  * target, so the swell glides instead of snapping. The rAF loop runs while
  * the pointer is inside, a click wave is alive, or any dot is still easing
  * back to rest; returns a cleanup that detaches listeners and cancels it.
+
  */
 function attachPointerInteraction(
   canvas: HTMLCanvasElement,
   ctx: CanvasRenderingContext2D,
+  glowCtx: CanvasRenderingContext2D,
   dots: Dot[],
   cssW: number,
   cssH: number,
@@ -281,24 +318,31 @@ function attachPointerInteraction(
       // Sum every active click wave: each dot swells on a sin bump as the
       // wavefront reaches it (arrival time = distance / CLICK_SPEED), so the
       // ripple physically travels across the whole lockup.
+      let click = 0;
       for (const wave of waves) {
         const d = Math.hypot(dot.x - wave.x, dot.y - wave.y);
         const phase =
           ((now - wave.start) / 1000 - d / CLICK_SPEED) / CLICK_RISE;
         if (phase < 0 || phase > 1) continue;
         const edgeFalloff = 1 - CLICK_EDGE_FALLOFF * smoothstep(0, cssW, d);
-        target += CLICK_AMP * edgeFalloff * Math.sin(Math.PI * phase);
+        click += CLICK_AMP * edgeFalloff * Math.sin(Math.PI * phase);
       }
+      target += click;
 
       const targetRadius = dot.base * (1 + target);
       dot.radius += (targetRadius - dot.radius) * ease;
       if (Math.abs(targetRadius - dot.radius) > SETTLE_EPSILON) {
         settled = false;
       }
+      // The white layer tracks the click wave only — hovering swells the
+      // dots but must not repaint them, so the two reads stay distinct.
+      dot.glow = Math.min(1, click / CLICK_AMP);
     }
 
     ctx.clearRect(0, 0, cssW, cssH);
     drawDots(ctx, dots);
+    glowCtx.clearRect(0, 0, cssW, cssH);
+    drawGlow(glowCtx, dots);
 
     const active = waves.length > 0 || pointerInside || !settled;
     raf = active ? requestAnimationFrame(frame) : 0;
@@ -380,13 +424,15 @@ function attachPointerInteraction(
  */
 export function FooterWordmark() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const glowRef = useRef<HTMLCanvasElement>(null);
   const probeRef = useRef<HTMLSpanElement>(null);
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    const glowCanvas = glowRef.current;
     const probe = probeRef.current;
-    if (!canvas || !probe) return;
+    if (!canvas || !glowCanvas || !probe) return;
 
     let cancelled = false;
     let detachInteraction: (() => void) | null = null;
@@ -414,20 +460,23 @@ export function FooterWordmark() {
       canvas.width = Math.round(cssW * dpr);
       canvas.height = Math.round(cssH * dpr);
       canvas.style.height = `${cssH}px`;
+      glowCanvas.width = canvas.width;
+      glowCanvas.height = canvas.height;
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      const glowCtx = glowCanvas.getContext("2d");
+      if (!ctx || !glowCtx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      glowCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const dots = buildDots(raster, cssW, cssH, cell);
-      if (shouldReduceMotion) {
-        drawDots(ctx, dots);
-        return;
-      }
-
       drawDots(ctx, dots);
+      glowCtx.clearRect(0, 0, cssW, cssH);
+      if (shouldReduceMotion) return;
+
       detachInteraction = attachPointerInteraction(
         canvas,
         ctx,
+        glowCtx,
         dots,
         cssW,
         cssH,
@@ -458,13 +507,26 @@ export function FooterWordmark() {
         aria-hidden
         className="absolute h-0 w-0 overflow-hidden font-serif font-bold"
       />
-      {/* Reserved aspect ratio prevents layout shift before the first draw. */}
-      <canvas
-        ref={canvasRef}
-        aria-hidden
-        className="block w-full"
-        style={{ aspectRatio: "23 / 4" }}
-      />
+      {/* Two stacked layers, because a canvas can only carry one blend mode:
+          the base halftone blends with the wallpaper, and the click ripple
+          fades in an un-blended white copy of the same dots on top, so the
+          wave reads as white as it travels. `relative` (no z-index) keeps
+          both blending against the footer wallpaper — a stacking context here
+          would isolate them and kill the blend entirely. */}
+      <div className="relative">
+        {/* Reserved aspect ratio prevents layout shift before the first draw. */}
+        <canvas
+          ref={canvasRef}
+          aria-hidden
+          className="block w-full mix-blend-overlay"
+          style={{ aspectRatio: "23 / 4" }}
+        />
+        <canvas
+          ref={glowRef}
+          aria-hidden
+          className="pointer-events-none absolute inset-0 block h-full w-full"
+        />
+      </div>
     </>
   );
 }

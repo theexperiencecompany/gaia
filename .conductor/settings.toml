@@ -3,3 +3,8 @@
 [scripts]
 setup = "mise trust -a && mise run wt:env && mise run setup:deps"
 run = "mise dev"
+
+[environment_variables]
+CLAUDE_CODE_ENABLE_TELEMETRY = "0"
+OTEL_METRICS_EXPORTER = "none"
+OTEL_LOGS_EXPORTER = "none"

@@ -113,7 +113,7 @@ function DemoCtaIcon({
           alt=""
           width={16}
           height={16}
-          style={{ borderRadius: 4 }}
+          className="rounded"
         />
       );
     default: {
