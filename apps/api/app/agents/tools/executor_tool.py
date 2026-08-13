@@ -107,9 +107,7 @@ async def call_executor(
     ],
     verbatim_request: Annotated[
         str | None,
-        "The user's exact original request, word for word, as they typed it "
-        "(not your rewritten task). Pass it through so the executor sees the "
-        "verbatim ask alongside your composed task.",
+        "The user's exact request, word for word.",
     ] = None,
     active_todo_id: Annotated[
         str | None,
