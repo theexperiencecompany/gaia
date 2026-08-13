@@ -23,6 +23,7 @@ import type { ContentCreator } from "@/types/shared/contentTypes";
 import { formatRunCount } from "@/utils/formatters";
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "../../triggers/utils";
+import { isSystemCreator } from "../../utils/creator";
 import {
   ActivationStatus,
   CreatorAvatar,
@@ -323,7 +324,11 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
 
       <div className="mt-auto">
         <div className="mt-1 flex items-center justify-between gap-2">
-          <div className="space-y-1">
+          <div className="min-w-0 space-y-1">
+            {shouldShowCreator && creator && (
+              <CreatorAvatar creator={creator} showName />
+            )}
+
             {shouldShowTrigger && triggerDisplay && (
               <TriggerDisplay
                 triggerType={workflow?.trigger_config.type || "manual"}
@@ -356,9 +361,6 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
 
           <div className="flex items-center gap-3">
             {workflow?.is_system_workflow && <SystemWorkflowChip />}
-            {shouldShowCreator && creator && (
-              <CreatorAvatar creator={creator} showName />
-            )}
 
             {resolvedAction !== "none" && (
               <span className="relative z-[2]">
@@ -439,9 +441,11 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     propCreator || communityWorkflow?.creator || workflow?.creator;
 
   const shouldShowTrigger = showTrigger ?? (variant === "user" && !!workflow);
+  // A byline credits a community author; our own workflows don't need one.
   const shouldShowCreator =
-    showCreator ??
-    ((variant === "community" || variant === "explore") && !!creator);
+    (showCreator ?? variant === "community") &&
+    !!creator &&
+    !isSystemCreator(creator);
   const shouldShowActivation =
     showActivationStatus ?? (variant === "user" && !!workflow);
 

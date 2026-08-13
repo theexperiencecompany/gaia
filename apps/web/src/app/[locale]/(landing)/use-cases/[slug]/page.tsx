@@ -172,6 +172,7 @@ async function resolveUseCase(slug: string): Promise<ResolvedUseCase> {
           slug: found.slug,
           steps: found.steps,
           creator: found.creator,
+          total_executions: found.total_executions,
         } as UseCase,
         communityWorkflow: null,
         redirectTo: null,

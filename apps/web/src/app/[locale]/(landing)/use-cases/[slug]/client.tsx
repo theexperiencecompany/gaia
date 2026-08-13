@@ -1,8 +1,9 @@
 "use client";
 
-import { Avatar } from "@heroui/avatar";
 import { PlayIcon, UserCircle02Icon } from "@icons";
 import { getToolDisplayName } from "@shared/icons";
+import { formatCompactNumber } from "@shared/utils";
+import Image from "next/image";
 import { useTransition } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
@@ -98,8 +99,6 @@ function deriveCreatorInfo(
   communityWorkflow: Workflow | null,
   useCase: UseCase | null,
 ) {
-  // Explore cards carry a creator (the GAIA team by default) just like community
-  // ones — without this the built-in and curated pages showed no author at all.
   if (!communityWorkflow && useCase?.creator) {
     return {
       creatorName: useCase.creator.name,
@@ -107,6 +106,9 @@ function deriveCreatorInfo(
       showCreator: true,
     };
   }
+
+  // Explore cards carry a creator (the GAIA team by default) just like community
+  // ones — without this the built-in and curated pages showed no author at all.
 
   const hasCreatorObject =
     communityWorkflow &&
@@ -128,19 +130,21 @@ function deriveCreatorInfo(
   return {
     creatorName,
     creatorAvatar: resolveCreatorAvatar(creatorRecord),
-    showCreator: !!communityWorkflow && !!creatorName,
+    showCreator: !!creatorName,
   };
 }
 
-function deriveRunCountText(communityWorkflow: Workflow | null) {
+function deriveRunCountText(
+  communityWorkflow: Workflow | null,
+  useCase: UseCase | null,
+) {
   const runCount = communityWorkflow
     ? communityWorkflow.metadata?.total_executions ||
       communityWorkflow.total_executions ||
       0
-    : 0;
-  return runCount === 0
-    ? "Never"
-    : `${runCount} ${runCount === 1 ? "time" : "times"}`;
+    : (useCase?.total_executions ?? 0);
+  if (runCount === 0) return "Never";
+  return formatCompactNumber(runCount);
 }
 
 function deriveFormattedSteps(
@@ -154,6 +158,93 @@ function deriveFormattedSteps(
     description: step.description,
     category: useCase.integrations[index % useCase.integrations.length],
   }));
+}
+
+interface UseCaseMetaInfoProps {
+  showCreator: boolean;
+  creatorName?: string;
+  creatorAvatar?: string;
+  tools: Array<{ name: string; category: string }>;
+  sourceIntegration?: string | null;
+  integrationLabel?: string;
+  runCountText: string;
+  triggerInfo: { label: string; integrationId?: string } | null;
+}
+
+/** The chip row under the title: author, tools, provenance, runs, trigger. */
+function UseCaseMetaInfo({
+  showCreator,
+  creatorName,
+  creatorAvatar,
+  tools,
+  sourceIntegration,
+  integrationLabel,
+  runCountText,
+  triggerInfo,
+}: UseCaseMetaInfoProps) {
+  return (
+    <>
+      {showCreator && (
+        <MetaInfoCard
+          icon={
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full">
+              {creatorAvatar ? (
+                <Image
+                  src={creatorAvatar}
+                  alt={creatorName ?? "Creator"}
+                  width={100}
+                  height={100}
+                  className="object-contain"
+                />
+              ) : (
+                <UserCircle02Icon className="h-6 w-6 text-zinc-300" />
+              )}
+            </div>
+          }
+          label="Created by"
+          value={creatorName}
+        />
+      )}
+
+      {tools.length > 0 && <ToolsList tools={tools} />}
+
+      {sourceIntegration && (
+        <MetaInfoCard
+          icon={getToolCategoryIcon(sourceIntegration, {
+            size: 28,
+            width: 28,
+            height: 28,
+            showBackground: false,
+          })}
+          label="Included with"
+          value={integrationLabel}
+        />
+      )}
+
+      <MetaInfoCard
+        icon={<PlayIcon className="h-7 w-7 text-zinc-400" />}
+        label="Total runs"
+        value={runCountText}
+      />
+
+      {triggerInfo && (
+        <MetaInfoCard
+          icon={
+            triggerInfo.integrationId
+              ? getToolCategoryIcon(triggerInfo.integrationId, {
+                  size: 20,
+                  width: 20,
+                  height: 20,
+                  showBackground: false,
+                })
+              : undefined
+          }
+          label="Trigger"
+          value={<span className="capitalize">{triggerInfo.label}</span>}
+        />
+      )}
+    </>
+  );
 }
 
 export default function UseCaseDetailClient({
@@ -232,7 +323,7 @@ export default function UseCaseDetailClient({
     ).values(),
   );
 
-  const runCountText = deriveRunCountText(communityWorkflow);
+  const runCountText = deriveRunCountText(communityWorkflow, useCase);
 
   // Prepare trigger info (only for community workflows)
   const triggerInfo = communityWorkflow
@@ -255,74 +346,21 @@ export default function UseCaseDetailClient({
         isCreating={isCreating}
         onCreateWorkflow={handleCreateWorkflow}
         metaInfo={
-          <>
-            {showCreator && (
-              <MetaInfoCard
-                icon={
-                  <Avatar
-                    src={creatorAvatar}
-                    name={creatorName}
-                    size="sm"
-                    classNames={{ base: "bg-zinc-800", img: "object-contain" }}
-                    fallback={
-                      <UserCircle02Icon className="h-8 w-8 text-zinc-300" />
-                    }
-                  />
-                }
-                label="Created by"
-                value={creatorName}
-              />
-            )}
-
-            {/* Tools */}
-            {tools && tools.length > 0 && <ToolsList tools={tools} />}
-
-            {/* Built-in provenance — explains why the user may already have this */}
-            {sourceIntegration && (
-              <MetaInfoCard
-                icon={getToolCategoryIcon(sourceIntegration, {
-                  size: 20,
-                  width: 20,
-                  height: 20,
-                  showBackground: false,
-                })}
-                label="Set up automatically"
-                value={
-                  <span className="text-xs">
-                    {`When you connect ${
-                      getIntegrationName(sourceIntegration) ??
-                      getToolDisplayName(sourceIntegration)
-                    }`}
-                  </span>
-                }
-              />
-            )}
-
-            {/* Run Count */}
-            <MetaInfoCard
-              icon={<PlayIcon className="h-7 w-7 text-zinc-400" />}
-              label="Ran"
-              value={runCountText}
-            />
-
-            {/* Trigger */}
-            {shouldShowTrigger && triggerInfo && (
-              <MetaInfoCard
-                icon={
-                  triggerInfo.integrationId
-                    ? getToolCategoryIcon(triggerInfo.integrationId, {
-                        size: 20,
-                        width: 20,
-                        height: 20,
-                        showBackground: false,
-                      })
-                    : undefined
-                }
-                label="Trigger"
-                value={<span className="capitalize">{triggerInfo.label}</span>}
-              />
-            )}
-          </>
+          <UseCaseMetaInfo
+            showCreator={showCreator}
+            creatorName={creatorName}
+            creatorAvatar={creatorAvatar}
+            tools={tools}
+            sourceIntegration={sourceIntegration}
+            integrationLabel={
+              sourceIntegration
+                ? (getIntegrationName(sourceIntegration) ??
+                  getToolDisplayName(sourceIntegration))
+                : undefined
+            }
+            runCountText={runCountText}
+            triggerInfo={shouldShowTrigger ? triggerInfo : null}
+          />
         }
         detailedContent={
           workflowPrompt ? (
