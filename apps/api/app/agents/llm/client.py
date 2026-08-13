@@ -420,9 +420,6 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
         stream_usage=True,
         max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
         api_key=settings.OPENROUTER_API_KEY,
-        # Provider-routing pin: without it OpenRouter rotates this model id
-        # across upstreams and the per-upstream prompt cache never chains
-        # (measured: unpinned flapped 0/0/99/99/99/0; pinned holds 99-100%).
     )
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).

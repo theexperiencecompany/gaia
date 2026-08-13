@@ -143,12 +143,12 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # (see agents/llm/vision/capability.py).
 DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
 # No explicit provider routing for the default DeepSeek lane: OpenRouter's
-# DEFAULT routing (price- and availability-weighted) already picks the best
-# provider, and the session_id sticky-routing key on every request (see
-# build_agent_config) pins follow-ups to the provider holding the warm
-# prompt cache. An explicit `sort: "price"` was measured WORSE (35.6%): the
-# per-request re-sort rotates providers and defeats the stickiness. Measured
-# with the session_id alone: 0/100/99/99/99/99/99 on a growing conversation.
+# default (price- and availability-weighted) routing + the session_id sticky
+# key on every request measured BEST on the real full graph (82.2% total,
+# 83-88% steady-state). The first-party `only` pin was measured WORSE on the
+# real graph (64-66%: the pinned upstream's cache state is colder and the
+# conversation's segments still intermittently fail to join), even though it
+# is rock-stable in isolation — the isolation is not the graph.
 # A separate id in the same series as the default, used by the auxiliary
 # one-shot calls (memory pipeline, follow-ups, vision, …). OpenRouter serves
 # it as a DIFFERENT checkpoint of the v4-flash series ("0423", vs the default's
