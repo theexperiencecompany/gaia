@@ -1,118 +1,808 @@
 {
   "entries": [
     {
-      "path": "apps/api/app/agents/core/nodes/filter_messages.py",
+      "path": "apps/api/app/agents/core/graph_manager.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "5a26ecd871c01386ef366e90c893df9b827501970106a62ce15485135d044e48"
+      "hash": "97707380ed1506f1c250e98c52c0e8f68b3730b756092b37968cff666d5244c1"
+    },
+    {
+      "path": "apps/api/app/agents/core/nodes/follow_up_actions_node.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "007248f9e739b8228107e9900b4c4077033b83eb987005f3c8159b4b2e938a5d"
     },
     {
       "path": "apps/api/app/agents/core/subagents/base_subagent.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "bfe247335873bde464c83ca483e6d415ae07d90380d2d4d0b3795ba5ca8560e0"
+      "hash": "7c757be3d0abce31af457c2b6cdd9368061c66d22f98a15776ef66cc4d03572b"
     },
     {
       "path": "apps/api/app/agents/core/subagents/provider_subagents.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "85e6612479e767a1801652051be7829f225ed05c482f98b611df87821a33c519"
+      "hash": "c74201e74a5bd4006946191e63999c5f5bac4573d0b9becefe639b943c39a8dc"
     },
     {
       "path": "apps/api/app/agents/core/subagents/spawn_agent.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "2ae36b154a8d9cd841371af1614ff8e638ae5964cb549e00af37a1984d844d00"
+      "hash": "0e21202a1ada26faaa3d271ffab0fff47d55a2700a41942e88c44be52f5d2b00"
     },
     {
       "path": "apps/api/app/agents/llm/client.py",
       "kind": "type-ignore",
+      "count": 2,
+      "hash": "cd0b77f7b7ccbf8608604edfd9e6c24376a51af0a9945c66a6736c574a4fc6a5"
+    },
+    {
+      "path": "apps/api/app/agents/memory/profile_extractor.py",
+      "kind": "type-ignore",
       "count": 1,
-      "hash": "b58da247fb22df73c90a962716e6da0e83db1bd493cd0cb09aaf834066a1cc8f"
+      "hash": "4f0f4e38da2b6189e54fb8d0b180e271b9f2fc8dc5b2724abf60a6e752767ad2"
+    },
+    {
+      "path": "apps/api/app/agents/middleware/compaction.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "e488b02994dc2aef51a0eecb7ed28e8bccb88ea32f65bd474a7efa1e391f7e3f"
+    },
+    {
+      "path": "apps/api/app/agents/middleware/hil_approval.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "2cf0b1313ee1bf1b4ef643b2814ef92757495714f240a8e282e6d656d7344aaf"
+    },
+    {
+      "path": "apps/api/app/agents/middleware/loop_guard.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "817b536d2d536e1abbd786ec5e9cca620a7d4b26c19ceb448c01ed64704215c0"
+    },
+    {
+      "path": "apps/api/app/agents/middleware/media.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "6a274a37bbfe5aa0e8d34e0c770085a97d73414f5d48c6a8e8f23cb9dc28a7ab"
     },
     {
       "path": "apps/api/app/agents/middleware/runtime_adapter.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "0430daf8910ba71bbcc9e6e8c5049c3a0a64c7cbfefaaf9a1c5152a36b69f2eb"
+      "hash": "27f4b308ae76ba78d7545eb22d40c02749ab45e7d028b054756b2f358e0beed3"
     },
     {
-      "path": "apps/api/app/agents/tools/coding/bash_tool.py",
+      "path": "apps/api/app/agents/middleware/subagent_join.py",
       "kind": "type-ignore",
-      "count": 4,
-      "hash": "bbc965189efe67b272de38198ba5dcc17a8b036d8f0f339e3a9f00bc3078bcb7"
+      "count": 1,
+      "hash": "b8fb83525d16a61f05b0ba44bf175782c26d2dba8de0c980576dc1f0237f8cea"
+    },
+    {
+      "path": "apps/api/app/agents/middleware/summarization.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "c631ecc580124df32eb08bc54e023e4044a7d202959d8896ba9b1dd8d9ffae50"
+    },
+    {
+      "path": "apps/api/app/agents/skills/models.py",
+      "kind": "type-ignore",
+      "count": 13,
+      "hash": "422eebf9a02d2987514668c0505783f9f5fd5b9a33a018ac3e9384f66fd9656d"
+    },
+    {
+      "path": "apps/api/app/agents/tools/core/retrieval.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "0971ee675c922f069ea0a48cecee53ac1ae379b7a8bbe3f3c6cbeb74af6a823a"
     },
     {
       "path": "apps/api/app/agents/tools/executor_tool.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "8ade65a54882f50e518a69042bea38aff8ff38267b309754300767d66b494209"
+      "hash": "5d962a0499eb868772e880dd671e94e2cf784461ab97eb1003e3f5cba3946166"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/airtable_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "38c3bff8e25e6ed9eb26c8dcd07dd0b0e946b204502bd1ac0a7fbeacc1e673f1"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/asana_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "fb74a4c0ff8dc4bf36bf74d344c069c3b71b04101d4e7a9b83d29ad756a421d8"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/calendar_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "af6279839fe567f7c1dfed54c7c9abee64bf408358cada4f0d9d9f9b37c46a19"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/clickup_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "4246628dc24aee8a1f6ac73d7b2294699b843a21e890a18c9f731e75433d24f5"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/github_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "329f133123921eb4e9f52a9f320716f0781acd74004dae3d57be78b88e603c26"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/google_docs_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "ee39f68cc0d2a7a5aa9917d38defd0a7e4707c22bdce06c713d611db755608c1"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/google_maps_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "4428a4f700bd4cfed62b2dc245e03f56f2cbc95d50d5725d74807cd9306d9228"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/google_meet_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "0ea6f55d44bb3d2271e805da0b3c07ec53d2d39f0c1502dd758bf48f7be0caf0"
     },
     {
       "path": "apps/api/app/agents/tools/integrations/google_sheets_tool.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "e23d5936894802f4815d8a914779f5bf0e168c5e54fada2917d36faf36f6b834"
+      "hash": "bf1b9243f58f09471c41873f6c5b1512a778fd7a97fb95bfbac0e06002dd84c1"
     },
     {
-      "path": "apps/api/app/agents/workspace/offload.py",
+      "path": "apps/api/app/agents/tools/integrations/google_tasks_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "e1d4210911e001b9f2067425ef734a202ffa2522110d7f00475f7a8ebfda1ad7"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/hubspot_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "d153041e48c7ef8c9cecd595d67ea90e4d34398bf1aef822736fe969b046cd06"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/instagram_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "df559a68b5a95656b80c82ddf94e662bda16c06a0639d8ed39ffe3cebe4685b5"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/linear_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "a6fdaf99025889d4f49da69b30e93e49886e1d5e72f1a53b3ecfee39fca43b50"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/linkedin_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "dd1a3288d6c91ca3d21460261d0af98defa96d3dd742cd18d9fef6c61be5a537"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/microsoft_teams_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "6f1dbb1212b030487c20923519c89578f5215bc9bd9a03f68ac1f1ad4df24711"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/notion_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "6dfe8d67d056d2e3bd15171026479ef265fe8ee654f10eb8fd19ad29d5f9a055"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/reddit_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "634e1e23f81c25354f80bbc5481823d75c08e80b1097a4218e54a3aa98643d58"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/slack_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "f626a91f7279bdca98c83b8de3fac33a0162d91b62f8adf7c724d79d3a889bca"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/todoist_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "8acbf900975ecab85f36b6d5b7f4f1632af3c89080db9264a343515a27f0dd5c"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/trello_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "80dc49ee2228da8fd9dc5f3408a734af6ddf57a6338328fc2d49e8a607a0e404"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/twitter_tool.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "2d4a32104b1115711d941d61668b6c0bf6b59d636c7a4949abe1adeb94ab82f8"
+    },
+    {
+      "path": "apps/api/app/agents/tools/integrations/urgency_tool.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "397678f2aad5010ad7d16a3d974896ce29455c9ca3815dc2a0c4a4da40735dcd"
+      "hash": "26f93f7ba73a31d3cf5ed91fb031479b6a1096ae6f6759cc341eeb1e27c15d62"
+    },
+    {
+      "path": "apps/api/app/api/v1/endpoints/onboarding.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "f4c1f28ca9ef3cc13d44e9efcb9eb52f57d858f5a4e1e5a12b014ec50622fdce"
+    },
+    {
+      "path": "apps/api/app/api/v1/endpoints/sessions.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "7f26c1ad75c2b98665fcdebcb1d8a26e1b47c20485c0f2e3e2a6715764263f26"
+    },
+    {
+      "path": "apps/api/app/config/rate_limits.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "4432add21c890199d07aa273670d0515755df0531a0e3546790aa593e35668de"
     },
     {
       "path": "apps/api/app/config/sentry.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "53f237067c9f8bb5113bbcf6833cb4b57731121766e04f99a9ba8a3ba77b4af7"
+      "hash": "40298f8410f58d494398cc8d9354e0231eabe8d7711ef9395420e25e3c0b8a06"
     },
     {
       "path": "apps/api/app/config/settings.py",
       "kind": "type-ignore",
-      "count": 8,
-      "hash": "bd139c266b7e7012337bd2128edb892ec645e090acfc2014aab69560c0ac228a"
+      "count": 12,
+      "hash": "583c3a10de9e7a2697bd6fcdff3bc43a62437379c37fdeb078f7a3e19ae7858d"
     },
     {
       "path": "apps/api/app/core/app_factory.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "bef75b2778c5fc1ef4e22d8a10cb160b9bd5224d8f6817e1c987474e271b4660"
+      "hash": "8cccdf603f8c042ed695fae9bfc3039a04022b2f5a9bea8725f4a3c5bdc950c0"
     },
     {
       "path": "apps/api/app/db/chroma/chroma_store.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "9720777cdb75a58d0fb873dce2f2dc2b007ffbc03aab5e20a81bdb5ddf29e918"
+      "hash": "377f23c39a5d6ebd424f5c7a5d094421f86d86ab752accdfae9c7bfb6dfb0d3e"
     },
     {
       "path": "apps/api/app/db/chroma/chromadb.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "66710549c96d2a251fd8b4d0d9b9fc21c064989bf39bb4dfbd308fd19960fa09"
+      "hash": "6d1a19fa5614ff6ab2970482c1813b78cf4effc45478ea828135a1d85e3dbcae"
+    },
+    {
+      "path": "apps/api/app/db/mongodb/indexes.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "08cd68f98c76cb364bddd7f5dc1d88c4ae658493a522754174ba4b2b76481840"
+    },
+    {
+      "path": "apps/api/app/db/redis.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "182014e40f1131fc1f7ff2500a1f94f70a15c88e53b7b8d457659c6c9cfdad3b"
+    },
+    {
+      "path": "apps/api/app/db/repositories/base.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "5e7084ea8e4a0eae9281382beab8af053ec9d1318d4de6ca212849d20f0ae3b7"
+    },
+    {
+      "path": "apps/api/app/db/repositories/todos.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "f98b646a800fd06e84227bfc072cbd7b8281512f9670f8d15927517121c57bb7"
+    },
+    {
+      "path": "apps/api/app/db/repositories/usage_daily.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "c7d494873e65d0954a0238703125d2dd6537425fa8d3761ef891ef8fcec0ae06"
     },
     {
       "path": "apps/api/app/main.py",
+      "kind": "noqa",
+      "count": 1,
+      "hash": "86da178ee0a0f441830a3057fda431d3202008a6a0e237b75fe7ea19b91df3d4"
+    },
+    {
+      "path": "apps/api/app/memory/extraction.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "87cedc1688b2f2c97a2923ca51680ef84937d68dea8d4da63acfa1c7ae8d19ed"
+      "hash": "500bfddd6e1e38d633ee35f813a47f5970bd7becf3c54f73a76508365d32590d"
+    },
+    {
+      "path": "apps/api/app/memory/schemas.py",
+      "kind": "type-ignore",
+      "count": 9,
+      "hash": "7731d5aa0fc0c399adcdee5504ac97ba4b2891b41a3e1532bf39c8335a533b75"
+    },
+    {
+      "path": "apps/api/app/models/agent_models.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "7d5c58385a537eec891985048f5cb3affe5391b335e20f168aa5a1c90a084c35"
+    },
+    {
+      "path": "apps/api/app/models/blog_models.py",
+      "kind": "type-ignore",
+      "count": 7,
+      "hash": "bab89dc63b691199b9752429def40ad8435992224cc4c851a4cdb3dc86568085"
+    },
+    {
+      "path": "apps/api/app/models/bot_models.py",
+      "kind": "type-ignore",
+      "count": 15,
+      "hash": "a486a217802a6f9b1d85bb7a988b8f8300e214dc3188e77ffc8a017cfceeac5f"
+    },
+    {
+      "path": "apps/api/app/models/calendar_models.py",
+      "kind": "type-ignore",
+      "count": 51,
+      "hash": "d27715dbce540481350f6e8bf7c5d642f540f0f9e13611bc733b3d94cfcc05f8"
+    },
+    {
+      "path": "apps/api/app/models/chat_models.py",
+      "kind": "type-ignore",
+      "count": 10,
+      "hash": "a0474f168e06e0d74fbc799bf4258cd605a44c2a66c3043cb16502bc222c20b4"
+    },
+    {
+      "path": "apps/api/app/models/common_models.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "7956439c53395a02c9a5a5b90d6f3529481a0bf1b1df76587d24839b4720443f"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/base.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "58a7849fa138d876cf0e545c4a402b9ea170bcf85aff14cf0a0260713c109f1e"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/github.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "bdb6259823ae4a05f2f062d144efcec9570f3d799251c5259ae9cccbb7cbd1ad"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/github_tools.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "7e489e02a6a25ad8ff902d5ff45f8035d412d142a56fbc804ecc65a352957062"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/gmail.py",
+      "kind": "type-ignore",
+      "count": 10,
+      "hash": "20e6f81c9458bdccedbdc49a23abf4288de9e0c93420277da32eebb799f94c64"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/google_calendar.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "416e9ad7d20852fb12c37e66fc3d4d69320d24b028ccf2812e0666398a9c7765"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/google_docs.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "5f0bbba088d8f9abe2d5386b1693799104319a64454027fd03ea559d24ed2db6"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/google_people.py",
+      "kind": "type-ignore",
+      "count": 7,
+      "hash": "64d3e2161477c73f5d3ab110c974df77a3d0f6d2babfb82c61fa6d04608eefcf"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/google_sheets.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "3a2ff7a48bd27947f95b6e3663b976b323748b76494544c6069eb34fee551ba6"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/linear.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "6198f6c0b96cf00aea44a8bb95fba78c399737335e20e0ed3dc2d13c172a3126"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/linear_tools.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "b30bafb371e5ebf970d412928741fbca82d94ddcc3fceb9f0f5da355a493a635"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/linkedin.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "ff5e9d53e6e679d76ef711b46120ce1986b52613c6b88c495fa4774ad3e8d4b9"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/notion.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "b72a598437b793e15f46b3ab3c8da7410101012ca77159f06e8e697438f8190e"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/notion_tools.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "b7142989aedf70e36793e263368413950ddfd5ec7e737dce8bd8c08ae4306879"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/sheets_tools.py",
+      "kind": "type-ignore",
+      "count": 6,
+      "hash": "bd9a5fe299c6ea2375c4567b988cbca97e95e27c524458a8d071fb8a2ea76c15"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/slack.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "1052f7811ee1ae9eb2dd0ee2e55de4604e8609a4e5ea7017fb5c35a71a6eda65"
+    },
+    {
+      "path": "apps/api/app/models/composio_schemas/slack_tools.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "0c2a1e273aa9b948e50fd979f352f0c2701a0ce22cef72c4b10e265a4868707e"
+    },
+    {
+      "path": "apps/api/app/models/conversation_models.py",
+      "kind": "type-ignore",
+      "count": 23,
+      "hash": "ef1bf846f4048c89d91773ec4de49adb94b01e05d2a610b35db350ad38ef359a"
+    },
+    {
+      "path": "apps/api/app/models/db_oauth.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "cc95b323902a965782b0bd462bf1b64913c332233ad588a322bfd0367af95ab5"
+    },
+    {
+      "path": "apps/api/app/models/device.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "8587eb521c854ded2193de80b1fbe908f7bf143443c4d2130b6527ff56e185a0"
+    },
+    {
+      "path": "apps/api/app/models/device_token_models.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "c4b8348adc6785aed87a1cb5146c7ecd202ecbef4ac50d3482ecf6d7ab58679f"
+    },
+    {
+      "path": "apps/api/app/models/feedback_models.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "8fac01ed78f34b491fb081627fb6b33641b65a8e3c579db05edd4315fded4a97"
+    },
+    {
+      "path": "apps/api/app/models/files_models.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "c8425c0c151861acbd204309d20aaf1dc645782b5a31434a1c92d32cfeff09d8"
+    },
+    {
+      "path": "apps/api/app/models/google_docs_models.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "95c9d496384d3e2f74c4f007ce450dfdd46b77eb229dd183c125f588f00d2494"
+    },
+    {
+      "path": "apps/api/app/models/google_sheets_models.py",
+      "kind": "type-ignore",
+      "count": 7,
+      "hash": "36dde6746a82da64fd3016d27437d8599d3b536086249fbacd9a8cea21f7d7ca"
+    },
+    {
+      "path": "apps/api/app/models/health_models.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "a806e8814b8ac63393634266b5c06ff5f9d02f739fcd75a2f34d7a745ecd3269"
+    },
+    {
+      "path": "apps/api/app/models/hil_models.py",
+      "kind": "type-ignore",
+      "count": 5,
+      "hash": "49d0bf05a19c86f2b35619c2949e6be38e1029b6070f0cbd0abe22ecc8693563"
+    },
+    {
+      "path": "apps/api/app/models/image_models.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "e2458db5ff455a06a566f8f8f3e7a74f8793d4b00a013459877d86f41342a4b0"
+    },
+    {
+      "path": "apps/api/app/models/integration_instructions_models.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "374008525f83586ee68e271f62f06bb8b95ab103a14aa81c2644c882bda8427f"
+    },
+    {
+      "path": "apps/api/app/models/integration_models.py",
+      "kind": "type-ignore",
+      "count": 20,
+      "hash": "f63752095931d092bc8aa946b4699b7eff1f8252478933b44ac1feeb781dda3d"
+    },
+    {
+      "path": "apps/api/app/models/linear_models.py",
+      "kind": "type-ignore",
+      "count": 14,
+      "hash": "b4d86917d7e529f85520024b9cc44757928faf897bbc647a79fa7d95e408a9c4"
+    },
+    {
+      "path": "apps/api/app/models/linkedin_models.py",
+      "kind": "type-ignore",
+      "count": 6,
+      "hash": "97597e22eb630d28dd556aa4474ea44c4ef743476b4b75995a653ba565ed20c9"
+    },
+    {
+      "path": "apps/api/app/models/mail_models.py",
+      "kind": "type-ignore",
+      "count": 40,
+      "hash": "309acc18357cf9a5f734b7cb5f0b9c74451aae122cd9de0acec473775ddbd83a"
+    },
+    {
+      "path": "apps/api/app/models/mcp_config.py",
+      "kind": "type-ignore",
+      "count": 8,
+      "hash": "42ac2600d313926e9e188749dc5e27943c72253b153d8ba0708dab8b8d0bf66c"
+    },
+    {
+      "path": "apps/api/app/models/memory_db_models.py",
+      "kind": "type-ignore",
+      "count": 6,
+      "hash": "c4f0125d6cdc4c84771aead76e5006ce87ab22941f2c3be6ef433da3e44f5aab"
+    },
+    {
+      "path": "apps/api/app/models/memory_models.py",
+      "kind": "type-ignore",
+      "count": 21,
+      "hash": "2a5ef6c5cf06b9aa0d81a50447f6fbafe8c505ee88225d568ebbe26c07173a83"
+    },
+    {
+      "path": "apps/api/app/models/message_models.py",
+      "kind": "type-ignore",
+      "count": 6,
+      "hash": "d712685a370b79fe3a4fede4f1b193d41394b184dd65d8b151c8e0fefc8b8a76"
+    },
+    {
+      "path": "apps/api/app/models/models_models.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "e18af2c9e4728771ad8f345cf113e76cd2d9cec6f60988341ee3b91c1ac7156a"
+    },
+    {
+      "path": "apps/api/app/models/notes_models.py",
+      "kind": "type-ignore",
+      "count": 5,
+      "hash": "49962f740beb02126c687df9c149fc2e35ccbdecaa35f2178f229ca0303e55c7"
+    },
+    {
+      "path": "apps/api/app/models/notification/notification_models.py",
+      "kind": "type-ignore",
+      "count": 18,
+      "hash": "f0ad83f52ca36c7207826dfaaef654b9496d9a5c467d3d13c0bc21e013ecaa3f"
+    },
+    {
+      "path": "apps/api/app/models/notification/request_models.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "1cfa36d0f27fa3a4c02be657813482705342797e8c4354972e805489bf167425"
+    },
+    {
+      "path": "apps/api/app/models/notion_models.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "91d8b128d4693d8332c6cef26771897655d23f591cb7f3e4d74df8b57de0c9a4"
+    },
+    {
+      "path": "apps/api/app/models/oauth_models.py",
+      "kind": "type-ignore",
+      "count": 6,
+      "hash": "25588d0da470468c4120c27b17687c27823005aa99c1a393ddc2fdc64f3002f1"
+    },
+    {
+      "path": "apps/api/app/models/onboarding_models.py",
+      "kind": "type-ignore",
+      "count": 39,
+      "hash": "e02ea5c3763cf333bb99f346dda7e25a09b417130f2654417ccd5562bcfb2e72"
+    },
+    {
+      "path": "apps/api/app/models/payment_models.py",
+      "kind": "type-ignore",
+      "count": 11,
+      "hash": "c3c6e36670bf573fdfed9c7237f0b894382e7ff1ed554ecf0ed5ff844f17f380"
+    },
+    {
+      "path": "apps/api/app/models/platform_models.py",
+      "kind": "type-ignore",
+      "count": 6,
+      "hash": "dd06666011e5cab79400d2a6996c0dd46ce8cb91680fea567b6e3c6679f5c70f"
+    },
+    {
+      "path": "apps/api/app/models/reminder_models.py",
+      "kind": "type-ignore",
+      "count": 9,
+      "hash": "33b4017c4e126751190c112e8c11484bc9f48fda6b3a41a22ec50004fdfeebf4"
+    },
+    {
+      "path": "apps/api/app/models/sandbox_models.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "8dff82799f4b7a13fbd48d956e9fee3a1fc8b5656d4d4648a8120f24388399f0"
+    },
+    {
+      "path": "apps/api/app/models/scheduler_models.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "9c3a2b93d5daacc043b1b7714915844a347c4eee90988b234e1e501240787afa"
+    },
+    {
+      "path": "apps/api/app/models/search_models.py",
+      "kind": "type-ignore",
+      "count": 9,
+      "hash": "eb876448bb4ac33578c23a39eba990743700b0c0a4a41617754f054d3ef79da5"
+    },
+    {
+      "path": "apps/api/app/models/stream_events.py",
+      "kind": "type-ignore",
+      "count": 16,
+      "hash": "e21b208db4aaebf6f2a6132396eefe28c80f81469b9c9937ad63c8c4c922b164"
+    },
+    {
+      "path": "apps/api/app/models/support_models.py",
+      "kind": "type-ignore",
+      "count": 12,
+      "hash": "013302a3b3d09e7d40c50f784e8bebc6bdc98bc18c8f0b8ab323a4d81204c177"
+    },
+    {
+      "path": "apps/api/app/models/todo_models.py",
+      "kind": "type-ignore",
+      "count": 30,
+      "hash": "dd9164aaf8df64dc09bf7711a623ef367c7fd69492f77ad9697e12ba132715eb"
+    },
+    {
+      "path": "apps/api/app/models/tools_models.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "321eb5691f002d4387a1f05142bbcb0abb9757f27af837feb0945cbbf9bf8583"
+    },
+    {
+      "path": "apps/api/app/models/trigger_config.py",
+      "kind": "type-ignore",
+      "count": 8,
+      "hash": "f0eec20f03da3f7e9e7a858b208fa2162bc221715cde30fadd2fb89eedd1df65"
+    },
+    {
+      "path": "apps/api/app/models/trigger_configs.py",
+      "kind": "type-ignore",
+      "count": 24,
+      "hash": "3a82ced20c8cd14593fc299d44c406062a869048d6898a01c3393508b709b1ee"
+    },
+    {
+      "path": "apps/api/app/models/twitter_models.py",
+      "kind": "type-ignore",
+      "count": 5,
+      "hash": "88fa5cf6810d49a3dc4acf0dcd9299abb602425f3f4e68f848afb62aa3a4f0fb"
+    },
+    {
+      "path": "apps/api/app/models/usage_models.py",
+      "kind": "type-ignore",
+      "count": 7,
+      "hash": "f35b42ec3dc0a1886d5c60477c1822664c14de0cfe8becbbfe336d99355cf54a"
+    },
+    {
+      "path": "apps/api/app/models/user_models.py",
+      "kind": "type-ignore",
+      "count": 16,
+      "hash": "c12b7b8ea53bbe692aed36ed05283234d13ac69434aaf04b0621858e1f3d2280"
+    },
+    {
+      "path": "apps/api/app/models/voice_models.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "1f9ed844c7de2aebe2b0834d7ee8e36559dd8075517642fdc54efa4f227ffedc"
+    },
+    {
+      "path": "apps/api/app/models/webhook_models.py",
+      "kind": "type-ignore",
+      "count": 9,
+      "hash": "f10293354ae78ead42f4ed3d0df992e8bee7867a2b3b91dd9508166472312ee9"
+    },
+    {
+      "path": "apps/api/app/models/workflow_execution_models.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "ae402745bbe226b7e998527af56f71a02d4c022d519af6895727fb674f7932a8"
+    },
+    {
+      "path": "apps/api/app/models/workflow_models.py",
+      "kind": "type-ignore",
+      "count": 29,
+      "hash": "bdfc283d411c686b686d71f553418c9d6b2e3f0eefddb3b59eb022db22700a95"
     },
     {
       "path": "apps/api/app/override/langgraph_bigtool/create_agent.py",
       "kind": "type-ignore",
       "count": 17,
-      "hash": "d06a9b008a90d44dfb1d1770ff5805d806983bdbd3e7e72a53ff4306da1c2414"
+      "hash": "0fa8fbc3da214f7c3eb504bb2d3113d5bb9c598231bcffcd06e5ac0f66edf802"
     },
     {
       "path": "apps/api/app/override/langgraph_bigtool/hooks.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "38d5bac8034a184d791fb99b0f2bfb09c35a449b0f0d04e2280beb6d9d600c16"
+      "hash": "9abafd6f574b3a086752cd961917f87c8e6a023a616bb5c438ceb2fca92c04e2"
+    },
+    {
+      "path": "apps/api/app/override/langgraph_bigtool/utils.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "ee8ff7284e60886cb657a55184b74be1b017a11e2b172c79627d9ff88ce0bdeb"
     },
     {
       "path": "apps/api/app/patches/composio_langchain_patch.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "a6f5c9d1b848451f5554289748989ea41c1f727e0e3ef72bb1314692ac302cc0"
+      "hash": "9f9b3cee3ae1fe3eec3c92295163225bf530ef92fea69c0ea56354246274a0d0"
+    },
+    {
+      "path": "apps/api/app/schemas/common.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "40ba209a4c2f53c16957ce8f64e6c7a79df3b55fc0b2ebec0f301ecfaf3dd6aa"
+    },
+    {
+      "path": "apps/api/app/schemas/desktop_schemas.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "23e556128b371e25a4f358006e36e707011c3b4a0bda8edfff4c701d53de8ff0"
+    },
+    {
+      "path": "apps/api/app/schemas/dev_schemas.py",
+      "kind": "type-ignore",
+      "count": 8,
+      "hash": "620e206b5b517a4965a23a02ebb600336606b1640e92bb1e73e1da7987c2d942"
+    },
+    {
+      "path": "apps/api/app/schemas/device/requests.py",
+      "kind": "type-ignore",
+      "count": 5,
+      "hash": "7d9ebff9f039de65ed89e28612deaf3f90c3d468dda7d9a8b67e77465b393a71"
+    },
+    {
+      "path": "apps/api/app/schemas/device/responses.py",
+      "kind": "type-ignore",
+      "count": 9,
+      "hash": "422fb5f2146f9c475e50720be01bac8e75bba1aff53eaa216724d4f15fbc8ebb"
+    },
+    {
+      "path": "apps/api/app/schemas/file.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "af0824ec4342d3a6f1ac96bfd7f29c213a7df252a488a023ade04ce153555737"
+    },
+    {
+      "path": "apps/api/app/schemas/hil_schemas.py",
+      "kind": "type-ignore",
+      "count": 9,
+      "hash": "7c7f05ca1366815edc20c4170e6e5ec99f99e0850c7457498603a24283e34737"
     },
     {
       "path": "apps/api/app/schemas/integrations/__init__.py",
@@ -121,22 +811,172 @@
       "hash": "184a7529fba64d3dd7388798a7564ded3b8a8bfe0825c79cf3b8df9fe6df7cf9"
     },
     {
+      "path": "apps/api/app/schemas/integrations/requests.py",
+      "kind": "type-ignore",
+      "count": 5,
+      "hash": "7a0b36d043557293999ce1384311af6bc888ae59746ab8be44aab7cd067db96c"
+    },
+    {
+      "path": "apps/api/app/schemas/integrations/responses.py",
+      "kind": "type-ignore",
+      "count": 26,
+      "hash": "da639acb1bacc3399feee909ea05982e8deb31c3273ec99846ecc4d2e6594bfe"
+    },
+    {
+      "path": "apps/api/app/schemas/mcp/requests.py",
+      "kind": "type-ignore",
+      "count": 5,
+      "hash": "78476e9e788fba328ebfa588e983b018d1c104b508fac59262611959b8630961"
+    },
+    {
+      "path": "apps/api/app/schemas/mcp/responses.py",
+      "kind": "type-ignore",
+      "count": 6,
+      "hash": "b65de8bde7bd94a5ec872c2b423b840846ce54ac6ca8692d480a05b4692cb3d2"
+    },
+    {
+      "path": "apps/api/app/schemas/outbound.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "a9d9eebebd0f6106c3f6fb022de715de2c441fb59a3290699fcf8904e3eeb6d9"
+    },
+    {
+      "path": "apps/api/app/schemas/usage.py",
+      "kind": "type-ignore",
+      "count": 6,
+      "hash": "64f0483b90344bea0499017d820bbd6094764a65b091ec1dedeae196de81128f"
+    },
+    {
+      "path": "apps/api/app/schemas/voice_schemas.py",
+      "kind": "type-ignore",
+      "count": 7,
+      "hash": "1e567e4301cf8fd6869486d5fbcfcd210b727bc854a025450d9c0855235d85cf"
+    },
+    {
       "path": "apps/api/app/services/composio/composio_service.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "2da071f58ab06182900fb966c37de4925dff5b35836fa0602853fcc689d90f1d"
+      "hash": "65edc2b3ccc32dbcc67b690c41cc5549a4625e06d7dee8c004d345aaf03b6904"
+    },
+    {
+      "path": "apps/api/app/services/composio/custom_tools/gmail_tools.py",
+      "kind": "type-ignore",
+      "count": 7,
+      "hash": "1792995b299ae52277b2f942be38f4439fafa5235ef62349a1cb9d6779254378"
+    },
+    {
+      "path": "apps/api/app/services/composio/custom_tools/registry.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "610de8164c784aab47dabaf0ba8618a60db310b0efd8727b2c1945e2f5146544"
     },
     {
       "path": "apps/api/app/services/composio/langchain_composio_service.py",
       "kind": "type-ignore",
-      "count": 1,
-      "hash": "6fe587ff8fa5f7f517ca6af632f86abb2897608933f0498af6d501d8f8b7eb85"
+      "count": 2,
+      "hash": "ae83c8a39c6b5453b43ef96390453d103bfeafa1d3ce4c48cebe8e5722b968c4"
     },
     {
-      "path": "apps/api/app/services/notes_service.py",
+      "path": "apps/api/app/services/composio/proxy_client.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "6e3d4c5852a83d59961cba247a62a3485a6f0d2e00916934903cc4548210815c"
+      "hash": "94e5340e8b2e73404905cd5b800bdfa06afde869bbee7a9a32da592cbacd5f66"
+    },
+    {
+      "path": "apps/api/app/services/email/models.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "26a261890cb1814f7ed9e8d8befc018c23cc1cfdaf515a5cfbf5a858bf7cd3cf"
+    },
+    {
+      "path": "apps/api/app/services/email_profile_service.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "469e93b68542a45e20f2ab33e89d825146cbdbdb5f15ca0b3b6e9b39a435769f"
+    },
+    {
+      "path": "apps/api/app/services/embedding_sidecar/server.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "36582d8e8d025073e80858684f29f8995bd0a8a404bb9b72f944b2cdcb877458"
+    },
+    {
+      "path": "apps/api/app/services/gaia_knowledge_service.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "496959c9eee4df2a8b2d962279d9d6fc313ddcc76a9c1d623972335a4dffd115"
+    },
+    {
+      "path": "apps/api/app/services/hil/classification.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "5e5b0fcd92811af7b9bf6dddcdb7e9a7336b6e2f8dd68d4fa9da270ae0567db5"
+    },
+    {
+      "path": "apps/api/app/services/hil/conversational.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "95adf91e9997a94dca514088001e7eb87efda726dbeeeff422014168afcd8613"
+    },
+    {
+      "path": "apps/api/app/services/hil/intent.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "e51ab6a409e3a06b0907336f7d73824b8dd105f91231f8500ba89fe057b441b3"
+    },
+    {
+      "path": "apps/api/app/services/integrations/profanity.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "a11b33883b0f0f4795c58db17d14eba935f37dc6e45a9715627a5dcdba8358d3"
+    },
+    {
+      "path": "apps/api/app/services/mcp/device_connector.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "ae15d6b6dd46a0dc11a458f13df889bbaedc2ee8e6ed9a0039a3a57d9df021ba"
+    },
+    {
+      "path": "apps/api/app/services/mcp/langchain_adapter.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "05c3f54ea40a9d06942319b7bf668b29bc78b7a0820efdabce5e43425dbeffc1"
+    },
+    {
+      "path": "apps/api/app/services/onboarding/clarify_service.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "2c13a2f0f91695e2ffdb03284e519b4296b08eedf442336bd4efb94c864b0429"
+    },
+    {
+      "path": "apps/api/app/services/onboarding/intelligence_service.py",
+      "kind": "type-ignore",
+      "count": 5,
+      "hash": "8b779014612b72c03a1d94ae53d6e61ed12d0a2cb4bfb4e730b604a9a1364805"
+    },
+    {
+      "path": "apps/api/app/services/onboarding/social_profile_service.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "a2551a346aab32762ccf26494baef3880793bb3b695c02630ff81f5d35ab591f"
+    },
+    {
+      "path": "apps/api/app/services/storage/metrics.py",
+      "kind": "type-ignore",
+      "count": 1,
+      "hash": "c615fcd344f885d0ed796a2e253868c9fbe7f9de0b55555f256e4af8618f2fcc"
+    },
+    {
+      "path": "apps/api/app/services/workflow/dormancy.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "bc7fb8f23cb059f29d40f5d263e1c0f7c9b1b1795b70e4dab9914c9bcc0b580f"
+    },
+    {
+      "path": "apps/api/app/services/workflow/subagent_output.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "55caac0b272c579a6c28d359dd8a3f3a667502e91e3e9e0a4ea78c53b0830bdb"
     },
     {
       "path": "apps/api/app/utils/composio_hooks/all_hooks.py",
@@ -151,16 +991,22 @@
       "hash": "530364233097e524b9dca6d2a436ac8799130a51cee74f65ffcb2759076521fa"
     },
     {
+      "path": "apps/api/app/utils/search/models.py",
+      "kind": "type-ignore",
+      "count": 3,
+      "hash": "20ca497d2693835fcfbd24523dd01dcbdbb0bc756942c0a25c9d96b98ff01275"
+    },
+    {
       "path": "apps/api/app/utils/twitter_utils.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "843471eb3c60e1a030dfdda0ca62039793ae7cd29e7ed781230f8cb6942011c5"
+      "hash": "135f93f4647e7c359ce099a07c4f5ef22c9e0f48e20829b65445b42e44b84b69"
     },
     {
       "path": "apps/api/app/worker.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "9c6f5bb50a34eb42dd8ee0a4297e13b65072e82a45fccfa30390c1b454408b1e"
+      "hash": "db1087da8e8a63d319948dd2139b234389ca3633d2723627ce5f2a6528f0957f"
     },
     {
       "path": "apps/api/scripts/memory_benchmark/__main__.py",
@@ -202,7 +1048,7 @@
       "path": "apps/api/tests/integration/agents/test_real_comms_agent.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "e118468fba330ff97381f86ee3d184847c930f30ac1414864dad7bd9c00b9a02"
+      "hash": "2b9da7c25115ca9c3e08e5a6e8f75862c8a40c15203ae3493aaa2e4f68fe140d"
     },
     {
       "path": "apps/api/tests/integration/conftest.py",
@@ -232,7 +1078,7 @@
       "path": "apps/api/tests/unit/agents/test_agent_core.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "a7b8408ad11d040fb084aacc4195cef6c6b97ae8589e5e47dfba2cefec8958a7"
+      "hash": "b9fe2d4b2608c5d5d4936b17ac06f29a737417f1cd44540f3017b10defb07153"
     },
     {
       "path": "apps/api/tests/unit/agents/test_handoff_tools.py",
@@ -244,7 +1090,7 @@
       "path": "apps/api/tests/unit/agents/test_llm_client.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "8f05984df17e9905b934374d2dee38cdba32c35aa5823971b141413b0892c200"
+      "hash": "433db927f0b43c940872eeed177f88fd2e203580222c53cf972c051daac52688"
     },
     {
       "path": "apps/api/tests/unit/agents/test_middleware_executor.py",
@@ -328,7 +1174,7 @@
       "path": "apps/api/tests/unit/helpers/test_message_helpers.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "aa76e7a30d0ec59b37105af01793c786b25c4ba01bbbc962206095d02f3ed7ef"
+      "hash": "e79de23f889175210591f3c3ed8a1c5452718fd921648809a67c976ebceba9f9"
     },
     {
       "path": "apps/api/tests/unit/middleware/test_compaction_offload_bind.py",
@@ -388,7 +1234,7 @@
       "path": "apps/api/tests/unit/services/test_trigger_service.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "84df79e69abc2bd2dc165c5480a90be661dad8ae8ef8bff8d8de8aa6b074029f"
+      "hash": "eb5aca27d582fa8a98c116efc1f66c15396b8f735c1277f9640c49c273fe3ff8"
     },
     {
       "path": "apps/api/tests/unit/tools/test_integration_tool_standalone.py",
@@ -532,7 +1378,7 @@
       "path": "apps/api/tests/unit/utils/test_user_preferences_utils.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "2908d863191d8adf82c733f428d124a13936aa4694f8edf97dd8a7c1895d30a9"
+      "hash": "71210b6b15610c651f460c8d5d2826c5e02e5afb1a43b02fd9b56fffd5981e7d"
     },
     {
       "path": "apps/api/tests/unit/utils/test_weather_utils.py",
@@ -543,8 +1389,8 @@
     {
       "path": "apps/api/tests/unit/workers/test_checkpoint_retention_tasks.py",
       "kind": "type-ignore",
-      "count": 1,
-      "hash": "4db480f3a8eda6820270ed9ec70a432851a96137583515f768e1045759cdcc02"
+      "count": 3,
+      "hash": "22dc0567f91caaf9672c2970d4a29ba1e19e506f205453e88c311a6c9dcf37ff"
     },
     {
       "path": "apps/bots/__tests__/discord/adapter.test.ts",
@@ -607,16 +1453,16 @@
       "hash": "04d5d489b1dd57efce69ccf0f05d9f8133c33dc692b5344cb00855b6b2f5c10a"
     },
     {
-      "path": "apps/voice-agent/src/agent.py",
+      "path": "apps/voice-agent/src/config.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "d768b456e1fff448150888f3337d104d4260da3f862f7652d2735f0c99f23f84"
+      "hash": "ab1e1461f154963be3ed37b77ebeb02a86942820d00ca921730f70d45d6c3af0"
     },
     {
       "path": "apps/voice-agent/src/llm.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "43956c72503c877080f3de58325e5756a4faf3ff0fe3d9869056069797e00edc"
+      "hash": "7fa03083cbcc9b4950693e016870dcd58eb36d77b16b03eb5e4dda4072f6f651"
     },
     {
       "path": "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
@@ -778,7 +1624,19 @@
       "path": "libs/shared/py/logging.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "5f441cea3d1c27664ebff2e990082f1a42882db83d3e03ee3d2fcc64867c93f9"
+      "hash": "bc8b6872dad804c1e81841611e9cbc3f0c71fb1c6c619b87bf067df2941a2d37"
+    },
+    {
+      "path": "libs/shared/py/settings/base.py",
+      "kind": "type-ignore",
+      "count": 2,
+      "hash": "6fd6f02b461866a0d110d81c42656ef43f6e76493d0df54ce5e860f9782f0d78"
+    },
+    {
+      "path": "libs/shared/py/tests/test_settings.py",
+      "kind": "type-ignore",
+      "count": 4,
+      "hash": "4afc70b8b2a231b0aa56b917d9cf0db7dbbc3ee24c7d750e14da0e4b09f872ce"
     },
     {
       "path": "packages/cli/src/ui/screens/init.tsx",
