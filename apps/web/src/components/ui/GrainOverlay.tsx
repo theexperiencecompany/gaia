@@ -28,7 +28,7 @@ const GRAIN_TILE =
  *   of greying it out, and a much lower opacity is enough.
  */
 const VARIANT_CLASSES = {
-  photo: "opacity-[0.09]",
+  photo: "opacity-[0.15]",
   surface: "opacity-[0.06] mix-blend-overlay",
 } as const;
 
