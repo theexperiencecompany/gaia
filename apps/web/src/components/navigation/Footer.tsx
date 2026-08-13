@@ -117,8 +117,8 @@ export default function Footer() {
               <Image
                 src="/brand/experience_logo_white.svg"
                 alt="The Experience Company"
-                width={70}
-                height={70}
+                width={44}
+                height={44}
               />
             </Link>
 
