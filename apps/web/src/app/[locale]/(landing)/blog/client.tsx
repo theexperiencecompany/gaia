@@ -70,9 +70,9 @@ export default function BlogPostClient({
                 alt={blog.title}
                 width={1920}
                 height={1080}
-                className="w-full bg-zinc-900 object-cover"
+                className="w-full rounded-2xl bg-zinc-900 object-cover"
               />
-              <GrainOverlay />
+              <GrainOverlay className="rounded-2xl" />
             </div>
           )}
 
