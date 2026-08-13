@@ -94,7 +94,7 @@ const LETTER_MOTION = {
 const CTA_BLACK = "#000000";
 
 /** The sealed envelope the letter arrives in: the artwork file as it is. */
-const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.png";
+const ENVELOPE_IMAGE = "/images/icons/sealed-envelope.webp";
 const ENVELOPE_WIDTH = 1536;
 const ENVELOPE_HEIGHT = 1024;
 
