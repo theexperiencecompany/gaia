@@ -280,6 +280,13 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
 
   const closeLetter = useCallback(() => setIsOpen(false), []);
 
+  // Voice mode hides the letter, but hiding it only stops it rendering — the
+  // component stays mounted, so an open letter would leave the body scroll
+  // locked with nothing on screen to explain why. Hiding it closes it.
+  useEffect(() => {
+    if (hidden) setIsOpen(false);
+  }, [hidden]);
+
   // Escape closes; focus moves to the close button while open and back to the
   // envelope on close. Body scroll locks so the chat can't scroll under the letter.
   useEffect(() => {
