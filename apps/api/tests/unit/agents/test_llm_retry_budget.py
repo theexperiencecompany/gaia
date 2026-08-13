@@ -17,6 +17,7 @@ mean what they say.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -24,11 +25,10 @@ import pytest
 from app.agents.llm.client import (
     _build_default_llm,
     _sim_llm,
+    init_custom_llm,
     init_openrouter_llm,
 )
-from app.agents.llm.types import LLMProviderKey
 from app.constants.llm import LLM_RETRY_MAX_ATTEMPTS
-from app.core.lazy_loader import providers
 
 
 @pytest.fixture(autouse=True)
@@ -53,24 +53,26 @@ class TestLLMRetryBudget:
         assert _retries(_sim_llm()) is False
 
     def test_primary_openrouter_client_delegates_retry_to_the_app(self) -> None:
-        init_openrouter_llm()
-        assert _retries(_resolve(LLMProviderKey.OPENROUTER)) is False
+        assert _retries(_construct(init_openrouter_llm)) is False
 
-    # The custom dev endpoint (init_custom_llm) carries the same setting, but its
-    # @lazy_provider registration is gated on DEV_LLM_* keys read at import time,
-    # which the hermetic conftest blanks — so it cannot be resolved here. Under
-    # GAIA_SIM_MODE it returns _sim_llm(), which the case above covers.
+    def test_custom_dev_client_delegates_retry_to_the_app(self) -> None:
+        assert _retries(_construct(init_custom_llm)) is False
 
     def test_the_app_still_retries(self) -> None:
         """Disabling SDK retry must not leave the system with no retry at all."""
         assert LLM_RETRY_MAX_ATTEMPTS > 1
 
 
-def _resolve(key: LLMProviderKey) -> Any:
-    """The concrete chat model a registered provider resolves to, unwrapping the
-    ``configurable_fields`` runnable the factories return."""
-    instance = providers.get(key)
-    return getattr(instance, "default", instance)
+def _construct(factory: Callable[[], Any]) -> Any:
+    """Run a ``@lazy_provider`` factory's real body and unwrap the chat model.
+
+    Via ``loader_func`` rather than resolving through the registry: registration
+    is gated on credentials read at IMPORT time, which the hermetic fence blanks,
+    so a registry lookup returns None in CI while passing for anyone whose local
+    ``.env`` happened to hold a key.
+    """
+    llm = factory().loader_func()
+    return getattr(llm, "default", llm)
 
 
 def _retries(llm: Any) -> bool:
