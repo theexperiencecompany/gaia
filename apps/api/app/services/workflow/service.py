@@ -328,7 +328,21 @@ class WorkflowService:
                 trigger_config=trigger_config,
             )
 
-            integration_skipped = (
+            # Steps supplied by the caller (adding an explore card) skip generation,
+            # so the generation-time gate never runs on them. Apply the same rule
+            # here: a workflow whose steps need apps the user hasn't connected is
+            # created inactive rather than switched on and failing on first run.
+            missing_step_integrations = await compute_missing_integrations(
+                compute_required_integrations(workflow.steps), user_id
+            )
+            if missing_step_integrations:
+                log.info(
+                    f"{LogTag.WORKFLOW} Workflow created inactive — steps need unconnected integrations",
+                    id=workflow.id,
+                    missing_integrations=[m.id for m in missing_step_integrations],
+                )
+
+            integration_skipped = bool(missing_step_integrations) or (
                 trigger_config.type == TriggerType.INTEGRATION and not integration_connected
             )
 
