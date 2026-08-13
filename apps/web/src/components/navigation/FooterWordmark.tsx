@@ -425,10 +425,14 @@ export function FooterWordmark() {
         className="absolute h-0 w-0 overflow-hidden font-serif font-bold"
       />
       {/* Reserved aspect ratio prevents layout shift before the first draw. */}
+      {/* Overlay blend so the halftone picks up the glow behind it instead of
+          reading as a layer pasted on top. This only works while no ancestor
+          between here and the footer wallpaper creates a stacking context —
+          see the note on the footer's content wrapper. */}
       <canvas
         ref={canvasRef}
         aria-hidden
-        className="block w-full"
+        className="block w-full mix-blend-overlay"
         style={{ aspectRatio: "23 / 4" }}
       />
     </>
