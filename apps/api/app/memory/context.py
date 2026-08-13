@@ -13,7 +13,6 @@ from datetime import UTC, date as date_type, datetime, timedelta
 from app.constants.memory import (
     CORE_CONTEXT_CACHE_KEY,
     CORE_CONTEXT_CACHE_TTL,
-    RECENT_ACTIVITY_ENTRY_CAP,
     MemoryDocType,
 )
 from app.db.redis import delete_cache, get_cache, set_cache
@@ -95,17 +94,14 @@ async def invalidate_user_memory_caches(user_id: str) -> None:
 def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> str:
     """Compact journal rendering, bounded so it never dumps a whole day.
 
-    A past day collapses to its one-line rollover summary. Today (not yet
-    summarized) emits its entries ANCHORED at the day's start (chronological,
-    append-only) rather than the sliding last-N window: the sliding window
-    shifts every emitted byte each time a new entry lands, churning the
-    volatile slot's bytes every turn and breaking the provider's prompt-cache
-    prefix inside it (measured: the recall slot's tail churn is the dominant
-    per-turn uncached chunk, capping the comms hit rate ~10 points below the
-    harness ceiling). Anchored emission keeps the emitted bytes byte-stable
-    between trims — the cached prefix extends through the older entries and
-    only the newly appended tail churns. The full journal stays available via
-    ``search_journal``.
+    A past day collapses to its one-line rollover summary. Today emits its
+    NEWEST entries only — the real recency value — with a static no-number
+    note when older ones are dropped. The old anchored-at-day-start window
+    kept only old entries while the newest churned in every turn, and its
+    "+N more entries today" counter changed N every turn; both sat inside the
+    volatile tail where every changed byte costs prompt-cache hit rate. The
+    static note keeps the emitted bytes identical between entry additions.
+    The full journal stays available via ``search_journal``.
     """
     blocks: list[str] = []
     for episode in episodes:
@@ -115,14 +111,14 @@ def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> 
             continue
         if not episode.entries:
             continue
-        # Anchored at the day's start; trimmed from the OLDEST only when the
-        # cap binds (a rare event for a normal day), never by sliding.
-        recent = episode.entries
-        if len(recent) > RECENT_ACTIVITY_ENTRY_CAP:
-            recent = recent[:RECENT_ACTIVITY_ENTRY_CAP]
+        # Emit the NEWEST entries (last-2) — not an anchored-at-start window
+        # (which held only old entries and churned the newest in every turn)
+        # and no numbered counter (N changed every turn). The omitted-note is
+        # byte-identical across turns, so the emitted bytes only change when
+        # a new entry lands.
+        recent = episode.entries[-2:] if len(episode.entries) > 2 else episode.entries
         lines = [f"- {entry.get('time', '')} {entry.get('text', '')}".rstrip() for entry in recent]
-        more = len(episode.entries) - len(recent)
-        if more > 0:
-            lines.append(f"- (+{more} more entries today)")
+        if len(episode.entries) > 2:
+            lines.append("- (earlier entries omitted)")
         blocks.append(f"### {label} ({episode.date.isoformat()})\n" + "\n".join(lines))
     return "\n".join(blocks)

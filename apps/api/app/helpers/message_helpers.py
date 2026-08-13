@@ -73,6 +73,44 @@ MEMORY_RECALL_MAX_CHARS = 8_000
 MEMORY_RECALL_HEAD_CHARS = 4_000
 MEMORY_RECALL_TAIL_CHARS = 4_000
 
+# Per-section caps for the volatile per-turn tail. Every byte of it churns
+# turn-to-turn and is NEVER cached, so its total size directly caps the
+# prompt-cache hit rate (~1k volatile chars costs ~3.5 points on a ~28k-token
+# request); the caps below bound it to ~2300 chars so the hit rate can reach
+# ~95%. The stable parts (user_stable_parts, core_memory_section) are NOT
+# capped — they sit inside the cached prefix.
+RECENT_ACTIVITY_CAP_CHARS = 600
+MEMORIES_CAP_CHARS = 500
+GAIA_KNOWLEDGE_CAP_CHARS = 200
+SKILLS_CAP_CHARS = 200
+TRACKED_TODOS_CAP_CHARS = 300
+AGENDA_CAP_CHARS = 500
+
+# Byte-stable truncation markers: identical every turn, so an overflowing
+# section always emits marker + exactly `limit` chars regardless of how long
+# the source content grows.
+RECENT_ACTIVITY_TRUNC_MARKER = "...[recent activity truncated, newest entries kept]..."
+MEMORIES_TRUNC_MARKER = "...[memory recall truncated, most relevant kept]..."
+GAIA_KNOWLEDGE_TRUNC_MARKER = "...[GAIA knowledge truncated]..."
+SKILLS_TRUNC_MARKER = "...[skills list truncated]..."
+TRACKED_TODOS_TRUNC_MARKER = "...[tracked todos truncated]..."
+AGENDA_TRUNC_MARKER = "...[agenda truncated, newest commitments kept]..."
+
+
+def _cap_section(text: str, limit: int, marker: str) -> str:
+    """Cap a volatile section's size without churning the truncation boundary.
+
+    Returns ``text`` unchanged when it fits within ``limit`` characters.
+    Otherwise keeps the LAST ``limit`` characters — for the recent-activity
+    journal and recall results the newest / most-relevant content is at the
+    end — and prepends the static ``marker`` line, so the emitted bytes are
+    stable (marker + exactly ``limit`` chars) no matter how long the source
+    grows.
+    """
+    if len(text) <= limit:
+        return text
+    return f"{marker}\n{text[-limit:]}"
+
 
 def create_system_message(
     user_id: str | None = None,
@@ -200,7 +238,12 @@ async def _get_core_memory_parts(user_id: str) -> tuple[str, str]:
     if agenda_marker in core_context:
         stable, agenda = core_context.split(agenda_marker, 1)
         core_context = stable
-        volatile_parts.append(f"{_AGENDA_HEADING}{agenda}")
+        # Cap the agenda document so the volatile tail stays bounded. The
+        # static heading stays outside the cap (readable even when the body
+        # is truncated); the marker is byte-stable across turns.
+        volatile_parts.append(
+            f"{_AGENDA_HEADING}{_cap_section(agenda, AGENDA_CAP_CHARS, AGENDA_TRUNC_MARKER)}"
+        )
     # The recent-activity journal grows/churns every turn (new entries land).
     activity_marker = f"\n\n{_RECENT_ACTIVITY_HEADING}"
     if activity_marker in core_context:
@@ -578,13 +621,31 @@ async def build_dynamic_context_messages(
         if core_memory_section:
             variable_parts.append(core_memory_section)
         if recent_activity:
-            variable_parts.append(recent_activity.lstrip("\n"))
+            variable_parts.append(
+                _cap_section(
+                    recent_activity.lstrip("\n"),
+                    RECENT_ACTIVITY_CAP_CHARS,
+                    RECENT_ACTIVITY_TRUNC_MARKER,
+                )
+            )
         if memories_section:
-            variable_parts.append(memories_section.lstrip("\n"))
+            variable_parts.append(
+                _cap_section(
+                    memories_section.lstrip("\n"),
+                    MEMORIES_CAP_CHARS,
+                    MEMORIES_TRUNC_MARKER,
+                )
+            )
         if gaia_knowledge_section:
-            variable_parts.append(gaia_knowledge_section.lstrip("\n"))
+            variable_parts.append(
+                _cap_section(
+                    gaia_knowledge_section.lstrip("\n"),
+                    GAIA_KNOWLEDGE_CAP_CHARS,
+                    GAIA_KNOWLEDGE_TRUNC_MARKER,
+                )
+            )
         if skills_text:
-            variable_parts.append(skills_text)
+            variable_parts.append(_cap_section(skills_text, SKILLS_CAP_CHARS, SKILLS_TRUNC_MARKER))
 
         # Tracked-todos summary + run-binding banners — appended LAST in the
         # volatile block so the directives land with recency right before the
@@ -597,7 +658,13 @@ async def build_dynamic_context_messages(
                 _build_active_todo_banner(user_id, active_todo_id),
             )
             if tracked_todos_section:
-                variable_parts.append(tracked_todos_section.lstrip("\n"))
+                variable_parts.append(
+                    _cap_section(
+                        tracked_todos_section.lstrip("\n"),
+                        TRACKED_TODOS_CAP_CHARS,
+                        TRACKED_TODOS_TRUNC_MARKER,
+                    )
+                )
         if execution_mode == "background":
             variable_parts.append(BACKGROUND_EXECUTION_BANNER)
         if active_todo_banner:
