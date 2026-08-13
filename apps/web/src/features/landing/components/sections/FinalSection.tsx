@@ -9,6 +9,7 @@ import {
   TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
+import { GrainOverlay } from "@/components/ui/GrainOverlay";
 
 import GetStartedButton from "../shared/GetStartedButton";
 import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
@@ -57,6 +58,7 @@ export default function FinalSection({
         />
         {/* Legibility scrim over the Earth photo. */}
         <div className="pointer-events-none absolute inset-0 z-10 bg-black/30" />
+        <GrainOverlay className="z-10" />
         {/* Soft outline in the design language — slightly thick, low opacity. */}
         <div className="pointer-events-none absolute inset-0 z-30 rounded-[2.5rem] border-2 border-white/10" />
 
