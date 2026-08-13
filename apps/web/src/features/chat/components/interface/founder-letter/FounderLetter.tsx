@@ -1,21 +1,16 @@
 "use client";
 
+import { Modal, ModalContent } from "@heroui/modal";
 import {
   CancelIcon,
   CheckmarkCircle02Icon,
   CircleArrowRight02Icon,
   Copy01Icon,
 } from "@icons";
-import { AnimatePresence, useReducedMotion } from "motion/react";
+import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
-import {
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type CSSProperties, useCallback, useEffect, useState } from "react";
 
 import { RaisedButton } from "@/components/ui/raised-button";
 import { isOfferLive } from "@/config/offer";
@@ -61,6 +56,39 @@ const LETTER_TYPOGRAPHY = {
   "--letter-pad-t": "clamp(14px, 3.4vh, 28px)",
   "--letter-pad-b": "clamp(36px, 6vh, 52px)",
 } as CSSProperties;
+
+/**
+ * The letter tilts and settles onto the screen rather than fading in. HeroUI
+ * animates between two variants, so the pose it enters from is the pose it
+ * exits to; reduced motion gets a plain fade instead.
+ */
+const LETTER_EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
+const LETTER_MOTION = {
+  full: {
+    variants: {
+      enter: {
+        opacity: 1,
+        scale: 1,
+        rotate: 0,
+        y: 0,
+        transition: { duration: 0.55, ease: LETTER_EASE },
+      },
+      exit: {
+        opacity: 0,
+        scale: 0.95,
+        rotate: 1,
+        y: 22,
+        transition: { duration: 0.3, ease: LETTER_EASE },
+      },
+    },
+  },
+  reduced: {
+    variants: {
+      enter: { opacity: 1, transition: { duration: 0.15 } },
+      exit: { opacity: 0, transition: { duration: 0.15 } },
+    },
+  },
+};
 
 /** The offer button reads as ink on paper: RaisedButton's flat black treatment. */
 const CTA_BLACK = "#000000";
@@ -238,8 +266,6 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
   const userName = useUserStore((s) => s.name);
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const reduceMotion = useReducedMotion();
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const openButtonRef = useRef<HTMLButtonElement>(null);
 
   const firstName = userName.trim().split(" ")[0] || SALUTATION_FALLBACK;
 
@@ -287,24 +313,6 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
     if (hidden) setIsOpen(false);
   }, [hidden]);
 
-  // Escape closes; focus moves to the close button while open and back to the
-  // envelope on close. Body scroll locks so the chat can't scroll under the letter.
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeLetter();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeButtonRef.current?.focus();
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      openButtonRef.current?.focus();
-    };
-  }, [isOpen, closeLetter]);
-
   const copyCode = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(DISCOUNT_CODE);
@@ -335,7 +343,6 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
       {/* A folded letter, waiting in the bottom-right corner above the composer. */}
       <div className="fixed right-4 bottom-24 z-40 flex flex-col items-end gap-1">
         <m.button
-          ref={openButtonRef}
           type="button"
           onClick={openLetter}
           aria-label="A letter from Aryan Randeriya"
@@ -384,192 +391,160 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
         )}
       </div>
 
-      <AnimatePresence>
-        {isOpen && (
-          <m.div
-            role="dialog"
-            aria-modal="true"
-            aria-label="A letter from Aryan Randeriya"
-            className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-6"
-          >
-            {/* The room dims, the letter glows */}
-            <m.div
-              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25 }}
+      {/* HeroUI owns the dialog semantics: focus trap, Escape, scroll lock and
+          focus restoration to the envelope. The paper is its own surface, so
+          the modal's own background and shadow are stripped off. */}
+      <Modal
+        isOpen={isOpen}
+        onClose={closeLetter}
+        hideCloseButton
+        aria-label="A letter from Aryan Randeriya"
+        classNames={{
+          backdrop: "bg-black/70 backdrop-blur-sm",
+          wrapper: "items-center justify-center p-3 sm:p-6",
+          base: "m-0 max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain bg-transparent shadow-none",
+        }}
+        motionProps={LETTER_MOTION[reduceMotion ? "reduced" : "full"]}
+      >
+        <ModalContent>
+          <div className="relative flex flex-col" style={LETTER_TYPOGRAPHY}>
+            <PaperBackdrop />
+
+            {/* Close */}
+            <button
+              type="button"
               onClick={closeLetter}
-            />
-
-            {/* The paper */}
-            <m.div
-              className="relative flex max-h-[min(92vh,860px)] w-full max-w-[620px] flex-col overflow-y-auto overscroll-contain outline-none"
-              role="document"
-              tabIndex={-1}
-              style={LETTER_TYPOGRAPHY}
-              initial={
-                reduceMotion
-                  ? { opacity: 0 }
-                  : { opacity: 0, scale: 0.94, rotate: 1.1, y: 24 }
-              }
-              animate={
-                reduceMotion
-                  ? { opacity: 1 }
-                  : { opacity: 1, scale: 1, rotate: 0, y: 0 }
-              }
-              exit={
-                reduceMotion
-                  ? { opacity: 0 }
-                  : { opacity: 0, scale: 0.96, rotate: -0.6, y: 10 }
-              }
-              transition={{
-                duration: reduceMotion ? 0.15 : 0.55,
-                ease: [0.19, 1, 0.22, 1],
-              }}
+              aria-label="Close the letter"
+              className="absolute top-3 right-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60"
             >
-              <PaperBackdrop />
+              <CancelIcon className="h-4 w-4" style={{ color: INK_SOFT }} />
+            </button>
 
-              {/* Close */}
-              <button
-                ref={closeButtonRef}
-                type="button"
-                onClick={closeLetter}
-                aria-label="Close the letter"
-                className="absolute top-3 right-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60"
+            {/* Letter content */}
+            <div
+              className="relative px-[var(--letter-pad-x)] pt-[var(--letter-pad-t)] pb-[var(--letter-pad-b)]"
+              style={{ fontFamily: BODY_FONT, color: INK }}
+            >
+              {/* Salutation */}
+              <p
+                className="font-semibold"
+                style={{ fontSize: "var(--letter-salutation)" }}
               >
-                <CancelIcon className="h-4 w-4" style={{ color: INK_SOFT }} />
-              </button>
+                Dear {firstName},
+              </p>
 
-              {/* Letter content */}
+              {/* Body */}
               <div
-                className="relative px-[var(--letter-pad-x)] pt-[var(--letter-pad-t)] pb-[var(--letter-pad-b)]"
-                style={{ fontFamily: BODY_FONT, color: INK }}
+                className="mt-2.5 space-y-2.5"
+                style={{
+                  fontSize: "var(--letter-body)",
+                  lineHeight: "var(--letter-body-lh)",
+                }}
               >
-                {/* Salutation */}
-                <p
-                  className="font-semibold"
-                  style={{ fontSize: "var(--letter-salutation)" }}
-                >
-                  Dear {firstName},
-                </p>
-
-                {/* Body */}
-                <div
-                  className="mt-2.5 space-y-2.5"
-                  style={{
-                    fontSize: "var(--letter-body)",
-                    lineHeight: "var(--letter-body-lh)",
-                  }}
-                >
-                  {LETTER_PARAGRAPHS.map((paragraph) => (
-                    <p key={paragraph}>{paragraph}</p>
-                  ))}
-                </div>
-
-                {/* The offer, seamless and inline, while the code still works */}
-                {offerLive && (
-                  <div className="mt-3 space-y-2">
-                    <p
-                      style={{
-                        fontSize: "var(--letter-body)",
-                        lineHeight: "var(--letter-body-lh)",
-                      }}
-                    >
-                      {OFFER_LEAD} Take{" "}
-                      <strong className="font-bold">
-                        {DISCOUNT_PERCENT}% off
-                      </strong>{" "}
-                      with{" "}
-                      <button
-                        type="button"
-                        onClick={copyCode}
-                        aria-label={`Copy the discount code ${DISCOUNT_CODE}`}
-                        title={copied ? "Copied" : "Copy code"}
-                        className="mx-0.5 inline-flex translate-y-[-1px] cursor-pointer items-center gap-1 rounded px-1 align-middle font-bold outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
-                        style={{ color: INK }}
-                      >
-                        {DISCOUNT_CODE}
-                        {copied ? (
-                          <CheckmarkCircle02Icon className="h-3.5 w-3.5" />
-                        ) : (
-                          <Copy01Icon className="h-3 w-3" />
-                        )}
-                      </button>
-                      at checkout. {DISCOUNT_YEARLY_NOTE}
-                    </p>
-                    <RaisedButton
-                      color={CTA_BLACK}
-                      size="sm"
-                      className="mt-1 px-4 font-semibold"
-                      onClick={() => {
-                        trackEvent(
-                          ANALYTICS_EVENTS.FOUNDER_LETTER_DISCOUNT_CTA_CLICKED,
-                          {
-                            discount_code: DISCOUNT_CODE,
-                            discount_percent: DISCOUNT_PERCENT,
-                          },
-                        );
-                        openPricingModal({
-                          discountCode: DISCOUNT_CODE,
-                          discountPercent: DISCOUNT_PERCENT,
-                        });
-                        closeLetter();
-                      }}
-                    >
-                      Claim {DISCOUNT_PERCENT}% off
-                      <CircleArrowRight02Icon className="h-4 w-4" />
-                    </RaisedButton>
-                    <p
-                      className="opacity-60"
-                      style={{ fontSize: "calc(var(--letter-small) * 0.92)" }}
-                    >
-                      {DISCOUNT_TERMS}
-                    </p>
-                  </div>
-                )}
-
-                {/* Meeting */}
-                <p
-                  className="mt-4"
-                  style={{
-                    fontSize: "var(--letter-body)",
-                    lineHeight: "var(--letter-body-lh)",
-                  }}
-                >
-                  {MEETING_SENTENCE}
-                </p>
-                <a
-                  href={MEETING_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() =>
-                    trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_MEETING_CLICKED)
-                  }
-                  className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
-                >
-                  {MEETING_CTA}
-                </a>
-
-                {/* Signature: draws itself in, stroke by stroke */}
-                <div className="mt-6">
-                  <Signature
-                    active={isOpen}
-                    scale="clamp(1.05, 0.14vh, 1.35)"
-                  />
-                </div>
-                <div
-                  className="mt-1 flex flex-col leading-snug font-normal"
-                  style={{ fontSize: "var(--letter-small)" }}
-                >
-                  <span className="font-medium">{SIGNATURE_NAME}</span>
-                  <span>{SIGNATURE_ROLE}</span>
-                </div>
+                {LETTER_PARAGRAPHS.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
               </div>
-            </m.div>
-          </m.div>
-        )}
-      </AnimatePresence>
+
+              {/* The offer, seamless and inline, while the code still works */}
+              {offerLive && (
+                <div className="mt-3 space-y-2">
+                  <p
+                    style={{
+                      fontSize: "var(--letter-body)",
+                      lineHeight: "var(--letter-body-lh)",
+                    }}
+                  >
+                    {OFFER_LEAD} Take{" "}
+                    <strong className="font-bold">
+                      {DISCOUNT_PERCENT}% off
+                    </strong>{" "}
+                    with{" "}
+                    <button
+                      type="button"
+                      onClick={copyCode}
+                      aria-label={`Copy the discount code ${DISCOUNT_CODE}`}
+                      title={copied ? "Copied" : "Copy code"}
+                      className="mx-0.5 inline-flex translate-y-[-1px] cursor-pointer items-center gap-1 rounded px-1 align-middle font-bold outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60 active:scale-95"
+                      style={{ color: INK }}
+                    >
+                      {DISCOUNT_CODE}
+                      {copied ? (
+                        <CheckmarkCircle02Icon className="h-3.5 w-3.5" />
+                      ) : (
+                        <Copy01Icon className="h-3 w-3" />
+                      )}
+                    </button>
+                    at checkout. {DISCOUNT_YEARLY_NOTE}
+                  </p>
+                  <RaisedButton
+                    color={CTA_BLACK}
+                    size="sm"
+                    className="mt-1 px-4 font-semibold"
+                    onClick={() => {
+                      trackEvent(
+                        ANALYTICS_EVENTS.FOUNDER_LETTER_DISCOUNT_CTA_CLICKED,
+                        {
+                          discount_code: DISCOUNT_CODE,
+                          discount_percent: DISCOUNT_PERCENT,
+                        },
+                      );
+                      openPricingModal({
+                        discountCode: DISCOUNT_CODE,
+                        discountPercent: DISCOUNT_PERCENT,
+                      });
+                      closeLetter();
+                    }}
+                  >
+                    Claim {DISCOUNT_PERCENT}% off
+                    <CircleArrowRight02Icon className="h-4 w-4" />
+                  </RaisedButton>
+                  <p
+                    className="opacity-60"
+                    style={{ fontSize: "calc(var(--letter-small) * 0.92)" }}
+                  >
+                    {DISCOUNT_TERMS}
+                  </p>
+                </div>
+              )}
+
+              {/* Meeting */}
+              <p
+                className="mt-4"
+                style={{
+                  fontSize: "var(--letter-body)",
+                  lineHeight: "var(--letter-body-lh)",
+                }}
+              >
+                {MEETING_SENTENCE}
+              </p>
+              <a
+                href={MEETING_URL}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() =>
+                  trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_MEETING_CLICKED)
+                }
+                className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
+              >
+                {MEETING_CTA}
+              </a>
+
+              {/* Signature: draws itself in, stroke by stroke */}
+              <div className="mt-6">
+                <Signature active={isOpen} scale="clamp(1.05, 0.14vh, 1.35)" />
+              </div>
+              <div
+                className="mt-1 flex flex-col leading-snug font-normal"
+                style={{ fontSize: "var(--letter-small)" }}
+              >
+                <span className="font-medium">{SIGNATURE_NAME}</span>
+                <span>{SIGNATURE_ROLE}</span>
+              </div>
+            </div>
+          </div>
+        </ModalContent>
+      </Modal>
     </>
   );
 }
