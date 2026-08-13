@@ -28,7 +28,6 @@ from app.agents.llm.types import (
 from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
-    DEEPSEEK_PROVIDER_ROUTING,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_LLM_TEMPERATURE,
@@ -424,7 +423,6 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
         # Provider-routing pin: without it OpenRouter rotates this model id
         # across upstreams and the per-upstream prompt cache never chains
         # (measured: unpinned flapped 0/0/99/99/99/0; pinned holds 99-100%).
-        model_kwargs=DEEPSEEK_PROVIDER_ROUTING,
     )
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).

@@ -142,17 +142,13 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # Text-only: tool results carrying images are captioned for it rather than shown
 # (see agents/llm/vision/capability.py).
 DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
-# OpenRouter provider routing for the default DeepSeek lane. Without routing,
-# OpenRouter load-balances the model id across multiple upstream providers,
-# and the provider's prompt cache lives PER upstream — so a conversation's
-# cached chain is only visible when the request lands on the upstream that
-# wrote it, and consecutive turns rotate on and off the chain (measured:
-# unpinned requests flapped 0/0/99/99/99/0; routed requests hold 99-100%).
-# `sort: "price"` routes to the CHEAPEST provider serving the model, and
-# OpenRouter's sticky routing (the session_id on each request, see
-# agent_helpers) then pins follow-up requests to the provider holding the
-# warm cache — cheapest AND cache-stable.
-DEEPSEEK_PROVIDER_ROUTING: dict[str, object] = {"provider": {"sort": "price"}}
+# No explicit provider routing for the default DeepSeek lane: OpenRouter's
+# DEFAULT routing (price- and availability-weighted) already picks the best
+# provider, and the session_id sticky-routing key on every request (see
+# build_agent_config) pins follow-ups to the provider holding the warm
+# prompt cache. An explicit `sort: "price"` was measured WORSE (35.6%): the
+# per-request re-sort rotates providers and defeats the stickiness. Measured
+# with the session_id alone: 0/100/99/99/99/99/99 on a growing conversation.
 # A separate id in the same series as the default, used by the auxiliary
 # one-shot calls (memory pipeline, follow-ups, vision, …). OpenRouter serves
 # it as a DIFFERENT checkpoint of the v4-flash series ("0423", vs the default's
@@ -240,14 +236,18 @@ HELPER_MAX_OUTPUT_TOKENS = 8_000
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
 OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
-# Pin the paid model to the first-party "z-ai" provider on OpenRouter. Without
-# this, OpenRouter may load-balance z-ai/glm-5.2 across resellers (DeepInfra,
-# Together, Parasail, etc.) whose shared pools get rate-limited upstream (429). `only`
-# forces the first-party lane. Passed via ChatOpenRouter's `model_kwargs` (the
-# OpenRouter `provider` routing param) and inherited by child agents via
+# Route the paid model to the CHEAPEST provider on OpenRouter (sort: price).
+# Without consistent routing, OpenRouter load-balances across resellers whose
+# per-upstream prompt caches never chain (measured: a conversation split across
+# routing params flapped and capped at ~64%). ``sort: price`` + the session_id
+# sticky-routing key keeps every request of a conversation on the cheapest
+# provider that holds its warm cache. Passed via ChatOpenRouter's ``model_kwargs``
+# (the OpenRouter ``provider`` routing param) and inherited by child agents via
 # agent_helpers._inherit_from_parent_configurable so subagents stay on the same lane.
 PAID_MODEL_PROVIDER_SLUG = "deepseek"
-PAID_MODEL_MODEL_KWARGS = {"provider": {"only": [PAID_MODEL_PROVIDER_SLUG]}}
+# No explicit routing: the session_id sticky-routing key pins the paid lane to
+# the provider holding its warm cache (see the routing note above the default).
+PAID_MODEL_MODEL_KWARGS: dict[str, object] | None = None
 # Comms-specific reasoning: "low" instead of the executor's "medium". Comms is
 # mostly routing/ack work, so the reasoning budget is most useful for the executor's
 # tool selection. GLM 5.2 also documents "high"/"xhigh" efforts — revisit these
@@ -307,7 +307,7 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         "model": "deepseek/deepseek-v4-flash-0731",
         # Provider-routing pin: without it the upstream rotates per request and
         # the per-upstream prompt cache never chains (measured).
-        "model_kwargs": DEEPSEEK_PROVIDER_ROUTING,
+        "model_kwargs": None,
         "reasoning": False,
     },
     "custom": {
