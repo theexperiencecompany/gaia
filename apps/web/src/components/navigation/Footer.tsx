@@ -64,7 +64,7 @@ export default function Footer() {
             context, which isolates blending and would leave the wordmark's
             mix-blend-mode with an empty backdrop instead of the wallpaper.
             Paint order over the wallpaper comes from `relative` + DOM order. */}
-        <div className="relative flex flex-col gap-8 px-6 pt-40 pb-8 sm:gap-10 sm:px-8 lg:px-10">
+        <div className="relative flex flex-col gap-8 px-6 pt-40 pb-1 sm:gap-10 sm:px-8 lg:px-10">
           <div className="mx-auto flex w-full max-w-7xl flex-wrap justify-between gap-10">
             {footerSections.map((section) => (
               <div key={section.title} className="flex flex-col items-start">
