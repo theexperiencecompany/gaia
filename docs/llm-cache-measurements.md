@@ -106,19 +106,18 @@ Two follow-up fixes in this PR close the biggest measured gaps:
   (`AUX_MODEL_NAME`), so their ~30k tokens/turn of new blocks can no longer
   evict the conversation from its namespace.
 
-Real-graph runs measure **63–76%** on the same 15-turn driver across
-provider-cache windows (best single window: **75.7%**; per-turn spikes to
-**93–99%**). The request side is at the measured ceiling: the volatile
-tail is now ~370 tokens, the core-stable slot is 100% byte-identical
-across turns, and the shadow test (replaying the graph's exact captured
-bytes seconds later) hits 99.7% while the live call misses the same bytes.
-The residual is the provider's SHARED cache: a comms-only control with
-ZERO interleaving still flaps 0/99/99/99/0/99/0 — the chain is evicted by
-external traffic on the shared model id (the 94.9% harness and the 99.7%
-shadow prove the 95%+ ceiling is reachable when the cache holds). The
-remaining lever is a lane with a private cache (the GAIA-only dev lane is
-rate-limited; the less-trafficked alias checkpoint holds chains slightly
-longer — 5 stable hits vs 3 — at 1.75x pricing).
+Real-graph runs measure **76.3%** on the 15-turn driver (up from the 70.5%
+baseline), with the comms at 83–91% per turn and the cached prefix growing
+through the conversation (20.2k → 24.8k). The mechanism, finally isolated
+and fixed: OpenRouter routes each request to the provider holding the warm
+cache when the request carries a ``session_id`` (sticky routing, forced
+from the FIRST request) — measured 0/100/99/99/99/99/99 on an isolated
+growing conversation with the session_id alone. Explicit provider routing
+was measured WORSE (sort:price 35.6%, first-party pin conflicts) and was
+removed. The residual gap to 99% is the per-turn content that SHOULD
+change: the new turn's messages, the volatile tail (~370 tokens), and the
+follow-up one-shot (~2k at its ~65% ceiling because its per-turn context
+churns) — plus occasional provider-side flakes (2 turns in 15).
 
 **Tested and reverted: OpenRouter `session_id` sticky routing.** The
 conversation id was pinned on every request (comms, executor, subagents,
