@@ -386,6 +386,7 @@ export default function UseCaseSection({
                       iconColor={useCase.icon_color}
                       systemWorkflowKey={useCase.system_workflow_key}
                       triggerConfig={useCase.trigger_config}
+                      creator={useCase.creator}
                       totalExecutions={useCase.total_executions || 0}
                       showExecutions={true}
                       useBlurEffect={useBlurEffect}

@@ -12,6 +12,7 @@ import { Tooltip } from "@heroui/tooltip";
 import {
   Alert01Icon,
   ArrowDown01Icon,
+  CheckmarkBadge01Icon,
   CursorMagicSelection03Icon,
   DateTimeIcon,
   Mail01Icon,
@@ -22,6 +23,7 @@ import { useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import {
+  isSystemCreator,
   resolveCreatorAvatar,
   resolveCreatorName,
 } from "@/features/workflows/utils/creator";
@@ -224,15 +226,47 @@ interface CreatorAvatarProps {
   };
   size?: number;
   showTooltip?: boolean;
+  /** Render the creator's name beside the avatar (verified when it's ours) */
+  showName?: boolean;
 }
 
 export function CreatorAvatar({
   creator,
   size = 27,
   showTooltip = true,
+  showName = false,
 }: CreatorAvatarProps) {
   const avatarSrc = resolveCreatorAvatar(creator);
   const displayName = resolveCreatorName(creator);
+  const isVerified = isSystemCreator(creator);
+
+  if (showName) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-zinc-800 p-0.5">
+          {avatarSrc ? (
+            <Image
+              src={avatarSrc}
+              alt={displayName}
+              width={100}
+              height={100}
+              className="object-contain"
+            />
+          ) : (
+            <UserCircle02Icon className="h-4 w-4 text-zinc-400" />
+          )}
+        </div>
+        <span className="truncate text-xs text-zinc-400">{displayName}</span>
+        {isVerified && (
+          <CheckmarkBadge01Icon
+            width={15}
+            height={15}
+            className="shrink-0 text-primary"
+          />
+        )}
+      </div>
+    );
+  }
 
   const avatar = (
     <div className="flex items-center gap-2">

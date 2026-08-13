@@ -19,6 +19,7 @@ import type {
   TriggerConfig,
   Workflow,
 } from "@/types/features/workflowTypes";
+import type { ContentCreator } from "@/types/shared/contentTypes";
 import { formatRunCount } from "@/utils/formatters";
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "../../triggers/utils";
@@ -51,6 +52,8 @@ interface UnifiedWorkflowCardProps {
   systemWorkflowKey?: string | null;
   /** The trigger this card advertises, reproduced on add */
   triggerConfig?: TriggerConfig;
+  /** Author, for cards built from flat props rather than a workflow object */
+  creator?: ContentCreator;
   totalExecutions?: number;
   slug?: string;
   prompt?: string;
@@ -354,7 +357,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
           <div className="flex items-center gap-3">
             {workflow?.is_system_workflow && <SystemWorkflowChip />}
             {shouldShowCreator && creator && (
-              <CreatorAvatar creator={creator} />
+              <CreatorAvatar creator={creator} showName />
             )}
 
             {resolvedAction !== "none" && (
@@ -405,6 +408,7 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     iconColor: propIconColor,
     systemWorkflowKey: propSystemWorkflowKey,
     triggerConfig: propTriggerConfig,
+    creator: propCreator,
     totalExecutions: propTotalExecutions,
     variant = "explore",
     showTrigger,
@@ -431,11 +435,13 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     workflow?.total_executions ??
     communityWorkflow?.total_executions ??
     0;
-  const creator = communityWorkflow?.creator || workflow?.creator;
+  const creator =
+    propCreator || communityWorkflow?.creator || workflow?.creator;
 
   const shouldShowTrigger = showTrigger ?? (variant === "user" && !!workflow);
   const shouldShowCreator =
-    showCreator ?? (variant === "community" && !!creator);
+    showCreator ??
+    ((variant === "community" || variant === "explore") && !!creator);
   const shouldShowActivation =
     showActivationStatus ?? (variant === "user" && !!workflow);
 
