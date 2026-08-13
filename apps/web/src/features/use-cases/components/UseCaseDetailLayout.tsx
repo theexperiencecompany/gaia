@@ -38,8 +38,10 @@ export default function UseCaseDetailLayout({
   categories,
 }: UseCaseDetailLayoutProps) {
   return (
-    <div className="flex min-h-screen w-screen justify-center overflow-y-auto pt-34 pb-20 relative z-[1]">
-      <div className="container mx-auto w-full max-w-5xl space-y-5">
+    <div className="flex min-h-screen w-full justify-center overflow-y-auto pt-34 pb-20 relative z-[1]">
+      {/* max-w-7xl + px matches FinalSection's container so the page content
+          and the CTA below it share one edge. */}
+      <div className="mx-auto w-full max-w-7xl space-y-5 px-4 sm:px-6">
         <div className="mb-3 text-sm text-zinc-500">
           <Breadcrumbs>
             {breadcrumbs.map((crumb) => (
