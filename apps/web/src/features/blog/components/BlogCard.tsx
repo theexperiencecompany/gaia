@@ -2,6 +2,7 @@ import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import Link from "next/link";
 
+import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import type { BlogPostMeta } from "@/lib/blog";
 
 import { AuthorTooltip } from "./AuthorTooltip";
@@ -27,6 +28,7 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
               fill
               className="rounded-2xl object-cover"
             />
+            <GrainOverlay className="rounded-2xl" />
             {blog.featured && (
               <Chip
                 variant="flat"

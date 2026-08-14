@@ -412,6 +412,63 @@ Stop before forcing full type safety through:
 
 A narrower type that's provably correct beats a "complete" one that required guessing.
 
+### 15. Tighten the types in every file you touch — never widen them
+
+Type safety is a ratchet: each file you edit leaves stricter than you found it, and never looser. This is not a licence to rewrite the file. Scope the tightening to the code you are already changing plus the signatures it flows through — the same bar as any other diff (Surgical Changes), so the change stays reviewable.
+
+While you are in a function, fix what is in front of you: a `dict[str, Any]` return, an unparametrized `list`/`dict`/`Callable`, an untyped empty collection (`items = []`), a bare `str` holding a fixed value set, a magic literal that wants to be a constant or enum.
+
+The one hard rule is the ratchet direction. Never *introduce* an `Any`, a bare generic, or an untyped empty collection into a file that did not already have one — including in a hurry, including "just for now." Adding a hole is never in scope; closing one nearly always is.
+
+### 16. An existing annotation is a claim, not evidence — verify the runtime type before you trust it
+
+`dict[str, Any]` does not merely lose precision. It launders wrong types downstream: `Any` is compatible with everything, so a false declaration on the receiving end is never challenged.
+
+Real case from this codebase: `LLMProvider.instance` was declared `BaseChatModel` for months. The registry actually holds `RunnableConfigurableFields` (what `configurable_fields()` returns) — a `RunnableSerializable`, **not** a `BaseChatModel`. The `dict[str, Any]` feeding it is the only reason the lie survived; the code then called `configurable_alternatives()`, a method the declared type does not even have.
+
+So when tightening, do not derive the "real" type from the neighbouring annotation, or from a factory's declared return. Construct the value and look:
+
+```python
+inst = providers.get("gemini_llm")
+print(type(inst).__name__, isinstance(inst, BaseChatModel))  # RunnableConfigurableFields False
+```
+
+Then annotate what it *is*, and pick the type that actually declares the methods you call — `configurable_alternatives` lives on `RunnableSerializable`, not on bare `Runnable`/`LanguageModelLike`.
+
+### 17. Prove the tightened annotation can fail
+
+mypy passing before *and* after a "tightening" proves nothing changed — a decorative annotation is as green as a load-bearing one. Same rule as tests: if it cannot fail, it is not doing work.
+
+Write a throwaway probe, run mypy on it, confirm it errors, delete it:
+
+```python
+# _typeprobe.py — delete after running
+bad: LLMProvider = {"name": "x", "instance": "not-a-model"}   # expect: error
+_get_ordered_providers({"gemini": "not-a-model"}, None, True)  # expect: error
+reveal_type(_get_available_providers())                        # expect: the real type, not Any
+```
+
+`reveal_type` is the fastest way to confirm you closed the hole rather than moved it: if it still reveals `Any`, the annotation is cosmetic.
+
+### 18. A literal repeated at a definition site and a lookup site is an enum (see item 5)
+
+Item 5 covers a fixed set of *values*. This is the sharper case: the same literal written in two places that must agree. Registry keys, event names, queue names, config keys, cache-key prefixes. Nothing enforces the match, so drift is silent and reaches production.
+
+That is exactly how the `comms_agent` outage happened — `"gemini_llm"` lived in both `@lazy_provider(name="gemini_llm")` and the lookup mapping, and only one side was environment-gated. One enum, referenced from both sides, makes the drift impossible:
+
+```python
+class LLMProviderKey(StrEnum):
+    GEMINI = "gemini_llm"
+```
+
+Prefer `StrEnum` over `(str, Enum)`. Both hash equal to their string value, so members stay usable as dict keys and in plain-string lookups — but `(str, Enum)` renders as `LLMProviderKey.GEMINI` in f-strings and log messages, while `StrEnum` renders `gemini_llm`. When the value is interpolated into a log line or an error message, `(str, Enum)` silently degrades it. Verify both properties before swapping a hot string for an enum member:
+
+```python
+d = {LLMProviderKey.GEMINI: 1}
+assert d.get("gemini_llm") == 1          # dict-key compatible
+assert f"{LLMProviderKey.GEMINI}" == "gemini_llm"   # renders as the value
+```
+
 ## Anti-Patterns
 
 - No sync DB/HTTP calls in async endpoints — all I/O must be `async`.

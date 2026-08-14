@@ -1,9 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
+import { cloneElement, isValidElement } from "react";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 import { FooterWordmark } from "@/components/navigation/FooterWordmark";
 import JsonLd from "@/components/seo/JsonLd";
-import { footerSections } from "@/config/appConfig";
+import { GrainOverlay } from "@/components/ui/GrainOverlay";
+import { connect, footerSections } from "@/config/appConfig";
 import { siteConfig } from "@/lib/seo";
 
 export default function Footer() {
@@ -30,45 +32,39 @@ export default function Footer() {
       <JsonLd data={navigationSchema} />
       {/* z above the fixed bottom BlurStack (z-10) so the wordmark is never
           blurred by the viewport-edge blur — but below the fixed navbar
-          (z-50) so the footer can never paint over navigation. The bands
-          wallpaper is shown in FULL — it sets the footer height as a
-          full-width banner (natural 3:2 aspect, capped so ultra-wide screens
-          don't get an enormous footer) and the content is overlaid on top
-          of it. */}
+          (z-50) so the footer can never paint over navigation. The footer's
+          height is set by its own content; the glow wallpaper fills behind it
+          and is anchored to the bottom so the brightest part of the glow sits
+          under the wordmark on every viewport. */}
       <footer className="relative z-20 w-full overflow-hidden">
         <Image
-          src="/images/wallpapers/bands_gradient_black.png"
+          src="/images/wallpapers/subtle_glow_deep_blues.webp"
           alt=""
-          width={1536}
-          height={1024}
+          fill
+          sizes="100vw"
           priority={false}
-          className="pointer-events-none block max-h-[820px] w-full select-none object-cover object-bottom"
+          className="pointer-events-none z-0 origin-bottom scale-150 select-none object-cover object-bottom"
         />
 
-        {/* Fade the footer's top edge into the page background above — the
-            wallpaper's bright bands start right at its top edge, which
-            otherwise reads as a hard line against the last section. The
-            via-stop holds the background color a beat longer before easing
-            out, so the transition reads as a soft glow instead of a straight
-            ramp. */}
+        {/* Fade the footer's top edge into the page background above, so the
+            wallpaper's edge never reads as a hard line against the last
+            section. The via-stop holds the background color a beat longer
+            before easing out, so the transition reads as a soft glow instead
+            of a straight ramp. */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-48 bg-linear-to-b from-background via-background/50 to-transparent" />
 
-        {/* Film-grain noise over the wallpaper — breaks up gradient banding
-            on the beams and gives the footer a tactile, printed feel. SVG
-            feTurbulence tile, stitched, blended at low opacity. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-20 opacity-[0.05] mix-blend-overlay"
-          style={{
-            backgroundImage:
-              "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E\")",
-          }}
-        />
+        {/* Film-grain over the wallpaper — breaks up gradient banding in the
+            glow and gives the footer a tactile, printed feel. */}
+        <GrainOverlay variant="surface" className="z-20" />
 
-        {/* Content overlay: link columns and the halftone wordmark grouped
-            together at the bottom, over the bright beams (the black upper half
-            of the wallpaper stays empty to blend with the page above). */}
-        <div className="absolute inset-0 flex flex-col justify-end gap-8 px-6 sm:gap-10 sm:px-8 lg:px-10">
+        {/* Content: link columns and the halftone wordmark. This is what sets
+            the footer's height — the top padding leaves the dark upper part of
+            the glow visible so the footer blends into the page above.
+            Deliberately NO z-index: a z-index here would create a stacking
+            context, which isolates blending and would leave the wordmark's
+            mix-blend-mode with an empty backdrop instead of the wallpaper.
+            Paint order over the wallpaper comes from `relative` + DOM order. */}
+        <div className="relative flex flex-col gap-8 px-6 pt-24 pb-1 sm:gap-10 sm:px-8 lg:px-10">
           <div className="mx-auto flex w-full max-w-7xl flex-wrap justify-between gap-10">
             {footerSections.map((section) => (
               <div key={section.title} className="flex flex-col items-start">
@@ -93,6 +89,58 @@ export default function Footer() {
 
           <div className="mx-auto w-full max-w-7xl">
             <FooterWordmark />
+          </div>
+
+          {/* Bottom bar under the wordmark. A 3-column grid rather than
+              flex+space-between, so the company mark is centered against the
+              footer itself and does not drift as the status badge and the
+              social row change width. */}
+          <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center justify-items-center gap-6 sm:grid-cols-3">
+            {/* Cross-origin frame: `ph-no-capture` stops PostHog from reaching
+                into it, which throws a SecurityError. */}
+            <iframe
+              src="https://status.heygaia.io/badge?theme=dark"
+              title="GAIA API Status"
+              className="ph-no-capture sm:justify-self-start"
+              scrolling="no"
+              height={30}
+              width={186}
+              style={{ colorScheme: "normal" }}
+            />
+
+            <Link
+              href="https://twitter.com/madebyexp"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="The Experience Company"
+            >
+              <Image
+                src="/brand/experience_logo_white.svg"
+                alt="The Experience Company"
+                width={44}
+                height={44}
+              />
+            </Link>
+
+            <div className="flex items-center gap-4 sm:justify-self-end">
+              {connect.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  target={link.external ? "_blank" : undefined}
+                  rel={link.external ? "noopener noreferrer" : undefined}
+                  title={link.description}
+                  aria-label={link.label}
+                  className="text-zinc-200 transition-colors hover:text-primary"
+                >
+                  {/* Drop each icon's brand color so the row reads as one set
+                      and inherits the hover state. */}
+                  {isValidElement<{ color?: string }>(link.icon)
+                    ? cloneElement(link.icon, { color: undefined })
+                    : link.icon}
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
       </footer>

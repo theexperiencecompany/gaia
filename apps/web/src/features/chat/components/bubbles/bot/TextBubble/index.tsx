@@ -1,5 +1,6 @@
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Alert01Icon } from "@icons";
+import { Alert01Icon, RedoIcon } from "@icons";
 import {
   APPROVAL_REQUEST_TOOL_NAME,
   type ApprovalRequestData,
@@ -83,8 +84,55 @@ function ReplyQuote({
   );
 }
 
-/** Quiet failed-response bubble shown when a bot turn died with no text. */
-function FailedResponse({ error }: Readonly<{ error: string }>) {
+/**
+ * The failure surface for a bot turn, in two shapes:
+ *  - `partial` — some text streamed before the turn died, so a bubble already
+ *    rendered above; this is a compact strip under it saying it was cut short.
+ *  - full bubble — nothing streamed, so this IS the message.
+ *
+ * Retry lives here rather than only in the hover actions row: that row is
+ * invisible until hover and suppressed on the last bubble while the
+ * conversation is busy, which is exactly when a failure appears.
+ */
+function FailedResponse({
+  error,
+  partial,
+  onRetry,
+  isRetrying,
+}: Readonly<{
+  error: string;
+  partial: boolean;
+  onRetry?: () => void;
+  isRetrying?: boolean;
+}>) {
+  const retryButton = onRetry && (
+    <Button
+      className="h-7 min-w-0 shrink-0 px-2 text-xs"
+      isDisabled={isRetrying}
+      onPress={onRetry}
+      radius="full"
+      size="sm"
+      startContent={
+        <div className={isRetrying ? "animate-spin" : ""}>
+          <RedoIcon height={13} width={13} />
+        </div>
+      }
+      variant="flat"
+    >
+      Retry
+    </Button>
+  );
+
+  if (partial) {
+    return (
+      <div className="mt-1 flex items-center gap-2 text-zinc-400">
+        <Alert01Icon className="shrink-0" height={15} width={15} />
+        <span className="text-xs">Response was cut short</span>
+        {retryButton}
+      </div>
+    );
+  }
+
   return (
     <div className="imessage-bubble imessage-from-them imessage-grouped-last">
       <div className="flex items-start gap-2">
@@ -93,9 +141,12 @@ function FailedResponse({ error }: Readonly<{ error: string }>) {
           height={17}
           width={17}
         />
-        <div className="flex flex-col gap-0.5">
-          <span className="text-sm text-zinc-200">This response failed</span>
-          <span className="line-clamp-2 text-xs text-zinc-400">{error}</span>
+        <div className="flex flex-col items-start gap-1.5">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm text-zinc-200">This response failed</span>
+            <span className="line-clamp-2 text-xs text-zinc-400">{error}</span>
+          </div>
+          {retryButton}
         </div>
       </div>
     </div>
@@ -309,6 +360,8 @@ export default function TextBubble({
   loading,
   replyToMessage,
   error,
+  onRetry,
+  isRetrying,
 }: Readonly<ChatBubbleBotProps>) {
   const baseId = useId();
 
@@ -481,12 +534,21 @@ export default function TextBubble({
           );
         })()}
 
-      {/* Failed turn with no response text — render a quiet error bubble so
-          reloads don't show an empty bubble. Mirror ChatBubbleBot's hasError
-          gating: a turn that should show as a text bubble is never an error. */}
-      {!!error &&
-        !shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
-        !parsedContent.cleanText.trim() && <FailedResponse error={error} />}
+      {/* Every errored turn surfaces its failure and a retry. With no text this
+          IS the message (a quiet error bubble, so reloads don't show an empty
+          one); with partial text it's a strip under the bubble that already
+          rendered, marking the answer as truncated rather than finished. */}
+      {!!error && (
+        <FailedResponse
+          error={error}
+          isRetrying={isRetrying}
+          onRetry={onRetry}
+          partial={
+            shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) ||
+            !!parsedContent.cleanText.trim()
+          }
+        />
+      )}
     </ApprovalResolveProvider>
   );
 }

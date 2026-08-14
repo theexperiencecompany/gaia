@@ -55,7 +55,9 @@ today's defaults. Delete `.env.worktree` to fall back to defaults.
 | Service | Var | Value | Main (offset 0) |
 |---|---|---|---|
 | API (uvicorn) | `API_PORT` | `8000 + offset` | 8000 |
+| API (dockered, `dev:vm`) | `API_HOST_PORT` | `8000 + offset` | 8000 |
 | Web (Next.js) | `WEB_PORT` | `3000 + offset` | 3000 |
+| API → web URL (redirects, links) | `FRONTEND_URL` | `http://localhost:$WEB_PORT` | …:3000 |
 | Web → API URL | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:$API_PORT/api/v1/` | …8000/api/v1/ |
 | Bots/`gaia-sim` → API URL | `GAIA_API_URL` | `http://localhost:$API_PORT` | …:8000 |
 | Scripted LLM stub (`dev --sim`) | `LLM_STUB_PORT` | `9797 + offset` | 9797 |

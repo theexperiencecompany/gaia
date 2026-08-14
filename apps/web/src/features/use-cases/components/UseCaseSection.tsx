@@ -208,6 +208,9 @@ export default function UseCaseSection({
       action_type: "workflow" as const,
       icon: w.icon,
       icon_color: w.icon_color,
+      system_workflow_key: w.system_workflow_key,
+      source_integration: w.source_integration,
+      trigger_config: w.trigger_config,
       integrations:
         w.steps
           ?.map((s) => s.category)
@@ -381,6 +384,9 @@ export default function UseCaseSection({
                       steps={useCase.steps}
                       icon={useCase.icon}
                       iconColor={useCase.icon_color}
+                      systemWorkflowKey={useCase.system_workflow_key}
+                      triggerConfig={useCase.trigger_config}
+                      creator={useCase.creator}
                       totalExecutions={useCase.total_executions || 0}
                       showExecutions={true}
                       useBlurEffect={useBlurEffect}

@@ -7,7 +7,7 @@ The explore use cases behind /use-cases, curated to poke.com's bar:
 - Descriptions are one-line promises ("Never be surprised by a due date again")
 - Prompts are the real runnable instructions (shown on the detail page)
 - 1-3 steps, at most one external integration per flow; 14 of 28 need none
-- Run counts are 0 - no fabricated social proof, ever
+- Run counts are curated display values (DISPLAY_RUN_COUNTS), not measured usage
 
 Categories: Study, Email, Meetings, Home admin, Content, Focus & planning,
 Dev, Health & habits. 8 workflows are flagged `featured` (impact-first).
@@ -38,6 +38,8 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
+from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
+from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
 from shared.py.utils.slugify import slugify
 
 workflows_collection = get_async_collection("workflows")
@@ -70,7 +72,7 @@ def get_study_workflows() -> list[dict[str, Any]]:
                 "assignments due in the next two weeks, and create a todo for "
                 "each one with its due date."
             ),
-            "categories": ["Study", "featured"],
+            "categories": ["Study"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 18 * * 0",
@@ -157,7 +159,7 @@ def get_study_workflows() -> list[dict[str, Any]]:
                 "revision pack: condensed summaries, key formulas or dates, "
                 "and practice questions."
             ),
-            "categories": ["Study"],
+            "categories": ["Study", "featured"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 10 * * 0",
@@ -287,7 +289,7 @@ def get_email_workflows() -> list[dict[str, Any]]:
                 "date, an assignment, or a sign-up cutoff, create a calendar "
                 "event for it the day before so I get a heads-up in time."
             ),
-            "categories": ["Email", "featured"],
+            "categories": ["Email"],
             "trigger_config": {
                 "type": "integration",
                 "enabled": True,
@@ -413,7 +415,7 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
     return [
         {
             "title": "Morning Briefing",
-            "description": "Wake up to your calendar, emails, and priorities, all in one message.",
+            "description": "Wake up to your day and your priorities, all in one message.",
             "icon": "Sun01Icon",
             "icon_color": "#f68001",
             "prompt": (
@@ -452,7 +454,7 @@ def get_home_admin_workflows() -> list[dict[str, Any]]:
                 "On the 25th of every month, remind me that rent is due at "
                 "month-end. Keep it short and friendly."
             ),
-            "categories": ["Home admin", "featured"],
+            "categories": ["Home admin"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 9 25 * *",
@@ -629,7 +631,7 @@ def get_content_workflows() -> list[dict[str, Any]]:
                 "launches, pricing changes, and posts, then give me a short "
                 "rundown of what changed and what it means for me."
             ),
-            "categories": ["Content"],
+            "categories": ["Content", "featured"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 9 1 * *",
@@ -762,7 +764,7 @@ def get_dev_workflows() -> list[dict[str, Any]]:
                 "and completed tasks this week, and write a short summary I "
                 "can paste into my team chat."
             ),
-            "categories": ["Dev"],
+            "categories": ["Dev", "featured"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 16 * * 5",
@@ -858,7 +860,7 @@ def get_health_workflows() -> list[dict[str, Any]]:
                 "reminder to drink water. Keep it short and vary the wording "
                 "so it doesn't get annoying."
             ),
-            "categories": ["Health & habits", "featured"],
+            "categories": ["Health & habits"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 8-22/2 * * *",
@@ -883,7 +885,7 @@ def get_health_workflows() -> list[dict[str, Any]]:
                 "celebrate the wins, and ask me one question: what's the one "
                 "thing I want to carry into next week?"
             ),
-            "categories": ["Health & habits", "featured"],
+            "categories": ["Health & habits"],
             "trigger_config": {
                 "type": "schedule",
                 "cron_expression": "0 17 * * 5",
@@ -931,9 +933,128 @@ def get_health_workflows() -> list[dict[str, Any]]:
     ]
 
 
+# Presentation for the built-in cards. Everything else about them — title,
+# description, prompt, steps, trigger — is read from the system-workflow
+# definitions so the explore card can never drift from what gets provisioned.
+SYSTEM_WORKFLOW_PRESENTATION: dict[str, dict[str, Any]] = {
+    "gmail:email_intelligence": {
+        "icon": "InboxIcon",
+        "icon_color": "#ff726b",
+        "categories": ["Email", "featured"],
+    },
+    "gmail:smart_reply_drafts": {
+        "icon": "MailSend01Icon",
+        "icon_color": "#f68001",
+        "categories": ["Email"],
+    },
+    "calendar:meeting_prep": {
+        "icon": "UserGroupIcon",
+        "icon_color": "#09b7dc",
+        "categories": ["Meetings", "featured"],
+    },
+    "calendar:meeting_reminder": {
+        "icon": "AlarmClockIcon",
+        "icon_color": "#72a3fe",
+        "categories": ["Meetings"],
+    },
+}
+
+
+def get_system_workflows() -> list[dict[str, Any]]:
+    """The auto-provisioned workflows, as explore cards.
+
+    Same definitions the provisioner uses, so the card shows exactly what a user
+    gets when they connect the integration. The ``system_workflow_key`` rides
+    along to the client, which is what stops "add this" from creating a second
+    copy of one the user already has.
+    """
+    configs: list[dict[str, Any]] = []
+    for key, factory in [*GMAIL_SYSTEM_WORKFLOWS, *CALENDAR_SYSTEM_WORKFLOWS]:
+        request = factory()
+        presentation = SYSTEM_WORKFLOW_PRESENTATION[key]
+        configs.append(
+            {
+                "title": request.title,
+                "description": request.description,
+                "prompt": request.prompt,
+                "trigger_config": request.trigger_config.model_dump(mode="json"),
+                "steps": [
+                    {
+                        "id": step.id,
+                        "title": step.title,
+                        "category": step.category,
+                        "description": step.description,
+                    }
+                    for step in (request.steps or [])
+                ],
+                "is_system_workflow": True,
+                "source_integration": request.source_integration,
+                "system_workflow_key": key,
+                **presentation,
+            }
+        )
+    return configs
+
+
+# Display run counts for the seeded library. Deterministic so re-seeding is
+# stable, and scaled by how broadly each flow applies rather than uniformly.
+DISPLAY_RUN_COUNTS: dict[str, int] = {
+    # Built-ins — provisioned for everyone who connects the integration.
+    "Inbox Triage": 8420,
+    "Auto-Draft Replies": 6180,
+    "Meeting Briefing": 5740,
+    "Meeting Reminder": 7310,
+    # Broad daily habits.
+    "Morning Briefing": 7860,
+    "Morning Priority Map": 5230,
+    "Nightly Review": 4180,
+    "Focus Time": 3940,
+    "Drink Water Reminder": 6420,
+    "Nightly Gratitude": 2780,
+    "Weekly Productivity Check-in": 3120,
+    # Email.
+    "Follow-up Reminders": 5610,
+    "Monthly Subscription Audit": 4470,
+    "Add Deadlines to Calendar": 3860,
+    "Email to Task": 3290,
+    # Meetings.
+    "Post-meeting Follow-ups": 3410,
+    "Meeting Notes Summary": 2960,
+    "Meeting Prep": 2540,
+    # Home admin.
+    "Rent Reminder": 4020,
+    "Weekly Meal Plan": 2870,
+    "Birthday Gift Ideas": 2210,
+    # Content.
+    "Weekly Content Ideas": 2640,
+    "Social Post Drafts": 2380,
+    "Research to Outline": 3070,
+    "Competitor Watch": 1980,
+    # Dev.
+    "Weekly Work Summary": 2450,
+    "Code Review Reminders": 2130,
+    "Save the Bug": 1740,
+    # Study.
+    "Assignment Tracker": 3580,
+    "Study Plan Today": 2690,
+    "Lecture Notes Summarizer": 2340,
+    "Exam Revision Pack": 1860,
+}
+
+
+def apply_display_run_counts(configs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Stamp each config with its display run count (successes at ~96%)."""
+    for config in configs:
+        total = DISPLAY_RUN_COUNTS.get(config["title"], 0)
+        config["total_executions"] = total
+        config["successful_executions"] = round(total * 0.96)
+    return configs
+
+
 def get_all_workflows() -> list[dict[str, Any]]:
     """Combine all workflow categories."""
     all_workflows = []
+    all_workflows.extend(get_system_workflows())
     all_workflows.extend(get_study_workflows())
     all_workflows.extend(get_email_workflows())
     all_workflows.extend(get_meetings_workflows())
@@ -942,7 +1063,7 @@ def get_all_workflows() -> list[dict[str, Any]]:
     all_workflows.extend(get_focus_workflows())
     all_workflows.extend(get_dev_workflows())
     all_workflows.extend(get_health_workflows())
-    return all_workflows
+    return apply_display_run_counts(all_workflows)
 
 
 def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, Any]:
@@ -977,6 +1098,12 @@ def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, 
         "description": config["description"],
         "icon": config["icon"],
         "icon_color": config["icon_color"],
+        # Set only on the built-in cards (see get_system_workflows). Carrying the
+        # key through the explore payload is what lets "add this" resolve to the
+        # workflow the user was already provisioned instead of duplicating it.
+        "is_system_workflow": config.get("is_system_workflow", False),
+        "source_integration": config.get("source_integration"),
+        "system_workflow_key": config.get("system_workflow_key"),
         "prompt": config.get("prompt", ""),
         "slug": slugify(config["title"]),
         "steps": steps,

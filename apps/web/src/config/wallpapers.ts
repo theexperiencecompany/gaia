@@ -1,7 +1,7 @@
 export const wallpapers = {
   pricing: {
-    png: "/images/wallpapers/surreal.png",
-    webp: "/images/wallpapers/surreal.webp",
+    png: "/images/wallpapers/glowing_doorway.png",
+    webp: "/images/wallpapers/glowing_doorway.webp",
   },
   useCases: {
     png: "/images/wallpapers/dreamy_rocket_launch.png",

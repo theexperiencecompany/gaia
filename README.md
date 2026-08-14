@@ -312,7 +312,7 @@ On **self-hosted**, yes — provider keys (model providers, integration services
 <details>
 <summary><b>What does self-hosting cost to run?</b></summary>
 
-The GAIA code is free under Polyform Strict (noncommercial use). Real costs are: model API usage (scales with how much you use it), any paid-tier integration services you opt into, and hosting — a single modestly-sized VM handles a small team. See the <a href="https://docs.heygaia.io/self-hosting/overview">self-hosting guide</a> for detailed numbers.
+The GAIA code is free under PolyForm Noncommercial (noncommercial use). Real costs are: model API usage (scales with how much you use it), any paid-tier integration services you opt into, and hosting — a single modestly-sized VM handles a small team. See the <a href="https://docs.heygaia.io/self-hosting/overview">self-hosting guide</a> for detailed numbers.
 
 </details>
 
@@ -349,7 +349,7 @@ GAIA is built on the shoulders of giants — the language models, frameworks, an
 
 ## License
 
-This project is licensed under the [Polyform Strict License 1.0.0](https://polyformproject.org/licenses/strict/1.0.0/).
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/).
 
 > [!WARNING]
 > This license allows noncommercial use only.
