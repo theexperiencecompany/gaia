@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 
+from app.services.analytics_service import AnalyticsEvents
+
 BOT_BASE = "/api/v1/bot"
 
 
@@ -409,6 +411,63 @@ class TestBotChatStream:
     async def test_chat_stream_validation_error(self, mock_auth: AsyncMock, client: AsyncClient):
         response = await client.post(f"{BOT_BASE}/chat-stream", json={})
         assert response.status_code == 422
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task")
+    @patch(
+        "app.api.v1.endpoints.bot.run_chat_stream_background",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.create_bot_session_token", return_value="tok")
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_chat_stream_captures_message_submitted(
+        self,
+        mock_auth: AsyncMock,
+        mock_capture: MagicMock,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+        mock_token: MagicMock,
+        mock_background: AsyncMock,
+        mock_spawn: MagicMock,
+        client: AsyncClient,
+    ):
+        """A bot chat message is attributed to the linked user via capture_event
+        (bot routes are auth-excluded, so the request context has no identity)."""
+        mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+
+        async def _empty_stream():
+            if False:  # pragma: no cover
+                yield
+
+        mock_sm.subscribe_stream.return_value = _empty_stream()
+
+        response = await client.post(
+            f"{BOT_BASE}/chat-stream",
+            json={
+                "message": "hello",
+                "platform": "discord",
+                "platform_user_id": "u1",
+            },
+        )
+        assert response.status_code == 200
+        await response.aread()
+
+        mock_capture.assert_called_once_with(
+            "uid1",
+            AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
+            {"platform": "discord", "has_files": False},
+        )
 
 
 # ---------------------------------------------------------------------------

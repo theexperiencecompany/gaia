@@ -66,6 +66,13 @@ os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 os.environ["LANGFUSE_HOST"] = ""
 
+# Same reasoning for PostHog: analytics capture must never reach a live
+# project from the suite. Forced off (not setdefault) BEFORE the settings
+# import below — the provider's required_keys are bound at decoration time
+# from the settings singleton, so a developer's .env token must not leak in.
+os.environ["POSTHOG_PROJECT_TOKEN"] = ""
+os.environ["POSTHOG_HOST"] = ""
+
 # Arm the Infisical fence BEFORE any app import: settings.py calls get_settings()
 # at import time (via the module-level `settings` singleton), and the import
 # chain below (payment_models -> ... -> app.config.settings) would dial the real
@@ -163,6 +170,19 @@ assert isinstance(_settings_module.inject_infisical_secrets, MagicMock), (
 assert isinstance(_secrets_module.inject_infisical_secrets, MagicMock), (
     "hermetic fence broken: secrets.inject_infisical_secrets is not mocked"
 )
+
+# Register the PostHog provider the way production startup does
+# (unified_startup -> provider_registration -> init_posthog). The test app's
+# lifespan is a no-op, so without this the provider is never registered and
+# every capture_context_event/capture_event call raises KeyError from
+# providers.get("posthog") — turning instrumented endpoints into 500s. With
+# POSTHOG_PROJECT_TOKEN blanked above, the SILENT-strategy loader resolves to
+# None: capture calls no-op (log.debug + return) instead of raising. Tests
+# that assert specific capture behavior patch the endpoint's own binding, so
+# they are unaffected. importlib (not a top-level import) for the same reason
+# as the settings imports above.
+_posthog_module = importlib.import_module("app.config.posthog")
+_posthog_module.init_posthog()
 
 # ---------------------------------------------------------------------------
 # Hermetic environment fence

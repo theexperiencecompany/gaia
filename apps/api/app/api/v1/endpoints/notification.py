@@ -36,6 +36,7 @@ from app.models.notification.request_models import (
     PaginatedNotificationsResponse,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
@@ -195,6 +196,10 @@ async def update_channel_preferences(
         )
 
         prefs = await fetch_channel_preferences(user_id)
+        capture_context_event(
+            AnalyticsEvents.NOTIFICATION_PREFERENCE_UPDATED,
+            {"changed_channel_count": len(preferences.model_fields_set)},
+        )
         log.set(operation="update_channel_preferences", outcome="success")
         return ChannelPreferences(
             telegram=prefs["telegram"],

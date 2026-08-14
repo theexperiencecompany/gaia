@@ -42,6 +42,7 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.todo_canvas_storage import read_canvas
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
@@ -254,7 +255,9 @@ async def bulk_update_todos(
         todo={"operation": "bulk_update", "bulk_count": len(request.todo_ids)},
     )
     try:
-        return await TodoService.bulk_update_todos(request, user["user_id"])
+        result = await TodoService.bulk_update_todos(request, user["user_id"])
+        capture_context_event(AnalyticsEvents.TODO_UPDATED, {"bulk_count": len(request.todo_ids)})
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -323,7 +326,9 @@ async def bulk_complete_todos(
         updates=TodoUpdateRequest(completed=True),
     )
     try:
-        return await TodoService.bulk_update_todos(request, user["user_id"])
+        result = await TodoService.bulk_update_todos(request, user["user_id"])
+        capture_context_event(AnalyticsEvents.TODO_COMPLETED, {"bulk_count": len(todo_ids)})
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -792,6 +797,10 @@ async def toggle_subtask_completion(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
             )
 
+        capture_context_event(
+            AnalyticsEvents.TODO_COMPLETED,
+            {"is_subtask": True, "completed": not subtask.completed},
+        )
         return TodoResponse.from_document(updated_todo)
     except HTTPException:
         raise

@@ -8,6 +8,7 @@ import httpx
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.outbound_delivery import notify_account_linked
 from app.services.platform_link_service import PlatformLinkService
 from shared.py.wide_events import log
@@ -225,6 +226,13 @@ async def _handle_platform_oauth_callback(
                 resource=platform_user_id,
                 provider=config.platform,
                 is_new_link=bool(link_result.is_new_link),
+            )
+            capture_context_event(
+                AnalyticsEvents.INTEGRATION_CONNECTED,
+                {
+                    "integration_id": config.platform,
+                    "is_new_link": bool(link_result.is_new_link),
+                },
             )
             if link_result.is_new_link:
                 await notify_account_linked(config.platform, user_id)

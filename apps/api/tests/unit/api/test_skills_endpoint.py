@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
+from app.services.analytics_service import AnalyticsEvents
+
 if TYPE_CHECKING:
     from app.agents.skills.github_discovery import DiscoveredSkill
     from app.agents.skills.models import Skill
@@ -45,6 +47,7 @@ _GET_CONNECTED_INTEGRATION_IDS_ENDPOINT = (
     "app.api.v1.endpoints.skills.get_connected_integration_ids"
 )
 _UPDATE_SKILL_INLINE = "app.api.v1.endpoints.skills.update_skill_inline"
+_CAPTURE = "app.api.v1.endpoints.skills.capture_context_event"
 
 
 def _make_skill_mock(**overrides) -> Skill:
@@ -179,6 +182,7 @@ class TestInstallFromGitHub:
                 new_callable=AsyncMock,
                 return_value=mock_skill,
             ),
+            patch(_CAPTURE) as mock_capture,
         ):
             response = await client.post(
                 INSTALL_GITHUB_URL,
@@ -189,6 +193,10 @@ class TestInstallFromGitHub:
             )
 
         assert response.status_code == 201
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.SKILL_INSTALLED,
+            {"skill_id": "sk_abc123", "source": "github"},
+        )
 
     async def test_install_with_skill_name_auto_discovers(self, client: AsyncClient):
         mock_discovered = _make_discovered_skill(path="skills/my-skill")
@@ -320,6 +328,7 @@ class TestInstallInline:
                 new_callable=AsyncMock,
                 return_value=mock_skill,
             ),
+            patch(_CAPTURE) as mock_capture,
         ):
             response = await client.post(
                 INSTALL_INLINE_URL,
@@ -332,6 +341,10 @@ class TestInstallInline:
             )
 
         assert response.status_code == 201
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.SKILL_INSTALLED,
+            {"skill_id": "sk_abc123", "source": "inline"},
+        )
 
     async def test_create_inline_skill_missing_name_returns_422(self, client: AsyncClient):
         response = await client.post(
@@ -592,14 +605,20 @@ class TestUninstallSkill:
     """Tests for the uninstall skill endpoint."""
 
     async def test_uninstall_skill_returns_204(self, client: AsyncClient):
-        with patch(
-            _UNINSTALL_SKILL,
-            new_callable=AsyncMock,
-            return_value=True,
+        with (
+            patch(
+                _UNINSTALL_SKILL,
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(_CAPTURE) as mock_capture,
         ):
             response = await client.delete(f"{BASE_URL}/sk_abc123")
 
         assert response.status_code == 204
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.SKILL_UNINSTALLED, {"skill_id": "sk_abc123"}
+        )
 
     async def test_uninstall_skill_not_found_returns_404(self, client: AsyncClient):
         with patch(

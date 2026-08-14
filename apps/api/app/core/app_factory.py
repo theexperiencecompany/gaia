@@ -175,7 +175,11 @@ def create_app() -> FastAPI:
         calls would land on an orphan state. The shared PostHog client is
         initialized during lifespan startup and records the exception centrally.
         """
-        posthog_client = providers.get("posthog")
+        # Guard like PostHogRequestContextMiddleware: this handler runs even in
+        # apps built without the production lifespan (tests, scripts), where the
+        # provider is never registered — providers.get would raise KeyError and
+        # a raising 500-handler turns the JSON body into a bare Starlette 500.
+        posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
         if posthog_client is not None:
             posthog_client.capture_exception(exc)
 

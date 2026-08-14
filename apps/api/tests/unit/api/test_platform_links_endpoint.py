@@ -6,6 +6,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.models.platform_models import PlatformLinkResult
+from app.services.analytics_service import AnalyticsEvents
 
 BASE = "/api/v1/platform-links"
 
@@ -125,12 +126,17 @@ class TestLinkPlatform:
                 new_callable=AsyncMock,
                 return_value=link_result,
             ),
+            patch("app.api.v1.endpoints.platform_links.capture_context_event") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
 
         assert resp.status_code == 200
         assert resp.json()["status"] == "linked"
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": "discord", "is_new_link": False},
+        )
 
     @pytest.mark.asyncio
     async def test_link_conflict(self, client: AsyncClient) -> None:
@@ -192,6 +198,7 @@ class TestDisconnectPlatform:
                 return_value={"status": "disconnected", "platform": "discord"},
             ),
             patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch("app.api.v1.endpoints.platform_links.capture_context_event") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.delete(f"{BASE}/discord")
@@ -199,6 +206,9 @@ class TestDisconnectPlatform:
         assert resp.status_code == 200
         assert resp.json()["status"] == "disconnected"
         mock_redis.delete.assert_called_once_with("bot_user:discord:DISC999")
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "discord"}
+        )
 
     @pytest.mark.asyncio
     async def test_disconnect_no_existing_entry(self, client: AsyncClient) -> None:

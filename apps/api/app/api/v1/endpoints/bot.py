@@ -34,6 +34,7 @@ from app.models.bot_models import (
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.audio_transcription_service import (
     MAX_AUDIO_BYTES,
     AudioTooLargeError,
@@ -251,6 +252,16 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     user_id = user.get("user_id") or str(user.get("_id", ""))
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform, outcome="success")
+    # Bot routes are auth-excluded, so the PostHog request context carries no
+    # identity — attribute explicitly with the linked user's id.
+    capture_event(
+        user_id,
+        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
+        {
+            "platform": body.platform,
+            "has_files": bool(body.file_ids or body.file_data),
+        },
+    )
 
     conversation_id = await BotService.get_or_create_session(
         body.platform, body.platform_user_id, body.channel_id, user
