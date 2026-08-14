@@ -307,7 +307,7 @@ async def add_memory(
     content: Annotated[str, "The fact to remember"],
     folder: Annotated[
         str | None,
-        "Folder path",
+        "Folder path; omit to auto-categorize",
     ] = None,
 ) -> str:
     user_id = get_user_id_from_config(config)
@@ -384,7 +384,7 @@ async def search_memory(
     limit: Annotated[int, "Max results"] = 5,
     folder: Annotated[
         str | None,
-        "Folder path",
+        "Folder path to scope to",
     ] = None,
 ) -> str:
     user_id = get_user_id_from_config(config)
@@ -609,7 +609,7 @@ async def search_conversations(
 @with_doc(GET_JOURNAL)
 async def get_journal(
     config: RunnableConfig,
-    date: Annotated[str, "YYYY-MM-DD"],
+    date: Annotated[str, "Day as YYYY-MM-DD"],
 ) -> str:
     user_id = get_user_id_from_config(config)
     if not user_id:
@@ -684,7 +684,7 @@ async def get_journal(
 @with_doc(READ_MEMORY_DOCUMENT)
 async def read_memory_document(
     config: RunnableConfig,
-    doc_type: Annotated[str, "Doc type"],
+    doc_type: Annotated[str, "Document: user|memory|agenda|people|insights"],
 ) -> str:
     user_id = get_user_id_from_config(config)
     if not user_id:
@@ -732,7 +732,7 @@ async def read_memory_document(
 @with_doc(UPDATE_MEMORY_DOCUMENT)
 async def update_memory_document(
     config: RunnableConfig,
-    doc_type: Annotated[str, "Doc type"],
+    doc_type: Annotated[str, "Document: user|memory|agenda|people|insights"],
     content: Annotated[str, "The complete new markdown content (full replace)"],
 ) -> str:
     user_id = get_user_id_from_config(config)
