@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
+from pydantic import BaseModel
 import pytest
 
 from app.agents.llm.chatbot import chatbot
@@ -26,6 +27,7 @@ from app.agents.llm.client import (
     _get_available_providers,
     _get_ordered_providers,
     ainvoke_llm,
+    ainvoke_structured_gemini,
     get_default_llm,
     init_llm,
     register_llm_providers,
@@ -502,6 +504,165 @@ class TestAinvokeLlm:
 
 
 # ---------------------------------------------------------------------------
+# ainvoke_llm — the sticky-flip replay's discarded first invocation
+# ---------------------------------------------------------------------------
+
+
+def _usage_message(content: str, *, prompt: int, cached: int) -> AIMessage:
+    return AIMessage(
+        content=content,
+        usage_metadata={
+            "input_tokens": prompt,
+            "output_tokens": 5,
+            "total_tokens": prompt + 5,
+            "input_token_details": {"cache_read": cached},
+        },
+    )
+
+
+class TestStickyFlipReplayAccounting:
+    """When a graph call's prompt cache misses, ``ainvoke_llm`` re-sends and
+    RETURNS the replay — the first invocation never lands in graph state, so
+    ``LLMAccountingMiddleware`` (which meters from the state message) can never
+    see it. The provider billed it, so ``ainvoke_llm`` meters it itself."""
+
+    @staticmethod
+    def _flipping_primary() -> NonCallableMagicMock:
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(
+            side_effect=[
+                _usage_message("cold", prompt=10_000, cached=0),
+                _usage_message("warm", prompt=10_000, cached=9_900),
+            ]
+        )
+        return runnable
+
+    @pytest.mark.regression
+    @patch("app.agents.llm.client.record_graph_model_call", new_callable=AsyncMock)
+    async def test_discarded_first_invocation_is_metered(self, mock_record: AsyncMock) -> None:
+        mock_record.return_value = (
+            {
+                "input_tokens": 10_000,
+                "output_tokens": 5,
+                "cached_tokens": 0,
+                "reasoning_tokens": 0,
+            },
+            0.004,
+        )
+        primary = self._flipping_primary()
+
+        result = await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config={"configurable": {"user_id": "u1", "model_name": "m", "root_request_id": "r1"}},
+            meter_auxiliary=False,
+        )
+
+        assert result.content == "warm"
+        mock_record.assert_awaited_once()
+        metered_message, configurable = mock_record.await_args.args
+        assert metered_message.content == "cold"
+        assert configurable["root_request_id"] == "r1"
+
+    @patch("app.agents.llm.client.record_graph_model_call", new_callable=AsyncMock)
+    async def test_no_replay_means_no_extra_metering(self, mock_record: AsyncMock) -> None:
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(
+            return_value=_usage_message("warm", prompt=10_000, cached=9_900)
+        )
+
+        await ainvoke_llm(runnable, [HumanMessage(content="hi")], meter_auxiliary=False)
+
+        assert runnable.ainvoke.await_count == 1
+        mock_record.assert_not_awaited()
+
+    @patch("app.agents.llm.client.record_graph_model_call", new_callable=AsyncMock)
+    async def test_auxiliary_lane_is_left_to_its_usage_handler(
+        self, mock_record: AsyncMock
+    ) -> None:
+        """``UsageMetadataCallbackHandler`` sums BOTH invocations, so metering
+        the discarded one here too would double-bill auxiliary COGS."""
+        primary = self._flipping_primary()
+
+        await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=True)
+
+        assert primary.ainvoke.await_count == 2
+        mock_record.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# ainvoke_structured_gemini — memory-lane provider selection
+# ---------------------------------------------------------------------------
+
+
+class _Extracted(BaseModel):
+    fact: str
+
+
+class TestMemoryLaneProviderSelection:
+    """The direct-Gemini memory lane is a cache-isolation optimisation, not a
+    requirement. A deployment with only OPENROUTER_API_KEY — the documented
+    self-host path — must still extract memories, and a Gemini outage must not
+    silently drop every extraction for its duration."""
+
+    @patch("app.agents.llm.client.ainvoke_structured", new_callable=AsyncMock)
+    @patch("app.agents.llm.client.get_memory_llm")
+    @patch("app.agents.llm.client.memory_lane_available", return_value=False)
+    async def test_falls_back_to_the_aux_lane_when_google_is_unconfigured(
+        self, mock_available: MagicMock, mock_memory_llm: MagicMock, mock_aux: AsyncMock
+    ) -> None:
+        mock_aux.return_value = _Extracted(fact="from-aux")
+
+        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+
+        assert result.fact == "from-aux"
+        mock_memory_llm.assert_not_called()
+        assert mock_aux.await_args.args[0] is _Extracted
+        assert mock_aux.await_args.kwargs["label"] == "memory:extract"
+
+    @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
+    @patch("app.agents.llm.client.get_memory_llm")
+    @patch("app.agents.llm.client.memory_lane_available", return_value=True)
+    async def test_gemini_is_preferred_and_carries_an_aux_fallback(
+        self, mock_available: MagicMock, mock_memory_llm: MagicMock, mock_ainvoke: AsyncMock
+    ) -> None:
+        mock_ainvoke.return_value = _Extracted(fact="from-gemini")
+
+        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+
+        assert result.fact == "from-gemini"
+        mock_memory_llm.assert_called_once()
+        # A Gemini outage has somewhere to go: ainvoke_llm gets a real fallback
+        # factory instead of the None that dropped every extraction.
+        assert mock_ainvoke.await_args.kwargs["fallback"] is not None
+
+    @patch("app.agents.llm.client.get_helper_llm")
+    @patch("app.agents.llm.client.get_memory_llm")
+    @patch("app.agents.llm.client.memory_lane_available", return_value=True)
+    async def test_gemini_outage_is_served_by_the_aux_lane(
+        self,
+        mock_available: MagicMock,
+        mock_memory_llm: MagicMock,
+        mock_helper: MagicMock,
+    ) -> None:
+        failing = NonCallableMagicMock()
+        failing.with_retry = MagicMock(return_value=failing)
+        failing.ainvoke = AsyncMock(side_effect=ConnectionError("gemini down"))
+        mock_memory_llm.return_value.with_structured_output.return_value = failing
+
+        aux = NonCallableMagicMock()
+        aux.with_retry = MagicMock(return_value=aux)
+        aux.ainvoke = AsyncMock(return_value=_Extracted(fact="from-aux"))
+        mock_helper.return_value.model_copy.return_value.with_structured_output.return_value = aux
+
+        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+
+        assert result.fact == "from-aux"
+
+
+# ---------------------------------------------------------------------------
 # register_llm_providers
 # ---------------------------------------------------------------------------
 
@@ -596,55 +757,58 @@ class TestConstants:
 
 class TestChatbot:
     @patch("app.agents.llm.chatbot.ainvoke_llm")
-    @patch("app.agents.llm.chatbot.get_default_llm")
-    async def test_chatbot_default_path(
-        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
+    @patch("app.agents.llm.chatbot.get_helper_llm")
+    async def test_chatbot_runs_on_the_helper_model(
+        self, mock_get_helper: MagicMock, mock_ainvoke: AsyncMock
     ) -> None:
         mock_model = MagicMock()
-        mock_get_default.return_value = mock_model
+        mock_get_helper.return_value = mock_model
         mock_ainvoke.return_value = AIMessage(content="default response")
 
         messages = [HumanMessage(content="hello")]
         result = await chatbot(messages)
 
-        mock_get_default.assert_called_once()
+        mock_get_helper.assert_called_once()
         mock_ainvoke.assert_called_once_with(mock_model, messages, label="chatbot")
         assert result["messages"][0].content == "default response"
 
     @patch("app.agents.llm.chatbot.log")
-    @patch("app.agents.llm.chatbot.get_default_llm")
-    async def test_chatbot_no_provider_returns_fallback_message(
-        self, mock_get_default: MagicMock, mock_log: MagicMock
+    @patch("app.agents.llm.chatbot.get_helper_llm")
+    async def test_no_provider_is_raised_not_degraded(
+        self, mock_get_helper: MagicMock, mock_log: MagicMock
     ) -> None:
-        mock_get_default.side_effect = LLMNotConfiguredError("no providers")
+        """Callers own how they degrade — chatbot never invents a friendly
+        placeholder answer, because a swallowed failure reads as a real reply."""
+        mock_get_helper.side_effect = LLMNotConfiguredError("no providers")
 
-        result = await chatbot([HumanMessage(content="hello")])
-
-        assert isinstance(result["messages"][0], AIMessage)
-        assert "trouble processing" in result["messages"][0].content
+        with pytest.raises(LLMNotConfiguredError):
+            await chatbot([HumanMessage(content="hello")])
+        mock_log.error.assert_called_once()
 
     @patch("app.agents.llm.chatbot.log")
     @patch("app.agents.llm.chatbot.ainvoke_llm")
-    @patch("app.agents.llm.chatbot.get_default_llm")
-    async def test_chatbot_provider_error_returns_fallback_message(
-        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock, mock_log: MagicMock
+    @patch("app.agents.llm.chatbot.get_helper_llm")
+    async def test_provider_error_is_logged_and_reraised(
+        self, mock_get_helper: MagicMock, mock_ainvoke: AsyncMock, mock_log: MagicMock
     ) -> None:
-        mock_get_default.return_value = MagicMock()
+        mock_get_helper.return_value = MagicMock()
         mock_ainvoke.side_effect = ConnectionError("provider down")
 
-        result = await chatbot([HumanMessage(content="hello")])
+        with pytest.raises(ConnectionError):
+            await chatbot([HumanMessage(content="hello")])
+        mock_log.error.assert_called_once()
 
-        assert "trouble processing" in result["messages"][0].content
-
+    @patch("app.agents.llm.chatbot.log")
     @patch("app.agents.llm.chatbot.ainvoke_llm")
-    @patch("app.agents.llm.chatbot.get_default_llm")
-    async def test_chatbot_programming_bug_propagates(
-        self, mock_get_default: MagicMock, mock_ainvoke: AsyncMock
+    @patch("app.agents.llm.chatbot.get_helper_llm")
+    async def test_chatbot_programming_bug_propagates_unlogged(
+        self, mock_get_helper: MagicMock, mock_ainvoke: AsyncMock, mock_log: MagicMock
     ) -> None:
         # Bare RuntimeError is a programming bug, not an operational failure —
-        # it must fail loud instead of degrading to the friendly message.
-        mock_get_default.return_value = MagicMock()
+        # it is not caught at all, so it carries no operational error event.
+        mock_get_helper.return_value = MagicMock()
         mock_ainvoke.side_effect = RuntimeError("event loop is closed")
 
         with pytest.raises(RuntimeError, match="event loop is closed"):
             await chatbot([HumanMessage(content="hello")])
+        mock_log.error.assert_not_called()

@@ -21,10 +21,25 @@ because ``cost_budget`` cannot import ``config.model_pricing`` — that pulls in
 ``app.decorators``, which imports ``cost_budget`` right back.
 """
 
+from typing import TypedDict
+
+from langchain_core.messages import AIMessage
+
 from app.config.model_pricing import calculate_token_cost
+from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.constants.log_tags import LogTag
+from app.models.agent_models import AgentConfigurable
 from app.services.cost_budget import record_model_call_usage
 from shared.py.wide_events import log
+
+
+class TokenUsage(TypedDict):
+    """The four token counts every metering route prices a call from."""
+
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+    reasoning_tokens: int
 
 
 async def record_llm_call(
@@ -100,3 +115,88 @@ async def record_llm_call(
         )
 
     return total_cost
+
+
+def extract_message_usage(message: AIMessage) -> TokenUsage:
+    """Return input/output/cached/reasoning token counts from a message's usage metadata.
+
+    Reads ``message.usage_metadata`` (the canonical LangChain shape) and falls
+    back to ``response_metadata.usage_metadata`` for the provider SDK versions
+    that only populate that. ``cached_tokens`` comes from
+    ``input_token_details.cache_read`` or — when the provider surfaces it
+    separately — ``cached_content_token_count``. ``reasoning_tokens`` (a
+    subset of ``output_tokens`` spent on hidden thinking) comes from
+    ``output_token_details.reasoning``; not every provider/model returns it.
+    Missing fields default to 0.
+    """
+    usage = getattr(message, "usage_metadata", None) or {}
+    resp_meta = getattr(message, "response_metadata", None) or {}
+    resp_usage = resp_meta.get("usage_metadata") or {}
+
+    input_tokens = int(usage.get("input_tokens") or 0)
+    output_tokens = int(usage.get("output_tokens") or 0)
+    cached_tokens = int((usage.get("input_token_details") or {}).get("cache_read") or 0)
+    reasoning_tokens = int((usage.get("output_token_details") or {}).get("reasoning") or 0)
+
+    # Each field falls back independently. Gating the output fallback behind a
+    # missing *input* count (as this once did) silently dropped output tokens —
+    # and their cost — from every message that reported only one of the two.
+    # Both `prompt_token_count`/`candidates_token_count` (provider-native shape)
+    # and the LangChain-normalised keys are accepted.
+    if not input_tokens:
+        input_tokens = int(
+            resp_usage.get("prompt_token_count", resp_usage.get("input_tokens", 0)) or 0
+        )
+    if not output_tokens:
+        output_tokens = int(
+            resp_usage.get("candidates_token_count", resp_usage.get("output_tokens", 0)) or 0
+        )
+    if not cached_tokens:
+        cached_tokens = int(resp_usage.get("cached_content_token_count") or 0)
+
+    return TokenUsage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_tokens=cached_tokens,
+        reasoning_tokens=reasoning_tokens,
+    )
+
+
+async def record_graph_model_call(
+    message: AIMessage, configurable: AgentConfigurable, *, agent_name: str
+) -> tuple[TokenUsage, float]:
+    """Price + record one agent-graph model call from its AIMessage. Returns
+    ``(usage, cost_usd)``.
+
+    The single seam for graph spend: it charges the user's day/month budget and
+    counts toward the request tree's token ceiling, because a graph call is work
+    the user asked for. Both graph callers go through here — the accounting
+    middleware for the call whose message lands in state, and
+    ``ainvoke_llm``'s sticky-flip replay for the first invocation it discards
+    (the provider billed that one too, so nothing else would ever see it).
+    """
+    usage = extract_message_usage(message)
+    model_name = configurable.get("model_name") or configurable.get("model") or UNKNOWN_MODEL_NAME
+    user_id = configurable.get("user_id")
+    root_request_id = configurable.get("root_request_id")
+
+    if model_name == UNKNOWN_MODEL_NAME:
+        # An unnamed model is priced at DEFAULT_PRICING — ~11x the real rate
+        # for our default model — so this must never pass silently.
+        log.error(
+            f"{LogTag.AGENT} model name missing from configurable — call will be mispriced",
+            agent_name=agent_name,
+            configurable_keys=sorted(configurable.keys()),
+        )
+
+    cost = await record_llm_call(
+        user_id=str(user_id) if user_id else None,
+        model_name=str(model_name),
+        input_tokens=usage["input_tokens"],
+        output_tokens=usage["output_tokens"],
+        cached_tokens=usage["cached_tokens"],
+        reasoning_tokens=usage["reasoning_tokens"],
+        root_request_id=str(root_request_id) if root_request_id else None,
+        charge_to_budget=True,
+    )
+    return usage, cost

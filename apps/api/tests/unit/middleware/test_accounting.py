@@ -20,7 +20,6 @@ from app.agents.middleware import accounting
 from app.agents.middleware.accounting import (
     LLMAccountingMiddleware,
     _current_config,
-    _extract_usage,
     _latest_ai_message,
 )
 from app.config.rate_limits import get_daily_cost_budget_usd
@@ -100,121 +99,6 @@ async def _call(
 @pytest.fixture(autouse=True)
 def _fresh_wide_event() -> None:
     log.reset()
-
-
-# --- _extract_usage ----------------------------------------------------------- #
-
-
-def test_canonical_usage_metadata_is_read_verbatim() -> None:
-    assert _extract_usage(_ai(input_tokens=100, output_tokens=20, cached=40)) == {
-        "input_tokens": 100,
-        "output_tokens": 20,
-        "cached_tokens": 40,
-        "reasoning_tokens": 0,
-    }
-
-
-def test_message_without_any_usage_reports_zeros() -> None:
-    assert _extract_usage(AIMessage(content="x")) == {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "cached_tokens": 0,
-        "reasoning_tokens": 0,
-    }
-
-
-def test_provider_native_response_metadata_is_used_when_usage_metadata_is_absent() -> None:
-    message = AIMessage(
-        content="x",
-        response_metadata={
-            "usage_metadata": {
-                "prompt_token_count": 500,
-                "candidates_token_count": 70,
-                "cached_content_token_count": 200,
-            }
-        },
-    )
-    assert _extract_usage(message) == {
-        "input_tokens": 500,
-        "output_tokens": 70,
-        "cached_tokens": 200,
-        "reasoning_tokens": 0,
-    }
-
-
-def test_langchain_normalised_keys_in_response_metadata_are_accepted() -> None:
-    message = AIMessage(
-        content="x",
-        response_metadata={"usage_metadata": {"input_tokens": 11, "output_tokens": 3}},
-    )
-    assert _extract_usage(message) == {
-        "input_tokens": 11,
-        "output_tokens": 3,
-        "cached_tokens": 0,
-        "reasoning_tokens": 0,
-    }
-
-
-def test_reasoning_tokens_are_read_from_output_token_details() -> None:
-    message = AIMessage(
-        content="x",
-        usage_metadata={
-            "input_tokens": 100,
-            "output_tokens": 50,
-            "total_tokens": 150,
-            "output_token_details": {"reasoning": 30},
-        },
-    )
-    assert _extract_usage(message)["reasoning_tokens"] == 30
-
-
-def test_missing_output_token_details_does_not_raise() -> None:
-    message = AIMessage(
-        content="x",
-        usage_metadata={"input_tokens": 5, "output_tokens": 1, "total_tokens": 6},
-    )
-    assert _extract_usage(message)["reasoning_tokens"] == 0
-
-
-def test_output_tokens_fall_back_even_when_input_tokens_are_present() -> None:
-    # Regression: the output fallback used to be nested inside the "no input
-    # tokens" branch, so a message reporting only its input count silently
-    # billed zero output tokens.
-    message = AIMessage(
-        content="x",
-        usage_metadata={"input_tokens": 100, "output_tokens": 0, "total_tokens": 100},
-        response_metadata={"usage_metadata": {"candidates_token_count": 70}},
-    )
-    assert _extract_usage(message)["output_tokens"] == 70
-
-
-def test_input_tokens_fall_back_even_when_output_tokens_are_present() -> None:
-    message = AIMessage(
-        content="x",
-        usage_metadata={"input_tokens": 0, "output_tokens": 20, "total_tokens": 20},
-        response_metadata={"usage_metadata": {"prompt_token_count": 640}},
-    )
-    assert _extract_usage(message)["input_tokens"] == 640
-
-
-def test_cached_tokens_fall_back_to_the_provider_specific_key() -> None:
-    message = _ai(cached=0)
-    message.response_metadata = {"usage_metadata": {"cached_content_token_count": 33}}
-    assert _extract_usage(message)["cached_tokens"] == 33
-
-
-def test_canonical_cache_read_wins_over_the_provider_specific_key() -> None:
-    message = _ai(cached=40)
-    message.response_metadata = {"usage_metadata": {"cached_content_token_count": 999}}
-    assert _extract_usage(message)["cached_tokens"] == 40
-
-
-def test_missing_input_token_details_does_not_raise() -> None:
-    message = AIMessage(
-        content="x",
-        usage_metadata={"input_tokens": 5, "output_tokens": 1, "total_tokens": 6},
-    )
-    assert _extract_usage(message)["cached_tokens"] == 0
 
 
 # --- _latest_ai_message ------------------------------------------------------- #

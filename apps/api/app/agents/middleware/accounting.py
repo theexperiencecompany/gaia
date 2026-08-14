@@ -42,7 +42,11 @@ from app.config.rate_limits import (
     get_daily_cost_budget_usd,
     get_reset_time,
 )
-from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
+from app.constants.llm import (
+    AGENT_RECURSION_LIMIT,
+    RECURSION_HWM_FRACTION,
+    UNKNOWN_MODEL_NAME,
+)
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from app.models.payment_models import PlanType
@@ -52,7 +56,7 @@ from app.services.cost_budget import (
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
 )
-from app.services.llm_metering import record_llm_call
+from app.services.llm_metering import record_graph_model_call
 from shared.py.wide_events import ModelContext, log
 
 
@@ -69,51 +73,6 @@ def _current_config() -> RunnableConfig:
         return get_config()
     except RuntimeError:
         return RunnableConfig()
-
-
-def _extract_usage(message: AIMessage) -> dict[str, int]:
-    """Return input/output/cached/reasoning token counts from a message's usage metadata.
-
-    Reads ``message.usage_metadata`` (the canonical LangChain shape) and falls
-    back to ``response_metadata.usage_metadata`` for the provider SDK versions
-    that only populate that. ``cached_tokens`` comes from
-    ``input_token_details.cache_read`` or — when the provider surfaces it
-    separately — ``cached_content_token_count``. ``reasoning_tokens`` (a
-    subset of ``output_tokens`` spent on hidden thinking) comes from
-    ``output_token_details.reasoning``; not every provider/model returns it.
-    Missing fields default to 0.
-    """
-    usage = getattr(message, "usage_metadata", None) or {}
-    resp_meta = getattr(message, "response_metadata", None) or {}
-    resp_usage = resp_meta.get("usage_metadata") or {}
-
-    input_tokens = int(usage.get("input_tokens") or 0)
-    output_tokens = int(usage.get("output_tokens") or 0)
-    cached_tokens = int((usage.get("input_token_details") or {}).get("cache_read") or 0)
-    reasoning_tokens = int((usage.get("output_token_details") or {}).get("reasoning") or 0)
-
-    # Each field falls back independently. Gating the output fallback behind a
-    # missing *input* count (as this once did) silently dropped output tokens —
-    # and their cost — from every message that reported only one of the two.
-    # Both `prompt_token_count`/`candidates_token_count` (provider-native shape)
-    # and the LangChain-normalised keys are accepted.
-    if not input_tokens:
-        input_tokens = int(
-            resp_usage.get("prompt_token_count", resp_usage.get("input_tokens", 0)) or 0
-        )
-    if not output_tokens:
-        output_tokens = int(
-            resp_usage.get("candidates_token_count", resp_usage.get("output_tokens", 0)) or 0
-        )
-    if not cached_tokens:
-        cached_tokens = int(resp_usage.get("cached_content_token_count") or 0)
-
-    return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "cached_tokens": cached_tokens,
-        "reasoning_tokens": reasoning_tokens,
-    }
 
 
 def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
@@ -329,27 +288,14 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         if ai_msg is None:
             return None
 
-        usage = _extract_usage(ai_msg)
-        input_tokens = usage["input_tokens"]
-        output_tokens = usage["output_tokens"]
-        cached_tokens = usage["cached_tokens"]
-        reasoning_tokens = usage["reasoning_tokens"]
-
         config = _current_config()
         configurable = agent_configurable(config)
         thread_id = self._thread_id(config)
-        model_name = configurable.get("model_name") or configurable.get("model") or "unknown"
+        model_name = (
+            configurable.get("model_name") or configurable.get("model") or UNKNOWN_MODEL_NAME
+        )
         provider = configurable.get("provider", "unknown")
         user_id = configurable.get("user_id")
-
-        if model_name == "unknown":
-            # An unnamed model is priced at DEFAULT_PRICING — ~11x the real rate
-            # for our default model — so this must never pass silently.
-            log.error(
-                f"{LogTag.AGENT} model name missing from configurable — call will be mispriced",
-                agent_name=self.agent_name,
-                configurable_keys=sorted(configurable.keys()),
-            )
 
         # Price the call (full input_tokens + cached_tokens, so the cached subset
         # is billed at the discounted rate rather than free) and record it into
@@ -359,17 +305,13 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # actively asked for, so it charges the budget. Auxiliary one-shot calls
         # reach the same helper via ``ainvoke_structured`` with
         # ``charge_to_budget=False`` (COGS observability only).
-        root_request_id = configurable.get("root_request_id")
-        total_cost = await record_llm_call(
-            user_id=str(user_id) if user_id else None,
-            model_name=str(model_name),
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cached_tokens=cached_tokens,
-            reasoning_tokens=reasoning_tokens,
-            root_request_id=str(root_request_id) if root_request_id else None,
-            charge_to_budget=True,
+        usage, total_cost = await record_graph_model_call(
+            ai_msg, configurable, agent_name=self.agent_name
         )
+        input_tokens = usage["input_tokens"]
+        output_tokens = usage["output_tokens"]
+        cached_tokens = usage["cached_tokens"]
+        reasoning_tokens = usage["reasoning_tokens"]
 
         step_index = self._next_step(thread_id)
         start = self._start_ts.pop(thread_id, None)

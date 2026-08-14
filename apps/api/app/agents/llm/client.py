@@ -8,6 +8,7 @@ from langchain_core.language_models import LanguageModelInput, LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
+from langchain_core.messages import AIMessage
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -47,12 +48,13 @@ from app.constants.llm import (
     SIM_STUB_MODEL_NAME,
     STICKY_FLIP_RETRY_MIN_HIT,
     STICKY_FLIP_RETRY_MIN_INPUT,
+    UNKNOWN_MODEL_NAME,
     VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.models.agent_models import AgentConfigurable
-from app.services.llm_metering import record_llm_call
+from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.services.llm_metering import record_graph_model_call, record_llm_call
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
@@ -481,6 +483,12 @@ def _build_vision_llm(temperature: float) -> BaseChatModel:
     return llm
 
 
+def memory_lane_available() -> bool:
+    """Whether the direct-Gemini memory lane can serve a call at all — the one
+    check :func:`get_memory_llm` raises on and callers route around."""
+    return bool(settings.GAIA_SIM_MODE or settings.GOOGLE_API_KEY)
+
+
 def get_memory_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     """The factory for every memory-pipeline call (extraction, categorization,
     reconciliation, consolidation).
@@ -496,7 +504,7 @@ def get_memory_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatM
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
-    if not settings.GOOGLE_API_KEY:
+    if not memory_lane_available():
         raise LLMNotConfiguredError("Memory model not configured. Set GOOGLE_API_KEY.")
     return _build_memory_llm(temperature)
 
@@ -545,6 +553,40 @@ def _resolve_fallback(
     if session_id:
         resolved = resolved.bind(session_id=session_id)
     return with_llm_retry(resolved)
+
+
+async def _meter_discarded_replay(
+    discarded: Any,
+    config: RunnableConfig | None,
+    label: str,
+    usage_handler: UsageMetadataCallbackHandler | None,
+) -> None:
+    """Meter the first invocation the sticky-flip replay threw away.
+
+    The provider billed both invocations, but only ONE of them is ever seen by
+    an accounting seam: the auxiliary lane sums every call onto ``usage_handler``
+    (so it is already covered and this is a no-op), while the graph lane meters
+    from the AIMessage that lands in state — which is the replay's. Without this
+    the discarded call's tokens miss the daily budget, the per-request ceiling
+    and COGS entirely.
+    """
+    if usage_handler is not None or not isinstance(discarded, AIMessage):
+        return
+    configurable = agent_configurable(config)
+    usage, cost = await record_graph_model_call(discarded, configurable, agent_name=label)
+    log.info(
+        "llm_call",
+        llm_event="llm_call",
+        sticky_flip_discarded=True,
+        agent_name=label,
+        model=configurable.get("model_name") or configurable.get("model") or UNKNOWN_MODEL_NAME,
+        user_id=configurable.get("user_id"),
+        input_tokens=usage["input_tokens"],
+        cached_tokens=usage["cached_tokens"],
+        output_tokens=usage["output_tokens"],
+        reasoning_tokens=usage["reasoning_tokens"],
+        cost_usd=cost,
+    )
 
 
 async def ainvoke_llm(
@@ -618,9 +660,11 @@ async def ainvoke_llm(
                     prompt >= STICKY_FLIP_RETRY_MIN_INPUT
                     and cached < prompt * STICKY_FLIP_RETRY_MIN_HIT
                 ):
+                    discarded = result
                     result = await with_llm_retry(primary, max_attempts=1).ainvoke(
                         messages, config=_with_usage_handler(config, usage_handler)
                     )
+                    await _meter_discarded_replay(discarded, config, label, usage_handler)
                 return result
             except LLM_FALLBACK_EXCEPTIONS as primary_error:
                 # Sticky: once we fall back, later calls in this run must use the
@@ -781,6 +825,36 @@ async def _record_auxiliary_usage(
         )
 
 
+def _aux_structured_runnable(
+    schema: type[_StructuredT], temperature: float, config: RunnableConfig | None
+) -> Runnable:
+    """The structured runnable every auxiliary one-shot runs on: the helper LLM
+    re-pointed at :data:`AUX_MODEL_NAME`, with the aux sticky-routing session."""
+    # The helper LLM is the cached default instance; run the aux id. The alias
+    # must be set on the INSTANCE via model_copy, NOT bound with
+    # .bind(model=...): with_structured_output rebuilds the runnable through
+    # bind_tools, which drops the outer binding's kwargs — the bound alias
+    # silently vanished and every aux call served DEFAULT_MODEL_NAME in the
+    # conversation's namespace (measured: the alias never reached the wire).
+    # model_copy is the same escape hatch get_helper_llm itself uses for
+    # max_tokens, for the identical reason.
+    structured = (
+        get_helper_llm(temperature=temperature)
+        .model_copy(update={"model_name": AUX_MODEL_NAME})
+        .with_structured_output(schema)
+    )
+    # OpenRouter sticky-routing key: bound AFTER with_structured_output (which
+    # rebuilds the runnable via bind_tools and drops outer bindings). The aux
+    # one-shots get their OWN sticky session (a suffixed id): the sticky
+    # routing is per session, and sharing the conversation's session_id made
+    # the aux requests re-pin the conversation's provider (measured: the
+    # comms' rotation dips).
+    session_id = (config or {}).get("configurable", {}).get("session_id")
+    if session_id:
+        structured = structured.bind(session_id=f"{session_id}-aux")
+    return structured
+
+
 async def ainvoke_structured(
     schema: type[_StructuredT],
     prompt: LanguageModelInput,
@@ -805,33 +879,17 @@ async def ainvoke_structured(
     agent graph's calls share the conversation's namespace; if the aux calls
     did too, their ~30k tokens/turn of new blocks would evict the conversation
     between turns (measured)."""
-    # The helper LLM is the cached default instance; run the aux id. The alias
-    # must be set on the INSTANCE via model_copy, NOT bound with
-    # .bind(model=...): with_structured_output rebuilds the runnable through
-    # bind_tools, which drops the outer binding's kwargs — the bound alias
-    # silently vanished and every aux call served DEFAULT_MODEL_NAME in the
-    # conversation's namespace (measured: the alias never reached the wire).
-    # model_copy is the same escape hatch get_helper_llm itself uses for
-    # max_tokens, for the identical reason.
-    structured = (
-        get_helper_llm(temperature=temperature)
-        .model_copy(update={"model_name": AUX_MODEL_NAME})
-        .with_structured_output(schema)
-    )
-    # OpenRouter sticky-routing key: bound AFTER with_structured_output (which
-    # rebuilds the runnable via bind_tools and drops outer bindings). The aux
-    # one-shots get their OWN sticky session (a suffixed id): the sticky
-    # routing is per session, and sharing the conversation's session_id made
-    # the aux requests re-pin the conversation's provider (measured: the
-    # comms' rotation dips).
-    session_id = (config or {}).get("configurable", {}).get("session_id")
-    if session_id:
-        structured = structured.bind(session_id=f"{session_id}-aux")
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(
         _StructuredT,
-        await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout),
+        await ainvoke_llm(
+            _aux_structured_runnable(schema, temperature, config),
+            prompt,
+            config=config,
+            label=label,
+            timeout=timeout,
+        ),
     )
 
 
@@ -847,18 +905,35 @@ async def ainvoke_structured_gemini(
     """The structured one-shot call for the memory pipeline, on direct Gemini.
 
     Same contract as :func:`ainvoke_structured` (retry + fallback, metering via
-    :func:`ainvoke_llm`, validated ``schema`` output) but on
+    :func:`ainvoke_llm`, validated ``schema`` output) but PREFERRING
     :func:`get_memory_llm` — a DIFFERENT provider from the graph's OpenRouter
     lane, deliberately. The memory extraction is a background task that
     overlaps the graph's next-turn requests; concurrent requests on the same
     provider's cache store wipe each other's cached chains mid-read (measured:
     the comms chain collapses to ~0 under a concurrent alias-lane extraction
     and holds ~99.5% under a concurrent Gemini extraction). A different
-    provider has no shared cache store, so the overlap is harmless."""
+    provider has no shared cache store, so the overlap is harmless.
+
+    The isolation is an optimisation, not a requirement: a deployment with only
+    ``OPENROUTER_API_KEY`` (the documented self-host path) runs the whole
+    pipeline on the aux lane instead, and a Gemini outage falls back to it
+    mid-flight. Losing the isolation costs cache hit rate; losing the lane
+    would cost the user every memory they never got."""
+    if not memory_lane_available():
+        return await ainvoke_structured(
+            schema, prompt, label=label, temperature=temperature, config=config, timeout=timeout
+        )
     structured = get_memory_llm(temperature=temperature).with_structured_output(schema)
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(
         _StructuredT,
-        await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout),
+        await ainvoke_llm(
+            structured,
+            prompt,
+            fallback=lambda: _aux_structured_runnable(schema, temperature, config),
+            config=config,
+            label=label,
+            timeout=timeout,
+        ),
     )

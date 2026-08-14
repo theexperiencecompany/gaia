@@ -156,6 +156,10 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # Text-only: tool results carrying images are captioned for it rather than shown
 # (see agents/llm/vision/capability.py).
 DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+# Stand-in when a run's configurable never stamped a model id. Priced at
+# DEFAULT_PRICING (~11x the real rate), so its appearance is an alertable bug,
+# not a benign default — both metering routes log it loudly.
+UNKNOWN_MODEL_NAME = "unknown"
 # No explicit provider routing for the default DeepSeek lane: OpenRouter's
 # default (price- and availability-weighted) routing + the session_id sticky
 # key on every request measured BEST on the real full graph (82.2% total,

@@ -105,18 +105,19 @@ async def _invoke_structured(
     operation: str,
     user_id: str,
 ) -> _StructuredT | None:
-    """Structured-output call on the memory lane (direct Gemini) via the
-    canonical ``ainvoke_structured_gemini`` (which owns retry + validation, and
-    meters the spend against ``user_id``). Returns None on any provider failure
-    (or when no provider is configured) so extraction degrades gracefully and
-    never breaks the chat that spawned it. The silent config keeps the
-    structured-output tokens out of the chat stream.
+    """Structured-output call on the memory lane via the canonical
+    ``ainvoke_structured_gemini`` (which owns provider selection, retry +
+    validation, and meters the spend against ``user_id``). Returns None only
+    when NO provider is configured or every one of them failed, so extraction
+    degrades gracefully and never breaks the chat that spawned it. The silent
+    config keeps the structured-output tokens out of the chat stream.
 
-    On Gemini on purpose (see ``get_memory_llm``): the extraction is a
-    background task that overlaps the graph's next-turn requests, and
-    concurrent requests on the same provider's cache store wipe each other's
-    cached chains mid-read (measured) — a different provider has no shared
-    cache store."""
+    Prefers direct Gemini on purpose (see ``ainvoke_structured_gemini``): the
+    extraction is a background task that overlaps the graph's next-turn
+    requests, and concurrent requests on the same provider's cache store wipe
+    each other's cached chains mid-read (measured). When Google is not
+    configured, or Gemini is down, the call runs on the aux lane instead —
+    losing the cache isolation, not the memory."""
     try:
         return await ainvoke_structured_gemini(
             output_model, messages, label=f"memory:{operation}", config=_silent_config(user_id)
