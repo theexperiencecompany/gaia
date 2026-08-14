@@ -299,13 +299,23 @@ orig_match = re.search(
 if not orig_match:
     sys.exit(1)
 orig_name = orig_match.group(1)
+# The mutants file relocates every function (mutmut preamble + the x_ copy
+# next to the original def), so line numbers there must NOT be compared
+# against the diff ranges, which are in SOURCE coordinates. Resolve the
+# mutation's source line via the original function's def line in the
+# workdir copy — identical lines to the source, plus the pragma stamps.
+orig_src_name = base[2:] if base.startswith("x_") else base
 blocks = re.split(r"^(?:async )?def ", src, flags=re.MULTILINE)
-orig_line = None
-for i, block in enumerate(blocks):
-    if block.split("(", 1)[0].strip() == orig_name:
-        orig_line = sum(b.count("\n") for b in blocks[: i + 1])
-        break
-if orig_line is None:
+src_lines = open(f"{workdir}/{module.replace('.', '/')}.py").read().splitlines()
+def_line = next(
+    (
+        idx
+        for idx, ln in enumerate(src_lines, 1)
+        if re.match(rf"^(?:async )?def {re.escape(orig_src_name)}\(", ln)
+    ),
+    None,
+)
+if def_line is None:
     sys.exit(1)
 
 
@@ -331,8 +341,8 @@ if orig_lines == mut_lines:
 for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
     if a != b:
         ranges = json.loads(changed_ranges) if changed_ranges else []
-        in_changed = any(start <= orig_line + i <= end for start, end in ranges)
-        print(f"CHANGED:{orig_line + i}" if in_changed else f"UNCHANGED:{orig_line + i}")
+        in_changed = any(start <= def_line + 1 + i <= end for start, end in ranges)
+        print(f"CHANGED:{def_line + 1 + i}" if in_changed else f"UNCHANGED:{def_line + 1 + i}")
         sys.exit(1)
 print("EQUIV")
 sys.exit(0)
