@@ -3,6 +3,7 @@ export const NOTIFICATION_PLATFORMS = [
   "discord",
   "whatsapp",
   "slack",
+  "imessage",
 ] as const;
 
 export type NotificationPlatform = (typeof NOTIFICATION_PLATFORMS)[number];
@@ -15,6 +16,7 @@ export const NOTIFICATION_PLATFORM_LABELS: Record<
   discord: "Discord",
   whatsapp: "WhatsApp",
   slack: "Slack",
+  imessage: "iMessage",
 };
 
 export const NOTIFICATION_PLATFORM_ICONS: Record<NotificationPlatform, string> =
@@ -23,6 +25,7 @@ export const NOTIFICATION_PLATFORM_ICONS: Record<NotificationPlatform, string> =
     discord: "/images/icons/macos/discord.webp",
     whatsapp: "/images/icons/macos/whatsapp.webp",
     slack: "/images/icons/macos/slack.webp",
+    imessage: "/images/icons/macos/imessage.svg",
   };
 
 // Channel-level maps extend the platform maps with the always-available
