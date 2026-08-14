@@ -12,11 +12,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.config.model_pricing import (
+    AUX_MODEL_PRICING,
     DEFAULT_PRICING,
     ModelPricing,
     calculate_token_cost,
     get_model_pricing,
 )
+from app.constants.llm import AUX_MODEL_NAME, DEFAULT_MODEL_NAME
 from shared.py.wide_events import log
 
 # `log.reset()` between tests -- the fallback-logging tests below assert on
@@ -259,9 +261,6 @@ class TestAuxModelPricing:
 
     @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
     async def test_aux_model_priced_at_its_own_rate(self, mock_get_model: AsyncMock) -> None:
-        from app.config.model_pricing import AUX_MODEL_PRICING
-        from app.constants.llm import AUX_MODEL_NAME
-
         result = await get_model_pricing(AUX_MODEL_NAME)
 
         assert result == AUX_MODEL_PRICING
@@ -270,9 +269,6 @@ class TestAuxModelPricing:
 
     @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
     async def test_aux_rate_differs_from_default_rate(self, mock_get_model: AsyncMock) -> None:
-        from app.config.model_pricing import AUX_MODEL_PRICING
-        from app.constants.llm import DEFAULT_MODEL_NAME
-
         mock_get_model.return_value = _make_model(
             pricing_per_1k_input_tokens=0.00008,
             pricing_per_1k_output_tokens=0.00018,
@@ -288,9 +284,6 @@ class TestAuxModelPricing:
 
     @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
     async def test_aux_spend_meters_at_aux_rate_end_to_end(self, mock_pricing: AsyncMock) -> None:
-        from app.config.model_pricing import AUX_MODEL_PRICING
-        from app.constants.llm import AUX_MODEL_NAME
-
         mock_pricing.return_value = AUX_MODEL_PRICING
 
         result = await calculate_token_cost(
