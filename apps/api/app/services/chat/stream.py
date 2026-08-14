@@ -29,6 +29,7 @@ from app.agents.core.background.executor_capture import (
 )
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
+from app.constants.chat import GENERIC_TURN_ERROR, RECURSION_LIMIT_MESSAGE
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -633,15 +634,14 @@ async def _handle_stream_error(
     breaks the subscriber loop, so the error chunk must go on the wire first.
     """
     log.error(f"{LogTag.CHAT} Background stream error for", stream_id=stream_id, error=error)
-    # A recursion-limit stop is an expected degradation, not an infrastructure
-    # failure - never show the raw "Recursion limit of N reached..." internals.
     if isinstance(error, GraphRecursionError):
-        user_error = (
-            "I hit my step limit on this one before finishing. "
-            "Ask me to continue and I'll pick up where I left off."
-        )
+        user_error = RECURSION_LIMIT_MESSAGE
     else:
-        user_error = str(error)
+        # str(exc) is genuinely "" for some provider errors, and a blank string is
+        # falsy on the client: no error bubble renders and the turn is filtered out.
+        user_error = str(error).strip() or GENERIC_TURN_ERROR.format(
+            error_type=type(error).__name__
+        )
     await stream_manager.publish_chunk(
         stream_id, f"data: {json.dumps(ErrorFrame(error=user_error).model_dump())}\n\n"
     )
