@@ -103,7 +103,10 @@ async def call_executor(
     ],
     acceptance_criteria: Annotated[
         list[str],
-        "Done-checklist (e.g. ['the 3 promo emails archived']). Never omit.",
+        "What must be TRUE for this task to count as done, as a checklist (e.g. "
+        "['the 3 promo emails archived', 'the offer letter flagged']). Give the "
+        "executor a concrete target so it doesn't stop after one step. NEVER "
+        "omit — even a single-step ask needs a concrete done state.",
     ],
     verbatim_request: Annotated[
         str | None,
@@ -113,12 +116,23 @@ async def call_executor(
     ] = None,
     active_todo_id: Annotated[
         str | None,
-        "Tracked-todo ID to bind this run to. Use for work about a specific todo.",
+        "Optional tracked-todo ID to BIND this executor run to. When set, "
+        "the executor's canvas writes default to this todo's canvas and a "
+        "🎯 ACTIVE TODO banner is added to its context. Use when delegating "
+        "work that's clearly about a specific existing tracked todo (e.g. "
+        "'update progress on todo X', 'continue working on Y'). Omit for "
+        "general tasks.",
     ] = None,
 ) -> str:
-    """Delegate a task to the executor agent for background execution. Use for
-    action tasks (todos, calendar, email, search); the result posts as a new
-    bot message when complete."""
+    """Delegate a task to the executor agent for background execution.
+
+    Use this when the user asks you to do something that requires action
+    (creating todos, checking calendar, sending emails, searching, etc.)
+    or when you need context from your capabilities.
+
+    The executor runs in the background and posts its result to the
+    conversation as a new bot message when it completes.
+    """
     base_configurable = agent_configurable(config)
     # Shallow-copy so the executor's overrides (todo binding) never mutate the
     # comms agent's live RunnableConfig. The model is inherited from the comms
@@ -286,9 +300,25 @@ async def cancel_executor(
         "List of task_ids to cancel. Empty list = cancel ALL (running + queued).",
     ] = [],  # noqa: B006
 ) -> str:
-    """Cancel background executor tasks by task_ids. Empty list = cancel ALL
-    running + queued. Use ONLY when the user explicitly asks to stop/cancel/abort;
-    match task_ids from prior call_executor responses."""
+    """Cancel background executor tasks by their task_ids.
+
+    task_ids behavior:
+    - Empty list [] = cancel EVERYTHING (running task + all queued).
+      Use for: "stop everything", "cancel all", or generic "stop that".
+    - Specific task_ids = cancel only those (running or queued), keep rest.
+      Use for: "cancel the search task" / "stop the second one".
+      Match user intent to task_ids from call_executor responses in
+      conversation history (e.g. "Task accepted (task_id: abc-123)"
+      or "queued (task_id: xyz-456)").
+
+    CRITICAL: NEVER use this tool unless the user EXPLICITLY asks to stop,
+    cancel, or abort. Valid triggers: "stop that", "cancel it", "abort",
+    "kill that task", "don't do that anymore", "cancel the X task".
+
+    DO NOT use if the user is just changing the subject, asking a new
+    question, or saying "nevermind" about a NEW request. Only the USER
+    decides to cancel.
+    """
     configurable = agent_configurable(config)
     conversation_id = configurable.get("thread_id", "")
 

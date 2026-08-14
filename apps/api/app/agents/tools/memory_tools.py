@@ -569,8 +569,12 @@ async def search_conversations(
     config: RunnableConfig,
     query: Annotated[str, "What to look for verbatim in past conversations"],
 ) -> str:
-    """Search past-conversation transcripts for verbatim details memory search
-    does not surface ("that list you gave me", "what did we say about X")."""
+    """Search raw past-conversation transcripts for verbatim details.
+
+    Use when the user references something specific from an earlier chat that
+    memory search does not surface — "that list you gave me", "the exact move
+    you suggested", "what did we say about X" — and quote the matching passage.
+    """
     user_id = get_user_id_from_config(config)
     if not user_id:
         return _ERR_NO_USER_ID
