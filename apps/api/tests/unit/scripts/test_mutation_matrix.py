@@ -191,3 +191,81 @@ def test_is_comment_only_change_false_for_a_file_the_base_never_had(
     monkeypatch.chdir(tmp_path)
 
     assert mm._is_comment_only_change("mod.py", base_sha) is False
+
+
+# ---------------------------------------------------------------------------
+# with_unit_mirror — the gate mutates a module against EVERY referencing test
+# file, not one.
+#
+# Picking one was the defect: a module whose tests span several files was
+# measured against whichever the mirror-check or the sort happened to choose,
+# and every mutant only the discarded files covered was reported as "no
+# covering test" — informational, failing nothing. A module could pass the
+# gate having killed nothing at all.
+# ---------------------------------------------------------------------------
+
+
+def test_every_referencing_file_is_kept_not_just_the_first(tmp_path: Path) -> None:
+    hits = [
+        "apps/api/tests/unit/agents/test_handoff_brief.py",
+        "apps/api/tests/unit/tools/test_executor_tool.py",
+    ]
+
+    assert mm.with_unit_mirror("agents/tools/executor_tool", hits, tmp_path) == [
+        "tests/unit/agents/test_handoff_brief.py",
+        "tests/unit/tools/test_executor_tool.py",
+    ]
+
+
+def test_the_unit_mirror_leads_the_set_rather_than_replacing_it(tmp_path: Path) -> None:
+    # The mirror used to short-circuit the scan entirely — it never even
+    # computed the other hits. It is a member now, not an exit.
+    _write(tmp_path, "tests/unit/services/test_cost_budget.py", "")
+    hits = ["apps/api/tests/unit/middleware/test_accounting.py"]
+
+    assert mm.with_unit_mirror("services/cost_budget", hits, tmp_path) == [
+        "tests/unit/services/test_cost_budget.py",
+        "tests/unit/middleware/test_accounting.py",
+    ]
+
+
+def test_the_mirror_is_not_duplicated_when_it_also_references_the_module(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path, "tests/unit/services/test_cost_budget.py", "")
+    hits = [
+        "apps/api/tests/unit/services/test_cost_budget.py",
+        "apps/api/tests/unit/middleware/test_accounting.py",
+    ]
+
+    assert mm.with_unit_mirror("services/cost_budget", hits, tmp_path) == [
+        "tests/unit/services/test_cost_budget.py",
+        "tests/unit/middleware/test_accounting.py",
+    ]
+
+
+def test_a_module_with_no_referencing_file_and_no_mirror_selects_nothing(
+    tmp_path: Path,
+) -> None:
+    # Empty is what makes main() report "no test file anywhere" — the one
+    # case that must still fail the lane loudly.
+    assert mm.with_unit_mirror("services/orphan", [], tmp_path) == []
+
+
+def test_a_mirror_alone_is_enough_when_nothing_references_the_module(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path, "tests/unit/services/test_orphan.py", "")
+
+    assert mm.with_unit_mirror("services/orphan", [], tmp_path) == [
+        "tests/unit/services/test_orphan.py"
+    ]
+
+
+def test_entries_carry_the_whole_list_under_a_plural_key() -> None:
+    # Renamed from "testfile": a consumer still reading the old key now fails
+    # with a KeyError instead of silently iterating a string's characters.
+    entry = mm._entry("app/services/cost_budget.py", ["tests/unit/a.py", "tests/unit/b.py"], "")
+
+    assert entry["testfiles"] == ["tests/unit/a.py", "tests/unit/b.py"]
+    assert "testfile" not in entry
