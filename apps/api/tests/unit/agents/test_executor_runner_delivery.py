@@ -1188,3 +1188,130 @@ class TestDeferredFollowUpPush:
         ws = await self._push(generated=["ask about X"], persisted=False)
 
         ws.assert_not_awaited()
+
+
+class TestFailurePathsAreDiagnosable:
+    """Every branch here drops a user's result on the floor. The structured
+    fields on the log line are the only way to find out which conversation and
+    which message it happened to — a blanked id turns an incident into a search
+    of the whole collection. Asserting them is a structural assert, the kind
+    tests/CLAUDE.md rule 7 asks for; the prose message is deliberately not
+    asserted.
+    """
+
+    async def _merge_with_log(self, *, existing, set_response=True, set_tool_data=True):
+        bot_message = MessageModel(type="bot", response="new", date="2026-01-01")
+        bot_message.message_id = "orig-msg-1"
+        with (
+            patch.object(
+                rd.conversation_repository, "get_message", new=AsyncMock(return_value=existing)
+            ),
+            patch.object(
+                rd.conversation_repository,
+                "set_message_response",
+                new=AsyncMock(return_value=set_response),
+            ),
+            patch.object(
+                rd.conversation_repository,
+                "set_message_tool_data",
+                new=AsyncMock(return_value=set_tool_data),
+            ),
+            patch.object(rd, "get_approval", new=AsyncMock(return_value=None)),
+            patch.object(rd, "log") as log,
+        ):
+            await rd._merge_resumed_result(
+                _run(RunKind.QUEUED, bot_message_id="orig-msg-1"),
+                bot_message,
+                [{"tool_name": "new_tool", "data": {}}],
+            )
+        return log
+
+    async def test_a_missing_original_message_names_what_was_looked_for(self) -> None:
+        log = await self._merge_with_log(existing=None)
+
+        assert log.error.call_args.kwargs == {
+            "conversation_id": "conv-1",
+            "message_id": "orig-msg-1",
+        }
+
+    async def test_a_response_write_that_matched_nothing_names_the_message(self) -> None:
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+
+        log = await self._merge_with_log(existing=existing, set_response=False)
+
+        assert log.error.call_args.kwargs == {
+            "conversation_id": "conv-1",
+            "message_id": "orig-msg-1",
+        }
+
+    async def test_a_dropped_card_write_names_the_message(self) -> None:
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+
+        log = await self._merge_with_log(existing=existing, set_tool_data=False)
+
+        assert log.error.call_args.kwargs == {
+            "conversation_id": "conv-1",
+            "message_id": "orig-msg-1",
+        }
+
+    async def test_a_failed_outcomes_lookup_reports_the_cause(self) -> None:
+        with (
+            patch.object(
+                rd.conversation_repository,
+                "get_message",
+                new=AsyncMock(side_effect=RuntimeError("mongo down")),
+            ),
+            patch.object(rd, "log") as log,
+        ):
+            await rd._approval_outcomes_note(_run(RunKind.QUEUED, bot_message_id="orig-msg-1"))
+
+        assert log.warning.call_args.kwargs == {"error": "mongo down"}
+
+
+class TestDeletedConversationIsNotAnError:
+    """#906 (d70e3ca7b) split these arms on purpose: a conversation the user
+    deleted mid-run is expected, and logging it at error put it in errors[] on
+    the wide event and on the dashboards that filter by level. Both arms return
+    the same thing, so the LEVEL is the entire observable difference — without
+    this test nothing stops the split being quietly undone.
+    """
+
+    async def _deliver_with_save_raising(self, exc: Exception):
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock, side_effect=exc),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
+            patch.object(rd, "log") as log,
+        ):
+            result = await rd.deliver_result(_run(), "raw", "final")
+        return result, log
+
+    async def test_a_deleted_conversation_is_reported_at_info_with_its_id(self) -> None:
+        result, log = await self._deliver_with_save_raising(HTTPException(status_code=404))
+
+        assert result == (None, None)
+        assert log.info.call_args.kwargs == {"conversation_id": "conv-1"}
+        assert not log.error.called, "an expected 404 was escalated into errors[]"
+
+    async def test_any_other_http_failure_is_reported_at_error_with_the_cause(self) -> None:
+        result, log = await self._deliver_with_save_raising(
+            HTTPException(status_code=500, detail="mongo exploded")
+        )
+
+        assert result == (None, None)
+        assert log.error.call_args.kwargs["error"] == "500: mongo exploded"
+        assert not log.info.called, "a real failure was downgraded to info"
+
+    async def test_a_non_http_failure_also_carries_its_cause(self) -> None:
+        """The second except arm. Without a case that never becomes an
+        HTTPException, its own report goes untested — and a save that dies on a
+        driver error is exactly the one you need the cause for."""
+        result, log = await self._deliver_with_save_raising(RuntimeError("connection reset"))
+
+        assert result == (None, None)
+        assert log.error.call_args.kwargs["error"] == "connection reset"
+        assert not log.info.called
