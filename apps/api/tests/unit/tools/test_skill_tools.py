@@ -11,6 +11,7 @@ from app.agents.tools.skill_tools import (
     _compose_learned_skill_md,
     save_learned_skill,
 )
+from shared.py.wide_events import log
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -535,3 +536,230 @@ class TestSaveLearnedSkill:
         body = _compose_learned_skill_md(LearnedSkillSpec(**spec))
         assert "## Prerequisites" in body
         assert "`github`" in body
+
+
+# ---------------------------------------------------------------------------
+# Learned skills: the exact artifact, and what the run records
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestLearnedSkillArtifactIsExact:
+    """SKILL.md is read back by an agent as its instructions, so its layout is the
+    contract — headings, fenced JSON, and the blank lines between steps all carry
+    meaning. The sibling tests assert with ``in``, which cannot see a heading
+    being renamed (mutmut's ``"XX## StepsXX"`` still *contains* ``"## Steps"``)
+    or the sections being reordered."""
+
+    def test_the_composed_body_is_exact(self) -> None:
+        body = _compose_learned_skill_md(LearnedSkillSpec(**_learned_spec()))
+
+        assert body == (
+            "## When to Activate\n"
+            "User asks to clean up, triage, or organize their inbox.\n"
+            "\n"
+            "## Prerequisites\n"
+            "These integrations must be connected for this skill to work:\n"
+            "- `gmail`\n"
+            "\n"
+            "## Steps\n"
+            "### Step 1: Find the unread mail\n"
+            "Call `gmail_search` with:\n"
+            "```json\n"
+            "{\n"
+            '  "query": "is:unread"\n'
+            "}\n"
+            "```\n"
+            "\n"
+            "List ids, not full bodies.\n"
+            "\n"
+            "### Step 2: Archive promos\n"
+            "Call `gmail_archive` with:\n"
+            "```json\n"
+            "{\n"
+            '  "email_id": "<id from step 1>"\n'
+            "}\n"
+            "```\n"
+        )
+
+    def test_the_minimal_body_is_exact(self) -> None:
+        """No trigger section, no prerequisites, and a step that takes no arguments
+        — the shape a one-tool skill saves as."""
+        spec = _learned_spec(
+            when_to_use="",
+            integrations=[],
+            steps=[{"goal": "Do the thing", "tool": "finish_task"}],
+        )
+
+        body = _compose_learned_skill_md(LearnedSkillSpec(**spec))
+
+        assert body == (
+            "## Steps\n### Step 1: Do the thing\nCall `finish_task` with:\n- no arguments\n"
+        )
+
+    def test_step_notes_are_stripped_and_kept_out_of_the_json_fence(self) -> None:
+        spec = _learned_spec(
+            steps=[
+                {
+                    "goal": "  Check the result  ",
+                    "tool": "read",
+                    "args": {},
+                    "notes": "  Verify before moving on.  ",
+                }
+            ]
+        )
+
+        body = _compose_learned_skill_md(LearnedSkillSpec(**spec))
+
+        assert body == (
+            "## When to Activate\n"
+            "User asks to clean up, triage, or organize their inbox.\n"
+            "\n"
+            "## Prerequisites\n"
+            "These integrations must be connected for this skill to work:\n"
+            "- `gmail`\n"
+            "\n"
+            "## Steps\n"
+            "### Step 1: Check the result\n"
+            "Call `read` with:\n"
+            "- no arguments\n"
+            "\n"
+            "Verify before moving on.\n"
+        )
+
+    def test_non_ascii_step_args_stay_readable(self) -> None:
+        """The args block is instructions an agent reads back and re-sends. Escaping
+        non-ASCII to \\uXXXX turns a searchable subject line into something the
+        model has to decode before it can reuse it."""
+        spec = _learned_spec(
+            steps=[
+                {
+                    "goal": "Find the receipt",
+                    "tool": "gmail_search",
+                    "args": {"query": "subject:café ☕"},
+                }
+            ]
+        )
+
+        body = _compose_learned_skill_md(LearnedSkillSpec(**spec))
+
+        assert '"query": "subject:café ☕"' in body
+        assert "\\u" not in body
+
+
+@pytest.mark.unit
+class TestSaveLearnedSkillRecordsTheRun:
+    """What the executor is told, and what the wide event carries afterwards. The
+    tool's return value is the agent's only view of the outcome, and ``log.set``
+    is how a failed save is findable in production."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_wide_event(self) -> None:
+        log.reset()
+
+    @patch(f"{MODULE}.install_from_inline", new_callable=AsyncMock)
+    async def test_the_summary_handed_back_to_the_agent_is_exact(
+        self, mock_install: AsyncMock
+    ) -> None:
+        mock_install.return_value = _installed_skill(
+            name="triage-inbox", target="executor", vfs_path="/skills/triage-inbox"
+        )
+
+        result = await _invoke_save_learned_skill(_cfg(), _learned_spec())
+
+        assert result == (
+            "Saved skill 'triage-inbox' successfully.\n"
+            "- Target: executor\n"
+            "- Integrations: gmail\n"
+            "- Steps: 2\n"
+            "- Location: /skills/triage-inbox/SKILL.md\n"
+            "- The skill is now active and will appear in the executor agent's "
+            "Available Skills. Next time this task comes up, it runs the saved steps "
+            "instead of re-deriving them."
+        )
+
+    @patch(f"{MODULE}.install_from_inline", new_callable=AsyncMock)
+    async def test_a_skill_with_no_integrations_reports_none(self, mock_install: AsyncMock) -> None:
+        mock_install.return_value = _installed_skill(name="tidy", vfs_path="/skills/tidy")
+
+        result = await _invoke_save_learned_skill(_cfg(), _learned_spec(integrations=[]))
+
+        assert "- Integrations: none\n" in result
+
+    @patch(f"{MODULE}.install_from_inline", new_callable=AsyncMock)
+    async def test_multiple_integrations_are_listed_comma_separated(
+        self, mock_install: AsyncMock
+    ) -> None:
+        mock_install.return_value = _installed_skill(name="cross-post")
+
+        result = await _invoke_save_learned_skill(
+            _cfg(), _learned_spec(integrations=["gmail", "github", "slack"])
+        )
+
+        assert "- Integrations: gmail, github, slack\n" in result
+
+    @patch(f"{MODULE}.install_from_inline", new_callable=AsyncMock)
+    async def test_the_spec_description_is_what_gets_installed(
+        self, mock_install: AsyncMock
+    ) -> None:
+        """The description is what the agent matches against when deciding whether
+        to activate the skill, so installing the wrong one makes it undiscoverable."""
+        mock_install.return_value = _installed_skill(name="triage-inbox")
+
+        await _invoke_save_learned_skill(_cfg(), _learned_spec())
+
+        assert mock_install.call_args[1]["description"] == (
+            "Triage the inbox: archive promos/newsletters, flag action-needed mail"
+        )
+
+    @patch(f"{MODULE}.install_from_inline", new_callable=AsyncMock)
+    async def test_a_successful_save_is_on_the_wide_event(self, mock_install: AsyncMock) -> None:
+        mock_install.return_value = _installed_skill(name="triage-inbox")
+
+        await _invoke_save_learned_skill(_cfg(), _learned_spec())
+
+        assert log.get()["tool"] == {"name": "save_learned_skill", "action": "save"}
+
+    @patch(
+        f"{MODULE}.install_from_inline",
+        new_callable=AsyncMock,
+        side_effect=ValueError("Bad name"),
+    )
+    async def test_an_invalid_spec_is_findable_on_the_wide_event(
+        self, mock_install: AsyncMock
+    ) -> None:
+        """``error`` is what separates a rejected recipe from a storage failure when
+        someone asks why a user's skill never saved."""
+        await _invoke_save_learned_skill(_cfg(), _learned_spec())
+
+        assert log.get()["tool"] == {
+            "name": "save_learned_skill",
+            "action": "save",
+            "error": "invalid_spec",
+        }
+        errors = log.get()["errors"]
+        assert len(errors) == 1
+        assert isinstance(errors[0]["msg"], str) and errors[0]["msg"]
+        assert errors[0]["error"] == "Bad name"
+        assert errors[0]["user_id"] == FAKE_USER_ID
+
+    @patch(
+        f"{MODULE}.install_from_inline",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("Disk"),
+    )
+    async def test_a_persistence_failure_is_findable_on_the_wide_event(
+        self, mock_install: AsyncMock
+    ) -> None:
+        await _invoke_save_learned_skill(_cfg(), _learned_spec())
+
+        assert log.get()["tool"] == {
+            "name": "save_learned_skill",
+            "action": "save",
+            "error": "persist_failed",
+        }
+        errors = log.get()["errors"]
+        assert len(errors) == 1
+        assert isinstance(errors[0]["msg"], str) and errors[0]["msg"]
+        assert errors[0]["error"] == "Disk"
+        assert errors[0]["user_id"] == FAKE_USER_ID
