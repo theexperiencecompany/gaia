@@ -395,6 +395,78 @@ def _excluded_span(path: str, line_no: int):
     return (best.lineno, best.col_offset, best.end_lineno or best.lineno, best.end_col_offset)
 
 
+def _falsy_constant(node) -> bool:
+    return isinstance(node, ast.Constant) and not node.value
+
+
+def _replacement(before: str, after: str) -> str | None:
+    """The substring the mutation put in place of the original, or None."""
+    head = 0
+    while head < min(len(before), len(after)) and before[head] == after[head]:
+        head += 1
+    tail = 0
+    while (
+        tail < min(len(before), len(after)) - head
+        and before[len(before) - 1 - tail] == after[len(after) - 1 - tail]
+    ):
+        tail += 1
+    return after[head : len(after) - tail]
+
+
+def _unobservable_get_default(path: str, line_no: int, col: int, replacement: str) -> bool:
+    """True when the mutation only changed a .get() default that cannot be seen.
+
+    The shape is ``d.get(key, FALSY) or FALSY`` — the or collapses every falsy
+    default to the same value, so which one is written is unobservable even on
+    the missing-key path. Deliberately NOT a blanket .get-default rule: a
+    TRUTHY default is observable (``d.get(k, 1) or 0`` returns 1 when the key
+    is absent), and a .get whose result is consumed directly rather than
+    or-ed is observable too (``len(d.get(k, []))`` raises on None). Both the
+    original default, the or fallback, and the replacement must be falsy, and
+    anything unparseable fails closed.
+    """
+    try:
+        tree = ast.parse(open(path).read())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.BoolOp) or not isinstance(node.op, ast.Or):
+            continue
+        for index, value in enumerate(node.values[:-1]):
+            call = value
+            if not (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "get"
+                and len(call.args) == 2
+            ):
+                continue
+            default = call.args[1]
+            if not _falsy_constant(default):
+                continue
+            if not _falsy_constant(node.values[index + 1]):
+                continue
+            if not _within(
+                (
+                    default.lineno,
+                    default.col_offset,
+                    default.end_lineno or default.lineno,
+                    default.end_col_offset,
+                ),
+                line_no,
+                col,
+            ):
+                continue
+            stripped = replacement.strip()
+            if not stripped:
+                return True  # the argument was removed; the default becomes None
+            try:
+                return not ast.literal_eval(stripped)
+            except (ValueError, SyntaxError):
+                return False
+    return False
+
+
 def _within(span, line_no: int, col: int) -> bool:
     start_line, start_col, end_line, end_col = span
     if line_no < start_line or line_no > end_line:
@@ -425,9 +497,14 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
         if not any(start <= line_no <= end for start, end in ranges):
             print(f"UNCHANGED:{line_no}")
             sys.exit(1)
-        span = _excluded_span(f"{workdir}/{module_path}", line_no)
         # Raw (un-normalized) lines: the cast() rewrite above shifts columns.
         col = _first_differing_col(orig_raw[i], mut_raw[i])
+        if _unobservable_get_default(
+            f"{workdir}/{module_path}", line_no, col, _replacement(orig_raw[i], mut_raw[i])
+        ):
+            print("EQUIV")
+            sys.exit(0)
+        span = _excluded_span(f"{workdir}/{module_path}", line_no)
         if span is not None and _within(span, line_no, col):
             print(f"LOGGING:{line_no}")
             sys.exit(1)
@@ -458,8 +535,10 @@ if [ -n "$UNCHANGED" ]; then
   echo "$UNCHANGED" >&2
 fi
 if [ -n "$EQUIVALENT" ]; then
-  echo "NOTE: equivalent mutant(s) (cast()-arg changes only — runtime no-ops by" >&2
-  echo "      typing.cast's contract):" >&2
+  echo "NOTE: provably equivalent mutant(s) — a cast() type argument (a runtime" >&2
+  echo "      no-op by typing.cast contract), or a falsy .get() default whose value" >&2
+  echo "      an immediate 'or FALSY' collapses. Truthy defaults are NOT covered:" >&2
+  echo "      d.get(k, 1) or 0 really does return 1 when the key is missing." >&2
   echo "$EQUIVALENT" >&2
 fi
 if [ -n "$LOGGING" ]; then
