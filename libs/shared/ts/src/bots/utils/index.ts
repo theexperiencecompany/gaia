@@ -71,6 +71,14 @@ export {
   processBotMedia,
   unsupportedMediaMessage,
 } from "./media";
+export {
+  BODY_READ_TIMEOUT,
+  BODY_TOO_LARGE,
+  readBodyBounded,
+  readBodyBytesBounded,
+  WEBHOOK_BODY_READ_TIMEOUT_MS,
+  WEBHOOK_MAX_BODY_BYTES,
+} from "./request-body";
 export type {
   MessageEditor,
   NewMessageSender,

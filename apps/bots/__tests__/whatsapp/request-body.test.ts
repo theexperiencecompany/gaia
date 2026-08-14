@@ -19,7 +19,7 @@ import {
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
   readBodyBounded,
-} from "../../whatsapp/src/request-body";
+} from "@gaia/shared";
 
 const enc = new TextEncoder();
 

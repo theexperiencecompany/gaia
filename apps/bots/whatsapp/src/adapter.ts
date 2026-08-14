@@ -17,6 +17,8 @@
 
 import {
   BaseBotAdapter,
+  BODY_READ_TIMEOUT,
+  BODY_TOO_LARGE,
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
@@ -30,18 +32,19 @@ import {
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
+  readBodyBounded,
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   unsupportedMediaMessage,
+  WEBHOOK_MAX_BODY_BYTES,
   wideLog,
   withWideEvent,
 } from "@gaia/shared";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
-  MAX_WEBHOOK_BODY_BYTES,
   NOTIFICATION_TEMPLATE_LANGUAGE,
   NOTIFICATION_TEMPLATE_NAME,
   NOTIFICATION_TEMPLATE_PARAM_NAME,
@@ -49,11 +52,6 @@ import {
   TEMPLATE_BODY_MAX_LENGTH,
   TYPING_REFRESH_MS,
 } from "./constants";
-import {
-  BODY_READ_TIMEOUT,
-  BODY_TOO_LARGE,
-  readBodyBounded,
-} from "./request-body";
 import {
   extractMedia,
   extractTextBody,
@@ -183,11 +181,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           const contentLength = Number(c.req.header("content-length"));
           if (
             Number.isFinite(contentLength) &&
-            contentLength > MAX_WEBHOOK_BODY_BYTES
+            contentLength > WEBHOOK_MAX_BODY_BYTES
           ) {
             this.adapterLogger.warn("webhook_body_too_large", {
               content_length: contentLength,
-              max_bytes: MAX_WEBHOOK_BODY_BYTES,
+              max_bytes: WEBHOOK_MAX_BODY_BYTES,
             });
             wideLog.set({ http_status: 413 });
             return c.text("Payload Too Large", 413);
@@ -195,11 +193,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
           const rawBody = await readBodyBounded(
             c.req.raw,
-            MAX_WEBHOOK_BODY_BYTES,
+            WEBHOOK_MAX_BODY_BYTES,
           );
           if (rawBody === BODY_TOO_LARGE) {
             this.adapterLogger.warn("webhook_body_too_large", {
-              max_bytes: MAX_WEBHOOK_BODY_BYTES,
+              max_bytes: WEBHOOK_MAX_BODY_BYTES,
             });
             wideLog.set({ http_status: 413 });
             return c.text("Payload Too Large", 413);

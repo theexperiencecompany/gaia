@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@gaia/bot-discord": "workspace:*",
+    "@gaia/bot-imessage": "workspace:*",
     "@gaia/bot-slack": "workspace:*",
     "@gaia/bot-telegram": "workspace:*",
     "@gaia/bot-whatsapp": "workspace:*",
