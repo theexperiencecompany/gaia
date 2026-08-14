@@ -711,6 +711,11 @@ class TestSplitSubagentEntry:
     def test_a_name_containing_a_bracket_keeps_its_tail(self) -> None:
         assert _split_subagent_entry("subagent:x (A (B))") == ("x", "A (B)")
 
+    def test_an_unclosed_bracket_is_not_treated_as_a_name(self) -> None:
+        """Both halves of the guard are load-bearing: an opening bracket alone
+        would otherwise split a malformed id and hand back a truncated name."""
+        assert _split_subagent_entry("subagent:foo (bar") == ("foo (bar", None)
+
 
 class TestDiscoveryAvailabilityBuckets:
     """Availability is the axis that decides what the model may do next: bind it,
@@ -874,3 +879,122 @@ class TestDiscoveryTruncationAndQuery:
 
     def test_an_exact_name_lookup_echoes_no_query(self) -> None:
         assert "query" not in _render(["a"], categories={"a": "s"}, query=None)
+
+
+# ---------------------------------------------------------------------------
+# The bind response — what exact_tool_names tells the model it just got
+# ---------------------------------------------------------------------------
+
+
+async def _bind(names: list[str], registry_tools: list[str]):
+    retrieve_tools = get_retrieve_tools_function(tool_space="general", include_subagents=False)
+    with patch(
+        "app.agents.tools.core.retrieval.get_tool_registry",
+        new=AsyncMock(return_value=_RetrieveRegistry(registry_tools)),
+    ):
+        return await retrieve_tools(
+            store=MagicMock(),
+            config={"configurable": {"user_id": "u1"}},
+            exact_tool_names=names,
+        )
+
+
+@pytest.mark.asyncio
+async def test_binding_announces_what_the_model_may_now_call():
+    result = await _bind(["normal_tool"], ["normal_tool"])
+
+    assert result["response_text"] == "Bound 1 tools — call them directly:\n  - normal_tool"
+
+
+@pytest.mark.asyncio
+async def test_a_hyphenated_alias_binds_its_canonical_tool():
+    """Models routinely emit a hyphenated spelling. Dropping it would report the
+    tool as missing while it sits in the registry under an underscore."""
+    result = await _bind(["normal-tool"], ["normal_tool"])
+
+    assert result["tools_to_bind"] == ["normal_tool"]
+
+
+@pytest.mark.asyncio
+async def test_a_resolved_alias_is_named_back_so_the_model_stops_using_it():
+    """Binding silently would leave the model calling the alias every turn and
+    relying on the same rescue each time."""
+    result = await _bind(["normal-tool"], ["normal_tool"])
+
+    assert (
+        "Resolved to their canonical names — use these from now on: normal-tool -> normal_tool"
+        in result["response_text"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_name_that_needed_no_resolving_is_not_reported_as_renamed():
+    result = await _bind(["normal_tool"], ["normal_tool"])
+
+    assert "Resolved to their canonical names" not in result["response_text"]
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_name_is_named_back_with_a_do_not_retry():
+    """An empty answer reads the same as 'the search found nothing', so the
+    model retypes the name until it runs out of steps."""
+    result = await _bind(["no_such_tool_xyz"], ["normal_tool"])
+
+    assert result["tools_to_bind"] == []
+    assert result["response_text"] == (
+        "Not found, nothing bound: no_such_tool_xyz. Do not retry these names; "
+        "run retrieve_tools(query=...) to find what actually exists."
+    )
+
+
+@pytest.mark.asyncio
+async def test_one_bad_name_does_not_poison_the_batch():
+    result = await _bind(["normal_tool", "no_such_tool_xyz"], ["normal_tool"])
+
+    assert result["tools_to_bind"] == ["normal_tool"]
+    assert "Bound 1 tools" in result["response_text"]
+    assert "Not found, nothing bound: no_such_tool_xyz" in result["response_text"]
+
+
+@pytest.mark.asyncio
+async def test_several_unknown_names_are_listed_separately():
+    result = await _bind(["nope_one", "nope_two"], ["normal_tool"])
+
+    assert "Not found, nothing bound: nope_one, nope_two." in result["response_text"]
+
+
+@pytest.mark.asyncio
+async def test_several_resolved_aliases_are_listed_separately():
+    result = await _bind(["normal-tool", "vfs-read"], ["normal_tool", "vfs_read"])
+
+    assert (
+        "use these from now on: normal-tool -> normal_tool, vfs-read -> vfs_read"
+        in result["response_text"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_query_that_matches_nothing_says_so_and_echoes_the_query():
+    """The zero-hit path is the one that degrades silently: built-ins are always
+    injected, so without this signal an empty index looks like a result set."""
+    retrieve_tools = get_retrieve_tools_function(tool_space="general", include_subagents=False)
+    with (
+        patch(
+            "app.agents.tools.core.retrieval.get_tool_registry",
+            new=AsyncMock(return_value=_RetrieveRegistry(["normal_tool"])),
+        ),
+        patch(
+            "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
+            new=AsyncMock(return_value={"general"}),
+        ),
+    ):
+        result = await retrieve_tools(
+            store=_FakeStore({}),
+            config={"configurable": {"user_id": "u1"}},
+            query="send a carrier pigeon",
+            exact_tool_names=[],
+        )
+
+    payload = json.loads(result["response_text"])
+    assert payload["search_matched_nothing"] is True
+    assert payload["query"] == "send a carrier pigeon"
