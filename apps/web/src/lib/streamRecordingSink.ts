@@ -32,10 +32,7 @@ let inFlight: Promise<void> = Promise.resolve();
 const getRecordingId = (): string => {
   if (recordingId === null) {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    // The suffix disambiguates tabs opened in the same second; two tabs
-    // colliding would interleave their entries into one file and destroy the
-    // ordering the log exists for, so it comes from the CSPRNG.
-    recordingId = `${stamp}-${crypto.randomUUID().slice(0, 8)}`;
+    recordingId = `${stamp}-${Math.random().toString(36).slice(2, 8)}`;
   }
   return recordingId;
 };
@@ -93,9 +90,6 @@ export const shipStreamLogEntry = (entry: StreamLogEntry): void => {
   }
 
   queue.push(entry);
-  // Not `timer ??= ...`: Biome's noUnusedVariables does not count a
-  // compound-assignment read as a use, so the terser form makes `timer` look
-  // write-only and fails `nx lint web`.
   if (timer === null) {
     timer = setTimeout(flush, FLUSH_INTERVAL_MS);
   }
