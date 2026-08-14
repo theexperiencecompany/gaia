@@ -81,9 +81,7 @@ async def test_append_builds_atomic_upsert_with_conflict_constraint() -> None:
     entries = [{"time": "09:00", "text": "woke up", "source": "chat"}]
     day = date(2026, 1, 1)
     with mock_memory_session() as session:
-        with patch(
-            "app.memory.pg_store.episodes.get_episode", new=AsyncMock(return_value=None)
-        ):
+        with patch("app.memory.pg_store.episodes.get_episode", new=AsyncMock(return_value=None)):
             await append_episode_entries(USER, day, entries)
 
     statement = session.execute.await_args.args[0]

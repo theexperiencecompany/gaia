@@ -259,7 +259,9 @@ class TestGenerateHoloCardContent:
     profession-based phrase and a default bio without any LLM call."""
 
     async def test_empty_summary_returns_no_gmail_fallback(self) -> None:
-        user = UserDocument(_id="u1", name="Alice", onboarding={"preferences": {"profession": "developer"}})
+        user = UserDocument(
+            _id="u1", name="Alice", onboarding={"preferences": {"profession": "developer"}}
+        )
         with patch(
             "app.utils.profile_card.ainvoke_structured",
             new_callable=AsyncMock,

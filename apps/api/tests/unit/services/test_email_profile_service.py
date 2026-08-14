@@ -288,26 +288,29 @@ class TestSearchGooglePeople:
     """_search_google_people: warmup retry + non-dict results skipped."""
 
     async def test_non_dict_results_are_skipped(self) -> None:
-        with patch(
-            "app.services.email_profile_service._people_search",
-            new_callable=AsyncMock,
-            return_value={
-                "results": [
-                    "not-a-dict",
-                    None,
-                    {
-                        "person": {
-                            "resourceName": "people/1",
-                            "names": [{"displayName": "Alice Example"}],
-                            "emailAddresses": [{"value": "alice@example.com"}],
-                        }
-                    },
-                ]
-            },
-        ), patch(
-            "app.services.email_profile_service._fetch_profile_photo",
-            new_callable=AsyncMock,
-            return_value=None,
+        with (
+            patch(
+                "app.services.email_profile_service._people_search",
+                new_callable=AsyncMock,
+                return_value={
+                    "results": [
+                        "not-a-dict",
+                        None,
+                        {
+                            "person": {
+                                "resourceName": "people/1",
+                                "names": [{"displayName": "Alice Example"}],
+                                "emailAddresses": [{"value": "alice@example.com"}],
+                            }
+                        },
+                    ]
+                },
+            ),
+            patch(
+                "app.services.email_profile_service._fetch_profile_photo",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
             profile = await _search_google_people(
                 "u1", "people:searchContacts", "alice@example.com", "names,emailAddresses,photos"

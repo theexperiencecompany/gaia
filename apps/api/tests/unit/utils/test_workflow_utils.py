@@ -5,9 +5,7 @@ from app.utils.workflow_utils import ensure_trigger_config_object
 
 
 def test_dict_input_is_validated_into_a_model() -> None:
-    config = ensure_trigger_config_object(
-        {"type": "schedule", "cron_expression": "0 9 * * *"}
-    )
+    config = ensure_trigger_config_object({"type": "schedule", "cron_expression": "0 9 * * *"})
     assert isinstance(config, TriggerConfig)
     assert config.type == TriggerType.SCHEDULE
     assert config.cron_expression == "0 9 * * *"

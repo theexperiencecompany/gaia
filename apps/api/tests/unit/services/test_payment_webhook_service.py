@@ -103,9 +103,7 @@ class TestHandleSubscriptionActive:
                 new_callable=AsyncMock,
             ) as mock_by_email,
             patch.object(service, "_send_welcome_email", new_callable=AsyncMock),
-            patch(
-                "app.services.payments.payment_webhook_service.track_subscription_event"
-            ),
+            patch("app.services.payments.payment_webhook_service.track_subscription_event"),
         ):
             result = await service._handle_subscription_active(event)
 
@@ -138,9 +136,7 @@ class TestHandleSubscriptionActive:
                 return_value=_User(),
             ),
             patch.object(service, "_send_welcome_email", new_callable=AsyncMock),
-            patch(
-                "app.services.payments.payment_webhook_service.track_subscription_event"
-            ),
+            patch("app.services.payments.payment_webhook_service.track_subscription_event"),
         ):
             result = await service._handle_subscription_active(event)
 
