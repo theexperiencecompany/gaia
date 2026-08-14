@@ -6,6 +6,10 @@
 #
 # The module's own test file is derived (app/services/foo.py ->
 # tests/unit/services/test_foo.py); pass it explicitly if it lives elsewhere.
+# Argument 2 also accepts a compact JSON array of paths, which is how the CI
+# lane passes every test file that references the module rather than one:
+#
+#   bash scripts/test/mutation.sh app/x.py '["tests/unit/a.py","tests/unit/b.py"]'
 #
 # How it works (mutmut 3.x):
 #   1. mutmut copies the module into a mutants/ dir with every single-operator
@@ -42,11 +46,11 @@ case "$MODULE" in
   *) echo "module must be under app/ (e.g. app/services/foo.py)" >&2; exit 2 ;;
 esac
 
-TESTFILE="${2:-}"
-if [ -z "$TESTFILE" ]; then
+TESTFILE_ARG="${2:-}"
+if [ -z "$TESTFILE_ARG" ]; then
   # Derive the natural test file: unit tests mirror app/ with a test_ prefix.
   REL="${MODULE#app/}"
-  TESTFILE="tests/unit/$(dirname "$REL")/test_$(basename "$REL" .py).py"
+  TESTFILE_ARG="tests/unit/$(dirname "$REL")/test_$(basename "$REL" .py).py"
 fi
 # PR-changed line ranges for this module ([[start,end],...], compact JSON).
 # The gate is diff-driven: survivors on lines the PR did not touch are
@@ -56,10 +60,47 @@ CHANGED_RANGES="${3:-[]}"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT/apps/api"
 
-if [ ! -f "$TESTFILE" ]; then
-  echo "test file not found: $TESTFILE — pass it explicitly as the second argument." >&2
-  exit 2
-fi
+# Argument 2 is either ONE path — what a human types, and what the derived
+# default above produces — or a compact JSON array of them, which is how the CI
+# lane passes every test file that references the module instead of whichever
+# one happened to sort first. A leading '[' is the discriminator; no real path
+# starts with one. Both forms are supported on purpose: the single-path form is
+# the documented local usage, and breaking it to serve CI would be the trade
+# backwards.
+TESTFILES=()
+case "$TESTFILE_ARG" in
+  \[*)
+    TESTFILES_RAW="$(python3 - "$TESTFILE_ARG" << 'EOF'
+import json
+import sys
+
+try:
+    files = json.loads(sys.argv[1])
+except json.JSONDecodeError as exc:
+    raise SystemExit(f"argument 2 starts with '[' but is not valid JSON: {exc}")
+if not isinstance(files, list) or not all(isinstance(f, str) for f in files):
+    raise SystemExit("argument 2 must be a JSON array of path strings")
+if not files:
+    raise SystemExit("argument 2 is an empty JSON array — no test file to run")
+print("\n".join(files))
+EOF
+)" || exit 2
+    while IFS= read -r testfile; do
+      if [ -n "$testfile" ]; then
+        TESTFILES+=("$testfile")
+      fi
+    done <<< "$TESTFILES_RAW"
+    ;;
+  *) TESTFILES=("$TESTFILE_ARG") ;;
+esac
+# Named individually: "one of these does not exist" is useless when the list
+# came from a generator.
+for testfile in "${TESTFILES[@]}"; do
+  if [ ! -f "$testfile" ]; then
+    echo "test file not found: $testfile — pass it explicitly as the second argument." >&2
+    exit 2
+  fi
+done
 
 VENV_PY=""
 for candidate in "$REPO_ROOT/.venv/bin/python" "$REPO_ROOT/apps/api/.venv/bin/python"; do
@@ -90,21 +131,23 @@ cp -f pyproject.toml "$WORKDIR/pyproject.toml"
 cd "$WORKDIR"
 
 # mutmut 3.x scopes mutation and test selection only via config — point both
-# at the module + its test file for this run (the workdir copy is disposable).
-python3 - "$MODULE" "$TESTFILE" << 'EOF'
+# at the module + its test file(s) for this run (the workdir copy is disposable).
+python3 - "$MODULE" "${TESTFILES[@]}" << 'EOF'
+import json
 import pathlib
 import re
 import sys
 
-module, testfile = sys.argv[1], sys.argv[2]
+module, testfiles = sys.argv[1], sys.argv[2:]
 path = pathlib.Path("pyproject.toml")
 text = path.read_text()
+selection = ", ".join(json.dumps(testfile) for testfile in testfiles)
 replacement = (
     f'[tool.mutmut]\n'
     f'source_paths = ["{module}"]\n'
     f'also_copy = ["app", "tests", "scripts"]\n'
     f'max_stack_depth = 8\n'
-    f'pytest_add_cli_args_test_selection = ["{testfile}"]\n'
+    f'pytest_add_cli_args_test_selection = [{selection}]\n'
     f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
     f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300\']\n'
 )
@@ -112,7 +155,7 @@ text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", replacement, text)
 path.write_text(text)
 EOF
 
-echo "mutating $MODULE (tests: $TESTFILE) ..."
+echo "mutating $MODULE (tests: ${TESTFILES[*]}) ..."
 
 # Diff-driven scoping: mutmut has no "mutate only these lines" config, but
 # it honors `# pragma: no mutate` comments. Stamp the pragma onto every line
@@ -214,7 +257,7 @@ if [ "$MUTMUT_RC" -ne 0 ]; then
   # in the plain workdir copy. Passes there -> mutmut-phase artifact, skip
   # with a reason. Fails there too -> a real breakage, fail loudly.
   if grep -q "Failed to run clean test" "$WORKDIR/mutmut.log"; then
-    if "$VENV_PY" -m pytest -q "$TESTFILE" -p no:randomly -p no:random-order \
+    if "$VENV_PY" -m pytest -q "${TESTFILES[@]}" -p no:randomly -p no:random-order \
         -o 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300' \
         > "$WORKDIR/plain-check.log" 2>&1; then
       echo "SKIP: $MODULE — the tests pass in the plain copy but fail under"
