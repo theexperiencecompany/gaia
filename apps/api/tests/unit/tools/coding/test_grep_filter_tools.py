@@ -118,6 +118,49 @@ async def test_security_output_cap_truncates(tmp_path: Path) -> None:
     assert len(out) <= MAX_FILTER_OUTPUT_CHARS + 200
 
 
+@pytest.mark.regression
+async def test_output_cap_kill_does_not_hang_on_a_paused_stdout_pipe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the overrun kill used to reap the child from inside the drain.
+
+    asyncio pauses a pipe transport once its buffer passes the high-water mark and
+    completes ``wait()`` only when every pipe has seen EOF — so reaping there, with
+    stdout paused and nobody reading it, hung until the wall-clock timeout. It
+    reproduced roughly half the time on CI, depending on how full the buffer was
+    when the cap tripped. Reading a byte at a time pins the buffer full so the
+    condition is deterministic rather than a coin flip.
+    """
+    monkeypatch.setattr(_filter, "FILTER_TIMEOUT_SECONDS", 3)
+    monkeypatch.setattr(_filter, "_READ_CHUNK", 1)
+    monkeypatch.setattr(_filter, "_MAX_OUTPUT_BYTES", 4)
+
+    out = await _py("import sys;sys.stdout.write('Z'*5_000_000)", tmp_path)
+
+    assert "truncated" in out
+
+
+@pytest.mark.regression
+async def test_timeout_reaps_a_child_whose_stdout_is_still_buffered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The timeout path had the same defect, and nothing bounds it from above.
+
+    A slow reader leaves stdout paused when the wall clock runs out; reaping there
+    waited on a pipe no one was draining, so the call hung forever rather than
+    returning the timeout message.
+    """
+    monkeypatch.setattr(_filter, "FILTER_TIMEOUT_SECONDS", 1)
+    monkeypatch.setattr(_filter, "_READ_CHUNK", 1)  # fall behind the child
+    monkeypatch.setattr(_filter, "_MAX_OUTPUT_BYTES", 100_000_000)  # never cap
+
+    out = await asyncio.wait_for(
+        _py("import sys;sys.stdout.write('Z'*5_000_000)", tmp_path), timeout=20
+    )
+
+    assert "timed out" in out
+
+
 async def test_security_child_resource_limits_are_applied(tmp_path: Path) -> None:
     code = (
         "import resource;"

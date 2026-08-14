@@ -5,6 +5,8 @@ The dev-only overrides (`DEV_AUTH_BYPASS_EMAIL`, `OPENROUTER_BASE_URL`) must mak
 must forward the base-URL override only in development.
 """
 
+from types import SimpleNamespace
+
 from pydantic import ValidationError
 import pytest
 
@@ -19,6 +21,25 @@ def _reset_settings_cache():
 
 
 DEV_OVERRIDE_VARS = ("DEV_AUTH_BYPASS_EMAIL", "OPENROUTER_BASE_URL", "GAIA_SIM_MODE")
+
+
+def _fake_chat_openrouter(captured: dict[str, object]) -> type:
+    """A ChatOpenRouter double that records its construction kwargs.
+
+    It carries a ``client.sdk_configuration`` because the real class does and
+    ``without_sdk_retry`` writes the SDK's retry config there — a double missing
+    it would pass while the production path raises.
+    """
+
+    class _FakeChatOpenRouter:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+            self.client = SimpleNamespace(sdk_configuration=SimpleNamespace(retry_config=None))
+
+        def configurable_fields(self, **_: object) -> "_FakeChatOpenRouter":
+            return self
+
+    return _FakeChatOpenRouter
 
 
 @pytest.mark.parametrize(
@@ -60,14 +81,7 @@ def test_init_openrouter_omits_base_url_outside_sim_dev(monkeypatch):
 
     captured: dict[str, object] = {}
 
-    class _FakeChatOpenRouter:
-        def __init__(self, **kwargs):
-            captured.update(kwargs)
-
-        def configurable_fields(self, **_):
-            return self
-
-    monkeypatch.setattr(client, "ChatOpenRouter", _FakeChatOpenRouter)
+    monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
     monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     monkeypatch.setattr(client.settings, "OPENROUTER_BASE_URL", "http://localhost:9797")
@@ -86,14 +100,7 @@ def test_init_openrouter_omits_base_url_in_production(monkeypatch):
 
     captured: dict[str, object] = {}
 
-    class _FakeChatOpenRouter:
-        def __init__(self, **kwargs):
-            captured.update(kwargs)
-
-        def configurable_fields(self, **_):
-            return self
-
-    monkeypatch.setattr(client, "ChatOpenRouter", _FakeChatOpenRouter)
+    monkeypatch.setattr(client, "ChatOpenRouter", _fake_chat_openrouter(captured))
     monkeypatch.setattr(client.settings, "ENV", "production")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     # Even if the override leaks into a production settings object, it is ignored.

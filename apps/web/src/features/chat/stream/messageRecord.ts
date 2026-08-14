@@ -18,10 +18,28 @@ export interface TurnMessageMeta {
   options: TurnOptions;
 }
 
+/** Shown when a stream ended without ever signalling completion. */
+export const INTERRUPTED_ERROR =
+  "The response was interrupted before it finished.";
+
+/**
+ * Terminal status for a turn whose stream ended, from whether it signalled
+ * completion ([DONE] or main_response_complete). A connection that simply
+ * stopped — dropped socket, proxy timeout, backend crash — is a truncated turn,
+ * not a finished one, and must not be persisted as `sent`.
+ */
+export const resolveTurnOutcome = (
+  sawCompletion: boolean,
+): { status: IMessage["status"]; error: string | null } =>
+  sawCompletion
+    ? { status: "sent", error: null }
+    : { status: "failed", error: INTERRUPTED_ERROR };
+
 export const buildTurnMessageRecord = (
   meta: TurnMessageMeta,
   acc: TurnAccumulator,
   status: IMessage["status"],
+  error: string | null = null,
 ): IMessage => ({
   id: meta.botMessageId,
   conversationId: meta.conversationId,
@@ -45,6 +63,7 @@ export const buildTurnMessageRecord = (
   todo_progress: (acc.todoProgress as TodoProgressData | null) ?? null,
   pinned: false,
   isConvoSystemGenerated: false,
+  error,
   replyToMessageId: meta.options.replyToMessage?.id ?? null,
   replyToMessageData: meta.options.replyToMessage,
 });
