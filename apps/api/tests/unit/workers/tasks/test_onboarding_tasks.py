@@ -42,6 +42,7 @@ class TestIntelligenceTaskAnalytics:
         assert mock_capture.call_args.args[0] == "user-1"
         assert mock_capture.call_args.args[1] == AnalyticsEvents.ONBOARDING_COMPLETED
         assert mock_capture.call_args.args[2] == {"pipeline_mode": "full"}
+        get.assert_awaited_once_with("user-1")
 
     async def test_skips_when_pipeline_not_completed(self) -> None:
         """Split-mode early jobs (and aborts) succeed without completing."""
@@ -67,12 +68,50 @@ class TestIntelligenceTaskAnalytics:
                 side_effect=RuntimeError("mongo down"),
             ),
             patch(f"{MODULE}.capture_event") as mock_capture,
-            patch(f"{MODULE}.log"),
+            patch(f"{MODULE}.log") as mock_log,
         ):
             result = await process_onboarding_intelligence_task({}, "user-1")
 
         assert "completed" in result
         mock_capture.assert_not_called()
+        mock_log.warning.assert_called_once()
+        assert "Could not verify onboarding completion" in mock_log.warning.call_args.args[0]
+        assert mock_log.warning.call_args.kwargs["user_id"] == "user-1"
+        assert mock_log.warning.call_args.kwargs["error_type"] == "RuntimeError"
+        assert mock_log.warning.call_args.kwargs["error"] == "mongo down"
+
+    async def test_missing_pipeline_mode_defaults_to_full(self) -> None:
+        """A completed doc without pipeline_mode captures the "full" default."""
+        with (
+            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
+            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(f"{MODULE}.capture_event") as mock_capture,
+            patch(f"{MODULE}.log"),
+        ):
+            doc = MagicMock()
+            doc.onboarding = {"phase": OnboardingPhase.PERSONALIZATION_COMPLETE}
+            get.return_value = doc
+            result = await process_onboarding_intelligence_task({}, "user-1")
+
+        assert "completed" in result
+        mock_capture.assert_called_once()
+        assert mock_capture.call_args.args[2] == {"pipeline_mode": "full"}
+
+    async def test_missing_doc_skips_event_silently(self) -> None:
+        """A None document (user not found) skips the event with no noise —
+        the phase read must not crash into a spurious warning."""
+        with (
+            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
+            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(f"{MODULE}.capture_event") as mock_capture,
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            get.return_value = None
+            result = await process_onboarding_intelligence_task({}, "user-1")
+
+        assert "completed" in result
+        mock_capture.assert_not_called()
+        mock_log.warning.assert_not_called()
 
 
 class TestWorkflowsTaskAnalytics:
