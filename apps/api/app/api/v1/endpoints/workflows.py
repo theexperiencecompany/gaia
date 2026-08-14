@@ -95,12 +95,8 @@ async def create_workflow(
         # The trigger type lives on the REQUEST (the pre-create log above reads
         # request.trigger_config.type) — the created Workflow model does not
         # carry a trigger_type attribute, so reading it off the workflow would
-        # always yield None.
-        trigger_type = (
-            request.trigger_config.type.value
-            if request.trigger_config and request.trigger_config.type
-            else None
-        )
+        # always yield None. Both fields are required, so no guard needed.
+        trigger_type = request.trigger_config.type.value
         log.set(
             workflow=WorkflowContext(
                 id=str(workflow.id),
@@ -189,11 +185,11 @@ async def execute_workflow(
 
     try:
         result = await WorkflowService.execute_workflow(workflow_id, request, user["user_id"])
+        # execute_workflow is typed to return WorkflowExecutionResponse, whose
+        # execution_id is required — the hasattr guard was dead defensive code.
         log.set(
             workflow=WorkflowContext(
-                execution_id=str(result.execution_id)
-                if hasattr(result, "execution_id") and result.execution_id
-                else None,
+                execution_id=str(result.execution_id),
             ),
             outcome="success",
         )

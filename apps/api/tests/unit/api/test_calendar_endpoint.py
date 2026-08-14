@@ -640,7 +640,8 @@ class TestBatchUpdateEvents:
                 UPDATE_PATCH,
                 new_callable=AsyncMock,
                 return_value=GoogleCalendarEventResource(id="ev-001", summary="Updated"),
-            ),
+            ) as mock_update,
+            patch(ANALYTICS_PATCH) as mock_capture,
         ):
             resp = await client.put(
                 f"{API}/calendar/events/batch",
@@ -649,6 +650,11 @@ class TestBatchUpdateEvents:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["successful"]) == 1
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.CALENDAR_EVENT_UPDATED,
+            {"batch_size": 1, "success_count": 1, "failure_count": 0},
+        )
+        assert all(arg is not None for call in mock_update.await_args_list for arg in call.args)
 
     async def test_batch_update_partial_failure(self, client: AsyncClient) -> None:
         with (
@@ -697,7 +703,8 @@ class TestBatchDeleteEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(DELETE_PATCH, new_callable=AsyncMock, return_value=None),
+            patch(DELETE_PATCH, new_callable=AsyncMock, return_value=None) as mock_delete,
+            patch(ANALYTICS_PATCH) as mock_capture,
         ):
             resp = await client.request(
                 "DELETE",
@@ -708,6 +715,11 @@ class TestBatchDeleteEvents:
         data = resp.json()
         assert len(data["successful"]) == 1
         assert data["successful"][0]["event_id"] == "ev-001"
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.CALENDAR_EVENT_DELETED,
+            {"batch_size": 1, "success_count": 1, "failure_count": 0},
+        )
+        assert all(arg is not None for call in mock_delete.await_args_list for arg in call.args)
 
     async def test_batch_delete_partial_failure(self, client: AsyncClient) -> None:
         with (
@@ -784,6 +796,7 @@ class TestCalendarAnalytics:
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
             patch(ANALYTICS_PATCH) as mock_capture,
+            patch("app.api.v1.endpoints.calendar.log") as mock_log,
         ):
             mock_svc.create_calendar_event.return_value = GoogleCalendarEventResource(
                 id="ev-new", summary="Lunch"
@@ -793,6 +806,10 @@ class TestCalendarAnalytics:
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_CREATED)
         assert all(arg is not None for arg in mock_svc.create_calendar_event.await_args.args)
+        mock_log.set.assert_any_call(
+            user={"id": USER_ID},
+            calendar={"operation": "create_event", "calendar_id": None},
+        )
 
     async def test_update_event_captures_event_updated(self, client: AsyncClient) -> None:
         with (

@@ -210,9 +210,11 @@ class TestCancelSubscription:
             new_callable=AsyncMock,
             return_value=mock_status,
         ) as mock_cancel:
-            response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
+            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+                response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
 
         assert response.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.SUBSCRIPTION_CANCELLATION_REQUESTED)
         mock_cancel.assert_awaited_once_with("507f1f77bcf86cd799439011")
 
     async def test_cancel_subscription_service_error_returns_500(self, client: AsyncClient):

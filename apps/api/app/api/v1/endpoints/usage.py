@@ -62,7 +62,9 @@ async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummary
         log.set(outcome="success")
         capture_context_event(
             AnalyticsEvents.USAGE_QUERIED,
-            {"plan_type": user_plan.value if hasattr(user_plan, "value") else str(user_plan)},
+            # plan_type is always a PlanType enum here (subscription.plan_type
+            # defaults to PlanType.FREE) — the hasattr fallback was dead code.
+            {"plan_type": user_plan.value},
         )
         return UsageSummary(
             user_id=user_id,
