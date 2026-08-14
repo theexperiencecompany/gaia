@@ -1,13 +1,20 @@
 """Tests for app/helpers/message_helpers.py"""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import SystemMessage
 import pytest
 
 from app.helpers.message_helpers import (
+    _AGENDA_HEADING,
+    _CORE_MEMORY_HEADING,
+    _RECENT_ACTIVITY_HEADING,
+    MEMORY_RECALL_MAX_CHARS,
     _get_gaia_knowledge_section,
     _get_user_memories_section,
+    build_dynamic_context_messages,
     create_system_message,
     format_calendar_event_context,
     format_files_list,
@@ -495,3 +502,99 @@ class TestFormatFilesList:
         result = format_files_list(files, conversation_id="conv123")
         assert "read the file at its path" in result
         assert "/workspace/sessions/conv123/user-uploaded/a.txt.summary.md" in result
+
+
+# ---------------------------------------------------------------------------
+# build_dynamic_context_messages — the volatility split
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _dynamic_context_seams(core_context: str, *, active_todo_banner: str = "") -> Iterator[None]:
+    """Stub every I/O fetch `build_dynamic_context_messages` makes except the
+    core-memory read, so the volatility split and the caps run for real."""
+    with (
+        patch("app.helpers.message_helpers.memory_engine") as mock_engine,
+        patch(
+            "app.helpers.message_helpers.build_connected_integrations_manifest",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "app.helpers.message_helpers._get_tracked_todos_section",
+            new=AsyncMock(return_value=""),
+        ),
+        patch(
+            "app.helpers.message_helpers._build_active_todo_banner",
+            new=AsyncMock(return_value=active_todo_banner),
+        ),
+    ):
+        mock_engine.get_core_context = AsyncMock(return_value=core_context)
+        yield
+
+
+class TestDynamicContextVolatilitySplit:
+    """The memory core is split by volatility: the byte-stable documents ride
+    the cached prefix in ``memory_recall`` (uncapped — they only change when
+    consolidation rewrites them), while the agenda and recent-activity journal
+    churn every turn and are pushed into ``volatile_tail``, which IS capped."""
+
+    @pytest.mark.asyncio
+    async def test_stable_core_is_headed_and_is_all_the_recall_slot_holds(self) -> None:
+        with _dynamic_context_seams("Loves espresso.\nShips on Fridays."):
+            result = await build_dynamic_context_messages(user_id="u1", query=None)
+
+        assert result.memory_recall is not None
+        assert result.memory_recall.content == (
+            f"{_CORE_MEMORY_HEADING}:\nLoves espresso.\nShips on Fridays."
+        )
+        assert result.volatile_tail is None
+
+    @pytest.mark.asyncio
+    async def test_agenda_and_recent_activity_leave_the_stable_core(self) -> None:
+        core = (
+            "Loves espresso."
+            f"\n\n{_AGENDA_HEADING}\n- ship the cache work"
+            f"\n\n{_RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        )
+        with _dynamic_context_seams(core):
+            result = await build_dynamic_context_messages(user_id="u1", query=None)
+
+        assert result.memory_recall is not None
+        assert result.memory_recall.content == f"{_CORE_MEMORY_HEADING}:\nLoves espresso."
+        assert result.volatile_tail is not None
+        assert _AGENDA_HEADING in result.volatile_tail.content
+        assert "- ship the cache work" in result.volatile_tail.content
+        assert _RECENT_ACTIVITY_HEADING in result.volatile_tail.content
+        assert "- reviewed a PR" in result.volatile_tail.content
+
+    @pytest.mark.asyncio
+    async def test_stable_core_is_never_capped(self) -> None:
+        """The global cap bounds the volatile tail only. Truncating the stable
+        core would churn the cached prefix every time the core grew — the exact
+        thing the split exists to prevent."""
+        big_core = "core memory line. " * 600  # ~10.8k chars — over the cap
+        with _dynamic_context_seams(big_core):
+            result = await build_dynamic_context_messages(user_id="u1", query=None)
+
+        assert result.memory_recall is not None
+        content = result.memory_recall.content
+        assert len(content) > MEMORY_RECALL_MAX_CHARS
+        assert content == f"{_CORE_MEMORY_HEADING}:\n{big_core}"
+
+    @pytest.mark.asyncio
+    async def test_volatile_tail_is_capped_head_and_tail(self) -> None:
+        banner = "ACTIVE TODO BANNER. " * 500 + "BANNER-END"  # ~10k chars
+        core = f"Loves espresso.\n\n{_RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        with _dynamic_context_seams(core, active_todo_banner=banner):
+            result = await build_dynamic_context_messages(
+                user_id="u1", query=None, active_todo_id="t1"
+            )
+
+        assert result.volatile_tail is not None
+        content = result.volatile_tail.content
+        assert len(content) <= MEMORY_RECALL_MAX_CHARS + 64
+        # Head (recent activity) and tail (the run-binding directive) survive;
+        # the middle is dropped.
+        assert content.startswith(_RECENT_ACTIVITY_HEADING)
+        assert content.endswith("BANNER-END")
+        assert "recall truncated to keep the prompt cache warm" in content

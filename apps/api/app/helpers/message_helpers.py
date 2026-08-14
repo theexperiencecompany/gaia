@@ -518,13 +518,17 @@ async def build_dynamic_context_messages(
       user edits preferences or connects/disconnects an integration — NOT per
       turn — so ``manage_system_prompts_node`` keeps it at index 1 and the
       ``[static, stable]`` prefix stays cacheable across every turn.
-    - ``memory_recall``: the volatile per-turn block (core memory, per-query
-      memory recall, GAIA knowledge, installable skills, tracked-todos summary,
-      and — on bound / headless runs — the run-binding banners). This content
-      is retrieved against the latest user message and churns turn-to-turn, so
-      it is slotted at the TAIL of the system block (after the stable prefix)
-      and never shifts the cacheable bytes ahead of it. ``None`` when there is
-      no volatile content to inject.
+    - ``memory_recall``: the byte-stable core memory documents. They change
+      only when the consolidation pass rewrites them — NOT per turn — so they
+      are slotted at the TAIL of the system block (after the stable prefix)
+      and stay cacheable. ``None`` when the user has no core memory.
+    - ``volatile_tail``: everything that churns turn-to-turn (agenda,
+      recent-activity journal, per-query memory recall, GAIA knowledge,
+      installable skills, tracked-todos summary, and — on bound / headless
+      runs — the run-binding banners). Slotted AFTER the time message, so its
+      churn never shifts the cacheable bytes ahead of it, and capped
+      head+tail at ``MEMORY_RECALL_MAX_CHARS`` so its per-request token cost
+      stays bounded. ``None`` when there is no volatile content to inject.
 
     OpenUI / platform restrictions and the clock are NOT here:
 
@@ -549,14 +553,15 @@ async def build_dynamic_context_messages(
         skills_text: Pre-fetched skills section. Same rationale as memories.
         active_todo_id: When this run is bound to a tracked todo, appends the
             active-todo banner (canvas write-target directive) LAST in the
-            memory-recall block, so the directive gets recency.
+            volatile tail, so the directive gets recency.
         execution_mode: When "background" (headless scheduled run), appends the
             background-execution banner so the agent stays terse and action-only.
 
     Returns:
         A ``DynamicContextMessages`` — ``stable`` marked ``dynamic_context``
-        (and ``memory_message`` for back-compat) and ``memory_recall`` marked
-        ``memory_recall`` (or ``None``).
+        (and ``memory_message`` for back-compat), ``memory_recall`` marked
+        ``memory_recall``, and ``volatile_tail`` marked ``memory_volatile``
+        (each of the latter two ``None`` when empty).
     """
     del include_openui  # accepted for back-compat; OpenUI is in static prompt now
     try:
