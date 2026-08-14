@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
+from pydantic import BaseModel
 import pytest
 
 from app.agents.llm.chatbot import chatbot
@@ -30,6 +31,7 @@ from app.agents.llm.client import (
     _get_ordered_providers,
     _record_auxiliary_usage,
     ainvoke_llm,
+    ainvoke_structured,
     get_default_llm,
     init_llm,
     register_llm_providers,
@@ -865,3 +867,57 @@ class TestAuxiliaryMeteringWiring:
 
         forwarded = primary.ainvoke.call_args.kwargs["config"]
         assert forwarded["configurable"] == {"user_id": "user-9"}
+
+
+class TestAinvokeStructured:
+    """The one canonical one-shot structured call.
+
+    It runs on ``get_helper_llm``, not ``get_default_llm``: structured output is
+    always a small JSON blob, so reserving the full output budget for it wastes
+    the reservation on every helper call in the app.
+    """
+
+    class _Schema(BaseModel):
+        answer: str
+
+    async def test_runs_on_the_capped_helper_model_with_the_requested_schema(self) -> None:
+        structured = MagicMock(name="structured_runnable")
+        helper = MagicMock()
+        helper.with_structured_output = MagicMock(return_value=structured)
+
+        with (
+            patch("app.agents.llm.client.get_helper_llm", return_value=helper) as mock_helper,
+            patch(
+                "app.agents.llm.client.ainvoke_llm",
+                new=AsyncMock(return_value=self._Schema(answer="42")),
+            ) as mock_invoke,
+        ):
+            result = await ainvoke_structured(
+                self._Schema, "what is the answer?", label="the_judge", temperature=0.3
+            )
+
+        assert mock_helper.call_args.kwargs["temperature"] == 0.3
+        assert helper.with_structured_output.call_args.args[0] is self._Schema
+        assert mock_invoke.call_args.args[0] is structured
+        assert result.answer == "42"
+
+    async def test_the_label_and_config_reach_the_invoke(self) -> None:
+        """``label`` names the call in the COGS event and ``config`` carries the
+        user the spend is attributed to; losing either drops the attribution."""
+        helper = MagicMock()
+        helper.with_structured_output = MagicMock(return_value=MagicMock())
+        config = RunnableConfig(configurable={"user_id": "user-3"})
+
+        with (
+            patch("app.agents.llm.client.get_helper_llm", return_value=helper),
+            patch(
+                "app.agents.llm.client.ainvoke_llm",
+                new=AsyncMock(return_value=self._Schema(answer="ok")),
+            ) as mock_invoke,
+        ):
+            await ainvoke_structured(
+                self._Schema, "prompt", label="memory_extraction", config=config
+            )
+
+        assert mock_invoke.call_args.kwargs["label"] == "memory_extraction"
+        assert mock_invoke.call_args.kwargs["config"] is config
