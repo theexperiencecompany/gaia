@@ -56,7 +56,7 @@ export default function HeroSection({
         <div onClick={onTextClick} className="cursor-default select-none">
           <h1
             aria-label="Get a workday back every week"
-            className="max-w-(--breakpoint-2xl) text-center text-[3.2rem] leading-none sm:text-[5.75rem] font-normal overflow-visible font-serif"
+            className="max-w-(--breakpoint-2xl) text-center text-[3.2rem] leading-none sm:text-[5.75rem] font-semibold overflow-visible font-serif"
           >
             <TextSoftBlurIn
               text="Get a workday back"
