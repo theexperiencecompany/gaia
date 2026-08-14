@@ -1,5 +1,6 @@
 from typing import Any
 
+from app.agents.llm.types import LLMProviderName
 from app.models.models_models import DevModelOption
 
 GEMINI_PROVIDER = "gemini"
@@ -242,25 +243,25 @@ OPENROUTER_APP_CATEGORIES = ["personal-agent", "general-chat"]
 # ignore OpenRouter `model_kwargs`/`reasoning`. This menu is NEVER used in production.
 DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "minimax-m3": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "minimax/minimax-m3",
         "model_kwargs": {"provider": {"only": ["minimax"]}},
         "reasoning": True,
     },
     "glm-5.2": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "z-ai/glm-5.2",
         "model_kwargs": {"provider": {"only": ["z-ai"]}},
         "reasoning": True,
     },
     "gemini-3.5-flash": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "google/gemini-3.5-flash",
         "model_kwargs": None,
         "reasoning": False,
     },
     "deepseek-v4": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "deepseek/deepseek-v4-pro",
         "model_kwargs": None,
         "reasoning": False,
@@ -269,7 +270,7 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # Pinned snapshot — same id also served by the cheap OpenRouter-compatible
         # lanes (e.g. Nous Research), so the custom endpoint below can run the
         # identical model for A/B-ing routes.
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "deepseek/deepseek-v4-flash-0731",
         "model_kwargs": None,
         "reasoning": False,
@@ -277,13 +278,13 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "custom": {
         # The env-defined endpoint (DEV_LLM_* settings). `model` None = don't pin
         # one here; the client's own default (DEV_LLM_MODEL) serves the request.
-        "provider": "custom",
+        "provider": LLMProviderName.CUSTOM,
         "model": None,
         "model_kwargs": None,
         "reasoning": False,
     },
     "gemini-3.1-flash-lite": {
-        "provider": "gemini",
+        "provider": LLMProviderName.GEMINI,
         "model": "gemini-3.1-flash-lite",
         "model_kwargs": None,
         "reasoning": False,
