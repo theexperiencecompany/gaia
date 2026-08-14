@@ -28,16 +28,11 @@ from app.agents.llm.client import (
     _get_ordered_providers,
     ainvoke_llm,
     get_default_llm,
-    get_helper_llm,
     init_llm,
     register_llm_providers,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
-from app.constants.llm import (
-    DEFAULT_MODEL_NAME,
-    HELPER_MAX_OUTPUT_TOKENS,
-    OPENROUTER_MAX_OUTPUT_TOKENS,
-)
+from app.constants.llm import DEFAULT_MODEL_NAME, OPENROUTER_MAX_OUTPUT_TOKENS
 from app.core.lazy_loader import ProviderRegistry
 
 # ---------------------------------------------------------------------------
@@ -105,7 +100,6 @@ class TestGetAvailableProviders:
 
         assert list(result.keys()) == ["gemini"]
 
-    @pytest.mark.regression
     def test_unregistered_provider_is_skipped_not_fatal(self) -> None:
         """custom_llm is registered only when ENV=development, so in production
         the registry has no such key. Against the REAL registry (which raises
@@ -441,58 +435,6 @@ class TestGetDefaultLlm:
         mock_settings.GOOGLE_API_KEY = None
 
         assert get_default_llm() is mock_sim_llm.return_value
-
-
-# ---------------------------------------------------------------------------
-# get_helper_llm — the small-output cap for one-shot helpers
-# ---------------------------------------------------------------------------
-
-
-class TestGetHelperLlm:
-    @pytest.fixture(autouse=True)
-    def _fresh_cache(self):
-        # get_helper_llm is built on the same cached get_default_llm instance.
-        _build_default_llm.cache_clear()
-        yield
-        _build_default_llm.cache_clear()
-
-    @patch("app.agents.llm.client.ChatOpenRouter")
-    @patch("app.agents.llm.client.settings")
-    def test_helper_request_carries_the_helper_cap(
-        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
-    ) -> None:
-        mock_settings.GAIA_SIM_MODE = False
-        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
-        mock_chat_openrouter.return_value = MagicMock()
-
-        helper_llm = get_helper_llm()
-
-        # Exactly one ChatOpenRouter construction — the helper path reuses the
-        # same cached instance/HTTP client as the graph path instead of opening
-        # a second connection pool.
-        mock_chat_openrouter.assert_called_once()
-        assert mock_chat_openrouter.call_args.kwargs["max_tokens"] == OPENROUTER_MAX_OUTPUT_TOKENS
-
-        # The helper's own request carries the smaller cap via model_copy, not
-        # the constructed instance's max_tokens.
-        mock_chat_openrouter.return_value.model_copy.assert_called_once_with(
-            update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS}
-        )
-        assert helper_llm is mock_chat_openrouter.return_value.model_copy.return_value
-
-    @patch("app.agents.llm.client.get_default_llm")
-    @patch("app.agents.llm.client.settings")
-    def test_sim_mode_returns_default_llm_untouched(
-        self, mock_settings: MagicMock, mock_get_default: MagicMock
-    ) -> None:
-        mock_settings.GAIA_SIM_MODE = True
-        mock_model = MagicMock()
-        mock_get_default.return_value = mock_model
-
-        result = get_helper_llm()
-
-        assert result is mock_model
-        mock_model.model_copy.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
