@@ -92,23 +92,28 @@ async def create_workflow(
         workflow = await WorkflowService.create_workflow(
             request, user["user_id"], user_timezone=user_timezone
         )
+        # The trigger type lives on the REQUEST (the pre-create log above reads
+        # request.trigger_config.type) — the created Workflow model does not
+        # carry a trigger_type attribute, so reading it off the workflow would
+        # always yield None.
+        trigger_type = (
+            request.trigger_config.type.value
+            if request.trigger_config and request.trigger_config.type
+            else None
+        )
         log.set(
             workflow=WorkflowContext(
                 id=str(workflow.id),
                 title=workflow.title,
                 steps_count=len(workflow.steps) if workflow.steps else None,
-                trigger_type=str(workflow.trigger_type)
-                if hasattr(workflow, "trigger_type") and workflow.trigger_type
-                else None,
+                trigger_type=trigger_type,
             ),
             outcome="success",
         )
         capture_context_event(
             AnalyticsEvents.WORKFLOW_CREATED,
             {
-                "trigger_type": str(workflow.trigger_type)
-                if hasattr(workflow, "trigger_type") and workflow.trigger_type
-                else None,
+                "trigger_type": trigger_type,
                 "steps_count": len(workflow.steps) if workflow.steps else 0,
                 "generated_immediately": request.generate_immediately,
             },
