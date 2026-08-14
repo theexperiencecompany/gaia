@@ -905,12 +905,14 @@ jobs:
     # A large changed module can carry hundreds of mutants (each running its
     # covering tests once) — a 745-mutant module takes ~13 min. The xargs
     # parallelism overlaps modules, so this is the per-module worst case.
-    # 150 min, not 30: the ceiling must also fit whole-repo migrations (the
-    # mypy-strict PR touched ~170 mutating modules ≈ 2h at 4-wide). Normal
-    # PRs stay far below — the diff-scoping in mutation.sh keeps small diffs
-    # to seconds per module — so the ceiling only ever matters for the
+    # 240 min, not 30: the ceiling must also fit whole-repo migrations (the
+    # mypy-strict PR touched ~170 mutating modules; the slowest ones — big
+    # changed-line spans with slow sandbox tests — take 30-45 min each, and
+    # with 4-wide parallelism the full battery lands near 3h). Normal PRs
+    # stay far below — the diff-scoping in mutation.sh keeps small diffs to
+    # seconds per module — so the ceiling only ever matters for the
     # monster-PR case it exists to bound.
-    timeout-minutes: 150
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v7
         with:
