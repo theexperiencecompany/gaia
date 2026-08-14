@@ -101,7 +101,6 @@ class TestGetAvailableProviders:
 
         assert list(result.keys()) == ["gemini"]
 
-    @pytest.mark.regression
     def test_unregistered_provider_is_skipped_not_fatal(self) -> None:
         """custom_llm is registered only when ENV=development, so in production
         the registry has no such key. Against the REAL registry (which raises
