@@ -409,22 +409,28 @@ def _falsy_literal(node) -> bool:
     return False
 
 
-def _replacement(before: str, after: str) -> str | None:
-    """The substring the mutation put in place of the original, or None."""
-    head = 0
-    while head < min(len(before), len(after)) and before[head] == after[head]:
-        head += 1
-    tail = 0
-    while (
-        tail < min(len(before), len(after)) - head
-        and before[len(before) - 1 - tail] == after[len(after) - 1 - tail]
-    ):
-        tail += 1
-    return after[head : len(after) - tail]
+def _mutated_token(span, line_no: int, orig_line: str, mut_line: str) -> str | None:
+    """The text the mutation put where the literal at ``span`` was, or None.
+
+    Column-exact rather than a common-prefix/suffix diff. mutmut changes ONE
+    construct per mutant, so everything left of the literal is untouched and
+    the replacement ends exactly len(mut_line) - len(orig_line) further along.
+    A character diff gets this wrong the moment the two literals share an
+    edge: False -> None shares a trailing "e" and slices to "Non", which then
+    fails to literal_eval and misreports an equivalent mutant as a survivor.
+    Returns None for a literal spilling across lines, where the arithmetic
+    does not hold.
+    """
+    start_line, start_col, end_line, end_col = span
+    if start_line != line_no or end_line != line_no:
+        return None
+    return mut_line[start_col : end_col + len(mut_line) - len(orig_line)]
 
 
-def _falsy_replacement(replacement: str) -> bool:
-    """True when the mutation put another falsy literal where the default was."""
+def _falsy_replacement(replacement: str | None) -> bool:
+    """True when the mutation put another falsy literal where the original was."""
+    if replacement is None:
+        return False
     stripped = replacement.strip()
     if not stripped:
         return True  # the argument was removed; the default becomes None
@@ -490,7 +496,9 @@ def _only_boolean_uses(call) -> bool:
     return True
 
 
-def _unobservable_get_default(path: str, line_no: int, col: int, replacement: str) -> bool:
+def _unobservable_get_default(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
     """True when the mutation only changed a .get() default nothing can observe.
 
     A falsy default is unobservable when every consumer of the value collapses
@@ -527,18 +535,17 @@ def _unobservable_get_default(path: str, line_no: int, col: int, replacement: st
         default = node.args[1]
         if not _falsy_literal(default):
             continue
-        if not _within(
-            (
-                default.lineno,
-                default.col_offset,
-                default.end_lineno or default.lineno,
-                default.end_col_offset,
-            ),
-            line_no,
-            col,
-        ):
+        span = (
+            default.lineno,
+            default.col_offset,
+            default.end_lineno or default.lineno,
+            default.end_col_offset,
+        )
+        if not _within(span, line_no, col):
             continue
-        return _falsy_replacement(replacement) and _only_boolean_uses(node)
+        return _falsy_replacement(
+            _mutated_token(span, line_no, orig_line, mut_line)
+        ) and _only_boolean_uses(node)
     return False
 def _within(span, line_no: int, col: int) -> bool:
     start_line, start_col, end_line, end_col = span
@@ -572,12 +579,11 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
             sys.exit(1)
         # Raw (un-normalized) lines: the cast() rewrite above shifts columns.
         col = _first_differing_col(orig_raw[i], mut_raw[i])
-        if _unobservable_get_default(
-            f"{workdir}/{module_path}", line_no, col, _replacement(orig_raw[i], mut_raw[i])
-        ):
+        real_path = f"{workdir}/{module_path}"
+        if _unobservable_get_default(real_path, line_no, col, orig_raw[i], mut_raw[i]):
             print("EQUIV")
             sys.exit(0)
-        span = _excluded_span(f"{workdir}/{module_path}", line_no)
+        span = _excluded_span(real_path, line_no)
         if span is not None and _within(span, line_no, col):
             print(f"LOGGING:{line_no}")
             sys.exit(1)
@@ -736,22 +742,28 @@ def _falsy_literal(node) -> bool:
     return False
 
 
-def _replacement(before: str, after: str) -> str | None:
-    """The substring the mutation put in place of the original, or None."""
-    head = 0
-    while head < min(len(before), len(after)) and before[head] == after[head]:
-        head += 1
-    tail = 0
-    while (
-        tail < min(len(before), len(after)) - head
-        and before[len(before) - 1 - tail] == after[len(after) - 1 - tail]
-    ):
-        tail += 1
-    return after[head : len(after) - tail]
+def _mutated_token(span, line_no: int, orig_line: str, mut_line: str) -> str | None:
+    """The text the mutation put where the literal at ``span`` was, or None.
+
+    Column-exact rather than a common-prefix/suffix diff. mutmut changes ONE
+    construct per mutant, so everything left of the literal is untouched and
+    the replacement ends exactly len(mut_line) - len(orig_line) further along.
+    A character diff gets this wrong the moment the two literals share an
+    edge: False -> None shares a trailing "e" and slices to "Non", which then
+    fails to literal_eval and misreports an equivalent mutant as a survivor.
+    Returns None for a literal spilling across lines, where the arithmetic
+    does not hold.
+    """
+    start_line, start_col, end_line, end_col = span
+    if start_line != line_no or end_line != line_no:
+        return None
+    return mut_line[start_col : end_col + len(mut_line) - len(orig_line)]
 
 
-def _falsy_replacement(replacement: str) -> bool:
-    """True when the mutation put another falsy literal where the default was."""
+def _falsy_replacement(replacement: str | None) -> bool:
+    """True when the mutation put another falsy literal where the original was."""
+    if replacement is None:
+        return False
     stripped = replacement.strip()
     if not stripped:
         return True  # the argument was removed; the default becomes None
@@ -817,7 +829,9 @@ def _only_boolean_uses(call) -> bool:
     return True
 
 
-def _unobservable_get_default(path: str, line_no: int, col: int, replacement: str) -> bool:
+def _unobservable_get_default(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
     """True when the mutation only changed a .get() default nothing can observe.
 
     A falsy default is unobservable when every consumer of the value collapses
@@ -854,18 +868,17 @@ def _unobservable_get_default(path: str, line_no: int, col: int, replacement: st
         default = node.args[1]
         if not _falsy_literal(default):
             continue
-        if not _within(
-            (
-                default.lineno,
-                default.col_offset,
-                default.end_lineno or default.lineno,
-                default.end_col_offset,
-            ),
-            line_no,
-            col,
-        ):
+        span = (
+            default.lineno,
+            default.col_offset,
+            default.end_lineno or default.lineno,
+            default.end_col_offset,
+        )
+        if not _within(span, line_no, col):
             continue
-        return _falsy_replacement(replacement) and _only_boolean_uses(node)
+        return _falsy_replacement(
+            _mutated_token(span, line_no, orig_line, mut_line)
+        ) and _only_boolean_uses(node)
     return False
 def _within(span, line_no: int, col: int) -> bool:
     start_line, start_col, end_line, end_col = span
@@ -899,12 +912,11 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
             sys.exit(1)
         # Raw (un-normalized) lines: the cast() rewrite above shifts columns.
         col = _first_differing_col(orig_raw[i], mut_raw[i])
-        if _unobservable_get_default(
-            f"{workdir}/{module_path}", line_no, col, _replacement(orig_raw[i], mut_raw[i])
-        ):
+        real_path = f"{workdir}/{module_path}"
+        if _unobservable_get_default(real_path, line_no, col, orig_raw[i], mut_raw[i]):
             print("EQUIV")
             sys.exit(0)
-        span = _excluded_span(f"{workdir}/{module_path}", line_no)
+        span = _excluded_span(real_path, line_no)
         if span is not None and _within(span, line_no, col):
             print(f"LOGGING:{line_no}")
             sys.exit(1)
