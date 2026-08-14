@@ -9,21 +9,21 @@ import pytest
 from app.helpers.message_helpers import (
     _get_gaia_knowledge_section,
     _get_user_memories_section,
-    get_onboarding_system_prompt_if_applicable,
     create_system_message,
     format_calendar_event_context,
     format_files_list,
     format_reply_context,
     format_tool_selection_message,
     format_workflow_execution_message,
+    get_onboarding_system_prompt_if_applicable,
 )
-from app.models.user_models import OnboardingPhase, UserDocument
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.user_models import OnboardingPhase, UserDocument
 
 # ---------------------------------------------------------------------------
 # create_system_message

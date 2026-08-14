@@ -9,10 +9,9 @@ import pytest
 
 from app.models.user_models import BioStatus, UserDocument
 from app.utils.profile_card import (
-    generate_holo_card_content,
-
     HOUSES,
     assign_random_house,
+    generate_holo_card_content,
     generate_profile_card_design,
     generate_random_color,
     get_user_metadata,

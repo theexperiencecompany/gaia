@@ -1,6 +1,6 @@
 """The memory pg_store package surface — every name the package re-exports."""
 
-import app.memory.pg_store as pg_store
+from app.memory import pg_store
 
 
 def test_package_exports_the_episode_api() -> None:

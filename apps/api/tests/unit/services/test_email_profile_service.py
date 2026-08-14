@@ -17,11 +17,11 @@ from app.constants.email import (
 )
 from app.models.search_models import URLResponse
 from app.services.email_profile_service import (
-    _search_google_people,
     _domain_favicon_profile,
     _merge_profiles,
     _person_to_profile,
     _pick_photo,
+    _search_google_people,
     fetch_email_profile,
     fetch_email_profiles,
 )
