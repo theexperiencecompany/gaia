@@ -209,7 +209,11 @@ proc = subprocess.Popen(
     start_new_session=True,
 )
 try:
-    proc.communicate(timeout=900)
+    # 45 minutes per module: with the timeout constant above, a module with
+    # ~90 mutants pays ~30s of fresh-process startup per mutant. The old
+    # 15-minute cap killed such modules mid-run and reported them as
+    # "incomplete" even though nothing was wrong with the tests.
+    proc.communicate(timeout=2700)
 except subprocess.TimeoutExpired:
     os.killpg(proc.pid, signal.SIGKILL)
     proc.wait()
