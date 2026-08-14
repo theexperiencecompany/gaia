@@ -6,6 +6,7 @@ import { Select, SelectItem } from "@heroui/select";
 import { SearchIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { INTEGRATION_CATEGORIES } from "@/features/integrations/constants/categories";
+import { cn } from "@/lib/utils";
 
 const SORT_OPTIONS = [
   { key: "popular", label: "Most Popular" },
@@ -117,7 +118,10 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
               variant={category === cat.key ? "solid" : "flat"}
               color={category === cat.key ? "primary" : "default"}
               size="lg"
-              className={`cursor-pointer ${category === cat.key ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
+              className={cn(
+                "cursor-pointer font-light! backdrop-blur-2xl!",
+                category !== cat.key && "bg-white/5! text-foreground-500",
+              )}
               onClick={() => handleCategoryChange(cat.key)}
             >
               {cat.label}

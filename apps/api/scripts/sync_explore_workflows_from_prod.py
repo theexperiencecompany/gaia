@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 import json
 from pathlib import Path
 import sys
+import tempfile
 from typing import Any
 
 import httpx
@@ -165,9 +166,15 @@ async def main() -> None:
     extra = sorted(set(local) - prod_slugs)
     print(f"Missing vs prod: {missing or 'none'}")
     print(f"Extra vs prod: {extra or 'none'}")
-    Path("/tmp/local_explore_slugs.json").write_text(
-        json.dumps(sorted(local), indent=1), encoding="utf-8"
-    )
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        prefix="local_explore_slugs_",
+        suffix=".json",
+        delete=False,
+        encoding="utf-8",
+    ) as slug_dump:
+        json.dump(sorted(local), slug_dump, indent=1)
+    print(f"Wrote local explore slugs to {slug_dump.name}")
 
 
 if __name__ == "__main__":

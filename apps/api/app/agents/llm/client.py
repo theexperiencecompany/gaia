@@ -11,6 +11,7 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openrouter import ChatOpenRouter
+from openrouter.utils import BackoffStrategy, RetryConfig
 from pydantic import BaseModel, SecretStr
 
 from app.agents.llm.exceptions import (
@@ -52,6 +53,22 @@ from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 _ResultT = TypeVar("_ResultT")
+
+
+def without_sdk_retry(llm: ChatOpenRouter) -> ChatOpenRouter:
+    """Leave retrying to :func:`with_llm_retry`; the SDK's own loop nests under
+    ours and turned 3 attempts into 40 requests. ``max_retries=0`` does NOT
+    disable it — the SDK then applies a one-hour default; only this does."""
+    llm.client.sdk_configuration.retry_config = RetryConfig(
+        # Any strategy but "backoff" skips the retry path, so the (required)
+        # backoff values below are never read.
+        strategy="none",
+        backoff=BackoffStrategy(
+            initial_interval=0, max_interval=0, exponent=1.0, max_elapsed_time=0
+        ),
+        retry_connection_errors=False,
+    )
+    return llm
 
 
 def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS) -> Runnable:
@@ -96,13 +113,15 @@ def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     client pointed at the local scripted stub (tools/llm-stub). Deliberately
     exposes no configurable fields — provider/model pinning is meaningless when
     every request lands on the stub, so pinned config is silently ignored."""
-    llm = ChatOpenRouter(
-        model=SIM_STUB_MODEL_NAME,
-        temperature=temperature,
-        streaming=True,
-        stream_usage=True,
-        api_key=SecretStr(settings.OPENROUTER_API_KEY or SIM_STUB_API_KEY),
-        base_url=settings.OPENROUTER_BASE_URL or SIM_STUB_BASE_URL,
+    llm = without_sdk_retry(
+        ChatOpenRouter(
+            model=SIM_STUB_MODEL_NAME,
+            temperature=temperature,
+            streaming=True,
+            stream_usage=True,
+            api_key=SecretStr(settings.OPENROUTER_API_KEY or SIM_STUB_API_KEY),
+            base_url=settings.OPENROUTER_BASE_URL or SIM_STUB_BASE_URL,
+        )
     )
     # Same reason as _build_default_llm: fractional-window middleware needs a
     # context-window profile at graph-build time.
@@ -173,22 +192,24 @@ def init_openrouter_llm() -> LanguageModelLike:
     # OPENROUTER_API_BASE env default_factory. Redirecting to the stub is sim
     # mode's job (_sim_llm); this construction is identical to pre-sim behavior.
     return _openrouter_wire_configurables(
-        ChatOpenRouter(
-            model=PROVIDER_MODELS[LLMProviderName.OPENROUTER],
-            temperature=DEFAULT_LLM_TEMPERATURE,
-            streaming=True,
-            stream_usage=True,
-            # Output cap; must stay well under the model's shared input+output context
-            # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
-            max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-            api_key=settings.OPENROUTER_API_KEY,
-            # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
-            # these as dedicated params (NOT `default_headers`, which it forwards to
-            # send_async and crashes on). https://openrouter.ai/docs/app-attribution
-            app_url=settings.FRONTEND_URL,
-            app_title=OPENROUTER_APP_TITLE,
-            app_categories=OPENROUTER_APP_CATEGORIES,
-            reasoning=OPENROUTER_REASONING,
+        without_sdk_retry(
+            ChatOpenRouter(
+                model=PROVIDER_MODELS[LLMProviderName.OPENROUTER],
+                temperature=DEFAULT_LLM_TEMPERATURE,
+                streaming=True,
+                stream_usage=True,
+                # Output cap; must stay well under the model's shared input+output context
+                # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
+                max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+                api_key=settings.OPENROUTER_API_KEY,
+                # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
+                # these as dedicated params (NOT `default_headers`, which it forwards to
+                # send_async and crashes on). https://openrouter.ai/docs/app-attribution
+                app_url=settings.FRONTEND_URL,
+                app_title=OPENROUTER_APP_TITLE,
+                app_categories=OPENROUTER_APP_CATEGORIES,
+                reasoning=OPENROUTER_REASONING,
+            )
         )
     )
 
@@ -212,14 +233,16 @@ def init_custom_llm() -> LanguageModelLike:
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
     return _openrouter_wire_configurables(
-        ChatOpenRouter(
-            model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
-            temperature=DEFAULT_LLM_TEMPERATURE,
-            streaming=True,
-            stream_usage=True,
-            max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
-            api_key=settings.DEV_LLM_API_KEY,
-            base_url=settings.DEV_LLM_BASE_URL,
+        without_sdk_retry(
+            ChatOpenRouter(
+                model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
+                temperature=DEFAULT_LLM_TEMPERATURE,
+                streaming=True,
+                stream_usage=True,
+                max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+                api_key=settings.DEV_LLM_API_KEY,
+                base_url=settings.DEV_LLM_BASE_URL,
+            )
         )
     )
 
@@ -378,18 +401,20 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
 
 @cache
 def _build_default_llm(temperature: float) -> BaseChatModel:
-    llm = ChatOpenRouter(
-        model=DEFAULT_MODEL_NAME,
-        temperature=temperature,
-        # ChatOpenRouter defaults streaming to False, and stream_usage only
-        # attaches usage metadata to a stream — set alone it is inert. Both are
-        # set so this matches init_openrouter_llm, and so the model fallback
-        # (create_agent resolves it from here) streams like the primary it
-        # replaces instead of arriving as one lump.
-        streaming=True,
-        stream_usage=True,
-        max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-        api_key=settings.OPENROUTER_API_KEY,
+    llm = without_sdk_retry(
+        ChatOpenRouter(
+            model=DEFAULT_MODEL_NAME,
+            temperature=temperature,
+            # ChatOpenRouter defaults streaming to False, and stream_usage only
+            # attaches usage metadata to a stream — set alone it is inert. Both are
+            # set so this matches init_openrouter_llm, and so the model fallback
+            # (create_agent resolves it from here) streams like the primary it
+            # replaces instead of arriving as one lump.
+            streaming=True,
+            stream_usage=True,
+            max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+            api_key=settings.OPENROUTER_API_KEY,
+        )
     )
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).

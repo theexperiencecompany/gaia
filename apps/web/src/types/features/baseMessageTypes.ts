@@ -28,6 +28,10 @@ export interface UserMessageData extends BaseMessageData {
   // True while the message is held in the send queue (greyed-out bubble).
   queued?: boolean;
 
+  // The send never reached the backend (dropped connection, reload mid-flight).
+  // Drives a persistent "Not delivered" label + retry on the user bubble.
+  failed?: boolean;
+
   // True while the message is still streaming in — the voice transcript grows
   // word-by-word as the user speaks. Drives the user bubble's blur-in animation.
   loading?: boolean;
@@ -64,6 +68,7 @@ export interface ConversationMessage extends Partial<BaseMessageData> {
   response: string; // The main content field for conversations
   loading?: boolean;
   queued?: boolean; // Held in the send queue (greyed-out user bubble)
+  failed?: boolean; // Send never reached the backend
   disclaimer?: string;
 }
 
