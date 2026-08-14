@@ -18,12 +18,12 @@ async def test_loader_builds_publisher_from_settings_and_connects() -> None:
         patch("app.db.rabbitmq.RabbitMQPublisher", return_value=publisher) as ctor,
         patch("app.db.rabbitmq.settings.RABBITMQ_URL", "amqp://broker/"),
     ):
-        # Registration captures required_keys from settings at call time, so
-        # the re-register must happen INSIDE the settings patch — in a
-        # hermetic env RABBITMQ_URL is unset at import and the captured key
-        # would make aget return None before the loader ever runs.
-        init_rabbitmq_publisher()
-        result = await providers.aget("rabbitmq_publisher")
+        # required_keys are captured by @lazy_provider AT IMPORT TIME (so in a
+        # hermetic env they are [None] and the loader would refuse to run) —
+        # point the registered loader at a concrete key instead.
+        loader = init_rabbitmq_publisher()
+        loader.required_keys = ["amqp://broker/"]
+        result = await loader.aget()
 
     assert result is publisher
     ctor.assert_called_once_with("amqp://broker/")
