@@ -2061,6 +2061,10 @@ dev = [
     { name = "fakeredis" },
     { name = "freezegun" },
     { name = "hypothesis" },
+    { name = "livekit" },
+    { name = "livekit-agents", extra = ["deepgram", "silero", "turn-detector"] },
+    { name = "livekit-plugins-elevenlabs" },
+    { name = "livekit-plugins-noise-cancellation" },
     { name = "lxml-stubs" },
     { name = "mutmut" },
     { name = "mypy" },
@@ -2106,12 +2110,6 @@ dev = [
     { name = "types-tensorflow" },
     { name = "types-tqdm" },
     { name = "types-ujson" },
-]
-voice-agent = [
-    { name = "livekit" },
-    { name = "livekit-agents", extra = ["deepgram", "silero", "turn-detector"] },
-    { name = "livekit-plugins-elevenlabs" },
-    { name = "livekit-plugins-noise-cancellation" },
 ]
 
 [package.metadata]
@@ -2232,6 +2230,10 @@ dev = [
     { name = "fakeredis", extras = ["aioredis"], specifier = ">=2.0.0" },
     { name = "freezegun", specifier = ">=1.5.0" },
     { name = "hypothesis", specifier = ">=6.165.2" },
+    { name = "livekit", specifier = ">=1.0.12" },
+    { name = "livekit-agents", extras = ["turn-detector", "silero", "deepgram"], specifier = "~=1.2" },
+    { name = "livekit-plugins-elevenlabs", specifier = "~=1.2" },
+    { name = "livekit-plugins-noise-cancellation", specifier = "~=0.2" },
     { name = "lxml-stubs", specifier = ">=0.5.1" },
     { name = "mutmut", specifier = ">=3.7.0" },
     { name = "mypy", specifier = ">=1.16.1" },
@@ -2277,12 +2279,6 @@ dev = [
     { name = "types-tensorflow", specifier = ">=2.18.0.20250516" },
     { name = "types-tqdm", specifier = ">=4.67.0.20250516" },
     { name = "types-ujson", specifier = ">=5.10.0.20250326" },
-]
-voice-agent = [
-    { name = "livekit", specifier = ">=1.0.12" },
-    { name = "livekit-agents", extras = ["turn-detector", "silero", "deepgram"], specifier = "~=1.2" },
-    { name = "livekit-plugins-elevenlabs", specifier = "~=1.2" },
-    { name = "livekit-plugins-noise-cancellation", specifier = "~=0.2" },
 ]
 
 [[package]]

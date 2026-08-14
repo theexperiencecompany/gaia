@@ -121,14 +121,12 @@ dev = [
   "schemathesis>=4.24.3",
   "hypothesis>=6.165.2",
   "mutmut>=3.7.0",
-]
-
-# The voice agent is type-checked in THIS project's environment (see the mypy
-# lane in code-quality.yml), so livekit and the voice plugins must resolve to
-# their real typed packages here — otherwise every livekit symbol degrades to
-# Any and the voice surface cannot be type-checked at all. Mirrors
-# apps/voice-agent's runtime dependencies (same pins).
-voice_agent = [
+  # The voice agent is type-checked in THIS project's environment (the mypy
+  # lane in code-quality.yml checks apps/voice-agent/src with this venv), so
+  # livekit and the voice plugins must resolve to their real typed packages
+  # here — otherwise every livekit symbol degrades to Any and the voice
+  # surface cannot be type-checked at all. Mirrors apps/voice-agent's runtime
+  # dependencies (same pins).
   "livekit>=1.0.12",
   "livekit-agents[turn-detector,silero,deepgram]~=1.2",
   "livekit-plugins-noise-cancellation~=0.2",
