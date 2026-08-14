@@ -81,8 +81,11 @@ class TestWrites:
     async def test_a_partial_update_passes_through_and_reads_back(self, user_repo) -> None:
         user_repo.get.return_value = _user_with({"mode": "auto"})
 
-        prefs = await update_hil_preferences(USER_ID, mode="auto")
+        with patch(f"{MODULE}.get_hil_preferences", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = HILPreferences(mode="auto")
+            prefs = await update_hil_preferences(USER_ID, mode="auto")
 
+        mock_get.assert_awaited_once_with(USER_ID)
         user_repo.set_hil_preference_fields.assert_awaited_once_with(
             USER_ID, mode="auto", tool_overrides=None
         )
