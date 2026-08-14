@@ -650,6 +650,30 @@ class TestBulkServiceComplete:
             FAKE_USER_ID, AnalyticsEvents.TODO_COMPLETED, {"count": 2}
         )
 
+    async def test_captures_completed_count_with_tracked_todos(self, mock_bulk_repos):
+        """Tracked todos count through their completion lifecycle — the
+        reported count is modified + tracked, not a plain update count."""
+        todo_repo, _ = mock_bulk_repos
+        todo_repo.find_by_ids = AsyncMock(
+            return_value=[
+                _make_todo_doc(todo_id="a"),
+                _make_todo_doc(todo_id="b", vfs_path="file:///x"),
+            ]
+        )
+        todo_repo.bulk_update = AsyncMock(return_value=1)
+        with (
+            patch("app.services.todos.todo_bulk_service.capture_event") as mock_capture,
+            patch(
+                "app.services.todos.todo_bulk_service.tracked_todo_service.complete_tracked_todo",
+                new_callable=AsyncMock,
+            ) as mock_tracked,
+        ):
+            await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
+        mock_tracked.assert_awaited_once_with("b", FAKE_USER_ID, "Completed via bulk operation")
+        mock_capture.assert_called_once_with(
+            FAKE_USER_ID, AnalyticsEvents.TODO_COMPLETED, {"count": 2}
+        )
+
     async def test_no_todos_raises_404(self, mock_bulk_repos):
         todo_repo, _ = mock_bulk_repos
         todo_repo.find_by_ids = AsyncMock(return_value=[])
