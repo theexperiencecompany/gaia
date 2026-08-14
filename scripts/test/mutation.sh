@@ -251,23 +251,66 @@ if [ "$MUTMUT_RC" -ne 0 ]; then
   fi
 fi
 
-# mutmut results prints every non-killed mutant; only SURVIVED ones are a
-# test weakness. "no tests" mutants are uncovered code — informational, not
-# a failure. "not checked" mutants mean the run was interrupted — that IS a
-# failure (incomplete evidence). Survivors are then classified: cast()-arg
-# changes are provably equivalent (typing.cast returns its argument
-# unchanged at runtime), so are falsy .get() defaults nothing but a
-# truthiness test consumes (see _unobservable_get_default), and — the
+# Only two of mutmut's statuses are a VERDICT: killed (the suite caught the
+# bug) and survived (it did not). Everything else — suspicious, no tests,
+# timeout, skipped, not checked — means no verdict was reached, which is not
+# the same thing as no failure. "not checked" mutants mean the run was
+# interrupted; that IS a failure (incomplete evidence). Survivors are then
+# classified: cast()-arg changes are provably equivalent (typing.cast returns
+# its argument unchanged at runtime), so are falsy .get() defaults nothing
+# but a truthiness test consumes (see _unobservable_get_default), and — the
 # diff-driven gate — survivors on lines the PR did not change are noted,
 # not failures.
-RESULTS="$("$VENV_PY" -m mutmut results 2>/dev/null || true)"
-SURVIVORS="$(printf '%s\n' "$RESULTS" | grep "survived" || true)"
-NO_TESTS_LIST="$(printf '%s\n' "$RESULTS" | grep "no tests" || true)"
+#
+# `results --all True` lists EVERY mutant with its status, one line each;
+# plain `results` omits the killed ones, and whether anything was killed at
+# all is exactly what says the run proved something. Its failure is NOT
+# swallowed: an unreadable read used to be indistinguishable from a clean
+# run, which is the same silence-read-as-success bug the no-verdict guard
+# below exists to stop.
+if ! RESULTS="$("$VENV_PY" -m mutmut results --all True 2>"$WORKDIR/results-err.log")"; then
+  echo "MUTATION RESULTS UNREADABLE — 'mutmut results' failed for $MODULE:" >&2
+  cat "$WORKDIR/results-err.log" >&2
+  exit 1
+fi
+# Anchored on the status suffix: with killed mutants now in the listing, a
+# bare substring match would miscount any mutant whose own name contains a
+# status word.
+TOTAL="$(printf '%s\n' "$RESULTS" | grep -c . || true)"
+KILLED="$(printf '%s\n' "$RESULTS" | grep -c ": killed$" || true)"
+SUSPICIOUS="$(printf '%s\n' "$RESULTS" | grep -c ": suspicious$" || true)"
+SURVIVORS="$(printf '%s\n' "$RESULTS" | grep ": survived$" || true)"
+SURVIVED="$(printf '%s\n' "$SURVIVORS" | grep -c . || true)"
+NO_TESTS_LIST="$(printf '%s\n' "$RESULTS" | grep ": no tests$" || true)"
 NO_TESTS="$(printf '%s\n' "$NO_TESTS_LIST" | grep -c . || true)"
-NOT_CHECKED="$(printf '%s\n' "$RESULTS" | grep -c "not checked" || true)"
+NOT_CHECKED="$(printf '%s\n' "$RESULTS" | grep -c ": not checked$" || true)"
 if [ "${NOT_CHECKED:-0}" -gt 0 ]; then
   echo "MUTATION RUN INCOMPLETE — $NOT_CHECKED mutant(s) were never checked;" >&2
   echo "the run was interrupted. See mutmut's output above." >&2
+  exit 1
+fi
+if [ "${SUSPICIOUS:-0}" -gt 0 ]; then
+  echo "NOTE: $SUSPICIOUS of $TOTAL mutant(s) came back 'suspicious' — mutmut's" >&2
+  echo "      bucket for a test process that exited in none of the ways it knows" >&2
+  echo "      how to read. A suspicious mutant proves NOTHING: it was neither" >&2
+  echo "      killed nor shown to survive. Why this repo's heavier suites produce" >&2
+  echo "      them is UNDIAGNOSED — the standing suspicion is mutmut's timing" >&2
+  echo "      heuristic against tests that compile real agent graphs, but nobody" >&2
+  echo "      has confirmed that. Do not read this count as either good or bad." >&2
+fi
+# The no-verdict guard. Reaching zero survivors because every mutant was
+# killed and reaching it because no mutant reached a verdict at all are
+# opposite outcomes, and the old check — which counted only survivors — could
+# not tell them apart. Observed on app/override/langgraph_bigtool/create_agent.py
+# against tests/integration/agents/test_harness_completion.py: 210 mutants,
+# 0 killed, 0 survived, 210 suspicious, and the gate printed OK with rc=0.
+if [ "${KILLED:-0}" -eq 0 ] && [ "${SURVIVED:-0}" -eq 0 ] && [ "${TOTAL:-0}" -gt 0 ]; then
+  echo "MUTATION PROVED NOTHING — all $TOTAL mutant(s) of $MODULE ran and not one" >&2
+  echo "was killed or survived, so the suite was never shown to catch OR miss a" >&2
+  echo "bug here. Buckets: $SUSPICIOUS suspicious, $NO_TESTS no tests," >&2
+  echo "$((TOTAL - SUSPICIOUS - NO_TESTS)) other. Passing this as OK is the false" >&2
+  echo "green this guard exists to stop — fix the run or pick a test file that" >&2
+  echo "actually exercises the module." >&2
   exit 1
 fi
 REAL_SURVIVORS=""
