@@ -573,7 +573,6 @@ class TestCallAgentSilent:
 
         assert result == ("Hello!", {"tool": "data"})
 
-    @pytest.mark.regression
     @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):
         """A swallowed failure returned as a normal result reads as success to every
