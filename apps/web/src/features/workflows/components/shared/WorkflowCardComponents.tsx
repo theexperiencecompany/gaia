@@ -224,15 +224,39 @@ interface CreatorAvatarProps {
   };
   size?: number;
   showTooltip?: boolean;
+  /** Render the creator's name beside the avatar (verified when it's ours) */
+  showName?: boolean;
 }
 
 export function CreatorAvatar({
   creator,
   size = 27,
   showTooltip = true,
+  showName = false,
 }: CreatorAvatarProps) {
   const avatarSrc = resolveCreatorAvatar(creator);
   const displayName = resolveCreatorName(creator);
+
+  if (showName) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full">
+          {avatarSrc ? (
+            <Image
+              src={avatarSrc}
+              alt={displayName}
+              width={100}
+              height={100}
+              className="object-contain"
+            />
+          ) : (
+            <UserCircle02Icon className="h-4 w-4 text-zinc-400" />
+          )}
+        </div>
+        <span className="truncate text-xs text-zinc-400">{displayName}</span>
+      </div>
+    );
+  }
 
   const avatar = (
     <div className="flex items-center gap-2">
@@ -243,7 +267,7 @@ export function CreatorAvatar({
             alt={displayName}
             width={size}
             height={size}
-            className="rounded-full h-7 w-7"
+            className="rounded-full h-7 w-7 object-contain"
           />
         ) : (
           <UserCircle02Icon className="h-7 w-7 text-zinc-400" />

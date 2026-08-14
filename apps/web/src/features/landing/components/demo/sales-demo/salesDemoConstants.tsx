@@ -80,7 +80,7 @@ export const PIPELINE_BRIEF_MESSAGES: ChatMessage[] = [
     id: "pb5",
     role: "assistant",
     content:
-      "Acme is most urgent — trial expires Friday, no onboarding scheduled. I've drafted a check-in email. Want me to send it before your 11am?",
+      "Acme is most urgent: trial expires Friday, no onboarding scheduled. I've drafted a check-in email. Want me to send it before your 11am?",
     delay: 700,
   },
 ];
@@ -135,7 +135,7 @@ export const MEETING_PREP_MESSAGES: ChatMessage[] = [
     id: "mp5",
     role: "assistant",
     content:
-      "Sarah is the decision maker but the CTO is now involved. Their biggest concern will be data residency — I'd lead with your SOC 2 cert before they ask.",
+      "Sarah is the decision maker but the CTO is now involved. Their biggest concern will be data residency, so I'd lead with your SOC 2 cert before they ask.",
     delay: 700,
   },
 ];
@@ -185,7 +185,7 @@ export const FOLLOW_UP_MESSAGES: ChatMessage[] = [
     id: "fu5",
     role: "assistant",
     content:
-      "5 drafts are queued. Acme is most urgent — trial ends Friday. Want me to send the first three now?",
+      "5 drafts are queued. Acme is most urgent: trial ends Friday. Want me to send the first three now?",
     delay: 700,
   },
 ];

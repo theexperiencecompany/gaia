@@ -22,7 +22,7 @@ export const PM_PROACTIVE_MESSAGES: ChatMessage[] = [
     id: "pm-pr3",
     role: "assistant",
     content:
-      "The mobile checkout sprint is 2 days behind — ENG-445 is blocked on a design decision. Want me to flag it in Slack before tomorrow's planning?",
+      "The mobile checkout sprint is 2 days behind: ENG-445 is blocked on a design decision. Want me to flag it in Slack before tomorrow's planning?",
     delay: 600,
   },
 ];
@@ -75,7 +75,7 @@ export const PRODUCT_BRIEF_MESSAGES: ChatMessage[] = [
     id: "pm-pb5",
     role: "assistant",
     content:
-      "ENG-445 is blocking the mobile checkout — it needs your call on the payment error UI. 8 minutes, you can unblock it now before sprint planning.",
+      "ENG-445 is blocking the mobile checkout: it needs your call on the payment error UI. 8 minutes, you can unblock it now before sprint planning.",
     delay: 700,
   },
 ];
@@ -128,7 +128,7 @@ export const STAKEHOLDER_MESSAGES: ChatMessage[] = [
     id: "pm-sh5",
     role: "assistant",
     content:
-      "Done. Pulled from Linear and GitHub — covers sprint progress, what shipped, and the one decision that's blocking mobile checkout. Ready to paste or email.",
+      "Done. Pulled from Linear and GitHub. It covers sprint progress, what shipped, and the one decision that's blocking mobile checkout. Ready to paste or email.",
     delay: 700,
   },
 ];
@@ -181,7 +181,7 @@ export const FEATURE_TRIAGE_MESSAGES: ChatMessage[] = [
     id: "pm-ft5",
     role: "assistant",
     content:
-      "11 requests across 4 themes. API integrations are the loudest signal — 5 requests in 5 days. The SAML SSO request is from TechCorp (your $91K prospect). Should that jump the queue?",
+      "11 requests across 4 themes. API integrations are the loudest signal: 5 requests in 5 days. The SAML SSO request is from TechCorp (your $91K prospect). Should that jump the queue?",
     delay: 700,
   },
 ];

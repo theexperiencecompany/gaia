@@ -10,6 +10,7 @@ import { chatApi } from "@/features/chat/api/chatApi";
 import Composer from "@/features/chat/components/composer/Composer";
 
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
+import { FounderLetter } from "@/features/chat/components/interface/founder-letter/FounderLetter";
 import { useChatLayout } from "@/features/chat/components/interface/hooks/useChatLayout";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
@@ -274,6 +275,8 @@ const MainChat = React.memo(function MainChat() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <FileDropModal isDragging={isDragging} />
+      {/* The founder's letter — bottom-right of every chat, hidden during voice calls. */}
+      <FounderLetter hidden={voiceModeActive} />
 
       {useMessagesLayout ? (
         <ChatWithMessages

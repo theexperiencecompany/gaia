@@ -30,7 +30,7 @@ export default function IncidentCard() {
     <div className="rounded-2xl bg-zinc-800 p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="text-[11px] font-medium text-zinc-300">
-          P1 Incident — /api/payments/webhook
+          P1 Incident: /api/payments/webhook
         </span>
         <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-medium text-red-400">
           Active
@@ -53,7 +53,7 @@ export default function IncidentCard() {
       </div>
       <div className="mt-3 border-t border-zinc-700 pt-3">
         <span className="text-xs font-medium text-primary">
-          Rollback PR ready — 1 click to merge
+          Rollback PR ready: 1 click to merge
         </span>
       </div>
     </div>

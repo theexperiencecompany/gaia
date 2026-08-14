@@ -7,7 +7,7 @@ export const entry: AlternativeData = {
   category: "task-manager",
   tagline: "Task manager with built-in Pomodoro timer and habit tracking",
   painPoints: [
-    "No proactive AI — all task creation is manual",
+    "No proactive AI, so all task creation is manual",
     "AI writing features are basic and not deeply integrated",
     "Cannot read email or create tasks from inbox automatically",
     "Habit tracking and Pomodoro are useful but don't reduce decision fatigue",
@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "tasks from email AI",
   ],
   whyPeopleLook:
-    "TickTick is well-regarded for combining task management, habit tracking, and a Pomodoro timer in one app. But it remains fundamentally reactive — you add tasks, you track habits, you set timers. There is no intelligence that creates tasks from your email, no awareness of calendar conflicts, and no proactive nudges based on what is happening in your digital life. Users looking for a TickTick alternative often want their task manager to be more like an AI assistant: one that manages tasks for them rather than requiring them to manage tasks in it.",
+    "TickTick is well-regarded for combining task management, habit tracking, and a Pomodoro timer in one app. But it remains fundamentally reactive: you add tasks, you track habits, you set timers. There is no intelligence that creates tasks from your email, no awareness of calendar conflicts, and no proactive nudges based on what is happening in your digital life. Users looking for a TickTick alternative often want their task manager to be more like an AI assistant: one that manages tasks for them rather than requiring them to manage tasks in it.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Automatic task creation from Gmail without opening the task app",

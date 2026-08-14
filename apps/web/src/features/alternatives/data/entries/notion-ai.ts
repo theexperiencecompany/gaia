@@ -8,9 +8,9 @@ export const entry: AlternativeData = {
   tagline: "AI writing and Q&A add-on built into the Notion workspace",
   painPoints: [
     "Requires a Business plan at $20/user/month to get unlimited AI access",
-    "AI is confined to Notion — it cannot read your email, calendar, or external tools",
+    "AI is confined to Notion: it cannot read your email, calendar, or external tools",
     "AI features are writing-assistance and Q&A focused, not proactive or action-taking",
-    "Every AI action still starts with you — nothing happens automatically",
+    "Every AI action still starts with you: nothing happens automatically",
     "No task automation, scheduling, or workflow execution across apps",
   ],
   metaTitle: "Best Notion AI Alternative in 2026",
@@ -30,7 +30,7 @@ export const entry: AlternativeData = {
     "notion ai alternative 2026",
   ],
   whyPeopleLook:
-    "Notion AI brought AI writing, summarization, and Q&A into the Notion workspace, but it remains siloed within Notion. It cannot see your unread emails, does not know about your upcoming meetings, and cannot create tasks or schedule events on your behalf. To get unlimited Notion AI, you now need the Business plan at $20/user/month — and you still end up with an AI that only works inside one app. Users looking for a Notion AI alternative typically want an assistant that is genuinely proactive and connected across their entire digital workflow, not just their Notion workspace.",
+    "Notion AI brought AI writing, summarization, and Q&A into the Notion workspace, but it remains siloed within Notion. It cannot see your unread emails, does not know about your upcoming meetings, and cannot create tasks or schedule events on your behalf. To get unlimited Notion AI, you now need the Business plan at $20/user/month, and you still end up with an AI that only works inside one app. Users looking for a Notion AI alternative typically want an assistant that is genuinely proactive and connected across their entire digital workflow, not just their Notion workspace.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "AI-powered Q&A over your notes and knowledge base via semantic memory",
@@ -40,7 +40,7 @@ export const entry: AlternativeData = {
     "Workflow automation beyond Notion's database triggers",
   ],
   gaiaAdvantages: [
-    "Works across Gmail, Google Calendar, Todoist, and 50+ tools — not just one app",
+    "Works across Gmail, Google Calendar, Todoist, and 50+ tools, not just one app",
     "Proactive by design: surfaces what needs attention without prompting",
     "Open-source and self-hostable; Notion AI is a closed, proprietary feature",
     "Free tier available; no per-seat Business plan required",
@@ -61,7 +61,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than getting Notion AI via the Business plan?",
       answer:
-        "Notion's Business plan, which includes unlimited AI, costs $20/user/month. GAIA Pro is also $20/month for an individual but includes email management, calendar integration, 50+ tool connections, and workflow automation — not just AI writing inside one app. Self-hosted GAIA is free.",
+        "Notion's Business plan, which includes unlimited AI, costs $20/user/month. GAIA Pro is also $20/month for an individual but includes email management, calendar integration, 50+ tool connections, and workflow automation, not just AI writing inside one app. Self-hosted GAIA is free.",
     },
     {
       question:

@@ -86,6 +86,14 @@ function filterUseCases(
   );
 }
 
+// Static class strings per column count — Tailwind only emits classes it can
+// find literally in the source, so these can't be built by interpolation.
+const COLUMN_CLASSES: Record<number, string> = {
+  2: "lg:grid-cols-2 xl:grid-cols-2",
+  3: "lg:grid-cols-3 xl:grid-cols-3",
+  4: "lg:grid-cols-4 xl:grid-cols-4",
+};
+
 // Cap the rendered use cases by an explicit slice count or a rows x columns grid.
 function sliceUseCases(
   useCases: UseCase[],
@@ -111,6 +119,7 @@ function CategoryChip({
 }) {
   return (
     <m.div
+      className="shrink-0"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
@@ -197,6 +206,11 @@ export default function UseCaseSection({
       title: w.title,
       description: w.description,
       action_type: "workflow" as const,
+      icon: w.icon,
+      icon_color: w.icon_color,
+      system_workflow_key: w.system_workflow_key,
+      source_integration: w.source_integration,
+      trigger_config: w.trigger_config,
       integrations:
         w.steps
           ?.map((s) => s.category)
@@ -295,7 +309,7 @@ export default function UseCaseSection({
   return (
     <div className="w-full" ref={dummySectionRef}>
       <div
-        className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
+        className={`mb-6 flex flex-nowrap overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${setShowUseCases ? "max-w-5xl" : ""} ${centered || setShowUseCases ? "mx-auto w-fit max-w-full" : ""} items-center gap-2`}
       >
         {allCategories.map((category, index) => (
           <CategoryChip
@@ -339,7 +353,7 @@ export default function UseCaseSection({
           selectedCategory !== "workflows" && (
             <m.div
               key={selectedCategory}
-              className={`${disableCentering ? "" : "mx-auto"} grid ${noMaxWidth ? "" : setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${noMaxWidth ? "" : setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 ${COLUMN_CLASSES[columns] ?? COLUMN_CLASSES[4]}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -368,6 +382,11 @@ export default function UseCaseSection({
                         useCase.slug ? `/use-cases/${useCase.slug}` : undefined
                       }
                       steps={useCase.steps}
+                      icon={useCase.icon}
+                      iconColor={useCase.icon_color}
+                      systemWorkflowKey={useCase.system_workflow_key}
+                      triggerConfig={useCase.trigger_config}
+                      creator={useCase.creator}
                       totalExecutions={useCase.total_executions || 0}
                       showExecutions={true}
                       useBlurEffect={useBlurEffect}
@@ -390,7 +409,7 @@ export default function UseCaseSection({
           workflows.length > 0 && (
             <m.div
               key="workflows"
-              className={`${disableCentering ? "" : "mx-auto"} grid ${noMaxWidth ? "" : setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${noMaxWidth ? "" : setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 ${COLUMN_CLASSES[columns] ?? COLUMN_CLASSES[4]}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}

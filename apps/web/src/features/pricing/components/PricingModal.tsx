@@ -3,6 +3,8 @@
 import { Chip } from "@heroui/chip";
 import { Modal, ModalContent } from "@heroui/modal";
 import { Tab, Tabs } from "@heroui/tabs";
+import { Tag01Icon } from "@icons";
+import { usePricingModalStore } from "@/stores/pricingModalStore";
 
 import type { Plan } from "../api/pricingApi";
 import { PricingCards } from "./PricingCards";
@@ -14,6 +16,8 @@ interface PricingModalProps {
 }
 
 export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
+  const offer = usePricingModalStore((s) => s.offer);
+
   return (
     <Modal
       isOpen={isOpen}
@@ -39,6 +43,20 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
             </p>
           </div>
 
+          {offer && (
+            <div className="flex items-center gap-2.5 rounded-2xl bg-success/10 px-4 py-2.5 text-success">
+              <Tag01Icon width={18} height={18} aria-hidden />
+              <p className="text-sm font-normal">
+                <span className="font-semibold">
+                  {offer.discountPercent}% off
+                </span>{" "}
+                is applied with{" "}
+                <span className="font-semibold">{offer.discountCode}</span>. The
+                prices below are yours.
+              </p>
+            </div>
+          )}
+
           {/* Tabs + Cards */}
           <div className="w-full flex flex-col items-center px-5">
             <Tabs aria-label="Billing period" radius="lg">
@@ -47,7 +65,11 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
                 <p className="mt-3 mb-4 text-center text-xs text-zinc-600">
                   Secure payment · Cancel anytime · No credit card for Free
                 </p>
-                <PricingCards durationIsMonth initialPlans={plans} />
+                <PricingCards
+                  durationIsMonth
+                  initialPlans={plans}
+                  hideEnterprise
+                />
               </Tab>
               <Tab
                 key="yearly"
@@ -64,7 +86,7 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
                 <p className="mt-3 mb-4 text-center text-xs text-zinc-600">
                   Secure payment · Cancel anytime · No credit card for Free
                 </p>
-                <PricingCards initialPlans={plans} />
+                <PricingCards initialPlans={plans} hideEnterprise />
               </Tab>
             </Tabs>
           </div>

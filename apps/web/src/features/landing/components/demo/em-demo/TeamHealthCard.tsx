@@ -74,7 +74,7 @@ export default function TeamHealthCard() {
           showBackground: false,
         })}
         <span className="text-sm font-medium text-zinc-100">
-          Team Health — Sprint 24, Day 6
+          Team Health: Sprint 24, Day 6
         </span>
       </div>
 
@@ -123,7 +123,7 @@ export default function TeamHealthCard() {
       <div className="mt-2 pt-2 border-t border-zinc-800">
         <p className="flex items-center gap-1 text-[11px] text-amber-400">
           <Alert01Icon width={12} height={12} />
-          PR cycle time up 53% — likely PR #214 bottleneck
+          PR cycle time up 53%, likely PR #214 bottleneck
         </p>
       </div>
     </div>

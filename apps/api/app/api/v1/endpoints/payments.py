@@ -62,7 +62,10 @@ async def create_subscription_endpoint(
     )
     try:
         result = await payment_service.create_subscription(
-            user_id, subscription_data.product_id, subscription_data.quantity
+            user_id,
+            subscription_data.product_id,
+            subscription_data.quantity,
+            subscription_data.discount_code,
         )
         log.audit(
             "subscription checkout created",

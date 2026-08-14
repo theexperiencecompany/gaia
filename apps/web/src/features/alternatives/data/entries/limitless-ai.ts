@@ -6,13 +6,13 @@ export const entry: AlternativeData = {
   domain: "limitless.ai",
   category: "ai-assistant",
   tagline:
-    "Passive meeting capture is powerful — but memory without action is still a to-do list",
+    "Passive meeting capture is powerful, but memory without action is still a to-do list",
   painPoints: [
-    "Limitless captures meetings and conversations passively but doesn't take action on them — follow-ups, tasks, and calendar updates still require manual work",
-    "The Pendant wearable captures everything in your physical environment, but digital productivity — email, tasks, calendar — remains outside its scope",
+    "Limitless captures meetings and conversations passively but doesn't take action on them: follow-ups, tasks, and calendar updates still require manual work",
+    "The Pendant wearable captures everything in your physical environment, but digital productivity (email, tasks, calendar) remains outside its scope",
     "No email integration: Limitless doesn't read your inbox, create tasks from emails, or connect meeting context to email threads",
     "Primarily a capture and recall tool; it surfaces what was said but doesn't organize, prioritize, or automate next steps",
-    "Cloud-dependent with no self-hosted option — sensitive meeting recordings are stored on Limitless's infrastructure",
+    "Cloud-dependent with no self-hosted option: sensitive meeting recordings are stored on Limitless's infrastructure",
   ],
   metaTitle:
     "Limitless AI Alternative — GAIA — AI Assistant That Remembers and Acts",
@@ -29,7 +29,7 @@ export const entry: AlternativeData = {
     "limitless ai alternative 2026",
   ],
   whyPeopleLook:
-    "Limitless AI (formerly Rewind) excels at passive capture — its Pendant wearable and screen recording create a searchable memory of your day. But users quickly discover that remembering what was discussed is different from acting on it. Limitless won't draft your follow-up email, add the action item to your task manager, or reschedule the conflicting meeting it just recorded. Users searching alternatives want an AI that not only captures but coordinates.",
+    "Limitless AI (formerly Rewind) excels at passive capture: its Pendant wearable and screen recording create a searchable memory of your day. But users quickly discover that remembering what was discussed is different from acting on it. Limitless won't draft your follow-up email, add the action item to your task manager, or reschedule the conflicting meeting it just recorded. Users searching alternatives want an AI that not only captures but coordinates.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Manual follow-up drafting after meetings Limitless records",
@@ -40,9 +40,9 @@ export const entry: AlternativeData = {
   gaiaAdvantages: [
     "GAIA captures meeting context and immediately creates tasks, drafts follow-ups, and updates calendar",
     "Email integration connects meeting outcomes to email threads without manual copy-paste",
-    "Proactive surfacing — GAIA acts on information without waiting to be queried",
+    "Proactive surfacing: GAIA acts on information without waiting to be queried",
     "Open source and self-hostable; Limitless is a closed cloud service",
-    "Works across web, desktop, mobile, Discord, Slack, and Telegram — not limited to a wearable device",
+    "Works across web, desktop, mobile, Discord, Slack, and Telegram, not limited to a wearable device",
   ],
   migrationSteps: [
     "Export meeting summaries and transcripts from Limitless as text files",
@@ -59,7 +59,7 @@ export const entry: AlternativeData = {
     {
       question: "Is there an open-source alternative to Limitless AI?",
       answer:
-        "GAIA is fully open source and self-hostable via Docker — a significant privacy advantage over Limitless, which stores recordings on its own cloud infrastructure. Self-hosted GAIA keeps all your meeting context on your own servers.",
+        "GAIA is fully open source and self-hostable via Docker, a significant privacy advantage over Limitless, which stores recordings on its own cloud infrastructure. Self-hosted GAIA keeps all your meeting context on your own servers.",
     },
     {
       question: "What is Rewind AI called now?",

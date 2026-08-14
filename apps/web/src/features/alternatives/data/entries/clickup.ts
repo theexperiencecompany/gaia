@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "tasks from email AI",
   ],
   whyPeopleLook:
-    "ClickUp's promise of being the 'one app to replace them all' has attracted millions of users, but the reality often falls short. The sheer number of features — views, docs, goals, time tracking, whiteboards, sprints — creates a steep learning curve that derails adoption. Users frequently report that they spend more time configuring ClickUp than completing tasks. The AI layer added in ClickUp AI 2.0 helps with text generation but does not fundamentally change the manual nature of project management. People searching for ClickUp alternatives usually want something that reduces cognitive overhead rather than adding to it.",
+    "ClickUp's promise of being the 'one app to replace them all' has attracted millions of users, but the reality often falls short. The sheer number of features (views, docs, goals, time tracking, whiteboards, sprints) creates a steep learning curve that derails adoption. Users frequently report that they spend more time configuring ClickUp than completing tasks. The AI layer added in ClickUp AI 2.0 helps with text generation but does not fundamentally change the manual nature of project management. People searching for ClickUp alternatives usually want something that reduces cognitive overhead rather than adding to it.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Personal task management without view configuration overhead",
@@ -42,7 +42,7 @@ export const entry: AlternativeData = {
     "Time-awareness via calendar integration that surfaces scheduling conflicts",
   ],
   gaiaAdvantages: [
-    "Zero configuration — GAIA works out of the box with your existing tools",
+    "Zero configuration: GAIA works out of the box with your existing tools",
     "Proactive intelligence instead of passive task storage",
     "Faster on all devices including mobile, web, desktop, and CLI",
     "Open-source codebase; audit and extend GAIA's capabilities yourself",
@@ -74,7 +74,7 @@ export const entry: AlternativeData = {
     {
       question: "How does GAIA compare to ClickUp for team use?",
       answer:
-        "ClickUp is better suited for teams that need shared project boards and task assignment. GAIA is optimized for individual AI assistance — it is the ideal co-pilot for each person on a team using their own tools.",
+        "ClickUp is better suited for teams that need shared project boards and task assignment. GAIA is optimized for individual AI assistance: it is the ideal co-pilot for each person on a team using their own tools.",
     },
   ],
 };

@@ -54,7 +54,7 @@ export default function PortfolioBriefCard() {
     <div className="rounded-2xl bg-zinc-800 p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="text-sm font-medium text-zinc-100">
-          Portfolio Brief — Thursday, March 6
+          Portfolio Brief: Thursday, March 6
         </span>
         <span className="text-[11px] text-zinc-500">6 active clients</span>
       </div>

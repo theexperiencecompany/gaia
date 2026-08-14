@@ -7,7 +7,7 @@ import {
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 const COMPLETED_ITEMS = [
-  "Homepage and hero section — dev complete, QA passed",
+  "Homepage and hero section: dev complete, QA passed",
   "6 inner pages responsive across all breakpoints",
   "Performance: Lighthouse score 94 (was 71)",
 ];
@@ -32,7 +32,7 @@ export default function ClientReportCard() {
           showBackground: false,
         })}
         <span className="flex-1 text-sm font-medium text-zinc-100">
-          Weekly Status Report — TechCorp
+          Weekly Status Report: TechCorp
         </span>
         <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">
           Draft ready
@@ -41,7 +41,7 @@ export default function ClientReportCard() {
 
       <div className="mt-3 rounded-xl bg-zinc-900 p-3">
         <p className="mb-2 text-xs text-zinc-400">
-          Project: Website Redesign — Phase 2
+          Project: Website Redesign, Phase 2
           <br />
           Week ending: March 6, 2026
         </p>
@@ -85,7 +85,7 @@ export default function ClientReportCard() {
           Timeline:
         </p>
         <p className="text-xs text-emerald-400">
-          On track — launch target March 22
+          On track: launch target March 22
         </p>
       </div>
 

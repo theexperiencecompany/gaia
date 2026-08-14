@@ -1,4 +1,4 @@
-import { CircleArrowRight02Icon, DiscoverCircleIcon } from "@icons";
+import { CircleArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import { Link } from "@/i18n/navigation";
@@ -15,7 +15,7 @@ export default function HeroSection({
   latestRelease?: LatestRelease | null;
 }) {
   return (
-    <div className="relative w-full flex-col gap-8 py-20 sm:py-30">
+    <div className="relative w-full flex-col gap-8 pt-32 pb-20 sm:pt-44 sm:pb-30">
       {/* Above-the-fold: blur-in is CSS-driven (see TextSoftBlurIn/SoftBlurInBlock
           `immediate`), so the hero paints and animates straight from SSR HTML
           without waiting for React hydration. A plain layout div replaces the old
@@ -55,8 +55,8 @@ export default function HeroSection({
 
         <div onClick={onTextClick} className="cursor-default select-none">
           <h1
-            aria-label="Get a workday back every week."
-            className="max-w-(--breakpoint-lg) text-center text-[3.2rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible font-serif"
+            aria-label="Get a workday back every week"
+            className="max-w-(--breakpoint-2xl) text-center text-[3.2rem] leading-none sm:text-[5.75rem] font-semibold overflow-visible font-serif"
           >
             <TextSoftBlurIn
               text="Get a workday back"
@@ -71,7 +71,7 @@ export default function HeroSection({
               }
             />
             <TextSoftBlurIn
-              text="every week."
+              text="every week"
               as="span"
               immediate
               startDelay={0.4}
@@ -88,10 +88,10 @@ export default function HeroSection({
       </div>
 
       {/* Subtitle + CTA rendered outside MotionContainer to avoid stagger delay (LCP fix) */}
-      <div className="relative z-2 flex flex-col items-center gap-4 bg-transparent">
+      <div className="relative z-2 mt-8 flex flex-col items-center gap-4 bg-transparent sm:mt-10">
         <SoftBlurInBlock immediate delay={0.35} className="relative">
           <div
-            className={`mb-3 max-w-(--breakpoint-lg) items-center justify-center gap-x-1.5 gap-y-1 px-4 py-0 text-center text-lg leading-7 tracking-tighter sm:px-0 sm:text-xl ${isDark ? "text-zinc-200" : "text-black"}`}
+            className={`mb-3 max-w-(--breakpoint-lg) items-center justify-center gap-x-1.5 gap-y-1 px-4 py-0 text-center text-lg leading-7 sm:px-0 sm:text-xl ${isDark ? "text-zinc-200" : "text-black"}`}
           >
             <span>
               GAIA watches your inbox, calendar, and tools and acts before you
@@ -99,7 +99,7 @@ export default function HeroSection({
             </span>
             <br />
             <div className="inline-flex flex-wrap items-center justify-center gap-y-1 align-middle">
-              <span>Reachable from</span>
+              <span>Text it on</span>
               <Link href={"/bots"}>
                 <Image
                   src="/images/icons/macos/whatsapp.webp"
@@ -108,7 +108,6 @@ export default function HeroSection({
                   width={100}
                   height={100}
                 />
-                {/* <span>WhatsApp,</span> */}
                 <Image
                   src="/images/icons/macos/slack.webp"
                   alt="Slack"
@@ -116,7 +115,6 @@ export default function HeroSection({
                   width={100}
                   height={100}
                 />
-                {/* <span>Slack,</span> */}
                 <Image
                   src="/images/icons/macos/discord.webp"
                   alt="Discord"
@@ -124,7 +122,6 @@ export default function HeroSection({
                   width={100}
                   height={100}
                 />
-                {/* <span>Discord,</span> */}
                 <Image
                   src="/images/icons/macos/telegram.webp"
                   alt="Telegram"
@@ -132,13 +129,12 @@ export default function HeroSection({
                   width={100}
                   height={100}
                 />
-                <span>Telegram, </span>
-                <span>or the web.</span>
               </Link>
+              <span>or use the web app.</span>
             </div>
           </div>
         </SoftBlurInBlock>
-        <div className="flex gap-8 mt-4">
+        <div className="mt-4 flex gap-8">
           <SoftBlurInBlock immediate delay={0.55}>
             <GetStartedButton
               btnColor={isDark ? "#00bbff" : "#000000"}
@@ -152,18 +148,6 @@ export default function HeroSection({
                   Sign Up <CircleArrowRight02Icon width={20} height={20} />
                 </div>
               }
-            />
-          </SoftBlurInBlock>
-          <SoftBlurInBlock immediate delay={0.75}>
-            <GetStartedButton
-              btnColor="#ffffff"
-              classname="px-1 hover:scale-105"
-              text={
-                <div className="flex items-center gap-1.5">
-                  Explore <DiscoverCircleIcon width={20} height={20} />
-                </div>
-              }
-              href="/use-cases"
             />
           </SoftBlurInBlock>
         </div>

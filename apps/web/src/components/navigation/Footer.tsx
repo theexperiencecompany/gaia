@@ -1,23 +1,14 @@
-"use client";
-
 import Image from "next/image";
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import { cloneElement, isValidElement } from "react";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
-
+import { FooterWordmark } from "@/components/navigation/FooterWordmark";
 import JsonLd from "@/components/seo/JsonLd";
-import { appConfig, connect, footerSections } from "@/config/appConfig";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { GrainOverlay } from "@/components/ui/GrainOverlay";
+import { connect, footerSections } from "@/config/appConfig";
 import { siteConfig } from "@/lib/seo";
 
 export default function Footer() {
-  const user = useUser();
-  // Gate auth-dependent rendering to client-only to prevent SSR/client hydration mismatch.
-  // SSR and first client render both treat the user as unauthenticated.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  const isAuthenticated = mounted ? user?.email : undefined;
-
   const navigationSchema: WithContext<SiteNavigationElement> = {
     "@context": "https://schema.org",
     "@type": "SiteNavigationElement",
@@ -25,208 +16,134 @@ export default function Footer() {
     url: siteConfig.url,
     hasPart: footerSections.flatMap((section) =>
       section.links
-        .filter(
-          (link) => !link.external && !link.hideFooter && !link.requiresAuth,
-        )
+        .filter((link) => !link.external)
         .map(
           (link): WebPage => ({
             "@type": "WebPage",
             name: link.label,
             url: `${siteConfig.url}${link.href}`,
-            description: link.description,
           }),
         ),
     ),
   };
 
-  const taglines = [
-    "Life. Simplified.",
-    "Productivity without friction.",
-    "Frictionless productivity",
-    "AI that actually works.",
-    "Your silent superpower.",
-    "Effortless intelligence.",
-    "Time is yours again.",
-    "The assistant that thinks ahead.",
-    "Everything you need. Before you need it.",
-    "GAIA doesn’t just answer. It acts.",
-    "The future of personal intelligence is already here.",
-    "Productivity, personalized.",
-    "Your life. Simplified.",
-    "One step ahead, always.",
-    "Where productivity meets intelligence.",
-    "Because your time should be yours.",
-    "Your second brain, always on.",
-    "Do less. Live more. GAIA takes care of the rest.",
-    "Smarter days start here.",
-    "Not just an assistant. A partner in progress.",
-    "Life, organized. Future, unlocked.",
-    "Your silent superpower.",
-    "AI that works quietly for you.",
-    "Empowering your workflow, silently.",
-    "Productivity, reimagined.",
-    "Smarter, quieter, better.",
-    "Let your work speak.",
-    "AI, always in the background.",
-    "Unleash silent productivity.",
-    "The power behind your ideas.",
-    "Work smarter, not louder.",
-  ];
-  // Deterministic initial value — randomised after mount to prevent SSR/client mismatch.
-  // Math.random() during render produces different values server vs client → hydration error.
-  const [randomTagline, setRandomTagline] = useState(taglines[0]);
-  useEffect(() => {
-    setRandomTagline(taglines[Math.floor(Math.random() * taglines.length)]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <>
       <JsonLd data={navigationSchema} />
-      <div className="relative z-1 m-0! flex flex-col items-center gap-6 p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5 min-h-[50vh] ">
-        <div className="pointer-events-none absolute inset-x-0 -top-20 z-[-1] h-[30vh] bg-linear-to-t from-background to-transparent" />
-
+      {/* z above the fixed bottom BlurStack (z-10) so the wordmark is never
+          blurred by the viewport-edge blur — but below the fixed navbar
+          (z-50) so the footer can never paint over navigation. The footer's
+          height is set by its own content; the glow wallpaper fills behind it
+          and is anchored to the bottom so the brightest part of the glow sits
+          under the wordmark on every viewport. */}
+      <footer className="relative z-20 w-full overflow-hidden">
         <Image
-          src="/images/wallpapers/bands_gradient_black.png"
+          src="/images/wallpapers/subtle_glow_deep_blues.webp"
           alt=""
-          fill={true}
-          className="z-[-1]"
+          fill
+          sizes="100vw"
+          priority={false}
+          className="pointer-events-none z-0 origin-bottom scale-150 select-none object-cover object-bottom"
         />
-        <div className="flex h-fit w-full items-center justify-center px-6 sm:px-4">
-          <div className="grid w-full max-w-7xl grid-cols-2 sm:grid-cols-6 gap-6 sm:gap-3">
-            <div className="relative -top-1 col-span-2 md:col-span-1 flex h-full flex-col gap-1 text-foreground-600 sm:-top-2">
-              <div className="flex w-fit items-center justify-center rounded-xl p-1">
-                <iframe
-                  src="https://status.heygaia.io/badge?theme=dark"
-                  title="GAIA API Status"
-                  scrolling="no"
-                  height={30}
-                  width={186}
-                  style={{ colorScheme: "normal" }}
-                  className="ph-no-capture"
-                />
-              </div>
-              <div className="mt-2 flex flex-col items-start px-2 text-xl font-medium text-white sm:px-3 sm:text-2xl">
-                {/* <Link href={"/"}>
-                  <Image
-                    src="/images/logos/text_w_logo_white.webp"
-                    alt="GAIA Logo"
-                    width={150}
-                    height={45}
-                  />
-                </Link> */}
 
-                <Link href={"https://twitter.com/madebyexp"}>
-                  <Image
-                    src="/brand/experience_logo_white.svg"
-                    className="my-2"
-                    alt="The Experience Company Logo"
-                    width={70}
-                    height={70}
-                  />
-                </Link>
+        {/* Fade the footer's top edge into the page background above, so the
+            wallpaper's edge never reads as a hard line against the last
+            section. The via-stop holds the background color a beat longer
+            before easing out, so the transition reads as a soft glow instead
+            of a straight ramp. */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-48 bg-linear-to-b from-background via-background/50 to-transparent" />
 
-                <div
-                  className="mt-2 text-sm font-light text-foreground-400"
-                  suppressHydrationWarning
-                >
-                  {randomTagline}
-                </div>
-              </div>
-            </div>
+        {/* Film-grain over the wallpaper — breaks up gradient banding in the
+            glow and gives the footer a tactile, printed feel. */}
+        <GrainOverlay variant="surface" className="z-20" />
 
+        {/* Content: link columns and the halftone wordmark. This is what sets
+            the footer's height — the top padding leaves the dark upper part of
+            the glow visible so the footer blends into the page above.
+            Deliberately NO z-index: a z-index here would create a stacking
+            context, which isolates blending and would leave the wordmark's
+            mix-blend-mode with an empty backdrop instead of the wallpaper.
+            Paint order over the wallpaper comes from `relative` + DOM order. */}
+        <div className="relative flex flex-col gap-8 px-6 pt-24 pb-1 sm:gap-10 sm:px-8 lg:px-10">
+          <div className="mx-auto flex w-full max-w-7xl flex-wrap justify-between gap-10">
             {footerSections.map((section) => (
-              <div
-                key={section.title}
-                className="flex h-full w-full flex-col items-start text-foreground-500 sm:items-end"
-              >
-                <div className="mb-2 pl-0 text-sm font-medium text-foreground sm:mb-3 sm:pl-2">
+              <div key={section.title} className="flex flex-col items-start">
+                <div className="mb-3 font-serif text-sm font-medium uppercase tracking-wider text-white">
                   {section.title}
                 </div>
-                {section.links
-
-                  .filter(
-                    (link) =>
-                      ((!link.requiresAuth && !link.guestOnly) ||
-                        (link.requiresAuth && isAuthenticated) ||
-                        (link.guestOnly && !isAuthenticated)) &&
-                      !link.hideFooter,
-                  )
-                  .sort((a, b) => {
-                    if (section.title === "Built For") return 0;
-                    const aLabel = a.footerLabel ?? a.label;
-                    const bLabel = b.footerLabel ?? b.label;
-                    if (
-                      typeof aLabel !== "string" ||
-                      typeof bLabel !== "string"
-                    )
-                      return 0;
-                    return aLabel.localeCompare(bLabel, undefined, {
-                      sensitivity: "base",
-                    });
-                  })
-                  .map((link) => (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      // Footer renders ~37 internal links always in the DOM;
-                      // skip eager RSC prefetch (Next still prefetches on hover).
-                      prefetch={false}
-                      className="group relative flex w-full cursor-pointer justify-start py-1 text-sm sm:justify-end"
-                    >
-                      <span className="text-zinc-400 transition-colors group-hover:text-primary">
-                        {link.footerLabel ?? link.label}
-                      </span>
-                    </Link>
-                  ))}
+                {section.links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    prefetch={false}
+                    target={link.external ? "_blank" : undefined}
+                    rel={link.external ? "noopener noreferrer" : undefined}
+                    className="py-1 text-sm text-zinc-200 transition-colors hover:text-primary"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
               </div>
             ))}
           </div>
-        </div>
-        <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-2 py-6 pb-3 text-xs font-light text-black sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10 mb-5">
-          <div className="order-2 flex items-center gap-3 sm:order-1">
-            {connect.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                target={link.external ? "_blank" : "_self"}
-                rel={link.external ? "noopener noreferrer" : undefined}
-                className="cursor-pointer text-black transition-colors hover:text-zinc-700"
-                title={link.description}
-              >
-                {React.isValidElement(link.icon)
-                  ? React.cloneElement(
-                      link.icon as React.ReactElement<{ color?: string }>,
-                      {
-                        color: undefined,
-                      },
-                    )
-                  : link.icon}
-              </Link>
-            ))}
-          </div>
-          <div className="order-1 text-center sm:order-2">
-            {appConfig.site.copyright}
+
+          <div className="mx-auto w-full max-w-7xl">
+            <FooterWordmark />
           </div>
 
-          <div className="order-3 flex border-separate items-center gap-2 text-center">
-            <Link
-              href={"/terms"}
-              className="underline-offset-2 hover:underline"
-            >
-              Terms of Use
-            </Link>
-            <div className="h-4 border-l border-black" />
+          {/* Bottom bar under the wordmark. A 3-column grid rather than
+              flex+space-between, so the company mark is centered against the
+              footer itself and does not drift as the status badge and the
+              social row change width. */}
+          <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center justify-items-center gap-6 sm:grid-cols-3">
+            {/* Cross-origin frame: `ph-no-capture` stops PostHog from reaching
+                into it, which throws a SecurityError. */}
+            <iframe
+              src="https://status.heygaia.io/badge?theme=dark"
+              title="GAIA API Status"
+              className="ph-no-capture sm:justify-self-start"
+              scrolling="no"
+              height={30}
+              width={186}
+              style={{ colorScheme: "normal" }}
+            />
 
             <Link
-              href={"/privacy"}
-              className="underline-offset-2 hover:underline"
+              href="https://twitter.com/madebyexp"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="The Experience Company"
             >
-              Privacy Policy
+              <Image
+                src="/brand/experience_logo_white.svg"
+                alt="The Experience Company"
+                width={44}
+                height={44}
+              />
             </Link>
+
+            <div className="flex items-center gap-4 sm:justify-self-end">
+              {connect.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  target={link.external ? "_blank" : undefined}
+                  rel={link.external ? "noopener noreferrer" : undefined}
+                  title={link.description}
+                  aria-label={link.label}
+                  className="text-zinc-200 transition-colors hover:text-primary"
+                >
+                  {/* Drop each icon's brand color so the row reads as one set
+                      and inherits the hover state. */}
+                  {isValidElement<{ color?: string }>(link.icon)
+                    ? cloneElement(link.icon, { color: undefined })
+                    : link.icon}
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      </footer>
     </>
   );
 }
