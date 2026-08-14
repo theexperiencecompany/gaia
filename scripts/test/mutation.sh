@@ -163,6 +163,14 @@ import subprocess
 import sys
 
 env = dict(os.environ)
+# The Dagger CI container exports USE_REAL_SERVICES=1; under the lane's
+# 4-way parallelism that makes every mutant's covering tests dial real
+# Postgres/Mongo/Redis on a 2-core runner — runs that take seconds
+# hermetically stretch past mutmut's per-mutant timeout and read as ⏰
+# timeouts. The mutation lane is a unit-test instrument: the conftest
+# hermetic fence (blanked creds, mocked DBs) is the intended environment,
+# and real-service integration is covered by test-python.
+env.pop('USE_REAL_SERVICES', None)
 patch_dir = sys.argv[1]
 env['PYTHONPATH'] = patch_dir + os.pathsep + env.get('PYTHONPATH', '')
 # TEMP DEBUG: dump the stack when the mangled-name assertion would fire
