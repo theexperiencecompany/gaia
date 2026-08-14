@@ -420,7 +420,7 @@ class TestCallAgent:
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
                 return_value=_fake_stream(),
-            ),
+            ) as mock_stream,
         ):
             gen = await call_agent(
                 request=_make_request(),
@@ -446,6 +446,14 @@ class TestCallAgent:
             "mode": "interactive",
             "conversation_id": "conv-1",
         }
+        completed = _no_real_analytics.call_args_list[1]
+        assert completed.args[0] == "user-123"
+        assert completed.args[2] == {
+            "agent": "comms",
+            "mode": "interactive",
+            "conversation_id": "conv-1",
+        }
+        assert all(arg is not None for arg in mock_stream.call_args.args)
 
     @pytest.mark.asyncio
     async def test_stream_failure_captures_failed(self, _no_real_analytics):
@@ -480,6 +488,13 @@ class TestCallAgent:
 
         events = [c.args[1] for c in _no_real_analytics.call_args_list]
         assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
+        failed = _no_real_analytics.call_args_list[1]
+        assert failed.args[0] == "user-123"
+        assert failed.args[2] == {
+            "agent": "comms",
+            "mode": "interactive",
+            "conversation_id": "conv-1",
+        }
 
     @pytest.mark.asyncio
     async def test_setup_error_captures_failed(self, _no_real_analytics):
@@ -496,7 +511,7 @@ class TestCallAgent:
             patches["build_config"],
             patches["apply_plan"],
             patches["apply_dev_model"],
-            patches["log"],
+            patches["log"] as mock_log,
         ):
             gen = await call_agent(
                 request=_make_request(),
@@ -508,6 +523,17 @@ class TestCallAgent:
 
         events = [c.args[1] for c in _no_real_analytics.call_args_list]
         assert events == [AnalyticsEvents.AGENT_RUN_FAILED]
+        failed = _no_real_analytics.call_args_list[0]
+        assert failed.args[0] == "user-123"
+        assert failed.args[2] == {
+            "agent": "comms",
+            "mode": "interactive",
+            "conversation_id": "conv-1",
+        }
+        mock_log.error.assert_called_once()
+        assert "Error when calling agent" in mock_log.error.call_args.args[0]
+        assert mock_log.error.call_args.kwargs["error_type"] == "RuntimeError"
+        assert mock_log.error.call_args.kwargs["error"] == "boom"
 
     @pytest.mark.asyncio
     async def test_missing_user_id_skips_events(self, _no_real_analytics):
