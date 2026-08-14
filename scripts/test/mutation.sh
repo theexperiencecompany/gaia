@@ -293,10 +293,16 @@ if [ "${SUSPICIOUS:-0}" -gt 0 ]; then
   echo "NOTE: $SUSPICIOUS of $TOTAL mutant(s) came back 'suspicious' — mutmut's" >&2
   echo "      bucket for a test process that exited in none of the ways it knows" >&2
   echo "      how to read. A suspicious mutant proves NOTHING: it was neither" >&2
-  echo "      killed nor shown to survive. Why this repo's heavier suites produce" >&2
-  echo "      them is UNDIAGNOSED — the standing suspicion is mutmut's timing" >&2
-  echo "      heuristic against tests that compile real agent graphs, but nobody" >&2
-  echo "      has confirmed that. Do not read this count as either good or bad." >&2
+  echo "      killed nor shown to survive. Do not read this count as good or bad." >&2
+  echo "      It is NOT a timeout — mutmut buckets those separately, and does so" >&2
+  echo "      correctly. The observed cause is the forked child dying on SIGTRAP" >&2
+  echo "      (exit code -5) before writing a byte, when the test file is re-run" >&2
+  echo "      inside the fork. Reproducible without mutmut: fork at" >&2
+  echo "      pytest_sessionfinish and call pytest.main() on the same file — the" >&2
+  echo "      bare fork is clean, the re-run is what dies. Seen only with" >&2
+  echo "      tests/integration/agents/test_harness_completion.py; every tests/unit" >&2
+  echo "      file measured so far forks and re-runs cleanly. WHICH library makes" >&2
+  echo "      the child fork-unsafe is still unidentified." >&2
 fi
 # The no-verdict guard. Reaching zero survivors because every mutant was
 # killed and reaching it because no mutant reached a verdict at all are
