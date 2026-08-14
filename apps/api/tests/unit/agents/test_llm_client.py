@@ -38,6 +38,7 @@ from app.constants.llm import (
     HELPER_MAX_OUTPUT_TOKENS,
     OPENROUTER_MAX_OUTPUT_TOKENS,
 )
+from app.core.lazy_loader import ProviderRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -103,6 +104,24 @@ class TestGetAvailableProviders:
         result = _get_available_providers()
 
         assert list(result.keys()) == ["gemini"]
+
+    @pytest.mark.regression
+    def test_unregistered_provider_is_skipped_not_fatal(self) -> None:
+        """custom_llm is registered only when ENV=development, so in production
+        the registry has no such key. Against the REAL registry (which raises
+        KeyError on an unregistered name, unlike the mock the sibling tests use)
+        that killed init_llm, and with it every agent graph.
+        """
+        registry = ProviderRegistry()
+        gemini_inst = _make_fake_provider("gemini")
+        openrouter_inst = _make_fake_provider("openrouter")
+        registry.register("gemini_llm", lambda: gemini_inst)
+        registry.register("openrouter_llm", lambda: openrouter_inst)
+
+        with patch("app.agents.llm.client.providers", registry):
+            result = _get_available_providers()
+
+        assert result == {"gemini": gemini_inst, "openrouter": openrouter_inst}
 
 
 # ---------------------------------------------------------------------------

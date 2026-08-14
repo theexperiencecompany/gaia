@@ -42,6 +42,10 @@ services:
       # / `--sim`, which derive it from DEV_USER). Overrides the commented-out value
       # in apps/api/.env; empty means real WorkOS login. Development compose only.
       DEV_AUTH_BYPASS_EMAIL: ${DEV_AUTH_BYPASS_EMAIL:-}
+      # Post-login / OAuth redirects and notification links resolve from this.
+      # Declared here (not left to the env_file) so a worktree's .env.worktree
+      # value wins over the fixed :3000 in apps/api/.env.
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       # Share one copy of the embedding/reranker weights via the sidecar.

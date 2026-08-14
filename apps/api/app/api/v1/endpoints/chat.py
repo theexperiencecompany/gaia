@@ -25,14 +25,17 @@ from app.db.redis import redis_cache
 from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import CancelStreamResponse, ConversationSource
 from app.models.message_models import MessageRequestWithHistory
+from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.chat.stream import run_chat_stream_background
+from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
 
 _USER_ID_REQUIRED = "user_id is required"
 _DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
 _SSE_MEDIA_TYPE = "text/event-stream"
+_DELIVERY_FAILED = "The connection to the server was lost before this response finished."
 _CLIENT_TYPE_HEADER = "X-Client-Type"
 
 router = APIRouter()
@@ -115,6 +118,9 @@ async def _stream_from_redis(
                 error_type=type(e).__name__,
                 error=str(e),
             )
+            # Closing silently is indistinguishable from a finished turn, so the
+            # client would render a truncated answer as complete.
+            yield format_sse_data(ErrorFrame(error=_DELIVERY_FAILED).model_dump())
 
 
 @router.post("/chat-stream")
