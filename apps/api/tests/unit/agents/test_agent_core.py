@@ -2,6 +2,7 @@
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
@@ -828,6 +829,13 @@ class TestCallAgentSilent:
             "mode": "background",
             "conversation_id": "conv-1",
         }
+        completed = _no_real_analytics.call_args_list[1]
+        assert completed.args[0] == "user-123"
+        assert completed.args[2] == {
+            "agent": "comms",
+            "mode": "background",
+            "conversation_id": "conv-1",
+        }
 
     @pytest.mark.asyncio
     async def test_execute_failure_captures_failed(self, _no_real_analytics):
@@ -840,12 +848,13 @@ class TestCallAgentSilent:
             patches["build_config"],
             patches["apply_plan"],
             patches["apply_dev_model"],
-            patches["log"],
+            patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("execute failed"),
             ),
+            patch("app.agents.core.agent.teardown_executor_capture") as mock_teardown,
             pytest.raises(RuntimeError, match="execute failed"),
         ):
             await call_agent_silent(
@@ -856,6 +865,19 @@ class TestCallAgentSilent:
 
         events = [c.args[1] for c in _no_real_analytics.call_args_list]
         assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
+        failed = _no_real_analytics.call_args_list[1]
+        assert failed.args[0] == "user-123"
+        assert failed.args[2] == {
+            "agent": "comms",
+            "mode": "background",
+            "conversation_id": "conv-1",
+        }
+        mock_log.error.assert_called_once()
+        assert "Error when calling silent agent" in mock_log.error.call_args.args[0]
+        assert mock_log.error.call_args.kwargs["error_type"] == "RuntimeError"
+        assert mock_log.error.call_args.kwargs["error"] == "execute failed"
+        mock_teardown.assert_called_once()
+        assert UUID(mock_teardown.call_args.args[0])
 
     @pytest.mark.asyncio
     async def test_missing_user_id_skips_events(self, _no_real_analytics):
