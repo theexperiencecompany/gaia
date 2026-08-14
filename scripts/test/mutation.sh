@@ -547,6 +547,50 @@ def _unobservable_get_default(
             _mutated_token(span, line_no, orig_line, mut_line)
         ) and _only_boolean_uses(node)
     return False
+def _unobservable_ensure_ascii(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
+    """True when the mutation only swapped json.dumps' ensure_ascii for another falsy value.
+
+    A ONE-OFF, not a rule. A keyword argument's truthiness semantics belong to
+    the callee and the AST cannot know them in general — substituting None for
+    False in an arbitrary keyword is usually observable. `ensure_ascii` earns
+    an exception because json documents it as a truth VALUE ("If ensure_ascii
+    is true, the output is guaranteed to be str...") and CPython reads it that
+    way: json/encoder.py picks the encoder on `if self.ensure_ascii:`. Every
+    falsy value therefore produces byte-identical output — verified on 3.12
+    with the C encoder active, across False/None/0/""/[]/{} on non-ASCII
+    payloads, with True the only value that differs. No other keyword belongs
+    here without that same proof.
+    """
+    try:
+        tree = ast.parse(open(path).read())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "dumps"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "json"
+        ):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg != "ensure_ascii" or not _falsy_literal(keyword.value):
+                continue
+            value = keyword.value
+            span = (
+                value.lineno,
+                value.col_offset,
+                value.end_lineno or value.lineno,
+                value.end_col_offset,
+            )
+            if _within(span, line_no, col):
+                return _falsy_replacement(_mutated_token(span, line_no, orig_line, mut_line))
+    return False
+
+
 def _within(span, line_no: int, col: int) -> bool:
     start_line, start_col, end_line, end_col = span
     if line_no < start_line or line_no > end_line:
@@ -580,7 +624,9 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
         # Raw (un-normalized) lines: the cast() rewrite above shifts columns.
         col = _first_differing_col(orig_raw[i], mut_raw[i])
         real_path = f"{workdir}/{module_path}"
-        if _unobservable_get_default(real_path, line_no, col, orig_raw[i], mut_raw[i]):
+        if _unobservable_get_default(
+            real_path, line_no, col, orig_raw[i], mut_raw[i]
+        ) or _unobservable_ensure_ascii(real_path, line_no, col, orig_raw[i], mut_raw[i]):
             print("EQUIV")
             sys.exit(0)
         span = _excluded_span(real_path, line_no)
@@ -880,6 +926,50 @@ def _unobservable_get_default(
             _mutated_token(span, line_no, orig_line, mut_line)
         ) and _only_boolean_uses(node)
     return False
+def _unobservable_ensure_ascii(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
+    """True when the mutation only swapped json.dumps' ensure_ascii for another falsy value.
+
+    A ONE-OFF, not a rule. A keyword argument's truthiness semantics belong to
+    the callee and the AST cannot know them in general — substituting None for
+    False in an arbitrary keyword is usually observable. `ensure_ascii` earns
+    an exception because json documents it as a truth VALUE ("If ensure_ascii
+    is true, the output is guaranteed to be str...") and CPython reads it that
+    way: json/encoder.py picks the encoder on `if self.ensure_ascii:`. Every
+    falsy value therefore produces byte-identical output — verified on 3.12
+    with the C encoder active, across False/None/0/""/[]/{} on non-ASCII
+    payloads, with True the only value that differs. No other keyword belongs
+    here without that same proof.
+    """
+    try:
+        tree = ast.parse(open(path).read())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "dumps"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "json"
+        ):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg != "ensure_ascii" or not _falsy_literal(keyword.value):
+                continue
+            value = keyword.value
+            span = (
+                value.lineno,
+                value.col_offset,
+                value.end_lineno or value.lineno,
+                value.end_col_offset,
+            )
+            if _within(span, line_no, col):
+                return _falsy_replacement(_mutated_token(span, line_no, orig_line, mut_line))
+    return False
+
+
 def _within(span, line_no: int, col: int) -> bool:
     start_line, start_col, end_line, end_col = span
     if line_no < start_line or line_no > end_line:
@@ -913,7 +1003,9 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
         # Raw (un-normalized) lines: the cast() rewrite above shifts columns.
         col = _first_differing_col(orig_raw[i], mut_raw[i])
         real_path = f"{workdir}/{module_path}"
-        if _unobservable_get_default(real_path, line_no, col, orig_raw[i], mut_raw[i]):
+        if _unobservable_get_default(
+            real_path, line_no, col, orig_raw[i], mut_raw[i]
+        ) or _unobservable_ensure_ascii(real_path, line_no, col, orig_raw[i], mut_raw[i]):
             print("EQUIV")
             sys.exit(0)
         span = _excluded_span(real_path, line_no)
@@ -958,7 +1050,8 @@ if [ -n "$EQUIVALENT" ]; then
   echo "      ever reaches a truthiness test ('x or y', 'if x:', 'x if x else y'," >&2
   echo "      or code such a test guards), where every falsy value takes the same" >&2
   echo "      branch. Truthy defaults are NOT covered: d.get(k, 1) or 0 really" >&2
-  echo "      does return 1 when the key is missing." >&2
+  echo "      does return 1 when the key is missing. One further one-off:" >&2
+  echo "      json.dumps' ensure_ascii, which json documents as a truth value." >&2
   echo "$EQUIVALENT" >&2
 fi
 if [ -n "$LOGGING" ]; then
