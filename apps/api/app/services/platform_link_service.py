@@ -13,13 +13,16 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
+from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.db.repositories.users import user_repository
+from app.models.payment_models import PlanType
 from app.models.platform_models import (
     DisconnectPlatformResponse,
     PlatformLinkEntry,
     PlatformLinkResult,
 )
 from app.models.user_models import PlatformLinkRecord, user_to_legacy_dict
+from app.services.payments.payment_service import payment_service
 
 
 class Platform(str, Enum):
@@ -29,6 +32,7 @@ class Platform(str, Enum):
     SLACK = "slack"
     TELEGRAM = "telegram"
     WHATSAPP = "whatsapp"
+    IMESSAGE = "imessage"
 
     @classmethod
     def is_valid(cls, platform: str) -> bool:
@@ -43,6 +47,22 @@ class Platform(str, Enum):
     def values(cls) -> list[str]:
         """Get list of all platform values."""
         return [p.value for p in cls]
+
+
+PREMIUM_PLATFORMS: frozenset[str] = frozenset({Platform.IMESSAGE.value})
+
+
+async def require_platform_plan(user_id: str, platform: str) -> None:
+    """Raise the standard 429 upsell when a free user tries to link a paid-only platform."""
+    if platform not in PREMIUM_PLATFORMS:
+        return
+    plan = await payment_service.get_cached_plan_type(user_id)
+    if plan == PlanType.FREE:
+        raise RateLimitExceededException(
+            feature=f"{platform}_linking",
+            plan_required=PlanType.PRO.value,
+            current_plan=plan.value,
+        )
 
 
 class PlatformLinkService:

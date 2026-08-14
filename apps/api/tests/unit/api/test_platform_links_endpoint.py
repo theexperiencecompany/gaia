@@ -5,7 +5,9 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.platform_models import PlatformLinkResult
+from app.models.payment_models import PlanType
+from app.models.platform_models import DisconnectPlatformResponse, PlatformLinkResult
+from app.services.photon.photon_client import PhotonUser
 
 BASE = "/api/v1/platform-links"
 
@@ -342,3 +344,114 @@ class TestInitiatePlatformConnect:
     async def test_unauthenticated(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.get(f"{BASE}/discord/connect")
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# iMessage premium gate
+# ---------------------------------------------------------------------------
+
+PLAN_PATCH = "app.services.platform_link_service.payment_service.get_cached_plan_type"
+
+
+class TestImessagePremiumGate:
+    @pytest.mark.asyncio
+    async def test_free_user_link_returns_429_upsell(self, client: AsyncClient) -> None:
+        with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE):
+            resp = await client.post(f"{BASE}/imessage", json={"token": "tok123"})
+
+        assert resp.status_code == 429
+        detail = resp.json()["detail"]
+        assert detail["plan_required"] == "pro"
+        assert detail["current_plan"] == "free"
+
+    @pytest.mark.asyncio
+    async def test_free_user_connect_returns_429_upsell(self, client: AsyncClient) -> None:
+        with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE):
+            resp = await client.get(f"{BASE}/imessage/connect")
+
+        assert resp.status_code == 429
+        assert resp.json()["detail"]["plan_required"] == "pro"
+
+    @pytest.mark.asyncio
+    async def test_pro_user_link_passes_gate(self, client: AsyncClient) -> None:
+        mock_redis = AsyncMock()
+        mock_redis.hgetall = AsyncMock(return_value={})
+
+        with (
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
+            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+        ):
+            mock_cache.client = mock_redis
+            resp = await client.post(f"{BASE}/imessage", json={"token": "tok123"})
+
+        # Gate passed; the request proceeds to token redemption and fails there.
+        assert resp.status_code == 400
+        assert "expired" in resp.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_free_user_can_still_disconnect(self, client: AsyncClient) -> None:
+        entry = {
+            "platform": "imessage",
+            "platformUserId": "+15551234567",
+            "username": None,
+            "displayName": None,
+            "connectedAt": "2026-01-01T00:00:00Z",
+        }
+        with (
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
+            patch(
+                "app.api.v1.endpoints.platform_links.PlatformLinkService.get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"imessage": entry},
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.PlatformLinkService.unlink_account",
+                new_callable=AsyncMock,
+                return_value=DisconnectPlatformResponse(status="disconnected", platform="imessage"),
+            ),
+            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+        ):
+            mock_cache.client = AsyncMock()
+            resp = await client.delete(f"{BASE}/imessage")
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "disconnected"
+
+    @pytest.mark.asyncio
+    async def test_pro_user_connect_missing_phone_422(self, client: AsyncClient) -> None:
+        with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO):
+            resp = await client.get(f"{BASE}/imessage/connect")
+
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_pro_user_connect_returns_photon_deep_link(self, client: AsyncClient) -> None:
+        photon_user = PhotonUser(id="pu_123", phoneNumber="+15551234567")
+        with (
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
+            patch(
+                "app.api.v1.endpoints.platform_links.register_shared_user",
+                new_callable=AsyncMock,
+                return_value=photon_user,
+            ) as mock_register,
+        ):
+            resp = await client.get(f"{BASE}/imessage/connect", params={"phone": "+15551234567"})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["auth_type"] == "manual"
+        assert body["action_link"] == "https://spectrum.photon.codes/users/pu_123/redirect"
+        mock_register.assert_awaited_once_with("+15551234567")
+
+    @pytest.mark.asyncio
+    async def test_free_user_other_platforms_unaffected(self, client: AsyncClient) -> None:
+        with (
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
+            patch("app.api.v1.endpoints.platform_links.settings") as mock_settings,
+        ):
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
+            mock_settings.SLACK_OAUTH_CLIENT_ID = None
+            mock_settings.TELEGRAM_BOT_USERNAME = "gaia_bot"
+            resp = await client.get(f"{BASE}/telegram/connect")
+
+        assert resp.status_code == 200

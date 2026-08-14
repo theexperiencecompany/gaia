@@ -1,7 +1,8 @@
 from collections.abc import Mapping
+import re
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
@@ -17,11 +18,18 @@ from app.models.platform_models import (
 from app.models.user_models import AuthenticatedUser
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.outbound_delivery import notify_account_linked
-from app.services.platform_link_service import Platform, PlatformLinkService
+from app.services.photon.photon_client import redirect_deep_link, register_shared_user
+from app.services.platform_link_service import (
+    Platform,
+    PlatformLinkService,
+    require_platform_plan,
+)
 from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 router = APIRouter()
+
+E164_PHONE_PATTERN = re.compile(r"^\+[1-9]\d{6,14}$")
 
 
 def _require_user_id(current_user: Mapping[str, object]) -> str:
@@ -75,6 +83,8 @@ async def link_platform(
     # worth seeing — still names the session that presented it.
     user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="link_platform", platform=platform)
+
+    await require_platform_plan(user_id, platform)
 
     # Look up and consume the token from Redis
     redis_client = redis_cache.client
@@ -209,6 +219,7 @@ async def disconnect_platform(
 @router.get("/{platform}/connect")
 async def initiate_platform_connect(
     platform: str,
+    phone: str | None = Query(default=None, description="E.164 number, iMessage only"),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> InitiatePlatformConnectResponse:
     """Initiate platform connection via OAuth or manual instructions.
@@ -225,6 +236,8 @@ async def initiate_platform_connect(
 
     user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="initiate_platform_connect", platform=platform)
+
+    await require_platform_plan(user_id, platform)
 
     # Discord OAuth flow
     if platform == "discord" and settings.DISCORD_OAUTH_CLIENT_ID:
@@ -287,6 +300,28 @@ async def initiate_platform_connect(
             auth_type="manual",
             instructions="Open WhatsApp and send /auth to the GAIA WhatsApp number to link your account.",
             action_link=f"https://wa.me/{phone_number}" if phone_number else None,
+        )
+
+    # iMessage manual flow: Photon's shared pool only delivers to registered
+    # numbers, so the user's phone must be allowlisted before they can text.
+    if platform == "imessage":
+        if not phone or not E164_PHONE_PATTERN.fullmatch(phone):
+            raise HTTPException(
+                status_code=422,
+                detail="A phone number in E.164 format (e.g. +15551234567) is required for iMessage.",
+            )
+        photon_user = await register_shared_user(phone)
+        log.audit(
+            "imessage number registered for linking",
+            actor=user_id,
+            provider=platform,
+        )
+        log.set(outcome="success", auth_type="manual")
+        return InitiatePlatformConnectResponse(
+            auth_url=None,
+            auth_type="manual",
+            instructions="Open the link on your iPhone or Mac, then text /auth to your GAIA iMessage number to link your account.",
+            action_link=redirect_deep_link(photon_user.id),
         )
 
     raise HTTPException(status_code=501, detail=f"{platform} OAuth not configured")
