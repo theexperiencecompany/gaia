@@ -44,6 +44,7 @@ from app.models.workflow_models import (
     TriggerType,
     Workflow,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.notification_service import notification_service
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
@@ -132,6 +133,16 @@ async def process_workflow_generation_task(
                         steps_count=len(workflow.steps),
                         trigger_type=TriggerType.MANUAL.value,
                     )
+                )
+
+                capture_event(
+                    user_id,
+                    AnalyticsEvents.WORKFLOW_CREATED,
+                    {
+                        "workflow_id": workflow.id,
+                        "steps_count": len(workflow.steps),
+                        "is_todo_workflow": True,
+                    },
                 )
 
                 try:
@@ -523,6 +534,20 @@ async def execute_workflow_by_id(
             summary="Workflow executed",
             conversation_id=conversation_id,
         )
+
+        # Analytics: the run-now endpoint already captures manual executions at
+        # queue time (workflows.py); background-origin runs — scheduler,
+        # tracked-todo, and integration triggers — only flow through this task,
+        # so their completion is captured here.
+        trigger_source = trigger_type
+        if context and not context.get("trigger_type") and "trigger_data" in context:
+            trigger_source = TriggerType.INTEGRATION.value
+        if trigger_source != TriggerType.MANUAL.value:
+            capture_event(
+                workflow.user_id,
+                AnalyticsEvents.WORKFLOW_EXECUTED,
+                {"workflow_id": workflow_id, "trigger_type": trigger_source},
+            )
 
         # Arm the next occurrence (scheduled recurring workflows only). A re-arm
         # failure must not turn a successful execution into a reported failure.

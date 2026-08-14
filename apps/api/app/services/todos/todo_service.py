@@ -29,6 +29,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
@@ -201,6 +202,14 @@ class TodoService:
             log.warning("todo.index_failed", error=str(e))
 
         schedule_user_todos_sync(user_id)
+        capture_event(
+            user_id,
+            AnalyticsEvents.TODO_CREATED,
+            {
+                "priority": created.priority.value,
+                "has_due_date": created.due_date is not None,
+            },
+        )
         return TodoResponse.from_document(created)
 
     @classmethod
@@ -313,6 +322,20 @@ class TodoService:
             log.warning("todo.index_update_failed", todo_id=todo_id, error=str(e))
 
         schedule_user_todos_sync(user_id)
+        if updates.completed is not None:
+            # Toggle semantics (matching the frontend's `todos:toggled`): fires
+            # for both completing and un-completing, tracked or plain.
+            capture_event(
+                user_id,
+                AnalyticsEvents.TODO_COMPLETED,
+                {"completed": updates.completed},
+            )
+        elif update.model_fields_set:
+            capture_event(
+                user_id,
+                AnalyticsEvents.TODO_UPDATED,
+                {"changed_field_count": len(update.model_fields_set)},
+            )
         return TodoResponse.from_document(updated)
 
     @classmethod
@@ -340,6 +363,7 @@ class TodoService:
             log.warning("todo.index_remove_failed", todo_id=todo_id, error=str(e))
 
         schedule_user_todos_sync(user_id)
+        capture_event(user_id, AnalyticsEvents.TODO_DELETED, {"todo_id": todo_id})
 
     # Bulk Operations
     @classmethod
@@ -391,6 +415,7 @@ class TodoService:
                 except Exception as e:
                     log.warning("todo.index_remove_failed", todo_id=todo.id, error=str(e))
             schedule_user_todos_sync(user_id)
+            capture_event(user_id, AnalyticsEvents.TODO_DELETED, {"count": deleted})
 
         return BulkOperationResponse(
             success=todo_ids[:deleted],

@@ -27,6 +27,7 @@ from app.core.request_context import get_authenticated_user
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.cost_budget import get_cost, is_daily_budget_exhausted
 from app.services.limit_upsell import schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
@@ -136,6 +137,16 @@ def with_rate_limiting(
                             error=str(e),
                             error_type=type(e).__name__,
                         )
+                        if user_plan != PlanType.FREE:
+                            # FREE hits are already captured by the limit-upsell
+                            # seam (schedule_limit_upsell fires on every exceed for
+                            # free users); paid plans have no such side effect, so
+                            # their hits are captured here.
+                            capture_event(
+                                user_id,
+                                AnalyticsEvents.RATE_LIMIT_HIT,
+                                {"feature": actual_feature_key, "plan": user_plan.value},
+                            )
                         detail_dict = {}
                         reset_time = None
 
@@ -285,11 +296,22 @@ def tiered_rate_limit(
             user_plan = subscription.plan_type or PlanType.FREE
 
             # Check rate limits before executing function
-            await tiered_limiter.check_and_increment(
-                user_id=user_id,
-                feature_key=feature_key,
-                user_plan=user_plan,
-            )
+            try:
+                await tiered_limiter.check_and_increment(
+                    user_id=user_id,
+                    feature_key=feature_key,
+                    user_plan=user_plan,
+                )
+            except RateLimitExceededException:
+                # FREE hits are captured by the limit-upsell seam; capture the
+                # paid-plan hits here so every wall produces one event.
+                if user_plan != PlanType.FREE:
+                    capture_event(
+                        user_id,
+                        AnalyticsEvents.RATE_LIMIT_HIT,
+                        {"feature": feature_key, "plan": user_plan.value},
+                    )
+                raise
 
             # Execute the original function
             result = await func(*args, **kwargs)

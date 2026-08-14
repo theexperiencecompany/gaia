@@ -12,6 +12,7 @@ from app.agents.core.agent import (
     call_agent_silent,
 )
 from app.models.message_models import MessageRequestWithHistory
+from app.services.analytics_service import AnalyticsEvents
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,6 +63,14 @@ FAKE_CONFIG = {
 # ---------------------------------------------------------------------------
 # Patches common to most tests
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_real_analytics():
+    """Keep every test hermetic: agent lifecycle events are asserted through
+    this mock and never reach a real PostHog client."""
+    with patch("app.agents.core.agent.capture_event") as mock_capture:
+        yield mock_capture
 
 
 def _common_patches():
@@ -390,6 +399,146 @@ class TestCallAgent:
         for chunk in chunks:
             assert chunk.endswith("\n\n")
 
+    @pytest.mark.asyncio
+    async def test_run_lifecycle_events_captured(self, _no_real_analytics):
+        """STARTED before the stream, COMPLETED after it ends normally."""
+
+        async def _fake_stream(*args, **kwargs):
+            yield "data: {}\n\n"
+            yield "data: [DONE]\n\n"
+
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_streaming",
+                return_value=_fake_stream(),
+            ),
+        ):
+            gen = await call_agent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        events = [c.args[1] for c in _no_real_analytics.call_args_list]
+        assert events == [AnalyticsEvents.AGENT_RUN_STARTED]
+
+        chunks = [chunk async for chunk in gen]
+        assert len(chunks) == 2
+
+        events = [c.args[1] for c in _no_real_analytics.call_args_list]
+        assert events == [
+            AnalyticsEvents.AGENT_RUN_STARTED,
+            AnalyticsEvents.AGENT_RUN_COMPLETED,
+        ]
+        started = _no_real_analytics.call_args_list[0]
+        assert started.args[0] == "user-123"
+        assert started.args[2] == {
+            "agent": "comms",
+            "mode": "interactive",
+            "conversation_id": "conv-1",
+        }
+
+    @pytest.mark.asyncio
+    async def test_stream_failure_captures_failed(self, _no_real_analytics):
+        """An exception mid-stream yields FAILED and still propagates."""
+
+        async def _failing_stream(*args, **kwargs):
+            yield "data: {}\n\n"
+            raise RuntimeError("graph exploded")
+
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_streaming",
+                return_value=_failing_stream(),
+            ),
+        ):
+            gen = await call_agent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        with pytest.raises(RuntimeError, match="graph exploded"):
+            _ = [chunk async for chunk in gen]
+
+        events = [c.args[1] for c in _no_real_analytics.call_args_list]
+        assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
+
+    @pytest.mark.asyncio
+    async def test_setup_error_captures_failed(self, _no_real_analytics):
+        """Setup failure (before the stream exists) still emits FAILED."""
+        patches = _common_patches()
+        with (
+            patch(
+                "app.agents.core.agent.construct_langchain_messages",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+        ):
+            gen = await call_agent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+        chunks = [chunk async for chunk in gen]
+        assert len(chunks) == 2
+
+        events = [c.args[1] for c in _no_real_analytics.call_args_list]
+        assert events == [AnalyticsEvents.AGENT_RUN_FAILED]
+
+    @pytest.mark.asyncio
+    async def test_missing_user_id_skips_events(self, _no_real_analytics):
+        """No user id -> the run still works but nothing is captured."""
+
+        async def _fake_stream(*args, **kwargs):
+            yield "data: [DONE]\n\n"
+
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_streaming",
+                return_value=_fake_stream(),
+            ),
+        ):
+            gen = await call_agent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(user_id=None),
+            )
+
+        chunks = [chunk async for chunk in gen]
+        assert len(chunks) == 1
+        _no_real_analytics.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # call_agent_silent
@@ -645,3 +794,94 @@ class TestCallAgentSilent:
 
         assert "execute failed" in msg
         assert data == {}
+
+    @pytest.mark.asyncio
+    async def test_run_lifecycle_events_captured(self, _no_real_analytics):
+        """STARTED before the silent run, COMPLETED after it succeeds."""
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", {"tool": "data"}),
+            ),
+        ):
+            await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        events = [c.args[1] for c in _no_real_analytics.call_args_list]
+        assert events == [
+            AnalyticsEvents.AGENT_RUN_STARTED,
+            AnalyticsEvents.AGENT_RUN_COMPLETED,
+        ]
+        started = _no_real_analytics.call_args_list[0]
+        assert started.args[0] == "user-123"
+        assert started.args[2] == {
+            "agent": "comms",
+            "mode": "background",
+            "conversation_id": "conv-1",
+        }
+
+    @pytest.mark.asyncio
+    async def test_execute_failure_captures_failed(self, _no_real_analytics):
+        """execute_graph_silent raising yields FAILED alongside the error tuple."""
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("execute failed"),
+            ),
+        ):
+            msg, data = await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        assert "execute failed" in msg
+        assert data == {}
+        events = [c.args[1] for c in _no_real_analytics.call_args_list]
+        assert events == [AnalyticsEvents.AGENT_RUN_STARTED, AnalyticsEvents.AGENT_RUN_FAILED]
+
+    @pytest.mark.asyncio
+    async def test_missing_user_id_skips_events(self, _no_real_analytics):
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", {}),
+            ),
+        ):
+            await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(user_id=None),
+            )
+
+        _no_real_analytics.assert_not_called()
