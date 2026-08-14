@@ -263,3 +263,40 @@ class TestWrapupThreshold:
 
         assert is_budget_wrapup_threshold(spent, plan) is True
         assert is_daily_budget_exhausted(spent, plan) is True
+
+
+@pytest.mark.unit
+class TestResolvedPlanSurvivesABoundWall:
+    """``plan_type`` is returned so the caller can test the wrap-up threshold
+    without a second lookup — and the caller reads it on exactly the runs that
+    stopped. The daily-wall tests above assert it; the ceiling path and the
+    no-root_request_id path return it too and nothing checked either, so the
+    field could be dropped on a bound wall and only those two paths would lie.
+    """
+
+    async def test_the_ceiling_path_reports_the_plan_it_enforced(self) -> None:
+        await _burn_tokens(get_per_request_token_ceiling(PlanType.FREE))
+
+        check = await get_budget_stop_reason(USER, PlanType.FREE, REQUEST)
+
+        assert check.stop_reason == REQUEST_CEILING_STOP_FREE
+        assert check.plan_type == PlanType.FREE
+
+    async def test_the_pro_ceiling_path_reports_the_plan_it_enforced(self) -> None:
+        await _burn_tokens(get_per_request_token_ceiling(PlanType.PRO))
+
+        check = await get_budget_stop_reason(USER, PlanType.PRO, REQUEST)
+
+        assert check.stop_reason == REQUEST_CEILING_STOP_PRO
+        assert check.plan_type == PlanType.PRO
+
+    async def test_a_daily_wall_bound_without_a_request_id_still_reports_the_plan(self) -> None:
+        """No ``root_request_id`` skips the token read entirely — a separate
+        return statement from the both-reads path, with its own copy of the
+        three fields."""
+        await _spend(get_daily_cost_budget_usd(PlanType.FREE))
+
+        check = await get_budget_stop_reason(USER, PlanType.FREE, None)
+
+        assert check.stop_reason == DAILY_BUDGET_STOP_FREE
+        assert check.plan_type == PlanType.FREE
