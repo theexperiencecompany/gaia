@@ -111,9 +111,15 @@ LLM_RETRY_MAX_ATTEMPTS = 3
 # Sticky-flip retry: when a large call's cache read is below this fraction of
 # its prompt (the request landed on a cold provider after the ~5-minute sticky
 # expiry — a known OpenRouter behavior), re-send it once — the first attempt
-# wrote the chain there and the re-send hits it (~90%). 0.8 catches both the
-# full flips (0-5%) and the partial static-only dips (65-75%).
-STICKY_FLIP_RETRY_MIN_HIT = 0.8
+# wrote the chain there and the re-send hits it (~99%, verified by byte-exact
+# shadow replays of captured requests: 99.2-99.7%). 0.92 catches the full
+# flips (0-5%), the partial static-only dips (65-75%) AND the small-
+# conversation steady state (83-90% — the provider under-reads the fresh
+# chain for a few turns after a big turn; measured live at 83.8% flat while
+# the exact bytes replay at 99.7%). The retry's second call reads ~99% cached,
+# so the turn's aggregate hit rises toward (cached + 0.99*input)/2*input while
+# the extra input bills at the cached-read rate.
+STICKY_FLIP_RETRY_MIN_HIT = 0.92
 STICKY_FLIP_RETRY_MIN_INPUT = 8_000
 
 # Total wall-clock ceiling for one ainvoke_llm call — retries, backoff sleeps and the

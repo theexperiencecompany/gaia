@@ -178,10 +178,21 @@ def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
     return False
 
 
+# Bounded follow-up context: the one-shot needs the recent exchange, not
+# megabytes. A giant executor result (up to the 64k output cap) previously
+# flowed verbatim into the follow-up request — measured: a 65k-token follow-up
+# after a maxed-out executor turn, ~2% cache hit. Capping the context keeps
+# the suggestion call small (and its shared prefix meaningful). The NEWEST
+# exchange is what follow-ups react to, so the cap keeps the tail.
+_FOLLOW_UP_CONTEXT_MAX_CHARS = 6_000
+
+
 def _pretty_print_messages(messages: list[AnyMessage], ignore_system_messages: bool = True) -> str:
     pretty = ""
     for message in messages:
         if ignore_system_messages and isinstance(message, SystemMessage):
             continue
         pretty += message.pretty_repr()
+    if len(pretty) > _FOLLOW_UP_CONTEXT_MAX_CHARS:
+        pretty = pretty[-_FOLLOW_UP_CONTEXT_MAX_CHARS:]
     return pretty

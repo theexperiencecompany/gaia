@@ -160,17 +160,31 @@ async def extract_memories(
         "\n".join(f"- {line}" for line in journaled_today) if journaled_today else "(empty)"
     )
     system_prompt = EXTRACTION_SYSTEM_PROMPT.format(
-        current_date=f"{current_date:%A, %d %B %Y}",
         user_name=user_name,
         folder_tree=folder_tree or "(no folders yet)",
-        recent_facts=recent_facts_section,
-        journal_today=journal_section,
-        extraction_hints=hints_section,
+    )
+    # The volatile context (today's date, recently stored facts, today's
+    # journal) rides in a TRAILING message, NOT inside the system prompt.
+    # The memory lane's cache is a byte-prefix cache: with the facts/journal
+    # churning inside the system prompt the prefix broke there and the whole
+    # (append-only) transcript re-sent uncached every turn — measured ~41%
+    # hit on the lane. With them moved to the tail, the cached prefix extends
+    # through the stable template + the transcript and only this small tail
+    # re-sends uncached.
+    volatile_context = (
+        f"Today is {current_date:%A, %d %B %Y}.\n"
+        f"## Recently stored facts (do NOT re-extract these)\n{recent_facts_section}\n"
+        "## Today's journal so far (do NOT repeat these events, even reworded)\n"
+        f"{journal_section}{hints_section}"
     )
 
     result = await _invoke_structured(
         ExtractedMemoryBatch,
-        [SystemMessage(content=system_prompt), HumanMessage(content=transcript)],
+        [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=transcript),
+            HumanMessage(content=volatile_context),
+        ],
         operation="extraction",
         user_id=user_id,
     )
