@@ -13,8 +13,9 @@
  */
 
 /**
- * The offer itself lives in `@/config/offer` because the landing banner sells
- * the same one; the letter only re-exports it under its own names.
+ * The offer itself lives in `@/config/offer`: its terms have to match a real
+ * Dodo coupon, so they are configuration rather than copy. The letter only
+ * re-exports them under its own names.
  */
 export {
   OFFER_CODE as DISCOUNT_CODE,
