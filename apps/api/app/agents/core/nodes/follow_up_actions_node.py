@@ -70,7 +70,9 @@ async def generate_follow_up_actions(
                         "memory_message": True,
                     },
                 ),
-                HumanMessage(content=context_text),
+                # The context text already lives in the dynamic-context system
+                # message above — sending it again as the human message was a
+                # pure duplicate (~350 tokens of per-turn uncached weight).
             ],
             label="follow_up_actions",
             config=cast(
