@@ -679,6 +679,29 @@ class _DiscoveryRegistry:
         return SimpleNamespace(destructive=tool_name in self._destructive)
 
 
+def _render_text(
+    final_tools: list[str],
+    *,
+    categories: dict[str, str] | None = None,
+    destructive: set[str] | None = None,
+    connected: dict[str, str | None] | None = None,
+    internal: set[str] | None = None,
+    query: str | None = None,
+    total_candidates: int = 5,
+    limit: int = 10,
+) -> str:
+    """The raw string the model receives, formatting and all."""
+    return _render_discovery_response(
+        final_tools,
+        _DiscoveryRegistry(categories or {}, destructive),
+        connected or {},
+        internal or set(),
+        query,
+        total_candidates,
+        limit,
+    )
+
+
 def _render(
     final_tools: list[str],
     *,
@@ -690,16 +713,18 @@ def _render(
     total_candidates: int = 5,
     limit: int = 10,
 ) -> dict[str, Any]:
-    payload = _render_discovery_response(
-        final_tools,
-        _DiscoveryRegistry(categories or {}, destructive),
-        connected or {},
-        internal or set(),
-        query,
-        total_candidates,
-        limit,
+    return json.loads(
+        _render_text(
+            final_tools,
+            categories=categories,
+            destructive=destructive,
+            connected=connected,
+            internal=internal,
+            query=query,
+            total_candidates=total_candidates,
+            limit=limit,
+        )
     )
-    return json.loads(payload)
 
 
 class TestSplitSubagentEntry:
@@ -716,6 +741,24 @@ class TestSplitSubagentEntry:
         """Both halves of the guard are load-bearing: an opening bracket alone
         would otherwise split a malformed id and hand back a truncated name."""
         assert _split_subagent_entry("subagent:foo (bar") == ("foo (bar", None)
+
+
+class TestDiscoveryResponseIsIndentedJson:
+    """Every other test here parses the payload, which throws the formatting away.
+
+    The model receives the STRING, so the indentation is part of what discovery
+    delivers, and nothing was asserting it.
+    """
+
+    def test_the_model_receives_indented_json_not_one_compact_line(self) -> None:
+        text = _render_text(["send_email"], categories={"send_email": "gmail"})
+        assert len(text.splitlines()) > 1
+
+    def test_nesting_is_indented_by_two_spaces(self) -> None:
+        text = _render_text(["send_email"], categories={"send_email": "gmail"})
+        indents = {len(ln) - len(ln.lstrip(" ")) for ln in text.splitlines() if ln.startswith(" ")}
+        assert indents, "nothing is indented — the payload came out compact"
+        assert min(indents) == 2
 
 
 class TestDiscoveryAvailabilityBuckets:
