@@ -6,6 +6,7 @@
 
 import * as Sentry from "@sentry/nextjs";
 import NextError from "next/error";
+import posthog from "posthog-js";
 import { useEffect, useState } from "react";
 
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -30,6 +31,7 @@ export default function GlobalError({
     if (isChunk) return;
 
     Sentry.captureException(error);
+    posthog.captureException(error);
     trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
       error_type: "global_error",
       error_message: error.message,

@@ -47,9 +47,9 @@ const useFetchUser = () => {
       selected_model: data.selected_model,
     });
 
-    // Identify user in PostHog for analytics (only once per session)
-    if (data.email && !hasIdentified.current) {
-      identifyUser(data.email, {
+    // Identify the persisted client session with the stable backend user ID.
+    if (data.user_id && !hasIdentified.current) {
+      identifyUser(data.user_id, {
         email: data.email,
         name: data.name,
         timezone: data.timezone,

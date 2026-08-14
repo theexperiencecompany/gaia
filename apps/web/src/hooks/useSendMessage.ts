@@ -220,6 +220,15 @@ export const useSendMessage = () => {
         isOnboardingDemo: false,
       };
 
+      trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
+        file_count: ctx.files.length,
+        has_selected_tool: Boolean(ctx.selectedTool),
+        has_selected_workflow: Boolean(ctx.selectedWorkflow),
+        has_selected_calendar_event: Boolean(ctx.selectedCalendarEvent),
+        is_reply: Boolean(ctx.replyToMessage),
+        is_new_conversation: !ctx.conversationId,
+        was_queued: willQueue,
+      });
       turnManager.send({ inputText: ctx.content, userMessage, options });
     },
     [],
