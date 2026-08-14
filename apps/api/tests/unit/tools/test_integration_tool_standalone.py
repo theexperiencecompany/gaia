@@ -307,8 +307,8 @@ class TestConnectIntegration:
                 new=AsyncMock(side_effect=_link),
             ),
         ):
-            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-                config=_cfg(), integration_ids=["gmail"]
+            result = await connect_integration.ainvoke(
+                {"integration_ids": ["gmail"]}, config=_cfg()
             )
 
         assert "https://app.example.com/connect/for-this-user" in result
