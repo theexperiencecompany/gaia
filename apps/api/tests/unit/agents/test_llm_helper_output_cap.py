@@ -2,9 +2,13 @@
 
 Its own file, not a class in ``test_llm_client.py``, because ``get_helper_llm``
 and ``HELPER_MAX_OUTPUT_TOKENS`` are introduced by this branch: importing them
-at the top of a module that also holds a ``@pytest.mark.regression`` test makes
-that file uncollectable on the base revision, and the regression-proof lane
-then reports a harness error instead of the proof it went looking for.
+at the top of a module that also holds a regression-marked test makes that file
+uncollectable on the base revision, and the regression-proof lane then reports a
+harness error instead of the proof it went looking for.
+
+The marker is named indirectly above on purpose: regression-proof.sh selects
+files with a plain text grep, so spelling the decorator out in prose enlists
+this file into the lane it exists to document.
 """
 
 from unittest.mock import MagicMock, patch
