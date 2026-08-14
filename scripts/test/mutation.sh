@@ -277,8 +277,8 @@ RESULTS="$("$VENV_PY" -m mutmut results 2>/dev/null || true)"
 SURVIVORS="$(printf '%s\n' "$RESULTS" | grep "survived" || true)"
 NO_TESTS="$(printf '%s\n' "$RESULTS" | grep -c "no tests" || true)"
 NOT_CHECKED="$(printf '%s\n' "$RESULTS" | grep -c "not checked" || true)"
-if [ "${NOT_CHECKED:-0}" -gt 0 ]; then
-  if [ "${MUTATION_RETRY:-0}" -eq 0 ]; then
+if [[ "${NOT_CHECKED:-0}" -gt 0 ]]; then
+  if [[ "${MUTATION_RETRY:-0}" -eq 0 ]]; then
     # Interrupted runs are usually the known loguru teardown crash (forked
     # children + the loop-bound redis client write to a closed stream at
     # interpreter shutdown) killing mutmut mid-run. A fresh process almost

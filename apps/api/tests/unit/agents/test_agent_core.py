@@ -478,11 +478,9 @@ class TestCallAgentSilent:
             ),
             pytest.raises(RuntimeError, match="429 Too Many Requests"),
         ):
-            await call_agent_silent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
-            )
+            request = _make_request()
+            user = _make_user()
+            await call_agent_silent(request=request, conversation_id="conv-1", user=user)
 
     @pytest.mark.asyncio
     async def test_passes_trigger_context_to_core(self):
@@ -671,8 +669,6 @@ class TestCallAgentSilent:
             patches["log"],
             pytest.raises(RuntimeError, match="silent boom"),
         ):
-            await call_agent_silent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
-            )
+            request = _make_request()
+            user = _make_user()
+            await call_agent_silent(request=request, conversation_id="conv-1", user=user)

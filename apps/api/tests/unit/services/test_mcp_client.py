@@ -1975,9 +1975,10 @@ class TestResilientLangChainAdapter:
         mock_tool = MagicMock()
         mock_tool.name = "broken_tool"
 
+        connector = MagicMock()
         with patch.object(adapter, "_convert_tool", return_value=None):
             with pytest.raises(ValueError, match="broken_tool"):
-                await adapter._convert_single_tool(mock_tool, MagicMock())
+                await adapter._convert_single_tool(mock_tool, connector)
 
     async def test_create_tools_skips_bad_schemas(self):
         adapter = ResilientLangChainAdapter()

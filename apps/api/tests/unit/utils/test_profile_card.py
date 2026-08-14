@@ -273,7 +273,8 @@ class TestGenerateHoloCardContent:
         mock_llm.assert_not_awaited()
         assert status == BioStatus.NO_GMAIL
         assert phrase == "Curious Developer"
-        assert isinstance(bio, str) and bio
+        assert isinstance(bio, str)
+        assert bio
 
     async def test_missing_user_and_preferences_still_fall_back(self) -> None:
         user = UserDocument(_id="u1")
@@ -284,4 +285,5 @@ class TestGenerateHoloCardContent:
 
         assert status == BioStatus.NO_GMAIL
         assert isinstance(phrase, str)
-        assert isinstance(bio, str) and bio
+        assert isinstance(bio, str)
+        assert bio

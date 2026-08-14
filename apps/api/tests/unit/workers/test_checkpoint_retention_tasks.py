@@ -203,8 +203,9 @@ class TestSweepOrphanThreads:
                 tasks.conversation_repository, "all_conversation_ids", AsyncMock(return_value=[])
             ),
         ):
+            pool = FakePool(cursor)
             with pytest.raises(AppError, match="count query returned no rows"):
-                await sweep_orphan_threads(FakePool(cursor), checkpointer)  # type: ignore[arg-type]
+                await sweep_orphan_threads(pool, checkpointer)  # type: ignore[arg-type]
 
     async def test_count_row_feeds_the_deleted_checkpoints_total(self) -> None:
         cursor = FakeCursor([("orphan_tid",)])
