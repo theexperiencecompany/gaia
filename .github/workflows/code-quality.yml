@@ -905,7 +905,11 @@ jobs:
     # A large changed module can carry hundreds of mutants (each running its
     # covering tests once) — a 745-mutant module takes ~13 min. The xargs
     # parallelism overlaps modules, so this is the per-module worst case.
-    timeout-minutes: 30
+    # The cap also has to cover MANY small modules: a repo-wide
+    # instrumentation PR touching 50+ modules costs ~35-45 min even at ~30s
+    # per module, so the cap is sized for both axes. Typical PRs (a handful
+    # of modules) still finish in minutes — the cap only bites on huge diffs.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
