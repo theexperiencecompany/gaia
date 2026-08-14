@@ -9,3 +9,7 @@ reviews:
 
   # Whether to review draft PRs
   draft: false
+
+  # The mypy-strict migration PRs touch hundreds of files at once; the default
+  # 100-file cap makes CodeRabbit skip them entirely. 0 = no cap.
+  max_files: 0
