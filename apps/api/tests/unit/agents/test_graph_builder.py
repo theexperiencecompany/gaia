@@ -383,6 +383,24 @@ class TestBuildExecutorGraph:
             ) as graph:
                 assert graph is deps["compiled"]
 
+    async def test_executor_is_built_with_the_completion_guard_and_skill_tool(self):
+        """Two things the executor cannot lose. ``require_finish_to_end`` is what
+        opts it into the harness-owned completion check — without it a plain-text
+        stop is taken at face value and the guard is inert. ``save_learned_skill``
+        is bound up front rather than retrieved, so a renamed id silently drops the
+        tool from the executor's initial set."""
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+
+        assert kwargs["require_finish_to_end"] is True
+        assert "save_learned_skill" in kwargs["initial_tool_ids"]
+
     async def test_yields_compiled_graph_postgres(self):
         fake_cp = MagicMock(name="postgres_checkpointer")
         fake_manager = MagicMock()

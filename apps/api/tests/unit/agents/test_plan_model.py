@@ -199,6 +199,41 @@ class TestApplyDevModelOverride:
         assert "model" not in configurable
         assert "model_name" not in configurable
 
+    async def test_custom_provider_clears_the_model_when_the_lane_is_unknown(
+        self, monkeypatch
+    ) -> None:
+        """The sibling above configures the lane to an empty string. When the lane
+        is missing from PROVIDER_MODELS entirely there is no resolved name at all,
+        and the fallback has to be falsy — a placeholder default would pin a model
+        that does not exist and price the call against it."""
+        monkeypatch.delitem(PROVIDER_MODELS, "custom", raising=False)
+        configurable = self._config()
+
+        apply_dev_model_override(
+            configurable, comms_model="custom", executor_model=None, use_defaults=False
+        )
+
+        assert configurable["provider"] == "custom"
+        assert "model" not in configurable
+        assert "model_name" not in configurable
+
+    async def test_clearing_an_unknown_lane_survives_a_configurable_with_nothing_to_clear(
+        self, monkeypatch
+    ) -> None:
+        """A configurable that never carried a model reaches the same branch — the
+        first request of a run, before anything pinned one. Clearing has to be
+        tolerant of the keys being absent rather than raising into the graph."""
+        monkeypatch.delitem(PROVIDER_MODELS, "custom", raising=False)
+        configurable: AgentConfigurable = {}
+
+        apply_dev_model_override(
+            configurable, comms_model="custom", executor_model=None, use_defaults=False
+        )
+
+        assert configurable["provider"] == "custom"
+        assert "model" not in configurable
+        assert "model_name" not in configurable
+
 
 class TestApplyDevExecutorModel:
     async def test_applies_the_stashed_executor_model_with_executor_reasoning(self) -> None:
