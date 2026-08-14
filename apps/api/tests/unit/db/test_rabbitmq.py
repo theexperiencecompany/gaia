@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.lazy_loader import providers
 from app.db.rabbitmq import get_rabbitmq_publisher, init_rabbitmq_publisher
 
 
