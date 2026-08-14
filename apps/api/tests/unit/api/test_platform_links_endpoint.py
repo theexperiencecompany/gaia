@@ -139,6 +139,48 @@ class TestLinkPlatform:
         )
 
     @pytest.mark.asyncio
+    async def test_link_new_platform_captures_is_new_link_true(self, client: AsyncClient) -> None:
+        """A fresh link reports is_new_link=True in the capture payload."""
+        mock_redis = AsyncMock()
+        mock_redis.hgetall = AsyncMock(
+            return_value={
+                "platform": "discord",
+                "platform_user_id": "DISC123",
+                "username": "testuser",
+                "display_name": "Test User",
+            }
+        )
+        mock_redis.delete = AsyncMock()
+        link_result = PlatformLinkResult(
+            status="linked",
+            platform="discord",
+            platform_user_id="DISC123",
+            connected_at="2024-01-01T00:00:00Z",
+            is_new_link=True,
+        )
+
+        with (
+            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch(
+                "app.api.v1.endpoints.platform_links.PlatformLinkService.link_account",
+                new_callable=AsyncMock,
+                return_value=link_result,
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.notify_account_linked", new_callable=AsyncMock
+            ),
+            patch("app.api.v1.endpoints.platform_links.capture_context_event") as mock_capture,
+        ):
+            mock_cache.client = mock_redis
+            resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": "discord", "is_new_link": True},
+        )
+
+    @pytest.mark.asyncio
     async def test_link_conflict(self, client: AsyncClient) -> None:
         """ValueError from link_account returns 409."""
         mock_redis = AsyncMock()

@@ -13,11 +13,13 @@ import pytest
 from app.constants.general import MAX_PAGE_NUMBER
 from app.models.todo_models import (
     BulkOperationResponse,
+    BulkUpdateRequest,
     PaginationMeta,
     SubTask,
     TodoDocument,
     TodoListResponse,
     TodoResponse,
+    TodoUpdateRequest,
 )
 from app.services.analytics_service import AnalyticsEvents
 
@@ -92,7 +94,7 @@ class TestTodoAnalytics:
                 f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
                 new_callable=AsyncMock,
                 return_value=BulkOperationResponse(total=2, message="ok"),
-            ),
+            ) as mock_bulk,
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
             resp = await client.post(
@@ -102,6 +104,13 @@ class TestTodoAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.TODO_COMPLETED, {"bulk_count": 2})
+        mock_bulk.assert_awaited_once_with(
+            BulkUpdateRequest(
+                todo_ids=["todo-1", "todo-2"],
+                updates=TodoUpdateRequest(completed=True),
+            ),
+            "507f1f77bcf86cd799439011",
+        )
 
     async def test_toggle_subtask_captures_todo_completed(self, client: AsyncClient) -> None:
         doc = TodoDocument(
