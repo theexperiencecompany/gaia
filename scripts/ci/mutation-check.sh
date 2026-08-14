@@ -37,11 +37,15 @@ fi
 
 # 4. Run one mutation check per module with bounded parallelism. A plain
 #    read loop (not xargs) so a module with an empty changed-lines JSON
-#    (`[]`) can never shift the fields between invocations.
+#    (`[]`) can never shift the fields between invocations. Two workers, not
+#    four: each worker is a single-process pytest run, and on the 2-core CI
+#    runner four of them starve each other — covering tests that take seconds
+#    alone stretch past mutmut's per-mutant timeout (⏰), which then fails the
+#    module as "incomplete" even though nothing is wrong with it.
 FAILED=0
 while read -r module testfile ranges; do
   bash scripts/test/mutation.sh "$module" "$testfile" "${ranges:-[]}" &
-  if [ "$(jobs -r -p | wc -l)" -ge 4 ]; then
+  if [ "$(jobs -r -p | wc -l)" -ge 2 ]; then
     wait -n || FAILED=1
   fi
 done < /tmp/mutation-modules.txt
