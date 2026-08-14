@@ -7,7 +7,6 @@ routing, status codes, response bodies, and auth checks.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.services.analytics_service import AnalyticsEvents
 
@@ -586,7 +585,6 @@ class TestBotChatStreamMetering:
             patch("app.decorators.rate_limiting.tiered_limiter.check_and_increment", limiter),
         )
 
-    @pytest.mark.regression
     async def test_a_bot_turn_charges_the_chat_messages_quota(self, client: AsyncClient):
         limiter = AsyncMock(return_value={})
         p = self._patches(limiter)
@@ -604,7 +602,6 @@ class TestBotChatStreamMetering:
         assert limiter.await_args.kwargs["feature_key"] == "chat_messages"
         assert limiter.await_args.kwargs["user_id"] == "u_bot_1"
 
-    @pytest.mark.regression
     async def test_a_bot_turn_checks_the_daily_cost_wall_too(self, client: AsyncClient):
         """Web chat charges TWO walls: how many messages, and how expensive the
         day has been. Metering only the first left a bot user over budget with a
