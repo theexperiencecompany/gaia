@@ -126,6 +126,34 @@ class TestRecordCost:
         increment.assert_awaited_once()
         assert increment.await_args.kwargs[token_field] == 7
 
+    async def test_priced_spend_lands_even_when_the_token_counts_are_missing(
+        self, increment: AsyncMock
+    ) -> None:
+        # The mirror image of the pricing miss: a provider that priced the call
+        # but returned no usage metadata. Spend without tokens is still spend,
+        # and dropping it would under-bill the day's rollup against Redis.
+        await record_cost(USER, 0.02, charged=True)
+
+        increment.assert_awaited_once_with(
+            USER,
+            TODAY,
+            cost=0.02,
+            input_tokens=0,
+            output_tokens=0,
+            cached_tokens=0,
+            reasoning_tokens=0,
+        )
+
+    async def test_spend_is_charged_unless_the_caller_says_otherwise(
+        self, increment: AsyncMock
+    ) -> None:
+        # Defaulting to the aux bucket would quietly stop the durable rollup
+        # mirroring the Redis windows the wall enforces.
+        await record_cost(USER, 0.02, input_tokens=300)
+
+        assert "cost" in increment.await_args.kwargs
+        assert "aux_cost" not in increment.await_args.kwargs
+
     async def test_a_call_with_no_spend_and_no_tokens_writes_nothing(
         self, increment: AsyncMock
     ) -> None:
@@ -237,6 +265,34 @@ class TestGetActivity:
         assert result.days[-1].input_tokens == 0
         assert result.days[-1].cached_tokens == 0
         assert result.days[-1].reasoning_tokens == 0
+
+    async def test_the_window_is_read_for_this_user_from_the_first_day_shown(
+        self, rollups: AsyncMock
+    ) -> None:
+        # Both arguments are load-bearing: the wrong user_id serves someone
+        # else's activity, and the wrong start day silently truncates or
+        # over-reads the grid the percentile is then computed from.
+        await get_activity(USER, 2)
+
+        rollups.assert_awaited_once_with(USER, "2026-03-03")
+
+    async def test_an_earned_tier_and_its_percentile_reach_the_response(
+        self, rollups: AsyncMock
+    ) -> None:
+        # The badge is the whole point of the percentile pass — dropping it on
+        # the way out leaves a user who earned gold seeing no badge at all.
+        rollups.return_value = [_row(TODAY, count=100)]
+        usage_daily_repository.rank_thresholds.return_value = {  # type: ignore[attr-defined]
+            "p999": 1000.0,
+            "p99": 90.0,
+            "p90": 50.0,
+            "p75": 10.0,
+        }
+
+        result = await get_activity(USER, 365)
+
+        assert result.tier == "gold"
+        assert result.percentile == 99.0
 
     async def test_a_row_predating_the_token_fields_contributes_its_count_and_zero_tokens(
         self, rollups: AsyncMock

@@ -249,6 +249,11 @@ class TestWrapupThreshold:
     def test_stays_quiet_at_zero_spend(self, plan: PlanType) -> None:
         assert is_budget_wrapup_threshold(0.0, plan) is False
 
+    # NB: the zero-budget guard's own test lives in
+    # tests/unit/middleware/test_accounting.py — that is the file the mutation
+    # gate runs cost_budget.py against, so a test here would never see the
+    # mutant. See the comment there.
+
     @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
     def test_is_still_true_once_the_hard_wall_binds(self, plan: PlanType) -> None:
         # The nudge is a subset of exhaustion, not an alternative to it — the
