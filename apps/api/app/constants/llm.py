@@ -108,6 +108,13 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
+# Sticky-flip retry: when a large call's cache read is below this fraction of
+# its prompt (the request landed on a cold provider after the ~5-minute sticky
+# expiry — a known OpenRouter behavior), re-send it once — the first attempt
+# wrote the chain there and the re-send hits it (~90%).
+STICKY_FLIP_RETRY_MIN_HIT = 0.5
+STICKY_FLIP_RETRY_MIN_INPUT = 8_000
+
 # Total wall-clock ceiling for one ainvoke_llm call — retries, backoff sleeps and the
 # fallback attempt included. A backstop against a provider that accepts the connection
 # and then never answers, which no retry can rescue because nothing ever raises.

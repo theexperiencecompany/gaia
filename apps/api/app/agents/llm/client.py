@@ -45,6 +45,8 @@ from app.constants.llm import (
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
+    STICKY_FLIP_RETRY_MIN_HIT,
+    STICKY_FLIP_RETRY_MIN_INPUT,
     VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
@@ -598,9 +600,28 @@ async def ainvoke_llm(
     try:
         async with asyncio.timeout(timeout):
             try:
-                return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
+                result = await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
                     messages, config=_with_usage_handler(config, usage_handler)
                 )
+                # OpenRouter's sticky routing expires after ~5 minutes and the
+                # next request lands on a cold provider (a known OpenRouter
+                # behavior) — the conversation's chain reads static-only or
+                # nothing. The first attempt just WROTE the chain onto that
+                # provider, so one immediate re-send hits it (~90%). Cheap: the
+                # re-send is almost fully cached and only fires on the flipped
+                # turns.
+                usage = getattr(result, "usage_metadata", None) or {}
+                details = usage.get("input_token_details") or {}
+                cached = details.get("cache_read") or 0
+                prompt = usage.get("input_tokens") or 0
+                if (
+                    prompt >= STICKY_FLIP_RETRY_MIN_INPUT
+                    and cached < prompt * STICKY_FLIP_RETRY_MIN_HIT
+                ):
+                    result = await with_llm_retry(primary, max_attempts=1).ainvoke(
+                        messages, config=_with_usage_handler(config, usage_handler)
+                    )
+                return result
             except LLM_FALLBACK_EXCEPTIONS as primary_error:
                 # Sticky: once we fall back, later calls in this run must use the
                 # fallback directly — alternating the request's model field per
