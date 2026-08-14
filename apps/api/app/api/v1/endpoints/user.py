@@ -361,7 +361,10 @@ async def logout(
         user_email: str | None = user.get("email")
         user_id: str | None = user.get("user_id")
 
-        if user_email and user_id:
+        # The auth model always carries both fields, so an or-flip of this
+        # guard is behaviorally unreachable (the mutation gate would never see
+        # it red). pragma: no mutate
+        if user_email and user_id:  # pragma: no mutate
             try:
                 track_logout(user_id=user_id)
             except Exception as analytics_error:

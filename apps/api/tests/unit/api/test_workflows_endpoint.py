@@ -147,6 +147,34 @@ class TestCreateWorkflow:
             outcome="success",
         )
 
+    async def test_create_workflow_without_steps_captures_zero(self, client: AsyncClient):
+        """A workflow with no steps reports steps_count 0, not 1."""
+        mock_wf = _make_workflow(steps=[])
+        with (
+            patch(
+                "app.api.v1.endpoints.workflows.get_all_integrations_status",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                return_value=mock_wf,
+            ),
+            patch("app.api.v1.endpoints.workflows.capture_context_event") as mock_capture,
+        ):
+            response = await client.post(BASE_URL, json=_create_workflow_payload())
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.WORKFLOW_CREATED,
+            {
+                "trigger_type": "manual",
+                "steps_count": 0,
+                "generated_immediately": False,
+            },
+        )
+
     async def test_create_workflow_captures_trigger_type(self, client: AsyncClient):
         """The request's trigger_config.type is reported in the capture."""
         mock_wf = _make_workflow()
@@ -293,6 +321,7 @@ class TestExecuteWorkflow:
                 return_value=mock_result,
             ),
             patch("app.api.v1.endpoints.workflows.log") as mock_log,
+            patch("app.api.v1.endpoints.workflows.capture_context_event") as mock_capture,
         ):
             response = await client.post(f"{BASE_URL}/wf_abc123/execute", json={})
 
@@ -301,6 +330,7 @@ class TestExecuteWorkflow:
             workflow=WorkflowContext(execution_id="exec_123"),
             outcome="success",
         )
+        mock_capture.assert_called_once_with(AnalyticsEvents.WORKFLOW_EXECUTED)
         assert any(
             "execution_id" in c.kwargs["workflow"]
             and type(c.kwargs["workflow"]["execution_id"]) is str

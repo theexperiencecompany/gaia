@@ -143,6 +143,11 @@ class TestRemoveIntegrationFromWorkspace:
         mock_remove.assert_awaited_once_with("507f1f77bcf86cd799439011", "integ-001")
         mock_capture.assert_not_called()
         mock_log.warning.assert_called_once()
+        assert "Failed to read connection status" in mock_log.warning.call_args.args[0]
+        assert mock_log.warning.call_args.kwargs["integration_id"] == "integ-001"
+        assert mock_log.warning.call_args.kwargs["user_id"] == "507f1f77bcf86cd799439011"
+        assert mock_log.warning.call_args.kwargs["error_type"] == "RuntimeError"
+        assert mock_log.warning.call_args.kwargs["error"] == "mongo down"
 
     async def test_remove_not_found_is_404(self, client: AsyncClient) -> None:
         with (
@@ -158,4 +163,5 @@ class TestRemoveIntegrationFromWorkspace:
             resp = await client.delete(f"{BASE}/missing")
 
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Integration not found in workspace"
         mock_capture.assert_not_called()

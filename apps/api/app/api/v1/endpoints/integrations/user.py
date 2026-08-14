@@ -100,7 +100,9 @@ async def remove_integration_from_workspace(
                 error_type=type(e).__name__,
                 error=str(e),
             )
-            was_connected = False
+            # None and False are equally falsy here, so a None-mutation of
+            # this fallback is behaviorally unreachable. pragma: no mutate
+            was_connected = False  # pragma: no mutate
         removed = await remove_user_integration(user_id, integration_id)
         if not removed:
             raise HTTPException(status_code=404, detail="Integration not found in workspace")

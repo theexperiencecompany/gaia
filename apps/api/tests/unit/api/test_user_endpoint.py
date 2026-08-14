@@ -362,10 +362,12 @@ class TestLogout:
         session.get_logout_url.return_value = "https://auth.example.com/logout"
         mock_workos.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")
-        response = await client.post(f"{USER_BASE}/logout")
+        with patch("app.api.v1.endpoints.user.track_logout") as mock_track:
+            response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 200
         data = response.json()
         assert "logout_url" in data
+        mock_track.assert_called_once_with(user_id="507f1f77bcf86cd799439011")
 
     @patch("app.api.v1.endpoints.user.workos")
     @patch("app.api.v1.endpoints.user.track_logout", side_effect=RuntimeError("ph down"))

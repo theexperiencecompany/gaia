@@ -654,7 +654,10 @@ class TestBatchUpdateEvents:
             AnalyticsEvents.CALENDAR_EVENT_UPDATED,
             {"batch_size": 1, "success_count": 1, "failure_count": 0},
         )
-        assert all(arg is not None for call in mock_update.await_args_list for arg in call.args)
+        assert all(
+            len(call.args) == 2 and all(arg is not None for arg in call.args)
+            for call in mock_update.await_args_list
+        )
 
     async def test_batch_update_partial_failure(self, client: AsyncClient) -> None:
         with (
@@ -719,7 +722,10 @@ class TestBatchDeleteEvents:
             AnalyticsEvents.CALENDAR_EVENT_DELETED,
             {"batch_size": 1, "success_count": 1, "failure_count": 0},
         )
-        assert all(arg is not None for call in mock_delete.await_args_list for arg in call.args)
+        assert all(
+            len(call.args) == 2 and all(arg is not None for arg in call.args)
+            for call in mock_delete.await_args_list
+        )
 
     async def test_batch_delete_partial_failure(self, client: AsyncClient) -> None:
         with (
@@ -805,6 +811,7 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_CREATED)
+        assert len(mock_svc.create_calendar_event.await_args.args) == 2
         assert all(arg is not None for arg in mock_svc.create_calendar_event.await_args.args)
         mock_log.set.assert_any_call(
             user={"id": USER_ID},
@@ -848,6 +855,7 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_UPDATED)
+        assert len(mock_update.await_args.args) == 2
         assert all(arg is not None for arg in mock_update.await_args.args)
         mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "update_event"})
 
@@ -865,6 +873,7 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_DELETED)
+        assert len(mock_delete.await_args.args) == 2
         assert all(arg is not None for arg in mock_delete.await_args.args)
         mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "delete_event"})
 
