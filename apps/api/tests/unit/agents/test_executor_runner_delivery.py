@@ -1190,6 +1190,22 @@ class TestDeferredFollowUpPush:
         ws.assert_not_awaited()
 
 
+def _logged(mock, level: str) -> tuple[str, dict]:
+    """(message, kwargs) of the last call at ``level``, message asserted real.
+
+    warning/error/critical/exception put BOTH halves on the wide event —
+    wide_events._append stores ``{"msg": message, **kwargs}`` — so a blanked or
+    dropped message is a real regression in errors[]/warnings[], not prose. The
+    wording is deliberately not pinned; that it exists at all is.
+    """
+    call = getattr(mock, level).call_args
+    assert call is not None, f"nothing was logged at {level}"
+    assert call.args and isinstance(call.args[0], str) and call.args[0].strip(), (
+        f"{level} was emitted with no message — errors[] would carry msg=None"
+    )
+    return call.args[0], call.kwargs
+
+
 class TestFailurePathsAreDiagnosable:
     """Every branch here drops a user's result on the floor. The structured
     fields on the log line are the only way to find out which conversation and
@@ -1229,30 +1245,26 @@ class TestFailurePathsAreDiagnosable:
     async def test_a_missing_original_message_names_what_was_looked_for(self) -> None:
         log = await self._merge_with_log(existing=None)
 
-        assert log.error.call_args.kwargs == {
-            "conversation_id": "conv-1",
-            "message_id": "orig-msg-1",
-        }
+        _msg, kwargs = _logged(log, "error")
+        assert kwargs == {"conversation_id": "conv-1", "message_id": "orig-msg-1"}
 
     async def test_a_response_write_that_matched_nothing_names_the_message(self) -> None:
         existing = MessageModel(type="bot", response="old", date="2026-01-01")
 
         log = await self._merge_with_log(existing=existing, set_response=False)
 
-        assert log.error.call_args.kwargs == {
-            "conversation_id": "conv-1",
-            "message_id": "orig-msg-1",
-        }
+        _msg, kwargs = _logged(log, "error")
+        assert kwargs == {"conversation_id": "conv-1", "message_id": "orig-msg-1"}
 
     async def test_a_dropped_card_write_names_the_message(self) -> None:
         existing = MessageModel(type="bot", response="old", date="2026-01-01")
 
         log = await self._merge_with_log(existing=existing, set_tool_data=False)
 
-        assert log.error.call_args.kwargs == {
-            "conversation_id": "conv-1",
-            "message_id": "orig-msg-1",
-        }
+        msg, kwargs = _logged(log, "error")
+        assert kwargs == {"conversation_id": "conv-1", "message_id": "orig-msg-1"}
+        # The two adjacent literals must still join into one sentence.
+        assert msg.endswith("dropping cards")
 
     async def test_a_failed_outcomes_lookup_reports_the_cause(self) -> None:
         with (
@@ -1265,7 +1277,8 @@ class TestFailurePathsAreDiagnosable:
         ):
             await rd._approval_outcomes_note(_run(RunKind.QUEUED, bot_message_id="orig-msg-1"))
 
-        assert log.warning.call_args.kwargs == {"error": "mongo down"}
+        _msg, kwargs = _logged(log, "warning")
+        assert kwargs == {"error": "mongo down"}
 
 
 class TestDeletedConversationIsNotAnError:
@@ -1303,7 +1316,8 @@ class TestDeletedConversationIsNotAnError:
         )
 
         assert result == (None, None)
-        assert log.error.call_args.kwargs["error"] == "500: mongo exploded"
+        _msg, kwargs = _logged(log, "error")
+        assert kwargs["error"] == "500: mongo exploded"
         assert not log.info.called, "a real failure was downgraded to info"
 
     async def test_a_non_http_failure_also_carries_its_cause(self) -> None:
@@ -1313,5 +1327,6 @@ class TestDeletedConversationIsNotAnError:
         result, log = await self._deliver_with_save_raising(RuntimeError("connection reset"))
 
         assert result == (None, None)
-        assert log.error.call_args.kwargs["error"] == "connection reset"
+        _msg, kwargs = _logged(log, "error")
+        assert kwargs["error"] == "connection reset"
         assert not log.info.called
