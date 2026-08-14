@@ -85,7 +85,7 @@ class TestRemoveIntegrationFromWorkspace:
                 f"{_USER}.remove_user_integration",
                 new_callable=AsyncMock,
                 return_value=True,
-            ),
+            ) as mock_remove,
             patch(f"{_USER}.capture_context_event") as mock_capture,
         ):
             mock_repo.is_connected = AsyncMock(return_value=True)
@@ -93,6 +93,7 @@ class TestRemoveIntegrationFromWorkspace:
 
         assert resp.status_code == 200
         mock_repo.is_connected.assert_awaited_once_with("507f1f77bcf86cd799439011", "integ-001")
+        mock_remove.assert_awaited_once_with("507f1f77bcf86cd799439011", "integ-001")
         mock_capture.assert_called_once_with(
             AnalyticsEvents.INTEGRATION_DISCONNECTED,
             {"integration_id": "integ-001"},
@@ -105,14 +106,36 @@ class TestRemoveIntegrationFromWorkspace:
                 f"{_USER}.remove_user_integration",
                 new_callable=AsyncMock,
                 return_value=True,
-            ),
+            ) as mock_remove,
             patch(f"{_USER}.capture_context_event") as mock_capture,
         ):
             mock_repo.is_connected = AsyncMock(return_value=False)
             resp = await client.delete(f"{BASE}/integ-001")
 
         assert resp.status_code == 200
+        mock_remove.assert_awaited_once_with("507f1f77bcf86cd799439011", "integ-001")
         mock_capture.assert_not_called()
+
+    async def test_remove_status_lookup_failure_keeps_removal(self, client: AsyncClient) -> None:
+        """A failed connection-status read must not block the removal — it is
+        an analytics-only read."""
+        with (
+            patch(f"{_USER}.user_integration_repository") as mock_repo,
+            patch(
+                f"{_USER}.remove_user_integration",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_remove,
+            patch(f"{_USER}.capture_context_event") as mock_capture,
+            patch(f"{_USER}.log") as mock_log,
+        ):
+            mock_repo.is_connected = AsyncMock(side_effect=RuntimeError("mongo down"))
+            resp = await client.delete(f"{BASE}/integ-001")
+
+        assert resp.status_code == 200
+        mock_remove.assert_awaited_once_with("507f1f77bcf86cd799439011", "integ-001")
+        mock_capture.assert_not_called()
+        mock_log.warning.assert_called_once()
 
     async def test_remove_not_found_is_404(self, client: AsyncClient) -> None:
         with (

@@ -136,6 +136,7 @@ class TestCreateWorkflow:
                 "generated_immediately": False,
             },
         )
+        assert type(mock_capture.call_args.args[1]["trigger_type"]) is str
         mock_log.set.assert_any_call(
             workflow=WorkflowContext(
                 id="wf_abc123",
@@ -176,6 +177,7 @@ class TestCreateWorkflow:
                 "generated_immediately": False,
             },
         )
+        assert type(mock_capture.call_args.args[1]["trigger_type"]) is str
 
     async def test_create_workflow_missing_title_returns_422(self, client: AsyncClient):
         response = await client.post(

@@ -792,6 +792,7 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_CREATED)
+        assert all(arg is not None for arg in mock_svc.create_calendar_event.await_args.args)
 
     async def test_update_event_captures_event_updated(self, client: AsyncClient) -> None:
         with (
@@ -807,6 +808,7 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_UPDATED)
+        assert all(arg is not None for arg in mock_update.await_args.args)
 
     async def test_delete_event_captures_event_deleted(self, client: AsyncClient) -> None:
         with (
@@ -821,6 +823,7 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_DELETED)
+        assert all(arg is not None for arg in mock_delete.await_args.args)
 
     async def test_batch_create_captures_counts(self, client: AsyncClient) -> None:
         with (
@@ -840,4 +843,10 @@ class TestCalendarAnalytics:
         mock_capture.assert_called_once_with(
             AnalyticsEvents.CALENDAR_EVENT_CREATED,
             {"batch_size": 2, "success_count": 2, "failure_count": 0},
+        )
+        assert mock_svc.create_calendar_event.await_count == 2
+        assert all(
+            arg is not None
+            for call in mock_svc.create_calendar_event.await_args_list
+            for arg in call.args
         )

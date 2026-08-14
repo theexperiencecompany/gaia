@@ -135,6 +135,7 @@ class TestGetUsageSummary:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.USAGE_QUERIED, {"plan_type": "free"})
+        assert type(mock_capture.call_args.args[1]["plan_type"]) is str
 
     async def test_get_summary_pro_plan(self, client: AsyncClient):
         mock_sub = _mock_subscription("pro")

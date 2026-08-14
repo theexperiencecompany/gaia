@@ -16,6 +16,7 @@ from app.models.payment_models import (
     CreateSubscriptionResponse,
     PaymentVerificationResponse,
 )
+from app.services.analytics_service import AnalyticsEvents
 
 PLANS_URL = "/api/v1/payments/plans"
 SUBSCRIPTIONS_URL = "/api/v1/payments/subscriptions"
@@ -154,12 +155,16 @@ class TestCreateSubscription:
                 status="payment_link_created",
             ),
         ) as mock_create:
-            await client.post(
-                SUBSCRIPTIONS_URL,
-                json={"product_id": "prod_abc"},
-            )
+            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+                await client.post(
+                    SUBSCRIPTIONS_URL,
+                    json={"product_id": "prod_abc"},
+                )
 
         mock_create.assert_awaited_once_with("507f1f77bcf86cd799439011", "prod_abc", 1)
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED, {"quantity": 1}
+        )
 
     async def test_create_subscription_missing_product_id_returns_422(self, client: AsyncClient):
         response = await client.post(SUBSCRIPTIONS_URL, json={})

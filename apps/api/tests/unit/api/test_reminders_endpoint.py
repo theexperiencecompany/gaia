@@ -163,6 +163,31 @@ class TestReminderAnalytics:
             AnalyticsEvents.REMINDER_CREATED, {"is_recurring": False}
         )
 
+    async def test_create_recurring_reminder_captures_is_recurring(
+        self, client: AsyncClient
+    ) -> None:
+        mock_reminder = _reminder_model("rem_recur")
+        mock_reminder.repeat = "0 9 * * *"
+        with (
+            patch(
+                "app.api.v1.endpoints.reminders.reminder_scheduler.create_reminder",
+                new_callable=AsyncMock,
+                return_value="rem_recur",
+            ),
+            patch(
+                "app.api.v1.endpoints.reminders.reminder_scheduler.get_reminder",
+                new_callable=AsyncMock,
+                return_value=mock_reminder,
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            resp = await client.post(API, json={**_create_payload(), "repeat": "0 9 * * *"})
+
+        assert resp.status_code == 201
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.REMINDER_CREATED, {"is_recurring": True}
+        )
+
     async def test_cancel_captures_reminder_deleted(self, client: AsyncClient) -> None:
         with (
             patch(
