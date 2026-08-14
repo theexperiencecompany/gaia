@@ -342,26 +342,21 @@ mut_lines = _normalized(mut_raw)
 if orig_lines == mut_lines:
     print("EQUIV")
     sys.exit(0)
-# log.debug/log.info only emit a loguru line — verified in
-# libs/shared/py/wide_events.py, where neither calls _append()/_bump(), unlike
-# warning/error/critical/exception which land in warnings[]/errors[] on the
-# wide event. So for debug/info the WHOLE call is unassertable: its kwargs
-# never arrive anywhere a test could read them, and killing those mutants would
-# mean patching the loguru sink to pin a value nothing consumes. For the
-# recorded levels only the prose message is excluded — their kwargs ARE the
-# exception vocabulary (error_type=, ids) and are testable by capturing the log
-# record. log.audit (audit trail), log.set and log.set_ns (which ARE the wide
-# event payload) are never excluded at all.
+# The ONLY unassertable logging is log.debug/log.info. Verified in
+# libs/shared/py/wide_events.py: those two just emit a loguru line, while
+# warning/error/critical/exception call _append(), which stores
+# entry = {"msg": message, **kwargs} on the wide event. So on the recorded
+# levels BOTH the message and the kwargs land in warnings[]/errors[] — a
+# consumed, queryable surface that tests already assert against
+# (tests/integration/api/test_wide_event_contracts.py) — and every mutation of
+# them is killable. log.audit, log.set and log.set_ns are likewise never
+# excluded. Only debug/info are, and for those the whole call goes: their
+# kwargs never reach anywhere a test could read them.
 _LOG_NARRATION = {"debug", "info"}
-_LOG_RECORDED = {"warning", "error", "critical", "exception"}
 
 
 def _excluded_span(path: str, line_no: int):
-    """Span of the unassertable region of the log call on line_no, or None.
-
-    The whole call for a narration-only level; just the prose message for a
-    recorded one.
-    """
+    """Span of the log.debug/log.info call covering line_no, or None."""
     try:
         tree = ast.parse(open(path).read())
     except SyntaxError:
@@ -375,21 +370,16 @@ def _excluded_span(path: str, line_no: int):
             isinstance(func, ast.Attribute)
             and isinstance(func.value, ast.Name)
             and func.value.id == "log"
-            and func.attr in (_LOG_NARRATION | _LOG_RECORDED)
+            and func.attr in _LOG_NARRATION
         ):
             continue
         if node.lineno <= line_no <= (node.end_lineno or node.lineno):
             # Innermost enclosing call wins.
-            if best is None or node.lineno > best.lineno:
+            if best is None or best.lineno < node.lineno:
                 best = node
     if best is None:
         return None
-    if best.func.attr in _LOG_NARRATION:
-        return (best.lineno, best.col_offset, best.end_lineno or best.lineno, best.end_col_offset)
-    if not best.args:
-        return None
-    msg = best.args[0]
-    return (msg.lineno, msg.col_offset, msg.end_lineno or msg.lineno, msg.end_col_offset)
+    return (best.lineno, best.col_offset, best.end_lineno or best.lineno, best.end_col_offset)
 
 
 def _within(span, line_no: int, col: int) -> bool:
@@ -415,15 +405,20 @@ def _first_differing_col(before: str, after: str) -> int:
 for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
     if a != b:
         line_no = orig_line + 1 + i
+        # Diff scope FIRST. A logging mutant on a line the PR never touched is
+        # already out of scope, and classifying it LOGGING inflates the
+        # exclusion column into looking far more load-bearing than it is.
+        ranges = json.loads(changed_ranges) if changed_ranges else []
+        if not any(start <= line_no <= end for start, end in ranges):
+            print(f"UNCHANGED:{line_no}")
+            sys.exit(1)
         span = _excluded_span(f"{workdir}/{module_path}", line_no)
         # Raw (un-normalized) lines: the cast() rewrite above shifts columns.
         col = _first_differing_col(orig_raw[i], mut_raw[i])
         if span is not None and _within(span, line_no, col):
             print(f"LOGGING:{line_no}")
             sys.exit(1)
-        ranges = json.loads(changed_ranges) if changed_ranges else []
-        in_changed = any(start <= line_no <= end for start, end in ranges)
-        print(f"CHANGED:{line_no}" if in_changed else f"UNCHANGED:{line_no}")
+        print(f"CHANGED:{line_no}")
         sys.exit(1)
 print("EQUIV")
 sys.exit(0)
@@ -445,16 +440,24 @@ $line" ;;
     esac
   done <<< "$SURVIVORS"
 fi
+if [ -n "$UNCHANGED" ]; then
+  echo "NOTE: survivor(s) on lines the PR did not touch (diff-driven gate):" >&2
+  echo "$UNCHANGED" >&2
+fi
+if [ -n "$EQUIVALENT" ]; then
+  echo "NOTE: equivalent mutant(s) (cast()-arg changes only — runtime no-ops by" >&2
+  echo "      typing.cast's contract):" >&2
+  echo "$EQUIVALENT" >&2
+fi
 if [ -n "$LOGGING" ]; then
   LOGGING_COUNT=$(printf '%s\n' "$LOGGING" | grep -c . || true)
-  echo "NOTE: $LOGGING_COUNT mutant(s) excluded as logging-only — the mutation rewrote" >&2
-  echo "      the human-readable MESSAGE of a log.debug/info/warning/error/exception" >&2
-  echo "      call, which no test may assert on (tests/CLAUDE.md: behaviour, not log" >&2
-  echo "      output). Scoped by column to that argument alone: a structured kwarg on" >&2
-  echo "      the same line (error_type=, ids — the vocabulary dashboards and the" >&2
-  echo "      evlog-map lane read) stays a survivor, as does log.set/set_ns/audit and" >&2
-  echo "      anything outside the call. Printed before the verdict so an exclusion is" >&2
-  echo "      never invisible, including on a failing run:" >&2
+  echo "NOTE: $LOGGING_COUNT mutant(s) excluded as logging-only — the mutation lands" >&2
+  echo "      inside a log.debug/log.info call, the only two levels that never reach" >&2
+  echo "      the wide event (wide_events.py: they emit a loguru line and stop, while" >&2
+  echo "      warning/error/critical/exception _append msg AND kwargs to" >&2
+  echo "      warnings[]/errors[], where a test can and should assert them). Counted" >&2
+  echo "      only for mutants on lines the PR changed, and printed before the" >&2
+  echo "      verdict so an exclusion is never invisible, including on a failing run:" >&2
   echo "$LOGGING" >&2
 fi
 if [ -n "$REAL_SURVIVORS" ]; then
@@ -464,14 +467,5 @@ if [ -n "$REAL_SURVIVORS" ]; then
 fi
 if [ "${NO_TESTS:-0}" -gt 0 ]; then
   echo "NOTE: $NO_TESTS mutant(s) had no covering tests (uncovered branches)." >&2
-fi
-if [ -n "$UNCHANGED" ]; then
-  echo "NOTE: survivor(s) on lines the PR did not touch (diff-driven gate):" >&2
-  echo "$UNCHANGED" >&2
-fi
-if [ -n "$EQUIVALENT" ]; then
-  echo "NOTE: equivalent mutant(s) (cast()-arg changes only — runtime no-ops by" >&2
-  echo "      typing.cast's contract):" >&2
-  echo "$EQUIVALENT" >&2
 fi
 echo "Mutation: OK — no survivors on changed lines in $MODULE"
