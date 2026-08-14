@@ -486,6 +486,50 @@ services:
         condition: any
         delay: 5s
 
+  imessage-bot:
+    image: ghcr.io/theexperiencecompany/gaia-bot-imessage:${GAIA_BOTS_IMAGE_TAG:-latest}
+    environment:
+      BOT_SERVER_PORT: "3204"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ENV: production
+    secrets:
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
+    ports:
+      # Nginx proxies /bots/imessage/* (Photon webhook). ingress (not host) so
+      # rolling updates are zero-downtime; the Hetzner firewall keeps the port
+      # localhost-only. Do not remove the firewall rule.
+      - target: 3204
+        published: 3204
+        protocol: tcp
+        mode: ingress
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - imessage-bot
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3204/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
   # ---------------------------------------------------------------------------
   # Infrastructure
   # ---------------------------------------------------------------------------
