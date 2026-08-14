@@ -367,6 +367,25 @@ class TestLogout:
         data = response.json()
         assert "logout_url" in data
 
+    @patch("app.api.v1.endpoints.user.workos")
+    @patch("app.api.v1.endpoints.user.track_logout", side_effect=RuntimeError("ph down"))
+    async def test_logout_track_failure_is_logged_not_fatal(
+        self, mock_track: MagicMock, mock_workos: MagicMock, client: AsyncClient
+    ):
+        """A PostHog tracking failure must not break the logout flow — it is
+        logged and the redirect still happens."""
+        session = MagicMock()
+        session.get_logout_url.return_value = "https://auth.example.com/logout"
+        mock_workos.user_management.load_sealed_session.return_value = session
+        client.cookies.set("wos_session", "sealed_token")
+        with patch("app.api.v1.endpoints.user.log") as mock_log:
+            response = await client.post(f"{USER_BASE}/logout")
+        assert response.status_code == 200
+        assert "logout_url" in response.json()
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.kwargs["error_type"] == "RuntimeError"
+        assert mock_log.warning.call_args.kwargs["error"] == "ph down"
+
     async def test_logout_no_session_cookie(self, client: AsyncClient):
         response = await client.post(f"{USER_BASE}/logout")
         assert response.status_code == 401

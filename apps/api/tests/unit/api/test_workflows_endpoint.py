@@ -301,6 +301,12 @@ class TestExecuteWorkflow:
             workflow=WorkflowContext(execution_id="exec_123"),
             outcome="success",
         )
+        assert any(
+            "execution_id" in c.kwargs["workflow"]
+            and type(c.kwargs["workflow"]["execution_id"]) is str
+            for c in mock_log.set.call_args_list
+            if "workflow" in c.kwargs
+        )
 
     async def test_execute_workflow_with_context(self, client: AsyncClient):
         mock_result = WorkflowExecutionResponse(

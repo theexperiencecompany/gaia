@@ -87,6 +87,7 @@ class TestRemoveIntegrationFromWorkspace:
                 return_value=True,
             ) as mock_remove,
             patch(f"{_USER}.capture_context_event") as mock_capture,
+            patch(f"{_USER}.log") as mock_log,
         ):
             mock_repo.is_connected = AsyncMock(return_value=True)
             resp = await client.delete(f"{BASE}/integ-001")
@@ -94,6 +95,12 @@ class TestRemoveIntegrationFromWorkspace:
         assert resp.status_code == 200
         mock_repo.is_connected.assert_awaited_once_with("507f1f77bcf86cd799439011", "integ-001")
         mock_remove.assert_awaited_once_with("507f1f77bcf86cd799439011", "integ-001")
+        mock_log.set.assert_any_call(
+            operation="remove_integration_from_workspace",
+            integration_id="integ-001",
+            user={"id": "507f1f77bcf86cd799439011"},
+            integration={"id": "integ-001"},
+        )
         mock_capture.assert_called_once_with(
             AnalyticsEvents.INTEGRATION_DISCONNECTED,
             {"integration_id": "integ-001"},
