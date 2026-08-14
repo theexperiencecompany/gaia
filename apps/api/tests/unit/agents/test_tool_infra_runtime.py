@@ -12,6 +12,7 @@ import pytest
 from app.agents.core.subagents.base_subagent import SubAgentFactory
 from app.agents.core.subagents.spawn_agent import _build_spawn_graph
 from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.tools.core import retrieval as retrieval_module
 from app.agents.tools.core.registry import ToolRegistry
 from app.agents.tools.core.retrieval import (
     _render_discovery_response,
@@ -998,3 +999,68 @@ async def test_a_query_that_matches_nothing_says_so_and_echoes_the_query():
     payload = json.loads(result["response_text"])
     assert payload["search_matched_nothing"] is True
     assert payload["query"] == "send a carrier pigeon"
+
+
+def _zero_hit_warnings(log) -> list[dict[str, Any]]:
+    """Kwargs of the 'namespace has no indexed docs' warnings only.
+
+    Retrieval warns about several unrelated things in one call (an MCP lookup
+    that failed, for one), so a bare log.warning.called cannot tell them apart.
+    """
+    return [
+        call.kwargs
+        for call in log.warning.call_args_list
+        if "tool_space" in call.kwargs and "user_id" in call.kwargs
+    ]
+
+
+async def _query(store, *, tool_space: str = "general"):
+    """Drive a query-mode retrieval and capture what it logged."""
+    retrieve_tools = get_retrieve_tools_function(tool_space=tool_space, include_subagents=False)
+    with (
+        patch(
+            "app.agents.tools.core.retrieval.get_tool_registry",
+            new=AsyncMock(return_value=_RetrieveRegistry(["normal_tool"])),
+        ),
+        patch(
+            "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
+            new=AsyncMock(return_value={"general"}),
+        ),
+        patch.object(retrieval_module, "log") as log,
+    ):
+        result = await retrieve_tools(
+            store=store,
+            config={"configurable": {"user_id": "u1"}},
+            query="anything",
+            exact_tool_names=[],
+        )
+    return result, log
+
+
+@pytest.mark.asyncio
+async def test_a_dead_index_warns_operators_even_in_the_general_namespace():
+    """This dropped its `and tool_space != "general"` guard. General is the
+    namespace every executor searches, so an index that wrote no docs there was
+    the outage the warning exists for — and the one case it stayed silent for."""
+    _result, log = await _query(_FakeStore({}))
+
+    dead_index = _zero_hit_warnings(log)
+    assert dead_index, "a namespace with zero indexed docs reported nothing"
+    assert dead_index[0]["tool_space"] == "general"
+    assert dead_index[0]["user_id"] == "u1"
+
+
+@pytest.mark.asyncio
+async def test_a_namespace_with_hits_is_not_reported_as_dead():
+    """Control: warning unconditionally would satisfy the test above."""
+    store = _FakeStore(
+        {
+            ("general",): [
+                SimpleNamespace(key="normal_tool", score=0.9, namespace=("general",), value={})
+            ]
+        }
+    )
+
+    _result, log = await _query(store)
+
+    assert _zero_hit_warnings(log) == []
