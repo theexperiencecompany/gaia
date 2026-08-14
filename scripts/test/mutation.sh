@@ -256,8 +256,10 @@ fi
 # a failure. "not checked" mutants mean the run was interrupted — that IS a
 # failure (incomplete evidence). Survivors are then classified: cast()-arg
 # changes are provably equivalent (typing.cast returns its argument
-# unchanged at runtime), and — the diff-driven gate — survivors on lines the
-# PR did not change are noted, not failures.
+# unchanged at runtime), so are falsy .get() defaults nothing but a
+# truthiness test consumes (see _unobservable_get_default), and — the
+# diff-driven gate — survivors on lines the PR did not change are noted,
+# not failures.
 RESULTS="$("$VENV_PY" -m mutmut results 2>/dev/null || true)"
 SURVIVORS="$(printf '%s\n' "$RESULTS" | grep "survived" || true)"
 NO_TESTS_LIST="$(printf '%s\n' "$RESULTS" | grep "no tests" || true)"
@@ -396,8 +398,15 @@ def _excluded_span(path: str, line_no: int):
     return (best.lineno, best.col_offset, best.end_lineno or best.lineno, best.end_col_offset)
 
 
-def _falsy_constant(node) -> bool:
-    return isinstance(node, ast.Constant) and not node.value
+def _falsy_literal(node) -> bool:
+    """True for a literal that is falsy — None/False/0/"" and empty containers."""
+    if isinstance(node, ast.Constant):
+        return not node.value
+    if isinstance(node, ast.List | ast.Tuple | ast.Set):
+        return not node.elts
+    if isinstance(node, ast.Dict):
+        return not node.keys
+    return False
 
 
 def _replacement(before: str, after: str) -> str | None:
@@ -414,60 +423,123 @@ def _replacement(before: str, after: str) -> str | None:
     return after[head : len(after) - tail]
 
 
-def _unobservable_get_default(path: str, line_no: int, col: int, replacement: str) -> bool:
-    """True when the mutation only changed a .get() default that cannot be seen.
+def _falsy_replacement(replacement: str) -> bool:
+    """True when the mutation put another falsy literal where the default was."""
+    stripped = replacement.strip()
+    if not stripped:
+        return True  # the argument was removed; the default becomes None
+    try:
+        return not ast.literal_eval(stripped)
+    except (ValueError, SyntaxError):
+        return False
 
-    The shape is ``d.get(key, FALSY) or FALSY`` — the or collapses every falsy
-    default to the same value, so which one is written is unobservable even on
-    the missing-key path. Deliberately NOT a blanket .get-default rule: a
-    TRUTHY default is observable (``d.get(k, 1) or 0`` returns 1 when the key
-    is absent), and a .get whose result is consumed directly rather than
-    or-ed is observable too (``len(d.get(k, []))`` raises on None). Both the
-    original default, the or fallback, and the replacement must be falsy, and
-    anything unparseable fails closed.
+
+def _boolean_consumer(node) -> bool:
+    """True when node's own value reaches only a test every falsy value answers alike."""
+    parent = getattr(node, "parent", None)
+    if isinstance(parent, ast.BoolOp) and isinstance(parent.op, ast.Or):
+        # `x or y` evaluates to y for EVERY falsy x, so which falsy x it was is lost.
+        return parent.values[-1] is not node
+    return isinstance(parent, ast.If | ast.IfExp) and parent.test is node
+
+
+def _guarded_by(node, name: str) -> bool:
+    """True when node sits in a branch that runs only while `name` is truthy."""
+    child = node
+    parent = getattr(node, "parent", None)
+    while parent is not None:
+        test = getattr(parent, "test", None)
+        if (
+            isinstance(parent, ast.If | ast.IfExp)
+            and isinstance(test, ast.Name)
+            and test.id == name
+        ):
+            body = parent.body if isinstance(parent.body, list) else [parent.body]
+            if any(child is stmt for stmt in body):
+                return True
+        child, parent = parent, getattr(parent, "parent", None)
+    return False
+
+
+def _only_boolean_uses(call) -> bool:
+    """True when nothing downstream of `call` can tell one falsy value from another."""
+    if _boolean_consumer(call):
+        return True
+    # Bound to a name first: then EVERY read of that name has to be blind to
+    # which falsy value it holds, or the default is observable after all.
+    assign = getattr(call, "parent", None)
+    if not (
+        isinstance(assign, ast.Assign)
+        and len(assign.targets) == 1
+        and isinstance(assign.targets[0], ast.Name)
+    ):
+        return False
+    target = assign.targets[0]
+    scope = assign
+    while scope is not None and not isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef):
+        scope = getattr(scope, "parent", None)
+    if scope is None:
+        return False
+    for node in ast.walk(scope):
+        if not isinstance(node, ast.Name) or node.id != target.id or node is target:
+            continue
+        if not isinstance(node.ctx, ast.Load):
+            return False  # rebound or deleted; the reads after it are another value
+        if not (_boolean_consumer(node) or _guarded_by(node, target.id)):
+            return False
+    return True
+
+
+def _unobservable_get_default(path: str, line_no: int, col: int, replacement: str) -> bool:
+    """True when the mutation only changed a .get() default nothing can observe.
+
+    A falsy default is unobservable when every consumer of the value collapses
+    all falsy values to one answer — `x or y`, `if x:`, `x if x else y`, and
+    code reachable only on the truthy side of such a test. On the missing-key
+    path each of those takes the identical branch, so no test can tell which
+    falsy default was written.
+
+    Deliberately NOT a blanket .get-default rule: the discriminator is the
+    CONSUMER, not the call. app/agents/middleware/completion.py carries both
+    verdicts on the same call shape — `state.get("messages", [])` feeding
+    `len(messages)` in current_delegation is observable (None raises, and a
+    real test kills that mutant), while the identical call in
+    reply_promises_future_work feeds only `messages[-1] if messages else None`
+    and is not. A TRUTHY default stays observable too (`d.get(k, 1) or 0`
+    returns 1 when the key is absent), and mutmut increments numeric defaults,
+    so the replacement must be falsy as well. Anything unparseable fails closed.
     """
     try:
         tree = ast.parse(open(path).read())
     except SyntaxError:
         return False
     for node in ast.walk(tree):
-        if not isinstance(node, ast.BoolOp) or not isinstance(node.op, ast.Or):
+        for child in ast.iter_child_nodes(node):
+            child.parent = node
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and len(node.args) == 2
+        ):
             continue
-        for index, value in enumerate(node.values[:-1]):
-            call = value
-            if not (
-                isinstance(call, ast.Call)
-                and isinstance(call.func, ast.Attribute)
-                and call.func.attr == "get"
-                and len(call.args) == 2
-            ):
-                continue
-            default = call.args[1]
-            if not _falsy_constant(default):
-                continue
-            if not _falsy_constant(node.values[index + 1]):
-                continue
-            if not _within(
-                (
-                    default.lineno,
-                    default.col_offset,
-                    default.end_lineno or default.lineno,
-                    default.end_col_offset,
-                ),
-                line_no,
-                col,
-            ):
-                continue
-            stripped = replacement.strip()
-            if not stripped:
-                return True  # the argument was removed; the default becomes None
-            try:
-                return not ast.literal_eval(stripped)
-            except (ValueError, SyntaxError):
-                return False
+        default = node.args[1]
+        if not _falsy_literal(default):
+            continue
+        if not _within(
+            (
+                default.lineno,
+                default.col_offset,
+                default.end_lineno or default.lineno,
+                default.end_col_offset,
+            ),
+            line_no,
+            col,
+        ):
+            continue
+        return _falsy_replacement(replacement) and _only_boolean_uses(node)
     return False
-
-
 def _within(span, line_no: int, col: int) -> bool:
     start_line, start_col, end_line, end_col = span
     if line_no < start_line or line_no > end_line:
@@ -653,8 +725,15 @@ def _excluded_span(path: str, line_no: int):
     return (best.lineno, best.col_offset, best.end_lineno or best.lineno, best.end_col_offset)
 
 
-def _falsy_constant(node) -> bool:
-    return isinstance(node, ast.Constant) and not node.value
+def _falsy_literal(node) -> bool:
+    """True for a literal that is falsy — None/False/0/"" and empty containers."""
+    if isinstance(node, ast.Constant):
+        return not node.value
+    if isinstance(node, ast.List | ast.Tuple | ast.Set):
+        return not node.elts
+    if isinstance(node, ast.Dict):
+        return not node.keys
+    return False
 
 
 def _replacement(before: str, after: str) -> str | None:
@@ -671,60 +750,123 @@ def _replacement(before: str, after: str) -> str | None:
     return after[head : len(after) - tail]
 
 
-def _unobservable_get_default(path: str, line_no: int, col: int, replacement: str) -> bool:
-    """True when the mutation only changed a .get() default that cannot be seen.
+def _falsy_replacement(replacement: str) -> bool:
+    """True when the mutation put another falsy literal where the default was."""
+    stripped = replacement.strip()
+    if not stripped:
+        return True  # the argument was removed; the default becomes None
+    try:
+        return not ast.literal_eval(stripped)
+    except (ValueError, SyntaxError):
+        return False
 
-    The shape is ``d.get(key, FALSY) or FALSY`` — the or collapses every falsy
-    default to the same value, so which one is written is unobservable even on
-    the missing-key path. Deliberately NOT a blanket .get-default rule: a
-    TRUTHY default is observable (``d.get(k, 1) or 0`` returns 1 when the key
-    is absent), and a .get whose result is consumed directly rather than
-    or-ed is observable too (``len(d.get(k, []))`` raises on None). Both the
-    original default, the or fallback, and the replacement must be falsy, and
-    anything unparseable fails closed.
+
+def _boolean_consumer(node) -> bool:
+    """True when node's own value reaches only a test every falsy value answers alike."""
+    parent = getattr(node, "parent", None)
+    if isinstance(parent, ast.BoolOp) and isinstance(parent.op, ast.Or):
+        # `x or y` evaluates to y for EVERY falsy x, so which falsy x it was is lost.
+        return parent.values[-1] is not node
+    return isinstance(parent, ast.If | ast.IfExp) and parent.test is node
+
+
+def _guarded_by(node, name: str) -> bool:
+    """True when node sits in a branch that runs only while `name` is truthy."""
+    child = node
+    parent = getattr(node, "parent", None)
+    while parent is not None:
+        test = getattr(parent, "test", None)
+        if (
+            isinstance(parent, ast.If | ast.IfExp)
+            and isinstance(test, ast.Name)
+            and test.id == name
+        ):
+            body = parent.body if isinstance(parent.body, list) else [parent.body]
+            if any(child is stmt for stmt in body):
+                return True
+        child, parent = parent, getattr(parent, "parent", None)
+    return False
+
+
+def _only_boolean_uses(call) -> bool:
+    """True when nothing downstream of `call` can tell one falsy value from another."""
+    if _boolean_consumer(call):
+        return True
+    # Bound to a name first: then EVERY read of that name has to be blind to
+    # which falsy value it holds, or the default is observable after all.
+    assign = getattr(call, "parent", None)
+    if not (
+        isinstance(assign, ast.Assign)
+        and len(assign.targets) == 1
+        and isinstance(assign.targets[0], ast.Name)
+    ):
+        return False
+    target = assign.targets[0]
+    scope = assign
+    while scope is not None and not isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef):
+        scope = getattr(scope, "parent", None)
+    if scope is None:
+        return False
+    for node in ast.walk(scope):
+        if not isinstance(node, ast.Name) or node.id != target.id or node is target:
+            continue
+        if not isinstance(node.ctx, ast.Load):
+            return False  # rebound or deleted; the reads after it are another value
+        if not (_boolean_consumer(node) or _guarded_by(node, target.id)):
+            return False
+    return True
+
+
+def _unobservable_get_default(path: str, line_no: int, col: int, replacement: str) -> bool:
+    """True when the mutation only changed a .get() default nothing can observe.
+
+    A falsy default is unobservable when every consumer of the value collapses
+    all falsy values to one answer — `x or y`, `if x:`, `x if x else y`, and
+    code reachable only on the truthy side of such a test. On the missing-key
+    path each of those takes the identical branch, so no test can tell which
+    falsy default was written.
+
+    Deliberately NOT a blanket .get-default rule: the discriminator is the
+    CONSUMER, not the call. app/agents/middleware/completion.py carries both
+    verdicts on the same call shape — `state.get("messages", [])` feeding
+    `len(messages)` in current_delegation is observable (None raises, and a
+    real test kills that mutant), while the identical call in
+    reply_promises_future_work feeds only `messages[-1] if messages else None`
+    and is not. A TRUTHY default stays observable too (`d.get(k, 1) or 0`
+    returns 1 when the key is absent), and mutmut increments numeric defaults,
+    so the replacement must be falsy as well. Anything unparseable fails closed.
     """
     try:
         tree = ast.parse(open(path).read())
     except SyntaxError:
         return False
     for node in ast.walk(tree):
-        if not isinstance(node, ast.BoolOp) or not isinstance(node.op, ast.Or):
+        for child in ast.iter_child_nodes(node):
+            child.parent = node
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and len(node.args) == 2
+        ):
             continue
-        for index, value in enumerate(node.values[:-1]):
-            call = value
-            if not (
-                isinstance(call, ast.Call)
-                and isinstance(call.func, ast.Attribute)
-                and call.func.attr == "get"
-                and len(call.args) == 2
-            ):
-                continue
-            default = call.args[1]
-            if not _falsy_constant(default):
-                continue
-            if not _falsy_constant(node.values[index + 1]):
-                continue
-            if not _within(
-                (
-                    default.lineno,
-                    default.col_offset,
-                    default.end_lineno or default.lineno,
-                    default.end_col_offset,
-                ),
-                line_no,
-                col,
-            ):
-                continue
-            stripped = replacement.strip()
-            if not stripped:
-                return True  # the argument was removed; the default becomes None
-            try:
-                return not ast.literal_eval(stripped)
-            except (ValueError, SyntaxError):
-                return False
+        default = node.args[1]
+        if not _falsy_literal(default):
+            continue
+        if not _within(
+            (
+                default.lineno,
+                default.col_offset,
+                default.end_lineno or default.lineno,
+                default.end_col_offset,
+            ),
+            line_no,
+            col,
+        ):
+            continue
+        return _falsy_replacement(replacement) and _only_boolean_uses(node)
     return False
-
-
 def _within(span, line_no: int, col: int) -> bool:
     start_line, start_col, end_line, end_col = span
     if line_no < start_line or line_no > end_line:
@@ -800,9 +942,11 @@ if [ -n "$UNCHANGED" ]; then
 fi
 if [ -n "$EQUIVALENT" ]; then
   echo "NOTE: provably equivalent mutant(s) — a cast() type argument (a runtime" >&2
-  echo "      no-op by typing.cast contract), or a falsy .get() default whose value" >&2
-  echo "      an immediate 'or FALSY' collapses. Truthy defaults are NOT covered:" >&2
-  echo "      d.get(k, 1) or 0 really does return 1 when the key is missing." >&2
+  echo "      no-op by typing.cast contract), or a falsy .get() default that only" >&2
+  echo "      ever reaches a truthiness test ('x or y', 'if x:', 'x if x else y'," >&2
+  echo "      or code such a test guards), where every falsy value takes the same" >&2
+  echo "      branch. Truthy defaults are NOT covered: d.get(k, 1) or 0 really" >&2
+  echo "      does return 1 when the key is missing." >&2
   echo "$EQUIVALENT" >&2
 fi
 if [ -n "$LOGGING" ]; then
