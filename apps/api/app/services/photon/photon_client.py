@@ -33,29 +33,20 @@ def _auth() -> tuple[str, str]:
 
 
 async def register_shared_user(phone_number: str) -> PhotonUser:
-    """Register (or return the existing) project user for a phone number."""
+    """Register the project user for a phone number (idempotent on Photon's side)."""
     auth = _auth()
     users_url = f"{SPECTRUM_API_BASE}/projects/{auth[0]}/users/"
     async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS, auth=auth) as client:
         resp = await client.post(users_url, json={"type": "shared", "phoneNumber": phone_number})
-        if resp.status_code < 400:
-            return PhotonUser.model_validate(resp.json()["data"])
 
-        # Registration is not idempotent on Photon's side — an already-registered
-        # phone fails, so fall back to finding the existing user record.
-        listing = await client.get(users_url)
-        listing.raise_for_status()
-        for raw in listing.json()["data"]:
-            user = PhotonUser.model_validate(raw)
-            if user.phoneNumber == phone_number:
-                return user
-
-    raise create_error(
-        message="Could not register your number for iMessage",
-        why=f"Photon user registration failed with HTTP {resp.status_code}",
-        fix="verify the Photon project credentials and plan user limit, then retry",
-        status_code=502,
-    )
+    if resp.status_code >= 400:
+        raise create_error(
+            message="Could not register your number for iMessage",
+            why=f"Photon user registration failed with HTTP {resp.status_code}",
+            fix="verify the Photon project credentials and plan user limit, then retry",
+            status_code=502,
+        )
+    return PhotonUser.model_validate(resp.json()["data"])
 
 
 def redirect_deep_link(photon_user_id: str) -> str:
