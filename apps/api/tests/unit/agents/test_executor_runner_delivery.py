@@ -12,7 +12,9 @@ Two invariants, both owned by ``result_delivery.py``:
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
+from uuid import UUID
 
+from fastapi import HTTPException
 import pytest
 
 from app.agents.core.background import result_delivery as rd, session as sess
@@ -875,3 +877,267 @@ class TestApprovalOutcomesNoteContent:
         assert note.startswith("\n\n[APPROVAL OUTCOMES]")
         assert "overrides anything above" in note
         assert "never say it is pending and never re-offer approve/decline" in note
+
+    async def test_the_whole_header_survives_verbatim(self) -> None:
+        """Every clause here does a job: it declares the outcomes final, tells
+        the model they beat the gate-time text, and forbids re-offering the
+        decision. A reworded half is a narrator that starts hedging again."""
+        cards = [_approval_card("a1", "pending")]
+        records = {"a1": _record("a1", HILApprovalStatus.APPROVED, tool_name="SEND_GMAIL")}
+
+        note, _ = await self._note(cards, records)
+
+        assert note == (
+            "\n\n[APPROVAL OUTCOMES] Final, decided by the user; this overrides anything above "
+            "that says an action is waiting for approval. Report each action by its outcome; "
+            "never say it is pending and never re-offer approve/decline.\n"
+            "- SEND_GMAIL: approved by the user; the action ran"
+        )
+
+
+class TestMergeToolDataBookkeeping:
+    """The upsert index has to keep pointing at the right slot as the list
+    grows, or an approval frame overwrites an unrelated card."""
+
+    def test_an_approval_first_seen_in_the_new_batch_indexes_its_own_slot(self) -> None:
+        existing = [{"tool_name": "old_tool", "data": {"keep": "me"}}]
+
+        merged = rd._merge_tool_data(
+            existing, [_approval_card("a1", "pending"), _approval_card("a1", "approved")]
+        )
+
+        # The replay must land on the approval it appended, not on index 0.
+        assert merged[0] == {"tool_name": "old_tool", "data": {"keep": "me"}}
+        assert len(merged) == 2
+        assert merged[1]["data"]["status"] == "approved"
+
+    def test_skipping_a_pending_replay_does_not_abandon_the_rest_of_the_batch(self) -> None:
+        """The replayed frame is rarely last — dropping out of the loop at it
+        loses every card the resumed run produced afterwards."""
+        merged = rd._merge_tool_data(
+            [_approval_card("a1", "approved")],
+            [_approval_card("a1", "pending"), {"tool_name": "later_tool", "data": {}}],
+        )
+
+        assert [e.get("tool_name") for e in merged] == [
+            APPROVAL_REQUEST_TOOL_NAME,
+            "later_tool",
+        ]
+        assert merged[0]["data"]["status"] == "approved"
+
+
+class TestReconcileLooksUpTheRightRecord:
+    async def test_the_lookup_uses_the_cards_own_approval_id(self) -> None:
+        """Reading a different approval's record stamps someone else's decision
+        onto this card."""
+        with patch.object(rd, "get_approval", new=AsyncMock(return_value=None)) as get_approval:
+            await rd._reconcile_approval_statuses([_approval_card("a-42", "pending")])
+
+        get_approval.assert_awaited_once_with("a-42")
+
+
+class TestMergeResumedResultFailsClosed:
+    async def test_a_run_without_a_user_id_scopes_to_empty_not_none(self) -> None:
+        """``user_id=None`` in a Mongo filter matches documents with no owner
+        rather than nothing — the scoping has to fail closed."""
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        bot_message = MessageModel(type="bot", response="new", date="2026-01-01")
+        bot_message.message_id = "orig-msg-1"
+        run = ExecutorRun(
+            stream_id="queued_s1",
+            conversation_id="conv-1",
+            user={},
+            kind=RunKind.QUEUED,
+            task_id="task-1",
+            user_message_id=None,
+            bot_message_id="orig-msg-1",
+        )
+        with (
+            patch.object(
+                rd.conversation_repository, "get_message", new=AsyncMock(return_value=existing)
+            ) as get_msg,
+            patch.object(
+                rd.conversation_repository,
+                "set_message_response",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(rd, "get_approval", new=AsyncMock(return_value=None)),
+        ):
+            await rd._merge_resumed_result(run, bot_message, None)
+
+        assert get_msg.await_args.kwargs["user_id"] == ""
+
+
+class TestDeliveredMessageIdentity:
+    """Which id the delivered message carries decides whether the frontend
+    reconciles onto the placeholder it already rendered or strands it."""
+
+    async def _deliver_run(self, run: ExecutorRun):
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(
+                rd, "_lookup_user_message_content", new_callable=AsyncMock, return_value="asked"
+            ),
+        ):
+            await rd.deliver_result(run, "raw", "final")
+        return ws.await_args.args[1]["message"]
+
+    async def test_a_queued_run_is_keyed_on_its_task_id(self) -> None:
+        message = await self._deliver_run(_run(RunKind.QUEUED, task_id="task-7"))
+
+        assert message["message_id"] == "task-7"
+        assert message["task_id"] == "task-7"
+
+    async def test_a_live_run_mints_a_fresh_id_and_advertises_no_task(self) -> None:
+        """A live run never had a task_id-keyed placeholder, so emitting the
+        task_id would point the client's replace at a key that never existed."""
+        message = await self._deliver_run(_run(RunKind.LIVE, task_id="task-7"))
+
+        # A real UUID, not just "not the task id": every live run falling back
+        # to one shared constant would collide every message in the thread.
+        UUID(message["message_id"])
+        assert "task_id" not in message
+
+    async def test_a_queued_run_quotes_the_message_it_answers(self) -> None:
+        run = ExecutorRun(
+            stream_id="",
+            conversation_id="conv-1",
+            user={"user_id": "user-1"},
+            kind=RunKind.QUEUED,
+            task_id="task-7",
+            user_message_id="user-msg-1",
+        )
+
+        message = await self._deliver_run(run)
+
+        assert message["replyToMessage"]["id"] == "user-msg-1"
+
+    async def test_a_hil_resume_never_quotes(self) -> None:
+        """It merges onto the very message that already sits under the user's
+        turn, so a quote would have the turn quoting itself."""
+        run = ExecutorRun(
+            stream_id="",
+            conversation_id="conv-1",
+            user={"user_id": "user-1"},
+            kind=RunKind.QUEUED,
+            task_id="task-7",
+            user_message_id="user-msg-1",
+            bot_message_id="orig-msg-1",
+        )
+
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(
+                rd.conversation_repository,
+                "get_message",
+                new=AsyncMock(
+                    return_value=MessageModel(type="bot", response="old", date="2026-01-01")
+                ),
+            ),
+            patch.object(
+                rd.conversation_repository,
+                "set_message_response",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(rd, "get_approval", new=AsyncMock(return_value=None)),
+        ):
+            await rd.deliver_result(run, "raw", "final")
+
+        assert "replyToMessage" not in ws.await_args.args[1]["message"]
+
+
+class TestDeletedConversationDuringDelivery:
+    async def _deliver_with_save_raising(self, exc: Exception):
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock, side_effect=exc),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+        ):
+            result = await rd.deliver_result(_run(), "raw", "final")
+        return result, ws
+
+    async def test_a_conversation_deleted_mid_run_ends_delivery_quietly(self) -> None:
+        """The user deleted the conversation while the executor worked. There is
+        nowhere to deliver to, and nothing to push."""
+        result, ws = await self._deliver_with_save_raising(HTTPException(status_code=404))
+
+        assert result == (None, None)
+        ws.assert_not_awaited()
+
+    async def test_any_other_save_failure_also_stops_delivery(self) -> None:
+        """Pushing a message that was never stored leaves the client showing a
+        turn that vanishes on reload."""
+        result, ws = await self._deliver_with_save_raising(HTTPException(status_code=500))
+
+        assert result == (None, None)
+        ws.assert_not_awaited()
+
+
+class TestMergedCardsAreActuallyWritten:
+    async def test_the_merged_list_is_what_reaches_mongo(self) -> None:
+        """Returning the merged cards while storing something else is the worst
+        shape of this bug: the live push shows them, the reload does not."""
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing.tool_data = [{"tool_name": "old_tool", "data": {}}]
+        bot_message = MessageModel(type="bot", response="new", date="2026-01-01")
+        bot_message.message_id = "orig-msg-1"
+        with (
+            patch.object(
+                rd.conversation_repository, "get_message", new=AsyncMock(return_value=existing)
+            ),
+            patch.object(
+                rd.conversation_repository,
+                "set_message_response",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(
+                rd.conversation_repository,
+                "set_message_tool_data",
+                new=AsyncMock(return_value=True),
+            ) as set_td,
+            patch.object(rd, "get_approval", new=AsyncMock(return_value=None)),
+        ):
+            merged = await rd._merge_resumed_result(
+                _run(RunKind.QUEUED, bot_message_id="orig-msg-1"),
+                bot_message,
+                [{"tool_name": "new_tool", "data": {}}],
+            )
+
+        assert set_td.await_args.kwargs["entries"] == merged
+        assert [e["tool_name"] for e in set_td.await_args.kwargs["entries"]] == [
+            "old_tool",
+            "new_tool",
+        ]
+
+    async def test_the_outcomes_lookup_also_fails_closed_without_a_user_id(self) -> None:
+        message = MessageModel(type="bot", response="x", date="2026-01-01")
+        run = ExecutorRun(
+            stream_id="",
+            conversation_id="conv-1",
+            user={},
+            kind=RunKind.QUEUED,
+            task_id="task-1",
+            user_message_id=None,
+            bot_message_id="orig-msg-1",
+        )
+        with patch.object(
+            rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
+        ) as get_msg:
+            await rd._approval_outcomes_note(run)
+
+        assert get_msg.await_args.kwargs["user_id"] == ""
