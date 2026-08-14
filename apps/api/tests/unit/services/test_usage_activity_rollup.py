@@ -282,14 +282,12 @@ class TestGetActivity:
         # The badge is the whole point of the percentile pass — dropping it on
         # the way out leaves a user who earned gold seeing no badge at all.
         rollups.return_value = [_row(TODAY, count=100)]
-        usage_daily_repository.rank_thresholds.return_value = {  # type: ignore[attr-defined]
-            "p999": 1000.0,
-            "p99": 90.0,
-            "p90": 50.0,
-            "p75": 10.0,
-        }
+        thresholds = {"p999": 1000.0, "p99": 90.0, "p90": 50.0, "p75": 10.0}
 
-        result = await get_activity(USER, 365)
+        with patch.object(
+            usage_daily_repository, "rank_thresholds", AsyncMock(return_value=thresholds)
+        ):
+            result = await get_activity(USER, 365)
 
         assert result.tier == "gold"
         assert result.percentile == 99.0

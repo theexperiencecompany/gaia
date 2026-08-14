@@ -523,7 +523,7 @@ class TestSuggestIntegrations:
 
         from app.agents.tools.integration_tool import suggest_integrations
 
-        await suggest_integrations.coroutine(config=_cfg(), query="email tools")  # type: ignore[attr-defined]
+        await suggest_integrations.ainvoke({"query": "email tools"}, config=_cfg())
         mock_list.ainvoke.assert_awaited_once()
         # Check it passed search_public_query
         call_args = mock_list.ainvoke.call_args
