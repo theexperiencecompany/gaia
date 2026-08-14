@@ -38,6 +38,7 @@ from app.models.workflow_models import (
     WorkflowResponse,
     WorkflowStatusResponse,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.oauth.oauth_service import get_all_integrations_status
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.services.workflow import WorkflowService
@@ -101,6 +102,16 @@ async def create_workflow(
                 else None,
             ),
             outcome="success",
+        )
+        capture_context_event(
+            AnalyticsEvents.WORKFLOW_CREATED,
+            {
+                "trigger_type": str(workflow.trigger_type)
+                if hasattr(workflow, "trigger_type") and workflow.trigger_type
+                else None,
+                "steps_count": len(workflow.steps) if workflow.steps else 0,
+                "generated_immediately": request.generate_immediately,
+            },
         )
         return WorkflowResponse(workflow=workflow, message="Workflow created successfully")
 
@@ -181,6 +192,7 @@ async def execute_workflow(
             ),
             outcome="success",
         )
+        capture_context_event(AnalyticsEvents.WORKFLOW_EXECUTED)
         return result
 
     except ValueError as e:
@@ -307,6 +319,7 @@ async def activate_workflow(
             )
 
         log.set(outcome="success")
+        capture_context_event(AnalyticsEvents.WORKFLOW_ACTIVATED)
         return WorkflowResponse(workflow=workflow, message="Workflow activated successfully")
 
     except TriggerRegistrationError as e:
@@ -536,6 +549,7 @@ async def publish_workflow(
             workflow_id=workflow_id,
             user_id=user["user_id"],
         )
+        capture_context_event(AnalyticsEvents.WORKFLOW_PUBLISHED)
 
         return PublishWorkflowResponse(
             message="Workflow published successfully",

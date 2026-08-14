@@ -13,6 +13,7 @@ from workos import AsyncWorkOSClient
 
 from app.api.v1.middleware import (
     LoggingMiddleware,
+    PostHogRequestContextMiddleware,
     ProfilingMiddleware,
     WorkOSAuthMiddleware,
 )
@@ -93,6 +94,10 @@ def configure_middleware(app: FastAPI) -> None:
 
     # Bot authentication (before WorkOS to allow bot auth to take precedence)
     app.add_middleware(BotAuthMiddleware)
+
+    # PostHog's context must run after WorkOS authentication has populated
+    # request.state.user, while still wrapping every downstream handler.
+    app.add_middleware(PostHogRequestContextMiddleware)
 
     # WorkOS authentication — inside the logging boundary, so its rejections
     # are logged and its log.set()/log.error() calls reach the wide event.

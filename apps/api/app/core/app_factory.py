@@ -23,6 +23,7 @@ from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.routes import router as api_router
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.core.lazy_loader import providers
 from app.core.lifespan import lifespan
 from app.core.middleware import configure_middleware
 
@@ -167,14 +168,17 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        """Return the generic 500 body for exceptions that escaped everything.
+        """Capture uncaught exceptions and return the generic 500 body.
 
-        No logging here on purpose: this handler runs in ServerErrorMiddleware,
-        OUTSIDE the LoggingMiddleware boundary, so wide-event calls would land
-        on an orphan state — and the boundary's own except path has already
-        recorded the exception and emitted the http_request line by the time
-        this runs.
+        No wide-event logging happens here: this handler runs in
+        ServerErrorMiddleware, outside the LoggingMiddleware boundary, so those
+        calls would land on an orphan state. The shared PostHog client is
+        initialized during lifespan startup and records the exception centrally.
         """
+        posthog_client = providers.get("posthog")
+        if posthog_client is not None:
+            posthog_client.capture_exception(exc)
+
         return JSONResponse(
             status_code=500,
             content={"error": "internal_server_error"},

@@ -26,6 +26,7 @@ from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import CancelStreamResponse, ConversationSource
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.chat.stream import run_chat_stream_background
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
@@ -168,6 +169,15 @@ async def chat_stream_endpoint(
         stream_id=stream_id,
         conversation_id=conversation_id,
         user_id=user_id,
+    )
+    capture_context_event(
+        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
+        {
+            "is_new_conversation": body.conversation_id is None,
+            "message_count": len(body.messages) if body.messages else 0,
+            "has_files": bool(body.fileIds or body.fileData),
+            "source": _resolve_source(request),
+        },
     )
 
     spawn_background_task(

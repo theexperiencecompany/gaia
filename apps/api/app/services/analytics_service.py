@@ -24,6 +24,18 @@ class AnalyticsEvents(StrEnum):
     USER_LOGGED_IN = "user:logged_in"
     USER_LOGGED_OUT = "user:logged_out"
 
+    # Core product actions
+    CHAT_MESSAGE_SUBMITTED = "chat:message_submitted"
+    WORKFLOW_CREATED = "workflow:created"
+    WORKFLOW_EXECUTED = "workflow:executed"
+    WORKFLOW_ACTIVATED = "workflow:activated"
+    WORKFLOW_PUBLISHED = "workflow:published"
+    PAYMENT_CHECKOUT_STARTED = "payment:checkout_started"
+    SUBSCRIPTION_CANCELLATION_REQUESTED = "subscription:cancellation_requested"
+    FEEDBACK_MESSAGE_SUBMITTED = "feedback:message_submitted"
+    SESSION_ARTIFACT_PINNED = "session:artifact_pinned"
+    PROFILE_UPDATED = "profile:updated"
+
     # Lifecycle email
     NURTURE_EMAIL_SENT = "nurture:email_sent"
 
@@ -38,6 +50,7 @@ class AnalyticsEvents(StrEnum):
     SUBSCRIPTION_CANCELLED = "subscription:cancelled"
     SUBSCRIPTION_EXPIRED = "subscription:expired"
     SUBSCRIPTION_FAILED = "subscription:failed"
+    RATE_LIMIT_HIT = "rate_limit_hit"
 
 
 def _get_posthog_client() -> Posthog | None:
@@ -54,9 +67,8 @@ def identify_user(
     Identify a user in PostHog with their properties.
 
     Args:
-        user_id: PostHog distinct_id - use EMAIL for consistency with frontend.
-                 Frontend identifies users by email, so backend must match.
-        properties: User properties to set
+        user_id: Stable PostHog distinct_id from the application's user record.
+        properties: Person properties to set
     """
     client = _get_posthog_client()
     if client is None:
@@ -76,6 +88,33 @@ def identify_user(
             error=str(e),
             error_type=type(e).__name__,
             user_id=user_id,
+        )
+
+
+def capture_context_event(
+    event: str,
+    properties: dict[str, Any] | None = None,
+) -> None:
+    """Capture an event attributed by the active PostHog request context."""
+    client = _get_posthog_client()
+    if client is None:
+        log.debug("PostHog client not available, skipping event", event=event)
+        return
+
+    try:
+        client.capture(
+            event=event,
+            properties={
+                **(properties or {}),
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
+    except Exception as e:
+        log.error(
+            "Failed to capture event in PostHog",
+            event=event,
+            error=str(e),
+            error_type=type(e).__name__,
         )
 
 
@@ -135,11 +174,9 @@ def track_signup(
         signup_method: How the user signed up (workos, google, email)
         properties: Additional properties
     """
-    # First identify the user
     identify_user(
-        email,
+        user_id,
         {
-            "user_id": user_id,
             "email": email,
             "name": name,
             "signup_method": signup_method,
@@ -147,14 +184,10 @@ def track_signup(
         },
     )
 
-    # Then capture the signup event
     capture_event(
-        email,
+        user_id,
         AnalyticsEvents.USER_SIGNED_UP,
         {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
             "signup_method": signup_method,
             **(properties or {}),
         },
@@ -179,9 +212,8 @@ def track_login(
         properties: Additional properties
     """
     identify_user(
-        email,
+        user_id,
         {
-            "user_id": user_id,
             "email": email,
             "name": name,
             "last_login_method": login_method,
@@ -190,12 +222,9 @@ def track_login(
     )
 
     capture_event(
-        email,
+        user_id,
         AnalyticsEvents.USER_LOGGED_IN,
         {
-            "user_id": user_id,
-            "email": email,
-            "name": name,
             "login_method": login_method,
             **(properties or {}),
         },
@@ -204,7 +233,6 @@ def track_login(
 
 def track_logout(
     user_id: str,
-    email: str,
     properties: dict[str, Any] | None = None,
 ) -> None:
     """
@@ -212,17 +240,12 @@ def track_logout(
 
     Args:
         user_id: User's unique identifier
-        email: User's email address
         properties: Additional properties
     """
     capture_event(
-        email,
+        user_id,
         AnalyticsEvents.USER_LOGGED_OUT,
-        {
-            "user_id": user_id,
-            "email": email,
-            **(properties or {}),
-        },
+        properties,
     )
 
 
