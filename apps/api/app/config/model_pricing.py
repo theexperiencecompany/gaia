@@ -29,9 +29,9 @@ DEFAULT_PRICING = ModelPricing(
     cached_input_cost_per_1k=0.001 * DEFAULT_CACHED_INPUT_FRACTION,
 )
 
-# The aux lane (AUX_MODEL_NAME) is a DIFFERENT checkpoint of the v4-flash
-# series ("0423") under its own id, so its calls get a separate prompt-cache
-# namespace. It is NOT the same model as DEFAULT_MODEL_NAME — OpenRouter
+# The aux lane (AUX_MODEL_NAME) is a DIFFERENT model id — the ORIGINAL V4
+# Flash release, not the re-post-trained 0731 revision the graph uses — so its
+# calls get a separate prompt-cache namespace. It is NOT the same model as DEFAULT_MODEL_NAME — OpenRouter
 # publishes its own rates for it (input 0.00014 / output 0.00028 vs the
 # default's 0.00008 / 0.00018) — so it must be priced at its own rate, not the
 # default's, or the aux COGS is under-counted by ~1.75x. Kept as a constant
@@ -55,9 +55,9 @@ async def get_model_pricing(model_name: str) -> ModelPricing:
     Returns:
         ModelPricing with cost per 1k tokens
     """
-    # The aux calls run a separate checkpoint of the same model series under
-    # AUX_MODEL_NAME so their prompt-cache namespace is separate from the
-    # conversation's; price them at that checkpoint's own published rate (see
+    # The aux calls run a separate model id under AUX_MODEL_NAME so their
+    # prompt-cache namespace is separate from the conversation's; price them at
+    # that release's own published rate (see
     # AUX_MODEL_PRICING) instead of the catalog lookup (the alias is an
     # internal routing id, not seeded in ai_models) or the ~12.5x
     # DEFAULT_PRICING.

@@ -253,11 +253,11 @@ class TestGetModelPricing:
 
 
 class TestAuxModelPricing:
-    """Tests for the aux-lane pricing — a separate checkpoint of the default
-    model's series under AUX_MODEL_NAME, priced at its OWN published rate (not
-    the default's): the two ids are different checkpoints with different
-    OpenRouter prices, so normalizing the alias to the default's rate would
-    under-count aux COGS by ~1.75x."""
+    """Tests for the aux-lane pricing — a separate model id under
+    AUX_MODEL_NAME (the original V4 Flash release, not the revision the graph
+    uses), priced at its OWN published rate (not the default's): the two ids
+    carry different OpenRouter prices, so normalizing the alias to the
+    default's rate would under-count aux COGS by ~1.75x."""
 
     @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
     async def test_aux_model_priced_at_its_own_rate(self, mock_get_model: AsyncMock) -> None:
@@ -277,7 +277,7 @@ class TestAuxModelPricing:
 
         default_pricing = await get_model_pricing(DEFAULT_MODEL_NAME)
 
-        # Same series, different checkpoint: the alias is more expensive than the
+        # Different release, different price: the alias is more expensive than the
         # default — normalizing it to the default's rate would under-count spend.
         assert default_pricing != AUX_MODEL_PRICING
         assert AUX_MODEL_PRICING.input_cost_per_1k > default_pricing.input_cost_per_1k
