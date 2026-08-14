@@ -208,7 +208,11 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   // Backend now auto-connects, so we need to refetch both integrations AND tools
   const createMutation = useMutation({
     mutationFn: integrationsApi.createCustomIntegration,
-    onSuccess: () => {
+    onSuccess: (data) => {
+      trackEvent(ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
+        integration: data.integrationId,
+        source: "custom_creation",
+      });
       // Backend auto-connects and discovers tools, so refresh both caches.
       queryClient.invalidateQueries({ queryKey: integrationKeys.all });
       queryClient.invalidateQueries({ queryKey: toolKeys.all });

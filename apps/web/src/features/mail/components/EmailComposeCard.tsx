@@ -16,6 +16,7 @@ import { z } from "zod";
 import { ChevronRight, Gmail } from "@/components/shared/icons";
 import { Separator } from "@/components/ui/separator";
 import { mailApi } from "@/features/mail/api/mailApi";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 // Email validation schema
@@ -449,6 +450,11 @@ export default function EmailComposeCard({
         // Send existing draft
         const result = await mailApi.sendDraft(emailData.draft_id);
         if (result.successful) {
+          if (emailData.thread_id) {
+            trackEvent(ANALYTICS_EVENTS.EMAIL_REPLIED, {
+              thread_id: emailData.thread_id,
+            });
+          }
           toast.success("Draft sent successfully!");
           onSent?.();
         } else {
@@ -471,6 +477,11 @@ export default function EmailComposeCard({
         }
 
         await mailApi.sendEmail(formData);
+        if (emailData.thread_id) {
+          trackEvent(ANALYTICS_EVENTS.EMAIL_REPLIED, {
+            thread_id: emailData.thread_id,
+          });
+        }
       }
     } catch (error) {
       console.error("Error sending email:", error);

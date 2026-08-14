@@ -423,23 +423,34 @@ export function VoiceControlBarContainer({
             connectionDetails.participantToken,
           );
         }),
-      ]).catch((error) => {
-        if (aborted) return;
-        if (error.name === "NotAllowedError") {
-          // Chrome only shows the mic prompt once per site — after a denial
-          // it rejects silently, so tell the user where to flip it back.
+      ])
+        .then(() => {
+          trackEvent(ANALYTICS_EVENTS.VOICE_MODE_STARTED, {
+            conversation_id: voiceConversationId,
+          });
+        })
+        .catch((error) => {
+          if (aborted) return;
+          if (error.name === "NotAllowedError") {
+            // Chrome only shows the mic prompt once per site — after a denial
+            // it rejects silently, so tell the user where to flip it back.
+            toast.error(
+              "Microphone access is blocked. Click the mic icon in the address bar to allow it, then start voice mode again.",
+            );
+            return;
+          }
           toast.error(
-            "Microphone access is blocked. Click the mic icon in the address bar to allow it, then start voice mode again.",
+            `There was an error connecting to the agent ${error.name}: ${error.message}`,
           );
-          return;
-        }
-        toast.error(
-          `There was an error connecting to the agent ${error.name}: ${error.message}`,
-        );
-      });
+        });
     }
     return () => {
       aborted = true;
+      if (room.state === "connected") {
+        trackEvent(ANALYTICS_EVENTS.VOICE_MODE_STOPPED, {
+          conversation_id: voiceConversationId,
+        });
+      }
       room.disconnect();
     };
   }, [room, sessionStarted]);

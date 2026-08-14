@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { mergedOnboardingUpdate } from "@/features/settings/utils/onboardingPreferences";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 const SAVE_DEBOUNCE_MS = 1000;
@@ -52,6 +53,9 @@ export const useGlobalCustomInstructions = () => {
           }),
         );
         toast.success("Instructions saved");
+        trackEvent(ANALYTICS_EVENTS.SETTINGS_PREFERENCES_CHANGED, {
+          setting: "custom_instructions",
+        });
       } catch {
         setHasUnsavedChanges(true);
         toast.error("Failed to save instructions");

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 import type { PlatformLink } from "@/types/platform";
@@ -72,21 +73,26 @@ export default function LinkedAccountsSettings() {
   };
 
   useEffect(() => {
-    fetchPlatformLinks();
+    void fetchPlatformLinks();
     return () => {
       clearPollTimer();
     };
   }, []);
 
-  const fetchPlatformLinks = async () => {
+  const fetchPlatformLinks = async (): Promise<Record<
+    string,
+    PlatformLink | null
+  > | null> => {
     try {
       setIsLoading(true);
       const data = await apiService.get<{
         platform_links: Record<string, PlatformLink | null>;
       }>("/platform-links", { silent: true });
       setPlatformLinks(data.platform_links || {});
+      return data.platform_links || {};
     } catch {
       toast.error("Failed to load connected accounts");
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -95,6 +101,8 @@ export default function LinkedAccountsSettings() {
   const handleConnect = async (platformId: string) => {
     try {
       setConnectingPlatform(platformId);
+
+      const wasConnected = platformLinks[platformId]?.platformUserId != null;
 
       const data = await apiService.get<{
         auth_url?: string;
@@ -119,8 +127,17 @@ export default function LinkedAccountsSettings() {
         pollTimerRef.current = setInterval(() => {
           if (popup?.closed) {
             clearPollTimer();
-            fetchPlatformLinks();
-            setConnectingPlatform(null);
+            void fetchPlatformLinks().then((links) => {
+              if (
+                !wasConnected &&
+                links?.[platformId]?.platformUserId != null
+              ) {
+                trackEvent(ANALYTICS_EVENTS.BOT_CONNECTED, {
+                  bot_id: platformId,
+                });
+              }
+              setConnectingPlatform(null);
+            });
           }
         }, 500);
       } else if (data.auth_type === "manual" && data.instructions) {
@@ -159,6 +176,7 @@ export default function LinkedAccountsSettings() {
       await apiService.delete(`/platform-links/${platformId}`, {
         silent: true,
       });
+      trackEvent(ANALYTICS_EVENTS.BOT_DISCONNECTED, { bot_id: platformId });
       toast.success(`Disconnected from ${platformId}`);
       await fetchPlatformLinks();
     } catch {

@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Github01Icon, PlusSignIcon } from "@icons";
 import { useMemo, useState } from "react";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
 import type { DiscoveredSkill, SkillTarget } from "../api/types";
@@ -69,6 +70,10 @@ export function SkillImportForm({
         skill.path,
         target,
       );
+      trackEvent(ANALYTICS_EVENTS.SKILL_INSTALLED, {
+        target,
+        source: "github",
+      });
       toast.success(`Installed "${skill.name}"`);
       onInstalled();
     } catch {
@@ -98,6 +103,11 @@ export function SkillImportForm({
     }
     setInstallingAll(false);
     if (installed > 0) {
+      trackEvent(ANALYTICS_EVENTS.SKILL_INSTALLED, {
+        target,
+        source: "github",
+        skill_count: installed,
+      });
       toast.success(
         `Installed ${installed} skill${installed === 1 ? "" : "s"}`,
       );

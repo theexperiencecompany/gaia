@@ -128,7 +128,8 @@ export default function PreferencesSettings({
 
           toast.success("Preferences saved");
           trackEvent(ANALYTICS_EVENTS.SETTINGS_PREFERENCES_CHANGED, {
-            profession: updatedPreferences.profession,
+            // `profession` is user-authored free text — never sent as an event
+            // property (it already lives as a person property via identify).
             response_style: updatedPreferences.response_style,
             timezone_changed:
               timezone !== lastSavedPreferences.current.timezone,

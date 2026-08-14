@@ -3,6 +3,7 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Cancel01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import type { CalendarDeleteOptions } from "@/types/features/calendarTypes";
 import { buildDeleteEventPayload } from "@/utils/calendar/eventPayloadBuilders";
@@ -32,6 +33,10 @@ export function CalendarDeleteSection({
     try {
       setEventStatuses((prev) => ({ ...prev, [key]: "loading" }));
       await calendarApi.deleteEventByAgent(buildDeleteEventPayload(event));
+      trackEvent(ANALYTICS_EVENTS.CALENDAR_EVENT_DELETED, {
+        event_id: event.event_id,
+        calendar_id: event.calendar_id,
+      });
       setEventStatuses((prev) => ({ ...prev, [key]: "completed" }));
     } catch (error) {
       console.error("Error deleting event:", error);

@@ -10,9 +10,10 @@ import {
   Search01Icon,
 } from "@icons";
 import type { ComponentType } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { Skill } from "../api/types";
 import { useSkills } from "../hooks/useSkills";
 import { buildTargetMap } from "../utils";
@@ -34,6 +35,15 @@ export default function SkillsManagement() {
   const { confirm, confirmationProps } = useConfirmation();
 
   const targetByValue = useMemo(() => buildTargetMap(targets), [targets]);
+
+  // Debounce so a search event fires per pause, not per keystroke.
+  useEffect(() => {
+    if (!query.trim()) return;
+    const timer = setTimeout(() => {
+      trackEvent(ANALYTICS_EVENTS.SKILL_SEARCHED);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const openCreate = () => {
     setEditingSkill(null);
@@ -65,8 +75,13 @@ export default function SkillsManagement() {
     });
     if (!confirmed) return;
     setDeletingId(skill.id);
-    await removeSkill(skill);
+    const removed = await removeSkill(skill);
     setDeletingId(null);
+    if (removed) {
+      trackEvent(ANALYTICS_EVENTS.SKILL_UNINSTALLED, {
+        target: skill.target,
+      });
+    }
   };
 
   return (

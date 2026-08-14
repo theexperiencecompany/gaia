@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { auth, company, connect, product, resources } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 export default function MobileMenu() {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -207,6 +208,10 @@ export default function MobileMenu() {
                         type="button"
                         className="text-left text-sm font-semibold text-primary transition-colors hover:text-primary"
                         onClick={() => {
+                          trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+                            is_logged_in: Boolean(isAuthenticated),
+                            destination: link.href,
+                          });
                           router.push(link.href);
                           setSheetOpen(false);
                         }}
@@ -221,7 +226,13 @@ export default function MobileMenu() {
                         key={link.href}
                         href={link.href}
                         className="text-sm font-semibold text-primary transition-colors hover:text-primary"
-                        onClick={() => setSheetOpen(false)}
+                        onClick={() => {
+                          trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+                            is_logged_in: Boolean(isAuthenticated),
+                            destination: link.href,
+                          });
+                          setSheetOpen(false);
+                        }}
                       >
                         {link.label}
                       </Link>

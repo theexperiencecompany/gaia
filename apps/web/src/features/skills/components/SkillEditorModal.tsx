@@ -13,6 +13,7 @@ import { Tab, Tabs } from "@heroui/tabs";
 import { Github01Icon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
 import type { Skill, SkillTarget } from "../api/types";
@@ -105,6 +106,10 @@ export function SkillEditorModal({
           description: description.trim(),
           instructions,
           target,
+        });
+        trackEvent(ANALYTICS_EVENTS.SKILL_INSTALLED, {
+          target,
+          source: "inline",
         });
         toast.success(`Created "${name}"`);
       }

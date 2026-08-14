@@ -25,6 +25,7 @@ const useFetchUser = () => {
   const searchParams = useSearchParams();
   const currentPath = usePathname();
   const hasIdentified = useRef(false);
+  const hasTrackedLogin = useRef(false);
 
   const { data, error } = useQuery({
     queryKey: ["current-user"],
@@ -84,6 +85,16 @@ const useFetchUser = () => {
     const accessToken = searchParams.get("access_token");
     const refreshToken = searchParams.get("refresh_token");
     if (!accessToken || !refreshToken) return;
+
+    // Token-bearing URL params mean an OAuth login just completed. Guard with
+    // a ref so effect re-runs (route/searchParams churn before redirect) can't
+    // double-capture.
+    if (!hasTrackedLogin.current) {
+      trackEvent(ANALYTICS_EVENTS.USER_LOGGED_IN, {
+        method: "workos_oauth",
+      });
+      hasTrackedLogin.current = true;
+    }
 
     // A pending checkout takes priority; useCheckoutResume redirects to Dodo.
     if (readPendingCheckout()) return;

@@ -21,7 +21,6 @@ import { useFileAttachments } from "@/features/chat/hooks/useFileAttachments";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useSendMessage } from "@/hooks/useSendMessage";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   useComposerFiles,
   useComposerIsUploading,
@@ -144,18 +143,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
     }
     // Note: Loading state is now set in useSendMessage AFTER user message is persisted
     // This ensures the loading indicator appears AFTER the user message in the UI
-
-    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
-      has_text: !!inputText,
-      has_files: uploadedFiles.length > 0,
-      file_count: uploadedFiles.length,
-      has_tool: !!selectedTool,
-      tool_name: selectedTool,
-      tool_category: selectedToolCategory,
-      has_workflow: !!selectedWorkflow,
-      workflow_name: selectedWorkflow?.title,
-      conversation_id: conversationId,
-    });
+    // Analytics: the canonical CHAT_MESSAGE_SENT capture lives in useSendMessage —
+    // it fires for every send path (composer, workflow auto-send, retry) exactly once.
 
     sendMessage(inputText, {
       files: uploadedFileData,

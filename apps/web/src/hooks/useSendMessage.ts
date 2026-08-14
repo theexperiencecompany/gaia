@@ -220,14 +220,22 @@ export const useSendMessage = () => {
         isOnboardingDemo: false,
       };
 
+      // Canonical capture for every send path (composer, workflow auto-send,
+      // retry, voice). User-authored free text (message content, workflow
+      // titles) is intentionally NOT sent — booleans/IDs only.
       trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
+        has_text: ctx.content.length > 0,
         file_count: ctx.files.length,
         has_selected_tool: Boolean(ctx.selectedTool),
+        tool_name: ctx.selectedTool,
+        tool_category: ctx.selectedToolCategory,
         has_selected_workflow: Boolean(ctx.selectedWorkflow),
+        workflow_id: ctx.selectedWorkflow?.id,
         has_selected_calendar_event: Boolean(ctx.selectedCalendarEvent),
         is_reply: Boolean(ctx.replyToMessage),
         is_new_conversation: !ctx.conversationId,
         was_queued: willQueue,
+        conversation_id: ctx.conversationId,
       });
       turnManager.send({ inputText: ctx.content, userMessage, options });
     },
