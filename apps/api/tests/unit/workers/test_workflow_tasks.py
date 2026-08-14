@@ -374,6 +374,46 @@ class TestExecuteWorkflowById:
             {"workflow_id": workflow.id, "trigger_type": "integration"},
         )
 
+    async def test_explicit_trigger_type_wins_over_trigger_data(self, ctx, _no_real_analytics):
+        # Integration detection requires trigger_type to be ABSENT — a context
+        # carrying both must stay on its explicit trigger, not flip to
+        # "integration".
+        workflow = _make_workflow()
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+
+        _, p_scheduler = _patch_scheduler(workflow)
+
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(return_value="conv_123"),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.complete_execution",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            result = await execute_workflow_by_id(
+                ctx,
+                workflow.id,
+                context={"trigger_type": "schedule", "trigger_data": {"message_id": "m1"}},
+            )
+
+        assert "executed successfully" in result
+        _no_real_analytics.assert_called_once_with(
+            workflow.user_id,
+            AnalyticsEvents.WORKFLOW_EXECUTED,
+            {"workflow_id": workflow.id, "trigger_type": "schedule"},
+        )
+
     async def test_manual_execution_does_not_capture_workflow_executed(
         self, ctx, _no_real_analytics
     ):
