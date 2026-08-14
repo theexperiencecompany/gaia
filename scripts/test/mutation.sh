@@ -260,7 +260,8 @@ fi
 # PR did not change are noted, not failures.
 RESULTS="$("$VENV_PY" -m mutmut results 2>/dev/null || true)"
 SURVIVORS="$(printf '%s\n' "$RESULTS" | grep "survived" || true)"
-NO_TESTS="$(printf '%s\n' "$RESULTS" | grep -c "no tests" || true)"
+NO_TESTS_LIST="$(printf '%s\n' "$RESULTS" | grep "no tests" || true)"
+NO_TESTS="$(printf '%s\n' "$NO_TESTS_LIST" | grep -c . || true)"
 NOT_CHECKED="$(printf '%s\n' "$RESULTS" | grep -c "not checked" || true)"
 if [ "${NOT_CHECKED:-0}" -gt 0 ]; then
   echo "MUTATION RUN INCOMPLETE — $NOT_CHECKED mutant(s) were never checked;" >&2
@@ -530,6 +531,269 @@ $line" ;;
     esac
   done <<< "$SURVIVORS"
 fi
+NO_TESTS_CHANGED=""
+if [ -n "$NO_TESTS_LIST" ]; then
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    VERDICT="$("$VENV_PY" - "$line" "$WORKDIR" "$CHANGED_RANGES" "$MODULE" << 'EOF' 2>/dev/null
+import ast
+import json
+import re
+import sys
+
+survivor, workdir, changed_ranges = sys.argv[1].strip().split(": ", 1)[0], sys.argv[2], sys.argv[3]
+module_path = sys.argv[4]
+module, mutant_name = survivor.rsplit(".", 1)
+mutant_file = f"{workdir}/mutants/{module.replace('.', '/')}.py"
+src = open(mutant_file).read()
+# The mutants dict is per function, named without the mutant id:
+# mutants_<base>__mutmut['_mutmut_orig'] = <base>__mutmut_orig
+base = re.sub(r"__mutmut_\d+$", "", mutant_name)
+dict_name = f"mutants_{base}__mutmut"
+orig_match = re.search(
+    rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*(\w+)", src, re.MULTILINE
+)
+if not orig_match:
+    sys.exit(1)
+orig_name = orig_match.group(1)
+blocks = re.split(r"^(?:async )?def ", src, flags=re.MULTILINE)
+
+
+def _def_lines(path: str) -> dict[str, int]:
+    """Qualified function name -> the line its ``def`` sits on, in the REAL file."""
+    found: dict[str, int] = {}
+
+    def walk(node: ast.AST, prefix: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                found[prefix + child.name] = child.lineno
+                walk(child, f"{prefix}{child.name}.")
+            elif isinstance(child, ast.ClassDef):
+                walk(child, f"{prefix}{child.name}.")
+
+    walk(ast.parse(open(path).read()), "")
+    return found
+
+
+# The survivor's line must be resolved against the REAL module, not the
+# mutants copy: mutmut expands every function into one variant per mutant, so
+# the copy runs to ~20x the length and its line numbers share no coordinate
+# space with the PR's diff ranges. Comparing the two (as this once did) let a
+# survivor on an untouched line land inside a changed range by arithmetic
+# coincidence and fail the lane.
+#
+# mutmut names the original `x_<func>__mutmut_orig`, or
+# `xǁ<Class>ǁ<method>__mutmut_orig` for a method.
+qualified = orig_name.removesuffix("__mutmut_orig")
+qualified = (
+    ".".join(qualified.split("ǁ")[1:]) if "ǁ" in qualified else qualified.removeprefix("x_")
+)
+orig_line = _def_lines(f"{workdir}/{module_path}").get(qualified)
+if orig_line is None:
+    sys.exit(1)
+
+
+def _body(name: str) -> list[str]:
+    for block in blocks:
+        if block.split("(", 1)[0].strip() == name:
+            return block.splitlines()[1:]
+    return []
+
+
+def _normalized(lines: list[str]) -> list[str]:
+    # typing.cast(T, x) is documented to return x unchanged at runtime, so a
+    # mutant that only changes the type argument is behaviorally identical.
+    return [re.sub(r"cast\(\s*[^,)]+,\s*", "cast(_, ", ln) for ln in lines]
+
+
+orig_raw = _body(orig_name)
+mut_raw = _body(mutant_name)
+orig_lines = _normalized(orig_raw)
+mut_lines = _normalized(mut_raw)
+if orig_lines == mut_lines:
+    print("EQUIV")
+    sys.exit(0)
+# The ONLY unassertable logging is log.debug/log.info. Verified in
+# libs/shared/py/wide_events.py: those two just emit a loguru line, while
+# warning/error/critical/exception call _append(), which stores
+# entry = {"msg": message, **kwargs} on the wide event. So on the recorded
+# levels BOTH the message and the kwargs land in warnings[]/errors[] — a
+# consumed, queryable surface that tests already assert against
+# (tests/integration/api/test_wide_event_contracts.py) — and every mutation of
+# them is killable. log.audit, log.set and log.set_ns are likewise never
+# excluded. Only debug/info are, and for those the whole call goes: their
+# kwargs never reach anywhere a test could read them.
+_LOG_NARRATION = {"debug", "info"}
+
+
+def _excluded_span(path: str, line_no: int):
+    """Span of the log.debug/log.info call covering line_no, or None."""
+    try:
+        tree = ast.parse(open(path).read())
+    except SyntaxError:
+        return None
+    best = None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (
+            isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "log"
+            and func.attr in _LOG_NARRATION
+        ):
+            continue
+        if node.lineno <= line_no <= (node.end_lineno or node.lineno):
+            # Innermost enclosing call wins.
+            if best is None or best.lineno < node.lineno:
+                best = node
+    if best is None:
+        return None
+    return (best.lineno, best.col_offset, best.end_lineno or best.lineno, best.end_col_offset)
+
+
+def _falsy_constant(node) -> bool:
+    return isinstance(node, ast.Constant) and not node.value
+
+
+def _replacement(before: str, after: str) -> str | None:
+    """The substring the mutation put in place of the original, or None."""
+    head = 0
+    while head < min(len(before), len(after)) and before[head] == after[head]:
+        head += 1
+    tail = 0
+    while (
+        tail < min(len(before), len(after)) - head
+        and before[len(before) - 1 - tail] == after[len(after) - 1 - tail]
+    ):
+        tail += 1
+    return after[head : len(after) - tail]
+
+
+def _unobservable_get_default(path: str, line_no: int, col: int, replacement: str) -> bool:
+    """True when the mutation only changed a .get() default that cannot be seen.
+
+    The shape is ``d.get(key, FALSY) or FALSY`` — the or collapses every falsy
+    default to the same value, so which one is written is unobservable even on
+    the missing-key path. Deliberately NOT a blanket .get-default rule: a
+    TRUTHY default is observable (``d.get(k, 1) or 0`` returns 1 when the key
+    is absent), and a .get whose result is consumed directly rather than
+    or-ed is observable too (``len(d.get(k, []))`` raises on None). Both the
+    original default, the or fallback, and the replacement must be falsy, and
+    anything unparseable fails closed.
+    """
+    try:
+        tree = ast.parse(open(path).read())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.BoolOp) or not isinstance(node.op, ast.Or):
+            continue
+        for index, value in enumerate(node.values[:-1]):
+            call = value
+            if not (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "get"
+                and len(call.args) == 2
+            ):
+                continue
+            default = call.args[1]
+            if not _falsy_constant(default):
+                continue
+            if not _falsy_constant(node.values[index + 1]):
+                continue
+            if not _within(
+                (
+                    default.lineno,
+                    default.col_offset,
+                    default.end_lineno or default.lineno,
+                    default.end_col_offset,
+                ),
+                line_no,
+                col,
+            ):
+                continue
+            stripped = replacement.strip()
+            if not stripped:
+                return True  # the argument was removed; the default becomes None
+            try:
+                return not ast.literal_eval(stripped)
+            except (ValueError, SyntaxError):
+                return False
+    return False
+
+
+def _within(span, line_no: int, col: int) -> bool:
+    start_line, start_col, end_line, end_col = span
+    if line_no < start_line or line_no > end_line:
+        return False
+    if line_no == start_line and col < start_col:
+        return False
+    if line_no == end_line and col >= end_col:
+        return False
+    return True
+
+
+def _first_differing_col(before: str, after: str) -> int:
+    for i, (x, y) in enumerate(zip(before, after)):
+        if x != y:
+            return i
+    return min(len(before), len(after))
+
+
+# Find the first differing line in the ORIGINAL file. `_body` drops only the
+# def line itself, so body index 0 is the line right after it.
+for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
+    if a != b:
+        line_no = orig_line + 1 + i
+        # Diff scope FIRST. A logging mutant on a line the PR never touched is
+        # already out of scope, and classifying it LOGGING inflates the
+        # exclusion column into looking far more load-bearing than it is.
+        ranges = json.loads(changed_ranges) if changed_ranges else []
+        if not any(start <= line_no <= end for start, end in ranges):
+            print(f"UNCHANGED:{line_no}")
+            sys.exit(1)
+        # Raw (un-normalized) lines: the cast() rewrite above shifts columns.
+        col = _first_differing_col(orig_raw[i], mut_raw[i])
+        if _unobservable_get_default(
+            f"{workdir}/{module_path}", line_no, col, _replacement(orig_raw[i], mut_raw[i])
+        ):
+            print("EQUIV")
+            sys.exit(0)
+        span = _excluded_span(f"{workdir}/{module_path}", line_no)
+        if span is not None and _within(span, line_no, col):
+            print(f"LOGGING:{line_no}")
+            sys.exit(1)
+        print(f"CHANGED:{line_no}")
+        sys.exit(1)
+print("EQUIV")
+sys.exit(0)
+EOF
+)" || true
+    case "$VERDICT" in
+      CHANGED:*)
+        NO_TESTS_CHANGED="$NO_TESTS_CHANGED
+$line" ;;
+    esac
+  done <<< "$NO_TESTS_LIST"
+fi
+if [ -n "$NO_TESTS_CHANGED" ]; then
+  NO_TESTS_CHANGED_COUNT=$(printf '%s\n' "$NO_TESTS_CHANGED" | grep -c . || true)
+  echo "NOTE: $NO_TESTS_CHANGED_COUNT mutant(s) ON CHANGED LINES have NO covering test." >&2
+  echo "      Not survivors, and not a pass either: nothing exercises them, so this" >&2
+  echo "      lane can say nothing about that code. A changed line landing here is a" >&2
+  echo "      coverage hole wearing a clean result. Printed before the verdict" >&2
+  echo "      because a FAILING run is when it is easiest to miss:" >&2
+  echo "$NO_TESTS_CHANGED" >&2
+fi
+if [ "${NO_TESTS:-0}" -gt 0 ]; then
+  echo "NOTE: $NO_TESTS mutant(s) had no covering test across the WHOLE module" >&2
+  echo "      (the line above is the subset on changed lines, which is the one" >&2
+  echo "      this PR owns; the rest are pre-existing and reach the run only" >&2
+  echo "      because the no-mutate pragma leaks on multi-line statements)." >&2
+fi
 if [ -n "$UNCHANGED" ]; then
   echo "NOTE: survivor(s) on lines the PR did not touch (diff-driven gate):" >&2
   echo "$UNCHANGED" >&2
@@ -556,8 +820,5 @@ if [ -n "$REAL_SURVIVORS" ]; then
   echo "MUTATION FAILED — the suite would not notice if this code were wrong:" >&2
   echo "$REAL_SURVIVORS" >&2
   exit 1
-fi
-if [ "${NO_TESTS:-0}" -gt 0 ]; then
-  echo "NOTE: $NO_TESTS mutant(s) had no covering tests (uncovered branches)." >&2
 fi
 echo "Mutation: OK — no survivors on changed lines in $MODULE"
