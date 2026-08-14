@@ -21,9 +21,11 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
+from app.constants.llm import COMPLETION_NUDGE_MESSAGE
 from tests.e2e._harness.graph_run import (
     AGENT_NODE,
     FINISH_NODE,
+    NUDGE_NODE,
     REJECT_NODE,
     TOOLS_NODE,
     call,
@@ -309,7 +311,10 @@ class TestTermination:
             run = await run_graph(graph, "a question")
 
         assert run.final_text() == "Here is your answer."
-        assert run.nodes() == [AGENT_NODE]
+        # Zero tool calls on a delegated task is the "one lookup then assert a
+        # conclusion" shape the completion guard exists to catch, so the run
+        # takes its one nudge and then ends in plain text.
+        assert run.nodes() == [AGENT_NODE, NUDGE_NODE, AGENT_NODE]
 
     async def test_finish_task_without_a_result_still_terminates(self):
         """Models omit optional args. A missing ``result`` must yield a usable
@@ -353,16 +358,23 @@ class TestThreadContinuity:
         (``executor_{thread_id}``) so consecutive delegations share context.
         Losing that makes the executor re-ask for everything it was already told.
         """
-        async with executor_graph(["First answer.", "Second answer."]) as graph:
+        # Two entries per run: the answer, then the retry after the completion
+        # nudge. The script cycles, so one entry each would let run two replay
+        # run one's answer.
+        async with executor_graph(
+            ["First answer.", "First answer.", "Second answer.", "Second answer."]
+        ) as graph:
             await run_graph(graph, "remember: the code is 1234", thread_id="shared")
             second = await run_graph(graph, "what was the code?", thread_id="shared")
 
-        texts = [
-            m.content for m in second.events if isinstance(m.message, HumanMessage) for m in [m]
-        ]
-        del texts
         state = await graph.aget_state({"configurable": {"thread_id": "shared", "user_id": "u-1"}})
-        human = [m for m in state.values["messages"] if isinstance(m, HumanMessage)]
+        # The completion nudge is delivered as a HumanMessage too, so it shows up
+        # here; the user's OWN turns are what this test is about.
+        human = [
+            m
+            for m in state.values["messages"]
+            if isinstance(m, HumanMessage) and str(m.content) != COMPLETION_NUDGE_MESSAGE
+        ]
         assert [str(m.content) for m in human] == [
             "remember: the code is 1234",
             "what was the code?",
@@ -371,12 +383,19 @@ class TestThreadContinuity:
 
     async def test_separate_threads_do_not_share_history(self):
         """Two conversations must not leak into each other."""
-        async with executor_graph(["First answer.", "Second answer."]) as graph:
+        # Two entries per run — see the sibling test.
+        async with executor_graph(
+            ["First answer.", "First answer.", "Second answer.", "Second answer."]
+        ) as graph:
             await run_graph(graph, "conversation one", thread_id="thread-a")
             await run_graph(graph, "conversation two", thread_id="thread-b")
 
         state_b = await graph.aget_state(
             {"configurable": {"thread_id": "thread-b", "user_id": "u-1"}}
         )
-        human = [str(m.content) for m in state_b.values["messages"] if isinstance(m, HumanMessage)]
+        human = [
+            str(m.content)
+            for m in state_b.values["messages"]
+            if isinstance(m, HumanMessage) and str(m.content) != COMPLETION_NUDGE_MESSAGE
+        ]
         assert human == ["conversation two"]

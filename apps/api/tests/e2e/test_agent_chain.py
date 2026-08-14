@@ -471,7 +471,8 @@ class TestCommsToExecutor:
 
         assert run.transcript.args("retrieve_tools") == {"exact_tool_names": ["create_flowchart"]}
         assert (
-            run.transcript.result_for("retrieve_tools") == "Available tools: ['create_flowchart']"
+            run.transcript.result_for("retrieve_tools")
+            == "Bound 1 tools — call them directly:\n  - create_flowchart"
         )
 
     async def test_every_card_precedes_its_own_result_across_both_tiers(self) -> None:
@@ -571,7 +572,16 @@ def comms_delegating_script(task: str = "explain the executor") -> list[Any]:
 
 
 def executor_handoff_script() -> list[Any]:
-    return [call("handoff", HANDOFF_ARGS, id="tc_handoff"), "The executor runs delegated work."]
+    # Three entries for two visible turns: one handoff is below
+    # COMPLETION_MIN_TOOL_CALLS, so the executor's completion guard spends its
+    # one nudge before letting the plain-text stop through. The script cycles,
+    # so without the repeat the post-nudge turn replays the handoff and the
+    # subagent runs twice.
+    return [
+        call("handoff", HANDOFF_ARGS, id="tc_handoff"),
+        "The executor runs delegated work.",
+        "The executor runs delegated work.",
+    ]
 
 
 def subagent_fetch_script() -> list[Any]:

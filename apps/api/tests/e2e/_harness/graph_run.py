@@ -43,6 +43,9 @@ SELECT_NODE = "select_tools"
 TOOLS_NODE = "tools"
 #: Terminal node for ``finish_task``.
 FINISH_NODE = "finish_task"
+#: Where the completion guard sends a run back for one more pass instead of
+#: letting it end on demonstrably unfinished work.
+NUDGE_NODE = "nudge_continue"
 
 #: The memory engine double a comms graph was built with, so a test can assert
 #: passive ingestion actually ran.
