@@ -342,18 +342,25 @@ mut_lines = _normalized(mut_raw)
 if orig_lines == mut_lines:
     print("EQUIV")
     sys.exit(0)
-_LOG_PROSE = {"debug", "info", "warning", "error", "exception"}
+# log.debug/log.info only emit a loguru line — verified in
+# libs/shared/py/wide_events.py, where neither calls _append()/_bump(), unlike
+# warning/error/critical/exception which land in warnings[]/errors[] on the
+# wide event. So for debug/info the WHOLE call is unassertable: its kwargs
+# never arrive anywhere a test could read them, and killing those mutants would
+# mean patching the loguru sink to pin a value nothing consumes. For the
+# recorded levels only the prose message is excluded — their kwargs ARE the
+# exception vocabulary (error_type=, ids) and are testable by capturing the log
+# record. log.audit (audit trail), log.set and log.set_ns (which ARE the wide
+# event payload) are never excluded at all.
+_LOG_NARRATION = {"debug", "info"}
+_LOG_RECORDED = {"warning", "error", "critical", "exception"}
 
 
-def _message_text_span(path: str, line_no: int):
-    """Span of the human-readable message argument of the log call on line_no.
+def _excluded_span(path: str, line_no: int):
+    """Span of the unassertable region of the log call on line_no, or None.
 
-    Returns the (lineno, col_offset, end_lineno, end_col_offset) of the FIRST
-    positional argument of the innermost enclosing log.debug/info/warning/
-    error/exception call, or None when the line is not inside one. Only that
-    argument is prose; keywords carry the structured wide-event fields
-    (error_type=, ids) that dashboards and the evlog-map lane read, and
-    log.set/log.set_ns/log.audit are not in _LOG_PROSE at all.
+    The whole call for a narration-only level; just the prose message for a
+    recorded one.
     """
     try:
         tree = ast.parse(open(path).read())
@@ -368,16 +375,18 @@ def _message_text_span(path: str, line_no: int):
             isinstance(func, ast.Attribute)
             and isinstance(func.value, ast.Name)
             and func.value.id == "log"
-            and func.attr in _LOG_PROSE
+            and func.attr in (_LOG_NARRATION | _LOG_RECORDED)
         ):
-            continue
-        if not node.args:
             continue
         if node.lineno <= line_no <= (node.end_lineno or node.lineno):
             # Innermost enclosing call wins.
             if best is None or node.lineno > best.lineno:
                 best = node
     if best is None:
+        return None
+    if best.func.attr in _LOG_NARRATION:
+        return (best.lineno, best.col_offset, best.end_lineno or best.lineno, best.end_col_offset)
+    if not best.args:
         return None
     msg = best.args[0]
     return (msg.lineno, msg.col_offset, msg.end_lineno or msg.lineno, msg.end_col_offset)
@@ -406,7 +415,7 @@ def _first_differing_col(before: str, after: str) -> int:
 for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
     if a != b:
         line_no = orig_line + 1 + i
-        span = _message_text_span(f"{workdir}/{module_path}", line_no)
+        span = _excluded_span(f"{workdir}/{module_path}", line_no)
         # Raw (un-normalized) lines: the cast() rewrite above shifts columns.
         col = _first_differing_col(orig_raw[i], mut_raw[i])
         if span is not None and _within(span, line_no, col):
