@@ -254,7 +254,11 @@ def _env_pollution_guard(_hermetic_environment: Iterator[None]) -> Iterator[None
     leaked = {
         key: (baseline.get(key), os.environ.get(key))
         for key in set(os.environ) | set(baseline)
-        if key.startswith("PYTEST_") is False and baseline.get(key) != os.environ.get(key)
+        # PYTEST_* is pytest-controlled; GAIA_SERVICE_NAME is deployment/app
+        # identity — app.worker sets it via setdefault at import (its logging
+        # contract), so importing the worker mid-session is not a test leak.
+        if (key.startswith("PYTEST_") or key == "GAIA_SERVICE_NAME") is False
+        and baseline.get(key) != os.environ.get(key)
     }
     assert not leaked, f"tests leaked environment changes: {leaked}"
 

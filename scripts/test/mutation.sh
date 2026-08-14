@@ -103,7 +103,14 @@ replacement = (
     f'[tool.mutmut]\n'
     f'source_paths = ["{module}"]\n'
     f'also_copy = ["app", "tests", "scripts"]\n'
-    f'max_stack_depth = 8\n'
+    f'max_stack_depth = -1\n'
+    # -1, not 8: mutmut 3.7's record_trampoline_hit walks the stack and calls
+    # Path(filename).resolve(strict=True) on every frame — a frozen stdlib
+    # frame (co_filename == '<frozen importlib._bootstrap>') makes resolve
+    # raise FileNotFoundError, killing the stats phase for any test whose
+    # import chain passes through one. -1 skips the walk (hits are recorded
+    # at any depth; verdicts are unchanged, only the covered set is wider).
+
     f'pytest_add_cli_args_test_selection = ["{testfile}"]\n'
     f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
     f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300\']\n'
