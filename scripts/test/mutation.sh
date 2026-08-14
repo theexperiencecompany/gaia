@@ -257,6 +257,7 @@ fi
 REAL_SURVIVORS=""
 EQUIVALENT=""
 UNCHANGED=""
+LOGGING=""
 if [ -n "$SURVIVORS" ]; then
   while IFS= read -r line; do
     [ -z "$line" ] && continue
@@ -334,16 +335,83 @@ def _normalized(lines: list[str]) -> list[str]:
     return [re.sub(r"cast\(\s*[^,)]+,\s*", "cast(_, ", ln) for ln in lines]
 
 
-orig_lines = _normalized(_body(orig_name))
-mut_lines = _normalized(_body(mutant_name))
+orig_raw = _body(orig_name)
+mut_raw = _body(mutant_name)
+orig_lines = _normalized(orig_raw)
+mut_lines = _normalized(mut_raw)
 if orig_lines == mut_lines:
     print("EQUIV")
     sys.exit(0)
+_LOG_PROSE = {"debug", "info", "warning", "error", "exception"}
+
+
+def _message_text_span(path: str, line_no: int):
+    """Span of the human-readable message argument of the log call on line_no.
+
+    Returns the (lineno, col_offset, end_lineno, end_col_offset) of the FIRST
+    positional argument of the innermost enclosing log.debug/info/warning/
+    error/exception call, or None when the line is not inside one. Only that
+    argument is prose; keywords carry the structured wide-event fields
+    (error_type=, ids) that dashboards and the evlog-map lane read, and
+    log.set/log.set_ns/log.audit are not in _LOG_PROSE at all.
+    """
+    try:
+        tree = ast.parse(open(path).read())
+    except SyntaxError:
+        return None
+    best = None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (
+            isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "log"
+            and func.attr in _LOG_PROSE
+        ):
+            continue
+        if not node.args:
+            continue
+        if node.lineno <= line_no <= (node.end_lineno or node.lineno):
+            # Innermost enclosing call wins.
+            if best is None or node.lineno > best.lineno:
+                best = node
+    if best is None:
+        return None
+    msg = best.args[0]
+    return (msg.lineno, msg.col_offset, msg.end_lineno or msg.lineno, msg.end_col_offset)
+
+
+def _within(span, line_no: int, col: int) -> bool:
+    start_line, start_col, end_line, end_col = span
+    if line_no < start_line or line_no > end_line:
+        return False
+    if line_no == start_line and col < start_col:
+        return False
+    if line_no == end_line and col >= end_col:
+        return False
+    return True
+
+
+def _first_differing_col(before: str, after: str) -> int:
+    for i, (x, y) in enumerate(zip(before, after)):
+        if x != y:
+            return i
+    return min(len(before), len(after))
+
+
 # Find the first differing line in the ORIGINAL file. `_body` drops only the
 # def line itself, so body index 0 is the line right after it.
 for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
     if a != b:
         line_no = orig_line + 1 + i
+        span = _message_text_span(f"{workdir}/{module_path}", line_no)
+        # Raw (un-normalized) lines: the cast() rewrite above shifts columns.
+        col = _first_differing_col(orig_raw[i], mut_raw[i])
+        if span is not None and _within(span, line_no, col):
+            print(f"LOGGING:{line_no}")
+            sys.exit(1)
         ranges = json.loads(changed_ranges) if changed_ranges else []
         in_changed = any(start <= line_no <= end for start, end in ranges)
         print(f"CHANGED:{line_no}" if in_changed else f"UNCHANGED:{line_no}")
@@ -362,8 +430,23 @@ $line" ;;
       UNCHANGED:*)
         UNCHANGED="$UNCHANGED
 $line" ;;
+      LOGGING:*)
+        LOGGING="$LOGGING
+$line" ;;
     esac
   done <<< "$SURVIVORS"
+fi
+if [ -n "$LOGGING" ]; then
+  LOGGING_COUNT=$(printf '%s\n' "$LOGGING" | grep -c . || true)
+  echo "NOTE: $LOGGING_COUNT mutant(s) excluded as logging-only — the mutation rewrote" >&2
+  echo "      the human-readable MESSAGE of a log.debug/info/warning/error/exception" >&2
+  echo "      call, which no test may assert on (tests/CLAUDE.md: behaviour, not log" >&2
+  echo "      output). Scoped by column to that argument alone: a structured kwarg on" >&2
+  echo "      the same line (error_type=, ids — the vocabulary dashboards and the" >&2
+  echo "      evlog-map lane read) stays a survivor, as does log.set/set_ns/audit and" >&2
+  echo "      anything outside the call. Printed before the verdict so an exclusion is" >&2
+  echo "      never invisible, including on a failing run:" >&2
+  echo "$LOGGING" >&2
 fi
 if [ -n "$REAL_SURVIVORS" ]; then
   echo "MUTATION FAILED — the suite would not notice if this code were wrong:" >&2
