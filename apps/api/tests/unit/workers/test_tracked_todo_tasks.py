@@ -629,18 +629,6 @@ class TestExecuteViaAgent:
         assert result == "ok"
         assert "Canvas context" not in agent.await_args.kwargs["request"].message
 
-    async def test_an_agent_error_string_is_promoted_to_a_raised_failure(self):
-        """call_agent_silent swallows its own errors into the message; the
-        scheduled run must still count as failed so the retry ladder engages."""
-        agent = AsyncMock(return_value=("Error when calling silent agent: boom", {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5, pytest.raises(RuntimeError, match="Error when calling"):
-            await _execute_via_agent(_doc(), "user-1", user_data={})
-
-        _start, end = self._entries()
-        assert end.startswith("✗ ")
-        assert "scheduled run failed (RuntimeError)" in end
-
     async def test_an_agent_exception_writes_a_failure_marker_and_propagates(self):
         agent = AsyncMock(side_effect=TimeoutError("llm timeout"))
         p1, p2, p3, p4, p5 = self._patches(agent=agent)

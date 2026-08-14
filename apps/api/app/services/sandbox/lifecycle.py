@@ -43,7 +43,7 @@ from app.constants.sandbox import (
 )
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
-from app.models.sandbox_models import E2bSandboxDocument
+from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
@@ -474,7 +474,7 @@ async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> Pooled
     if not await _health_probe(entry.sandbox):
         _record(cache_evicted="unhealthy")
         log.info(f"{LogTag.SANDBOX} cached sandbox unhealthy user=; evicting", user_id=user_id)
-        await _hard_evict(user_id, entry)
+        await mark_sandbox_dead(user_id)
         return None
 
     # Running commands does NOT reset E2B's server-side kill timer — only
@@ -491,7 +491,7 @@ async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> Pooled
     if not await _verify_canary_or_die(entry):
         _record(cache_evicted="canary_stale")
         log.warning(f"{LogTag.SANDBOX} canary stale user=; recreating sandbox", user_id=user_id)
-        await _hard_evict(user_id, entry)
+        await mark_sandbox_dead(user_id)
         return None
 
     await _ensure_watcher(user_id, entry)
@@ -563,7 +563,7 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         _record(shard_id=shard_id)
         mount_env = _mount_env(user_id, shard_id)
 
-    if doc is not None and doc.sandbox_id:
+    if doc is not None and doc.sandbox_id and doc.state != E2bSandboxState.DEAD:
         sbx = await _resume_existing_sandbox(doc, mount_env)
         workspace_version = doc.workspace_version
         if sbx is not None:

@@ -377,6 +377,6 @@ async def call_agent_silent(
                 AnalyticsEvents.AGENT_RUN_FAILED,
                 {"agent": "comms", "mode": "background", "conversation_id": conversation_id},
             )
-        return f"Error when calling silent agent: {exc!s}", {}
+        raise
     finally:
         teardown_executor_capture(stream_id)

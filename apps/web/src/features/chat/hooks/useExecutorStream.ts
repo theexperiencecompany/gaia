@@ -4,7 +4,7 @@ import {
   parseChatStreamEvent,
   type TurnAccumulator,
 } from "@shared/chat";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
@@ -19,6 +19,10 @@ import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 // re-persisted at most this often (plus a guaranteed final write on close), so a
 // run emitting many tool events doesn't trigger one full-message write per chunk.
 const DB_WRITE_THROTTLE_MS = 500;
+
+// Shown when a background executor's stream dies before it delivered a result.
+const EXECUTOR_STREAM_FAILED =
+  "This background task stopped before it finished.";
 
 interface ExecutorStreamStartedEvent {
   type: "executor.stream_started";
@@ -43,27 +47,17 @@ const applyAccumulatorToMessage = (
 });
 
 /**
- * Subscribe to `executor.stream_started` WebSocket events.
+ * Handle one `executor.stream_started` event: open the SSE connection and fold
+ * it into a placeholder message. Takes its two live sets as arguments so the
+ * whole run is exercisable without a React renderer.
  *
- * When a queued executor task starts, the backend emits this event with a
- * fresh stream_id. This hook creates a temporary placeholder message in the
- * Zustand store and opens a new SSE connection to `GET /stream/{stream_id}`,
- * folding live events into the placeholder through the SAME shared accumulator
- * the live chat turn uses — reasoning, subagents, todo progress, and text all
- * render identically on both paths. The placeholder is removed when
- * `useBgMessageWebSocket` receives the final `conversation.new_message`.
- *
- * Only active for the currently-viewed conversation — if the user is elsewhere,
- * the final message arrives via the normal WS notification path.
+ * `controllers` holds in-flight subscriptions so the hook can abort them on
+ * unmount; `activeStreams` dedupes by stream_id — a re-emitted stream_started
+ * would otherwise open a second reader that appends duplicate tool cards.
  */
-export function useExecutorStream() {
-  // Abort in-flight SSE subscriptions on unmount, and dedupe concurrent
-  // subscriptions for the same stream_id — a re-emitted stream_started would
-  // otherwise open a second reader that appends duplicate tool cards.
-  const controllersRef = useRef<Set<AbortController>>(new Set());
-  const activeStreamsRef = useRef<Set<string>>(new Set());
-
-  const handleExecutorStreamStarted = useCallback(async (raw: unknown) => {
+export const createExecutorStreamHandler =
+  (controllers: Set<AbortController>, activeStreams: Set<string>) =>
+  async (raw: unknown): Promise<void> => {
     const event = raw as ExecutorStreamStartedEvent;
     const { stream_id, conversation_id, task_id } = event;
 
@@ -77,11 +71,11 @@ export function useExecutorStream() {
       return;
     }
 
-    if (activeStreamsRef.current.has(stream_id)) {
+    if (activeStreams.has(stream_id)) {
       // Already streaming this run — ignore a duplicate stream_started.
       return;
     }
-    activeStreamsRef.current.add(stream_id);
+    activeStreams.add(stream_id);
     streamLog("lifecycle", "executor-stream:start", {
       conversationId: conversation_id,
       detail: { stream_id, task_id },
@@ -110,7 +104,7 @@ export function useExecutorStream() {
     await db.putMessage(placeholder);
 
     const controller = new AbortController();
-    controllersRef.current.add(controller);
+    controllers.add(controller);
 
     let acc = createTurnAccumulator();
 
@@ -146,7 +140,7 @@ export function useExecutorStream() {
     // Mark the placeholder sent so the loading indicator clears. Runs on every
     // terminal outcome — normal close AND error/abort — otherwise an SSE error
     // leaves the placeholder status:'sending' and the card spins forever.
-    const finalizePlaceholder = () => {
+    const finalizePlaceholder = (error?: string) => {
       if (writeTimer !== null) {
         clearTimeout(writeTimer);
         writeTimer = null;
@@ -158,7 +152,8 @@ export function useExecutorStream() {
       if (current) {
         const finalized: IMessage = {
           ...applyAccumulatorToMessage(current, acc),
-          status: "sent",
+          status: error ? "failed" : "sent",
+          error: error ?? null,
         };
         state.updateMessageInPlace(finalized);
         void db.putMessage(finalized);
@@ -169,6 +164,11 @@ export function useExecutorStream() {
       });
     };
 
+    // A run that dies publishes an error frame and then closes — the close looks
+    // exactly like a clean one, so without holding the reason here the failed run
+    // finalizes as `sent` and renders as a finished answer.
+    let terminalError: string | undefined;
+
     try {
       await chatApi.subscribeToExecutorStream(
         stream_id,
@@ -178,6 +178,10 @@ export function useExecutorStream() {
             streamLog("sse", `executor-event:${parsed.type}`, {
               conversationId: conversation_id,
             });
+            if (parsed.type === "error") {
+              terminalError = parsed.error;
+              continue;
+            }
             if (parsed.type === "desktop_tool_request") {
               // Queued executor runs ride this stream too — relay desktop
               // actions exactly like the live chat stream does.
@@ -196,9 +200,10 @@ export function useExecutorStream() {
           flushToStore();
         },
         () => {
-          // Stream closed cleanly — finalize so the loading indicator clears.
-          // The final conversation.new_message WS event replaces this shortly.
-          finalizePlaceholder();
+          // Stream closed — finalize so the loading indicator clears. A run that
+          // errored gets its own reason; a clean one is replaced shortly by the
+          // final conversation.new_message WS event.
+          finalizePlaceholder(terminalError);
         },
         (err) => {
           console.error("[useExecutorStream] SSE error:", err);
@@ -208,17 +213,46 @@ export function useExecutorStream() {
       );
     } catch (err) {
       // subscribeToExecutorStream re-throws on SSE error/abort. Finalize here so
-      // the error path clears the spinner too (not only the clean-close path).
+      // the error path clears the spinner too (not only the clean-close path) —
+      // and carry the reason, or a dead background run persists as a finished
+      // one and renders as a complete answer.
       console.error(
         "[useExecutorStream] Executor stream ended with error:",
         err,
       );
-      finalizePlaceholder();
+      finalizePlaceholder(terminalError ?? EXECUTOR_STREAM_FAILED);
     } finally {
-      controllersRef.current.delete(controller);
-      activeStreamsRef.current.delete(stream_id);
+      controllers.delete(controller);
+      activeStreams.delete(stream_id);
     }
-  }, []);
+  };
+
+/**
+ * Subscribe to `executor.stream_started` WebSocket events.
+ *
+ * When a queued executor task starts, the backend emits this event with a
+ * fresh stream_id. This hook creates a temporary placeholder message in the
+ * Zustand store and opens a new SSE connection to `GET /stream/{stream_id}`,
+ * folding live events into the placeholder through the SAME shared accumulator
+ * the live chat turn uses — reasoning, subagents, todo progress, and text all
+ * render identically on both paths. The placeholder is removed when
+ * `useBgMessageWebSocket` receives the final `conversation.new_message`.
+ *
+ * Only active for the currently-viewed conversation — if the user is elsewhere,
+ * the final message arrives via the normal WS notification path.
+ */
+export function useExecutorStream() {
+  const controllersRef = useRef<Set<AbortController>>(new Set());
+  const activeStreamsRef = useRef<Set<string>>(new Set());
+
+  const handleExecutorStreamStarted = useMemo(
+    () =>
+      createExecutorStreamHandler(
+        controllersRef.current,
+        activeStreamsRef.current,
+      ),
+    [],
+  );
 
   useEffect(() => {
     const controllers = controllersRef.current;

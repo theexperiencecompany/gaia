@@ -260,6 +260,36 @@ def with_rate_limiting(
     return rate_limit_decorator
 
 
+async def enforce_tiered_limit(user_id: str, feature_key: str) -> None:
+    """Charge ``feature_key`` against ``user_id``'s plan quota.
+
+    The imperative half of :func:`tiered_rate_limit`, extracted so an entry point
+    that resolves its caller in the body rather than from the auth middleware
+    still meters through the same code. The bot chat stream is the case: it
+    resolves a platform link after the decorator would already have run, so
+    before this existed it went entirely unmetered — no plan quota, and no
+    ``usage_daily`` row, since ``record_activity`` fires from the limiter.
+    """
+    subscription = await payment_service.get_user_subscription_status(user_id)
+    user_plan = subscription.plan_type or PlanType.FREE
+    try:
+        await tiered_limiter.check_and_increment(
+            user_id=user_id,
+            feature_key=feature_key,
+            user_plan=user_plan,
+        )
+    except RateLimitExceededException:
+        # FREE hits are captured by the limit-upsell seam; capture the
+        # paid-plan hits here so every wall produces one event.
+        if user_plan != PlanType.FREE:
+            capture_event(
+                user_id,
+                AnalyticsEvents.RATE_LIMIT_HIT,
+                {"feature": feature_key, "plan": user_plan.value},
+            )
+        raise
+
+
 def tiered_rate_limit(
     feature_key: str,
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
@@ -291,27 +321,8 @@ def tiered_rate_limit(
             if not user_id:
                 raise HTTPException(status_code=401, detail="User ID not found")
 
-            # Get user subscription
-            subscription = await payment_service.get_user_subscription_status(user_id)
-            user_plan = subscription.plan_type or PlanType.FREE
-
             # Check rate limits before executing function
-            try:
-                await tiered_limiter.check_and_increment(
-                    user_id=user_id,
-                    feature_key=feature_key,
-                    user_plan=user_plan,
-                )
-            except RateLimitExceededException:
-                # FREE hits are captured by the limit-upsell seam; capture the
-                # paid-plan hits here so every wall produces one event.
-                if user_plan != PlanType.FREE:
-                    capture_event(
-                        user_id,
-                        AnalyticsEvents.RATE_LIMIT_HIT,
-                        {"feature": feature_key, "plan": user_plan.value},
-                    )
-                raise
+            await enforce_tiered_limit(user_id, feature_key)
 
             # Execute the original function
             result = await func(*args, **kwargs)

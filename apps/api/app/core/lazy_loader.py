@@ -267,6 +267,7 @@ class LazyLoader(Generic[T]):
                 f"{LogTag.STARTUP} Failed to initialize provider",
                 provider_name=self.provider_name,
                 error_type=type(e).__name__,
+                error=str(e),
             )
 
             if self.strategy == MissingKeyStrategy.ERROR:
@@ -336,6 +337,7 @@ class LazyLoader(Generic[T]):
                 f"{LogTag.STARTUP} Failed to initialize provider",
                 provider_name=self.provider_name,
                 error_type=type(e).__name__,
+                error=str(e),
             )
 
             if self.strategy == MissingKeyStrategy.ERROR:
