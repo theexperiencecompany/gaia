@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import type { Article, BreadcrumbList, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
+import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import { BlogCard } from "@/features/blog/components/BlogCard";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
 import MarkdownWrapper from "@/features/blog/components/MarkdownWrapper";
@@ -63,13 +64,16 @@ export default function BlogPostClient({
           </div>
 
           {blog.image && (
-            <Image
-              src={blog.image}
-              alt={blog.title}
-              width={1920}
-              height={1080}
-              className="w-full bg-zinc-900 object-cover"
-            />
+            <div className="relative w-full">
+              <Image
+                src={blog.image}
+                alt={blog.title}
+                width={1920}
+                height={1080}
+                className="w-full rounded-2xl bg-zinc-900 object-cover"
+              />
+              <GrainOverlay className="rounded-2xl" />
+            </div>
           )}
 
           <h1 className="text-center text-4xl font-medium tracking-tight sm:text-5xl">

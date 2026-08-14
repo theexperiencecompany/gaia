@@ -22,7 +22,7 @@ export const EM_PROACTIVE_MESSAGES: ChatMessage[] = [
     id: "em-pr3",
     role: "assistant",
     content:
-      "PR #214 has been waiting for review for 4 days — it's blocking the auth release. Alex is the author. Want me to flag it in Slack or draft a nudge?",
+      "PR #214 has been waiting for review for 4 days, and it's blocking the auth release. Alex is the author. Want me to flag it in Slack or draft a nudge?",
     delay: 600,
   },
 ];
@@ -66,7 +66,7 @@ export const TEAM_HEALTH_MESSAGES: ChatMessage[] = [
     id: "em-th5",
     role: "assistant",
     content:
-      "PR cycle time jumped from 12h to 18h — mostly driven by PR #214 sitting unreviewed for 4 days. Dev is out until Thursday and ENG-412 needs reassignment. Want me to handle both?",
+      "PR cycle time jumped from 12h to 18h, mostly driven by PR #214 sitting unreviewed for 4 days. Dev is out until Thursday and ENG-412 needs reassignment. Want me to handle both?",
     delay: 700,
   },
 ];
@@ -119,7 +119,7 @@ export const ONE_ON_ONE_MESSAGES: ChatMessage[] = [
     id: "em-oo5",
     role: "assistant",
     content:
-      "Alex has had a strong sprint but PR #214 is stalling things. The API schema decision is yours to make — she mentioned it in Slack on March 1. Worth resolving before the 1:1.",
+      "Alex has had a strong sprint but PR #214 is stalling things. The API schema decision is yours to make; she mentioned it in Slack on March 1. Worth resolving before the 1:1.",
     delay: 700,
   },
 ];
@@ -172,7 +172,7 @@ export const SPRINT_REPORT_MESSAGES: ChatMessage[] = [
     id: "em-sr5",
     role: "assistant",
     content:
-      "Done. Posted to Notion and #engineering. PR cycle time is the main theme — worth making it a retro topic. Should I add a discussion prompt to the doc?",
+      "Done. Posted to Notion and #engineering. PR cycle time is the main theme, worth making it a retro topic. Should I add a discussion prompt to the doc?",
     delay: 700,
   },
 ];

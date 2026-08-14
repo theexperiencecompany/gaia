@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
-import { wallpapers } from "@/config/wallpapers";
 import {
   type CommunityWorkflow,
   workflowApi,
@@ -73,21 +71,10 @@ export default async function UseCasesPage() {
   const faqSchema = generateFAQSchema(useCasesFAQs);
 
   return (
-    <div className="relative h-fit min-h-screen pt-90">
+    <div className="relative h-fit min-h-screen pt-16 sm:pt-24">
       <JsonLd
         data={[webPageSchema, breadcrumbSchema, itemListSchema, faqSchema]}
       />
-      <div className="absolute inset-0 top-0 z-0 h-[70vh] w-full">
-        <Image
-          src={wallpapers.useCases.webp}
-          alt="GAIA Use-Cases Wallpaper"
-          sizes="100vw"
-          priority
-          fill
-          className="aspect-video object-cover object-center opacity-80"
-        />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background to-transparent" />
-      </div>
 
       <UseCasesPageClient communityWorkflows={communityWorkflows} />
     </div>

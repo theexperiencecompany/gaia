@@ -127,6 +127,9 @@ function buildDraftFormValues(
     title: draftData.suggested_title,
     description: draftData.suggested_description || undefined,
     prompt: draftData.prompt || draftData.suggested_description || "",
+    // A draft carries no icon; the form picks the default for its category.
+    icon: null,
+    icon_color: null,
     activeTab,
     selectedTrigger: selectedTriggerValue,
     trigger_config: triggerConfig,
@@ -477,6 +480,8 @@ export default function WorkflowModal({
       formData.title !== currentFormData.title ||
       formData.description !== currentFormData.description ||
       formData.prompt !== currentFormData.prompt ||
+      formData.icon !== currentFormData.icon ||
+      formData.icon_color !== currentFormData.icon_color ||
       formData.activeTab !== currentFormData.activeTab ||
       formData.selectedTrigger !== currentFormData.selectedTrigger ||
       JSON.stringify(formData.trigger_config) !==
@@ -508,6 +513,8 @@ export default function WorkflowModal({
       title: data.title,
       description: data.description || undefined,
       prompt: data.prompt,
+      icon: data.icon ?? undefined,
+      icon_color: data.icon_color ?? undefined,
       trigger_config: data.trigger_config,
       // When predefined steps are supplied (from a community/featured
       // workflow), forward them so the backend reuses them instead of
@@ -640,6 +647,8 @@ export default function WorkflowModal({
         title: data.title,
         description: data.description || undefined,
         prompt: data.prompt,
+        icon: data.icon,
+        icon_color: data.icon_color,
         trigger_config: {
           ...data.trigger_config,
         },

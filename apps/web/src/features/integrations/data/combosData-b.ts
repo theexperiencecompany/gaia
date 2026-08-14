@@ -25,7 +25,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Create GitHub issues from bug report emails",
         description:
-          "When a client or teammate emails a bug report, GAIA parses the email, extracts the key details — steps to reproduce, environment, severity — and creates a formatted GitHub issue in the correct repository with appropriate labels. The original sender is referenced in the issue body so engineers have full context.",
+          "When a client or teammate emails a bug report, GAIA parses the email, extracts the key details (steps to reproduce, environment, severity) and creates a formatted GitHub issue in the correct repository with appropriate labels. The original sender is referenced in the issue body so engineers have full context.",
       },
       {
         title: "Feature request pipeline from email to backlog",
@@ -40,7 +40,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Release notification emails",
         description:
-          "When a new GitHub release is published, GAIA composes and sends a formatted release summary email to your distribution list — including changelog highlights, known issues, and upgrade notes — keeping clients and internal teams informed automatically.",
+          "When a new GitHub release is published, GAIA composes and sends a formatted release summary email to your distribution list, including changelog highlights, known issues, and upgrade notes, keeping clients and internal teams informed automatically.",
       },
       {
         title: "Email-triggered issue comments",
@@ -82,7 +82,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA handle GitHub notifications I already receive in Gmail?",
         answer:
-          "Yes. GAIA can parse GitHub's native notification emails and enrich them — summarizing long PR review threads, extracting action items, or routing specific notifications to teammates — rather than just letting them accumulate in your inbox.",
+          "Yes. GAIA can parse GitHub's native notification emails and enrich them by summarizing long PR review threads, extracting action items, or routing specific notifications to teammates, rather than just letting them accumulate in your inbox.",
       },
     ],
   },
@@ -107,7 +107,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Trello email workflow",
     ],
     intro:
-      "Email is where work requests arrive; Trello is where work gets organized and tracked. But bridging the two requires constant manual effort — reading emails, deciding which board and list they belong in, creating cards, copying over the relevant details, and then returning to Gmail to reply. For teams managing high email volumes, this becomes a significant time drain that takes attention away from actual work.\n\nGAIA connects Gmail and Trello so that email content flows directly into your boards. Incoming emails that represent tasks, requests, or deliverables can be automatically converted into Trello cards with the right metadata, assigned to the correct list, and linked back to the original email thread. When card statuses change in Trello, GAIA can notify the relevant people via email so external stakeholders stay informed without needing Trello access.\n\nThis integration is ideal for client-facing teams, project managers, and operations teams who live in both email and Trello and want to eliminate the manual handoff between the two.",
+      "Email is where work requests arrive; Trello is where work gets organized and tracked. But bridging the two requires constant manual effort: reading emails, deciding which board and list they belong in, creating cards, copying over the relevant details, and then returning to Gmail to reply. For teams managing high email volumes, this becomes a significant time drain that takes attention away from actual work.\n\nGAIA connects Gmail and Trello so that email content flows directly into your boards. Incoming emails that represent tasks, requests, or deliverables can be automatically converted into Trello cards with the right metadata, assigned to the correct list, and linked back to the original email thread. When card statuses change in Trello, GAIA can notify the relevant people via email so external stakeholders stay informed without needing Trello access.\n\nThis integration is ideal for client-facing teams, project managers, and operations teams who live in both email and Trello and want to eliminate the manual handoff between the two.",
     useCases: [
       {
         title: "Create Trello cards from client request emails",
@@ -117,7 +117,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Move cards based on email replies",
         description:
-          "When you or a teammate sends an email update on a project, GAIA can move the corresponding Trello card to the next list — for example, from 'In Progress' to 'Awaiting Client Feedback' — so your board reflects the actual state of work without manual updates.",
+          "When you or a teammate sends an email update on a project, GAIA can move the corresponding Trello card to the next list, for example from 'In Progress' to 'Awaiting Client Feedback', so your board reflects the actual state of work without manual updates.",
       },
       {
         title: "Email notifications when cards are completed",
@@ -127,7 +127,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Daily board digest to email",
         description:
-          "GAIA sends a morning email digest summarizing the state of your Trello boards — cards due today, overdue items, and recently completed tasks — so you start the day with a clear picture of priorities without opening Trello.",
+          "GAIA sends a morning email digest summarizing the state of your Trello boards (cards due today, overdue items, and recently completed tasks) so you start the day with a clear picture of priorities without opening Trello.",
       },
       {
         title: "Attachment forwarding from email to cards",
@@ -149,7 +149,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         step: "GAIA manages the email-to-board pipeline automatically",
         description:
-          "GAIA monitors your Gmail and Trello boards continuously, creating cards from qualifying emails and sending notifications for board events according to your rules — no manual copying required.",
+          "GAIA monitors your Gmail and Trello boards continuously, creating cards from qualifying emails and sending notifications for board events according to your rules. No manual copying required.",
       },
     ],
     faqs: [
@@ -194,7 +194,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Discord email alerts",
     ],
     intro:
-      "Many teams and communities coordinate in Discord but still receive critical notifications — system alerts, client emails, payment confirmations, and vendor communications — via Gmail. Manually monitoring both platforms creates alert fatigue and gaps in awareness, especially for distributed teams spread across time zones.\n\nGAIA bridges Gmail and Discord by routing important email notifications to the right Discord channels automatically. System alert emails can post to a #monitoring channel. Client communication summaries can land in a #clients channel. Financial notifications can appear in a #finance channel. Your Discord server becomes a real-time nerve center that pulls in email-based signals without anyone having to relay them manually.\n\nThis is especially useful for developer communities, open-source projects, gaming studios, and creator-led businesses that run their operations inside Discord but still interact with partners and vendors over email.",
+      "Many teams and communities coordinate in Discord but still receive critical notifications (system alerts, client emails, payment confirmations, and vendor communications) via Gmail. Manually monitoring both platforms creates alert fatigue and gaps in awareness, especially for distributed teams spread across time zones.\n\nGAIA bridges Gmail and Discord by routing important email notifications to the right Discord channels automatically. System alert emails can post to a #monitoring channel. Client communication summaries can land in a #clients channel. Financial notifications can appear in a #finance channel. Your Discord server becomes a real-time nerve center that pulls in email-based signals without anyone having to relay them manually.\n\nThis is especially useful for developer communities, open-source projects, gaming studios, and creator-led businesses that run their operations inside Discord but still interact with partners and vendors over email.",
     useCases: [
       {
         title: "System alert emails to Discord monitoring channel",
@@ -285,7 +285,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Auto-save invoice attachments to the correct Drive folder",
         description:
-          "When an invoice or receipt arrives in Gmail, GAIA extracts the attachment and saves it to the designated Drive folder for that vendor or project. The file is named consistently — including vendor name, invoice number, and date — so your accounting team can always find it without searching email.",
+          "When an invoice or receipt arrives in Gmail, GAIA extracts the attachment and saves it to the designated Drive folder for that vendor or project. The file is named consistently, including vendor name, invoice number, and date, so your accounting team can always find it without searching email.",
       },
       {
         title: "Contract and agreement archiving",
@@ -300,7 +300,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Email thread to Drive document",
         description:
-          "Important email threads — project decisions, client approvals, or policy discussions — can be converted by GAIA into formatted Drive documents for long-term archiving and easy sharing with people who weren't on the original thread.",
+          "Important email threads (project decisions, client approvals, or policy discussions) can be converted by GAIA into formatted Drive documents for long-term archiving and easy sharing with people who weren't on the original thread.",
       },
       {
         title: "Photo and media attachment organization",
@@ -381,17 +381,17 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Update deal stages based on email signals",
         description:
-          "When an email indicates a deal has progressed — a prospect confirms a meeting, sends a purchase order, or requests a contract — GAIA updates the HubSpot deal stage accordingly so your pipeline always reflects current reality without requiring manual updates.",
+          "When an email indicates a deal has progressed (a prospect confirms a meeting, sends a purchase order, or requests a contract), GAIA updates the HubSpot deal stage accordingly so your pipeline always reflects current reality without requiring manual updates.",
       },
       {
         title: "New contact creation from email signatures",
         description:
-          "When you receive an email from someone not yet in HubSpot, GAIA extracts contact details from the email signature — name, company, phone, title — and creates a new HubSpot contact record enriched with that information.",
+          "When you receive an email from someone not yet in HubSpot, GAIA extracts contact details from the email signature (name, company, phone, title) and creates a new HubSpot contact record enriched with that information.",
       },
       {
         title: "Follow-up task creation from email commitments",
         description:
-          "When an email contains a commitment — 'I'll get back to you by Friday' or 'let's schedule a call next week' — GAIA creates a follow-up task in HubSpot assigned to the responsible rep so commitments are tracked and nothing falls through the cracks.",
+          "When an email contains a commitment ('I'll get back to you by Friday' or 'let's schedule a call next week'), GAIA creates a follow-up task in HubSpot assigned to the responsible rep so commitments are tracked and nothing falls through the cracks.",
       },
     ],
     howItWorks: [
@@ -421,7 +421,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         question: "Will personal emails also be logged to HubSpot?",
         answer:
-          "No. GAIA only logs emails that match your defined rules — typically emails from or to contacts in HubSpot or email addresses from known customer domains. Internal team emails and personal communications are excluded by default.",
+          "No. GAIA only logs emails that match your defined rules, typically emails from or to contacts in HubSpot or email addresses from known customer domains. Internal team emails and personal communications are excluded by default.",
       },
       {
         question: "Can GAIA work across multiple team members' Gmail inboxes?",
@@ -451,7 +451,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "connect Gmail and Salesforce",
     ],
     intro:
-      "Salesforce is the system of record for enterprise sales teams, but keeping it accurate requires logging every customer interaction — a task that falls on sales reps who are already stretched thin. Studies consistently show that CRM data quality suffers because manual logging is time-consuming, inconsistent, and the first thing to be skipped when reps are busy closing deals.\n\nGAIA automates Gmail-to-Salesforce data flow so your CRM is kept accurate without burdening your sales team. Inbound emails from prospects automatically create Salesforce leads with the correct lead source, contact details, and email content captured. Existing customer email threads are logged to the right Account, Contact, and Opportunity records. Deal-progressing email signals trigger Opportunity stage updates. Your Salesforce data becomes a true reflection of sales activity rather than a manual approximation.\n\nThis integration is designed for enterprise sales teams, revenue operations managers who depend on CRM data quality, and organizations where Salesforce is the authoritative system of record for all customer interactions.",
+      "Salesforce is the system of record for enterprise sales teams, but keeping it accurate requires logging every customer interaction, a task that falls on sales reps who are already stretched thin. Studies consistently show that CRM data quality suffers because manual logging is time-consuming, inconsistent, and the first thing to be skipped when reps are busy closing deals.\n\nGAIA automates Gmail-to-Salesforce data flow so your CRM is kept accurate without burdening your sales team. Inbound emails from prospects automatically create Salesforce leads with the correct lead source, contact details, and email content captured. Existing customer email threads are logged to the right Account, Contact, and Opportunity records. Deal-progressing email signals trigger Opportunity stage updates. Your Salesforce data becomes a true reflection of sales activity rather than a manual approximation.\n\nThis integration is designed for enterprise sales teams, revenue operations managers who depend on CRM data quality, and organizations where Salesforce is the authoritative system of record for all customer interactions.",
     useCases: [
       {
         title: "Automatic lead creation from inbound inquiry emails",
@@ -466,12 +466,12 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Opportunity stage advancement from email signals",
         description:
-          "When an email from a prospect contains language indicating deal progression — a request for a proposal, a reference check, or a verbal commitment — GAIA advances the associated Salesforce Opportunity to the appropriate stage and creates a follow-up task for the rep.",
+          "When an email from a prospect contains language indicating deal progression (a request for a proposal, a reference check, or a verbal commitment), GAIA advances the associated Salesforce Opportunity to the appropriate stage and creates a follow-up task for the rep.",
       },
       {
         title: "Contact record enrichment from email signatures",
         description:
-          "GAIA extracts contact details from email signatures — title, direct phone, LinkedIn profile, and company details — and updates the corresponding Salesforce Contact record so your CRM data stays enriched and current as relationships evolve.",
+          "GAIA extracts contact details from email signatures (title, direct phone, LinkedIn profile, and company details) and updates the corresponding Salesforce Contact record so your CRM data stays enriched and current as relationships evolve.",
       },
       {
         title: "Lead conversion email notifications",
@@ -507,7 +507,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
         question:
           "How does GAIA handle emails that match multiple Salesforce records?",
         answer:
-          "When an email matches multiple Salesforce records — for example, a contact associated with multiple opportunities — GAIA will log the activity to all relevant records or prompt for disambiguation based on your configuration preferences.",
+          "When an email matches multiple Salesforce records, for example a contact associated with multiple opportunities, GAIA will log the activity to all relevant records or prompt for disambiguation based on your configuration preferences.",
       },
       {
         question: "Is this compatible with Salesforce Lightning and Classic?",
@@ -537,12 +537,12 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Airtable email sync",
     ],
     intro:
-      "Airtable's power lies in its ability to structure and organize information flexibly — but feeding that database with data from email still requires someone to read each email and manually enter the relevant fields. For teams that receive high volumes of structured information by email — orders, applications, registrations, inquiries, or reports — manual data entry is a bottleneck that slows down operations and introduces errors.\n\nGAIA connects Gmail and Airtable so that email content flows automatically into the right database fields. When an order confirmation arrives, GAIA creates an Airtable record with the order number, customer name, items, and value extracted from the email. When a job application lands in your inbox, GAIA creates an applicant record with name, contact details, and relevant experience parsed from the email. Your Airtable databases stay current without anyone acting as a manual data relay.\n\nThis is particularly powerful for operations teams running Airtable-based workflows, HR teams managing applicant tracking, event teams handling registrations, and any team that receives structured data via email and needs it organized in a database.",
+      "Airtable's power lies in its ability to structure and organize information flexibly, but feeding that database with data from email still requires someone to read each email and manually enter the relevant fields. For teams that receive high volumes of structured information by email (orders, applications, registrations, inquiries, or reports), manual data entry is a bottleneck that slows down operations and introduces errors.\n\nGAIA connects Gmail and Airtable so that email content flows automatically into the right database fields. When an order confirmation arrives, GAIA creates an Airtable record with the order number, customer name, items, and value extracted from the email. When a job application lands in your inbox, GAIA creates an applicant record with name, contact details, and relevant experience parsed from the email. Your Airtable databases stay current without anyone acting as a manual data relay.\n\nThis is particularly powerful for operations teams running Airtable-based workflows, HR teams managing applicant tracking, event teams handling registrations, and any team that receives structured data via email and needs it organized in a database.",
     useCases: [
       {
         title: "Order and purchase confirmation data capture",
         description:
-          "When order confirmation or purchase receipt emails arrive, GAIA extracts the structured data — order number, items, quantities, amounts, vendor name, and delivery date — and creates a new Airtable record in your orders or purchases database with all fields populated automatically.",
+          "When order confirmation or purchase receipt emails arrive, GAIA extracts the structured data (order number, items, quantities, amounts, vendor name, and delivery date) and creates a new Airtable record in your orders or purchases database with all fields populated automatically.",
       },
       {
         title: "Job application intake",
@@ -624,12 +624,12 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Stripe revenue alert Gmail",
     ],
     intro:
-      "Stripe sends email notifications for payments, failed charges, disputes, and subscription events, but those emails contain only minimal context — a transaction ID and an amount. Getting the full picture requires logging into Stripe, finding the customer, and cross-referencing with your own records. For finance teams and operations managers processing dozens of payment events daily, this back-and-forth is a significant time drain.\n\nGAIA connects Gmail and Stripe so that payment-related emails are automatically enriched with detailed Stripe customer and transaction data. When a payment failure email arrives, GAIA fetches the customer's full payment history, subscription status, and contact details and compiles a complete summary so your team can respond intelligently without opening Stripe. Dispute and chargeback emails trigger automated evidence gathering. Revenue milestone emails can be generated automatically based on Stripe data.\n\nThis integration is most valuable for SaaS companies, e-commerce teams, and subscription businesses where payment events require coordinated action from finance, customer success, and operations teams.",
+      "Stripe sends email notifications for payments, failed charges, disputes, and subscription events, but those emails contain only minimal context: a transaction ID and an amount. Getting the full picture requires logging into Stripe, finding the customer, and cross-referencing with your own records. For finance teams and operations managers processing dozens of payment events daily, this back-and-forth is a significant time drain.\n\nGAIA connects Gmail and Stripe so that payment-related emails are automatically enriched with detailed Stripe customer and transaction data. When a payment failure email arrives, GAIA fetches the customer's full payment history, subscription status, and contact details and compiles a complete summary so your team can respond intelligently without opening Stripe. Dispute and chargeback emails trigger automated evidence gathering. Revenue milestone emails can be generated automatically based on Stripe data.\n\nThis integration is most valuable for SaaS companies, e-commerce teams, and subscription businesses where payment events require coordinated action from finance, customer success, and operations teams.",
     useCases: [
       {
         title: "Payment failure enrichment and follow-up",
         description:
-          "When a failed payment notification arrives from Stripe, GAIA fetches the customer's full details from Stripe — their plan, payment history, and contact information — and composes a personalized follow-up email ready for review, so your team can respond in minutes rather than manually looking up each case.",
+          "When a failed payment notification arrives from Stripe, GAIA fetches the customer's full details from Stripe (their plan, payment history, and contact information) and composes a personalized follow-up email ready for review, so your team can respond in minutes rather than manually looking up each case.",
       },
       {
         title: "Dispute and chargeback response automation",
@@ -639,7 +639,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Daily and weekly revenue summaries",
         description:
-          "GAIA pulls revenue data from Stripe and delivers a structured email summary to your finance team every morning or week — including total revenue, new subscribers, churned accounts, and outstanding invoices — eliminating the need for manual Stripe dashboard exports.",
+          "GAIA pulls revenue data from Stripe and delivers a structured email summary to your finance team every morning or week, including total revenue, new subscribers, churned accounts, and outstanding invoices, eliminating the need for manual Stripe dashboard exports.",
       },
       {
         title: "Subscription event notifications to team email",
@@ -666,7 +666,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         step: "GAIA enriches payment emails and automates revenue workflows",
         description:
-          "GAIA monitors both incoming Stripe notification emails and Stripe webhook events, enriches them with full customer context, and dispatches the right actions — follow-up emails, internal alerts, or summary reports — automatically.",
+          "GAIA monitors both incoming Stripe notification emails and Stripe webhook events, enriches them with full customer context, and dispatches the right actions (follow-up emails, internal alerts, or summary reports) automatically.",
       },
     ],
     faqs: [
@@ -709,7 +709,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Zoom meeting email invite",
     ],
     intro:
-      "Scheduling a meeting over email is a multi-step process: negotiate a time by email, open Zoom to create a meeting, copy the link, return to Gmail, compose a reply with the link, and hope you didn't forget to add it to your calendar. When this process repeats dozens of times a week, it consumes significant time and is prone to errors — forgotten links, wrong time zones, and meetings that never make it onto the calendar.\n\nGAIA automates the Gmail-to-Zoom scheduling loop entirely. When an email arrives with a meeting request or a confirmed time, GAIA creates the Zoom meeting, adds it to your Google Calendar, and replies to the thread with the join link — all without you leaving your inbox. For teams using Zoom as their primary video conferencing tool, this eliminates the single most tedious step in the workday.\n\nThis integration is particularly valuable for executives, sales teams, consultants, and customer success managers who spend a significant portion of their day negotiating and setting up meetings over email.",
+      "Scheduling a meeting over email is a multi-step process: negotiate a time by email, open Zoom to create a meeting, copy the link, return to Gmail, compose a reply with the link, and hope you didn't forget to add it to your calendar. When this process repeats dozens of times a week, it consumes significant time and is prone to errors: forgotten links, wrong time zones, and meetings that never make it onto the calendar.\n\nGAIA automates the Gmail-to-Zoom scheduling loop entirely. When an email arrives with a meeting request or a confirmed time, GAIA creates the Zoom meeting, adds it to your Google Calendar, and replies to the thread with the join link, all without you leaving your inbox. For teams using Zoom as their primary video conferencing tool, this eliminates the single most tedious step in the workday.\n\nThis integration is particularly valuable for executives, sales teams, consultants, and customer success managers who spend a significant portion of their day negotiating and setting up meetings over email.",
     useCases: [
       {
         title: "Auto-create Zoom meetings from confirmed email times",
@@ -719,7 +719,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "One-click meeting creation from email",
         description:
-          "Forward any email to GAIA with a note like 'set up a Zoom for Thursday at 2 PM' and GAIA creates the meeting, sends the invite to all email participants, and confirms the details back to you — turning a multi-step process into a single action.",
+          "Forward any email to GAIA with a note like 'set up a Zoom for Thursday at 2 PM' and GAIA creates the meeting, sends the invite to all email participants, and confirms the details back to you, turning a multi-step process into a single action.",
       },
       {
         title: "Recurring meeting setup from email chains",
@@ -746,7 +746,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         step: "Set your scheduling preferences",
         description:
-          "Tell GAIA your default Zoom meeting settings — duration, waiting room preference, recording options, and calendar integration. You can also specify which types of email threads should trigger automatic meeting creation versus requiring your confirmation.",
+          "Tell GAIA your default Zoom meeting settings: duration, waiting room preference, recording options, and calendar integration. You can also specify which types of email threads should trigger automatic meeting creation versus requiring your confirmation.",
       },
       {
         step: "GAIA handles meeting creation and communication automatically",
@@ -797,7 +797,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Teams email alert workflow",
     ],
     intro:
-      "Organizations that use Google Workspace for email but Microsoft 365 for team collaboration face a constant bridging problem. Important emails arrive in Gmail while the team is active in Microsoft Teams. Colleagues who need to know about a client email, system alert, or vendor communication have to be individually forwarded threads, creating email overload and losing the collaborative context that Teams provides.\n\nGAIA bridges Gmail and Microsoft Teams so that critical email communications surface automatically in the right Teams channels. Client emails can post to a #clients channel. System alerts can go to #monitoring. Financial notifications can appear in a #finance channel. Your Teams workspace becomes informed by Gmail events in real time, and your team can discuss and respond within Teams rather than jumping between platforms.\n\nThis integration is essential for organizations in hybrid technology environments — using Google Workspace for email but Microsoft 365 for Office apps and team collaboration — and for teams where different departments have standardized on different platforms.",
+      "Organizations that use Google Workspace for email but Microsoft 365 for team collaboration face a constant bridging problem. Important emails arrive in Gmail while the team is active in Microsoft Teams. Colleagues who need to know about a client email, system alert, or vendor communication have to be individually forwarded threads, creating email overload and losing the collaborative context that Teams provides.\n\nGAIA bridges Gmail and Microsoft Teams so that critical email communications surface automatically in the right Teams channels. Client emails can post to a #clients channel. System alerts can go to #monitoring. Financial notifications can appear in a #finance channel. Your Teams workspace becomes informed by Gmail events in real time, and your team can discuss and respond within Teams rather than jumping between platforms.\n\nThis integration is essential for organizations in hybrid technology environments (using Google Workspace for email but Microsoft 365 for Office apps and team collaboration) and for teams where different departments have standardized on different platforms.",
     useCases: [
       {
         title: "Client email alerts to Teams channels",
@@ -834,7 +834,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         step: "Configure your routing and notification rules",
         description:
-          "Specify which Gmail labels, senders, or email categories should trigger Teams notifications, which Teams channels each type should go to, and what format the Teams messages should take — full email, summary, or custom template.",
+          "Specify which Gmail labels, senders, or email categories should trigger Teams notifications, which Teams channels each type should go to, and what format the Teams messages should take: full email, summary, or custom template.",
       },
       {
         step: "GAIA bridges Gmail and Teams automatically",
@@ -847,7 +847,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA post to Teams private channels as well as public ones?",
         answer:
-          "Yes. GAIA can post to any Teams channel — public, private, or shared — where it has been granted permission. During setup, you specify which channels GAIA should have access to, and it will only post where authorized.",
+          "Yes. GAIA can post to any Teams channel (public, private, or shared) where it has been granted permission. During setup, you specify which channels GAIA should have access to, and it will only post where authorized.",
       },
       {
         question:
@@ -857,7 +857,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       },
       {
         question:
-          "Does GAIA support conditional routing — for example, only posting emails above a certain urgency level?",
+          "Does GAIA support conditional routing, for example only posting emails above a certain urgency level?",
         answer:
           "Yes. GAIA can assess email urgency using AI classification and only route emails that meet your defined threshold to Teams. This prevents your Teams channels from being flooded with low-priority notifications.",
       },
@@ -884,12 +884,12 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Slack Trello workflow",
     ],
     intro:
-      "The best ideas and most urgent action items in a team often emerge in Slack conversations, but those insights evaporate if they're not captured in Trello where work actually gets tracked. Teams develop workarounds — screenshotting Slack messages, copying them into Trello cards manually — but these habits are inconsistent and create a disconnect between where discussions happen and where work gets done.\n\nGAIA bridges Slack and Trello so that capturing work from conversation is effortless. A single emoji reaction or a quick command in Slack can turn a message into a properly structured Trello card on the right board. When Trello cards are updated — moved to a new list, given a due date, or marked complete — Slack receives a notification in the appropriate channel so the team stays informed without checking Trello manually.\n\nThis integration is ideal for product teams who ideate in Slack and execute in Trello, marketing teams managing campaign tasks, and any team that needs their task board to reflect work captured in real-time conversations.",
+      "The best ideas and most urgent action items in a team often emerge in Slack conversations, but those insights evaporate if they're not captured in Trello where work actually gets tracked. Teams develop workarounds (screenshotting Slack messages, copying them into Trello cards manually), but these habits are inconsistent and create a disconnect between where discussions happen and where work gets done.\n\nGAIA bridges Slack and Trello so that capturing work from conversation is effortless. A single emoji reaction or a quick command in Slack can turn a message into a properly structured Trello card on the right board. When Trello cards are updated (moved to a new list, given a due date, or marked complete), Slack receives a notification in the appropriate channel so the team stays informed without checking Trello manually.\n\nThis integration is ideal for product teams who ideate in Slack and execute in Trello, marketing teams managing campaign tasks, and any team that needs their task board to reflect work captured in real-time conversations.",
     useCases: [
       {
         title: "Create Trello cards with emoji reactions",
         description:
-          "React to any Slack message with a designated emoji — like a clipboard or checkmark — and GAIA automatically creates a Trello card in the configured board and list with the message content as the card description, tagged with the channel and author so context is preserved.",
+          "React to any Slack message with a designated emoji (like a clipboard or checkmark) and GAIA automatically creates a Trello card in the configured board and list with the message content as the card description, tagged with the channel and author so context is preserved.",
       },
       {
         title: "Slash command card creation with details",
@@ -899,12 +899,12 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Trello card status updates in Slack",
         description:
-          "When a Trello card is moved to a new list — such as 'In Review' or 'Done' — GAIA posts a brief update to the relevant Slack channel so the team knows work has progressed without anyone having to check the Trello board or send a manual update.",
+          "When a Trello card is moved to a new list (such as 'In Review' or 'Done'), GAIA posts a brief update to the relevant Slack channel so the team knows work has progressed without anyone having to check the Trello board or send a manual update.",
       },
       {
         title: "Daily board summary in Slack",
         description:
-          "GAIA posts a morning digest to a designated Slack channel summarizing the state of your Trello boards: cards due today, overdue items, and what was completed yesterday — giving the team a shared overview to start each day.",
+          "GAIA posts a morning digest to a designated Slack channel summarizing the state of your Trello boards: cards due today, overdue items, and what was completed yesterday, giving the team a shared overview to start each day.",
       },
       {
         title: "Overdue card alerts to Slack",
@@ -976,17 +976,17 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Auto-save Slack channel uploads to Drive folders",
         description:
-          "Every file uploaded to designated Slack channels is automatically saved by GAIA to the corresponding Google Drive folder. Design assets shared in #design go to the Design Assets Drive folder, project documents in #project-x go to that project's Drive folder, and so on — without anyone having to manually move files.",
+          "Every file uploaded to designated Slack channels is automatically saved by GAIA to the corresponding Google Drive folder. Design assets shared in #design go to the Design Assets Drive folder, project documents in #project-x go to that project's Drive folder, and so on, without anyone having to manually move files.",
       },
       {
         title: "Retrieve Drive files from Slack with natural language",
         description:
-          "Ask GAIA in Slack 'share the Q2 marketing brief from Drive' and GAIA searches your Drive, finds the document, and posts the shareable link directly in the channel — eliminating the need to switch to Drive, search, and copy the link back to Slack.",
+          "Ask GAIA in Slack 'share the Q2 marketing brief from Drive' and GAIA searches your Drive, finds the document, and posts the shareable link directly in the channel, eliminating the need to switch to Drive, search, and copy the link back to Slack.",
       },
       {
         title: "Drive file update notifications in Slack",
         description:
-          "When a key Google Drive document is updated — a shared brief, a contract, or a live dashboard — GAIA posts a notification in the relevant Slack channel with a direct link to the updated file so the team is always working from the latest version.",
+          "When a key Google Drive document is updated (a shared brief, a contract, or a live dashboard), GAIA posts a notification in the relevant Slack channel with a direct link to the updated file so the team is always working from the latest version.",
       },
       {
         title: "Slack message to Drive document",
@@ -996,7 +996,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Drive folder briefs shared to Slack",
         description:
-          "At the start of a project, GAIA can share a structured summary of a Drive project folder to the relevant Slack channel — listing key documents, recent updates, and important files — so the whole team has a quick reference without navigating Drive.",
+          "At the start of a project, GAIA can share a structured summary of a Drive project folder to the relevant Slack channel, listing key documents, recent updates, and important files, so the whole team has a quick reference without navigating Drive.",
       },
     ],
     howItWorks: [
@@ -1058,7 +1058,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Slack Discord sync",
     ],
     intro:
-      "Many organizations operate on both Slack for internal team communication and Discord for their developer community, customer community, or public presence. Keeping both platforms informed requires manually copying and posting the same announcements, updates, and alerts twice — a tedious process that often leads to one platform receiving information later or in a less polished format than the other.\n\nGAIA bridges Slack and Discord so that information flows between them according to your rules. Product announcements posted in a Slack channel can be automatically cross-posted to a Discord announcement channel. Community questions escalated in Discord can appear in the appropriate Slack support channel. Status updates from your engineering team in Slack can be relayed to your public Discord status channel in real time. Both communities stay informed without doubling your communication overhead.\n\nThis is particularly valuable for developer tools companies, open-source projects, gaming studios, and creator businesses that maintain an internal Slack team while building an engaged Discord community.",
+      "Many organizations operate on both Slack for internal team communication and Discord for their developer community, customer community, or public presence. Keeping both platforms informed requires manually copying and posting the same announcements, updates, and alerts twice, a tedious process that often leads to one platform receiving information later or in a less polished format than the other.\n\nGAIA bridges Slack and Discord so that information flows between them according to your rules. Product announcements posted in a Slack channel can be automatically cross-posted to a Discord announcement channel. Community questions escalated in Discord can appear in the appropriate Slack support channel. Status updates from your engineering team in Slack can be relayed to your public Discord status channel in real time. Both communities stay informed without doubling your communication overhead.\n\nThis is particularly valuable for developer tools companies, open-source projects, gaming studios, and creator businesses that maintain an internal Slack team while building an engaged Discord community.",
     useCases: [
       {
         title: "Cross-post product announcements from Slack to Discord",
@@ -1068,7 +1068,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Escalate Discord community questions to Slack support",
         description:
-          "When a Discord member asks a question that requires internal team input — a billing issue, a complex technical question, or a partnership inquiry — GAIA routes the question to the appropriate Slack channel so the right internal team member can respond, and posts the answer back to Discord when resolved.",
+          "When a Discord member asks a question that requires internal team input (a billing issue, a complex technical question, or a partnership inquiry), GAIA routes the question to the appropriate Slack channel so the right internal team member can respond, and posts the answer back to Discord when resolved.",
       },
       {
         title: "Engineering status updates to Discord",
@@ -1120,7 +1120,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
         question:
           "Does GAIA support bridging specific Slack DMs to Discord threads?",
         answer:
-          "GAIA focuses on channel-to-channel bridging. Direct message bridging is not supported by default for privacy reasons, but escalation workflows — where a Discord user's question is routed to a Slack channel — are fully supported.",
+          "GAIA focuses on channel-to-channel bridging. Direct message bridging is not supported by default for privacy reasons, but escalation workflows (where a Discord user's question is routed to a Slack channel) are fully supported.",
       },
     ],
   },
@@ -1145,7 +1145,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Figma update alert Slack",
     ],
     intro:
-      "Design feedback lives in Figma comments, but the designers and stakeholders who need to act on it are often in Slack. Checking Figma for new comments is a context switch that breaks focus, and email notifications from Figma are easy to miss in a full inbox. The result is delayed design reviews, stale comments that nobody has addressed, and stakeholders who feel out of the loop on design progress.\n\nGAIA connects Slack and Figma so that design activity surfaces where your team is already paying attention. New comments on a Figma file post to the relevant Slack channel so reviewers are notified immediately. When a designer publishes a new version, a Slack notification goes out with a thumbnail preview and direct link to the updated frame. Design approval requests can be managed directly from Slack without opening Figma.\n\nThis integration is built for product design teams, product managers reviewing designs, and development teams who need to be notified when designs are ready for handoff — all without adding Figma notification overhead to their email inboxes.",
+      "Design feedback lives in Figma comments, but the designers and stakeholders who need to act on it are often in Slack. Checking Figma for new comments is a context switch that breaks focus, and email notifications from Figma are easy to miss in a full inbox. The result is delayed design reviews, stale comments that nobody has addressed, and stakeholders who feel out of the loop on design progress.\n\nGAIA connects Slack and Figma so that design activity surfaces where your team is already paying attention. New comments on a Figma file post to the relevant Slack channel so reviewers are notified immediately. When a designer publishes a new version, a Slack notification goes out with a thumbnail preview and direct link to the updated frame. Design approval requests can be managed directly from Slack without opening Figma.\n\nThis integration is built for product design teams, product managers reviewing designs, and development teams who need to be notified when designs are ready for handoff, all without adding Figma notification overhead to their email inboxes.",
     useCases: [
       {
         title: "Figma comment alerts to Slack",
@@ -1182,7 +1182,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         step: "Configure your notification preferences",
         description:
-          "Choose which Figma events trigger Slack notifications — comments, version publishes, status changes, or handoff markers — and map them to the appropriate Slack channels or individual DMs. You can set different rules per project or file.",
+          "Choose which Figma events trigger Slack notifications (comments, version publishes, status changes, or handoff markers) and map them to the appropriate Slack channels or individual DMs. You can set different rules per project or file.",
       },
       {
         step: "GAIA delivers Figma activity to Slack automatically",
@@ -1247,12 +1247,12 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Revenue milestone announcements",
         description:
-          "Configure GAIA to post to your #general or #wins channel when Stripe MRR crosses key milestones — $10K, $50K, $100K — so the whole company gets to celebrate growth moments in real time rather than waiting for a quarterly review.",
+          "Configure GAIA to post to your #general or #wins channel when Stripe MRR crosses key milestones ($10K, $50K, $100K) so the whole company gets to celebrate growth moments in real time rather than waiting for a quarterly review.",
       },
       {
         title: "Daily and weekly revenue digests",
         description:
-          "GAIA posts a structured daily revenue summary to your #finance channel every morning: new MRR, churned MRR, net new revenue, total active subscriptions, and any anomalies detected — giving your finance and leadership teams a daily financial pulse without opening Stripe.",
+          "GAIA posts a structured daily revenue summary to your #finance channel every morning: new MRR, churned MRR, net new revenue, total active subscriptions, and any anomalies detected, giving your finance and leadership teams a daily financial pulse without opening Stripe.",
       },
       {
         title: "Chargeback and dispute alerts",
@@ -1282,7 +1282,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
         question:
           "Can I control which Slack channels receive which types of Stripe events?",
         answer:
-          "Yes. You can route different Stripe events to different channels. New subscriptions can go to #sales, failed payments to #support, disputes to #finance, and revenue summaries to #leadership — ensuring each team gets the relevant financial information without noise.",
+          "Yes. You can route different Stripe events to different channels. New subscriptions can go to #sales, failed payments to #support, disputes to #finance, and revenue summaries to #leadership, ensuring each team gets the relevant financial information without noise.",
       },
       {
         question:
@@ -1320,17 +1320,17 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Salesforce Slack CRM workflow",
     ],
     intro:
-      "Sales teams use Slack to coordinate deal strategy, share competitive intelligence, and align on next steps — but the actual CRM data lives in Salesforce and is rarely consulted during Slack conversations. This disconnect means decisions are made without current CRM context, and insights shared in Slack never make it back into Salesforce where they belong. CRM data quality suffers and deals slip because the system of record is divorced from where the team actually collaborates.\n\nGAIA bridges Slack and Salesforce so that CRM context is available in Slack conversations and work done in Slack flows back into Salesforce automatically. When a rep discusses a deal in Slack, GAIA can pull the latest Salesforce Opportunity data into the thread. When a decision is made, GAIA creates the appropriate Salesforce task, note, or status update from the conversation. Salesforce alerts — stage changes, renewal dates, new leads — arrive in the right Slack channels in real time.\n\nThis is essential for enterprise sales teams, revenue operations managers, and account management teams who need their CRM to stay current without burdening sales reps with manual data entry.",
+      "Sales teams use Slack to coordinate deal strategy, share competitive intelligence, and align on next steps, but the actual CRM data lives in Salesforce and is rarely consulted during Slack conversations. This disconnect means decisions are made without current CRM context, and insights shared in Slack never make it back into Salesforce where they belong. CRM data quality suffers and deals slip because the system of record is divorced from where the team actually collaborates.\n\nGAIA bridges Slack and Salesforce so that CRM context is available in Slack conversations and work done in Slack flows back into Salesforce automatically. When a rep discusses a deal in Slack, GAIA can pull the latest Salesforce Opportunity data into the thread. When a decision is made, GAIA creates the appropriate Salesforce task, note, or status update from the conversation. Salesforce alerts (stage changes, renewal dates, new leads) arrive in the right Slack channels in real time.\n\nThis is essential for enterprise sales teams, revenue operations managers, and account management teams who need their CRM to stay current without burdening sales reps with manual data entry.",
     useCases: [
       {
         title: "Salesforce opportunity updates in Slack",
         description:
-          "When a Salesforce Opportunity advances to a new stage, has its close date changed, or is updated by a rep, GAIA posts a notification to the relevant Slack channel with the deal name, stage, amount, and what changed — so sales management has a real-time pipeline view without running Salesforce reports.",
+          "When a Salesforce Opportunity advances to a new stage, has its close date changed, or is updated by a rep, GAIA posts a notification to the relevant Slack channel with the deal name, stage, amount, and what changed, so sales management has a real-time pipeline view without running Salesforce reports.",
       },
       {
         title: "Create Salesforce tasks from Slack messages",
         description:
-          "When a rep types a follow-up commitment in Slack — 'need to send the proposal by Thursday' — GAIA creates a Salesforce task assigned to the rep with the correct due date and links it to the relevant Opportunity, ensuring no commitment made in Slack is lost from the CRM.",
+          "When a rep types a follow-up commitment in Slack ('need to send the proposal by Thursday'), GAIA creates a Salesforce task assigned to the rep with the correct due date and links it to the relevant Opportunity, ensuring no commitment made in Slack is lost from the CRM.",
       },
       {
         title: "Query Salesforce from Slack without leaving the app",
@@ -1340,7 +1340,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "New lead alerts in Slack",
         description:
-          "When a new Lead is created in Salesforce — from a web form, marketing campaign, or manual entry — GAIA posts an alert to your #sales or #sdr Slack channel with the lead details so SDRs can follow up immediately while the lead is warm.",
+          "When a new Lead is created in Salesforce (from a web form, marketing campaign, or manual entry), GAIA posts an alert to your #sales or #sdr Slack channel with the lead details so SDRs can follow up immediately while the lead is warm.",
       },
       {
         title: "Deal renewal and expiration reminders",
@@ -1370,7 +1370,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA pull Salesforce data for a specific account directly into a Slack channel?",
         answer:
-          "Yes. You can ask GAIA to post a Salesforce account summary — including open opportunities, recent activity, key contacts, and contract status — to any Slack channel. This is especially useful for preparing for customer calls when the team is coordinating in Slack.",
+          "Yes. You can ask GAIA to post a Salesforce account summary, including open opportunities, recent activity, key contacts, and contract status, to any Slack channel. This is especially useful for preparing for customer calls when the team is coordinating in Slack.",
       },
       {
         question:
@@ -1407,22 +1407,22 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Airtable Slack database workflow",
     ],
     intro:
-      "Airtable is a powerful way to organize structured data for operations, project management, and tracking — but keeping its records current requires team members to regularly log into Airtable and manually update entries. When teams are already coordinating in Slack, asking them to context-switch to Airtable for routine updates creates friction that leads to outdated records and databases that no longer reflect reality.\n\nGAIA bridges Slack and Airtable so that routine record updates happen in Slack and data changes surface in Slack automatically. Team members can create new Airtable records, update existing ones, and query database contents from Slack without ever opening Airtable. When important records are created or updated in Airtable — a new client onboarded, a project milestone reached, an inventory threshold crossed — Slack gets notified so the right people can act immediately.\n\nThis integration is ideal for operations teams running Airtable-based processes, project managers using Airtable for project tracking, HR teams managing onboarding checklists, and any team that needs their database to stay current without burdening people with context-switching.",
+      "Airtable is a powerful way to organize structured data for operations, project management, and tracking, but keeping its records current requires team members to regularly log into Airtable and manually update entries. When teams are already coordinating in Slack, asking them to context-switch to Airtable for routine updates creates friction that leads to outdated records and databases that no longer reflect reality.\n\nGAIA bridges Slack and Airtable so that routine record updates happen in Slack and data changes surface in Slack automatically. Team members can create new Airtable records, update existing ones, and query database contents from Slack without ever opening Airtable. When important records are created or updated in Airtable (a new client onboarded, a project milestone reached, an inventory threshold crossed), Slack gets notified so the right people can act immediately.\n\nThis integration is ideal for operations teams running Airtable-based processes, project managers using Airtable for project tracking, HR teams managing onboarding checklists, and any team that needs their database to stay current without burdening people with context-switching.",
     useCases: [
       {
         title: "Create Airtable records from Slack with a slash command",
         description:
-          "Team members can use a Slack command to create new Airtable records on the fly — logging a new client, submitting a content request, or reporting a bug — without leaving Slack. GAIA collects the required fields conversationally and creates the record with all data populated correctly.",
+          "Team members can use a Slack command to create new Airtable records on the fly (logging a new client, submitting a content request, or reporting a bug) without leaving Slack. GAIA collects the required fields conversationally and creates the record with all data populated correctly.",
       },
       {
         title: "Update record status from Slack reactions or commands",
         description:
-          "When a project task is completed, a team member can react to the associated Slack message with a checkmark emoji and GAIA updates the corresponding Airtable record status to 'Done' — keeping the database current with minimal effort from the team.",
+          "When a project task is completed, a team member can react to the associated Slack message with a checkmark emoji and GAIA updates the corresponding Airtable record status to 'Done', keeping the database current with minimal effort from the team.",
       },
       {
         title: "Airtable record change notifications in Slack",
         description:
-          "When an important Airtable record is updated — a client status changes, a project deadline shifts, or an inventory count drops below threshold — GAIA posts a structured notification to the relevant Slack channel so the team can act on the change immediately.",
+          "When an important Airtable record is updated (a client status changes, a project deadline shifts, or an inventory count drops below threshold), GAIA posts a structured notification to the relevant Slack channel so the team can act on the change immediately.",
       },
       {
         title: "Query Airtable data from Slack",
@@ -1432,7 +1432,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "New record alerts for time-sensitive entries",
         description:
-          "When a new high-priority record is created in Airtable — a new enterprise lead, a critical bug report, or an urgent client request — GAIA sends an immediate Slack alert to the appropriate channel or individual so response time is minimized.",
+          "When a new high-priority record is created in Airtable (a new enterprise lead, a critical bug report, or an urgent client request), GAIA sends an immediate Slack alert to the appropriate channel or individual so response time is minimized.",
       },
     ],
     howItWorks: [
@@ -1457,13 +1457,13 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
         question:
           "Can multiple team members update the same Airtable record from different Slack channels?",
         answer:
-          "Yes. Multiple team members can update records via Slack commands. GAIA handles concurrent updates gracefully and will alert if a conflict is detected — for example, if two people try to set a record to different statuses at the same time.",
+          "Yes. Multiple team members can update records via Slack commands. GAIA handles concurrent updates gracefully and will alert if a conflict is detected, for example if two people try to set a record to different statuses at the same time.",
       },
       {
         question:
           "Can GAIA filter Airtable notifications to avoid flooding Slack with every small change?",
         answer:
-          "Yes. You can configure notification rules to only trigger for specific field changes, record types, or conditions — such as only notifying when a record's status changes to 'Urgent' or when a numeric field exceeds a defined threshold.",
+          "Yes. You can configure notification rules to only trigger for specific field changes, record types, or conditions, such as only notifying when a record's status changes to 'Urgent' or when a numeric field exceeds a defined threshold.",
       },
       {
         question:
@@ -1494,7 +1494,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Slack Teams message sync",
     ],
     intro:
-      "Mergers, acquisitions, and multi-vendor environments often leave organizations running both Slack and Microsoft Teams simultaneously, with different departments, teams, or partner organizations standardized on each platform. Keeping both sides informed requires manually copying messages, maintaining dual presence, or missing communications entirely — none of which are acceptable in a fast-moving business.\n\nGAIA bridges Slack and Microsoft Teams so that information flows between them according to your organizational rules. Announcements posted in a Slack channel can be automatically mirrored to a Teams channel. Escalations raised in Teams can appear in the relevant Slack channel. Shared project teams using different platforms can collaborate without either side losing visibility into key communications.\n\nThis integration is critical for enterprise organizations navigating platform migrations, companies that have acquired Slack-using startups into a Teams-first parent organization, and businesses whose external partners use a different platform than their internal teams.",
+      "Mergers, acquisitions, and multi-vendor environments often leave organizations running both Slack and Microsoft Teams simultaneously, with different departments, teams, or partner organizations standardized on each platform. Keeping both sides informed requires manually copying messages, maintaining dual presence, or missing communications entirely, none of which are acceptable in a fast-moving business.\n\nGAIA bridges Slack and Microsoft Teams so that information flows between them according to your organizational rules. Announcements posted in a Slack channel can be automatically mirrored to a Teams channel. Escalations raised in Teams can appear in the relevant Slack channel. Shared project teams using different platforms can collaborate without either side losing visibility into key communications.\n\nThis integration is critical for enterprise organizations navigating platform migrations, companies that have acquired Slack-using startups into a Teams-first parent organization, and businesses whose external partners use a different platform than their internal teams.",
     useCases: [
       {
         title: "Bridge project channels across Slack and Teams",
@@ -1581,7 +1581,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "design review email workflow",
     ],
     intro:
-      "Design review cycles are notorious for feedback fragmentation. Stakeholders send design comments over email because that's the tool they're comfortable with, while designers work in Figma and need feedback directly on the canvas. The result is designers manually transcribing email feedback into Figma comments, stakeholders unsure whether their input was received, and review cycles that drag on longer than they should.\n\nGAIA bridges this gap by connecting Gmail feedback to Figma. When a stakeholder emails design feedback on a specific file or frame, GAIA can add that feedback as a comment on the correct Figma file, tagging the responsible designer. When a designer marks feedback as resolved in Figma or publishes a new version, GAIA can notify the stakeholder by email so they know to review the update.\n\nFor product and design teams working with non-technical stakeholders who will never open Figma, this automation means feedback actually lands where designers can act on it—and stakeholders stay informed without needing to learn a new tool.",
+      "Design review cycles are notorious for feedback fragmentation. Stakeholders send design comments over email because that's the tool they're comfortable with, while designers work in Figma and need feedback directly on the canvas. The result is designers manually transcribing email feedback into Figma comments, stakeholders unsure whether their input was received, and review cycles that drag on longer than they should.\n\nGAIA bridges this gap by connecting Gmail feedback to Figma. When a stakeholder emails design feedback on a specific file or frame, GAIA can add that feedback as a comment on the correct Figma file, tagging the responsible designer. When a designer marks feedback as resolved in Figma or publishes a new version, GAIA can notify the stakeholder by email so they know to review the update.\n\nFor product and design teams working with non-technical stakeholders who will never open Figma, this automation means feedback actually lands where designers can act on it, and stakeholders stay informed without needing to learn a new tool.",
     useCases: [
       {
         title: "Convert email feedback into Figma comments",
@@ -1630,7 +1630,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         question: "How does GAIA know which Figma file an email refers to?",
         answer:
-          "GAIA uses context from the email—project name, client name, subject line—and your configured mappings to identify the correct Figma file. You can also include a Figma file URL in the email to make the match unambiguous.",
+          "GAIA uses context from the email (project name, client name, subject line) and your configured mappings to identify the correct Figma file. You can also include a Figma file URL in the email to make the match unambiguous.",
       },
       {
         question:
@@ -1671,12 +1671,12 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "Loom email summary",
     ],
     intro:
-      "Loom recordings and email threads often carry different parts of the same conversation. A client emails a question that would take paragraphs to answer in text; a Loom video would explain it in two minutes. A team member records a Loom walkthrough of a problem; the recipients need to email it to external stakeholders with proper context. These two async communication formats rarely work together smoothly.\n\nGAIA connects Gmail and Loom to make video and email work as a unified async communication layer. When you receive an email that warrants a video response, GAIA can prompt you to record a Loom and automatically send the link with a transcript excerpt in reply. When a Loom video is shared with you, GAIA can generate a text summary and file it in Gmail with the relevant thread so the content is searchable.\n\nFor customer success teams, sales professionals, and async-first remote teams, this integration means video context is never isolated from the email conversations that surround it—and you spend less time deciding whether to type a long reply or record a video.",
+      "Loom recordings and email threads often carry different parts of the same conversation. A client emails a question that would take paragraphs to answer in text; a Loom video would explain it in two minutes. A team member records a Loom walkthrough of a problem; the recipients need to email it to external stakeholders with proper context. These two async communication formats rarely work together smoothly.\n\nGAIA connects Gmail and Loom to make video and email work as a unified async communication layer. When you receive an email that warrants a video response, GAIA can prompt you to record a Loom and automatically send the link with a transcript excerpt in reply. When a Loom video is shared with you, GAIA can generate a text summary and file it in Gmail with the relevant thread so the content is searchable.\n\nFor customer success teams, sales professionals, and async-first remote teams, this integration means video context is never isolated from the email conversations that surround it, and you spend less time deciding whether to type a long reply or record a video.",
     useCases: [
       {
         title: "Trigger Loom recording reminders from email threads",
         description:
-          "When an email arrives that GAIA identifies as better suited for a video response—complex explanations, product demos, onboarding walkthroughs—GAIA flags it and prompts you to record a Loom, then handles sending the link as a reply.",
+          "When an email arrives that GAIA identifies as better suited for a video response (complex explanations, product demos, onboarding walkthroughs), GAIA flags it and prompts you to record a Loom, then handles sending the link as a reply.",
       },
       {
         title: "Summarize Loom videos received by email into text",
@@ -1762,7 +1762,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "calendar to Slack sync",
     ],
     intro:
-      "Calendar events and Slack conversations are deeply connected in practice but completely disconnected in software. A meeting gets added to Google Calendar, but nobody on Slack knows about it unless someone manually announces it. A Slack discussion concludes with a decision to schedule a meeting, but that requires leaving Slack and opening Calendar. Status information about who's in a meeting versus available sits in Google Calendar but doesn't appear in Slack.\n\nGAIA connects Slack and Google Calendar so these two tools reinforce each other. Upcoming meetings can be announced in the right Slack channels automatically. Slack statuses can reflect your current calendar status—in a meeting, heads-down block, or out of office—without manual updates. Meetings can be scheduled from a Slack conversation by simply asking GAIA to find a time that works.\n\nFor distributed teams where Slack is the operational heartbeat, having calendar context surfaced automatically means fewer missed meetings, better coordination around availability, and a Slack status that's actually accurate.",
+      "Calendar events and Slack conversations are deeply connected in practice but completely disconnected in software. A meeting gets added to Google Calendar, but nobody on Slack knows about it unless someone manually announces it. A Slack discussion concludes with a decision to schedule a meeting, but that requires leaving Slack and opening Calendar. Status information about who's in a meeting versus available sits in Google Calendar but doesn't appear in Slack.\n\nGAIA connects Slack and Google Calendar so these two tools reinforce each other. Upcoming meetings can be announced in the right Slack channels automatically. Slack statuses can reflect your current calendar status (in a meeting, heads-down block, or out of office) without manual updates. Meetings can be scheduled from a Slack conversation by simply asking GAIA to find a time that works.\n\nFor distributed teams where Slack is the operational heartbeat, having calendar context surfaced automatically means fewer missed meetings, better coordination around availability, and a Slack status that's actually accurate.",
     useCases: [
       {
         title: "Post daily meeting schedules to team Slack channels",
@@ -1852,12 +1852,12 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "HubSpot Slack workflow",
     ],
     intro:
-      "Sales teams spend their days in Slack but their pipeline lives in HubSpot. When a deal advances, a contact submits a form, or a prospect's score crosses a threshold, that signal lives in HubSpot—invisible to the team collaborating in Slack. Meanwhile, important context shared in Slack deal threads never makes it back into HubSpot contact records or deal notes.\n\nGAIA connects Slack and HubSpot so the right information reaches the right people at the right time. Deal stage changes, new high-value leads, and pipeline milestones surface in Slack channels automatically. Slack conversations about a deal can be logged to HubSpot with a simple command. Sales managers get pipeline visibility in the tool they monitor most, and reps get CRM intelligence without leaving Slack.\n\nFor revenue teams where speed matters, having HubSpot signals in Slack means faster response times, better-informed team conversations, and a CRM that actually benefits from the Slack discussions happening around it.",
+      "Sales teams spend their days in Slack but their pipeline lives in HubSpot. When a deal advances, a contact submits a form, or a prospect's score crosses a threshold, that signal lives in HubSpot, invisible to the team collaborating in Slack. Meanwhile, important context shared in Slack deal threads never makes it back into HubSpot contact records or deal notes.\n\nGAIA connects Slack and HubSpot so the right information reaches the right people at the right time. Deal stage changes, new high-value leads, and pipeline milestones surface in Slack channels automatically. Slack conversations about a deal can be logged to HubSpot with a simple command. Sales managers get pipeline visibility in the tool they monitor most, and reps get CRM intelligence without leaving Slack.\n\nFor revenue teams where speed matters, having HubSpot signals in Slack means faster response times, better-informed team conversations, and a CRM that actually benefits from the Slack discussions happening around it.",
     useCases: [
       {
         title: "Deal stage change alerts in Slack",
         description:
-          "When a HubSpot deal advances to a new stage—proposal sent, contract out, closed won, closed lost—GAIA posts a formatted alert to the #sales Slack channel so the team celebrates wins and learns from losses in real time.",
+          "When a HubSpot deal advances to a new stage (proposal sent, contract out, closed won, closed lost), GAIA posts a formatted alert to the #sales Slack channel so the team celebrates wins and learns from losses in real time.",
       },
       {
         title: "New lead notifications by territory or owner",
@@ -2034,7 +2034,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       "async video Slack workflow",
     ],
     intro:
-      "Loom recordings are a powerful async communication tool, but they create a new coordination problem: who has seen the video, which channel should it go in, and what were the key takeaways for people who don't have time to watch? When Looms are shared ad-hoc in Slack, they often sit unviewed or their content never gets discussed because extracting context from a video mid-Slack-thread requires too much friction.\n\nGAIA makes Loom videos a productive part of your Slack workflow by handling the translation between the two. When a Loom is shared in Slack, GAIA generates a text summary and adds it as a reply so everyone gets the key points instantly. When a new Loom is created in your workspace, GAIA routes it to the appropriate Slack channel based on the content or creator. Team members can respond to a Loom's content directly in Slack, and GAIA keeps the conversation organized.\n\nFor async-first teams where Loom is a primary communication format, this integration means video content is no longer a black box in Slack—it's a structured, searchable, actionable part of the team's communication flow.",
+      "Loom recordings are a powerful async communication tool, but they create a new coordination problem: who has seen the video, which channel should it go in, and what were the key takeaways for people who don't have time to watch? When Looms are shared ad-hoc in Slack, they often sit unviewed or their content never gets discussed because extracting context from a video mid-Slack-thread requires too much friction.\n\nGAIA makes Loom videos a productive part of your Slack workflow by handling the translation between the two. When a Loom is shared in Slack, GAIA generates a text summary and adds it as a reply so everyone gets the key points instantly. When a new Loom is created in your workspace, GAIA routes it to the appropriate Slack channel based on the content or creator. Team members can respond to a Loom's content directly in Slack, and GAIA keeps the conversation organized.\n\nFor async-first teams where Loom is a primary communication format, this integration means video content is no longer a black box in Slack; it's a structured, searchable, actionable part of the team's communication flow.",
     useCases: [
       {
         title: "Auto-summarize Loom links shared in Slack",
@@ -2044,7 +2044,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         title: "Route new Loom recordings to the right Slack channels",
         description:
-          "When a Loom is created in your workspace, GAIA analyzes the title, description, and content to route it to the most relevant Slack channel automatically—product updates to #product, customer feedback recordings to #customer-success.",
+          "When a Loom is created in your workspace, GAIA analyzes the title, description, and content to route it to the most relevant Slack channel automatically: product updates to #product, customer feedback recordings to #customer-success.",
       },
       {
         title: "Extract action items from Loom recordings",
@@ -2071,7 +2071,7 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
       {
         step: "Set your Loom-to-Slack workflow rules",
         description:
-          "Tell GAIA how to handle new Loom recordings—which channels to route them to, whether to auto-summarize, and what to extract from transcripts. Define rules in plain language based on your team's workflow.",
+          "Tell GAIA how to handle new Loom recordings: which channels to route them to, whether to auto-summarize, and what to extract from transcripts. Define rules in plain language based on your team's workflow.",
       },
       {
         step: "Loom content becomes active in Slack automatically",

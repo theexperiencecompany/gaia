@@ -2,9 +2,17 @@
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
+import {
+  WORKFLOW_ICON_BG_ALPHA,
+  WORKFLOW_ICON_MAP,
+} from "../../constants/workflowIconCatalog";
 
 interface WorkflowIconsProps {
   steps: Array<{ category: string }>;
+  /** User-chosen icon slug — rendered instead when the steps carry no category icons */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  iconColor?: string | null;
   iconSize?: number;
   maxIcons?: number;
   className?: string;
@@ -18,16 +26,58 @@ interface WorkflowIconsProps {
  */
 export default function WorkflowIcons({
   steps,
+  icon,
+  iconColor,
   iconSize = 25,
   maxIcons = 3,
   className = "",
   spacing = "-space-x-1.5 ",
   showBackground = true,
 }: WorkflowIconsProps) {
-  const { getIntegrationIconUrl } = useIntegrationLookup();
+  const { getIntegrationIconUrl, getIntegrationName } = useIntegrationLookup();
   // De-duplicate categories, preserving first-seen order.
   const categories = [...new Set(steps.map((step) => step.category))];
   const displayIcons = categories.slice(0, maxIcons);
+
+  // A workflow whose steps use no integrations (only internal categories like
+  // "reminder"/"general") falls back to its user-chosen icon.
+  const usesIntegrations = categories.some(
+    (category) => !!getIntegrationName(category),
+  );
+  const customIcon =
+    icon && !usesIntegrations ? WORKFLOW_ICON_MAP.get(icon) : undefined;
+  if (customIcon) {
+    const CustomIcon = customIcon.Icon;
+    const iconElement = (
+      <CustomIcon
+        size={iconSize}
+        style={iconColor ? { color: iconColor } : undefined}
+      />
+    );
+    return (
+      <div className={`flex min-h-8 items-center ${className}`}>
+        <div className="relative flex min-w-8 items-center justify-center">
+          {showBackground ? (
+            <div className="relative rounded-lg p-1">
+              <div
+                className="absolute inset-0 rounded-lg bg-zinc-700/60"
+                style={
+                  iconColor
+                    ? {
+                        backgroundColor: `${iconColor}${WORKFLOW_ICON_BG_ALPHA}`,
+                      }
+                    : undefined
+                }
+              />
+              <div className="relative">{iconElement}</div>
+            </div>
+          ) : (
+            iconElement
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex min-h-8 items-center ${spacing} ${className}`}>

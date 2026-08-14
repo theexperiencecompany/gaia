@@ -21,6 +21,7 @@ import { type Control, Controller, type FieldErrors } from "react-hook-form";
 import { cn } from "@/lib/utils";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import WorkflowIconPicker from "./WorkflowIconPicker";
 
 const iconClasses = "size-5 text-default-500 pointer-events-none shrink-0";
 
@@ -62,6 +63,7 @@ export default function WorkflowHeader({
   return (
     <div className="space-y-1">
       <div className="flex items-start gap-3">
+        <WorkflowIconPicker control={control} isReadOnly={mode === "preview"} />
         <Controller
           name="title"
           control={control}

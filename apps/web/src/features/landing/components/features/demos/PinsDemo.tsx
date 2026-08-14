@@ -15,13 +15,13 @@ const PINS: PinCard[] = [
   {
     id: "pin1",
     message:
-      "The onboarding flow needs 3 more steps — confirmed with Sarah. Add identity verification.",
+      "The onboarding flow needs 3 more steps, confirmed with Sarah. Add identity verification.",
     timestamp: "2d ago",
   },
   {
     id: "pin2",
     message:
-      "GAIA found a bug in the auth middleware — JWT expiry not handled for refresh tokens.",
+      "GAIA found a bug in the auth middleware: JWT expiry not handled for refresh tokens.",
     timestamp: "5d ago",
   },
   {

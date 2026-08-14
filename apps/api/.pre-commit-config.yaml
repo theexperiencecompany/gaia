@@ -15,7 +15,9 @@ repos:
       - id: bandit
         name: Bandit Security Check
         language: system
-        entry: uvx bandit -c pyproject.toml -r app --exclude app/agents/prompts
+        # Load [tool.bandit] skips from the root pyproject.toml — bandit's config
+        # discovery only looks in the hook cwd (apps/api), which has no section.
+        entry: bash -c "uvx bandit -c \"$(git rev-parse --show-toplevel)/pyproject.toml\" -r app --exclude app/agents/prompts"
         types: [python]
         pass_filenames: false
         priority: 0

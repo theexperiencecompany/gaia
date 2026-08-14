@@ -11,14 +11,14 @@ const HANDLED_ITEMS = [
   {
     id: "ap-2",
     icon: "gmail",
-    label: "2 inbound leads triaged — 1 hot, 1 qualified",
+    label: "2 inbound leads triaged: 1 hot, 1 qualified",
     detail: "done",
     detailColor: "text-zinc-500",
   },
   {
     id: "ap-3",
     icon: "slack",
-    label: "At-risk project flagged — ByteScale 3 days behind",
+    label: "At-risk project flagged: ByteScale 3 days behind",
     detail: "flagged",
     detailColor: "text-red-400",
   },

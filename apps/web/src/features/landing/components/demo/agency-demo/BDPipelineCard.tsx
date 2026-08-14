@@ -59,7 +59,7 @@ export default function BDPipelineCard() {
           <div key={item.id} className="rounded-xl bg-zinc-900 p-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-zinc-100">
-                {item.company} — {item.value}
+                {item.company}: {item.value}
               </span>
               {item.hot && (
                 <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">

@@ -4,12 +4,12 @@ const BRIEFING_ITEMS = [
   {
     id: "bi-1",
     icon: "gmail",
-    text: "4 urgent emails — Sequoia wants to schedule next week",
+    text: "4 urgent emails: Sequoia wants to schedule next week",
   },
   {
     id: "bi-2",
     icon: "googlecalendar",
-    text: "3 meetings today — board sync at 2pm needs your Q4 deck",
+    text: "3 meetings today: board sync at 2pm needs your Q4 deck",
   },
   {
     id: "bi-3",

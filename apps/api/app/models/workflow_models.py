@@ -193,6 +193,16 @@ class Workflow(BaseScheduledTask):
         default="",
         description="Detailed execution instructions for AI. Falls back to description if not set.",
     )
+    icon: str | None = Field(
+        default=None,
+        max_length=64,
+        description="User-chosen icon slug (gaia-icons component name) shown when the workflow has no integration icons.",
+    )
+    icon_color: str | None = Field(
+        default=None,
+        pattern=r"^#[0-9a-fA-F]{6}$",
+        description="Hex color for the user-chosen icon.",
+    )
     steps: list[WorkflowStep] = Field(
         description="List of workflow steps to execute", max_length=10
     )
@@ -386,6 +396,14 @@ class CreateWorkflowRequest(BaseModel):
         description="Short optional display description (1-2 sentences)",
     )
     prompt: str = Field(min_length=1, description="Detailed execution instructions for the AI")
+    icon: str | None = Field(
+        default=None, max_length=64, description="User-chosen icon slug (gaia-icons component name)"
+    )
+    icon_color: str | None = Field(
+        default=None,
+        pattern=r"^#[0-9a-fA-F]{6}$",
+        description="Hex color for the user-chosen icon",
+    )
     trigger_config: TriggerConfig = Field(description="Trigger configuration")
     steps: list[WorkflowStep] | None = Field(
         default=None,
@@ -458,6 +476,8 @@ class UpdateWorkflowRequest(BaseModel):
     title: str | None = Field(default=None)
     description: str | None = Field(default=None)
     prompt: str | None = Field(default=None)
+    icon: str | None = Field(default=None, max_length=64)
+    icon_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     steps: list[WorkflowStep] | None = Field(default=None)
     trigger_config: TriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
@@ -750,6 +770,8 @@ class WorkflowUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     prompt: str | None = None
+    icon: str | None = None
+    icon_color: str | None = None
     steps: list[WorkflowStep] | None = None
     trigger_config: TriggerConfig | None = None
     activated: bool | None = None

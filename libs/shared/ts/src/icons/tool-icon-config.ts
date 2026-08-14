@@ -36,6 +36,7 @@ export function normalizeCategoryName(name: string): string {
 
 export const iconAliases: Record<string, string> = {
   calendar: "googlecalendar",
+  google_calendar: "googlecalendar",
   planner: "plan_tasks",
   gaia_knowledge_guide: "gaia",
 };
@@ -332,9 +333,9 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
   },
   gaia: {
     icon: "gaia",
-    bgColor: "bg-zinc-700",
+    bgColor: "bg-[#00bbff]/15",
     iconColor: "text-zinc-200",
-    bgColorRaw: "#3f3f46",
+    bgColorRaw: "#00bbff26",
     iconColorRaw: "#e4e4e7",
     isImage: true,
   },
@@ -629,6 +630,36 @@ export function getToolIconConfig(
   }
 
   return config;
+}
+
+/**
+ * Proper display name for a tool/integration id. The authenticated app can read
+ * a name off the integrations catalog, but public pages have no catalog — this
+ * keeps "googlecalendar" from rendering as "Googlecalendar" there.
+ */
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  gaia: "GAIA",
+  gmail: "Gmail",
+  googlecalendar: "Google Calendar",
+  googledocs: "Google Docs",
+  googlesheets: "Google Sheets",
+  googledrive: "Google Drive",
+  github: "GitHub",
+  linkedin: "LinkedIn",
+  whatsapp: "WhatsApp",
+  youtube: "YouTube",
+  todos: "Todos",
+  reminders: "Reminders",
+  documents: "Documents",
+  memory: "Memory",
+  search: "Search",
+};
+
+export function getToolDisplayName(category: string): string {
+  const normalized = normalizeCategoryName(category);
+  const known = TOOL_DISPLAY_NAMES[normalized];
+  if (known) return known;
+  return category.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function getCategoryInitial(category: string): string {
