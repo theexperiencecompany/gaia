@@ -136,6 +136,7 @@ export {
   chunkResponse,
   conversationsCommand,
   convertToDiscordMarkdown,
+  convertToImessageText,
   convertToSlackMrkdwn,
   convertToTelegramHtml,
   convertToWhatsAppMarkdown,

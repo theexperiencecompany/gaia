@@ -42,6 +42,7 @@ export const OUTBOUND_FILE_LIMITS: Record<PlatformName, number> = {
   slack: 50 * MB,
   telegram: 50 * MB, // bot API sendDocument limit
   whatsapp: 100 * MB, // WhatsApp document limit
+  imessage: 50 * MB, // Photon caps are undocumented; conservative floor
 };
 
 /** Normalised media kind, identical across platforms. */

@@ -401,6 +401,26 @@ export function convertToWhatsAppMarkdown(text: string): string {
 }
 
 /**
+ * iMessage renders no markup at all, so every markdown construct degrades to
+ * plain text: emphasis markers are stripped, links become `label (url)`,
+ * headings/quotes lose their prefixes. Fenced code blocks are preserved
+ * verbatim (content matters more than the stray backticks).
+ */
+export function convertToImessageText(text: string): string {
+  return applyOutsideCodeBlocks(text, (segment) =>
+    segment
+      .replaceAll(/^#{1,6}\s+(.+)$/gm, "$1")
+      .replaceAll(/^[-_*]{3,}$/gm, "")
+      .replaceAll(/\*\*\*([^*\n]+)\*\*\*/g, "$1")
+      .replaceAll(/\*\*([^*\n]+)\*\*/g, "$1")
+      .replaceAll(/`([^`\n]+)`/g, "$1")
+      .replaceAll(/\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g, "$1 ($2)")
+      .replaceAll(/^(\s*)[*\-+]\s+/gm, "$1• ")
+      .replaceAll(/^>\s*/gm, ""),
+  );
+}
+
+/**
  * Discord renders CommonMark natively (bold, italic, headings, lists, code,
  * quotes), so the only transform it needs is masked links: Discord shows
  * `[label](url)` literally in regular message content — masked links render
@@ -429,6 +449,7 @@ export const PLATFORM_MARKDOWN: Record<PlatformName, (text: string) => string> =
     slack: convertToSlackMrkdwn,
     telegram: convertToTelegramHtml,
     whatsapp: convertToWhatsAppMarkdown,
+    imessage: convertToImessageText,
   };
 
 /**

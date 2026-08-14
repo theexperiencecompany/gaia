@@ -2,6 +2,7 @@ import type { Conversation, Todo, Workflow } from "@gaia/shared";
 import {
   buildAuthLinkMessage,
   convertToDiscordMarkdown,
+  convertToImessageText,
   convertToSlackMrkdwn,
   convertToTelegramHtml,
   convertToWhatsAppMarkdown,
@@ -431,6 +432,53 @@ describe("convertToWhatsAppMarkdown", () => {
 
   it("converts field values with **Name:** pattern to *Name:*", () => {
     expect(convertToWhatsAppMarkdown("**Name:** Aryan")).toBe("*Name:* Aryan");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// convertToImessageText
+// ---------------------------------------------------------------------------
+describe("convertToImessageText", () => {
+  it("strips **bold** markers", () => {
+    expect(convertToImessageText("Hello **world**")).toBe("Hello world");
+  });
+
+  it("strips ***bold italic*** markers", () => {
+    expect(convertToImessageText("***text***")).toBe("text");
+  });
+
+  it("converts [label](url) to label (url)", () => {
+    expect(convertToImessageText("[Click here](https://example.com)")).toBe(
+      "Click here (https://example.com)",
+    );
+  });
+
+  it("strips heading prefixes", () => {
+    expect(convertToImessageText("# My Heading")).toBe("My Heading");
+    expect(convertToImessageText("## Sub Heading")).toBe("Sub Heading");
+  });
+
+  it("strips inline code backticks", () => {
+    expect(convertToImessageText("run `pnpm install` now")).toBe(
+      "run pnpm install now",
+    );
+  });
+
+  it("converts - bullets to •", () => {
+    expect(convertToImessageText("- one\n- two")).toBe("• one\n• two");
+  });
+
+  it("strips > quote prefix", () => {
+    expect(convertToImessageText("> quoted text")).toBe("quoted text");
+  });
+
+  it("removes --- horizontal rule", () => {
+    expect(convertToImessageText("above\n---\nbelow")).toBe("above\n\nbelow");
+  });
+
+  it("preserves fenced code blocks unchanged", () => {
+    const input = "```\nconst x = 1; // **not bold**\n```";
+    expect(convertToImessageText(input)).toBe(input);
   });
 });
 

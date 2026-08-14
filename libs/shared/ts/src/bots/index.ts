@@ -109,6 +109,7 @@ export {
   COMMAND_HELP,
   chunkResponse,
   convertToDiscordMarkdown,
+  convertToImessageText,
   convertToSlackMrkdwn,
   convertToTelegramHtml,
   convertToWhatsAppMarkdown,

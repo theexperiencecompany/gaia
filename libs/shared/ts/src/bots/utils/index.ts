@@ -36,6 +36,7 @@ export {
   buildAuthLinkMessage,
   COMMAND_HELP,
   convertToDiscordMarkdown,
+  convertToImessageText,
   convertToSlackMrkdwn,
   convertToTelegramHtml,
   convertToWhatsAppMarkdown,

@@ -26,7 +26,7 @@ import {
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
 } from "../../utils/messageBreakUtils";
 import type { GaiaClient } from "../api";
-import type { ChatRequest } from "../types";
+import type { ChatRequest, PlatformName } from "../types";
 import { formatBotError, PLATFORM_MARKDOWN } from "./formatters";
 
 import {
@@ -60,16 +60,13 @@ function formatApprovalPrompt(data: ApprovalRequestData): string {
 export interface StreamingOptions {
   editIntervalMs: number;
   streaming: boolean;
-  platform: "discord" | "slack" | "telegram" | "whatsapp";
+  platform: PlatformName;
 }
 
 export type MessageEditor = (text: string) => Promise<void>;
 export type NewMessageSender = (text: string) => Promise<MessageEditor>;
 
-export const STREAMING_DEFAULTS: Record<
-  "discord" | "slack" | "telegram" | "whatsapp",
-  StreamingOptions
-> = {
+export const STREAMING_DEFAULTS: Record<PlatformName, StreamingOptions> = {
   discord: {
     editIntervalMs: 1200,
     streaming: false,
@@ -89,6 +86,11 @@ export const STREAMING_DEFAULTS: Record<
     editIntervalMs: 2000,
     streaming: false,
     platform: "whatsapp",
+  },
+  imessage: {
+    editIntervalMs: 2000,
+    streaming: false,
+    platform: "imessage",
   },
 };
 
