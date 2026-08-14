@@ -688,7 +688,7 @@ async def get_journal(
 @with_doc(READ_MEMORY_DOCUMENT)
 async def read_memory_document(
     config: RunnableConfig,
-    doc_type: Annotated[str, "Document: user|memory|agenda|people|insights"],
+    doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
 ) -> str:
     user_id = get_user_id_from_config(config)
     if not user_id:
@@ -736,7 +736,7 @@ async def read_memory_document(
 @with_doc(UPDATE_MEMORY_DOCUMENT)
 async def update_memory_document(
     config: RunnableConfig,
-    doc_type: Annotated[str, "Document: user|memory|agenda|people|insights"],
+    doc_type: Annotated[str, "Which document: 'user', 'memory', 'agenda', 'people', or 'insights'"],
     content: Annotated[str, "The complete new markdown content (full replace)"],
 ) -> str:
     user_id = get_user_id_from_config(config)
