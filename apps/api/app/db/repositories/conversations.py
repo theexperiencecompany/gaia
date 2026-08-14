@@ -353,9 +353,17 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         self, conversation_id: str, *, user_id: str, approval_id: str, status: str
     ) -> bool:
         """Settle a persisted approval_request frame's status wherever it lives in
-        the messages array. Does not advance ``updatedAt``."""
+        the messages array. Returns whether the frame was there to settle. Does not
+        advance ``updatedAt``."""
         matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id},
+            # The approval belongs in the match, not only in the array filters:
+            # those pick which element is written but never narrow `matched`, so
+            # filtering on the conversation alone reported success for any
+            # approval_id the document never held.
+            {
+                "conversation_id": conversation_id,
+                "messages.tool_data.data.approval_id": approval_id,
+            },
             {"$set": {"messages.$[msg].tool_data.$[entry].data.status": status}},
             scope=user_id,
             doc_id=conversation_id,

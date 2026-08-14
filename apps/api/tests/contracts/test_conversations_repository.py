@@ -439,14 +439,45 @@ class TestMessageSettlementWrites:
             ],
         )
 
-        assert await repo.set_message_approval_status(
-            doc.conversation_id, user_id=doc.user_id, approval_id="a1", status="approved"
+        assert (
+            await repo.set_message_approval_status(
+                doc.conversation_id, user_id=doc.user_id, approval_id="a1", status="approved"
+            )
+            is True
         )
 
         stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
         assert stored is not None and stored.tool_data is not None
         by_id = {e["data"]["approval_id"]: e["data"]["status"] for e in stored.tool_data}
         assert by_id == {"a1": "approved", "a2": "pending"}
+
+    @pytest.mark.regression
+    async def test_approval_status_for_an_unknown_id_reports_failure(self, repo):
+        """Returning True for an approval that is not in the document reports work
+        that did not happen. The sibling writes filter on ``messages.message_id``,
+        so their ``matched > 0`` means "the row was there"; this one filtered on the
+        conversation alone, so it meant "the conversation exists" — true for every
+        stale or already-reconciled approval_id a caller might pass."""
+        doc, _user_mid, bot_mid = await self._seed(repo)
+        assert await repo.set_message_tool_data(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=bot_mid,
+            entries=[
+                {
+                    "tool_name": "approval_request",
+                    "data": {"approval_id": "a1", "status": "pending"},
+                    "timestamp": "2026-01-01",
+                }
+            ],
+        )
+
+        assert (
+            await repo.set_message_approval_status(
+                doc.conversation_id, user_id=doc.user_id, approval_id="nope", status="approved"
+            )
+            is False
+        )
 
     async def test_approval_status_for_an_unknown_id_settles_nothing(self, repo):
         doc, _user_mid, bot_mid = await self._seed(repo)
