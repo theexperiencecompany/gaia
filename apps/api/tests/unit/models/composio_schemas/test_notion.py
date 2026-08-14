@@ -1,7 +1,7 @@
 """Unit tests for ``app.models.composio_schemas.notion`` trigger payloads."""
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from app.models.composio_schemas.notion import (
     NotionAllPageEventsPayload,

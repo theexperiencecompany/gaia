@@ -16,7 +16,7 @@ Add env vars
 from functools import lru_cache
 import os
 import time
-from typing import Any, Literal, Self
+from typing import Literal, Self
 
 from dotenv import load_dotenv
 from pydantic import computed_field, field_validator

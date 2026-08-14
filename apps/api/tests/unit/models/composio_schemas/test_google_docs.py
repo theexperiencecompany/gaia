@@ -1,7 +1,7 @@
 """Unit tests for ``app.models.composio_schemas.google_docs`` trigger payloads."""
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from app.models.composio_schemas.google_docs import (
     GoogleDocsDocument,

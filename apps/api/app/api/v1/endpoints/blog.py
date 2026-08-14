@@ -68,11 +68,11 @@ async def create_blog_deprecated() -> None:
 
 @router.put("/blogs/{slug}", status_code=status.HTTP_410_GONE, include_in_schema=False)
 async def update_blog_deprecated(slug: str) -> None:
-    log.set(operation="update_blog_deprecated")
+    log.set(operation="update_blog_deprecated", slug=slug)
     raise HTTPException(status_code=status.HTTP_410_GONE, detail=_DEPRECATED_DETAIL)
 
 
 @router.delete("/blogs/{slug}", status_code=status.HTTP_410_GONE, include_in_schema=False)
 async def delete_blog_deprecated(slug: str) -> None:
-    log.set(operation="delete_blog_deprecated")
+    log.set(operation="delete_blog_deprecated", slug=slug)
     raise HTTPException(status_code=status.HTTP_410_GONE, detail=_DEPRECATED_DETAIL)

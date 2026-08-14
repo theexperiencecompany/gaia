@@ -423,9 +423,7 @@ async def _run_background(
         f"nohup bash -c {sh_quote(command)} > {sh_quote(log_path)} 2>&1 "
         "& echo $!"
     )
-    result = await sbx.commands.run(
-        wrapped, cwd=cwd or WORKSPACE_ROOT, timeout=10
-    )
+    result = await sbx.commands.run(wrapped, cwd=cwd or WORKSPACE_ROOT, timeout=10)
     pid = (getattr(result, "stdout", "") or "").strip()
     if not pid:
         return (

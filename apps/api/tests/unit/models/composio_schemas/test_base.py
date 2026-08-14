@@ -1,7 +1,7 @@
 """Unit tests for ``app.models.composio_schemas.base`` — the shared Composio response shell."""
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from app.models.composio_schemas.base import ComposioResponse
 

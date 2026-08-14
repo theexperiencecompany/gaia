@@ -9,7 +9,7 @@ concatenation, the ILIKE escape behavior, and the read-time summary clause.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta, UTC
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -149,7 +149,7 @@ async def test_get_episode_scopes_to_user_and_date() -> None:
         await get_episode(USER, date(2026, 1, 1))
     statement = session.execute.await_args.args[0]
     where = statement.whereclause
-    assert str(where) == f"memory_episodes.user_id = :user_id_1 AND memory_episodes.date = :date_1"
+    assert str(where) == "memory_episodes.user_id = :user_id_1 AND memory_episodes.date = :date_1"
 
 
 @pytest.mark.asyncio

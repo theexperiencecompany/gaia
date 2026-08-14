@@ -3,8 +3,6 @@ identity-binding paths of subscription activation and metadata lookups."""
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.models.webhook_models import (
     DodoBillingData,
     DodoCustomerData,

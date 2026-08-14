@@ -472,8 +472,7 @@ def test_a_subscripted_generic_llm_base_is_still_discovered(tmp_path: Path) -> N
     agent = _write(
         tmp_path,
         "voice/agent.py",
-        "def entrypoint(ctx):\n    return None\n\n"
-        "WorkerOptions(entrypoint_fnc=entrypoint)\n",
+        "def entrypoint(ctx):\n    return None\n\nWorkerOptions(entrypoint_fnc=entrypoint)\n",
     )
     llm = _write(
         tmp_path,
