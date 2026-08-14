@@ -44,9 +44,13 @@ RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 # "verify or continue" nudges instead of ending. "Unfinished" means a tracked todo
 # is still pending, or fewer than COMPLETION_MIN_TOOL_CALLS tools were executed on
 # a delegated task — the "one lookup then assert a conclusion" failure a good model
-# would keep digging past. Bounded so a genuinely quick task costs at most this
-# many extra steps. Only the executor opts in (require_finish_to_end); comms may
-# always end in plain text.
+# would keep digging past. Both counts are scoped to the CURRENT delegation
+# (middleware.completion.current_delegation), not the executor thread, which
+# outlives it: counting the thread let each delegation inherit the previous one's
+# tools and nudges, so the guard fired once per conversation and never again.
+# Bounded so a genuinely quick task costs at most this many extra steps per
+# delegation. Only the executor opts in (require_finish_to_end); comms may always
+# end in plain text.
 MAX_COMPLETION_NUDGES = 1
 COMPLETION_MIN_TOOL_CALLS = 2
 COMPLETION_NUDGE_MESSAGE = (

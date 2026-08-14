@@ -352,6 +352,47 @@ class TestRecursionWrapup:
         assert "almost out of steps" not in shown.lower()
 
 
+class TestTheCompletionGuardIsPerDelegation:
+    """The executor keeps ONE thread per conversation (``executor_{thread_id}``,
+    ``subagent_runner.prepare_executor_execution``), so every delegation after
+    the first replays a thread that already holds the previous one's messages.
+    A guard that measures the whole thread instead of the current delegation
+    spends itself on delegation one and is never armed again — which is the
+    opposite of what a "did you actually finish?" check is for.
+    """
+
+    async def test_it_fires_again_on_the_next_delegation_of_the_same_thread(self):
+        """Two zero-tool delegations on one thread. Both must be nudged."""
+        async with executor_graph(["An answer."]) as graph:
+            first = await run_graph(graph, "first task", thread_id="one-thread")
+            second = await run_graph(graph, "second task", thread_id="one-thread")
+
+        assert first.nodes() == [AGENT_NODE, NUDGE_NODE, AGENT_NODE]
+        assert second.nodes() == [AGENT_NODE, NUDGE_NODE, AGENT_NODE], (
+            "the guard spent its only nudge on the first delegation"
+        )
+
+    async def test_a_delegation_cannot_inherit_the_previous_one_s_tool_calls(self):
+        """Delegation one does real work; delegation two does none and answers
+        flat. The tool-call floor is about THIS task's depth, so the earlier
+        task's ToolMessages must not satisfy it."""
+        async with executor_graph(
+            [
+                call("retrieve_tools", {"exact_tool_names": ["web_search_tool"]}, id="r1"),
+                call("web_search_tool", {"query": "cats"}, id="c1"),
+                "Did the work.",
+                "Flat answer.",
+            ]
+        ) as graph:
+            first = await run_graph(graph, "do the research", thread_id="carry-over")
+            second = await run_graph(graph, "quick follow-up", thread_id="carry-over")
+
+        assert NUDGE_NODE not in first.nodes(), "two tool calls clear the floor on their own"
+        assert NUDGE_NODE in second.nodes(), (
+            "the second delegation cleared the floor on the first one's tool calls"
+        )
+
+
 class TestThreadContinuity:
     async def test_a_second_run_on_the_same_thread_sees_the_first(self):
         """The executor thread is derived from the conversation
