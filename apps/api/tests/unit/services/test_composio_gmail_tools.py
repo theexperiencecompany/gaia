@@ -20,6 +20,7 @@ from app.services.composio.custom_tools.gmail_tools import (
     MarkAsReadInput,
     MarkAsUnreadInput,
     StarEmailInput,
+    _format_partial_result,
     _resolve_timeframe,
     _timeframe_clause,
     register_gmail_custom_tools,
@@ -636,3 +637,43 @@ class TestFetchMessages:
         # Inline returned (not offloaded, no digest).
         assert "offloaded_to" not in result
         assert result["fetched_count"] == 1
+
+
+class TestPartialFetchResult:
+    """A fetch that dies mid-loop still returns the pages it got. What the model
+    is told about the failure decides whether the user gets an answer or a
+    promise of one that can never arrive — nothing runs after a turn ends.
+    """
+
+    def test_the_partial_shape_reports_what_was_and_was_not_retrieved(self) -> None:
+        result = _format_partial_result([{"id": "m1"}, {"id": "m2"}], reason="429 rate limited")
+
+        assert result["fetched_count"] == 2
+        assert result["truncated"] is True
+        assert result["partial"] is True
+        assert result["error"] == "429 rate limited"
+        assert result["messages"] == [{"id": "m1"}, {"id": "m2"}]
+
+    def test_an_empty_partial_still_reports_zero_rather_than_omitting_the_count(self) -> None:
+        result = _format_partial_result([], reason="timeout")
+
+        assert result["fetched_count"] == 0
+        assert result["messages"] == []
+
+    def test_the_note_tells_the_model_the_only_honest_moves(self) -> None:
+        """Pinned verbatim, and deliberately so: this is the instruction that
+        stops a weak model answering "still fetching" on a turn that is already
+        over. Every clause does a job — do not retry, do not promise more, and
+        the two endings that are actually available. Rewording it should require
+        a reviewer to look at it, which is exactly what this assertion forces.
+        """
+        note = _format_partial_result([], reason="429")["note"]
+
+        assert note == (
+            "This fetch FAILED partway; the messages above are all that could be "
+            "retrieved. Retrying the same call will hit the same error. Do NOT "
+            "tell the user you are still fetching or that more results are "
+            "coming. Either narrow the query (shorter date range, a filter) and "
+            "call again NOW, or answer with what you have and state plainly that "
+            "the rest failed and why."
+        )
