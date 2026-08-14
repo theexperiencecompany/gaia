@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.rabbitmq import get_rabbitmq_publisher, init_rabbitmq_publisher, providers
+from app.core.lazy_loader import providers
+from app.db.rabbitmq import get_rabbitmq_publisher, init_rabbitmq_publisher
 
 
 @pytest.mark.asyncio
@@ -17,8 +18,10 @@ async def test_loader_builds_publisher_from_settings_and_connects() -> None:
         patch("app.db.rabbitmq.RabbitMQPublisher", return_value=publisher) as ctor,
         patch("app.db.rabbitmq.settings.RABBITMQ_URL", "amqp://broker/"),
     ):
-        # Registration happens in the app lifespan; in the unit tier we call the
-        # decorated function ourselves, then the first aget runs the loader.
+        # Registration captures required_keys from settings at call time, so
+        # the re-register must happen INSIDE the settings patch — in a
+        # hermetic env RABBITMQ_URL is unset at import and the captured key
+        # would make aget return None before the loader ever runs.
         init_rabbitmq_publisher()
         result = await providers.aget("rabbitmq_publisher")
 
