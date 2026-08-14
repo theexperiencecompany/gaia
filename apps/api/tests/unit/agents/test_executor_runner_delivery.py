@@ -1,10 +1,16 @@
-"""Unit tests for background-executor message delivery routing.
+"""Unit tests for background-executor message delivery.
 
-The key invariant: a background result is delivered over EXACTLY ONE transport,
-chosen by the conversation's own source — bot conversations to their platform,
-everything else over WebSocket — and the message is always persisted.
+Two invariants, both owned by ``result_delivery.py``:
+
+* a background result is delivered over EXACTLY ONE transport, chosen by the
+  conversation's own source — bot conversations to their platform, everything
+  else over WebSocket — and the message is always persisted;
+* a HIL-resumed run MERGES onto the original turn's bot message rather than
+  appending a rival one, and the merge never duplicates a message, drops cards
+  the user already saw, or resurrects an approval they already decided.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,7 +21,9 @@ from app.agents.core.background.session import (
     RunKind,
     create_session,
 )
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import ConversationSource, MessageModel
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 
 
 @pytest.fixture(autouse=True)
@@ -403,3 +411,467 @@ class TestDeliverResultHilResume:
         assert result == (None, None)
         save.assert_not_awaited()
         ws.assert_not_awaited()
+
+
+def _approval_card(approval_id: str, status: str, **extra) -> dict:
+    return {
+        "tool_name": APPROVAL_REQUEST_TOOL_NAME,
+        "data": {"approval_id": approval_id, "status": status, **extra},
+    }
+
+
+def _record(approval_id: str, status: HILApprovalStatus, tool_name: str = "SEND_GMAIL"):
+    return HILApprovalRecord(
+        approval_id=approval_id,
+        user_id="user-1",
+        conversation_id="conv-1",
+        stream_id="stream-1",
+        tool_name=tool_name,
+        status=status,
+        decided_at=datetime.now(UTC),
+        expires_at=datetime.now(UTC),
+    )
+
+
+class TestApprovalId:
+    """The key every merge decision is made on. Reading it off the wrong kind
+    of card silently turns an ordinary tool card into an approval and lets the
+    upsert overwrite it."""
+
+    def test_an_approval_card_yields_its_id(self) -> None:
+        assert rd._approval_id(_approval_card("a1", "pending")) == "a1"
+
+    def test_an_ordinary_tool_card_is_not_an_approval(self) -> None:
+        entry = {"tool_name": "web_search_tool", "data": {"approval_id": "a1"}}
+        assert rd._approval_id(entry) is None
+
+    def test_a_non_dict_payload_is_not_an_approval(self) -> None:
+        assert rd._approval_id({"tool_name": APPROVAL_REQUEST_TOOL_NAME, "data": "a1"}) is None
+
+    def test_a_non_string_id_is_rejected(self) -> None:
+        entry = {"tool_name": APPROVAL_REQUEST_TOOL_NAME, "data": {"approval_id": 17}}
+        assert rd._approval_id(entry) is None
+
+    def test_a_card_with_no_id_at_all_is_rejected(self) -> None:
+        entry = {"tool_name": APPROVAL_REQUEST_TOOL_NAME, "data": {}}
+        assert rd._approval_id(entry) is None
+
+
+class TestMergeToolData:
+    """The resumed stream replays the gate-time PENDING frame after the decision
+    already landed. Appending blindly resurrects a decided card."""
+
+    def test_ordinary_cards_append_after_the_existing_ones(self) -> None:
+        existing = [{"tool_name": "old_tool", "data": {}}]
+        new = [{"tool_name": "new_tool", "data": {}}]
+
+        merged = rd._merge_tool_data(existing, new)
+
+        assert [e["tool_name"] for e in merged] == ["old_tool", "new_tool"]
+
+    def test_an_unseen_approval_appends(self) -> None:
+        merged = rd._merge_tool_data([], [_approval_card("a1", "pending")])
+
+        assert merged == [_approval_card("a1", "pending")]
+
+    def test_a_replayed_pending_never_downgrades_a_settled_decision(self) -> None:
+        """The bug this function exists for: the user decided, then the replay
+        put the pending card back and re-offered approve/decline."""
+        merged = rd._merge_tool_data(
+            [_approval_card("a1", "approved")], [_approval_card("a1", "pending")]
+        )
+
+        assert len(merged) == 1, "the replay duplicated the card instead of upserting"
+        assert merged[0]["data"]["status"] == "approved"
+
+    @pytest.mark.parametrize(
+        "settled", ["approved", "denied", "timeout", "abandoned", "auto_approved"]
+    )
+    def test_every_settled_status_survives_a_pending_replay(self, settled: str) -> None:
+        merged = rd._merge_tool_data(
+            [_approval_card("a1", settled)], [_approval_card("a1", "pending")]
+        )
+
+        assert merged[0]["data"]["status"] == settled
+
+    def test_a_settled_decision_overwrites_a_pending_card(self) -> None:
+        merged = rd._merge_tool_data(
+            [_approval_card("a1", "pending")], [_approval_card("a1", "denied")]
+        )
+
+        assert len(merged) == 1
+        assert merged[0]["data"]["status"] == "denied"
+
+    def test_a_later_settled_frame_replaces_an_earlier_one(self) -> None:
+        merged = rd._merge_tool_data(
+            [_approval_card("a1", "approved", note="first")],
+            [_approval_card("a1", "approved", note="second")],
+        )
+
+        assert len(merged) == 1
+        assert merged[0]["data"]["note"] == "second"
+
+    def test_different_approvals_do_not_collide(self) -> None:
+        merged = rd._merge_tool_data(
+            [_approval_card("a1", "approved")],
+            [_approval_card("a2", "pending"), _approval_card("a1", "pending")],
+        )
+
+        by_id = {e["data"]["approval_id"]: e["data"]["status"] for e in merged}
+        assert by_id == {"a1": "approved", "a2": "pending"}
+
+    def test_an_approval_added_in_this_batch_is_upserted_not_duplicated(self) -> None:
+        """The index has to learn about ids appended during the same pass, or a
+        card that first appears in the new batch duplicates itself."""
+        merged = rd._merge_tool_data(
+            [], [_approval_card("a1", "pending"), _approval_card("a1", "approved")]
+        )
+
+        assert len(merged) == 1
+        assert merged[0]["data"]["status"] == "approved"
+
+    def test_the_existing_list_is_not_mutated(self) -> None:
+        existing = [{"tool_name": "old_tool", "data": {}}]
+
+        rd._merge_tool_data(existing, [{"tool_name": "new_tool", "data": {}}])
+
+        assert [e["tool_name"] for e in existing] == ["old_tool"]
+
+
+class TestReconcileApprovalStatuses:
+    """A decision's resolved frame goes to whichever stream the user is watching
+    at that moment, so it may never reach the stream this delivery drains. The
+    record is the source of truth."""
+
+    async def test_a_stale_status_is_corrected_from_the_record(self) -> None:
+        with patch.object(
+            rd,
+            "get_approval",
+            new=AsyncMock(return_value=_record("a1", HILApprovalStatus.APPROVED)),
+        ):
+            out = await rd._reconcile_approval_statuses([_approval_card("a1", "pending")])
+
+        assert out[0]["data"]["status"] == HILApprovalStatus.APPROVED
+
+    async def test_the_input_entry_is_not_mutated(self) -> None:
+        entry = _approval_card("a1", "pending")
+        with patch.object(
+            rd,
+            "get_approval",
+            new=AsyncMock(return_value=_record("a1", HILApprovalStatus.DENIED)),
+        ):
+            await rd._reconcile_approval_statuses([entry])
+
+        assert entry["data"]["status"] == "pending", "reconciling mutated the caller's entry"
+
+    async def test_an_ordinary_card_is_passed_through_untouched(self) -> None:
+        entry = {"tool_name": "web_search_tool", "data": {"status": "pending"}}
+        with patch.object(rd, "get_approval", new=AsyncMock()) as get:
+            out = await rd._reconcile_approval_statuses([entry])
+
+        assert out == [entry]
+        get.assert_not_awaited(), "an ordinary card triggered an approvals lookup"
+
+    async def test_a_missing_record_leaves_the_card_alone(self) -> None:
+        with patch.object(rd, "get_approval", new=AsyncMock(return_value=None)):
+            out = await rd._reconcile_approval_statuses([_approval_card("a1", "pending")])
+
+        assert out[0]["data"]["status"] == "pending"
+
+    async def test_an_already_correct_status_is_left_as_is(self) -> None:
+        with patch.object(
+            rd,
+            "get_approval",
+            new=AsyncMock(return_value=_record("a1", HILApprovalStatus.APPROVED)),
+        ):
+            out = await rd._reconcile_approval_statuses([_approval_card("a1", "approved")])
+
+        assert out[0]["data"]["status"] == "approved"
+
+
+class TestApprovalOutcomesNote:
+    """Ground truth handed to the narrator so it stops telling the user an
+    action is still waiting for approval after they decided it."""
+
+    async def test_no_original_message_means_no_note(self) -> None:
+        assert await rd._approval_outcomes_note(_run(RunKind.QUEUED, bot_message_id=None)) == ""
+
+    async def test_a_message_without_cards_means_no_note(self) -> None:
+        message = MessageModel(type="bot", response="x", date="2026-01-01")
+        with patch.object(
+            rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
+        ):
+            assert (
+                await rd._approval_outcomes_note(_run(RunKind.QUEUED, bot_message_id="orig-msg-1"))
+                == ""
+            )
+
+    async def test_a_decided_approval_is_reported_by_its_outcome(self) -> None:
+        message = MessageModel(type="bot", response="x", date="2026-01-01")
+        message.tool_data = [_approval_card("a1", "pending")]
+        with (
+            patch.object(
+                rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
+            ),
+            patch.object(
+                rd,
+                "get_approval",
+                new=AsyncMock(return_value=_record("a1", HILApprovalStatus.DENIED)),
+            ),
+        ):
+            note = await rd._approval_outcomes_note(
+                _run(RunKind.QUEUED, bot_message_id="orig-msg-1")
+            )
+
+        assert "SEND_GMAIL" in note
+        assert "the action did NOT run" in note
+
+    async def test_an_undecided_approval_produces_no_note(self) -> None:
+        """A still-pending gate has no outcome to report — saying anything about
+        it is what the note exists to prevent."""
+        message = MessageModel(type="bot", response="x", date="2026-01-01")
+        message.tool_data = [_approval_card("a1", "pending")]
+        with (
+            patch.object(
+                rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
+            ),
+            patch.object(
+                rd,
+                "get_approval",
+                new=AsyncMock(return_value=_record("a1", HILApprovalStatus.PENDING)),
+            ),
+        ):
+            assert (
+                await rd._approval_outcomes_note(_run(RunKind.QUEUED, bot_message_id="orig-msg-1"))
+                == ""
+            )
+
+    async def test_a_lookup_failure_degrades_to_no_note(self) -> None:
+        """The note is an enhancement; losing it must not take the delivery down."""
+        with patch.object(
+            rd.conversation_repository,
+            "get_message",
+            new=AsyncMock(side_effect=RuntimeError("mongo down")),
+        ):
+            assert (
+                await rd._approval_outcomes_note(_run(RunKind.QUEUED, bot_message_id="orig-msg-1"))
+                == ""
+            )
+
+
+class TestMergeResumedResultFailurePaths:
+    """Every one of these is a write that silently matched nothing. Reporting
+    success here loses the user's result or their cards."""
+
+    async def _merge(
+        self, *, existing, set_response=True, set_tool_data=True, new_cards=None, calls=None
+    ):
+        bot_message = MessageModel(type="bot", response="new text", date="2026-01-01")
+        bot_message.message_id = "orig-msg-1"
+        with (
+            patch.object(
+                rd.conversation_repository, "get_message", new=AsyncMock(return_value=existing)
+            ) as get_msg,
+            patch.object(
+                rd.conversation_repository,
+                "set_message_response",
+                new=AsyncMock(return_value=set_response),
+            ) as set_resp,
+            patch.object(
+                rd.conversation_repository,
+                "set_message_tool_data",
+                new=AsyncMock(return_value=set_tool_data),
+            ) as set_td,
+            patch.object(rd, "get_approval", new=AsyncMock(return_value=None)),
+        ):
+            merged = await rd._merge_resumed_result(
+                _run(RunKind.QUEUED, bot_message_id="orig-msg-1"), bot_message, new_cards
+            )
+        if calls is not None:
+            calls.update(get_message=get_msg, set_response=set_resp, set_tool_data=set_td)
+        return merged
+
+    async def test_a_missing_original_message_returns_none(self) -> None:
+        assert await self._merge(existing=None) is None
+
+    async def test_a_response_write_that_matched_nothing_returns_none(self) -> None:
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+
+        assert await self._merge(existing=existing, set_response=False) is None
+
+    async def test_a_failed_card_write_keeps_the_cards_the_user_already_saw(self) -> None:
+        """Falling back to the merged list would report cards that were never
+        stored; falling back to nothing would blank the user's rendered turn."""
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing.tool_data = [{"tool_name": "old_tool", "data": {}}]
+
+        merged = await self._merge(
+            existing=existing,
+            set_tool_data=False,
+            new_cards=[{"tool_name": "new_tool", "data": {}}],
+        )
+
+        assert [e["tool_name"] for e in merged] == ["old_tool"]
+
+    async def test_a_successful_merge_returns_original_plus_new_cards(self) -> None:
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing.tool_data = [{"tool_name": "old_tool", "data": {}}]
+
+        merged = await self._merge(
+            existing=existing, new_cards=[{"tool_name": "new_tool", "data": {}}]
+        )
+
+        assert [e["tool_name"] for e in merged] == ["old_tool", "new_tool"]
+
+    async def _merge_with_follow_ups(self, actions):
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        bot_message = MessageModel(type="bot", response="new text", date="2026-01-01")
+        bot_message.message_id = "orig-msg-1"
+        bot_message.follow_up_actions = actions
+        with (
+            patch.object(
+                rd.conversation_repository, "get_message", new=AsyncMock(return_value=existing)
+            ),
+            patch.object(
+                rd.conversation_repository,
+                "set_message_response",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(
+                rd.conversation_repository,
+                "set_message_tool_data",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(
+                rd.conversation_repository, "set_message_follow_up_actions", new=AsyncMock()
+            ) as set_fu,
+            patch.object(rd, "get_approval", new=AsyncMock(return_value=None)),
+        ):
+            await rd._merge_resumed_result(
+                _run(RunKind.QUEUED, bot_message_id="orig-msg-1"), bot_message, None
+            )
+        return set_fu
+
+    async def test_follow_up_actions_are_written_onto_the_original_message(self) -> None:
+        set_fu = await self._merge_with_follow_ups(["do the next thing"])
+
+        set_fu.assert_awaited_once()
+        assert set_fu.await_args.args == ("conv-1",)
+        assert set_fu.await_args.kwargs["message_id"] == "orig-msg-1"
+        assert set_fu.await_args.kwargs["user_id"] == "user-1"
+        assert set_fu.await_args.kwargs["actions"] == ["do the next thing"]
+
+    async def test_no_follow_ups_means_no_write(self) -> None:
+        """An unconditional write would blank the follow-ups the original turn
+        already had."""
+        set_fu = await self._merge_with_follow_ups([])
+
+        set_fu.assert_not_awaited()
+
+    async def test_no_new_cards_skips_the_write_and_keeps_the_originals(self) -> None:
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing.tool_data = [{"tool_name": "old_tool", "data": {}}]
+
+        merged = await self._merge(existing=existing, new_cards=None)
+
+        assert [e["tool_name"] for e in merged] == ["old_tool"]
+
+    async def test_every_write_is_scoped_to_this_conversation_message_and_user(self) -> None:
+        """These are targeted in-place Mongo updates. An unscoped or wrongly
+        scoped one edits somebody else's message — the filter is the only thing
+        standing between a merge and another user's conversation."""
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        existing.tool_data = []
+        calls: dict = {}
+
+        await self._merge(
+            existing=existing, new_cards=[{"tool_name": "new_tool", "data": {}}], calls=calls
+        )
+
+        read = calls["get_message"].await_args
+        assert read.args == ("conv-1", "orig-msg-1")
+        assert read.kwargs["user_id"] == "user-1"
+
+        for name in ("set_response", "set_tool_data"):
+            write = calls[name].await_args
+            assert write.args == ("conv-1",), f"{name} was not scoped to the conversation"
+            assert write.kwargs["message_id"] == "orig-msg-1", f"{name} targeted another message"
+            assert write.kwargs["user_id"] == "user-1", f"{name} was not scoped to the owner"
+
+
+class TestApprovalOutcomesNoteContent:
+    """The note is the prompt the narrator is grounded on, so its content is a
+    contract, not cosmetics: a dropped or mislabelled line is the agent telling
+    the user an action is still pending after they denied it."""
+
+    async def _note(self, cards, records):
+        message = MessageModel(type="bot", response="x", date="2026-01-01")
+        message.tool_data = cards
+        with (
+            patch.object(
+                rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
+            ) as get_msg,
+            patch.object(
+                rd, "get_approval", new=AsyncMock(side_effect=lambda aid: records.get(aid))
+            ),
+        ):
+            note = await rd._approval_outcomes_note(
+                _run(RunKind.QUEUED, bot_message_id="orig-msg-1")
+            )
+        return note, get_msg
+
+    async def test_the_lookup_is_scoped_to_the_runs_own_message_and_owner(self) -> None:
+        _note, get_msg = await self._note([], {})
+
+        assert get_msg.await_args.args == ("conv-1", "orig-msg-1")
+        assert get_msg.await_args.kwargs["user_id"] == "user-1"
+
+    async def test_an_ordinary_card_does_not_stop_the_scan(self) -> None:
+        """Cards arrive in stream order, so a plain tool card routinely sits
+        before an approval. Stopping at the first non-approval loses it."""
+        cards = [{"tool_name": "web_search_tool", "data": {}}, _approval_card("a1", "pending")]
+        records = {"a1": _record("a1", HILApprovalStatus.APPROVED, tool_name="SEND_GMAIL")}
+
+        note, _ = await self._note(cards, records)
+
+        assert "SEND_GMAIL" in note
+
+    async def test_every_decided_approval_gets_its_own_line_in_card_order(self) -> None:
+        cards = [_approval_card("a1", "pending"), _approval_card("a2", "pending")]
+        records = {
+            "a1": _record("a1", HILApprovalStatus.APPROVED, tool_name="SEND_GMAIL"),
+            "a2": _record("a2", HILApprovalStatus.DENIED, tool_name="SEND_SLACK"),
+        }
+
+        note, _ = await self._note(cards, records)
+
+        lines = [line for line in note.splitlines() if line.startswith("- ")]
+        assert lines == [
+            "- SEND_GMAIL: approved by the user; the action ran",
+            "- SEND_SLACK: denied by the user; the action did NOT run",
+        ]
+
+    async def test_an_undecided_approval_is_dropped_from_a_mixed_batch(self) -> None:
+        cards = [_approval_card("a1", "pending"), _approval_card("a2", "pending")]
+        records = {
+            "a1": _record("a1", HILApprovalStatus.PENDING, tool_name="SEND_GMAIL"),
+            "a2": _record("a2", HILApprovalStatus.DENIED, tool_name="SEND_SLACK"),
+        }
+
+        note, _ = await self._note(cards, records)
+
+        assert "SEND_GMAIL" not in note
+        assert "SEND_SLACK" in note
+
+    async def test_the_note_leads_with_the_override_instruction(self) -> None:
+        """The lines alone are ambiguous — the narrator has the gate-time
+        'waiting for approval' text in front of it too. The header is what tells
+        it which one wins, so it is part of the contract, not decoration."""
+        cards = [_approval_card("a1", "pending")]
+        records = {"a1": _record("a1", HILApprovalStatus.APPROVED, tool_name="SEND_GMAIL")}
+
+        note, _ = await self._note(cards, records)
+
+        assert note.startswith("\n\n[APPROVAL OUTCOMES]")
+        assert "overrides anything above" in note
+        assert "never say it is pending and never re-offer approve/decline" in note
