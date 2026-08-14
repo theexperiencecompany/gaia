@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from app.agents.templates.mail_templates import (
     GmailMessageParser,
+    _copy_headers,
     _get_text_from_html,
     detailed_message_template,
     draft_template,
@@ -14,6 +15,7 @@ from app.agents.templates.mail_templates import (
     process_list_drafts_response,
     thread_template,
 )
+from app.models.composio_schemas.gmail import GmailMessagePart
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -685,3 +687,139 @@ class TestMalformedPartDoesNotAbortTheMessage:
         assert parser.parse() is True
         names = [a["filename"] for a in parser.attachments]
         assert names == ["report.pdf"]
+
+    def test_synthesized_part_drops_the_source_wire_transfer_encoding(self):
+        """``set_content`` stores already-decoded text and stamps its own encoding,
+        so carrying the source part's wire encoding across describes the body
+        wrongly — and on an empty part it is what sent the stdlib down its base64
+        branch with nothing to decode."""
+        part = GmailMessagePart.model_validate(
+            {
+                "mimeType": "text/plain",
+                "headers": [
+                    {"name": "Subject", "value": "Kept"},
+                    {"name": "Content-Transfer-Encoding", "value": "base64"},
+                ],
+            }
+        )
+        target = email.message.EmailMessage()
+
+        _copy_headers(part, target)
+
+        assert target["Subject"] == "Kept"
+        assert "Content-Transfer-Encoding" not in target
+
+    def test_wire_transfer_encoding_is_dropped_case_insensitively(self):
+        # Gmail returns canonical header names, but MIME header names are
+        # case-insensitive and a lowercase spelling must not slip the filter.
+        part = GmailMessagePart.model_validate(
+            {
+                "mimeType": "text/plain",
+                "headers": [{"name": "content-transfer-encoding", "value": "base64"}],
+            }
+        )
+        target = email.message.EmailMessage()
+
+        _copy_headers(part, target)
+
+        assert "Content-Transfer-Encoding" not in target
+
+
+def _stamp_wire_encoding(parser: GmailMessageParser, content_type: str) -> None:
+    """Put a walked part back into the undecodable state, on the real MIME tree.
+
+    ``_copy_headers`` no longer lets the parser build this itself, so the state is
+    restored on the parsed ``EmailMessage``: an empty part whose headers claim
+    base64. Nothing is mocked — the stdlib genuinely raises ``UnboundLocalError``
+    from ``get_payload(decode=True)`` on the way through, which is the failure the
+    extraction guards have to absorb. What this does NOT prove is that a Gmail
+    payload can still reach that state through the parser's own construction; with
+    the header fix in place it cannot.
+    """
+    assert parser.email_message is not None
+    for part in parser.email_message.walk():
+        if part.get_content_type() == content_type and part.get_payload() is None:
+            part["Content-Transfer-Encoding"] = "base64"
+            return
+    raise AssertionError(f"no empty {content_type} part to corrupt")
+
+
+class TestUndecodablePartIsSkippedNotFatal:
+    def test_text_extraction_skips_the_bad_part_and_keeps_reading(self):
+        payload = {
+            "mimeType": "multipart/mixed",
+            "headers": [{"name": "Subject", "value": "Mixed"}],
+            "parts": [
+                {"mimeType": "text/plain", "headers": [], "body": {}},
+                {
+                    "mimeType": "text/plain",
+                    "headers": [],
+                    "body": {"data": _b64_encode("Good part")},
+                },
+            ],
+        }
+        parser = GmailMessageParser(_make_gmail_message(payload=payload))
+        assert parser.parse() is True
+        _stamp_wire_encoding(parser, "text/plain")
+
+        assert "Good part" in parser.text_content
+
+    def test_html_extraction_skips_the_bad_part_and_keeps_reading(self):
+        payload = {
+            "mimeType": "multipart/alternative",
+            "headers": [{"name": "Subject", "value": "Alt"}],
+            "parts": [
+                {
+                    "mimeType": "text/html",
+                    "headers": [{"name": "Content-Type", "value": "text/html; charset=UTF-8"}],
+                    "body": {},
+                },
+                {
+                    "mimeType": "text/html",
+                    "headers": [],
+                    "body": {"data": _b64_encode("<p>Good HTML</p>")},
+                },
+            ],
+        }
+        parser = GmailMessageParser(_make_gmail_message(payload=payload))
+        assert parser.parse() is True
+        _stamp_wire_encoding(parser, "text/html")
+
+        assert "Good HTML" in parser.html_content
+
+    def test_an_undecodable_attachment_is_listed_without_content(self):
+        """The attachment still has to appear — a user looking at the message must
+        see that a file is there, even when its bytes cannot be pulled out."""
+        payload = {
+            "mimeType": "multipart/mixed",
+            "headers": [{"name": "Subject", "value": "Attach"}],
+            "parts": [
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "report.pdf",
+                    "headers": [{"name": "Content-Type", "value": "application/pdf"}],
+                    "body": {},
+                },
+            ],
+        }
+        parser = GmailMessageParser(_make_gmail_message(payload=payload))
+        assert parser.parse() is True
+        _stamp_wire_encoding(parser, "application/pdf")
+
+        attachments = parser.attachments
+        assert len(attachments) == 1
+        assert attachments[0]["filename"] == "report.pdf"
+        assert attachments[0]["content"] is None
+        assert attachments[0]["size"] == 0
+
+    def test_a_message_of_nothing_but_bad_parts_yields_empty_content(self):
+        payload = {
+            "mimeType": "multipart/mixed",
+            "headers": [{"name": "Subject", "value": "All bad"}],
+            "parts": [{"mimeType": "text/plain", "headers": [], "body": {}}],
+        }
+        parser = GmailMessageParser(_make_gmail_message(payload=payload))
+        assert parser.parse() is True
+        _stamp_wire_encoding(parser, "text/plain")
+
+        assert parser.content == {"text": "", "html": ""}
