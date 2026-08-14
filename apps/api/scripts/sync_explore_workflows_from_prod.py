@@ -108,6 +108,19 @@ async def fetch_prod_explore() -> list[dict[str, Any]]:
     return workflows
 
 
+def _write_slug_dump(slugs: list[str]) -> str:
+    """Write the slug list to a fresh temp file and return its path."""
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        prefix="local_explore_slugs_",
+        suffix=".json",
+        delete=False,
+        encoding="utf-8",
+    ) as slug_dump:
+        json.dump(slugs, slug_dump, indent=1)
+    return slug_dump.name
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -166,15 +179,8 @@ async def main() -> None:
     extra = sorted(set(local) - prod_slugs)
     print(f"Missing vs prod: {missing or 'none'}")
     print(f"Extra vs prod: {extra or 'none'}")
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        prefix="local_explore_slugs_",
-        suffix=".json",
-        delete=False,
-        encoding="utf-8",
-    ) as slug_dump:
-        json.dump(sorted(local), slug_dump, indent=1)
-    print(f"Wrote local explore slugs to {slug_dump.name}")
+    dump_path = await asyncio.to_thread(_write_slug_dump, sorted(local))
+    print(f"Wrote local explore slugs to {dump_path}")
 
 
 if __name__ == "__main__":
