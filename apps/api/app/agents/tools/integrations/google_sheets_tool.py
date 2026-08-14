@@ -81,6 +81,10 @@ def _sheets_proxy(
         body=body,
         query=query,
     )
+    if response is None:
+        # A proxy response without a ``data`` key — callers degrade the missing
+        # fields to None (e.g. an absent permission id).
+        return {}
     if not isinstance(response, dict):
         raise AppError(
             message=f"Sheets proxy returned a non-object payload ({type(response).__name__})",

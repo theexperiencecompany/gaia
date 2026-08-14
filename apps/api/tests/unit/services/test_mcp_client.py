@@ -1968,6 +1968,17 @@ class TestResilientLangChainAdapter:
         result = await adapter.create_tools(mock_client)
         assert result == []
 
+    async def test_single_tool_conversion_none_fails_loud(self):
+        """A tool whose schema converts to None (not raises) must surface as a
+        ValueError naming the tool, not be silently dropped."""
+        adapter = ResilientLangChainAdapter()
+        mock_tool = MagicMock()
+        mock_tool.name = "broken_tool"
+
+        with patch.object(adapter, "_convert_tool", return_value=None):
+            with pytest.raises(ValueError, match="broken_tool"):
+                await adapter._convert_single_tool(mock_tool, MagicMock())
+
     async def test_create_tools_skips_bad_schemas(self):
         adapter = ResilientLangChainAdapter()
         mock_client = MagicMock()
