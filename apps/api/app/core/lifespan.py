@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.core.provider_registration import (
     unified_shutdown,
@@ -17,7 +18,7 @@ from app.services.device.revoke_listener import (
 from app.services.device.up_listener import start_up_listener, stop_up_listener
 from app.utils.browser_reaper import start_browser_reaper, stop_browser_reaper
 from app.utils.context_utils import _CONTEXT_EXECUTOR
-from shared.py.wide_events import log_context
+from shared.py.wide_events import log, log_context
 
 
 @asynccontextmanager
@@ -35,17 +36,19 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         async with log_context("api_startup", component="lifespan"):
             if not settings.POSTHOG_PROJECT_TOKEN or not settings.POSTHOG_HOST:
-                if settings.ENV == "development":
-                    missing_var = (
-                        "POSTHOG_PROJECT_TOKEN"
-                        if not settings.POSTHOG_PROJECT_TOKEN
-                        else "POSTHOG_HOST"
-                    )
-                    raise RuntimeError(
-                        f"{missing_var} variable required by PostHog is missing or un-configured, "
-                        f"this causes events to be silently missed. This error stops appearing once "
-                        f"{missing_var} is configured"
-                    )
+                missing_var = (
+                    "POSTHOG_PROJECT_TOKEN"
+                    if not settings.POSTHOG_PROJECT_TOKEN
+                    else "POSTHOG_HOST"
+                )
+                # Never block boot: token-less environments (local dev without
+                # Infisical, the schemathesis live server) legitimately run
+                # without analytics — the SILENT loader no-ops captures. Make
+                # the gap loud in the log instead of taking the API down.
+                log.error(
+                    f"{LogTag.STARTUP} PostHog not configured — analytics captures will no-op",
+                    missing_var=missing_var,
+                )
             await unified_startup("main_app")
             if settings.POSTHOG_PROJECT_TOKEN and settings.POSTHOG_HOST:
                 posthog_client = providers.get("posthog")
