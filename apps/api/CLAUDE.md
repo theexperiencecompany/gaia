@@ -450,9 +450,11 @@ reveal_type(_get_available_providers())                        # expect: the rea
 
 `reveal_type` is the fastest way to confirm you closed the hole rather than moved it: if it still reveals `Any`, the annotation is cosmetic.
 
-### 18. A literal repeated at a definition site and a lookup site is an enum (see item 5)
+### 18. A literal repeated at a definition site and a lookup site is an enum, when we own the value set (see item 5)
 
 Item 5 covers a fixed set of *values*. This is the sharper case: the same literal written in two places that must agree. Registry keys, event names, queue names, config keys, cache-key prefixes. Nothing enforces the match, so drift is silent and reaches production.
+
+The enum is the answer only for a **closed, repository-owned** domain — one where we define every member and adding one is our change. When the values are external, open-ended, or owned by someone else's schema (provider model ids, third-party API fields, an upstream event vocabulary), an enum claims a closed world we don't control and goes stale the moment the other side adds a value. Those want a named constant in `app/constants/` referenced from both sites instead — same single source of truth, no false closed-world claim.
 
 That is exactly how the `comms_agent` outage happened — `"gemini_llm"` lived in both `@lazy_provider(name="gemini_llm")` and the lookup mapping, and only one side was environment-gated. One enum, referenced from both sides, makes the drift impossible:
 
