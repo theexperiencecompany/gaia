@@ -104,6 +104,13 @@ replacement = (
     f'source_paths = ["{module}"]\n'
     f'also_copy = ["app", "tests", "scripts"]\n'
     f'max_stack_depth = 8\n'
+    # The pragma stamping below appends `# pragma: no mutate` to every
+    # unchanged line. mutmut's AST visitor only honors that comment on
+    # simple statement lines, so interior lines of multi-line statements
+    # would still be mutated; the pattern matcher keys on line CONTENT and
+    # catches every stamped line — this is what makes the diff-driven
+    # scoping actually work.
+    f'do_not_mutate_patterns = ["# pragma: no mutate"]\n'
     f'pytest_add_cli_args_test_selection = ["{testfile}"]\n'
     f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
     f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300\']\n'
