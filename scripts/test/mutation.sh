@@ -232,6 +232,19 @@ if [ "$MUTMUT_RC" -ne 0 ]; then
   # closed stream at interpreter shutdown) — the verdict below is the
   # source of truth, and an incomplete run is caught by the not-checked
   # check. Fail only if mutmut produced nothing at all.
+  # mutmut's trampoline resolves the CALLER frame with
+  # Path(filename).resolve(strict=True). A module that calls one of its own
+  # mutated functions at import time is entered from <frozen
+  # importlib._bootstrap>, which is not a real path, so the stats phase dies
+  # before a single test runs. Same class of tool limitation as the two above —
+  # the module's own tests pass normally — so skip with a reason rather than
+  # reporting a test weakness that is not there.
+  if grep -q "No such file or directory: '<frozen importlib._bootstrap>'" "$WORKDIR/mutmut.log"; then
+    echo "SKIP: $MODULE — mutmut cannot collect stats for a module that invokes its" >&2
+    echo "      own function at import time: the trampoline resolves the calling" >&2
+    echo "      frame, which during import is <frozen importlib._bootstrap>." >&2
+    exit 0
+  fi
   if [ ! -f "$WORKDIR/mutants/mutmut-stats.json" ]; then
     echo "MUTATION RUN FAILED (no state produced) — see mutmut's output above." >&2
     exit 1
