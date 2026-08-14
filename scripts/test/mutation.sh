@@ -280,14 +280,12 @@ if [ -n "$SURVIVORS" ]; then
     # The classifier exits 1 for real (changed/unchanged) survivors — under
     # set -e that would kill the whole gate mid-classification, so the
     # assignment swallows it; the VERDICT value is what matters.
-    VERDICT="$("$VENV_PY" - "$line" "$WORKDIR" "$CHANGED_RANGES" "$MODULE" << 'EOF' 2>/dev/null
-import ast
+    VERDICT="$("$VENV_PY" - "$line" "$WORKDIR" "$CHANGED_RANGES" << 'EOF' 2>/dev/null
 import json
 import re
 import sys
 
 survivor, workdir, changed_ranges = sys.argv[1].strip().split(": ", 1)[0], sys.argv[2], sys.argv[3]
-module_path = sys.argv[4]
 module, mutant_name = survivor.rsplit(".", 1)
 mutant_file = f"{workdir}/mutants/{module.replace('.', '/')}.py"
 src = open(mutant_file).read()
@@ -302,38 +300,11 @@ if not orig_match:
     sys.exit(1)
 orig_name = orig_match.group(1)
 blocks = re.split(r"^(?:async )?def ", src, flags=re.MULTILINE)
-
-
-def _def_lines(path: str) -> dict[str, int]:
-    """Qualified function name -> the line its ``def`` sits on, in the REAL file."""
-    found: dict[str, int] = {}
-
-    def walk(node: ast.AST, prefix: str) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
-                found[prefix + child.name] = child.lineno
-                walk(child, f"{prefix}{child.name}.")
-            elif isinstance(child, ast.ClassDef):
-                walk(child, f"{prefix}{child.name}.")
-
-    walk(ast.parse(open(path).read()), "")
-    return found
-
-
-# The survivor's line must be resolved against the REAL module, not the
-# mutants copy: mutmut expands every function into one variant per mutant, so
-# the copy runs to ~20x the length and its line numbers share no coordinate
-# space with the PR's diff ranges. Comparing the two (as this once did) let a
-# survivor on an untouched line land inside a changed range by arithmetic
-# coincidence and fail the lane.
-#
-# mutmut names the original `x_<func>__mutmut_orig`, or
-# `xǁ<Class>ǁ<method>__mutmut_orig` for a method.
-qualified = orig_name.removesuffix("__mutmut_orig")
-qualified = (
-    ".".join(qualified.split("ǁ")[1:]) if "ǁ" in qualified else qualified.removeprefix("x_")
-)
-orig_line = _def_lines(f"{workdir}/{module_path}").get(qualified)
+orig_line = None
+for i, block in enumerate(blocks):
+    if block.split("(", 1)[0].strip() == orig_name:
+        orig_line = sum(b.count("\n") for b in blocks[: i + 1])
+        break
 if orig_line is None:
     sys.exit(1)
 
@@ -356,14 +327,12 @@ mut_lines = _normalized(_body(mutant_name))
 if orig_lines == mut_lines:
     print("EQUIV")
     sys.exit(0)
-# Find the first differing line in the ORIGINAL file. `_body` drops only the
-# def line itself, so body index 0 is the line right after it.
+# Find the first differing line in the ORIGINAL file.
 for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
     if a != b:
-        line_no = orig_line + 1 + i
         ranges = json.loads(changed_ranges) if changed_ranges else []
-        in_changed = any(start <= line_no <= end for start, end in ranges)
-        print(f"CHANGED:{line_no}" if in_changed else f"UNCHANGED:{line_no}")
+        in_changed = any(start <= orig_line + i <= end for start, end in ranges)
+        print(f"CHANGED:{orig_line + i}" if in_changed else f"UNCHANGED:{orig_line + i}")
         sys.exit(1)
 print("EQUIV")
 sys.exit(0)

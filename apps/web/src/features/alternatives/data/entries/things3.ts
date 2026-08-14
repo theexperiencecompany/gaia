@@ -11,7 +11,7 @@ export const entry: AlternativeData = {
     "One-time purchase model means no ongoing updates without buying new versions",
     "No AI features or automation of any kind",
     "No email or calendar integration beyond basic system calendar sync",
-    "Beautiful but entirely manual — you manage your tasks, not an AI",
+    "Beautiful but entirely manual: you manage your tasks, not an AI",
   ],
   metaTitle: "Best Things 3 Alternative in 2026",
   metaDescription:
@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "tasks from email AI",
   ],
   whyPeopleLook:
-    "Things 3 is a masterclass in task manager design — clean, fast, and opinionated in the best way. But it is stuck in a manual, Apple-only world. There is no AI, no email integration, no cross-platform access, and no automation. Users who switch to Android, move to Windows, or simply want their task manager to do more than store GTD-style lists consistently look for alternatives that combine the simplicity of Things with the intelligence of modern AI.",
+    "Things 3 is a masterclass in task manager design: clean, fast, and opinionated in the best way. But it is stuck in a manual, Apple-only world. There is no AI, no email integration, no cross-platform access, and no automation. Users who switch to Android, move to Windows, or simply want their task manager to do more than store GTD-style lists consistently look for alternatives that combine the simplicity of Things with the intelligence of modern AI.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Cross-platform task management on any device or OS",
@@ -42,7 +42,7 @@ export const entry: AlternativeData = {
     "AI-driven prioritization replacing GTD-style manual area sorting",
   ],
   gaiaAdvantages: [
-    "Works on Windows, Linux, Android, and web — not Apple-only",
+    "Works on Windows, Linux, Android, and web, not Apple-only",
     "Proactive AI eliminates manual task triage and entry",
     "Email integration connects inbox to task list automatically",
     "Open-source and self-hostable for data privacy",
@@ -73,7 +73,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA free compared to Things 3's paid one-time cost?",
       answer:
-        "Things 3 costs $49.99 for Mac, $9.99 for iPhone, and $19.99 for iPad — one-time. GAIA has a free tier, and self-hosting is always free. The Pro plan at $20/month is ongoing but includes AI and all integrations.",
+        "Things 3 costs $49.99 for Mac, $9.99 for iPhone, and $19.99 for iPad, all one-time purchases. GAIA has a free tier, and self-hosting is always free. The Pro plan at $20/month is ongoing but includes AI and all integrations.",
     },
   ],
 };

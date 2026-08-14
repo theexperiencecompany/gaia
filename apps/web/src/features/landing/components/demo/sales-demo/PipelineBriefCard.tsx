@@ -40,7 +40,7 @@ export default function PipelineBriefCard() {
           showBackground: false,
         })}
         <span className="text-[11px] font-medium text-zinc-400">
-          Today's pipeline — Thursday, March 6
+          Today's pipeline: Thursday, March 6
         </span>
       </div>
       <p className="mb-3 text-[11px] text-zinc-500">
@@ -51,7 +51,7 @@ export default function PipelineBriefCard() {
           <div key={item.id} className="rounded-xl bg-zinc-900 p-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-zinc-100">
-                {item.company} — {item.value}
+                {item.company}: {item.value}
               </span>
               {item.urgent && (
                 <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] text-red-400">

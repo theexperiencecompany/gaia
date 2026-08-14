@@ -41,7 +41,7 @@ export const DEMO_EVENTS = [
   // Day 0 (today)
   {
     id: "ce4",
-    summary: "Standup — Engineering",
+    summary: "Standup: Engineering",
     start: { dateTime: `${dayOffset(0)}T09:30:00` },
     end: { dateTime: `${dayOffset(0)}T09:45:00` },
     calendarId: "primary",
@@ -62,7 +62,7 @@ export const DEMO_EVENTS = [
   },
   {
     id: "ce7",
-    summary: "Investor Call — Sequoia",
+    summary: "Investor Call: Sequoia",
     start: { dateTime: `${dayOffset(0)}T14:00:00` },
     end: { dateTime: `${dayOffset(0)}T15:00:00` },
     calendarId: "work",
