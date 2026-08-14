@@ -146,6 +146,59 @@ export const ANALYTICS_EVENTS = {
   WHATS_NEW_MODAL_OPENED: "whats_new:modal_opened",
   WHATS_NEW_SLIDE_VIEWED: "whats_new:slide_viewed",
   WHATS_NEW_DOCS_CLICKED: "whats_new:docs_clicked",
+
+  // Voice events
+  VOICE_MODE_STARTED: "voice:mode_started",
+  VOICE_MODE_STOPPED: "voice:mode_stopped",
+  VOICE_TRANSCRIPTION_RECEIVED: "voice:transcription_received",
+  WAKE_WORD_DETECTED: "wake_word:detected",
+
+  // Device events
+  DEVICE_CONNECTED: "device:connected",
+  DEVICE_DISCONNECTED: "device:disconnected",
+  DEVICE_COMMAND_SENT: "device:command_sent",
+  DEVICE_TOKEN_GENERATED: "device:token_generated",
+
+  // Desktop popup events
+  DESKTOP_POPUP_OPENED: "desktop_popup:opened",
+  DESKTOP_POPUP_DISMISSED: "desktop_popup:dismissed",
+  DESKTOP_POPUP_CTA_CLICKED: "desktop_popup:cta_clicked",
+
+  // Bot events
+  BOT_CONNECTED: "bot:connected",
+  BOT_DISCONNECTED: "bot:disconnected",
+  BOT_COMMAND_USED: "bot:command_used",
+
+  // Weather events
+  WEATHER_QUERIED: "weather:queried",
+
+  // Team events
+  TEAM_INVITE_SENT: "team:invite_sent",
+  TEAM_INVITE_ACCEPTED: "team:invite_accepted",
+
+  // Persona events
+  PERSONA_CREATED: "personas:created",
+  PERSONA_DELETED: "personas:deleted",
+  PERSONA_SELECTED: "personas:selected",
+
+  // Skill events
+  SKILL_INSTALLED: "skill:installed",
+  SKILL_UNINSTALLED: "skill:uninstalled",
+  SKILL_SEARCHED: "skill:searched",
+
+  // Use case events
+  USE_CASE_CLICKED: "use_cases:clicked",
+
+  // Thanks page
+  THANKS_PAGE_VIEWED: "thanks:page_viewed",
+
+  // Reddit events
+  REDDIT_POST_VIEWED: "reddit:post_viewed",
+
+  // API layer events
+  API_REQUEST_FAILED: "api:request_failed",
+  API_CHUNK_RECOVERED: "api:chunk_recovered",
+  ROUTE_ERROR_SHOWN: "error:route_error_shown",
 } as const;
 
 export type AnalyticsEvent =

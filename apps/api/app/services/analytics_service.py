@@ -52,6 +52,90 @@ class AnalyticsEvents(StrEnum):
     SUBSCRIPTION_FAILED = "subscription:failed"
     RATE_LIMIT_HIT = "rate_limit_hit"
 
+    # Conversations
+    CONVERSATION_CREATED = "chat:conversation_created"
+    CONVERSATION_RENAMED = "chat:conversation_renamed"
+    CONVERSATION_STARRED = "chat:conversation_starred"
+    CONVERSATION_DELETED = "chat:conversation_deleted"
+    CONVERSATION_ARCHIVED = "chat:conversation_archived"
+    CHAT_MESSAGE_COMPLETED = "chat:message_completed"
+    CHAT_MESSAGE_CANCELLED = "chat:message_cancelled"
+
+    # Files
+    FILE_UPLOADED = "chat:file_uploaded"
+
+    # Todos
+    TODO_CREATED = "todos:created"
+    TODO_UPDATED = "todos:updated"
+    TODO_COMPLETED = "todos:toggled"
+    TODO_DELETED = "todos:deleted"
+
+    # Calendar
+    CALENDAR_CONNECTED = "calendar:connected"
+    CALENDAR_DISCONNECTED = "calendar:disconnected"
+    CALENDAR_EVENT_CREATED = "calendar:event_created"
+    CALENDAR_EVENT_UPDATED = "calendar:event_updated"
+    CALENDAR_EVENT_DELETED = "calendar:event_deleted"
+
+    # Mail
+    MAILBOX_CONNECTED = "email:mailbox_connected"
+    EMAIL_SENT = "email:sent"
+    EMAIL_REPLIED = "email:replied"
+    EMAIL_COMPOSED = "email:compose_opened"
+
+    # Memory
+    MEMORY_CLEARED = "memory:cleared"
+    MEMORY_ITEM_DELETED = "memory:item_deleted"
+
+    # Notes
+    NOTE_CREATED = "notes:created"
+    NOTE_UPDATED = "notes:updated"
+    NOTE_DELETED = "notes:deleted"
+
+    # Reminders
+    REMINDER_CREATED = "reminder:created"
+    REMINDER_COMPLETED = "reminder:completed"
+    REMINDER_DELETED = "reminder:deleted"
+
+    # Search
+    SEARCH_PERFORMED = "search:performed"
+
+    # Notifications
+    NOTIFICATION_CREATED = "notification:created"
+    NOTIFICATION_PREFERENCE_UPDATED = "settings:notifications_toggled"
+
+    # Onboarding
+    ONBOARDING_STEP_COMPLETED = "onboarding:step_completed"
+    ONBOARDING_COMPLETED = "onboarding:completed"
+
+    # Integrations
+    INTEGRATION_CONNECTED = "integration:connected"
+    INTEGRATION_DISCONNECTED = "integration:disconnected"
+    INTEGRATION_RECONNECTED = "integration:reconnected"
+    INTEGRATION_ERROR = "integration:error"
+
+    # Skills
+    SKILL_INSTALLED = "skill:installed"
+    SKILL_UNINSTALLED = "skill:uninstalled"
+
+    # Support
+    SUPPORT_TICKET_SUBMITTED = "support:form_submitted"
+
+    # Settings / profile
+    SETTINGS_PREFERENCES_CHANGED = "settings:preferences_changed"
+    MODEL_SELECTED = "settings:model_selected"
+
+    # Worker / agent lifecycle
+    AGENT_RUN_STARTED = "agent:run_started"
+    AGENT_RUN_COMPLETED = "agent:run_completed"
+    AGENT_RUN_FAILED = "agent:run_failed"
+    TOOL_USED = "tool:used"
+    SANDBOX_EXECUTED = "sandbox:executed"
+
+    # Usage / limits
+    RATE_LIMIT_WARNED = "rate_limit:warned"
+    USAGE_QUERIED = "usage:queried"
+
 
 def _get_posthog_client() -> Posthog | None:
     """Get the PostHog client from providers."""
