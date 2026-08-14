@@ -208,7 +208,11 @@ proc = subprocess.Popen(
     start_new_session=True,
 )
 try:
-    proc.communicate(timeout=900)
+    # 3600s, not 900: modules whose covering tests hit real services (redis
+    # connect timeouts in the sandbox) take 15s+ per mutant; a 50-mutant module
+    # then needs 15+ minutes. The diff-scoped gates keep normal PRs far below;
+    # the job-level ceiling (150m, 4-wide) is the real bound.
+    proc.communicate(timeout=3600)
 except subprocess.TimeoutExpired:
     os.killpg(proc.pid, signal.SIGKILL)
     proc.wait()
@@ -274,6 +278,15 @@ SURVIVORS="$(printf '%s\n' "$RESULTS" | grep "survived" || true)"
 NO_TESTS="$(printf '%s\n' "$RESULTS" | grep -c "no tests" || true)"
 NOT_CHECKED="$(printf '%s\n' "$RESULTS" | grep -c "not checked" || true)"
 if [ "${NOT_CHECKED:-0}" -gt 0 ]; then
+  if [ "${MUTATION_RETRY:-0}" -eq 0 ]; then
+    # Interrupted runs are usually the known loguru teardown crash (forked
+    # children + the loop-bound redis client write to a closed stream at
+    # interpreter shutdown) killing mutmut mid-run. A fresh process almost
+    # always completes — retry once before failing the lane.
+    echo "MUTATION RUN INCOMPLETE ($NOT_CHECKED unchecked) — retrying once" >&2
+    MUTATION_RETRY=1 "$0" "$MODULE" "$TESTFILE" "$CHANGED_RANGES"
+    exit $?
+  fi
   echo "MUTATION RUN INCOMPLETE — $NOT_CHECKED mutant(s) were never checked;" >&2
   echo "the run was interrupted. See mutmut's output above." >&2
   exit 1
