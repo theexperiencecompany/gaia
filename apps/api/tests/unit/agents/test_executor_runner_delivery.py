@@ -972,12 +972,17 @@ class TestDeliveredMessageIdentity:
     """Which id the delivered message carries decides whether the frontend
     reconciles onto the placeholder it already rendered or strands it."""
 
-    async def _deliver_run(self, run: ExecutorRun):
+    async def _deliver_run(self, run: ExecutorRun, follow_ups: list[str] | None = None):
         with (
             patch.object(
                 rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
             ),
-            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(
+                rd,
+                "generate_follow_up_actions",
+                new_callable=AsyncMock,
+                return_value=follow_ups or [],
+            ),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
@@ -1141,3 +1146,45 @@ class TestMergedCardsAreActuallyWritten:
             await rd._approval_outcomes_note(run)
 
         assert get_msg.await_args.kwargs["user_id"] == ""
+
+
+class TestDeferredFollowUpPush:
+    """Follow-ups are generated AFTER the answer ships, so the spinner clears
+    first, and arrive as a second push on the same message id."""
+
+    async def _push(self, *, generated, persisted=True):
+        bot_message = MessageModel(type="bot", response="answered", date="2026-01-01")
+        bot_message.message_id = "msg-1"
+        with (
+            patch.object(rd, "_build_follow_up_actions", new=AsyncMock(return_value=generated)),
+            patch.object(rd, "_persist_follow_up_actions", new=AsyncMock(return_value=persisted)),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+        ):
+            await rd._generate_and_push_follow_ups(
+                run=_run(RunKind.QUEUED, task_id="task-7"),
+                bot_message=bot_message,
+                result_type="final",
+                tool_data=None,
+                show_reply_quote=False,
+                user_msg_content="asked",
+            )
+        return ws
+
+    async def test_suggestions_reach_the_client_on_the_same_message(self) -> None:
+        ws = await self._push(generated=["ask about X", "try Y"])
+
+        event = ws.await_args.args[1]
+        assert event["message"]["message_id"] == "msg-1"
+        assert event["message"]["follow_up_actions"] == ["ask about X", "try Y"]
+
+    async def test_nothing_generated_means_no_second_push(self) -> None:
+        ws = await self._push(generated=[])
+
+        ws.assert_not_awaited()
+
+    async def test_suggestions_that_failed_to_persist_are_never_shown(self) -> None:
+        """Broadcasting unstored suggestions puts them on screen only for them
+        to vanish on reload."""
+        ws = await self._push(generated=["ask about X"], persisted=False)
+
+        ws.assert_not_awaited()
