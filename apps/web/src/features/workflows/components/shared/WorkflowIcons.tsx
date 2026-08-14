@@ -9,7 +9,7 @@ import {
 
 interface WorkflowIconsProps {
   steps: Array<{ category: string }>;
-  /** User-chosen icon slug — rendered instead when the steps carry no category icons */
+  /** User-chosen icon slug — rendered in place of the step-category icons when set */
   icon?: string | null;
   /** Hex color for the user-chosen icon */
   iconColor?: string | null;
@@ -34,18 +34,17 @@ export default function WorkflowIcons({
   spacing = "-space-x-1.5 ",
   showBackground = true,
 }: WorkflowIconsProps) {
-  const { getIntegrationIconUrl, getIntegrationName } = useIntegrationLookup();
+  const { getIntegrationIconUrl } = useIntegrationLookup();
   // De-duplicate categories, preserving first-seen order.
   const categories = [...new Set(steps.map((step) => step.category))];
   const displayIcons = categories.slice(0, maxIcons);
 
-  // A workflow whose steps use no integrations (only internal categories like
-  // "reminder"/"general") falls back to its user-chosen icon.
-  const usesIntegrations = categories.some(
-    (category) => !!getIntegrationName(category),
-  );
-  const customIcon =
-    icon && !usesIntegrations ? WORKFLOW_ICON_MAP.get(icon) : undefined;
+  // An explicitly chosen icon always wins over step-category icons. Gating it
+  // on "no integrations" made rendering depend on the auth-gated integrations
+  // catalog: icons flipped to tool icons (or blank, for internal categories)
+  // the moment /integrations/me resolved, and public pages behaved differently
+  // from the slug page, which renders the icon unconditionally.
+  const customIcon = icon ? WORKFLOW_ICON_MAP.get(icon) : undefined;
   if (customIcon) {
     const CustomIcon = customIcon.Icon;
     const iconElement = (
