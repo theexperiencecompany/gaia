@@ -167,18 +167,21 @@ UNKNOWN_MODEL_NAME = "unknown"
 # real graph (64-66%: the pinned upstream's cache state is colder and the
 # conversation's segments still intermittently fail to join), even though it
 # is rock-stable in isolation — the isolation is not the graph.
-# A separate id in the same series as the default, used by the auxiliary
-# one-shot calls (memory pipeline, follow-ups, vision, …). OpenRouter serves
-# it as a DIFFERENT checkpoint of the v4-flash series ("0423", vs the default's
-# "0731") — the checkpoint difference is precisely why the provider's prompt
-# cache treats it as its own namespace. These calls must NOT share the
-# conversation's cache namespace: their ~30k tokens/turn of new blocks were
-# evicting the conversation between turns (measured: real-graph hit rate
-# capped at ~63% while the intra-turn steady state is 87–91%). A separate id
-# gives the aux calls their own namespace — they chain with each other and
-# can no longer evict the conversation. It is NOT the same checkpoint as
-# DEFAULT_MODEL_NAME and OpenRouter prices it higher; aux spend is metered at
-# its own rate in model_pricing (AUX_MODEL_PRICING).
+# A separate id for the auxiliary one-shot calls (memory pipeline, follow-ups,
+# vision, …). This is NOT the same model as the default: OpenRouter serves the
+# bare id as the ORIGINAL V4 Flash release ("0423", created Apr 2026), while
+# DEFAULT_MODEL_NAME is the re-post-trained "0731" revision (Aug 2026) — same
+# architecture family (284B/13B-active MoE, 1M context, identical pricing),
+# different model version. Aux one-shots (follow-up suggestions, conversation
+# naming) are therefore served by the older revision — a deliberate tradeoff:
+# the separate model id is what gives these calls their own provider-side
+# cache namespace. They must NOT share the conversation's namespace — their
+# ~30k tokens/turn of new blocks were evicting the conversation chain between
+# turns (measured: real-graph hit rate capped at ~63% while the intra-turn
+# steady state is 87–91%). A separate id lets the aux calls chain with each
+# other and stops the eviction. (Pricing on OpenRouter is identical to the
+# default; the app's AUX_MODEL_PRICING meter entry is separate and should be
+# kept in sync with the live catalog.)
 AUX_MODEL_NAME = "deepseek/deepseek-v4-flash"
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.

@@ -873,12 +873,13 @@ async def ainvoke_structured(
     always a small JSON blob, never the large-output case. Returns the validated
     ``schema`` instance. Raises if Google is not configured (see ``get_default_llm``).
 
-    Runs on :data:`AUX_MODEL_NAME` — a separate id in the same model series as
-    the default (a different checkpoint, hence its own provider-side cache
-    namespace) — so these calls live in their own prompt-cache namespace. The
-    agent graph's calls share the conversation's namespace; if the aux calls
-    did too, their ~30k tokens/turn of new blocks would evict the conversation
-    between turns (measured)."""
+    Runs on :data:`AUX_MODEL_NAME` — a separate model id (the ORIGINAL V4 Flash
+    release, not the re-post-trained 0731 revision the graph uses), which is
+    what gives these calls their own provider-side cache namespace. The agent
+    graph's calls share the conversation's namespace; if the aux calls did
+    too, their ~30k tokens/turn of new blocks would evict the conversation
+    between turns (measured). Tradeoff: aux one-shots are served by the older
+    model version."""
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(
