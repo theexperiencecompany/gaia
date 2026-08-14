@@ -284,7 +284,9 @@ if [ "${NOT_CHECKED:-0}" -gt 0 ]; then
     # interpreter shutdown) killing mutmut mid-run. A fresh process almost
     # always completes — retry once before failing the lane.
     echo "MUTATION RUN INCOMPLETE ($NOT_CHECKED unchecked) — retrying once" >&2
-    MUTATION_RETRY=1 "$0" "$MODULE" "$TESTFILE" "$CHANGED_RANGES"
+    # Absolute path: at this point cwd is apps/api, so a relative $0 would
+    # resolve to apps/api/scripts/... and the retry would silently never run.
+    MUTATION_RETRY=1 bash "$REPO_ROOT/scripts/test/mutation.sh" "$MODULE" "$TESTFILE" "$CHANGED_RANGES"
     exit $?
   fi
   echo "MUTATION RUN INCOMPLETE — $NOT_CHECKED mutant(s) were never checked;" >&2
