@@ -513,11 +513,16 @@ async def check_auth_status(
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
     user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
+    # The linked id is returned, not just the boolean: it is what the bot uses as
+    # its PostHog distinct_id, so bot events land on the same profile as this
+    # user's web and API events instead of a parallel `<platform>:<id>` ghost.
+    user_id = (user.get("user_id") or str(user.get("_id", ""))) if user else None
     log.set(outcome="success")
     return BotAuthStatusResponse(
         authenticated=user is not None,
         platform=platform,
         platform_user_id=platform_user_id,
+        user_id=user_id or None,
     )
 
 

@@ -177,6 +177,35 @@ Similar structure to web app with React Native components. Uses React Navigation
 
 **Install**: The `gaia-shared` package is automatically available to Python apps via workspace dependencies.
 
+## Product Analytics (PostHog)
+
+**Every user-facing feature ships an event.** A feature nobody can measure is a feature nobody can tell is working — treat a missing capture the same as a missing log line, not as a nice-to-have. Add it in the same change as the feature.
+
+**Naming is `domain:action`**, lowercase, snake_case within each half — `chat:message_submitted`, `workflow:created`, `bot:file_uploaded`. Never invent a name inline: add it to the event enum for your surface, which is the single source of truth and what keeps the four surfaces from drifting.
+
+| Surface | Helper | Event names |
+|---|---|---|
+| API (Python) | `capture_event(user_id, ...)` / `capture_context_event(...)` — `app/services/analytics_service.py` | `AnalyticsEvents` (same file) |
+| Web (React) | `trackEvent(...)` — `apps/web/src/lib/analytics.ts` | `ANALYTICS_EVENTS` (same file) |
+| Bots (Node) | `Analytics` — `libs/shared/ts/src/analytics/` | `BOT_EVENTS` (`analytics/events/bots.ts`) |
+| Voice / other Python services | `PostHogAnalytics` — `libs/shared/py/analytics.py` | `VoiceAnalyticsEvents` (same file) |
+
+### Identity — one person, one profile
+
+`distinct_id` is **always GAIA's stable user id** (the Mongo user id). Never an email, never a platform handle, never a WorkOS id. Any other key creates a second profile for the same human, and cross-surface funnels silently stop joining — the failure is invisible in code review and only shows up as wrong numbers.
+
+- Authenticated API requests get this for free: `PostHogRequestContextMiddleware` identifies the context, and `capture_context_event` inherits it.
+- **A route excluded from auth MUST pass the id explicitly with `capture_event(user_id, ...)`.** OAuth callbacks, platform-link callbacks, bot routes and webhooks all resolve their user from state or a link record rather than a session cookie, so the request context has nobody to attribute to and the event lands on an anonymous profile. This is a real bug that shipped — see `oauth.py::composio_callback` and `platform_auth.py`.
+- Bots resolve the linked GAIA id via `BaseBotAdapter.resolveDistinctId` and fall back to `"<platform>:<platformUserId>"` only while the account is unlinked; linking emits an `alias` so the pre-link history merges rather than stranding a ghost profile.
+
+### Properties — no PII
+
+Event properties are counts, enums, durations, booleans and ids — never message text, filenames, email addresses, transcripts, or raw platform identifiers. Log the *shape* of what happened, not its content. Bot logs additionally hash identifiers via `hashLogIdentifier`; PostHog gets neither the raw nor the hash.
+
+### Where to capture
+
+Capture **after the operation succeeds**, not before it starts — an event emitted on entry counts attempts as successes. Failure is its own event with a `reason`, not a missing one. Prefer the server: a client-side capture is lost to ad blockers, so anything the backend already sees belongs there.
+
 ## Design System
 
 The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the repo root. It covers:

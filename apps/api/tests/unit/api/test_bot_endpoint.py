@@ -213,6 +213,28 @@ class TestCheckAuthStatus:
         data = response.json()
         assert data["authenticated"] is True
         assert data["platform"] == "discord"
+        assert data["platform_user_id"] == "u1"
+        # The bot keys PostHog on this id. Returning only the boolean is what
+        # left bot events on a parallel `discord:<id>` profile.
+        assert data["user_id"] == "uid1"
+
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_auth_status_falls_back_to_mongo_id(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        client: AsyncClient,
+    ):
+        """A user document carrying only `_id` still yields an id — the same
+        fallback the chat route uses, so both attribute to one distinct_id."""
+        mock_get_user.return_value = {"_id": "507f1f77bcf86cd799439011"}
+        response = await client.get(f"{BOT_BASE}/auth-status/discord/u1")
+        assert response.status_code == 200
+        assert response.json()["user_id"] == "507f1f77bcf86cd799439011"
 
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
@@ -230,6 +252,9 @@ class TestCheckAuthStatus:
         assert response.status_code == 200
         data = response.json()
         assert data["authenticated"] is False
+        # No link means no GAIA identity yet; the bot must fall back to the
+        # platform id rather than attribute to an empty string.
+        assert data["user_id"] is None
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_auth_status_invalid_platform(self, mock_auth: AsyncMock, client: AsyncClient):

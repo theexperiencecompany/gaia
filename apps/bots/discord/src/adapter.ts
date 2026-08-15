@@ -490,7 +490,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         }
       },
       STREAMING_DEFAULTS.discord,
-      this.analytics,
+      await this.analyticsFor(userId),
     );
   }
 
@@ -601,7 +601,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         if (!replied) await interaction.editReply({ content: err });
       },
       STREAMING_DEFAULTS.discord,
-      this.analytics,
+      await this.analyticsFor(userId),
     );
   }
 
@@ -745,7 +745,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           }
         },
         STREAMING_DEFAULTS.discord,
-        this.analytics,
+        await this.analyticsFor(userId),
       );
 
       stopTyping();
@@ -982,7 +982,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           await sendOrEdit(errMsg);
         },
         STREAMING_DEFAULTS.discord,
-        this.analytics,
+        await this.analyticsFor(message.author.id),
       );
 
       stopTyping();

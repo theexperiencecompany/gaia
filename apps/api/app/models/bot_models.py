@@ -51,6 +51,13 @@ class BotAuthStatusResponse(BaseModel):
     authenticated: bool = Field(..., description="Whether user is linked to GAIA")
     platform: str = Field(..., description="Platform name")
     platform_user_id: str = Field(..., description="User's platform ID")
+    user_id: str | None = Field(
+        None,
+        description=(
+            "Stable GAIA user id when linked, else null. Bots key PostHog on this "
+            "so their events land on the same profile as web and API events."
+        ),
+    )
 
 
 class LinkedUsersResponse(BaseModel):
