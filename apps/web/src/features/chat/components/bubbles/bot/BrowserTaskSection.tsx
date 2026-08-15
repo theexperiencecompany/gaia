@@ -30,7 +30,11 @@ import type {
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
 } from "@/types/features/browserTaskTypes";
-import { browserApi, liveViewSocketUrl } from "../../../api/browserApi";
+import {
+  browserApi,
+  liveViewPageUrl,
+  liveViewSocketUrl,
+} from "../../../api/browserApi";
 
 interface BrowserTaskSectionProps {
   data: BrowserTaskSnapshot | BrowserTaskSnapshot[];
@@ -216,6 +220,25 @@ function useLiveBrowser(socketUrl: string | null, interactive: boolean) {
   return { canvasRef, status };
 }
 
+// The live view is served from a friendly vhost the host-only session cookie is
+// not sent to, so a token is required for every connection. Fetch it once per
+// session (cookie auth works same-origin to the API); the token's lifetime
+// bounds the socket, which comfortably covers a single browser task.
+function useLiveViewToken(sessionId: string | null | undefined): string | null {
+  const [token, setToken] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sessionId) return undefined;
+    let active = true;
+    browserApi.getLiveViewToken(sessionId).then((res) => {
+      if (active && res) setToken(res.token);
+    });
+    return () => {
+      active = false;
+    };
+  }, [sessionId]);
+  return token;
+}
+
 function LiveBrowserCanvas({
   socketUrl,
   interactive,
@@ -356,6 +379,7 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
   );
   const meta = HANDOFF_META[handoff.category] ?? HANDOFF_META.none;
   const Icon = meta.icon;
+  const liveToken = useLiveViewToken(handoff.session_id);
 
   const settled = serverStatus && serverStatus !== "pending";
 
@@ -400,7 +424,7 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
         </div>
       </div>
 
-      {handoff.live_view_url && (
+      {handoff.live_view_url && liveToken && (
         <div className="mt-3">
           <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
             <CursorInWindowIcon className="size-3.5 text-amber-300/80" />
@@ -409,7 +433,7 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
             </span>
           </div>
           <LiveBrowserCanvas
-            socketUrl={liveViewSocketUrl(handoff.live_view_url)}
+            socketUrl={liveViewSocketUrl(handoff.live_view_url, liveToken)}
             interactive
           />
         </div>
@@ -448,10 +472,10 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
           >
             I've done it — continue
           </Button>
-          {handoff.live_view_url && (
+          {handoff.live_view_url && liveToken && (
             <Button
               as="a"
-              href={handoff.live_view_url}
+              href={liveViewPageUrl(handoff.live_view_url, liveToken)}
               target="_blank"
               rel="noopener noreferrer"
               size="sm"
@@ -488,6 +512,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
     [snapshots],
   );
 
+  const liveViewToken = useLiveViewToken(session?.session_id);
   const pendingHandoff = handoffs.find((h) => h.status === "pending");
   const status: BrowserSessionStatus =
     result?.status ??
@@ -522,7 +547,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
         </p>
       )}
 
-      {session?.live_view_url && working && (
+      {session?.live_view_url && working && liveViewToken && (
         <div className="mb-3">
           <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
             <EyeIcon className="size-3.5 text-zinc-400" />
@@ -531,13 +556,13 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
             </span>
           </div>
           <LiveBrowserCanvas
-            socketUrl={liveViewSocketUrl(session.live_view_url)}
+            socketUrl={liveViewSocketUrl(session.live_view_url, liveViewToken)}
             interactive={false}
           />
           <div className="mt-2">
             <Button
               as="a"
-              href={session.live_view_url}
+              href={liveViewPageUrl(session.live_view_url, liveViewToken)}
               target="_blank"
               rel="noopener noreferrer"
               size="sm"

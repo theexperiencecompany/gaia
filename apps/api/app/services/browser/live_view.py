@@ -1,11 +1,14 @@
 """Addressing for the API-authenticated browser live view, and the standalone
 viewer page a bot user opens.
 
-The live view is served through our API (never the browser host directly):
-``{HOST}/api/v1/browser/sessions/{id}/live-view``. A logged-in web user watches
-it through the chat card's canvas; a bot user — who has no web session — opens the
-same URL with a ``?t=`` takeover token, which serves the self-contained HTML
-viewer below. Both drive the same WebSocket the API proxies to the host.
+The live view is served through our API (never the browser host directly), at a
+short root path: ``{BROWSER_LIVE_VIEW_BASE_URL or HOST}/live/{session_id}``. In
+prod the base is a friendly vhost (browser.heygaia.io) that reverse-proxies to
+THIS api service. A logged-in web user watches it through the chat card's canvas
+(the card fetches a ``?t=`` token because the host-only session cookie is not
+sent cross-origin); a bot user — who has no web session — opens the same URL with
+a ``?t=`` takeover token, which serves the self-contained HTML viewer below. Both
+drive the same WebSocket the API proxies to the host.
 """
 
 from __future__ import annotations
@@ -15,13 +18,18 @@ import html
 from app.config.settings import settings
 from app.services.browser.takeover_token import create_takeover_token
 
-_LIVE_VIEW_PATH_TEMPLATE = "/api/v1/browser/sessions/{session_id}/live-view"
+_LIVE_VIEW_PATH_TEMPLATE = "/live/{session_id}"
+
+
+def _live_view_base() -> str:
+    """Public base URL fronting the live-view route (friendly vhost, or HOST)."""
+    base: str = settings.BROWSER_LIVE_VIEW_BASE_URL or settings.HOST
+    return base.rstrip("/")
 
 
 def live_view_url(session_id: str) -> str:
-    """The public API live-view URL for a session (used by the chat card)."""
-    base = settings.HOST.rstrip("/")
-    return f"{base}{_LIVE_VIEW_PATH_TEMPLATE.format(session_id=session_id)}"
+    """The public live-view URL for a session (the base the chat card connects to)."""
+    return f"{_live_view_base()}{_LIVE_VIEW_PATH_TEMPLATE.format(session_id=session_id)}"
 
 
 def live_view_link_with_token(session_id: str, user_id: str) -> str:

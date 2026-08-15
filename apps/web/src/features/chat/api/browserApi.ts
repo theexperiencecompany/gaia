@@ -9,15 +9,33 @@ interface HandoffDecisionResponse {
   status: BrowserHandoffStatus;
 }
 
+interface LiveViewTokenResponse {
+  token: string;
+  expires_in: number;
+}
+
 /**
- * The live-view endpoint serves both a GET page and a WebSocket at the same
- * path; the canvas talks to the WebSocket. The snapshot already carries the
- * canonical HTTP live-view URL (`{HOST}/api/v1/browser/sessions/{id}/live-view`),
- * so the socket URL is that URL with the scheme swapped to ws(s) — auth rides
- * the same-origin session cookie (web) or the `?t=` token already in the URL.
+ * The live-view route serves both a GET page and a WebSocket at the same path;
+ * the canvas talks to the WebSocket. The snapshot carries the public HTTP
+ * live-view base (`{BROWSER_LIVE_VIEW_BASE_URL}/live/{id}`) — a friendly vhost
+ * the host-only session cookie is NOT sent to — so every connection must carry a
+ * `?t=` takeover token. The socket URL is the base with the scheme swapped to
+ * ws(s) and the token appended.
  */
-export function liveViewSocketUrl(liveViewHttpUrl: string): string {
-  return liveViewHttpUrl.replace(/^http/, "ws");
+export function liveViewSocketUrl(
+  liveViewHttpUrl: string,
+  token: string,
+): string {
+  const wsUrl = liveViewHttpUrl.replace(/^http/, "ws");
+  return `${wsUrl}?t=${encodeURIComponent(token)}`;
+}
+
+/** The full-browser page link carries the same token (cookie is cross-origin). */
+export function liveViewPageUrl(
+  liveViewHttpUrl: string,
+  token: string,
+): string {
+  return `${liveViewHttpUrl}?t=${encodeURIComponent(token)}`;
 }
 
 export const browserApi = {
@@ -46,6 +64,21 @@ export const browserApi = {
   ): Promise<HandoffDecisionResponse | null> => {
     return apiService.get<HandoffDecisionResponse>(
       `/browser/handoffs/${handoffId}`,
+      { silent: true },
+    );
+  },
+
+  /**
+   * Mint a short-lived takeover token for opening this session's live view. The
+   * live view is served from a friendly vhost the session cookie can't reach, so
+   * the card fetches a token (cookie auth works same-origin to the API) and rides
+   * it on the cross-origin socket + page link.
+   */
+  getLiveViewToken: async (
+    sessionId: string,
+  ): Promise<LiveViewTokenResponse | null> => {
+    return apiService.get<LiveViewTokenResponse>(
+      `/browser/sessions/${sessionId}/live-view-token`,
       { silent: true },
     );
   },

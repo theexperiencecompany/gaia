@@ -54,6 +54,10 @@ services:
       SEARXNG_BASE_URL: http://searxng:8080
       # gaia-browser-host — self-hosted Chromium for the browser-automation tool.
       BROWSER_HOST_URL: http://browser-host:8930
+      # Public base fronting the authenticated live view (served by THIS api at
+      # /live/{id}). Left unset in dev so it falls back to HOST; in prod a
+      # browser.heygaia.io vhost reverse-proxies here (see docker-compose.prod.yml).
+      # BROWSER_LIVE_VIEW_BASE_URL: https://browser.heygaia.io
       # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
       # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
       # unset — the storage helper short-circuits gracefully in that case).

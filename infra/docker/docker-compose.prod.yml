@@ -105,6 +105,13 @@ services:
       SEARXNG_BASE_URL: http://searxng:8080
       # gaia-browser-host — internal Chromium host for the browser-automation tool.
       BROWSER_HOST_URL: http://browser-host:8930
+      # Public base fronting the authenticated live view, served by THIS api at
+      # /live/{id}. DEPLOY REQUIREMENT: the host Nginx vhost for browser.heygaia.io
+      # MUST reverse-proxy to this gaia-backend service (the same authed API, at
+      # :8000 via the routing mesh) and terminate WebSockets — NEVER to browser-host,
+      # which stays internal-only. Every /live connection re-checks a takeover token
+      # + registry ownership, so the friendly URL exposes no unauthenticated stream.
+      BROWSER_LIVE_VIEW_BASE_URL: ${BROWSER_LIVE_VIEW_BASE_URL:-https://browser.heygaia.io}
     secrets:
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
@@ -190,6 +197,9 @@ services:
       SEARXNG_BASE_URL: http://searxng:8080
       # gaia-browser-host — internal Chromium host for the browser-automation tool.
       BROWSER_HOST_URL: http://browser-host:8930
+      # The worker builds tokened live-view links for bot delivery, so it needs the
+      # same public base as gaia-backend (the vhost proxies to gaia-backend, never here).
+      BROWSER_LIVE_VIEW_BASE_URL: ${BROWSER_LIVE_VIEW_BASE_URL:-https://browser.heygaia.io}
     secrets:
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret

@@ -122,3 +122,10 @@ class HandoffDecisionRequest(BaseModel):
 class HandoffDecisionResponse(BaseModel):
     handoff_id: str
     status: HandoffStatus
+
+
+class LiveViewTokenResponse(BaseModel):
+    """A short-lived takeover token for opening the cross-origin live view."""
+
+    token: str
+    expires_in: int = Field(description="Seconds until the token expires.")

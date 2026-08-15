@@ -48,6 +48,7 @@ export interface BrowserHandoffSnapshot {
   handoff_id: string;
   category: BrowserSensitiveCategory;
   reason: string;
+  session_id?: string | null;
   live_view_url?: string | null;
   status: BrowserHandoffStatus;
 }
