@@ -36,22 +36,6 @@ interface PlatformConfig {
 
 const PLATFORMS: PlatformConfig[] = [
   {
-    id: "discord",
-    name: "Discord",
-    image: "/images/icons/macos/discord.webp",
-    color: "#5865F2",
-    description: "Use GAIA directly from Discord servers and DMs",
-    connectedDescription: "Use /gaia in Discord to chat with GAIA",
-  },
-  {
-    id: "slack",
-    name: "Slack",
-    image: "/images/icons/macos/slack.webp",
-    color: "#4A154B",
-    description: "Bring GAIA into your Slack workspace",
-    connectedDescription: "Use /gaia in Slack to chat with GAIA",
-  },
-  {
     id: "telegram",
     name: "Telegram",
     description: "Chat with GAIA on Telegram",
@@ -70,12 +54,28 @@ const PLATFORMS: PlatformConfig[] = [
   {
     id: "imessage",
     name: "iMessage",
-    image: "/images/icons/macos/imessage.svg",
+    image: "/images/icons/macos/imessage.webp",
     color: "#34C759",
     description: "Text GAIA over iMessage (Pro)",
     connectedDescription: "Message GAIA from your iPhone or Mac",
     premium: true,
     requiresPhone: true,
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    image: "/images/icons/macos/slack.webp",
+    color: "#4A154B",
+    description: "Bring GAIA into your Slack workspace",
+    connectedDescription: "Use /gaia in Slack to chat with GAIA",
+  },
+  {
+    id: "discord",
+    name: "Discord",
+    image: "/images/icons/macos/discord.webp",
+    color: "#5865F2",
+    description: "Use GAIA directly from Discord servers and DMs",
+    connectedDescription: "Use /gaia in Discord to chat with GAIA",
   },
 ];
 

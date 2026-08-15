@@ -25,7 +25,7 @@ export const NOTIFICATION_PLATFORM_ICONS: Record<NotificationPlatform, string> =
     discord: "/images/icons/macos/discord.webp",
     whatsapp: "/images/icons/macos/whatsapp.webp",
     slack: "/images/icons/macos/slack.webp",
-    imessage: "/images/icons/macos/imessage.svg",
+    imessage: "/images/icons/macos/imessage.webp",
   };
 
 // Channel-level maps extend the platform maps with the always-available
