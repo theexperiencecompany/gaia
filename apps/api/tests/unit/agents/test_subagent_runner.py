@@ -124,7 +124,7 @@ class TestBuildInitialMessages:
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
             new_callable=AsyncMock,
-            return_value=ctx_msg,
+            return_value=AgentContextMessages(stable=ctx_msg, volatile_tail=None),
         ):
             result = await build_initial_messages(
                 system_message=sys_msg,
@@ -148,7 +148,9 @@ class TestBuildInitialMessages:
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
             new_callable=AsyncMock,
-            return_value=SystemMessage(content="ctx"),
+            return_value=AgentContextMessages(
+                stable=SystemMessage(content="ctx"), volatile_tail=None
+            ),
         ):
             result = await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
@@ -166,7 +168,9 @@ class TestBuildInitialMessages:
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
             new_callable=AsyncMock,
-            return_value=SystemMessage(content="ctx"),
+            return_value=AgentContextMessages(
+                stable=SystemMessage(content="ctx"), volatile_tail=None
+            ),
         ) as mock_ctx:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
@@ -183,7 +187,9 @@ class TestBuildInitialMessages:
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
             new_callable=AsyncMock,
-            return_value=SystemMessage(content="ctx"),
+            return_value=AgentContextMessages(
+                stable=SystemMessage(content="ctx"), volatile_tail=None
+            ),
         ) as mock_ctx:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
@@ -201,7 +207,9 @@ class TestBuildInitialMessages:
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
             new_callable=AsyncMock,
-            return_value=SystemMessage(content="ctx"),
+            return_value=AgentContextMessages(
+                stable=SystemMessage(content="ctx"), volatile_tail=None
+            ),
         ) as mock_ctx:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
@@ -543,7 +551,9 @@ class TestPrepareExecutorExecution:
             patch(
                 "app.agents.core.subagents.subagent_runner.create_agent_context_message",
                 new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="ctx"), volatile_tail=None
+                ),
             ),
         ):
             ctx, error = await prepare_executor_execution(
@@ -600,7 +610,9 @@ class TestPrepareExecutorExecution:
             patch(
                 "app.agents.core.subagents.subagent_runner.create_agent_context_message",
                 new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="ctx"), volatile_tail=None
+                ),
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.get_subagent_by_id",
@@ -643,7 +655,9 @@ class TestPrepareExecutorExecution:
             patch(
                 "app.agents.core.subagents.subagent_runner.create_agent_context_message",
                 new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="ctx"), volatile_tail=None
+                ),
             ),
         ):
             ctx, error = await prepare_executor_execution(
@@ -678,7 +692,9 @@ class TestPrepareExecutorExecution:
             patch(
                 "app.agents.core.subagents.subagent_runner.create_agent_context_message",
                 new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="ctx"), volatile_tail=None
+                ),
             ),
         ):
             ctx, error = await prepare_executor_execution(
@@ -711,7 +727,9 @@ class TestPrepareExecutorExecution:
             patch(
                 "app.agents.core.subagents.subagent_runner.create_agent_context_message",
                 new_callable=AsyncMock,
-                return_value=SystemMessage(content="ctx"),
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="ctx"), volatile_tail=None
+                ),
             ),
         ):
             await prepare_executor_execution(
@@ -729,6 +747,7 @@ class TestPrepareExecutorExecution:
 
 
 from app.agents.core.subagents.subagent_helpers import (
+    AgentContextMessages,
     build_subagent_system_prompt,
     create_agent_context_message,
     create_subagent_system_message,
@@ -857,9 +876,9 @@ class TestCreateAgentContextMessage:
                 configurable={"user_name": "Alice"},
             )
 
-        assert isinstance(result, SystemMessage)
-        assert "Current UTC Time:" not in result.content
-        assert "User Local Time:" not in result.content
+        assert isinstance(result.stable, SystemMessage)
+        assert "Current UTC Time:" not in result.stable.content
+        assert "User Local Time:" not in result.stable.content
 
     @pytest.mark.asyncio
     async def test_includes_user_name(self):
@@ -879,7 +898,7 @@ class TestCreateAgentContextMessage:
                 configurable={"user_name": "Bob"},
             )
 
-        assert "User Name: Bob" in result.content
+        assert "User Name: Bob" in result.stable.content
 
     @pytest.mark.asyncio
     async def test_includes_user_timezone(self):
@@ -901,10 +920,10 @@ class TestCreateAgentContextMessage:
                 },
             )
 
-        assert "User Timezone: Asia/Kolkata" in result.content
+        assert "User Timezone: Asia/Kolkata" in result.stable.content
         # Local clock moved out of the dynamic system message. It's emitted
         # as a HumanMessage by ``build_current_time_message`` instead.
-        assert "User Local Time:" not in result.content
+        assert "User Local Time:" not in result.stable.content
 
     @pytest.mark.asyncio
     async def test_memories_included(self):
@@ -932,7 +951,7 @@ class TestCreateAgentContextMessage:
                 query="preferences",
             )
 
-        assert "User prefers dark mode" in result.content
+        assert "User prefers dark mode" in result.volatile_tail.content
 
     @pytest.mark.asyncio
     async def test_skills_included(self):
@@ -955,8 +974,8 @@ class TestCreateAgentContextMessage:
                 subagent_id="github_agent",
             )
 
-        assert "SKILLS:" in result.content
-        assert "search_github" in result.content
+        assert "SKILLS:" in result.volatile_tail.content
+        assert "search_github" in result.volatile_tail.content
 
     @pytest.mark.asyncio
     async def test_no_memories_without_user_id(self):
@@ -1020,7 +1039,7 @@ class TestCreateAgentContextMessage:
             )
 
         # Should not raise; just won't have memories
-        assert isinstance(result, SystemMessage)
+        assert isinstance(result.stable, SystemMessage)
 
     @pytest.mark.asyncio
     async def test_skills_error_handled(self):
@@ -1042,7 +1061,7 @@ class TestCreateAgentContextMessage:
                 user_id="u1",
             )
 
-        assert isinstance(result, SystemMessage)
+        assert isinstance(result.stable, SystemMessage)
 
     @pytest.mark.asyncio
     async def test_user_timezone_offset(self):
@@ -1063,7 +1082,7 @@ class TestCreateAgentContextMessage:
                 configurable={"user_timezone": "+05:30"},
             )
 
-        assert "User Timezone: +05:30" in result.content
+        assert "User Timezone: +05:30" in result.stable.content
 
     @pytest.mark.asyncio
     async def test_no_timezone_line_without_user_timezone(self):
@@ -1085,8 +1104,8 @@ class TestCreateAgentContextMessage:
                 configurable={},
             )
 
-        assert isinstance(result, SystemMessage)
-        assert "User Timezone:" not in result.content
+        assert isinstance(result.stable, SystemMessage)
+        assert "User Timezone:" not in result.stable.content
 
     @pytest.mark.asyncio
     async def test_dynamic_context_marker(self):
@@ -1108,5 +1127,23 @@ class TestCreateAgentContextMessage:
         ):
             result = await create_agent_context_message(configurable={})
 
-        assert result.additional_kwargs.get("dynamic_context") is True
-        assert result.additional_kwargs.get("memory_message") is True
+        assert result.stable.additional_kwargs.get("dynamic_context") is True
+        # Nothing volatile to carry: no memories, no skills, so no tail message
+        # at all — the marker below only exists when there is content to mark.
+        assert result.volatile_tail is None
+
+    @pytest.mark.asyncio
+    async def test_volatile_tail_carries_the_memory_marker(self):
+        """The per-turn sections move to a tail message after the conversation,
+        carrying ``memory_volatile`` — its own marker, distinct from the stable
+        message's ``dynamic_context``, so pruning can replace the two
+        independently instead of the tail accumulating per run."""
+        result = await create_agent_context_message(
+            configurable={}, skills_text="SKILLS:\n- search_github"
+        )
+
+        assert result.volatile_tail is not None
+        assert "SKILLS:" in result.volatile_tail.content
+        assert result.volatile_tail.additional_kwargs.get("memory_volatile") is True
+        # ...and the churning half stays OUT of the cached stable prefix.
+        assert "SKILLS:" not in result.stable.content

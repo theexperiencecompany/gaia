@@ -73,7 +73,14 @@ class TestApplyPlanModel:
         assert configurable["model"] == PAID_MODEL_NAME
         assert configurable["model_name"] == PAID_MODEL_NAME
         assert configurable["reasoning"] == COMMS_REASONING
-        assert configurable["model_kwargs"] == PAID_MODEL_MODEL_KWARGS
+        # model_kwargs is applied only when there is routing to pin. The lane
+        # now relies on session_id sticky routing instead of a hard provider
+        # pin, so PAID_MODEL_MODEL_KWARGS is None and the key must be ABSENT —
+        # writing None into it would send an explicit null to the provider.
+        if PAID_MODEL_MODEL_KWARGS is None:
+            assert "model_kwargs" not in configurable
+        else:
+            assert configurable["model_kwargs"] == PAID_MODEL_MODEL_KWARGS
 
     async def test_lookup_failure_keeps_the_default_model(self) -> None:
         configurable = _configurable()
