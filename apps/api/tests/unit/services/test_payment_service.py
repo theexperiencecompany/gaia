@@ -1590,9 +1590,17 @@ class TestHandleSubscriptionRenewed:
 
         await webhook_service.process_webhook(event_data, "wh_renew_003")
 
+        # WHICH subscription was resolved to a user. Unasserted, the lookup
+        # argument could go null and the renewal would be attributed to
+        # whoever a None lookup happens to return — or to nobody.
+        mock_webhook_subscription_repository.get_user_id_by_dodo_id.assert_awaited_once_with(
+            "sub_xyz789"
+        )
         mock_track_subscription.assert_called_once()
         call_kwargs = mock_track_subscription.call_args[1]
         assert call_kwargs["event_type"] == "subscription:renewed"
+        assert call_kwargs["user_id"] == FAKE_USER_ID
+        assert call_kwargs["subscription_id"] == "sub_xyz789"
 
 
 class TestHandleSubscriptionCancelled:
@@ -1659,9 +1667,13 @@ class TestHandleSubscriptionCancelled:
         event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_cancel_sub_004")
 
+        mock_webhook_subscription_repository.get_user_id_by_dodo_id.assert_awaited_once_with(
+            "sub_xyz789"
+        )
         mock_track_subscription.assert_called_once()
         call_kwargs = mock_track_subscription.call_args[1]
         assert call_kwargs["event_type"] == "subscription:cancelled"
+        assert call_kwargs["user_id"] == FAKE_USER_ID
 
     async def test_scheduled_cancel_keeps_status_and_sets_flag(
         self,
@@ -1741,9 +1753,13 @@ class TestHandleSubscriptionExpired:
         event_data = _make_webhook_event("subscription.expired", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_expire_002")
 
+        mock_webhook_subscription_repository.get_user_id_by_dodo_id.assert_awaited_once_with(
+            "sub_xyz789"
+        )
         mock_track_subscription.assert_called_once()
         call_kwargs = mock_track_subscription.call_args[1]
         assert call_kwargs["event_type"] == "subscription:expired"
+        assert call_kwargs["user_id"] == FAKE_USER_ID
 
 
 class TestHandleSubscriptionFailed:
