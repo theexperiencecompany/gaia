@@ -1,0 +1,21 @@
+{% extends "_base_email.html" %}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+Here's something most people miss about GAIA.<br /><br />
+A todo in GAIA isn't a reminder. It's a task GAIA can actually pick up and
+do. &ldquo;Research venues for the offsite&rdquo; doesn't just sit there
+waiting for you. GAIA does the research, writes up what it found, and hands
+you the result.<br /><br />
+You stay in control the whole time. GAIA stages the work, and you approve
+what goes out.<br /><br />
+Try it with something real you're putting off this week. And if you'd like,
+I'm happy to set it up with you on a quick call. Just pick a time:
+<a
+  href="{{ founder_meeting_url }}"
+  style="color: #067df7; text-decoration-line: none"
+  target="_blank"
+  >cal.com/aryanranderiya</a
+>.<br /><br />
+Best,<br />
+Aryan
+{% endblock %}

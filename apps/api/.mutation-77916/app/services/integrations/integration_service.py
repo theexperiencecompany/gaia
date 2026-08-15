@@ -1,0 +1,113 @@
+"""
+Integration Service Utilities.
+
+Utility functions for integration management.
+For main functions, import directly from:
+- app.services.integrations.marketplace
+- app.services.integrations.user_integrations
+- app.services.integrations.custom_crud
+"""
+
+from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.constants.cache import ONE_DAY_TTL
+from app.decorators.caching import Cacheable
+from app.helpers.integration_helpers import generate_integration_slug
+from app.helpers.namespace_utils import derive_integration_namespace
+from app.models.integration_models import IntegrationWithCreator
+from app.schemas.integrations.responses import (
+    CommunityIntegrationCreator,
+    CommunityIntegrationItem,
+    IntegrationTool,
+)
+from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.oauth.oauth_service import get_all_integrations_status
+
+
+@Cacheable(key_pattern="tool_namespaces:{user_id}", ttl=ONE_DAY_TTL)
+async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
+    """Get the set of integration namespaces (tool spaces) that user has connected.
+
+    For platform integrations, uses the configured tool_space.
+    For custom integrations, resolves to URL domain (matches indexing logic).
+    """
+
+    namespaces: set[str] = set()
+
+    # Add core namespaces that are always available
+    namespaces.update({"general", "subagents"})
+
+    # Internal integrations (like todos, reminders) are core platform features
+    # They're NOT integrations that need connecting via UI
+    internal_integrations = [
+        integration.id
+        for integration in OAUTH_INTEGRATIONS
+        if integration.managed_by == "internal" and integration.available
+    ]
+    namespaces.update(internal_integrations)
+
+    # Get connected integrations from unified status
+    status = await get_all_integrations_status(user_id)
+
+    for integration_id, is_connected in status.items():
+        if not is_connected:
+            continue
+
+        # Platform integration: use tool_space from subagent config
+        integration = get_integration_by_id(integration_id)
+        if integration and integration.subagent_config:
+            namespaces.add(integration.subagent_config.tool_space)
+        else:
+            # Custom integration: resolve to URL (domain + path) for consistency
+            # Includes path to differentiate /v1 vs /v2 endpoints
+            server_url = await IntegrationResolver.get_server_url(integration_id)
+            namespace = derive_integration_namespace(integration_id, server_url, is_custom=True)
+            namespaces.add(namespace)
+
+    return namespaces
+
+
+def format_community_integrations(
+    integrations: list[IntegrationWithCreator],
+) -> list[CommunityIntegrationItem]:
+    """Format integrations (with joined creator) into CommunityIntegrationItem responses."""
+    result = []
+    for integration in integrations:
+        tool_items = [
+            IntegrationTool(name=t.name, description=t.description) for t in integration.tools[:10]
+        ]
+
+        creator = None
+        if integration.creator:
+            creator = CommunityIntegrationCreator(
+                name=integration.creator.name,
+                picture=integration.creator.picture,
+            )
+
+        # Prefer stored slug (unique), fall back to generated slug
+        slug = integration.slug or generate_integration_slug(
+            name=integration.name,
+            category=integration.category,
+        )
+
+        result.append(
+            CommunityIntegrationItem(
+                integration_id=integration.integration_id,
+                slug=slug,
+                name=integration.name,
+                description=integration.description,
+                category=integration.category,
+                icon_url=integration.icon_url,
+                clone_count=integration.clone_count,
+                tool_count=len(integration.tools),
+                tools=tool_items,
+                published_at=integration.published_at,
+                creator=creator,
+            )
+        )
+    return result
+
+
+__all__ = [
+    "get_user_available_tool_namespaces",
+    "format_community_integrations",
+]

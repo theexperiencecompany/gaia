@@ -1,0 +1,45 @@
+# Reminders family — create/delete via the reminder scheduler; end_state
+# verifies the reminder count in the scheduler's persisted collection (titles
+# are model-generated, so the content check lives in the communicate gate).
+
+- id: reminders-create-absolute
+  ticket: "Create a reminder for an explicit time; end_state must show the reminder."
+  tags: [reminders]
+  prompt: "Remind me at 5pm today to call the dentist"
+  expected:
+    category: reminders
+    communicate: ["dentist"]
+    tool_calls: [{tool: create_reminder_tool}]
+    end_state: {reminders: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the reminder was scheduled"
+
+- id: reminders-create-relative
+  ticket: "Create a reminder with a relative delay; the agent must use delay_seconds."
+  tags: [reminders]
+  prompt: "Remind me in 5 minutes to stretch"
+  expected:
+    category: reminders
+    communicate: ["stretch"]
+    tool_calls: [{tool: create_reminder_tool}]
+    end_state: {reminders: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the reminder was scheduled"
+
+- id: reminders-delete
+  ticket: "Create a reminder then delete it; end_state must be empty."
+  tags: [reminders]
+  prompt: "Set a reminder to water the plants tomorrow at 8pm, then delete it again"
+  expected:
+    category: reminders
+    communicate: ["water the plants"]
+    tool_calls: [{tool: create_reminder_tool}, {tool: delete_reminder_tool}]
+    end_state: {reminders: [{count: 0}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the reminder was created and then deleted"

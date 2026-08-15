@@ -1,0 +1,680 @@
+"""Tests for app.helpers.email_helpers — email processing and storage utilities."""
+
+from collections.abc import Generator
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
+from app.constants.memory import MemorySourceType
+from app.helpers.email_helpers import (
+    _build_user_context,
+    mark_email_processing_complete,
+    process_email_content,
+    remove_invisible_chars,
+    store_emails_to_memory,
+    store_single_profile,
+)
+
+# ---------------------------------------------------------------------------
+# _build_user_context
+# ---------------------------------------------------------------------------
+
+
+class TestBuildUserContext:
+    """Tests for _build_user_context()."""
+
+    def test_with_name_and_email(self) -> None:
+        result = _build_user_context("Alice", "alice@example.com")
+        assert "Alice" in result
+        assert "alice@example.com" in result
+
+    def test_with_name_only(self) -> None:
+        result = _build_user_context("Bob", None)
+        assert "Bob" in result
+        assert "email" not in result.lower()
+
+    def test_with_none_name(self) -> None:
+        result = _build_user_context(None, "user@test.com")
+        assert result == ""
+
+    def test_with_empty_string_name(self) -> None:
+        result = _build_user_context("", "user@test.com")
+        assert result == ""
+
+    def test_with_both_none(self) -> None:
+        result = _build_user_context(None, None)
+        assert result == ""
+
+    @pytest.mark.parametrize(
+        "name, email, should_contain_email",
+        [
+            ("Alice", "a@b.com", True),
+            ("Alice", None, False),
+            ("Alice", "", False),
+        ],
+        ids=["with-email", "none-email", "empty-email"],
+    )
+    def test_email_inclusion(
+        self,
+        name: str,
+        email: str | None,
+        should_contain_email: bool,
+    ) -> None:
+        result = _build_user_context(name, email)
+        if should_contain_email:
+            assert email in result  # type: ignore[operator]
+        else:
+            assert result == f"The user's name is {name}."
+
+
+# ---------------------------------------------------------------------------
+# remove_invisible_chars
+# ---------------------------------------------------------------------------
+
+
+class TestRemoveInvisibleChars:
+    """Tests for remove_invisible_chars()."""
+
+    def test_plain_ascii_unchanged(self) -> None:
+        assert remove_invisible_chars("Hello World") == "Hello World"
+
+    def test_empty_string(self) -> None:
+        assert remove_invisible_chars("") == ""
+
+    def test_removes_zero_width_space(self) -> None:
+        # U+200B ZERO WIDTH SPACE — category Cf
+        text = "hello\u200bworld"
+        assert remove_invisible_chars(text) == "helloworld"
+
+    def test_removes_zero_width_joiner(self) -> None:
+        # U+200D ZERO WIDTH JOINER — category Cf
+        text = "a\u200db"
+        assert remove_invisible_chars(text) == "ab"
+
+    def test_removes_soft_hyphen(self) -> None:
+        # U+00AD SOFT HYPHEN — category Cf
+        text = "hel\u00adlo"
+        assert remove_invisible_chars(text) == "hello"
+
+    def test_removes_null_byte(self) -> None:
+        # U+0000 NULL — category Cc
+        text = "hello\x00world"
+        assert remove_invisible_chars(text) == "helloworld"
+
+    def test_removes_control_characters(self) -> None:
+        # U+0001 SOH, U+0002 STX — category Cc
+        text = "a\x01b\x02c"
+        assert remove_invisible_chars(text) == "abc"
+
+    def test_preserves_newlines_tabs(self) -> None:
+        # \n (U+000A) and \t (U+0009) are category Cc — they WILL be removed
+        text = "hello\n\tworld"
+        result = remove_invisible_chars(text)
+        assert "\n" not in result
+        assert "\t" not in result
+
+    def test_preserves_normal_unicode(self) -> None:
+        # Accented characters (category L) should be preserved
+        text = "\u00e9l\u00e8ve caf\u00e9"
+        assert remove_invisible_chars(text) == "\u00e9l\u00e8ve caf\u00e9"
+
+    def test_removes_bom(self) -> None:
+        # U+FEFF BOM — category Cf
+        text = "\ufeffHello"
+        assert remove_invisible_chars(text) == "Hello"
+
+    def test_removes_right_to_left_mark(self) -> None:
+        # U+200F RIGHT-TO-LEFT MARK — category Cf
+        text = "abc\u200fdef"
+        assert remove_invisible_chars(text) == "abcdef"
+
+    @pytest.mark.parametrize(
+        "char, name",
+        [
+            ("\u200b", "zero-width-space"),
+            ("\u200c", "zero-width-non-joiner"),
+            ("\u200d", "zero-width-joiner"),
+            ("\u2060", "word-joiner"),
+            ("\ufeff", "bom"),
+            ("\u00ad", "soft-hyphen"),
+            ("\u200e", "left-to-right-mark"),
+            ("\u200f", "right-to-left-mark"),
+        ],
+        ids=[
+            "ZWSP",
+            "ZWNJ",
+            "ZWJ",
+            "WJ",
+            "BOM",
+            "SHY",
+            "LRM",
+            "RLM",
+        ],
+    )
+    def test_common_invisible_chars_removed(self, char: str, name: str) -> None:
+        text = f"before{char}after"
+        assert remove_invisible_chars(text) == "beforeafter"
+
+    def test_multiple_invisible_chars(self) -> None:
+        text = "\u200b\u200c\u200dvisible\ufeff\u00ad"
+        assert remove_invisible_chars(text) == "visible"
+
+
+# ---------------------------------------------------------------------------
+# process_email_content
+# ---------------------------------------------------------------------------
+
+
+class TestProcessEmailContent:
+    """Tests for process_email_content()."""
+
+    def test_basic_html_email(self) -> None:
+        emails = [
+            {
+                "messageId": "msg_1",
+                "sender": "friend@example.com",
+                "subject": "Hello",
+                "messageText": "<p>Hello there!</p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 1
+        assert failed == 0
+        assert "Hello there!" in processed[0]["content"]
+        assert processed[0]["metadata"]["message_id"] == "msg_1"
+        assert processed[0]["metadata"]["sender"] == "friend@example.com"
+        assert processed[0]["metadata"]["subject"] == "Hello"
+        assert processed[0]["metadata"]["type"] == "email"
+        assert processed[0]["metadata"]["source"] == "gmail"
+
+    def test_empty_list(self) -> None:
+        processed, failed = process_email_content([])
+        assert processed == []
+        assert failed == 0
+
+    def test_empty_message_text_increments_failed(self) -> None:
+        emails = [
+            {
+                "sender": "someone@example.com",
+                "subject": "Empty",
+                "messageText": "",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 0
+        assert failed == 1
+
+    def test_whitespace_only_message_text_increments_failed(self) -> None:
+        emails = [
+            {
+                "sender": "someone@example.com",
+                "subject": "Whitespace",
+                "messageText": "   \n\t  ",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 0
+        assert failed == 1
+
+    def test_platform_emails_skipped_twitter(self) -> None:
+        emails = [
+            {
+                "sender": "notify@twitter.com",
+                "subject": "New follower",
+                "messageText": "<p>You have a new follower</p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 0
+        assert failed == 0  # skipped, not failed
+
+    def test_platform_emails_skipped_github(self) -> None:
+        emails = [
+            {
+                "sender": "noreply@github.com",
+                "subject": "PR merged",
+                "messageText": "<p>Your PR was merged</p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 0
+        assert failed == 0
+
+    def test_platform_emails_skipped_linkedin(self) -> None:
+        emails = [
+            {
+                "sender": "messages-noreply@linkedin.com",
+                "subject": "New message",
+                "messageText": "<p>You have a new message</p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 0
+        assert failed == 0
+
+    def test_sender_from_field_fallback(self) -> None:
+        """When 'sender' key is missing, uses 'from' field."""
+        emails = [
+            {
+                "from": "friend@example.com",
+                "subject": "Hey",
+                "messageText": "<b>Hi</b>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 1
+        assert processed[0]["metadata"]["sender"] == "friend@example.com"
+
+    def test_sender_none_uses_from(self) -> None:
+        """When sender is None, fall through to from."""
+        emails = [
+            {
+                "sender": None,
+                "from": "other@example.com",
+                "subject": "Test",
+                "messageText": "<p>Content</p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 1
+        assert processed[0]["metadata"]["sender"] == "other@example.com"
+
+    def test_default_sender_and_subject(self) -> None:
+        """Missing sender and subject should use defaults."""
+        emails = [
+            {
+                "messageText": "<p>Some content</p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 1
+        assert processed[0]["metadata"]["sender"] == UNKNOWN_SENDER
+        assert processed[0]["metadata"]["subject"] == NO_SUBJECT
+
+    def test_message_id_fallback_to_id(self) -> None:
+        """When messageId is missing, falls back to 'id' field."""
+        emails = [
+            {
+                "id": "alt_id_1",
+                "sender": "test@example.com",
+                "messageText": "<p>Hello</p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 1
+        assert processed[0]["metadata"]["message_id"] == "alt_id_1"
+
+    def test_invisible_chars_removed_from_content(self) -> None:
+        emails = [
+            {
+                "sender": "test@example.com",
+                "messageText": "<p>Hello\u200bWorld</p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 1
+        assert "\u200b" not in processed[0]["content"]
+
+    def test_multiple_emails_mixed(self) -> None:
+        """Mix of valid, platform-skipped, and empty emails."""
+        emails = [
+            {
+                "sender": "friend@example.com",
+                "messageText": "<p>Valid email</p>",
+                "subject": "Hi",
+            },
+            {
+                "sender": "notify@twitter.com",
+                "messageText": "<p>Platform email</p>",
+            },
+            {
+                "sender": "another@example.com",
+                "messageText": "",
+            },
+            {
+                "sender": "third@example.com",
+                "messageText": "<p>Another valid</p>",
+                "subject": "Hey",
+            },
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 2
+        assert failed == 1  # only the empty one
+
+    def test_exception_in_processing_increments_failed(self) -> None:
+        """If an email causes an exception, it's counted as failed."""
+        # Pass something that will cause html2text to choke or other error
+        emails = [
+            {
+                "sender": "test@example.com",
+                "messageText": "<p>Valid</p>",
+            },
+        ]
+        with patch(
+            "app.helpers.email_helpers._html_converter.handle",
+            side_effect=Exception("parse error"),
+        ):
+            processed, failed = process_email_content(emails)
+        assert len(processed) == 0
+        assert failed == 1
+
+    def test_html_converted_to_clean_text(self) -> None:
+        """HTML tags should be stripped from output."""
+        emails = [
+            {
+                "sender": "test@example.com",
+                "messageText": "<h1>Title</h1><p>Paragraph with <b>bold</b></p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 1
+        content = processed[0]["content"]
+        assert "<h1>" not in content
+        assert "<p>" not in content
+        assert "<b>" not in content
+        assert "Title" in content
+        assert "bold" in content
+
+    def test_platform_detection_case_insensitive(self) -> None:
+        """Platform domain check should be case-insensitive."""
+        emails = [
+            {
+                "sender": "NOTIFY@TWITTER.COM",
+                "messageText": "<p>Content</p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert len(processed) == 0  # skipped as platform email
+
+    def test_html_to_text_strips_empty_result(self) -> None:
+        """If HTML converts to empty string after stripping, count as failed."""
+        emails = [
+            {
+                "sender": "test@example.com",
+                "messageText": "<p>  </p>",  # converts to whitespace
+            }
+        ]
+        # This may or may not be empty depending on html2text behavior.
+        # We just verify no crash and correct accounting.
+        processed, failed = process_email_content(emails)
+        assert isinstance(processed, list)
+        assert isinstance(failed, int)
+        assert len(processed) + failed <= 1
+
+
+# ---------------------------------------------------------------------------
+# store_emails_to_memory
+# ---------------------------------------------------------------------------
+
+
+class TestStoreEmailsToMemory:
+    """Tests for store_emails_to_memory()."""
+
+    @pytest.fixture
+    def mock_memory_engine(self) -> Generator[AsyncMock, None, None]:
+        with patch("app.helpers.email_helpers.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=MagicMock(facts_extracted=1))
+            yield mock_engine
+
+    async def test_empty_list_returns_early(self, mock_memory_engine: AsyncMock) -> None:
+        await store_emails_to_memory("user_1", [])
+        mock_memory_engine.retain.assert_not_called()
+
+    async def test_calls_retain(self, mock_memory_engine: AsyncMock) -> None:
+        processed = [
+            {
+                "content": "Email body text",
+                "metadata": {
+                    "sender": "alice@example.com",
+                    "subject": "Hello",
+                },
+            }
+        ]
+        await store_emails_to_memory("user_1", processed)
+        mock_memory_engine.retain.assert_called_once()
+
+    async def test_passes_user_id(self, mock_memory_engine: AsyncMock) -> None:
+        processed = [
+            {
+                "content": "Body",
+                "metadata": {"sender": "a@b.com", "subject": "S"},
+            }
+        ]
+        await store_emails_to_memory("user_42", processed)
+        assert mock_memory_engine.retain.call_args.args[0] == "user_42"
+
+    async def test_source_type_is_email(self, mock_memory_engine: AsyncMock) -> None:
+        processed = [
+            {
+                "content": "Body",
+                "metadata": {"sender": "a@b.com", "subject": "S"},
+            }
+        ]
+        await store_emails_to_memory("user_1", processed)
+        call_kwargs = mock_memory_engine.retain.call_args.kwargs
+        assert call_kwargs["source_type"] is MemorySourceType.EMAIL
+
+    async def test_messages_built_correctly(self, mock_memory_engine: AsyncMock) -> None:
+        processed = [
+            {
+                "content": "Email text here",
+                "metadata": {
+                    "sender": "bob@example.com",
+                    "subject": "Important",
+                },
+            }
+        ]
+        await store_emails_to_memory("user_1", processed)
+        messages = mock_memory_engine.retain.call_args.args[1]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+        assert "bob@example.com" in messages[0]["content"]
+        assert "Important" in messages[0]["content"]
+        assert "Email text here" in messages[0]["content"]
+
+    async def test_skips_emails_with_empty_content(
+        self,
+        mock_memory_engine: AsyncMock,
+    ) -> None:
+        processed = [
+            {
+                "content": "",
+                "metadata": {"sender": "a@b.com", "subject": "S"},
+            },
+            {
+                "content": "   ",
+                "metadata": {"sender": "a@b.com", "subject": "S"},
+            },
+        ]
+        await store_emails_to_memory("user_1", processed)
+        # Both have empty/whitespace content, so the function returns early
+        mock_memory_engine.retain.assert_not_called()
+
+    async def test_zero_facts_extracted_logs_without_raising(
+        self,
+        mock_memory_engine: AsyncMock,
+    ) -> None:
+        mock_memory_engine.retain.return_value = MagicMock(facts_extracted=0)
+        processed = [
+            {
+                "content": "Body",
+                "metadata": {"sender": "a@b.com", "subject": "S"},
+            }
+        ]
+        # Should not raise
+        await store_emails_to_memory("user_1", processed)
+
+    async def test_exception_does_not_propagate(
+        self,
+        mock_memory_engine: AsyncMock,
+    ) -> None:
+        mock_memory_engine.retain.side_effect = Exception("boom")
+        processed = [
+            {
+                "content": "Body",
+                "metadata": {"sender": "a@b.com", "subject": "S"},
+            }
+        ]
+        # Should swallow the exception
+        await store_emails_to_memory("user_1", processed)
+
+    async def test_extraction_hints_include_user_context(
+        self,
+        mock_memory_engine: AsyncMock,
+    ) -> None:
+        processed = [
+            {
+                "content": "Body",
+                "metadata": {"sender": "a@b.com", "subject": "S"},
+            }
+        ]
+        await store_emails_to_memory(
+            "user_1",
+            processed,
+            user_name="Alice",
+            user_email="alice@x.com",
+        )
+        call_kwargs = mock_memory_engine.retain.call_args.kwargs
+        assert "Alice" in call_kwargs["extraction_hints"]
+        assert "alice@x.com" in call_kwargs["extraction_hints"]
+        assert call_kwargs["user_name"] == "Alice"
+
+    async def test_all_emails_in_batch_sent(self, mock_memory_engine: AsyncMock) -> None:
+        processed = [
+            {
+                "content": f"Email {i}",
+                "metadata": {"sender": "a@b.com", "subject": f"S{i}"},
+            }
+            for i in range(5)
+        ]
+        await store_emails_to_memory("user_1", processed)
+        messages = mock_memory_engine.retain.call_args.args[1]
+        assert len(messages) == 5
+
+
+# ---------------------------------------------------------------------------
+# mark_email_processing_complete
+# ---------------------------------------------------------------------------
+
+
+class TestMarkEmailProcessingComplete:
+    """Tests for mark_email_processing_complete() — delegates to the repository
+    (the persisted fields/timestamp are covered by the UserRepository contract)."""
+
+    @patch(
+        "app.helpers.email_helpers.user_repository.mark_email_processing_complete",
+        new_callable=AsyncMock,
+    )
+    async def test_delegates_to_repository(self, mock_mark: AsyncMock) -> None:
+        await mark_email_processing_complete(
+            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+            42,
+        )
+        mock_mark.assert_awaited_once_with("507f1f77bcf86cd799439011", 42)
+
+    @patch(
+        "app.helpers.email_helpers.user_repository.mark_email_processing_complete",
+        new_callable=AsyncMock,
+    )
+    async def test_zero_memory_count(self, mock_mark: AsyncMock) -> None:
+        await mark_email_processing_complete(
+            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+            0,
+        )
+        mock_mark.assert_awaited_once_with("507f1f77bcf86cd799439011", 0)
+
+
+# ---------------------------------------------------------------------------
+# store_single_profile
+# ---------------------------------------------------------------------------
+
+
+class TestStoreSingleProfile:
+    """Tests for store_single_profile()."""
+
+    @pytest.fixture
+    def mock_memory_engine(self) -> Generator[AsyncMock, None, None]:
+        with patch("app.helpers.email_helpers.memory_engine") as mock_engine:
+            mock_engine.retain = AsyncMock(return_value=MagicMock(facts_extracted=1))
+            yield mock_engine
+
+    async def test_stores_profile_content(self, mock_memory_engine: AsyncMock) -> None:
+        await store_single_profile(
+            "user_1",
+            "twitter",
+            "https://x.com/alice",
+            "Bio: Software Engineer",
+        )
+        mock_memory_engine.retain.assert_called_once()
+        messages = mock_memory_engine.retain.call_args.args[1]
+        assert len(messages) == 1
+        assert "twitter" in messages[0]["content"]
+        assert "https://x.com/alice" in messages[0]["content"]
+        assert "Bio: Software Engineer" in messages[0]["content"]
+
+    async def test_source_id_is_profile_url(self, mock_memory_engine: AsyncMock) -> None:
+        await store_single_profile(
+            "user_1",
+            "github",
+            "https://github.com/alice",
+            "repos: 50",
+        )
+        call_kwargs = mock_memory_engine.retain.call_args.kwargs
+        assert call_kwargs["source_id"] == "https://github.com/alice"
+        assert call_kwargs["source_type"] is MemorySourceType.EMAIL
+
+    async def test_user_name_passed_through(self, mock_memory_engine: AsyncMock) -> None:
+        await store_single_profile(
+            "user_1",
+            "linkedin",
+            "https://linkedin.com/in/alice",
+            "Profile content",
+            user_name="Alice",
+        )
+        assert mock_memory_engine.retain.call_args.kwargs["user_name"] == "Alice"
+
+    async def test_exception_does_not_propagate(
+        self,
+        mock_memory_engine: AsyncMock,
+    ) -> None:
+        mock_memory_engine.retain.side_effect = Exception("boom")
+        # Should swallow the exception
+        await store_single_profile(
+            "user_1",
+            "twitter",
+            "https://x.com/a",
+            "content",
+        )
+
+    async def test_user_id_passed_correctly(
+        self,
+        mock_memory_engine: AsyncMock,
+    ) -> None:
+        await store_single_profile(
+            "user_99",
+            "github",
+            "https://github.com/bob",
+            "data",
+        )
+        assert mock_memory_engine.retain.call_args.args[0] == "user_99"
+
+    @pytest.mark.parametrize(
+        "platform, url",
+        [
+            ("twitter", "https://x.com/user"),
+            ("github", "https://github.com/user"),
+            ("linkedin", "https://linkedin.com/in/user"),
+        ],
+        ids=["twitter", "github", "linkedin"],
+    )
+    async def test_various_platforms(
+        self,
+        mock_memory_engine: AsyncMock,
+        platform: str,
+        url: str,
+    ) -> None:
+        await store_single_profile("user_1", platform, url, "some content")
+        hints = mock_memory_engine.retain.call_args.kwargs["extraction_hints"]
+        assert platform in hints
+        assert mock_memory_engine.retain.call_args.kwargs["source_id"] == url

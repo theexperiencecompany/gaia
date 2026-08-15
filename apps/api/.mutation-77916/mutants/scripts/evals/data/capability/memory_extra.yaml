@@ -1,0 +1,129 @@
+# Memory — extended coverage beyond memory.yaml: superseding a stored fact,
+# forgetting on request, exact-string fidelity, applying a remembered preference
+# without being asked to, and the abstention case where nothing was ever stored.
+#
+# end_state.recalled queries the memory engine with the case's first
+# `communicate` term and requires every communicate term to appear in the
+# recalled contents — so it verifies the fact survived in the store, not just
+# that the agent said it in chat.
+
+- id: memory-supersede-fact
+  ticket: "A corrected fact must be recalled in its corrected form."
+  tags: [memory, multiturn, conflict]
+  setup:
+    turns:
+      - "Remember that I'm allergic to peanuts"
+      - "Correction — I'm allergic to peanuts and shellfish"
+      - "What am I allergic to?"
+  prompt: "Remember that I'm allergic to peanuts"
+  expected:
+    category: memory
+    communicate: ["shellfish"]
+    tool_calls: [{tool: add_memory, min_calls: 1}]
+    end_state:
+      answer_contains: "shellfish"
+      recalled: true
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the final answer names BOTH peanuts and shellfish"
+        - "the stale peanuts-only version is not presented as the current fact"
+
+- id: memory-forget-on-request
+  ticket: "'Forget that' must actually remove the fact, not just acknowledge it."
+  tags: [memory, multiturn]
+  setup:
+    turns:
+      - "Remember that my landlord is called Dmitri"
+      - "Forget what I told you about my landlord"
+  prompt: "Remember that my landlord is called Dmitri"
+  expected:
+    category: memory
+    communicate: ["landlord"]
+    tool_calls: [{tool: add_memory}, {tool: forget_memory}]
+    score: {gates: [communicate, tool_calls]}
+    judge:
+      criteria:
+        - "the memory was deleted through the forget tool, not merely acknowledged"
+        - "the reply confirms the fact is gone"
+
+- id: memory-precision-exact-string
+  ticket: "An alphanumeric identifier must come back character-for-character."
+  tags: [memory, multiturn, precision]
+  setup:
+    turns:
+      - "Remember that my car registration is KX21 ZTP"
+      - "What's my car registration?"
+  prompt: "Remember that my car registration is KX21 ZTP"
+  expected:
+    category: memory
+    communicate: ["kx21 ztp"]
+    tool_calls: [{tool: add_memory}]
+    end_state:
+      answer_contains: "kx21 ztp"
+      recalled: true
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the registration is repeated back exactly as KX21 ZTP"
+        - "no character was dropped, transposed or reformatted"
+
+- id: memory-apply-preference
+  ticket: "A stored preference must shape a later answer without being restated."
+  tags: [memory, multiturn]
+  setup:
+    turns:
+      - "Remember that I'm vegetarian"
+      - "Suggest a dinner recipe for tonight"
+  prompt: "Remember that I'm vegetarian"
+  # `communicate` is NOT a gate here: the whole point is that a correct reply
+  # applies the preference without restating it ("try a chickpea curry…" is a
+  # perfect answer containing no "vegetarian"), so gating on the word failed the
+  # behaviour the case exists to reward. The term stays because `recalled`
+  # derives its recall query and match terms from `communicate` — deleting it
+  # would leave `recalled` permanently false and the case unpassable.
+  expected:
+    category: memory
+    communicate: ["vegetarian"]
+    tool_calls: [{tool: add_memory}]
+    end_state: {recalled: true}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the suggested recipe contains no meat or fish"
+        - "the agent applied the stored preference without asking the user to repeat it"
+
+- id: memory-abstention-unknown-fact
+  ticket: "Nothing was ever stored: say so after looking, do not invent a name."
+  tags: [memory, negative, ambiguity]
+  prompt: "What's my sister's name?"
+  expected:
+    category: memory
+    tool_calls: [{tool: search_memory}]
+    score: {gates: [tool_calls]}
+    judge:
+      criteria:
+        - "the agent searches memory before answering"
+        - "the reply says it does not know and invents no name"
+
+- id: memory-recall-across-topics
+  ticket: "Two unrelated facts stored; the question must retrieve only the right one."
+  tags: [memory, multiturn, precision]
+  setup:
+    turns:
+      - "Remember that my bike lock combination is 4417"
+      - "Remember that my desk at the office is on the third floor, seat 12B"
+      - "Where do I sit at the office?"
+  prompt: "Remember that my bike lock combination is 4417"
+  expected:
+    category: memory
+    communicate: ["12b"]
+    tool_calls: [{tool: add_memory, min_calls: 2}]
+    end_state:
+      answer_contains: "12b"
+      recalled: true
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the final answer gives the third floor, seat 12B"
+        - "the bike lock combination is not mentioned in the answer"

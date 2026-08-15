@@ -1,0 +1,47 @@
+# Workflows family — create_workflow from a description (workflow assistant
+# subagent) and execute_workflow. end_state verified against the workflows
+# collection: the workflow document exists. execute_workflow only queues a run
+# to the ARQ worker (not running in the eval process), so "run created" is
+# gated at the tool-call level (execute_workflow must be invoked).
+
+- id: workflows-create-notification
+  ticket: "Create a simple scheduled workflow from a description; document must exist."
+  tags: [workflows]
+  prompt: "Create an automated workflow using the create_workflow tool: every day at 10am it should send me a notification to stretch"
+  expected:
+    category: workflows
+    communicate: ["stretch"]
+    tool_calls: [{tool: create_workflow}]
+    end_state: {workflows: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the workflow was created and when it will run"
+
+- id: workflows-create-todo-step
+  ticket: "Create a workflow whose step creates a todo; document must exist."
+  tags: [workflows]
+  prompt: "Create an automated workflow using the create_workflow tool: every morning at 8am it should create a todo with the title 'drink water'"
+  expected:
+    category: workflows
+    communicate: ["drink water"]
+    tool_calls: [{tool: create_workflow}]
+    end_state: {workflows: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the workflow was created"
+
+- id: workflows-create-and-execute
+  ticket: "Create a workflow and run it immediately; execute_workflow must be invoked."
+  tags: [workflows]
+  prompt: "Create an automated workflow using the create_workflow tool: every morning at 9am it should send me a notification with my todo count. Then run the workflow once right now using the execute_workflow tool."
+  expected:
+    category: workflows
+    communicate: ["workflow"]
+    tool_calls: [{tool: create_workflow}, {tool: execute_workflow}]
+    end_state: {workflows: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the workflow was created and executed"

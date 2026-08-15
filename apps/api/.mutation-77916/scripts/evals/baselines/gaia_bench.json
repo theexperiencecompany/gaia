@@ -1,0 +1,24 @@
+{
+  "suite": "gaia_bench",
+  "run_id": "gaia_bench-20260808-092012-52d58a",
+  "app_version": "",
+  "baseline_accuracy": 0.4045,
+  "graded": 89,
+  "errored": 76,
+  "per_category": {
+    "L1": [
+      20,
+      33
+    ],
+    "L2": [
+      13,
+      37
+    ],
+    "L3": [
+      3,
+      19
+    ]
+  },
+  "provisional": "recorded against a native API with NO JuiceFS mount, so the agent had no file ops, sandbox or artifact streaming; from journals whose per-case token accounting predates the per-case meter; and before infrastructure faults were separated from wrong answers. Re-record from a run on a fully provisioned stack before trusting any comparison.",
+  "captured_at": "2026-08-08"
+}

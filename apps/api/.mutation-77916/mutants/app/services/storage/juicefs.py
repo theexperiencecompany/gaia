@@ -1,0 +1,364 @@
+"""Host-side JuiceFS mount primitives + user/skill helpers."""
+
+from __future__ import annotations
+
+import asyncio
+import os
+from pathlib import Path
+import re
+import shutil
+import time
+
+from app.config.settings import settings
+from app.constants.log_tags import LogTag
+from app.services.storage.metrics import FsOps, add_fs_bytes, fs_timer, record_fs_op
+from shared.py.wide_events import log
+
+
+class JuiceFSUnavailable(Exception):
+    """Raised when the host-side JuiceFS mount is not available."""
+
+
+SAFE_PATH_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+_SAFE_ID_RE = re.compile(SAFE_PATH_ID_PATTERN)
+
+
+def ensure_safe_path_id(value: str, *, label: str = "id") -> None:
+    """Raise ``ValueError`` if ``value`` could escape a single path component."""
+    if not isinstance(value, str) or not _SAFE_ID_RE.match(value):
+        raise ValueError(f"unsafe {label}: must match {SAFE_PATH_ID_PATTERN}")
+
+
+def _mount_root() -> Path:
+    return Path(settings.JUICEFS_HOST_MOUNT_PATH)
+
+
+def _is_mounted() -> bool:
+    """Whether the JuiceFS sidecar is actually mounted at the configured root.
+
+    Checks for a real mountpoint, not merely an existing directory. The
+    Dockerfile pre-creates an empty ``/mnt/jfs``; if the mount never converges
+    (e.g. the metadata engine is unreachable), an ``is_dir()`` check would
+    wrongly pass and every storage helper would silently write to the
+    container's local disk — invisible to the sandbox, which mounts the real
+    JuiceFS namespace. ``is_mount()`` is stat-based (no subprocess), so it stays
+    cheap enough for the hot path, and returns ``False`` for a missing path.
+    """
+    try:
+        return _mount_root().is_mount()
+    except OSError:
+        return False
+
+
+def _require_mount() -> Path:
+    root = _mount_root()
+    if not _is_mounted():
+        raise JuiceFSUnavailable(
+            f"JuiceFS mount not available at {root}. "
+            "Set JUICEFS_HOST_MOUNT_PATH and mount the sidecar."
+        )
+    return root
+
+
+def _contained(base: Path, relative_path: str, *, root_label: str = "root") -> Path:
+    """Resolve ``relative_path`` under ``base``; raise ``ValueError`` if it escapes."""
+    target = (base / relative_path).resolve()
+    base_resolved = base.resolve()
+    try:
+        target.relative_to(base_resolved)
+    except ValueError as e:
+        raise ValueError(f"path {relative_path} escapes the {root_label}") from e
+    return target
+
+
+def user_workspace_path(user_id: str) -> Path:
+    """Absolute path on the host for a user's workspace root."""
+    return _mount_root() / "users" / user_id
+
+
+def _host_base_and_rel(user_id: str, workspace_rel_path: str) -> tuple[Path, str]:
+    """Map a ``/workspace``-relative path to its host ``(base_root, rel_under_base)``.
+
+    ``/workspace/skills`` is a SEPARATE JuiceFS subtree — the read-only overlay of
+    ``/skills/<uid>`` (see ``mount_juicefs.sh``) — while everything else lives under
+    ``/users/<uid>``. Built-in skill bodies are served from process memory
+    (``system_files``), so the only host reads under ``skills/`` are user-installed
+    skills, which live in the ``/skills/<uid>`` subtree. Routing them here keeps the
+    host read consistent with what the sandbox sees at ``/workspace/skills``.
+    """
+    mount = _require_mount()
+    if workspace_rel_path == "skills" or workspace_rel_path.startswith("skills/"):
+        rel = workspace_rel_path[len("skills/") :] if workspace_rel_path != "skills" else ""
+        return mount / "skills" / user_id, rel
+    return mount / "users" / user_id, workspace_rel_path
+
+
+def user_skills_path(user_id: str) -> Path:
+    """Absolute path on the host for a user's skills directory."""
+    return _mount_root() / "skills" / user_id
+
+
+def session_root(user_id: str, conversation_id: str) -> Path:
+    """Host path for a conversation's session directory."""
+    ensure_safe_path_id(conversation_id, label="conversation_id")
+    return _mount_root() / "users" / user_id / "sessions" / conversation_id
+
+
+def sandbox_session_path(conversation_id: str) -> str:
+    """Return the ``/workspace/...`` session path visible inside the sandbox."""
+    return f"/workspace/sessions/{conversation_id}"
+
+
+async def ensure_user_workspace(user_id: str) -> Path:
+    """Idempotently create the user's workspace tree on JuiceFS."""
+
+    def _mkdir() -> Path:
+        root = _require_mount()
+        path = root / "users" / user_id
+        gaia_dir = path / ".gaia"
+        path.mkdir(parents=True, exist_ok=True)
+        gaia_dir.mkdir(parents=True, exist_ok=True)
+        return path
+
+    return await asyncio.to_thread(_mkdir)
+
+
+async def ensure_user_skills_dir(user_id: str) -> Path:
+    """Create the user's `/skills/{user_id}/` directory tree on JuiceFS."""
+
+    def _mkdir() -> Path:
+        root = _require_mount()
+        path = root / "skills" / user_id
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    return await asyncio.to_thread(_mkdir)
+
+
+def _content_size(content: bytes | str) -> int:
+    return len(content) if isinstance(content, bytes) else len(content.encode("utf-8"))
+
+
+async def write_skill_file(
+    user_id: str, skill_name: str, relative_path: str, content: bytes | str
+) -> Path:
+    """Write a skill file under the user's skill root. ``relative_path`` cannot escape it."""
+
+    def _write() -> Path:
+        skills_root = _require_mount() / "skills" / user_id / skill_name
+        target = _contained(skills_root, relative_path, root_label="skill root")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        with target.open("wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        return target
+
+    async with fs_timer(FsOps.WRITE_SKILL_FILE):
+        path = await asyncio.to_thread(_write)
+    add_fs_bytes(FsOps.WRITE_SKILL_FILE, _content_size(content))
+    return path
+
+
+def write_session_file_sync(
+    user_id: str,
+    conversation_id: str,
+    relative_path: str,
+    content: bytes | str,
+) -> tuple[Path, str]:
+    """Write a session-scoped file. Returns ``(host_path, sandbox_path)``.
+
+    Sync core of ``write_session_file`` — call it directly only from code
+    already off the event loop (e.g. Composio custom tools, which run
+    synchronously inside the tool node).
+    """
+    ensure_safe_path_id(conversation_id, label="conversation_id")
+    start = time.monotonic()
+    error: BaseException | None = None
+    try:
+        base = _require_mount() / "users" / user_id / "sessions" / conversation_id
+        target = _contained(base, relative_path, root_label="session root")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        with target.open("wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+    except BaseException as exc:
+        error = exc
+        raise
+    finally:
+        record_fs_op(
+            FsOps.WRITE_SESSION_FILE,
+            duration_ms=(time.monotonic() - start) * 1000.0,
+            error=error,
+        )
+    add_fs_bytes(FsOps.WRITE_SESSION_FILE, _content_size(content))
+    return target, f"{sandbox_session_path(conversation_id)}/{relative_path}"
+
+
+async def write_session_file(
+    user_id: str,
+    conversation_id: str,
+    relative_path: str,
+    content: bytes | str,
+) -> tuple[Path, str]:
+    """Async wrapper over ``write_session_file_sync`` for event-loop callers."""
+    return await asyncio.to_thread(
+        write_session_file_sync, user_id, conversation_id, relative_path, content
+    )
+
+
+def page_bounds(offset: int, limit: int) -> tuple[int, int]:
+    """1-indexed inclusive ``(start, end)`` line range for a paged read.
+
+    ``offset`` is the 1-indexed start line (0 and 1 both mean line 1); ``limit``
+    is clamped to at least one line. Shared by every read path (memory, JuiceFS,
+    sandbox) so their slices stay byte-for-byte consistent.
+    """
+    start = max(1, offset) if offset > 0 else 1
+    end = start + max(1, limit) - 1
+    return start, end
+
+
+async def read_user_file(
+    user_id: str,
+    workspace_rel_path: str,
+    *,
+    offset: int = 0,
+    limit: int = 2000,
+) -> tuple[list[str], int]:
+    """Read a workspace file straight from the host JuiceFS mount — no sandbox.
+
+    ``/workspace`` inside the sandbox is a bind-mount of ``/mnt/jfs/users/<id>``,
+    so the same bytes are readable host-side without paying an E2B spin-up.
+    ``workspace_rel_path`` is relative to ``/workspace`` (e.g.
+    ``sessions/<conv>/scratch/out.txt``); it is resolved under the user's OWN
+    root via ``_contained`` and cannot escape it — this defeats ``..`` traversal
+    and symlink escape (``.resolve()`` + ``relative_to``), so a model-supplied
+    path can only ever reach this user's files.
+
+    Returns ``(lines, total_line_count)`` where ``lines`` is the 1-indexed slice
+    ``[start, start + limit)`` with trailing newlines stripped. Raises
+    ``FileNotFoundError`` if the target is missing or not a regular file, and
+    ``JuiceFSUnavailable`` if the host mount is absent (e.g. native dev).
+    """
+    start, end = page_bounds(offset, limit)
+
+    def _read() -> tuple[list[str], int]:
+        target = _resolve_user_file_sync(user_id, workspace_rel_path)
+        sliced: list[str] = []
+        total = 0
+        with target.open("r", encoding="utf-8", errors="replace") as handle:
+            for idx, line in enumerate(handle, start=1):
+                total = idx
+                if start <= idx <= end:
+                    sliced.append(line.rstrip("\n"))
+        return sliced, total
+
+    return await asyncio.to_thread(_read)
+
+
+def _resolve_user_file_sync(user_id: str, workspace_rel_path: str) -> Path:
+    base, rel = _host_base_and_rel(user_id, workspace_rel_path)
+    target = _contained(base, rel, root_label="workspace root")
+    if not target.is_file():
+        raise FileNotFoundError(workspace_rel_path)
+    return target
+
+
+async def resolve_user_file(user_id: str, workspace_rel_path: str) -> Path:
+    """Resolve a ``/workspace``-relative path to its contained host ``Path``.
+
+    Same containment as ``read_user_file`` (``..``/symlink-escape proof). Raises
+    ``FileNotFoundError`` if missing/not a regular file and ``JuiceFSUnavailable``
+    if the host mount is absent. Use this when a caller needs the file path itself
+    (e.g. to run ``grep`` over it) rather than paged lines.
+    """
+    return await asyncio.to_thread(_resolve_user_file_sync, user_id, workspace_rel_path)
+
+
+async def read_user_file_bytes(
+    user_id: str,
+    workspace_rel_path: str,
+    *,
+    max_bytes: int,
+) -> bytes:
+    """Read a workspace file's raw bytes from the host mount (binary content
+    such as images — ``read_user_file`` is line-oriented and decodes UTF-8).
+
+    Same containment rules as ``read_user_file``. Raises ``ValueError`` when
+    the file exceeds ``max_bytes`` and ``FileNotFoundError`` when it is missing.
+    """
+
+    def _read() -> bytes:
+        base, rel = _host_base_and_rel(user_id, workspace_rel_path)
+        target = _contained(base, rel, root_label="workspace root")
+        if not target.is_file():
+            raise FileNotFoundError(workspace_rel_path)
+        # Enforce the cap while reading rather than off a preflight stat(): the
+        # file can grow between the two, and read_bytes() would then allocate the
+        # whole oversized body past the limit.
+        with target.open("rb") as handle:
+            data = handle.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise ValueError(f"file exceeds the {max_bytes}-byte limit")
+        return data
+
+    return await asyncio.to_thread(_read)
+
+
+async def user_owns_regular_file(user_id: str, workspace_rel_path: str) -> bool:
+    """True if the user has a real (non-symlink) regular file at this path.
+
+    The ``read`` tool serves system-owned files (INDEX.md, the GUIDE.md docs,
+    builtin skill bodies) from process memory. This lets it skip that fast-path
+    when the user has created their OWN file at the same workspace path, so a
+    user file is never shadowed by the in-memory system copy. A symlink (the
+    de-duplicated system projection) does not count as an override. Never raises;
+    returns ``False`` when the mount is absent (native dev) so the memory
+    fast-path still applies there.
+    """
+    if not _is_mounted():
+        return False
+
+    def _check() -> bool:
+        try:
+            base, rel = _host_base_and_rel(user_id, workspace_rel_path)
+            target = base / rel
+            return target.is_file() and not target.is_symlink()
+        except Exception:
+            return False
+
+    return await asyncio.to_thread(_check)
+
+
+async def delete_user_workspace(user_id: str) -> None:
+    """Delete the user's workspace and skills trees (account deletion / GDPR)."""
+
+    def _delete() -> None:
+        if not _is_mounted():
+            log.warning(
+                f"{LogTag.STORAGE} delete_user_workspace called but JuiceFS mount missing",
+                user_id=user_id,
+            )
+            return
+        for path in (user_workspace_path(user_id), user_skills_path(user_id)):
+            if path.exists():
+                shutil.rmtree(path, ignore_errors=True)
+
+    await asyncio.to_thread(_delete)
+
+
+async def delete_user_skill(user_id: str, skill_name: str) -> None:
+    """Remove a single installed skill from disk."""
+
+    def _delete() -> None:
+        if not _is_mounted():
+            return
+        path = user_skills_path(user_id) / skill_name
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+
+    await asyncio.to_thread(_delete)

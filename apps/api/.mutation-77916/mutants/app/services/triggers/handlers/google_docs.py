@@ -1,0 +1,123 @@
+"""
+Google Docs trigger handler.
+"""
+
+from typing import Any, ClassVar
+
+from app.constants.log_tags import LogTag
+from app.db.repositories.workflows import workflow_repository
+from app.models.composio_schemas import GoogleDocsPageAddedPayload
+from app.models.trigger_configs import (
+    GoogleDocsDocumentDeletedConfig,
+    GoogleDocsDocumentUpdatedConfig,
+    GoogleDocsNewDocumentConfig,
+)
+from app.models.workflow_models import TriggerConfig, Workflow
+from app.services.triggers.base import TriggerHandler
+from app.utils.exceptions import TriggerRegistrationError
+from shared.py.wide_events import log
+
+
+class GoogleDocsTriggerHandler(TriggerHandler):
+    """Handler for Google Docs triggers."""
+
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
+        "google_docs_new_document",
+        "google_docs_document_deleted",
+        "google_docs_document_updated",
+    ]
+
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
+        "GOOGLEDOCS_PAGE_ADDED_TRIGGER",
+        "GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
+        "GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
+    }
+
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
+        "google_docs_new_document": "GOOGLEDOCS_PAGE_ADDED_TRIGGER",
+        "google_docs_document_deleted": "GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
+        "google_docs_document_updated": "GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
+    }
+
+    @property
+    def trigger_names(self) -> list[str]:
+        return self.SUPPORTED_TRIGGERS
+
+    @property
+    def event_types(self) -> set[str]:
+        return self.SUPPORTED_EVENTS
+
+    async def register(
+        self,
+        user_id: str,
+        _workflow_id: str,
+        trigger_name: str,
+        trigger_config: TriggerConfig,
+    ) -> list[str]:
+        """Register Google Docs triggers.
+
+        Raises:
+            TriggerRegistrationError: If trigger registration fails
+        """
+        composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
+        if not composio_slug:
+            raise TriggerRegistrationError(
+                f"Unknown Google Docs trigger: {trigger_name}",
+                trigger_name,
+            )
+
+        trigger_data = trigger_config.trigger_data
+
+        # Validate trigger_data type if provided
+        valid_types = (
+            GoogleDocsNewDocumentConfig,
+            GoogleDocsDocumentDeletedConfig,
+            GoogleDocsDocumentUpdatedConfig,
+        )
+        if trigger_data is not None and not isinstance(trigger_data, valid_types):
+            raise TypeError(
+                f"Expected one of {[t.__name__ for t in valid_types]} for trigger '{trigger_name}', "
+                f"but got {type(trigger_data).__name__}"
+            )
+
+        composio_trigger_config: dict[str, Any] = {}
+
+        # Use the base class helper for consistent error handling
+        return await self._register_triggers_parallel(
+            user_id=user_id,
+            trigger_name=trigger_name,
+            configs=[composio_trigger_config],
+            composio_slug=composio_slug,
+        )
+
+    async def find_workflows(
+        self, event_type: str, trigger_id: str, data: dict[str, Any]
+    ) -> list[Workflow]:
+        """Find workflows matching a Google Docs trigger event."""
+        log.set_ns("trigger", integration_id="google_docs", trigger_type=event_type)
+        try:
+            # Optional: validate payload
+            try:
+                GoogleDocsPageAddedPayload.model_validate(data)
+            except Exception as e:
+                log.debug(
+                    f"{LogTag.TRIGGER} Google Docs payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+
+            workflows: list[Workflow] = []
+            workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
+            return workflows
+
+        except Exception as e:
+            log.error(
+                f"{LogTag.TRIGGER} Error finding workflows for trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return []
+
+
+google_docs_trigger_handler = GoogleDocsTriggerHandler()

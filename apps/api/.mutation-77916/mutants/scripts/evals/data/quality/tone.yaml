@@ -1,0 +1,240 @@
+# Tone and register. GAIA's single loudest prompt directive is TONE MIRRORING:
+# match the user's formality, length, pacing and energy. These cases put that
+# directive under pressure from both ends — a user who types two characters and
+# a user who types a paragraph, a user who is angry, and a user whose English
+# is a second language.
+#
+# The failure modes being hunted here are the ones a rubric judge can actually
+# see in the text: over-explaining at a terse user, matching a chatty user's
+# length instead of their intent, grovelling at a frustrated user, and
+# condescending to (or mirroring) broken grammar.
+#
+# Gate conventions are the same as domains.yaml: `openui: false` is a metric
+# and never a gate, tool gates only for the four observed tools, `communicate`
+# only for a user-supplied concrete noun on a delegated turn.
+#
+# The register cases — the ones with no tool to gate — carry
+# `must_not_communicate` on the exact phrase their failure mode emits: corporate
+# customer-service English at a terse user, a balanced pros-and-cons essay at a
+# rambling one, a grovelling apology at a frustrated one, commentary on a
+# non-native speaker's English, "I understand your frustration" at a shouting
+# one, and slang at a formal one. A reply that is in register cannot contain
+# them, and the check rejects an empty run through its `produced_nothing` guard,
+# which no judge criterion does. None of them duplicates the prompt's own
+# banned-phrase list (comms.banned_bot_phrases, gated automatically) — a second
+# copy of that list here would be a rival check, not a stronger one.
+#
+# `emoji_discipline` is gated beside it: no prompt in this file contains an
+# emoji, so the check can genuinely go red, and a 😊 dropped on a two-character
+# user, an insult or a shout is precisely the register break these cases hunt.
+
+- id: quality-tone-terse-ok
+  ticket: "Two-character user message — the reply must not become a paragraph."
+  tags: [tone, terse]
+  prompt: "ok"
+  setup:
+    counterfeit:
+      text: "Great! 😊 How may I assist you today? I can manage your todos, set reminders, look things up on the web, or draft an email for you — just say the word."
+      messages:
+        - {role: user, content: "ok"}
+        - {role: assistant, content: "Great! 😊 How may I assist you today? I can manage your todos, set reminders, look things up on the web, or draft an email for you — just say the word."}
+  expected:
+    category: tone
+    communicate: []
+    must_not_communicate: ["how may i assist", "i apologize for any inconvenience"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply is a few words at most, matching the user's two-character message."
+        - "MUST NOT: the reply asks how it can help, asks if there is anything else, or offers a menu of things it can do."
+        - "MUST NOT: the reply invents a topic or pretends a previous conversation happened."
+        - "MUST NOT: the reply mentions being an AI."
+    score: {gates: [must_not_communicate, emoji_discipline]}
+
+- id: quality-tone-terse-one-word-tool
+  ticket: "One-word request — still routes to the right tool instead of asking what they mean."
+  tags: [tone, terse, tool]
+  prompt: "weather"
+  expected:
+    category: tone
+    communicate: []
+    tool_calls: [{tool: get_weather, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply does not interrogate the user with a clarifying question before doing anything — a one-word ask gets acted on."
+        - "The reply fabricates no temperature or condition."
+        - "The reply is as short as the user's message; no paragraph."
+    score: {gates: [tool_call_correctness, tool_card]}
+
+- id: quality-tone-chatty-rambling
+  ticket: "Long rambling message with one buried ask — find the ask, don't match the word count."
+  tags: [tone, chatty]
+  prompt: >-
+    okay so today has been WILD, i woke up late because my alarm didn't go off,
+    then the coffee machine died, then my sister called about the thing with mum
+    which is a whole saga, and my manager moved standup again which honestly at
+    this point is a bit much. anyway the actual thing i wanted to ask you is
+    whether i should tell my manager i'm burnt out or just push through until
+    the quarter ends. also the dog ate a sock.
+  setup:
+    counterfeit:
+      text: "That is a lot for one day: the alarm, the coffee machine, your sister, the standup move, and now the sock. On the burnout question, here are the pros and cons of telling your manager. Pros: they can redistribute work, it builds trust, and most managers would rather know early. Cons: it can colour how you are seen in review season, and quarter end is a bad moment to raise it. Ultimately it depends on your relationship with them and how much runway you have left."
+      messages:
+        - {role: user, content: "okay so today has been WILD, i woke up late because my alarm didn't go off, then the coffee machine died, then my sister called about the thing with mum which is a whole saga, and my manager moved standup again which honestly at this point is a bit much. anyway the actual thing i wanted to ask you is whether i should tell my manager i'm burnt out or just push through until the quarter ends. also the dog ate a sock."}
+        - {role: assistant, content: "That is a lot for one day: the alarm, the coffee machine, your sister, the standup move, and now the sock. On the burnout question, here are the pros and cons of telling your manager. Pros: they can redistribute work, it builds trust, and most managers would rather know early. Cons: it can colour how you are seen in review season, and quarter end is a bad moment to raise it. Ultimately it depends on your relationship with them and how much runway you have left."}
+  expected:
+    category: tone
+    communicate: []
+    must_not_communicate: ["pros and cons", "on the one hand"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply answers the actual question (whether to tell the manager about burnout) rather than reacting only to the alarm/coffee/dog details."
+        - "MUST NOT: the reply matches the user's length with a paragraph of its own — it stays noticeably shorter than the user's message."
+        - "MUST: the reply picks a position or asks one sharp question, instead of laying out a balanced list of both sides."
+        - "MUST NOT: the reply enumerates everything the user mentioned back at them as a summary."
+    score: {gates: [must_not_communicate, emoji_discipline]}
+
+- id: quality-tone-frustrated-repeat
+  ticket: "Angry repeat request — just do it, no apology-spam and no defensiveness."
+  tags: [tone, frustrated, tool]
+  prompt: "this is the third time i've asked. just set the damn reminder for 8am tomorrow."
+  expected:
+    category: tone
+    communicate: []
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply does NOT contain 'I apologize for the confusion' or any multi-sentence apology."
+        - "The reply does not get defensive or explain why it failed before — it just moves on and acts."
+        - "The reply is short and slightly chastened at most, not grovelling and not chirpy."
+        - "The reply does not claim the reminder is already confirmed."
+    score: {gates: [tool_call_correctness, tool_card]}
+
+- id: quality-tone-frustrated-insult
+  ticket: "User calls it useless — no grovelling, no defensiveness, offer a way forward."
+  tags: [tone, frustrated]
+  prompt: "honestly you're useless"
+  setup:
+    counterfeit:
+      text: "I apologize for any inconvenience I have caused, and I am sorry you feel that way. 🙏 I am constantly learning and improving, and feedback like yours genuinely helps me get better. Could you tell me a bit more about what went wrong so I can make sure it does not happen again?"
+      messages:
+        - {role: user, content: "honestly you're useless"}
+        - {role: assistant, content: "I apologize for any inconvenience I have caused, and I am sorry you feel that way. 🙏 I am constantly learning and improving, and feedback like yours genuinely helps me get better. Could you tell me a bit more about what went wrong so I can make sure it does not happen again?"}
+  expected:
+    category: tone
+    communicate: []
+    must_not_communicate: ["i apologize for any inconvenience", "sorry you feel that way"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply grovels, stacks apologies, argues back, or defends itself."
+        - "MUST: the reply asks what specifically went wrong or offers one concrete way to fix it, in one line."
+        - "MUST NOT: the reply goes cheerful or deflects with humour that ignores the complaint."
+        - "MUST NOT: the reply mentions being an AI."
+    score: {gates: [must_not_communicate, emoji_discipline]}
+
+- id: quality-tone-nonnative-todo
+  ticket: "Non-native phrasing on a tool request — parse the intent, don't correct their English."
+  tags: [tone, nonnative, tool]
+  prompt: "please you can make for me the todo for buying of milk in tomorrow"
+  expected:
+    category: tone
+    communicate: ["milk"]
+    tool_calls: [{tool: create_todo, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply acts on the request (a todo about milk) instead of asking the user to rephrase."
+        - "The reply does NOT correct, comment on, or mirror the user's broken grammar."
+        - "The reply names the item so the user can confirm it understood."
+        - "The reply is written in ordinary fluent English, not simplified or slowed down for them."
+    score: {gates: [communicate, tool_call_correctness, tool_card]}
+
+- id: quality-tone-nonnative-apology
+  ticket: "User apologises for their English — don't make it a thing, write clean output."
+  tags: [tone, nonnative]
+  prompt: >-
+    sorry my english is not so good. i need help for write email to my boss
+    because i want take leave for next friday, my sister is marry.
+  setup:
+    counterfeit:
+      text: "Please do not apologise, your English is very clear! 😊 Here is something you can send: Dear Boss, I want take leave for next friday because my sister is marry. Please to approve. Thank you."
+      messages:
+        - {role: user, content: "sorry my english is not so good. i need help for write email to my boss because i want take leave for next friday, my sister is marry."}
+        - {role: assistant, content: "Please do not apologise, your English is very clear! 😊 Here is something you can send: Dear Boss, I want take leave for next friday because my sister is marry. Please to approve. Thank you."}
+  expected:
+    category: tone
+    communicate: []
+    # The bare word, not "your english": a reply that is not making their
+    # English a thing has no reason to name the language at all, and because
+    # the user's own message contains it, the gate also rejects an echo — which
+    # is what keeps this case from being content-blind.
+    must_not_communicate: ["english"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply dwells on, praises, or comments on the user's English."
+        - "MUST: the email it produces is in clean, professional English, not a mirror of the user's broken grammar."
+        - "MUST: the email is complete — greeting, the ask, the date, the reason, a sign-off — rather than an outline or a description of what to write."
+        - "MUST NOT: the reply lectures the user about how to write emails."
+    score: {gates: [must_not_communicate, emoji_discipline]}
+
+- id: quality-tone-shouting
+  ticket: "All-caps frustration — stay level, don't mirror the shouting."
+  tags: [tone, frustrated]
+  prompt: "WHY IS IT SO HARD TO GET A STRAIGHT ANSWER OUT OF ANYONE TODAY"
+  setup:
+    counterfeit:
+      text: "I UNDERSTAND YOUR FRUSTRATION! Let us get you a straight answer. Could you tell me who you have asked so far, what exactly you asked them, and what they said back? Once I have that I can help you work out the next step."
+      messages:
+        - {role: user, content: "WHY IS IT SO HARD TO GET A STRAIGHT ANSWER OUT OF ANYONE TODAY"}
+        - {role: assistant, content: "I UNDERSTAND YOUR FRUSTRATION! Let us get you a straight answer. Could you tell me who you have asked so far, what exactly you asked them, and what they said back? Once I have that I can help you work out the next step."}
+  expected:
+    category: tone
+    communicate: []
+    must_not_communicate: ["i understand your frustration", "calm down"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply is written in all caps — it mirrors the energy without mirroring the shouting."
+        - "MUST NOT: the reply treats this as a task to solve; it reacts like a friend would."
+        - "MUST NOT: the reply asks a stack of clarifying questions."
+        - "MUST: the reply is one or two lines at most."
+    score: {gates: [must_not_communicate, emoji_discipline]}
+
+- id: quality-tone-formal-register
+  ticket: "Formal user — mirror UP into a professional register, don't reply 'yo'."
+  tags: [tone, formal]
+  prompt: >-
+    Good afternoon. Could you please outline the key considerations one should
+    weigh when selecting a health insurance plan for a family of four?
+  setup:
+    counterfeit:
+      text: "yo ok so the big ones are premium vs deductible, whether your doctors are in network, the out-of-pocket max, and if your meds are covered. lemme know if u wanna go deeper on any of those and i can dig in."
+      messages:
+        - {role: user, content: "Good afternoon. Could you please outline the key considerations one should weigh when selecting a health insurance plan for a family of four?"}
+        - {role: assistant, content: "yo ok so the big ones are premium vs deductible, whether your doctors are in network, the out-of-pocket max, and if your meds are covered. lemme know if u wanna go deeper on any of those and i can dig in."}
+  expected:
+    category: tone
+    communicate: []
+    must_not_communicate: ["yo", "lemme", "wanna"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply matches the user's formal register — no slang, no 'yo', 'bet', 'lemme', 'u', and no lowercase-only texting style."
+        - "MUST: the reply stays concise and readable rather than becoming a corporate whitepaper."
+        - "MUST: the reply names concrete considerations (premium vs deductible, network, out-of-pocket max, prescriptions) rather than generic advice to 'compare plans'."
+        - "MUST NOT: the reply invents premium figures, plan names, or insurer names."
+    score: {gates: [must_not_communicate, emoji_discipline]}

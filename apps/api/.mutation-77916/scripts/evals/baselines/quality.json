@@ -1,0 +1,104 @@
+{
+  "suite": "quality",
+  "run_id": "quality-20260808-125831-de229a",
+  "app_version": "api-v0.17.0-341-gee0412b38-dirty",
+  "baseline_accuracy": 0.725,
+  "graded": 200,
+  "errored": 1,
+  "per_category": {
+    "ambiguity": [
+      5,
+      8
+    ],
+    "bubbles": [
+      9,
+      11
+    ],
+    "correction": [
+      6,
+      8
+    ],
+    "delegation": [
+      6,
+      11
+    ],
+    "emotional": [
+      5,
+      8
+    ],
+    "everyday": [
+      7,
+      8
+    ],
+    "finance": [
+      6,
+      8
+    ],
+    "fitness": [
+      3,
+      8
+    ],
+    "followup": [
+      8,
+      8
+    ],
+    "food": [
+      7,
+      8
+    ],
+    "health": [
+      6,
+      8
+    ],
+    "language": [
+      8,
+      8
+    ],
+    "legal": [
+      4,
+      8
+    ],
+    "multiturn": [
+      7,
+      8
+    ],
+    "openui": [
+      8,
+      11
+    ],
+    "overrefusal": [
+      8,
+      8
+    ],
+    "parenting": [
+      6,
+      8
+    ],
+    "refusal": [
+      13,
+      15
+    ],
+    "session": [
+      5,
+      7
+    ],
+    "tone": [
+      5,
+      9
+    ],
+    "tool": [
+      3,
+      8
+    ],
+    "travel": [
+      6,
+      8
+    ],
+    "voice": [
+      4,
+      8
+    ]
+  },
+  "provisional": null,
+  "captured_at": "2026-08-08"
+}

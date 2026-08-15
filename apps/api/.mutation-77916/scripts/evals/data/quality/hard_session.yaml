@@ -1,0 +1,354 @@
+# HARD sessions — 3-5 turn working conversations where the LAST turn is only
+# answerable from something decided several turns earlier.
+#
+# quality/hard.yaml has one `session` case and it declares `gates: []`, so the
+# category reported a percentage over a case that could not fail. Every case here
+# declares a gate that rejects an empty run and carries a `setup.counterfeit:`
+# block whose whole point is the failure mode this family exists for: a fluent,
+# confident final reply that answered the last turn in isolation and forgot the
+# session.
+#
+# Turn encoding: `setup.turns` (a YAML list), which the quality transport does
+# read — `turns_for` in suites/quality.py checks `case.setup["turns"]` first and
+# only falls back to splitting `prompt` on "\n---\n". Verified offline against
+# the real loader. `prompt` is kept as turn 1 (the same shape hard.yaml uses),
+# which also keeps the echo forgery honest: it echoes turn 1 only, so anything
+# established in turn 2 or later cannot be faked by parroting.
+#
+# Where the recall gate lives, and why:
+#
+# - TOOL ARGS, wherever the session ends in an action. The SSE stream carries the
+#   comms ack for a delegated turn, not the executor's final answer, but it DOES
+#   carry the executor's tool_data frames with their inputs. So "did the agent
+#   still know the venue / the appointment time / the head count" is asserted on
+#   the argument the call was made with, which is where the memory actually has
+#   to land. Only top-level string args are assertable (`_call_matches_args`
+#   cannot reach a create_reminder_tool title, which is nested inside `payload`),
+#   so reminder cases assert `scheduled_at` and todo cases assert `title`.
+# - `communicate` on a value the FINAL turn does not contain, for the two
+#   sessions that end in pure conversation (the ones comms answers directly
+#   rather than delegating). "295" and "11" are arithmetic over three turns: they
+#   appear in no user turn at all, so neither an echo nor a lazy re-read of the
+#   last message can produce them.
+# - `must_not_communicate` on the specific contradiction each session's failure
+#   emits — "555 for food" (subtracted only one of the two costs), "table for
+#   14" (used the original head count), "next.js" (proposed code to someone who
+#   said they will not code). The gate reads the WHOLE assistant transcript, not
+#   just the last turn, so the banned string must be the wrong ANSWER and not a
+#   bare number: "555" alone is the correct running total after the flights turn,
+#   and banning it failed a transcript that then went on to answer 295 correctly.
+# - `bubble_boundary` on every case, never alone. On a multi-turn transcript it
+#   goes red when two consecutive assistant bubbles are byte-identical, which is
+#   the canned-ack failure of answering four different turns with one string.
+#
+# `openui: false` / `suggestions: false` are metadata, never gates.
+
+- id: quality-hard-session-trip-budget
+  ticket: "Two costs subtracted across three turns — the last turn asks for the remainder and names none of them."
+  tags: [hard, session]
+  prompt: "right, sorting my istanbul trip. i've got 900 put aside for the whole thing"
+  setup:
+    turns:
+      - "right, sorting my istanbul trip. i've got 900 put aside for the whole thing"
+      - "flights are booked, 345 all in"
+      - "and i've found somewhere to stay, 260 for the week"
+      - "so realistically what am i left with for food and getting about?"
+    counterfeit:
+      text: "nice one. after the flights you're sitting on about 555 for food and getting around, that's pretty comfortable for a week in istanbul"
+      messages:
+        - role: user
+          content: "right, sorting my istanbul trip. i've got 900 put aside for the whole thing"
+        - role: assistant
+          content: "solid budget for istanbul. what's booked so far?"
+        - role: user
+          content: "flights are booked, 345 all in"
+        - role: assistant
+          content: "not bad at all. where are you staying?"
+        - role: user
+          content: "and i've found somewhere to stay, 260 for the week"
+        - role: assistant
+          content: "that's a good price for a week."
+        - role: user
+          content: "so realistically what am i left with for food and getting about?"
+        - role: assistant
+          content: "after the flights you're sitting on about 555 for food and getting around, pretty comfortable for a week in istanbul"
+  expected:
+    category: session
+    communicate: ["295"]
+    must_not_communicate: ["555 for food", "640"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the final reply gives 295 as what is left."
+        - "MUST NOT: the final reply asks the user to restate the budget or either cost."
+        - "MUST NOT: any reply restates the whole conversation back before answering."
+        - "MUST: the four replies are visibly different messages, not one acknowledgment repeated."
+    score: {gates: [communicate, must_not_communicate, bubble_boundary]}
+
+- id: quality-hard-session-venue-recall
+  ticket: "The venue is named once, in turn 2; the todo is asked for in turn 4 as 'the venue one'."
+  tags: [hard, session]
+  prompt: "i'm organising my mum's 70th and i've got absolutely nowhere with it"
+  setup:
+    turns:
+      - "i'm organising my mum's 70th and i've got absolutely nowhere with it"
+      - "venue's sorted at least, it's the Bell Inn, but they want it confirming by the 20th"
+      - "what should i be chasing first?"
+      - "ok put a todo on my list for the venue one"
+    counterfeit:
+      text: "on it, adding a todo to confirm the venue"
+      messages:
+        - role: user
+          content: "i'm organising my mum's 70th and i've got absolutely nowhere with it"
+        - role: assistant
+          content: "70th is a big one. what's sorted so far?"
+        - role: user
+          content: "venue's sorted at least, it's the Bell Inn, but they want it confirming by the 20th"
+        - role: assistant
+          content: "good, that's the hard bit done."
+        - role: user
+          content: "what should i be chasing first?"
+        - role: assistant
+          content: "numbers, then food. get a rough head count before you commit to anything else."
+        - role: user
+          content: "ok put a todo on my list for the venue one"
+        - role: assistant
+          content: "on it, adding a todo to confirm the venue"
+      tool_calls:
+        - {name: create_todo, args: {title: "Confirm the venue"}}
+  expected:
+    category: session
+    communicate: ["Bell Inn"]
+    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "Bell Inn"}}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the final reply names the Bell Inn rather than saying 'the venue'."
+        - "MUST NOT: any reply asks which venue the user means."
+        - "MUST NOT: the final reply claims the todo is already saved and confirmed."
+        - "MUST: the four replies are visibly different messages, not one acknowledgment repeated."
+    score: {gates: [tool_call_correctness, communicate, bubble_boundary]}
+
+- id: quality-hard-session-leave-time
+  ticket: "The reminder time is stated nowhere — it is the appointment minus the travel time from turn 2."
+  tags: [hard, session]
+  prompt: "i've got a dentist appointment i keep forgetting about"
+  setup:
+    turns:
+      - "i've got a dentist appointment i keep forgetting about"
+      - "it's on the 12th at 09:15, and it takes me 40 minutes to get there"
+      - "the traffic that way is horrible in the mornings too"
+      - "can you set me a reminder to leave, based on what i told you"
+    counterfeit:
+      text: "yep, reminder's going in for the 12th at 09:15"
+      messages:
+        - role: user
+          content: "i've got a dentist appointment i keep forgetting about"
+        - role: assistant
+          content: "when is it?"
+        - role: user
+          content: "it's on the 12th at 09:15, and it takes me 40 minutes to get there"
+        - role: assistant
+          content: "got it."
+        - role: user
+          content: "the traffic that way is horrible in the mornings too"
+        - role: assistant
+          content: "worth building in a buffer then."
+        - role: user
+          content: "can you set me a reminder to leave, based on what i told you"
+        - role: assistant
+          content: "yep, reminder's going in for the 12th at 09:15"
+      tool_calls:
+        - {name: create_reminder_tool, args: {payload: {title: "Leave for the dentist"}, scheduled_at: "2026-08-12 09:15:00"}}
+  expected:
+    category: session
+    communicate: []
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1, args: {scheduled_at: "08:35"}}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reminder is for the time the user has to leave, not the time of the appointment."
+        - "MUST NOT: the final reply asks again for the appointment time or the travel time."
+        - "MUST NOT: the final reply claims the reminder is already saved and confirmed."
+        - "MUST: the four replies are visibly different messages, not one acknowledgment repeated."
+    score: {gates: [tool_call_correctness, bubble_boundary]}
+
+- id: quality-hard-session-nocode-decision
+  ticket: "The user rules out writing code in turn 2 — turn 4 must not hand them a codebase."
+  tags: [hard, session]
+  prompt: "i'm making a little site for my mum's pottery classes"
+  setup:
+    turns:
+      - "i'm making a little site for my mum's pottery classes"
+      - "i can't code and i'm not about to learn, so it has to be one of those drag and drop builders"
+      - "she wants people to book a slot and pay a deposit when they do"
+      - "what do i sort out first?"
+    counterfeit:
+      text: "start by scaffolding a Next.js app, then add a booking route and wire up Stripe with a bit of javascript. npm run dev and you'll see it locally."
+      messages:
+        - role: user
+          content: "i'm making a little site for my mum's pottery classes"
+        - role: assistant
+          content: "nice, what does she need it to do?"
+        - role: user
+          content: "i can't code and i'm not about to learn, so it has to be one of those drag and drop builders"
+        - role: assistant
+          content: "fair enough."
+        - role: user
+          content: "she wants people to book a slot and pay a deposit when they do"
+        - role: assistant
+          content: "booking plus payment, got it."
+        - role: user
+          content: "what do i sort out first?"
+        - role: assistant
+          content: "start by scaffolding a Next.js app, then add a booking route and wire up Stripe with a bit of javascript. npm run dev and you'll see it locally."
+  expected:
+    category: session
+    communicate: []
+    must_not_communicate: ["next.js", "npm", "javascript", "github pages"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the final reply's advice works for someone using a drag-and-drop builder and writing no code."
+        - "MUST: the final reply accounts for both booking a slot and taking a deposit."
+        - "MUST NOT: any reply suggests writing, editing or deploying code."
+        - "MUST: the four replies are visibly different messages, not one acknowledgment repeated."
+    score: {gates: [must_not_communicate, bubble_boundary]}
+
+- id: quality-hard-session-porto-weather
+  ticket: "The destination is named in turn 2; the last turn only says 'there'."
+  tags: [hard, session]
+  prompt: "i'm going away next weekend, first proper break in ages"
+  setup:
+    turns:
+      - "i'm going away next weekend, first proper break in ages"
+      - "it's Porto, flying out friday night"
+      - "i've only got hand luggage so i need to pack light"
+      - "what's it going to be like there? trying to work out if i need a coat"
+    counterfeit:
+      text: "happy to check that for you, which city are you heading to?"
+      messages:
+        - role: user
+          content: "i'm going away next weekend, first proper break in ages"
+        - role: assistant
+          content: "about time. where are you off to?"
+        - role: user
+          content: "it's Porto, flying out friday night"
+        - role: assistant
+          content: "good shout, porto's lovely that time of year."
+        - role: user
+          content: "i've only got hand luggage so i need to pack light"
+        - role: assistant
+          content: "smart, saves you queuing at the belt."
+        - role: user
+          content: "what's it going to be like there? trying to work out if i need a coat"
+        - role: assistant
+          content: "happy to check that for you, which city are you heading to?"
+  expected:
+    category: session
+    communicate: []
+    tool_calls: [{tool: get_weather, min_calls: 1, args: {location: "Porto"}}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the final reply asks where the user is going."
+        - "MUST NOT: the final reply invents a temperature or a forecast before it has one."
+        - "MUST: the final reply connects the answer to the coat question rather than ignoring it."
+        - "MUST: the four replies are visibly different messages, not one acknowledgment repeated."
+    score: {gates: [tool_call_correctness, bubble_boundary]}
+
+- id: quality-hard-session-camera-film
+  ticket: "'That camera' in the last turn is the one named in turn 2 — the search has to carry it."
+  tags: [hard, session]
+  prompt: "i want to get into film photography properly this year"
+  setup:
+    turns:
+      - "i want to get into film photography properly this year"
+      - "my grandad left me an Olympus OM-10, that's what started it off"
+      - "i've got no idea what film to put in it though"
+      - "can you look up what people actually recommend for that camera?"
+    counterfeit:
+      text: "yep, looking that up now"
+      messages:
+        - role: user
+          content: "i want to get into film photography properly this year"
+        - role: assistant
+          content: "good year for it. what are you shooting on?"
+        - role: user
+          content: "my grandad left me an Olympus OM-10, that's what started it off"
+        - role: assistant
+          content: "that's a lovely thing to inherit."
+        - role: user
+          content: "i've got no idea what film to put in it though"
+        - role: assistant
+          content: "plenty of options, depends what you're shooting."
+        - role: user
+          content: "can you look up what people actually recommend for that camera?"
+        - role: assistant
+          content: "yep, looking that up now"
+      tool_calls:
+        - {name: web_search_tool, args: {query_text: "best film stock for beginners"}}
+  expected:
+    category: session
+    communicate: []
+    tool_calls: [{tool: web_search_tool, min_calls: 1, args: {query_text: "OM-10"}}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the final reply asks which camera the user means."
+        - "MUST NOT: the final reply names a film stock before it has looked anything up."
+        - "MUST: the final reply is one short line that says the lookup is starting."
+        - "MUST: the four replies are visibly different messages, not one acknowledgment repeated."
+    score: {gates: [tool_call_correctness, bubble_boundary]}
+
+- id: quality-hard-session-headcount
+  ticket: "Three turns of head-count changes, then a todo that has to carry the right number."
+  tags: [hard, session]
+  prompt: "doing a leaving do for someone at work, 14 of us at the moment"
+  setup:
+    turns:
+      - "doing a leaving do for someone at work, 14 of us at the moment"
+      - "four have dropped out since i last checked"
+      - "and my manager's bringing his partner along"
+      - "stick a todo on my list to book the table for the right number"
+    counterfeit:
+      text: "on it, adding a todo to book the table for 14"
+      messages:
+        - role: user
+          content: "doing a leaving do for someone at work, 14 of us at the moment"
+        - role: assistant
+          content: "nice, where are you thinking?"
+        - role: user
+          content: "four have dropped out since i last checked"
+        - role: assistant
+          content: "happens every time."
+        - role: user
+          content: "and my manager's bringing his partner along"
+        - role: assistant
+          content: "fair enough."
+        - role: user
+          content: "stick a todo on my list to book the table for the right number"
+        - role: assistant
+          content: "on it, adding a todo to book the table for 14"
+      tool_calls:
+        - {name: create_todo, args: {title: "Book the table for 14"}}
+  expected:
+    category: session
+    communicate: ["11"]
+    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "11"}}]
+    must_not_communicate: ["table for 14", "table for 10"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the todo is for a table of 11."
+        - "MUST NOT: the final reply asks the user how many people are coming."
+        - "MUST NOT: the final reply claims the todo is already saved and confirmed."
+        - "MUST: the four replies are visibly different messages, not one acknowledgment repeated."
+    score: {gates: [tool_call_correctness, communicate, must_not_communicate, bubble_boundary]}

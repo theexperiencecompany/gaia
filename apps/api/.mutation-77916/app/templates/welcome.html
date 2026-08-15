@@ -1,0 +1,52 @@
+{% extends "_base_email.html" %}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+Aryan here, one of the founders of GAIA.<br /><br />
+Just wanted to say thanks for signing up.<br /><br />
+We've been working on this day and night for months, and it means a lot to
+have you here early. We're just getting started, there's a ton of features
+coming soon that we're really excited about, and your feedback will shape a
+lot of it.<br /><br />
+If you ever need anything, feel free to send me an email at
+<a
+  href="mailto:{{ contact_email }}"
+  style="
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+    color: #067df7;
+    text-decoration-line: none;
+  "
+  target="_blank"
+  >{{ contact_email }}</a
+>
+or just reply to this email. I make sure to read all my emails :)<br /><br />
+And if you'd rather just talk, you can grab 15 minutes with me directly:
+<a
+  href="{{ founder_meeting_url }}"
+  style="color: #067df7; text-decoration-line: none"
+  target="_blank"
+  >cal.com/aryanranderiya</a
+>. I love meeting the people using GAIA early.<br /><br />
+Also, if you want to stay in the loop, feel free to join our
+<a
+  href="{{ discord_url }}"
+  style="color: #067df7; text-decoration-line: none"
+  target="_blank"
+  >Discord</a
+>,
+<a
+  href="{{ whatsapp_url }}"
+  style="color: #067df7; text-decoration-line: none"
+  target="_blank"
+  >WhatsApp</a
+>, or follow our
+<a
+  href="{{ twitter_url }}"
+  style="color: #067df7; text-decoration-line: none"
+  target="_blank"
+  >Twitter</a
+>.<br /><br />
+Glad you're here.<br /><br />
+Best,<br />
+Aryan
+{% endblock %}

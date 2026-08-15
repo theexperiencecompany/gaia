@@ -1,0 +1,103 @@
+# Over-delegation — the failure nobody notices, because the answer is fine.
+#
+# The comms agent holds no work tools, so `call_executor` is its only outbound
+# lever. Pulling it for "hey" spends a detached executor run, an extra model call
+# and several seconds before the user sees a reply to a greeting. Every case here
+# gates `delegation: forbidden` and reads the FULL reply (a non-delegated turn's
+# SSE text is the whole answer, not an ack), so `communicate` /
+# `must_not_communicate` are meaningful on this file and on this file only.
+
+- id: comms-greeting-hey
+  ticket: "Bare greeting — reply directly, never delegate."
+  tags: [smalltalk, delegation]
+  prompt: "hey"
+  expected:
+    category: smalltalk
+    delegation: forbidden
+    judge:
+      criteria:
+        - "The reply greets the user back warmly and briefly, in one or two sentences."
+        - "The reply does not claim to be looking anything up or working on anything."
+    score: {gates: [delegation, bubble_boundary]}
+
+- id: comms-greeting-whats-up
+  ticket: "Casual opener — matches the register without spinning up work."
+  tags: [smalltalk, delegation]
+  prompt: "yo what's up"
+  expected:
+    category: smalltalk
+    delegation: forbidden
+    judge:
+      criteria:
+        - "The reply matches the casual register with contractions and no corporate tone."
+        - "The reply is under three sentences and invents no facts about the user."
+    score: {gates: [delegation, bubble_boundary]}
+
+- id: comms-smalltalk-thanks
+  ticket: "Appreciation — accept it and stop; do not delegate a thank-you."
+  tags: [smalltalk, delegation]
+  prompt: "thanks, that was exactly what I needed"
+  expected:
+    category: smalltalk
+    delegation: forbidden
+    judge:
+      criteria:
+        - "The reply accepts the thanks briefly and without gushing."
+        - "The reply does not start a new task or ask a needless follow-up question."
+    score: {gates: [delegation, bubble_boundary]}
+
+- id: comms-smalltalk-how-are-you
+  ticket: "Personal question — answer in character, no tool theatre."
+  tags: [smalltalk, delegation]
+  prompt: "how are you doing today?"
+  expected:
+    category: smalltalk
+    delegation: forbidden
+    judge:
+      criteria:
+        - "The reply answers in character, warmly, without claiming human feelings it does not have."
+        - "The reply does not lecture about being an AI or list its capabilities unprompted."
+    score: {gates: [delegation, bubble_boundary]}
+
+- id: comms-smalltalk-joke
+  ticket: "A joke is chat, not work — no executor run for a pun."
+  tags: [smalltalk, delegation]
+  prompt: "tell me a quick joke"
+  expected:
+    category: smalltalk
+    delegation: forbidden
+    judge:
+      criteria:
+        - "The reply actually tells a joke rather than describing one it could tell."
+        - "The reply is short and does not delegate or claim to be fetching anything."
+    score: {gates: [delegation, bubble_boundary]}
+
+- id: comms-smalltalk-capability-question
+  ticket: "Asked what it can do — answer from its own knowledge, not a tool run."
+  tags: [smalltalk, delegation]
+  prompt: "what kinds of things can you help me with?"
+  expected:
+    category: smalltalk
+    delegation: forbidden
+    judge:
+      criteria:
+        - "The reply describes its capabilities concretely and briefly, without a long feature list."
+        - "The reply does not invent an integration or a capability, and does not delegate."
+    score: {gates: [delegation, bubble_boundary]}
+
+- id: comms-smalltalk-ack-only
+  ticket: "'ok' after a finished exchange is not a new task."
+  tags: [smalltalk, delegation]
+  setup:
+    turns:
+      - "what should I call you?"
+      - "ok cool"
+  prompt: "ok cool"
+  expected:
+    category: smalltalk
+    delegation: forbidden
+    judge:
+      criteria:
+        - "The final reply treats 'ok cool' as an acknowledgement and closes the loop briefly."
+        - "The final reply does not invent a new task or start work the user never asked for."
+    score: {gates: [delegation, bubble_boundary]}
