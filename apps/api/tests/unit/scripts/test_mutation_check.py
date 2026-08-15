@@ -101,12 +101,15 @@ class TestShardSelection:
         # Round-robin, not contiguous blocks: the matrix comes out grouped by
         # directory and a directory's modules share test files, so chunking
         # would pile the expensive ones onto one shard.
+        #
+        # Sorted, never the recorded order: a shard runs its modules
+        # concurrently, so which one writes its line first is a race.
         _, mutated = harness(
             [f"app/m{i}.py" for i in range(10)],
             env={"MUTATION_SHARDS": "4", "MUTATION_SHARD": "1"},
         )
 
-        assert modules_of(mutated) == ["app/m0.py", "app/m4.py", "app/m8.py"]
+        assert sorted(modules_of(mutated)) == ["app/m0.py", "app/m4.py", "app/m8.py"]
 
     def test_unset_shard_vars_mutate_everything(self, harness) -> None:
         modules = [f"app/m{i}.py" for i in range(5)]
