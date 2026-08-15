@@ -181,7 +181,19 @@ def create_app() -> FastAPI:
         # a raising 500-handler turns the JSON body into a bare Starlette 500.
         posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
         if posthog_client is not None:
-            posthog_client.capture_exception(exc)
+            # Attribute explicitly. PostHogRequestContextMiddleware identifies
+            # inside `with new_context():` around call_next, so an exception
+            # propagating out of it unwinds that context before reaching this
+            # handler in ServerErrorMiddleware — every 500 would otherwise land
+            # on a fresh anonymous profile, making crashes unattributable to the
+            # user who hit them. request.state survives because it lives on the
+            # request object, not a contextvar.
+            user = getattr(request.state, "user", None)
+            user_id = user.get("user_id") if user else None
+            if user_id:
+                posthog_client.capture_exception(exc, distinct_id=str(user_id))
+            else:
+                posthog_client.capture_exception(exc)
 
         return JSONResponse(
             status_code=500,

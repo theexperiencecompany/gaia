@@ -103,7 +103,7 @@ class TestTodoAnalytics:
             )
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.TODO_COMPLETED, {"bulk_count": 2})
+        mock_capture.assert_called_once_with(AnalyticsEvents.TODO_TOGGLED, {"bulk_count": 2})
         mock_bulk.assert_awaited_once_with(
             BulkUpdateRequest(
                 todo_ids=["todo-1", "todo-2"],
@@ -140,6 +140,6 @@ class TestTodoAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.TODO_COMPLETED,
+            AnalyticsEvents.TODO_TOGGLED,
             {"is_subtask": True, "completed": True},
         )

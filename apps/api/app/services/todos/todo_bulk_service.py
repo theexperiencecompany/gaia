@@ -59,7 +59,7 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
         )
         capture_event(
             user_id,
-            AnalyticsEvents.TODO_COMPLETED,
+            AnalyticsEvents.TODO_TOGGLED,
             {"count": modified + len(tracked)},
         )
         return [TodoResponse.from_document(todo) for todo in updated]

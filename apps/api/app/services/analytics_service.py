@@ -67,7 +67,9 @@ class AnalyticsEvents(StrEnum):
     # Todos
     TODO_CREATED = "todos:created"
     TODO_UPDATED = "todos:updated"
-    TODO_COMPLETED = "todos:toggled"
+    # Toggled, not completed: the same event fires for un-completing, and the
+    # value is what the frontend's TODOS_TOGGLED already emits.
+    TODO_TOGGLED = "todos:toggled"
     TODO_DELETED = "todos:deleted"
 
     # Calendar
@@ -96,6 +98,10 @@ class AnalyticsEvents(StrEnum):
     REMINDER_CREATED = "reminder:created"
     REMINDER_COMPLETED = "reminder:completed"
     REMINDER_DELETED = "reminder:deleted"
+
+    # Bot-originated actions with no web equivalent
+    BOT_SESSION_RESET = "bot:session_reset"
+    BOT_AUDIO_TRANSCRIBED = "bot:audio_transcribed"
 
     # Search
     SEARCH_PERFORMED = "search:performed"

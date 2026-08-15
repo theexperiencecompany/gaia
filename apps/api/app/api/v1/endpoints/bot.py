@@ -490,6 +490,13 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     new_conversation_id = await BotService.reset_session(
         body.platform, body.platform_user_id, body.channel_id, user
     )
+    # Explicit id: bot routes are auth-excluded, so the request context has
+    # nobody to attribute to (see apps/api/CLAUDE.md, Analytics).
+    capture_event(
+        user_id,
+        AnalyticsEvents.BOT_SESSION_RESET,
+        {"platform": body.platform},
+    )
     log.set(outcome="success")
     return ResetSessionResponse(success=True, conversation_id=new_conversation_id)
 
@@ -662,6 +669,13 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
     cache_key = f"bot_user:{platform}:{platform_user_id}"
     await redis_cache.client.delete(cache_key)
 
+    # Same event the web-side platform unlink emits — one user action, one name,
+    # regardless of which surface triggered it.
+    capture_event(
+        user_id,
+        AnalyticsEvents.INTEGRATION_DISCONNECTED,
+        {"integration_id": platform},
+    )
     log.set(platform=platform, outcome="success")
     return UnlinkAccountResponse(success=True)
 
@@ -733,4 +747,11 @@ async def transcribe_bot_audio(
         )
         raise HTTPException(status_code=502, detail="Transcription failed") from e
 
+    # After the transcription succeeds: an event on entry would count failures
+    # as successes. Length, not content — the transcript is user speech.
+    capture_event(
+        str(user.get("user_id")),
+        AnalyticsEvents.BOT_AUDIO_TRANSCRIBED,
+        {"audio_bytes": len(audio_bytes), "transcript_length": len(text)},
+    )
     return TranscribeAudioResponse(text=text)

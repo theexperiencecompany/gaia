@@ -327,7 +327,7 @@ class TodoService:
             # for both completing and un-completing, tracked or plain.
             capture_event(
                 user_id,
-                AnalyticsEvents.TODO_COMPLETED,
+                AnalyticsEvents.TODO_TOGGLED,
                 {"completed": updates.completed},
             )
         elif update.model_fields_set:

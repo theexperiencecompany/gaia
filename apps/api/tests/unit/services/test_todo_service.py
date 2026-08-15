@@ -392,7 +392,7 @@ class TestUpdateTodo:
                 FAKE_TODO_ID, TodoUpdateRequest(completed=True), FAKE_USER_ID
             )
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.TODO_COMPLETED, {"completed": True}
+            FAKE_USER_ID, AnalyticsEvents.TODO_TOGGLED, {"completed": True}
         )
 
     async def test_completing_tracked_routes_through_service(
@@ -647,7 +647,7 @@ class TestBulkServiceComplete:
         with patch("app.services.todos.todo_bulk_service.capture_event") as mock_capture:
             await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.TODO_COMPLETED, {"count": 2}
+            FAKE_USER_ID, AnalyticsEvents.TODO_TOGGLED, {"count": 2}
         )
 
     async def test_captures_completed_count_with_tracked_todos(self, mock_bulk_repos):
@@ -671,7 +671,7 @@ class TestBulkServiceComplete:
             await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
         mock_tracked.assert_awaited_once_with("b", FAKE_USER_ID, "Completed via bulk operation")
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.TODO_COMPLETED, {"count": 2}
+            FAKE_USER_ID, AnalyticsEvents.TODO_TOGGLED, {"count": 2}
         )
 
     async def test_no_todos_raises_404(self, mock_bulk_repos):

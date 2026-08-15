@@ -121,6 +121,7 @@ class TestGetLinkTokenInfo:
 class TestResetSession:
     """POST /api/v1/bot/reset-session"""
 
+    @patch("app.api.v1.endpoints.bot.capture_event")
     @patch("app.api.v1.endpoints.bot.BotService")
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
@@ -132,6 +133,7 @@ class TestResetSession:
         mock_auth: AsyncMock,
         mock_get_user: AsyncMock,
         mock_bot_svc: MagicMock,
+        mock_capture: MagicMock,
         client: AsyncClient,
     ):
         mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
@@ -148,6 +150,13 @@ class TestResetSession:
         data = response.json()
         assert data["success"] is True
         assert data["conversation_id"] == "new-convo-id"
+        # Bot routes are auth-excluded — the id must be explicit or the event
+        # lands on an anonymous profile.
+        mock_capture.assert_called_once_with(
+            "uid1",
+            AnalyticsEvents.BOT_SESSION_RESET,
+            {"platform": "discord"},
+        )
 
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
@@ -335,6 +344,7 @@ class TestGetSettings:
 class TestUnlinkAccount:
     """POST /api/v1/bot/unlink"""
 
+    @patch("app.api.v1.endpoints.bot.capture_event")
     @patch("app.api.v1.endpoints.bot.redis_cache")
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.unlink_account",
@@ -351,6 +361,7 @@ class TestUnlinkAccount:
         mock_get_user: AsyncMock,
         mock_unlink: AsyncMock,
         mock_redis: MagicMock,
+        mock_capture: MagicMock,
         client: AsyncClient,
     ):
         mock_get_user.return_value = {"_id": "uid1", "user_id": "uid1"}
@@ -364,6 +375,12 @@ class TestUnlinkAccount:
         )
         assert response.status_code == 200
         assert response.json()["success"] is True
+        # The same event name the web-side unlink emits — one action, one name.
+        mock_capture.assert_called_once_with(
+            "uid1",
+            AnalyticsEvents.INTEGRATION_DISCONNECTED,
+            {"integration_id": "discord"},
+        )
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_unlink_missing_headers(self, mock_auth: AsyncMock, client: AsyncClient):
@@ -577,12 +594,66 @@ class TestBotTranscribe:
         )
         assert response.status_code == 401
 
-    # NOTE: The deeper transcribe path (mime allowlist, Whisper invocation) is
-    # tested directly in tests/unit/services/test_audio_transcription_service.py.
-    # We cannot easily flip request.state.authenticated=True in the unit
-    # harness because the test_app strips the BotAuthMiddleware, and
-    # require_bot_api_key isn't injected via Depends. Service-level tests cover
-    # the rest; an e2e fixture would be needed to cover the full route.
+    # The mime allowlist and Whisper invocation are covered directly in
+    # tests/unit/services/test_audio_transcription_service.py. The route-level
+    # success path is reachable here: `get_current_user` is a Depends the
+    # authenticated `client` fixture already overrides, and
+    # `require_bot_api_key` is patchable.
+
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch(
+        "app.api.v1.endpoints.bot.transcribe_audio",
+        new_callable=AsyncMock,
+        return_value="hello there",
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_transcribe_success_captures_shape_not_content(
+        self,
+        mock_auth: AsyncMock,
+        mock_transcribe: AsyncMock,
+        mock_capture: MagicMock,
+        client: AsyncClient,
+    ):
+        """The event carries sizes, never the transcript — it is user speech."""
+        audio = b"fake-audio-bytes"
+        response = await client.post(
+            f"{BOT_BASE}/transcribe",
+            files={"file": ("voice.ogg", audio, "audio/ogg")},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["text"] == "hello there"
+        mock_capture.assert_called_once()
+        args = mock_capture.call_args.args
+        assert args[1] == AnalyticsEvents.BOT_AUDIO_TRANSCRIBED
+        assert args[2] == {
+            "audio_bytes": len(audio),
+            "transcript_length": len("hello there"),
+        }
+        assert "hello there" not in str(args[2])
+
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch(
+        "app.api.v1.endpoints.bot.transcribe_audio",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("whisper down"),
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_transcribe_failure_captures_nothing(
+        self,
+        mock_auth: AsyncMock,
+        mock_transcribe: AsyncMock,
+        mock_capture: MagicMock,
+        client: AsyncClient,
+    ):
+        """Capturing on entry would count every failed transcription as a use."""
+        response = await client.post(
+            f"{BOT_BASE}/transcribe",
+            files={"file": ("voice.ogg", b"fake-audio-bytes", "audio/ogg")},
+        )
+
+        assert response.status_code == 502
+        mock_capture.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

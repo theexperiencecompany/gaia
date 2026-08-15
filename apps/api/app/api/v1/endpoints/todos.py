@@ -327,7 +327,7 @@ async def bulk_complete_todos(
     )
     try:
         result = await TodoService.bulk_update_todos(request, user["user_id"])
-        capture_context_event(AnalyticsEvents.TODO_COMPLETED, {"bulk_count": len(todo_ids)})
+        capture_context_event(AnalyticsEvents.TODO_TOGGLED, {"bulk_count": len(todo_ids)})
         return result
     except Exception as e:
         raise HTTPException(
@@ -798,7 +798,7 @@ async def toggle_subtask_completion(
             )
 
         capture_context_event(
-            AnalyticsEvents.TODO_COMPLETED,
+            AnalyticsEvents.TODO_TOGGLED,
             {"is_subtask": True, "completed": not subtask.completed},
         )
         return TodoResponse.from_document(updated_todo)
