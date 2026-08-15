@@ -32,6 +32,7 @@ export {
   handleWorkflowGet,
   handleWorkflowList,
 } from "./commands";
+export { fetchBytesCapped, readResponseBytesCapped } from "./fetch-bytes";
 export {
   buildAuthLinkMessage,
   buildPlanRequiredMessage,
@@ -67,6 +68,8 @@ export {
   BOT_MEDIA_LIMITS,
   extensionForMime,
   friendlyMediaError,
+  MEDIA_READ_TIMEOUT_MS,
+  MediaReadTimeoutError,
   mediaKindFromMime,
   OUTBOUND_FILE_LIMITS,
   processBotMedia,

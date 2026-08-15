@@ -8,12 +8,13 @@ export async function readStreamBytesCapped(
   let total = 0;
   let ended = false;
   let timedOut = false;
+  let pendingCancel: Promise<void> | undefined;
   const timer =
     timeoutMs === undefined
       ? undefined
       : setTimeout(() => {
           timedOut = true;
-          void reader.cancel();
+          pendingCancel = reader.cancel();
         }, timeoutMs);
 
   try {
@@ -29,10 +30,13 @@ export async function readStreamBytesCapped(
       chunks.push(room < value.byteLength ? value.subarray(0, room) : value);
       total += Math.min(room, value.byteLength);
     }
-    if (!ended) await reader.cancel();
+    if (!ended) pendingCancel ??= reader.cancel();
+    await pendingCancel;
+    pendingCancel = undefined;
   } finally {
     clearTimeout(timer);
     reader.releaseLock();
+    void pendingCancel?.catch(() => undefined);
   }
 
   const bytes = new Uint8Array(total);

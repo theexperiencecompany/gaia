@@ -42,6 +42,7 @@ vi.mock("@gaia/shared", async () => {
     converters: {
       extractSubcommandArgs: vi.fn(real.extractSubcommandArgs),
       friendlyMediaError: vi.fn(real.friendlyMediaError),
+      MediaReadTimeoutError: real.MediaReadTimeoutError,
       unfetchableMediaMessage: vi.fn(real.unfetchableMediaMessage),
       unsupportedMediaMessage: vi.fn(real.unsupportedMediaMessage),
       mediaKindFromMime: vi.fn(real.mediaKindFromMime),
@@ -57,6 +58,7 @@ vi.mock("@gaia/shared", async () => {
 import { handleStreamingChat } from "@gaia/shared";
 import { attachment } from "spectrum-ts";
 import { ImessageAdapter } from "../../imessage/src/adapter";
+import { MEDIA_READ_TIMEOUT_MS } from "../../imessage/src/constants";
 
 interface FakeSpace {
   id: string;
@@ -348,6 +350,52 @@ describe("handleInboundMessage routing", () => {
     expect(space.send).not.toHaveBeenCalledWith(
       expect.stringContaining("I can't process"),
     );
+  });
+
+  it("tells the user when a media download stalls past the deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, priv } = makeAdapter();
+      const space = makeSpace();
+      let cancelled = false;
+      const content = {
+        ...makeAttachment(),
+        stream: vi.fn(
+          async () =>
+            new ReadableStream<Uint8Array>({
+              cancel() {
+                cancelled = true;
+              },
+            }),
+        ),
+      };
+      const resolveMock = (
+        adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
+      ).resolveIncomingMedia;
+      resolveMock.mockImplementation(
+        async (
+          _media: unknown,
+          download: (maxBytes: number) => Promise<Uint8Array>,
+        ) => {
+          await download(1024);
+          return { action: "chat", text: "media", attachments: [] };
+        },
+      );
+
+      priv.handleInboundMessage(space, makeMessage({ content }));
+      await vi.advanceTimersByTimeAsync(MEDIA_READ_TIMEOUT_MS);
+      vi.useRealTimers();
+      await drainQueues(priv);
+
+      const sent = space.send.mock.calls.map((call) => call[0] as string);
+      expect(sent).toContain(
+        "That image took too long to download. Please try sending it again.",
+      );
+      expect(cancelled).toBe(true);
+      expect(handleStreamingChat).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("replies honestly when a voice note arrives without fetchable bytes", async () => {

@@ -187,6 +187,9 @@ export function makeGaiaSharedMock(
     friendlyMediaError: vi.fn(
       (kind: string) => `Couldn't process that ${kind}.`,
     ),
+    // Plain shared constant every adapter's download path imports — the real
+    // value, so a test asserting the deadline asserts production's.
+    MEDIA_READ_TIMEOUT_MS: 30_000,
     unsupportedMediaMessage: vi.fn(
       (kind: string) => `I can't process ${kind} yet.`,
     ),

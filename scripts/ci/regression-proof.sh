@@ -123,10 +123,15 @@ for f in "${regression_files[@]}"; do
     rm -f "$base_copy"
   fi
 done
+SELECTED="$(mktemp -p "$BASE_COPIES")"
+if ! "$VENV_PY" "$SCRIPT_DIR/regression_proof_select.py" "${select_args[@]}" > "$SELECTED"; then
+  echo "ERROR: regression-proof — could not attribute this diff's regression marks to tests (see above)."
+  exit 1
+fi
 new_regression_ids=()
 while IFS= read -r node_id; do
   [ -n "$node_id" ] && new_regression_ids+=("${node_id#"$API_DIR"/}")
-done < <("$VENV_PY" "$SCRIPT_DIR/regression_proof_select.py" "${select_args[@]}")
+done < "$SELECTED"
 if [ "${#new_regression_ids[@]}" -eq 0 ]; then
   echo "regression-proof: no NEW @pytest.mark.regression tests in this diff — nothing to prove"
   exit 0

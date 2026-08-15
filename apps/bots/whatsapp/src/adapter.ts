@@ -28,11 +28,13 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
+  MEDIA_READ_TIMEOUT_MS,
   type OutboundAttachment,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
   readBodyBounded,
+  readResponseBytesCapped,
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
@@ -768,10 +770,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         mimeType: media.mimeType,
         filename: media.filename,
         caption: media.caption,
+        sizeBytes: media.sizeBytes,
       };
       const outcome = await this.resolveIncomingMedia(
         incoming,
-        () => this.downloadMediaBytes(media),
+        (maxBytes) => this.downloadMediaBytes(media, maxBytes),
         waId,
         waId,
       );
@@ -808,13 +811,28 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
   }
 
-  /** Downloads the raw bytes for a media message via the Kapso SDK. */
-  private async downloadMediaBytes(media: ExtractedMedia): Promise<Uint8Array> {
-    const arrayBuf = (await this.whatsAppClient.media.download({
+  /**
+   * Downloads the raw bytes for a media message via the Kapso SDK, reading at
+   * most `maxBytes`. The SDK's `as: "response"` mode hands back the unconsumed
+   * Response, so an oversize attachment is truncated and its stream cancelled
+   * instead of being buffered whole — and a non-2xx CDN reply raises instead of
+   * being mistaken for the file's bytes.
+   */
+  private async downloadMediaBytes(
+    media: ExtractedMedia,
+    maxBytes: number,
+  ): Promise<Uint8Array> {
+    const response = (await this.whatsAppClient.media.download({
       mediaId: media.mediaId,
       phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
-    })) as ArrayBuffer;
-    return new Uint8Array(arrayBuf);
+      as: "response",
+    })) as Response;
+    return readResponseBytesCapped(
+      response,
+      maxBytes,
+      "WhatsApp media",
+      MEDIA_READ_TIMEOUT_MS,
+    );
   }
 
   // ---------------------------------------------------------------------------

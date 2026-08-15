@@ -91,6 +91,42 @@ describe("readStreamBytesCapped", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("propagates a rejection from the timeout cancellation", async () => {
+    const failure = new Error("cancel exploded");
+    const stream = new ReadableStream<Uint8Array>({
+      cancel() {
+        return Promise.reject(failure);
+      },
+    });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await expect(readStreamBytesCapped(stream, 1024, 20)).rejects.toBe(
+        failure,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("propagates a rejection from the at-cap cancellation", async () => {
+    const failure = new Error("cancel exploded at the cap");
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(64));
+      },
+      cancel() {
+        return Promise.reject(failure);
+      },
+    });
+    await expect(readStreamBytesCapped(stream, 8)).rejects.toBe(failure);
+  });
+
   it("does not arm a deadline when none is given", async () => {
     const { stream } = finiteStream([new Uint8Array([1])]);
     const read = await readStreamBytesCapped(stream, 8);

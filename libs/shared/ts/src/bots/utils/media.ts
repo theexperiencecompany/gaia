@@ -30,6 +30,13 @@ export const BOT_MEDIA_LIMITS = {
 } as const;
 
 /**
+ * How long an adapter waits for a platform to deliver media bytes before
+ * giving up with a {@link MediaReadTimeoutError}. Shared so a stalled download
+ * behaves identically on every platform.
+ */
+export const MEDIA_READ_TIMEOUT_MS = 30_000;
+
+/**
  * Max bytes a backend-originated artifact may be to deliver on each platform.
  * Conservative per-platform document caps — over these, the bot sends a short
  * "too large" note instead of attempting an upload the platform would reject
@@ -109,6 +116,19 @@ export function unfetchableMediaMessage(
 }
 
 /**
+ * Thrown by an adapter's download thunk when the platform stops delivering
+ * bytes before the deadline. Carried as an error rather than an outcome so it
+ * unwinds the same path as an upload/transcribe failure, where
+ * {@link friendlyMediaError} turns it into the reply the user sees.
+ */
+export class MediaReadTimeoutError extends Error {
+  constructor(message = "media read timed out") {
+    super(message);
+    this.name = "MediaReadTimeoutError";
+  }
+}
+
+/**
  * Maps an upload/transcribe failure to a user-facing reply. Pass `pricingUrl`
  * so the rate-limit (429) reply can point users at the upgrade page, matching
  * the chat-stream rate-limit notice.
@@ -118,6 +138,10 @@ export function friendlyMediaError(
   err: unknown,
   pricingUrl?: string,
 ): string {
+  if (err instanceof MediaReadTimeoutError) {
+    return `That ${kind} took too long to download. Please try sending it again.`;
+  }
+
   const code = (err as { status?: number })?.status ?? getHttpStatus(err);
 
   if (code === 401 || code === 403) {

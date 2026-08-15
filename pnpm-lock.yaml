@@ -143,6 +143,9 @@ importers:
       '@grammyjs/types':
         specifier: ^3.28.0
         version: 3.28.0
+      discord.js:
+        specifier: ^14.26.5
+        version: 14.26.5
       hono:
         specifier: ^4.12.29
         version: 4.12.29

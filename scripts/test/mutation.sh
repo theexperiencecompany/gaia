@@ -104,6 +104,7 @@ replacement = (
     f'source_paths = ["{module}"]\n'
     f'also_copy = ["app", "tests", "scripts"]\n'
     f'max_stack_depth = 8\n'
+    f'debug = true\n'
     f'pytest_add_cli_args_test_selection = ["{testfile}"]\n'
     f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
     f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300\']\n'
@@ -230,27 +231,42 @@ if [ "$MUTMUT_RC" -ne 0 ]; then
   # run even though the tests are fine. Self-verify: run the same selection
   # in the plain workdir copy. Passes there -> mutmut-phase artifact, skip
   # with a reason. Fails there too -> a real breakage, fail loudly.
-  # Two mutmut-internal failure shapes share one diagnosis: the module's tests
-  # are fine, but the module does not survive mutmut's in-process instrumented
-  # phases. "Failed to run clean test" is the clean phase; a
-  # BadTestExecutionCommandsException (pytest usage error, exit 4) is the stats
-  # phase dying earlier — the instrumented copy cannot even be imported by
-  # conftest, which is what import-time work such as `settings = get_settings()`
-  # does under mutmut's trampolines. Either way the plain copy decides: passing
-  # there means a documented mutmut 3.7 limitation, not untested code.
-  if grep -qE "Failed to run clean test|BadTestExecutionCommandsException" "$WORKDIR/mutmut.log"; then
+  if grep -q "Failed to run clean test" "$WORKDIR/mutmut.log"; then
     if "$VENV_PY" -m pytest -q "$TESTFILE" -p no:randomly -p no:random-order \
         -o 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300' \
         > "$WORKDIR/plain-check.log" 2>&1; then
       echo "SKIP: $MODULE — the tests pass in the plain copy but fail under"
       echo "      mutmut's single-process phase transitions. Module-level state"
-      echo "      (singletons/caches, import-time side effects) does not survive"
-      echo "      stats->clean->mutants in one process — a documented mutmut 3.7"
-      echo "      limitation for such modules."
+      echo "      (singletons/caches) does not survive stats->clean->mutants in"
+      echo "      one process — a documented mutmut 3.7 limitation for such modules."
       exit 0
     fi
     echo "REAL FAILURE: $MODULE's tests fail in the plain copy too — see" >&2
     echo "  $WORKDIR/plain-check.log (and mutmut's output above)." >&2
+    exit 1
+  fi
+  # A BadTestExecutionCommandsException is pytest exit 4 (usage/collection
+  # error) inside mutmut's IN-PROCESS stats run. That is the documented mutmut
+  # 3.7 limitation only when the identical pytest invocation, on mutmut's own
+  # instrumented tree, passes OUT of process — i.e. the tests and the mutants are
+  # fine and only mutmut's in-process tracer breaks (seen with modules that do
+  # work at import time, e.g. `settings = get_settings()`: conftest then fails
+  # to import under the tracer with FileNotFoundError '<frozen importlib._bootstrap>').
+  # The original pytest error is in mutmut's output above (debug = true).
+  if grep -q "BadTestExecutionCommandsException" "$WORKDIR/mutmut.log"; then
+    if [ -d "$WORKDIR/mutants" ] && (cd "$WORKDIR/mutants" && "$VENV_PY" -m pytest -q "$TESTFILE" \
+        --rootdir=. -p no:randomly -p no:random-order -p no:xdist \
+        -o 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300' \
+        > "$WORKDIR/mutants-tree-check.log" 2>&1); then
+      echo "SKIP: $MODULE — the same pytest run passes on mutmut's instrumented tree"
+      echo "      out of process, but fails inside mutmut's in-process stats tracer"
+      echo "      (see the pytest error in mutmut's output above). Import-time work in"
+      echo "      the module trips the tracer — a documented mutmut 3.7 limitation."
+      exit 0
+    fi
+    echo "REAL FAILURE: mutmut could not run $TESTFILE (pytest usage/collection error)" >&2
+    echo "  and the same run also fails on the instrumented tree out of process — see" >&2
+    echo "  mutmut's output above and $WORKDIR/mutants-tree-check.log." >&2
     exit 1
   fi
   # A nonzero exit AFTER the mutants ran is usually the loguru teardown
