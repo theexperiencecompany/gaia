@@ -11,10 +11,24 @@ typing, navigating). Prefer web_search / fetch_webpages for reading, and prefer
 a dedicated integration (Gmail, Calendar, etc.) when one exists.
 
 The browser runs on isolated, self-hosted infrastructure. The user sees every
-step live (goal + screenshot). Before anything sensitive — submitting a payment,
-entering credentials or a one-time code, or any irreversible action — the agent
-pauses and waits for the user's explicit approval; it never enters card details
-or passwords without confirmation.
+step live (goal + screenshot).
+
+This tool CAN handle logins and CAPTCHAs — it hands the step to the user, it does
+not fail. When it reaches a login/password, a one-time code / 2FA, a payment
+confirmation, an irreversible action, or a CAPTCHA/verification wall, it pauses
+and gives the user a link to a LIVE view of the browser where they take control
+and complete that one step themselves; the task then continues automatically
+toward the goal. So:
+  * Pass the user's FULL goal, including "log in", "sign in to my account", or
+    "check my inbox" — do NOT downgrade it to "just open the login page" or stop
+    early because a login is involved. Let the handoff happen.
+  * NEVER ask the user to send a password, OTP, or card number in chat — the live
+    handoff is exactly how they provide those, directly in the browser.
+  * Do NOT tell the user you "can't hold the browser open" or "have no live
+    handoff" — you do; the live-view link is delivered automatically at the
+    handoff step.
+For Gmail/Google specifically, prefer the Gmail integration (OAuth) — Google
+blocks automated logins, so the browser is the wrong tool for reading mail.
 
 Args:
     task (str): A clear, self-contained description of what to accomplish in the
