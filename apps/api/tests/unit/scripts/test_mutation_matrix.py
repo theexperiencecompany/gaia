@@ -114,53 +114,6 @@ def test_test_files_for_finds_patch_string(tmp_path: Path) -> None:
     assert hits == [str(tmp_path / "tests/unit/api/test_conversations.py")]
 
 
-def test_test_files_for_prefers_the_modules_mirror_directory(tmp_path: Path) -> None:
-    """The module's own mirror directory beats an alphabetically earlier hit.
-
-    ``app/decorators/rate_limiting.py`` really did pick
-    ``tests/unit/agents/.../test_edit_tool.py`` — a file that only imports a
-    module which applies the decorator — over the tests that drive the
-    decorator directly, and mutating against it crashed the CI lane.
-    """
-    _write(
-        tmp_path,
-        "unit/agents/tools/coding/test_edit_tool.py",
-        "from app.agents.tools.coding import edit\n"
-        'patch("app.decorators.rate_limiting.tiered_limiter")\n',
-    )
-    _write(
-        tmp_path,
-        "unit/decorators/test_rate_limiter_tiers.py",
-        "from app.decorators.rate_limiting import tiered_rate_limit\n",
-    )
-
-    hits = mm._test_files_for("decorators/rate_limiting", tmp_path)
-
-    assert hits[0] == str(tmp_path / "unit/decorators/test_rate_limiter_tiers.py")
-
-
-def test_test_files_for_keeps_the_unit_tier_ahead_of_a_mirrored_real_tier(
-    tmp_path: Path,
-) -> None:
-    """Tier order outranks the mirror directory — a real-tier file skips
-    without USE_REAL_SERVICES, leaving the mutation run with zero covering
-    tests."""
-    _write(
-        tmp_path,
-        "integration/real/decorators/test_rate_limiting.py",
-        "from app.decorators.rate_limiting import tiered_rate_limit\n",
-    )
-    _write(
-        tmp_path,
-        "unit/zzz/test_late_alphabetically.py",
-        "from app.decorators.rate_limiting import tiered_rate_limit\n",
-    )
-
-    hits = mm._test_files_for("decorators/rate_limiting", tmp_path)
-
-    assert hits[0] == str(tmp_path / "unit/zzz/test_late_alphabetically.py")
-
-
 def test_tokens_without_comments_treats_trailing_and_whole_line_comments_as_inert() -> None:
     """A trailing `# noqa` and a whole-line comment both disappear from the
     token stream — the two shapes the suppression burn-down actually produced.
@@ -238,3 +191,81 @@ def test_is_comment_only_change_false_for_a_file_the_base_never_had(
     monkeypatch.chdir(tmp_path)
 
     assert mm._is_comment_only_change("mod.py", base_sha) is False
+
+
+# ---------------------------------------------------------------------------
+# with_unit_mirror — the gate mutates a module against EVERY referencing test
+# file, not one.
+#
+# Picking one was the defect: a module whose tests span several files was
+# measured against whichever the mirror-check or the sort happened to choose,
+# and every mutant only the discarded files covered was reported as "no
+# covering test" — informational, failing nothing. A module could pass the
+# gate having killed nothing at all.
+# ---------------------------------------------------------------------------
+
+
+def test_every_referencing_file_is_kept_not_just_the_first(tmp_path: Path) -> None:
+    hits = [
+        "apps/api/tests/unit/agents/test_handoff_brief.py",
+        "apps/api/tests/unit/tools/test_executor_tool.py",
+    ]
+
+    assert mm.with_unit_mirror("agents/tools/executor_tool", hits, tmp_path) == [
+        "tests/unit/agents/test_handoff_brief.py",
+        "tests/unit/tools/test_executor_tool.py",
+    ]
+
+
+def test_the_unit_mirror_leads_the_set_rather_than_replacing_it(tmp_path: Path) -> None:
+    # The mirror used to short-circuit the scan entirely — it never even
+    # computed the other hits. It is a member now, not an exit.
+    _write(tmp_path, "tests/unit/services/test_cost_budget.py", "")
+    hits = ["apps/api/tests/unit/middleware/test_accounting.py"]
+
+    assert mm.with_unit_mirror("services/cost_budget", hits, tmp_path) == [
+        "tests/unit/services/test_cost_budget.py",
+        "tests/unit/middleware/test_accounting.py",
+    ]
+
+
+def test_the_mirror_is_not_duplicated_when_it_also_references_the_module(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path, "tests/unit/services/test_cost_budget.py", "")
+    hits = [
+        "apps/api/tests/unit/services/test_cost_budget.py",
+        "apps/api/tests/unit/middleware/test_accounting.py",
+    ]
+
+    assert mm.with_unit_mirror("services/cost_budget", hits, tmp_path) == [
+        "tests/unit/services/test_cost_budget.py",
+        "tests/unit/middleware/test_accounting.py",
+    ]
+
+
+def test_a_module_with_no_referencing_file_and_no_mirror_selects_nothing(
+    tmp_path: Path,
+) -> None:
+    # Empty is what makes main() report "no test file anywhere" — the one
+    # case that must still fail the lane loudly.
+    assert mm.with_unit_mirror("services/orphan", [], tmp_path) == []
+
+
+def test_a_mirror_alone_is_enough_when_nothing_references_the_module(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path, "tests/unit/services/test_orphan.py", "")
+
+    assert mm.with_unit_mirror("services/orphan", [], tmp_path) == [
+        "tests/unit/services/test_orphan.py"
+    ]
+
+
+def test_entries_carry_the_whole_list_under_a_plural_key() -> None:
+    # Renamed from "testfile": a consumer still reading the old key now fails
+    # with a KeyError instead of silently iterating a string's characters.
+    entry = mm._entry("app/services/cost_budget.py", ["tests/unit/a.py", "tests/unit/b.py"], "")
+
+    assert entry["testfiles"] == ["tests/unit/a.py", "tests/unit/b.py"]
+    assert "testfile" not in entry
