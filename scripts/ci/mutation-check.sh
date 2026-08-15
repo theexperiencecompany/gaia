@@ -60,15 +60,20 @@ fi
 
 # 4. Run one mutation check per module with bounded parallelism. A plain
 #    read loop (not xargs) so a module with an empty changed-lines JSON
-#    (`[]`) can never shift the fields between invocations. Two workers, not
-#    four: each worker is a single-process pytest run, and on the 2-core CI
-#    runner four of them starve each other — covering tests that take seconds
-#    alone stretch past mutmut's per-mutant timeout (⏰), which then fails the
-#    module as "incomplete" even though nothing is wrong with it.
+#    (`[]`) can never shift the fields between invocations.
+#
+#    Four workers. This was briefly two, because on the 2-core runner four
+#    starved each other badly enough that covering tests stretched past
+#    mutmut's per-mutant timeout (⏰) and modules failed as "incomplete". That
+#    was the slow tiers in the per-mutant loop — an e2e file re-run once per
+#    mutant — and with the selection scoped to unit tests (mutation-matrix.py,
+#    with_unit_mirror) each worker is fast again. Halving the workers to treat
+#    that symptom only moved the cost to wall clock: the lane then ran out of
+#    its 60-minute budget partway through a wide diff.
 FAILED=0
 while read -r module testfiles ranges; do
   bash scripts/test/mutation.sh "$module" "$testfiles" "${ranges:-[]}" &
-  if [ "$(jobs -r -p | wc -l)" -ge 2 ]; then
+  if [ "$(jobs -r -p | wc -l)" -ge 4 ]; then
     wait -n || FAILED=1
   fi
 done < /tmp/mutation-modules.txt

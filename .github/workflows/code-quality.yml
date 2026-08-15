@@ -909,7 +909,7 @@ jobs:
     # instrumentation PR touching 50+ modules costs ~35-45 min even at ~30s
     # per module, so the cap is sized for both axes. Typical PRs (a handful
     # of modules) still finish in minutes — the cap only bites on huge diffs.
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
