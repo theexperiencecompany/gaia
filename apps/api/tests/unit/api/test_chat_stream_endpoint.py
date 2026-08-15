@@ -8,7 +8,7 @@ every frame of nearly every resumed run.
 """
 
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -50,6 +50,14 @@ class TestSubscribeExecutorStreamReplay:
                 "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
                 new=_fake_subscribe,
             ),
+            # `_stream_from_redis` checks this singleton before it ever reaches
+            # the patched `subscribe_stream`, and nothing in a unit run owns its
+            # state — whether a previous test in the same xdist worker left the
+            # client connected decided whether this one replayed frames or
+            # emitted [STREAM_ERROR]. Pinning it makes the replay assertion
+            # depend on the replay logic and nothing else; the unavailable
+            # branch is covered separately below.
+            patch("app.api.v1.endpoints.chat.redis_cache.redis", new=MagicMock()),
         ):
             async with client.stream("GET", f"/api/v1/stream/{STREAM_ID}") as response:
                 assert response.status_code == 200
@@ -57,6 +65,29 @@ class TestSubscribeExecutorStreamReplay:
 
         assert "approval_request" in body
         assert "[DONE]" in body
+
+    async def test_no_redis_client_reports_a_stream_error(self, client) -> None:
+        """The branch the flake was silently taking. Without a Redis client there
+        is no event log to follow, and the client must be told so rather than
+        handed a bare [DONE] it would read as "the turn produced nothing"."""
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.get_progress",
+                new=AsyncMock(
+                    return_value={"user_id": "507f1f77bcf86cd799439011", "is_complete": True}
+                ),
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.has_events",
+                new=AsyncMock(return_value=True),
+            ),
+            patch("app.api.v1.endpoints.chat.redis_cache.redis", new=None),
+        ):
+            async with client.stream("GET", f"/api/v1/stream/{STREAM_ID}") as response:
+                assert response.status_code == 200
+                body = "".join([chunk async for chunk in response.aiter_text()])
+
+        assert body == "data: [STREAM_ERROR]\n\n"
 
     async def test_completed_stream_with_expired_log_returns_done_only(self, client) -> None:
         with (
