@@ -99,7 +99,19 @@ fi
 #    failures used to be swallowed and the lane reported green on a survivor it
 #    had already found. Counting also beats `wait "$oldest"` — a slow module
 #    would hold the head of the line while its slot sat idle.
+#
+#    PARALLELISM * MUTMUT_MAX_CHILDREN is the real process count, and it has to
+#    stay at the core count. mutmut defaults its children to cpu_count, so four
+#    concurrent modules put ~16 pytest processes on a 4-vCPU runner: every
+#    mutant then ran ~4x slower than it should, individual mutants hit the
+#    300s pytest timeout, and six modules exceeded mutation.sh's own 900s cap
+#    and reported MUTATION RUN INCOMPLETE — a lane failure that looked like a
+#    test weakness and was pure thrash (app/core/stream_manager.py leaves 38
+#    mutants unchecked in CI and finishes with zero timeouts when it runs
+#    alone). One child each keeps the module-level overlap, which is what
+#    covers mutmut's single-process stats and clean-test phases.
 PARALLELISM=4
+export MUTMUT_MAX_CHILDREN="${MUTMUT_MAX_CHILDREN:-1}"
 FAILED=0
 SPAWNED=0
 REAPED=0

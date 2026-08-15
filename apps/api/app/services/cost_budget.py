@@ -138,8 +138,11 @@ async def record_model_call_usage(
     record_spend = user_id is not None and cost_usd > 0
     record_tokens = root_request_id is not None and tokens > 0
     has_token_data = bool(input_tokens or output_tokens or cached_tokens or reasoning_tokens)
-    record_rollup = user_id is not None and (record_spend or has_token_data)
-    if not (record_rollup or record_tokens):
+    # The id itself, not a flag: the durable write below takes a non-optional
+    # user_id, and carrying the narrowed value is what lets it type-check
+    # without re-testing a None the flag has already ruled out.
+    rollup_user_id = user_id if (record_spend or has_token_data) else None
+    if rollup_user_id is None and not record_tokens:
         return
 
     # (operation label, awaitable) so a per-op failure can be logged by name.
@@ -148,12 +151,12 @@ async def record_model_call_usage(
     # Durable per-day rollup — the Redis windows expire in ~26h, so this is the
     # only cost history the usage charts can plot. Runs concurrently with the
     # Redis pipeline below.
-    if record_rollup and user_id is not None:
+    if rollup_user_id is not None:
         labeled.append(
             (
                 "mongo_cost_rollup",
                 record_cost(
-                    user_id,
+                    rollup_user_id,
                     cost_usd,
                     charged=charge_to_budget,
                     input_tokens=input_tokens,

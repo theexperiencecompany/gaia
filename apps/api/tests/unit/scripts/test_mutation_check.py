@@ -55,10 +55,11 @@ def harness(tmp_path: Path):
         (tmp_path / "scripts" / "ci" / "mutation-matrix.sh").write_text(
             f"#!/usr/bin/env bash\ncat <<'JSON'\n{json.dumps(matrix)}\nJSON\n"
         )
-        # Records every module it was handed, then fails for the named ones.
+        # Records every module it was handed (with the child cap it inherited),
+        # then fails for the named ones.
         (tmp_path / "scripts" / "test" / "mutation.sh").write_text(
             "#!/usr/bin/env bash\n"
-            f'echo "$1" >> {ran}\n'
+            f'echo "$1 children=${{MUTMUT_MAX_CHILDREN:-unset}}" >> {ran}\n'
             f'case "$1" in {"|".join(failing) or "__none__"}) exit 1 ;; esac\n'
             "exit 0\n"
         )
@@ -69,11 +70,16 @@ def harness(tmp_path: Path):
             check=False,
             env={"PATH": "/usr/bin:/bin:/usr/local/bin", **(env or {})},
         )
-        mutated = ran.read_text().split() if ran.exists() else []
+        recorded = ran.read_text().splitlines() if ran.exists() else []
         ran.unlink(missing_ok=True)
-        return result, mutated
+        return result, recorded
 
     return run
+
+
+def modules_of(recorded: list[str]) -> list[str]:
+    """Just the module paths from the stub's "<module> children=<n>" lines."""
+    return [line.split(" ", 1)[0] for line in recorded]
 
 
 class TestShardSelection:
@@ -87,7 +93,7 @@ class TestShardSelection:
                 modules, env={"MUTATION_SHARDS": "4", "MUTATION_SHARD": str(shard)}
             )
             assert result.returncode == 0, result.stderr
-            covered += mutated
+            covered += modules_of(mutated)
 
         assert sorted(covered) == sorted(modules)
 
@@ -100,14 +106,14 @@ class TestShardSelection:
             env={"MUTATION_SHARDS": "4", "MUTATION_SHARD": "1"},
         )
 
-        assert mutated == ["app/m0.py", "app/m4.py", "app/m8.py"]
+        assert modules_of(mutated) == ["app/m0.py", "app/m4.py", "app/m8.py"]
 
     def test_unset_shard_vars_mutate_everything(self, harness) -> None:
         modules = [f"app/m{i}.py" for i in range(5)]
         result, mutated = harness(modules)
 
         assert result.returncode == 0, result.stderr
-        assert sorted(mutated) == sorted(modules)
+        assert sorted(modules_of(mutated)) == sorted(modules)
 
     def test_a_shard_outside_the_range_fails_loudly(self, harness) -> None:
         result, mutated = harness(
@@ -151,3 +157,19 @@ class TestFailurePropagation:
 
         assert result.returncode == 0, result.stderr
         assert len(mutated) == 6
+
+
+class TestRunnerSaturation:
+    def test_each_module_is_capped_to_one_mutmut_child(self, harness) -> None:
+        # PARALLELISM * MUTMUT_MAX_CHILDREN is the real process count and has to
+        # stay at the runner's core count. Left to its default, mutmut forks
+        # cpu_count children per module, so four concurrent modules oversubscribe
+        # a 4-vCPU runner ~4x and modules time out mid-run.
+        _, recorded = harness(["app/m0.py"])
+
+        assert recorded == ["app/m0.py children=1"]
+
+    def test_an_explicit_cap_is_respected(self, harness) -> None:
+        _, recorded = harness(["app/m0.py"], env={"MUTMUT_MAX_CHILDREN": "3"})
+
+        assert recorded == ["app/m0.py children=3"]
