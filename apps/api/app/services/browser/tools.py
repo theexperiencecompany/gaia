@@ -8,35 +8,25 @@ Two seams the agent reaches for itself:
   natively afterwards with full task memory — no dispose/recreate. The per-step
   classifier in the runner remains as a safety net for a model that acts without
   asking.
-* ``wait_for_captcha_solution`` — wait for Steel's automatic solver; if it can't
-  solve in time, escalate to the same human takeover so the user solves it in
-  live-view.
+* ``solve_captcha_with_help`` — there is no automatic solver, so a CAPTCHA is a
+  human takeover: the user solves it in live-view and the agent then continues.
 
 Imports of ``browser_use`` are local so the module loads without the package.
 """
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from app.constants.log_tags import LogTag
-from app.services.browser.session import build_steel_client
-from shared.py.wide_events import log
-
 if TYPE_CHECKING:
     from browser_use import Tools
-
-_CAPTCHA_POLL_INTERVAL_SECONDS = 1.0
-_CAPTCHA_MAX_WAIT_SECONDS = 60
 
 TakeoverFn = Callable[[str, str], Awaitable[str]]
 
 
 def build_browser_tools(
     *,
-    session_id: str,
     solve_captcha: bool,
     handle_takeover: TakeoverFn,
 ) -> Tools[None]:
@@ -63,30 +53,15 @@ def build_browser_tools(
         return await handle_takeover(reason, category)
 
     if solve_captcha:
-        steel_client = build_steel_client()
 
         @tools.action(
             description=(
-                "Wait for Steel to automatically solve a CAPTCHA on the page. Call "
-                "this when you see a CAPTCHA/reCAPTCHA/hCaptcha challenge, then continue."
+                "Hand a CAPTCHA to the human to solve in the live browser. Call this "
+                "when you see a CAPTCHA/reCAPTCHA/hCaptcha challenge; the user solves "
+                "it and you then continue."
             )
         )
-        async def wait_for_captcha_solution() -> str:
-            loop = asyncio.get_event_loop()
-            deadline = loop.time() + _CAPTCHA_MAX_WAIT_SECONDS
-            while loop.time() < deadline:
-                try:
-                    statuses = await steel_client.sessions.captchas.status(session_id)
-                except Exception as exc:
-                    log.warning(
-                        f"{LogTag.BROWSER} CAPTCHA status check failed",
-                        error_type=type(exc).__name__,
-                    )
-                    return "Could not check CAPTCHA status; proceeding."
-                if not any(getattr(item, "is_solving_captcha", False) for item in statuses):
-                    return "CAPTCHA solved (or none present)."
-                await asyncio.sleep(_CAPTCHA_POLL_INTERVAL_SECONDS)
-            # Auto-solve timed out — let the human solve it in live-view.
+        async def solve_captcha_with_help() -> str:
             return await handle_takeover("A CAPTCHA needs you to solve it in the browser.", "none")
 
     return tools

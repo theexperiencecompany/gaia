@@ -1,6 +1,6 @@
 """Browser-Use agent execution — the *agent* layer.
 
-Drives a Browser-Use ``Agent`` against an already-created Steel session and
+Drives a Browser-Use ``Agent`` against an already-created browser-host session and
 turns its lifecycle into injected, swappable seams:
 
   * ``emit`` — stream a card snapshot (session/step/handoff/result) to UI + bots
@@ -39,7 +39,7 @@ from app.services.browser.classify import classify_step
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.policy import resolve_strategy
 from app.services.browser.screenshots import upload_step_screenshot
-from app.services.browser.session import SteelBrowserSession
+from app.services.browser.session import BrowserHostSession
 from app.services.browser.tools import build_browser_tools
 from app.services.llm_metering import record_llm_call
 from shared.py.wide_events import log
@@ -70,7 +70,7 @@ class BrowserTaskRunner:
     def __init__(
         self,
         *,
-        session: SteelBrowserSession,
+        session: BrowserHostSession,
         conversation_id: str,
         llm: BaseChatModel,
         emit: EmitFn,
@@ -130,7 +130,6 @@ class BrowserTaskRunner:
             "use_vision": self._use_vision,
             "max_actions_per_step": self._max_actions_per_step,
             "tools": build_browser_tools(
-                session_id=self._session.session_id,
                 solve_captcha=self._solve_captcha,
                 handle_takeover=self._handle_takeover,
             ),
@@ -159,12 +158,11 @@ class BrowserTaskRunner:
                 f"Browser task timed out after {self._task_timeout}s.",
             )
         except (ConnectionError, OSError) as exc:
-            # Steel accepted the session but the agent couldn't attach over CDP —
-            # almost always the advertised websocketUrl isn't reachable from here.
+            # The host created the session but the agent couldn't attach over CDP —
+            # almost always the host's CDP proxy websocket isn't reachable from here.
             raise BrowserUnavailableError(
                 f"Could not attach to the browser over CDP at {self._session.cdp_url}: {exc}. "
-                "If Steel is reachable, set STEEL_CDP_CONNECT_URL to a CDP endpoint that is "
-                "reachable from the API."
+                "Check that the browser host is reachable from the API at BROWSER_HOST_URL."
             ) from exc
 
         if self._stopped:

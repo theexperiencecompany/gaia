@@ -16,11 +16,13 @@ import {
   StopCircleIcon,
 } from "@icons";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useImageDialog } from "@/stores/uiStore";
 import type {
+  BrowserFrameMessage,
   BrowserHandoffSnapshot,
   BrowserHandoffStatus,
+  BrowserLiveInputMessage,
   BrowserResultSnapshot,
   BrowserSensitiveCategory,
   BrowserSessionSnapshot,
@@ -28,7 +30,7 @@ import type {
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
 } from "@/types/features/browserTaskTypes";
-import { browserApi } from "../../../api/browserApi";
+import { browserApi, liveViewSocketUrl } from "../../../api/browserApi";
 
 interface BrowserTaskSectionProps {
   data: BrowserTaskSnapshot | BrowserTaskSnapshot[];
@@ -39,6 +41,210 @@ interface FoldedState {
   steps: BrowserStepSnapshot[];
   handoffs: BrowserHandoffSnapshot[];
   result?: BrowserResultSnapshot;
+}
+
+type LiveStatus = "connecting" | "live" | "closed" | "error";
+
+const CDP_MOUSE_BUTTONS = ["left", "middle", "right"] as const;
+
+// Streams JPEG frames from the live-view WebSocket onto a canvas and, when
+// interactive, forwards pointer/keyboard input as the CDP-shaped messages the
+// browser host applies. Kept parallel with the standalone viewer the API serves
+// (services/browser/live_view.py) — same event translation, two runtimes.
+function useLiveBrowser(socketUrl: string | null, interactive: boolean) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const frameSizeRef = useRef<{ w: number; h: number }>({ w: 1280, h: 720 });
+  const [status, setStatus] = useState<LiveStatus>("connecting");
+
+  const send = useCallback((msg: BrowserLiveInputMessage) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  }, []);
+
+  useEffect(() => {
+    if (!socketUrl) return undefined;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return undefined;
+
+    setStatus("connecting");
+    const ws = new WebSocket(socketUrl);
+    wsRef.current = ws;
+    const img = new window.Image();
+
+    img.onload = () => {
+      const w = img.naturalWidth || frameSizeRef.current.w;
+      const h = img.naturalHeight || frameSizeRef.current.h;
+      frameSizeRef.current = { w, h };
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+    };
+
+    ws.onopen = () => setStatus("live");
+    ws.onerror = () => setStatus("error");
+    ws.onclose = () => setStatus("closed");
+    ws.onmessage = (ev: MessageEvent<string>) => {
+      let msg: BrowserFrameMessage;
+      try {
+        msg = JSON.parse(ev.data) as BrowserFrameMessage;
+      } catch {
+        return;
+      }
+      if (msg.type === "frame") img.src = `data:image/jpeg;base64,${msg.data}`;
+    };
+
+    return () => {
+      ws.onopen = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.onmessage = null;
+      ws.close();
+      wsRef.current = null;
+    };
+  }, [socketUrl]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!interactive || !socketUrl || !canvas) return undefined;
+
+    const toPoint = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const { w, h } = frameSizeRef.current;
+      return {
+        x: Math.round((e.clientX - rect.left) * (w / rect.width)),
+        y: Math.round((e.clientY - rect.top) * (h / rect.height)),
+      };
+    };
+
+    const onMove = (e: MouseEvent) => {
+      const p = toPoint(e);
+      send({
+        type: "mouse",
+        event: "mouseMoved",
+        x: p.x,
+        y: p.y,
+        buttons: e.buttons,
+      });
+    };
+    const onDown = (e: MouseEvent) => {
+      e.preventDefault();
+      canvas.focus();
+      const p = toPoint(e);
+      send({
+        type: "mouse",
+        event: "mousePressed",
+        x: p.x,
+        y: p.y,
+        button: CDP_MOUSE_BUTTONS[e.button] ?? "left",
+        buttons: e.buttons,
+        clickCount: e.detail || 1,
+      });
+    };
+    const onUp = (e: MouseEvent) => {
+      e.preventDefault();
+      const p = toPoint(e);
+      send({
+        type: "mouse",
+        event: "mouseReleased",
+        x: p.x,
+        y: p.y,
+        button: CDP_MOUSE_BUTTONS[e.button] ?? "left",
+        buttons: e.buttons,
+        clickCount: e.detail || 1,
+      });
+    };
+    const onContext = (e: MouseEvent) => e.preventDefault();
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const p = toPoint(e);
+      send({
+        type: "mouse",
+        event: "mouseWheel",
+        x: p.x,
+        y: p.y,
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+      });
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      const printable = e.key.length === 1;
+      send({
+        type: "key",
+        event: "keyDown",
+        key: e.key,
+        code: e.code,
+        text: printable ? e.key : undefined,
+        windowsVirtualKeyCode: e.keyCode,
+        nativeVirtualKeyCode: e.keyCode,
+      });
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      e.preventDefault();
+      send({
+        type: "key",
+        event: "keyUp",
+        key: e.key,
+        code: e.code,
+        windowsVirtualKeyCode: e.keyCode,
+        nativeVirtualKeyCode: e.keyCode,
+      });
+    };
+
+    canvas.addEventListener("mousemove", onMove);
+    canvas.addEventListener("mousedown", onDown);
+    canvas.addEventListener("mouseup", onUp);
+    canvas.addEventListener("contextmenu", onContext);
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    canvas.addEventListener("keydown", onKeyDown);
+    canvas.addEventListener("keyup", onKeyUp);
+    return () => {
+      canvas.removeEventListener("mousemove", onMove);
+      canvas.removeEventListener("mousedown", onDown);
+      canvas.removeEventListener("mouseup", onUp);
+      canvas.removeEventListener("contextmenu", onContext);
+      canvas.removeEventListener("wheel", onWheel);
+      canvas.removeEventListener("keydown", onKeyDown);
+      canvas.removeEventListener("keyup", onKeyUp);
+    };
+  }, [interactive, socketUrl, send]);
+
+  return { canvasRef, status };
+}
+
+function LiveBrowserCanvas({
+  socketUrl,
+  interactive,
+}: {
+  socketUrl: string;
+  interactive: boolean;
+}) {
+  const { canvasRef, status } = useLiveBrowser(socketUrl, interactive);
+  return (
+    <div className="overflow-hidden rounded-xl bg-zinc-950 ring-1 ring-white/10">
+      <canvas
+        ref={canvasRef}
+        tabIndex={interactive ? 0 : -1}
+        className={`aspect-video w-full outline-none ${
+          interactive ? "cursor-crosshair" : "pointer-events-none"
+        }`}
+      />
+      {status !== "live" && (
+        <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-zinc-400">
+          <Spinner size="sm" color="current" />
+          {status === "error"
+            ? "Connection error"
+            : status === "closed"
+              ? "Session ended"
+              : "Connecting…"}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Machine states → plain language the user understands at a glance.
@@ -202,14 +408,10 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
               Live browser — you're in control
             </span>
           </div>
-          <div className="overflow-hidden rounded-xl ring-1 ring-amber-500/20">
-            <iframe
-              title="Live browser"
-              src={handoff.live_view_url}
-              className="aspect-video w-full bg-white"
-              sandbox="allow-same-origin allow-scripts allow-forms"
-            />
-          </div>
+          <LiveBrowserCanvas
+            socketUrl={liveViewSocketUrl(handoff.live_view_url)}
+            interactive
+          />
         </div>
       )}
 
@@ -322,18 +524,30 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
 
       {session?.live_view_url && working && (
         <div className="mb-3">
-          <Button
-            as="a"
-            href={session.live_view_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            size="sm"
-            variant="flat"
-            radius="full"
-            startContent={<EyeIcon className="size-4" />}
-          >
-            Watch it live
-          </Button>
+          <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
+            <EyeIcon className="size-3.5 text-zinc-400" />
+            <span className="text-[11px] font-medium text-zinc-400">
+              Live browser
+            </span>
+          </div>
+          <LiveBrowserCanvas
+            socketUrl={liveViewSocketUrl(session.live_view_url)}
+            interactive={false}
+          />
+          <div className="mt-2">
+            <Button
+              as="a"
+              href={session.live_view_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="sm"
+              variant="flat"
+              radius="full"
+              startContent={<SquareArrowUpRight02Icon className="size-4" />}
+            >
+              Open full browser
+            </Button>
+          </div>
         </div>
       )}
 

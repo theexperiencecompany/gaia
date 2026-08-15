@@ -6,7 +6,7 @@ class BrowserAutomationError(Exception):
 
 
 class BrowserUnavailableError(BrowserAutomationError):
-    """The capability cannot run: disabled, missing config, or Steel unreachable."""
+    """The capability cannot run: disabled, missing config, or the browser host unreachable."""
 
 
 class BrowserHandoffCancelled(BrowserAutomationError):

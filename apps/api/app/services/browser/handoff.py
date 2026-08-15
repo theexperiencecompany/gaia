@@ -2,7 +2,7 @@
 
 When the agent reaches a sensitive step and the policy says "hand off", the
 runner blocks on :func:`await_handoff`; the user completes the step in the
-Steel live-view and the ``/browser/handoffs/{id}/decision`` endpoint calls
+live-view and the ``/browser/handoffs/{id}/decision`` endpoint calls
 :func:`resolve_handoff` (continue or cancel) from a possibly-different worker
 process. Redis is the cross-process channel — the same decoupling the
 cancel-stream flag uses. This is a browser-session continue/cancel signal, NOT

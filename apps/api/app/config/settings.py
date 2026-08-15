@@ -19,7 +19,7 @@ import time
 from typing import Any, Literal, Self
 
 from dotenv import load_dotenv
-from pydantic import computed_field, field_validator, model_validator
+from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.config.secrets import inject_infisical_secrets
@@ -172,49 +172,11 @@ class CommonSettings(BaseAppSettings):
         return max(CRAWL4AI_MIN_MAX_BROWSERS, parsed)
 
     # ----------------------------------------------
-    # Dev-only LLM overrides (honored only when ENV=development)
+    # Browser-Use (autonomous browser automation)
     # ----------------------------------------------
-    # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage
-    # (e.g. Nous Research's discounted DeepSeek lane). All three must be set; the
-    # "custom" provider is registered exclusively in development (see
-    # register_llm_providers), so these have no effect in production.
-    DEV_LLM_BASE_URL: str | None = None
-    DEV_LLM_API_KEY: str | None = None
-    DEV_LLM_MODEL: str | None = None
-    # Default model for every dev request that doesn't pick one in the chat-header
-    # selector — any DEV_MODEL_OPTIONS key from app/constants/llm.py ("custom" =
-    # the endpoint above). An explicit selector choice still wins.
-    DEV_DEFAULT_MODEL: str | None = None
-
-    # Steel + Browser-Use (autonomous browser automation)
-    # ----------------------------------------------
-    # Self-hosted Steel browser infra (ghcr.io/steel-dev/steel-browser-api).
-    # In docker the API reaches it by service name; locally override to
-    # http://localhost:3000. All browser settings are optional so the feature
-    # degrades to a clean "not configured" message when Steel is absent.
-    STEEL_API_URL: str = "http://steel:3000"  # NOSONAR python:S5332 — internal docker service, plain HTTP on the private network by design (TLS terminates at the edge)
-    STEEL_API_KEY: str | None = None
-    # Override the CDP websocket base used to attach the agent to a Steel
-    # session. Leave unset to use the ``websocketUrl`` Steel returns on create
-    # (correct inside docker); set it only when the reachable host differs from
-    # what Steel advertises (e.g. driving a dockered Steel from a native API).
-    STEEL_CDP_CONNECT_URL: str | None = None
-
-    # Steel live-view: base URL the browser session viewer is served from. Set
-    # to our own subdomain (e.g. https://browser.heygaia.io) which reverse-
-    # proxies the Steel UI, so live-view links stay on our domain. When unset,
-    # the ``sessionViewerUrl`` Steel returns is used as-is.
-    STEEL_LIVE_VIEW_BASE_URL: str | None = None
-
     # Master switch. When false the tool is registered but reports unavailable
     # instead of spinning up a browser.
     BROWSER_USE_ENABLED: bool = True
-    # Cap on concurrent Steel sessions this deployment will run. Self-hosted
-    # steel-browser holds ONE active session per container (a second create
-    # silently replaces the first, killing that task's CDP connection), so this
-    # must equal the number of Steel instances behind STEEL_API_URL. Excess tasks
-    # fail fast with a clear message rather than clobber a running session.
-    BROWSER_USE_MAX_CONCURRENT_SESSIONS: int = 1
 
     # LLM that drives the browser agent — decoupled from the chat harness so
     # browser work uses a deliberately-chosen, vision-capable model. Provider:
@@ -236,6 +198,24 @@ class CommonSettings(BaseAppSettings):
     BROWSER_USE_LLM_PROVIDER: str = "google"
     BROWSER_USE_LLM_MODEL: str = "gemini-3.1-flash-lite"
     BROWSER_USE_LLM_API_KEY: str | None = None
+    # Browser-Use "flash mode" strips the planner/thinking/next_goal fields from every
+    # step's output schema. Benchmarked as a negligible speed win on typical tasks (the
+    # bottleneck is page loads + per-step LLM latency, not output tokens) while it costs
+    # the model's per-step reasoning — and the recap loses meaningful step captions
+    # ("Search for X" becomes "Clicking"). Off by default; better captions + reasoning
+    # for ~no time cost.
+    BROWSER_USE_FLASH_MODE: bool = False
+    # Cloudflare R2 (S3-compatible, free tier) — the fast edge store for browser step
+    # screenshots. Cloudinary stays the durable store for arbitrary user files. The S3
+    # endpoint is derived from the account id; the public base URL is the bucket's
+    # r2.dev managed domain (use a custom domain in prod — r2.dev is rate-limited).
+    # Optional: any unset → screenshots fall back to inline data URLs. Injected from
+    # Infisical by name in prod; set in apps/api/.env for dev.
+    CLOUDFLARE_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_BUCKET: str = "gaia-browser-shots"
+    R2_PUBLIC_BASE_URL: str | None = None
     BROWSER_USE_LLM_BASE_URL: str | None = None
     # Vision (screenshots to the model) is the biggest cost driver — keep it on
     # for reliability, but a deployment optimizing cost can disable it.
@@ -245,12 +225,16 @@ class CommonSettings(BaseAppSettings):
     BROWSER_USE_MAX_STEPS: int = 25
     BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
     BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
-    BROWSER_USE_SESSION_TTL_SECONDS: int = 900
     BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 600
+    # Active work budget for a single step. The effective per-step timeout adds the
+    # handoff timeout on top, so a step that pauses for a human live-view takeover
+    # is never killed as "stuck" while the user is completing it.
+    BROWSER_USE_STEP_TIMEOUT_SECONDS: int = 180
     # Stream per-step screenshots into the chat card / bot messages.
     BROWSER_USE_STREAM_SCREENSHOTS: bool = True
 
-    # Steel automatic CAPTCHA solving (reCAPTCHA/hCaptcha under CDP).
+    # There is no automatic CAPTCHA solver: when set, the agent gets an action to
+    # hand a CAPTCHA to the user, who solves it in live-view before it continues.
     BROWSER_USE_SOLVE_CAPTCHA: bool = True
 
     # Mid-run sensitive-action policy. Per category: "handoff" (pause → user
@@ -263,7 +247,7 @@ class CommonSettings(BaseAppSettings):
     BROWSER_USE_IRREVERSIBLE_STRATEGY: str = "handoff"
 
     # ----------------------------------------------
-    # Browser host (our own low-RAM Chromium host — replaces self-hosted Steel)
+    # Browser host (gaia-browser-host — our own low-RAM Chromium host)
     # ----------------------------------------------
     # One long-lived Chromium, one isolated browser context per session, a
     # per-session CDP-filtering proxy, and an authenticated screencast live view.
@@ -280,6 +264,25 @@ class CommonSettings(BaseAppSettings):
     BROWSER_HOST_HEADED: bool = False
     # Override the Chromium binary; when unset the host resolves Playwright's bundled one.
     BROWSER_HOST_CHROMIUM_PATH: str | None = None
+    # Per-renderer V8 heap ceiling. One runaway page must not be able to eat the
+    # whole host's budget and OOM every other user's session with it.
+    BROWSER_HOST_JS_HEAP_MB: int = 512
+
+    # Fernet key (32 url-safe base64 bytes) encrypting each user's saved browser
+    # login (storage_state) at rest in Mongo. Infisical-provided in production;
+    # persistence fails loud if a save/load is attempted while it's unset.
+    BROWSER_STATE_ENCRYPTION_KEY: str | None = None
+    # HMAC secret (>=32 chars) for the short-lived live-view takeover JWT handed
+    # to a user's own bot channel so they can take over a handoff without a web login.
+    BROWSER_TAKEOVER_TOKEN_SECRET: str | None = None
+    # When false, a session's login is never persisted or restored (per-deployment
+    # opt-out of "log in once, reuse next time").
+    BROWSER_PERSIST_LOGINS: bool = True
+    # Public base URL fronting the authenticated live-view route (served at
+    # ``/live/{session_id}``). Set to e.g. https://browser.heygaia.io in prod, where
+    # a vhost reverse-proxies to THIS api service (never the browser host). When
+    # unset, live-view links fall back to ``HOST`` so local dev works unchanged.
+    BROWSER_LIVE_VIEW_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Dev-only LLM overrides (honored only when ENV=development)
@@ -314,24 +317,6 @@ class CommonSettings(BaseAppSettings):
         if v is not None and (not v or v != v.strip()):
             raise ValueError("E2B_DOMAIN must be non-empty and free of surrounding whitespace")
         return v
-
-    @model_validator(mode="after")
-    def _require_browser_live_view_in_prod(self) -> "CommonSettings":
-        """When browser automation is enabled in production, the live-view base
-        URL must be set — otherwise a sensitive-step handoff renders a dead card
-        the user can never act on. Fail at startup, not mid-task."""
-        if (
-            self.ENV == "production"
-            and self.BROWSER_USE_ENABLED
-            and not self.STEEL_LIVE_VIEW_BASE_URL
-        ):
-            raise ValueError(
-                "STEEL_LIVE_VIEW_BASE_URL is required when BROWSER_USE_ENABLED is true in "
-                "production (the browser handoff live-view depends on it). Set it to the "
-                "domain that serves the Steel UI (e.g. https://browser.heygaia.io), or set "
-                "BROWSER_USE_ENABLED=false."
-            )
-        return self
 
     # ----------------------------------------------
     # Computed Properties
@@ -530,6 +515,7 @@ class ProductionSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str
+    POSTHOG_API_KEY: str
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -731,6 +717,7 @@ class DevelopmentSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str | None = None
+    POSTHOG_API_KEY: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials

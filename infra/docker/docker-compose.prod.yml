@@ -103,8 +103,8 @@ services:
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
-      STEEL_API_URL: http://steel:3000
-      STEEL_LIVE_VIEW_BASE_URL: https://browser.heygaia.io
+      # gaia-browser-host — internal Chromium host for the browser-automation tool.
+      BROWSER_HOST_URL: http://browser-host:8930
     secrets:
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
@@ -188,8 +188,8 @@ services:
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
-      STEEL_API_URL: http://steel:3000
-      STEEL_LIVE_VIEW_BASE_URL: https://browser.heygaia.io
+      # gaia-browser-host — internal Chromium host for the browser-automation tool.
+      BROWSER_HOST_URL: http://browser-host:8930
     secrets:
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
@@ -1182,19 +1182,42 @@ services:
         constraints:
           - node.role == manager
 
-  # Steel — self-hosted browser infrastructure for the browser-automation tool.
-  steel:
-    image: ghcr.io/steel-dev/steel-browser-api:latest
+  # gaia-browser-host — our own low-RAM Chromium host for browser automation.
+  # One long-lived Chromium, one isolated context per session, a per-session
+  # CDP-filtering proxy, and an authenticated screencast live view (proxied
+  # through the API, never exposed directly). The API + worker reach it on the
+  # internal overlay at http://browser-host:8930; the port is never published.
+  #
+  # SECURITY — DEPLOY REQUIREMENT: this container MUST sit behind an egress
+  # firewall that blocks RFC1918 (10/8, 172.16/12, 192.168/16) and the
+  # cloud-metadata range 169.254.0.0/16, so a prompt-injected page cannot make
+  # the browser reach internal services or the instance metadata endpoint (SSRF).
+  # Runs unprivileged (the gaia image's non-root appuser) with no published ports.
+  browser-host:
+    image: ghcr.io/theexperiencecompany/gaia:${GAIA_IMAGE_TAG:-latest}
+    working_dir: /app/apps/api
+    command: python -m app.browser_host
     environment:
-      DOMAIN: steel:3000
-      CDP_DOMAIN: steel:9223
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app/apps/api
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ENV: production
+      # Chromium is installed in the gaia image at this path (see apps/api/Dockerfile).
+      PLAYWRIGHT_BROWSERS_PATH: /opt/browsers
+      BROWSER_HOST_PORT: "8930"
+    # Infisical machine identity so ProductionSettings resolves at startup.
+    secrets:
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
     shm_size: "2gb"
     networks:
       gaia-prod-shared:
         aliases:
-          - steel
+          - browser-host
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8930/healthz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -1208,34 +1231,6 @@ services:
         limits:
           memory: 2G
           cpus: "1.5"
-      placement:
-        constraints:
-          - node.role == manager
-
-  # Steel UI — serves the live-view. The host Nginx reverse-proxies
-  # browser.heygaia.io → this service (published on the routing mesh) so
-  # live-view links stay on our domain (STEEL_LIVE_VIEW_BASE_URL).
-  steel-ui:
-    image: ghcr.io/steel-dev/steel-browser-ui:latest
-    environment:
-      API_URL: http://steel:3000
-    ports:
-      - target: 80
-        published: 5173
-        mode: ingress
-    networks:
-      gaia-prod-shared:
-        aliases:
-          - steel-ui
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: any
-        delay: 5s
-      resources:
-        limits:
-          memory: 256m
-          cpus: "0.5"
       placement:
         constraints:
           - node.role == manager

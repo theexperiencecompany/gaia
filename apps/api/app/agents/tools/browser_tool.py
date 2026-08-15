@@ -1,12 +1,12 @@
 """The single executor-facing browser-automation tool.
 
-The only place Steel + Browser-Use are wired together. The executor sees one
-tool, not the internals. The "do you want me to use a browser?" confirmation is
-handled by the shared HIL system (``browser_task`` is registered destructive).
-This tool composes the runner's seams: progress emission (SSE + bots),
-cancellation (stream flag), and the mid-run live-view handoff. It caps
-concurrency, restores persisted auth via profiles, and always releases the
-Steel session.
+The only place the browser host + Browser-Use are wired together. The executor
+sees one tool, not the internals. The "do you want me to use a browser?"
+confirmation is handled by the shared HIL system (``browser_task`` is registered
+destructive). This tool composes the runner's seams: progress emission (SSE +
+bots), cancellation (stream flag), and the mid-run live-view handoff. The
+session context manager owns capacity limits, saved-login persistence, live-view
+registration, and always releasing the browser context.
 """
 
 from typing import Annotated
@@ -31,13 +31,11 @@ from app.schemas.browser import (
     HandoffRequest,
 )
 from app.services.browser.bot_delivery import BotProgressDelivery
-from app.services.browser.concurrency import session_slot
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
 from app.services.browser.handoff import await_handoff, create_pending_handoff
 from app.services.browser.llm import build_browser_llm, resolve_use_vision
-from app.services.browser.profiles import domain_of, get_profile_id, save_profile_id
 from app.services.browser.runner import BrowserTaskRunner
-from app.services.browser.session import steel_session
+from app.services.browser.session import browser_session
 from app.templates.docstrings.browser_tool_docs import BROWSER_TASK
 from shared.py.wide_events import log
 
@@ -98,13 +96,11 @@ async def browser_task(
         log.warning(f"{LogTag.BROWSER} Browser LLM unavailable", error_type=type(exc).__name__)
         return f"I can't use the browser right now: {exc}"
 
-    domain = domain_of(start_url)
-    profile_id = await get_profile_id(user_id, domain)
     full_task = task if not start_url else f"{task}\n\nStart at: {start_url}"
     use_vision = await resolve_use_vision()
 
     try:
-        async with session_slot(), steel_session(profile_id=profile_id) as session:
+        async with browser_session(user_id=user_id, start_url=start_url) as session:
             log.set(browser={"session_id": session.session_id})
 
             async def request_handoff(req: HandoffRequest) -> HandoffStatus:
@@ -150,11 +146,6 @@ async def browser_task(
                 root_request_id=root_request_id,
             )
             result = await runner.run(full_task)
-
-            # Persist the authenticated context so a repeat task on this domain
-            # can skip login next time.
-            if session.profile_id and domain and result.success:
-                await save_profile_id(user_id, domain, session.profile_id)
             return result.summary
     except BrowserConcurrencyLimit as exc:
         return str(exc)

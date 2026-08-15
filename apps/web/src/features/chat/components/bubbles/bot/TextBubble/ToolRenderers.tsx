@@ -142,7 +142,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
 
-  // Browser automation (Steel + Browser-Use)
+  // Browser automation (Browser-Use)
   browser_task_data: (data, index) => (
     <BrowserTaskSection key={`tool-browser-${index}`} data={data} />
   ),

@@ -1,4 +1,4 @@
-"""Constants for the Steel + Browser-Use browser-automation capability.
+"""Constants for the Browser-Use browser-automation capability.
 
 Single source of truth for the tool name, the SSE card-event keys, the Redis
 handoff namespace, and the heuristics that decide when the browser agent must
@@ -105,21 +105,6 @@ BROWSER_TAKEOVER_PREAMBLE = (
     "`request_human_takeover` action first so the user completes that step in the "
     "live browser, then continue toward the goal."
 )
-
-# ---------------------------------------------------------------------------
-# Concurrency registry. A Redis sorted set (member = slot id, score = expiry
-# deadline) is the cluster-wide source of truth for how many browser sessions
-# are live, so the cap holds across workers/replicas. A crashed worker's slot
-# self-heals: its member expires by score and is pruned on the next acquire.
-# ---------------------------------------------------------------------------
-BROWSER_ACTIVE_SESSIONS_KEY = "browser:active_sessions"
-
-# ---------------------------------------------------------------------------
-# Steel REST API paths (self-hosted Steel, ghcr.io/steel-dev/steel-browser-api).
-# ---------------------------------------------------------------------------
-STEEL_SESSIONS_PATH = "/v1/sessions"
-STEEL_SESSION_RELEASE_PATH = "/v1/sessions/{session_id}/release"
-STEEL_HEALTH_PATH = "/health"
 
 # ---------------------------------------------------------------------------
 # Sensitive-action classification. A structural allowlist of Browser-Use action

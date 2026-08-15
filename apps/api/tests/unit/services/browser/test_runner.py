@@ -16,7 +16,7 @@ from app.constants.browser import BrowserEventKind, BrowserSessionStatus, Handof
 from app.schemas.browser import SensitiveActionVerdict
 from app.services.browser import runner as runner_mod
 from app.services.browser.runner import BrowserTaskRunner
-from app.services.browser.session import SteelBrowserSession
+from app.services.browser.session import BrowserHostSession
 
 
 class _Action:
@@ -43,8 +43,9 @@ class _State:
 
 
 class _History:
-    def __init__(self, done=True, successful=True, result="Done."):
+    def __init__(self, done=True, successful=True, result="Done.", usage=None):
         self._done, self._successful, self._result = done, successful, result
+        self.usage = usage
 
     def final_result(self):
         return self._result
@@ -93,13 +94,12 @@ def patch_browser(monkeypatch):
     FakeAgent.history = _History()
 
 
-def _session() -> SteelBrowserSession:
-    return SteelBrowserSession(
+def _session() -> BrowserHostSession:
+    return BrowserHostSession(
         session_id="s1",
         cdp_url="ws://x",  # NOSONAR
-        debug_url=None,
         live_view_url="http://v",  # NOSONAR
-        profile_id=None,
+        context_id="ctx-1",
     )
 
 

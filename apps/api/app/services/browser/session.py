@@ -1,10 +1,11 @@
-"""Steel session lifecycle — create, connect-URL resolution, guaranteed release.
+"""Browser-host session lifecycle — create, live-view URL, guaranteed release.
 
-The *infrastructure* layer: it knows about Steel (via ``steel-sdk``) and nothing
-about Browser-Use or the agent. The session is always released on exit —
-success, error, or cancellation — so no browser is ever orphaned. Supports
-automatic CAPTCHA solving, persistent profiles (restored auth), and a live-view
-URL served from our own domain.
+The *infrastructure* layer: it talks to gaia-browser-host (via ``host_client``)
+and knows nothing about Browser-Use or the agent. The session is always released
+on exit — success, error, or cancellation — so no browser context is ever
+orphaned. It seeds the user's saved login for the target domain before handing
+the session to the agent, persists the returned login back when the session
+ends, and exposes a live-view URL served from our own authenticated API.
 """
 
 from __future__ import annotations
@@ -12,116 +13,66 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
-from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.services.browser.exceptions import BrowserUnavailableError
+from app.services.browser import host_client
+from app.services.browser.live_view import live_view_url
+from app.services.browser.registry import register_session, unregister_session
+from app.services.browser.storage_persistence import (
+    domain_of,
+    load_storage_state,
+    save_storage_state,
+)
 from shared.py.wide_events import log
-
-if TYPE_CHECKING:
-    from steel import AsyncSteel
-
-_SELF_HOST_API_KEY_PLACEHOLDER = "self-hosted"
 
 
 @dataclass(frozen=True, slots=True)
-class SteelBrowserSession:
+class BrowserHostSession:
     session_id: str
     cdp_url: str
-    debug_url: str | None
-    live_view_url: str | None
-    profile_id: str | None
-
-
-def build_steel_client() -> AsyncSteel:
-    """Construct an ``AsyncSteel`` pointed at the configured Steel instance.
-    ``steel`` is imported lazily so the module loads without the SDK present."""
-    from steel import AsyncSteel  # noqa: PLC0415
-
-    return AsyncSteel(
-        base_url=settings.STEEL_API_URL,
-        steel_api_key=settings.STEEL_API_KEY or _SELF_HOST_API_KEY_PLACEHOLDER,
-    )
-
-
-def resolve_cdp_url(session_id: str, websocket_url: str) -> str:
-    """CDP connect URL Browser-Use attaches to. Defaults to Steel's advertised
-    ``websocketUrl``; ``STEEL_CDP_CONNECT_URL`` overrides for split networks."""
-    override: str | None = settings.STEEL_CDP_CONNECT_URL
-    if override:
-        return override.format(session_id=session_id) if "{session_id}" in override else override
-    return websocket_url
-
-
-def resolve_live_view_url(session_id: str, session_viewer_url: str | None) -> str | None:
-    """Live-view URL for the card. Prefers our own domain
-    (``STEEL_LIVE_VIEW_BASE_URL``, e.g. https://browser.heygaia.io) so the link
-    never exposes Steel directly; falls back to Steel's ``sessionViewerUrl``."""
-    base = settings.STEEL_LIVE_VIEW_BASE_URL
-    if base:
-        return f"{base.rstrip('/')}/sessions/{session_id}"
-    return session_viewer_url
+    live_view_url: str
+    context_id: str
 
 
 @asynccontextmanager
-async def steel_session(
+async def browser_session(
     *,
-    profile_id: str | None = None,
-    block_ads: bool = True,
-) -> AsyncIterator[SteelBrowserSession]:
-    """Create a Steel session, yield it, and always release it.
+    user_id: str,
+    start_url: str | None = None,
+) -> AsyncIterator[BrowserHostSession]:
+    """Create a browser-host session, yield it, and always release it.
 
-    Raises :class:`BrowserUnavailableError` if Steel cannot create the session.
-    ``profile_id`` restores a persisted authenticated context when provided.
+    Seeds the user's saved ``storage_state`` for ``start_url``'s domain, registers
+    session ownership for live-view auth, and on exit persists the returned
+    ``storage_state`` and unregisters the session. Raises
+    :class:`BrowserUnavailableError` when the host cannot create the session and
+    :class:`BrowserConcurrencyLimit` when the host is at capacity.
     """
-    client = build_steel_client()
-    ttl_ms = settings.BROWSER_USE_SESSION_TTL_SECONDS * 1000
+    domain = domain_of(start_url)
+    storage_state = await load_storage_state(user_id, domain)
 
-    # persist_profile makes Steel save the authenticated context back to a
-    # profile (creating one and returning its id on first use, reusing the given
-    # one otherwise) — without it, ``created.profile_id`` is never populated and
-    # "log in once, reuse next time" silently never works.
-    create_kwargs: dict = {
-        "block_ads": block_ads,
-        "api_timeout": ttl_ms,
-        "persist_profile": True,
-    }
-    if settings.BROWSER_USE_SOLVE_CAPTCHA:
-        create_kwargs["solve_captcha"] = True
-    if profile_id:
-        create_kwargs["profile_id"] = profile_id
-
-    try:
-        created = await client.sessions.create(**create_kwargs)
-    except Exception as exc:  # translate any SDK/transport failure
-        await client.close()
-        raise BrowserUnavailableError(
-            f"Could not create a Steel browser session at {settings.STEEL_API_URL}: {exc}"
-        ) from exc
-
-    session = SteelBrowserSession(
-        session_id=created.id,
-        cdp_url=resolve_cdp_url(created.id, created.websocket_url),
-        debug_url=getattr(created, "debug_url", None),
-        live_view_url=resolve_live_view_url(
-            created.id, getattr(created, "session_viewer_url", None)
-        ),
-        profile_id=getattr(created, "profile_id", None) or profile_id,
+    host = await host_client.create_session(storage_state)
+    session = BrowserHostSession(
+        session_id=host.session_id,
+        cdp_url=host.cdp_ws,
+        live_view_url=live_view_url(host.session_id),
+        context_id=host.context_id,
     )
     log.set(browser={"session_id": session.session_id, "operation": "create"})
-    log.info(f"{LogTag.BROWSER} Steel session created")
+    log.info(f"{LogTag.BROWSER} Browser session created")
 
     try:
+        await register_session(session.session_id, user_id, live_ws=host.live_ws)
         yield session
     finally:
         try:
-            await client.sessions.release(session.session_id)
-            log.info(f"{LogTag.BROWSER} Steel session released")
+            returned_state = await host_client.delete_session(session.session_id)
+            await save_storage_state(user_id, domain, returned_state)
+            log.info(f"{LogTag.BROWSER} Browser session released")
         except Exception as exc:
             log.warning(
-                f"{LogTag.BROWSER} Failed to release Steel session",
+                f"{LogTag.BROWSER} Failed to release browser session",
                 error_type=type(exc).__name__,
                 browser={"session_id": session.session_id, "operation": "release_failed"},
             )
-        await client.close()
+        await unregister_session(session.session_id)

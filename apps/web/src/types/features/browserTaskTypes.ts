@@ -67,3 +67,46 @@ export type BrowserTaskSnapshot =
   | BrowserResultSnapshot;
 
 export type BrowserHandoffDecision = "continue" | "cancel";
+
+/**
+ * Live-view WebSocket wire protocol. The API proxies these between the viewer
+ * and the browser host: the host streams `frame` messages out; the viewer sends
+ * CDP-shaped `mouse` / `key` messages back (only when interactive).
+ */
+
+export interface BrowserFrameMessage {
+  type: "frame";
+  data: string; // base64-encoded JPEG
+  url?: string | null;
+  title?: string | null;
+}
+
+export type BrowserMouseEvent =
+  | "mouseMoved"
+  | "mousePressed"
+  | "mouseReleased"
+  | "mouseWheel";
+
+export interface BrowserMouseMessage {
+  type: "mouse";
+  event: BrowserMouseEvent;
+  x: number;
+  y: number;
+  button?: "left" | "middle" | "right";
+  buttons?: number;
+  clickCount?: number;
+  deltaX?: number;
+  deltaY?: number;
+}
+
+export interface BrowserKeyMessage {
+  type: "key";
+  event: "keyDown" | "keyUp";
+  key: string;
+  code: string;
+  text?: string;
+  windowsVirtualKeyCode?: number;
+  nativeVirtualKeyCode?: number;
+}
+
+export type BrowserLiveInputMessage = BrowserMouseMessage | BrowserKeyMessage;
