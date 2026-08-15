@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any
 
 from app.constants.browser import (
     BROWSER_TAKEOVER_PREAMBLE,
+    BROWSER_VIEWPORT_HEIGHT,
+    BROWSER_VIEWPORT_WIDTH,
     MAX_HANDOFFS_PER_TASK,
     BrowserSessionStatus,
     HandoffStatus,
@@ -119,7 +121,12 @@ class BrowserTaskRunner:
             )
         )
 
-        browser = Browser(cdp_url=self._session.cdp_url)
+        browser = Browser(
+            cdp_url=self._session.cdp_url,
+            viewport={"width": BROWSER_VIEWPORT_WIDTH, "height": BROWSER_VIEWPORT_HEIGHT},
+            device_scale_factor=1,
+            no_viewport=False,
+        )
 
         agent_kwargs: dict[str, Any] = {
             "task": task + BROWSER_TAKEOVER_PREAMBLE,

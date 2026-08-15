@@ -158,3 +158,9 @@ NON_COMMITTING_ACTIONS: frozenset[str] = frozenset(
         "done",
     }
 )
+
+# Desktop viewport for the browser agent so pages render at a normal laptop
+# resolution instead of the ~800x600 CDP default (which collapses sites to their
+# mobile layout and makes screenshots look broken).
+BROWSER_VIEWPORT_WIDTH = 1280
+BROWSER_VIEWPORT_HEIGHT = 800
