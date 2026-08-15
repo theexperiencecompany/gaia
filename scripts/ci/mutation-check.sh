@@ -100,14 +100,18 @@ fi
 #    had already found. Counting also beats `wait "$oldest"` — a slow module
 #    would hold the head of the line while its slot sat idle.
 #
-#    mutmut's own child count is left at its default. Capping it to one was
-#    tried, on the theory that four concurrent modules oversubscribe a 4-vCPU
-#    runner: it moved which modules failed rather than how many (stream_manager
-#    started passing, chroma_tools_store started failing, six either way).
-#    Serializing a module's mutants makes a HANGING mutant cost its full
-#    timeout with nothing overlapping it, which is the opposite of what the
-#    slow modules needed — that cost is bounded in mutation.sh instead.
-PARALLELISM=4
+#    ONE module at a time, and mutmut's own child count left at its default.
+#    Its stats and clean-test phases each run the module's whole test selection
+#    in a SINGLE process, so four concurrent modules put four uncooperative
+#    single-threaded phases on a 4-vCPU runner and every one of them crawls:
+#    app/agents/core/graph_builder/build_graph.py reached 2 of its 64 mutants
+#    in 900s with ZERO timeouts, and finishes all 64 in 45s when it has the
+#    machine to itself. Sequential here, parallel inside mutmut (its mutant
+#    phase forks cpu_count children), and parallel across shards — each layer
+#    where parallelism actually helps, and none where it does not.
+#    Capping mutmut's children instead was tried and rejected: it moved which
+#    modules failed rather than how many.
+PARALLELISM=1
 FAILED=0
 SPAWNED=0
 REAPED=0

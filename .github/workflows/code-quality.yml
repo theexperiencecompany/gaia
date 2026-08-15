@@ -912,12 +912,13 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
-    # A runner has 4 vCPU and mutmut is CPU-bound, so a shard's own
-    # parallelism caps at 4 and shards are the only way to add throughput.
-    # Sized against the worst case seen: a 52-module diff needed ~2h in one
-    # job (11 modules done at the 30 min cancel), which is ~15 min per shard
-    # here, and a single 745-mutant module takes ~13 min on its own.
-    timeout-minutes: 30
+    # A shard runs its modules one at a time (see mutation-check.sh: mutmut's
+    # stats and clean-test phases are single-process, so concurrent modules
+    # only starve each other), which trades some overlap for each module
+    # actually finishing. 45 rather than 30 covers that trade on the largest
+    # diff measured — 52 modules, ~7 per shard — without the lane being
+    # cancelled mid-verdict, which reports as a test failure it is not.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
