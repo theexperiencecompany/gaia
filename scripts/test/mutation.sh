@@ -245,11 +245,18 @@ proc = subprocess.Popen(
     start_new_session=True,
 )
 try:
-    # 45 minutes per module: with the timeout constant above, a module with
-    # ~90 mutants pays ~30s of fresh-process startup per mutant. The old
-    # 15-minute cap killed such modules mid-run and reported them as
-    # "incomplete" even though nothing was wrong with the tests.
-    proc.communicate(timeout=2700)
+    # 12 minutes per module. This was 45, sized for when a module paid ~30s of
+    # fresh-process startup per mutant; with the selection scoped to unit tests
+    # the SLOWEST real module measured on CI is 1.2 minutes, so 12 is ~10x the
+    # worst honest case and anything beyond it is a hang, not slow work.
+    #
+    # The cap length is load-bearing for the whole lane, not just one module:
+    # the orchestrator runs N modules concurrently, so N hung modules occupy
+    # every worker and NOTHING else starts. That is what happened — four
+    # modules hung, four workers, and the lane was cancelled at its 90-minute
+    # budget having never started 13 of the 54 modules. A hang must surface as
+    # a fast, named failure rather than eating the whole budget silently.
+    proc.communicate(timeout=720)
 except subprocess.TimeoutExpired:
     os.killpg(proc.pid, signal.SIGKILL)
     proc.wait()
