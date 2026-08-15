@@ -125,26 +125,12 @@ class LoopGuardMiddleware(AgentMiddleware):
             counters.repeat = 1
         repeat = counters.repeat
 
-        if self.hard_stop and repeat >= LOOP_GUARD_STOP_REPEAT:
-            log.warning(
-                f"{LogTag.AGENT} Loop guard hard-stopped tool — redundant duplicate call not executed",
-                tool_name=tool_name,
-                repeat=repeat,
-            )
-            return ToolMessage(
-                content=(
-                    f"[Loop guard] Blocked without executing: `{tool_name}` has already been "
-                    f"called {repeat} times in a row with identical arguments (limit "
-                    f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result — reuse "
-                    "the earlier result, or if the task is done, stop and report it."
-                ),
-                tool_call_id=tool_call_id,
-                name=tool_name,
-                status="error",
-                additional_kwargs={"loop_guard_stopped": True},
-            )
-
         if self.hard_stop:
+            # The failure-specific stop is checked FIRST because it is the more
+            # specific diagnosis and says so ("already failed N times"). A run of
+            # identical FAILING calls trips both counters on the same call, so
+            # checking repeat first would shadow that message with the generic
+            # duplicate one and leave the model less to act on.
             stopped = self._hard_stop_message(
                 tool_name, tool_call_id, identical_before, same_tool_before
             )
@@ -156,6 +142,25 @@ class LoopGuardMiddleware(AgentMiddleware):
                     same_tool=same_tool_before,
                 )
                 return stopped
+
+            if repeat >= LOOP_GUARD_STOP_REPEAT:
+                log.warning(
+                    f"{LogTag.AGENT} Loop guard hard-stopped tool — redundant duplicate call not executed",
+                    tool_name=tool_name,
+                    repeat=repeat,
+                )
+                return ToolMessage(
+                    content=(
+                        f"[Loop guard] Blocked without executing: `{tool_name}` has already been "
+                        f"called {repeat} times in a row with identical arguments (limit "
+                        f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result — "
+                        "reuse the earlier result, or if the task is done, stop and report it."
+                    ),
+                    tool_call_id=tool_call_id,
+                    name=tool_name,
+                    status="error",
+                    additional_kwargs={"loop_guard_stopped": True},
+                )
 
         result = await handler(request)
         # Only failures feed the loop counters; a success breaks the consecutive

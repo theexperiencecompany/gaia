@@ -26,6 +26,9 @@ export interface OptimisticMessage {
   selectedCalendarEvent?: SelectedCalendarEventData | null;
   replyToMessage?: ReplyToMessageData | null;
   metadata?: Record<string, unknown>;
+  // The send never reached the backend. For a new conversation this bubble is
+  // the only record of the message, so it is marked rather than cleared.
+  failed?: boolean;
 }
 
 interface ChatState {
@@ -66,6 +69,8 @@ interface ChatState {
   // Optimistic message management for new conversations (single message only)
   setOptimisticMessage: (message: OptimisticMessage | null) => void;
   clearOptimisticMessage: () => void;
+  /** Flag the optimistic message as undelivered, keeping it on screen. */
+  markOptimisticMessageFailed: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -238,6 +243,13 @@ export const useChatStore = create<ChatState>((set) => ({
 
   // Clear the optimistic message (set to null)
   clearOptimisticMessage: () => set({ optimisticMessage: null }),
+
+  markOptimisticMessageFailed: () =>
+    set((state) => ({
+      optimisticMessage: state.optimisticMessage
+        ? { ...state.optimisticMessage, failed: true }
+        : null,
+    })),
 }));
 
 // Hydrate immediately on module load (before any React renders)

@@ -7,6 +7,14 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "CLAUDE_CODE_NEW_INIT": "true"
   },
+  "extraKnownMarketplaces": {
+    "nx-claude-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "nrwl/nx-ai-agents-config"
+      }
+    }
+  },
   "hooks": {
     "PostToolUse": [
       {
@@ -24,7 +32,7 @@
         ]
       },
       {
-        "matcher": "Task",
+        "matcher": "Agent",
         "hooks": [
           {
             "type": "command",
@@ -33,7 +41,7 @@
         ]
       },
       {
-        "matcher": "TodoWrite",
+        "matcher": "TaskCreate|TaskUpdate",
         "hooks": [
           {
             "type": "command",
@@ -44,7 +52,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Task",
+        "matcher": "Agent",
         "hooks": [
           {
             "type": "command",
@@ -97,20 +105,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code user-prompt-submit'",
-            "timeout": 60000
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code user-prompt-submit'"
           }
         ]
       }
     ]
-  },
-  "extraKnownMarketplaces": {
-    "nx-claude-plugins": {
-      "source": {
-        "source": "github",
-        "repo": "nrwl/nx-ai-agents-config"
-      }
-    }
   },
   "permissions": {
     "deny": [

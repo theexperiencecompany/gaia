@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import type { IMessage } from "@/lib/db/chatDb";
+import type { OptimisticMessage } from "@/stores/chatStore";
 import { useChatStore } from "@/stores/chatStore";
 import type { MessageType } from "@/types/features/convoTypes";
 
@@ -12,7 +13,7 @@ import type { MessageType } from "@/types/features/convoTypes";
 // bubble on every token.
 const conversionCache = new WeakMap<IMessage, MessageType>();
 
-const mapStoredMessageToConversationMessage = (
+export const mapStoredMessageToConversationMessage = (
   message: IMessage,
 ): MessageType => {
   const cached = conversionCache.get(message);
@@ -31,6 +32,7 @@ const mapStoredMessageToConversationMessage = (
     selectedCalendarEvent: message.selectedCalendarEvent ?? undefined,
     loading: message.status === "sending",
     queued: message.status === "queued",
+    failed: message.status === "failed",
     tool_data: message.tool_data ?? undefined,
     follow_up_actions: message.follow_up_actions ?? undefined,
     image_data: message.image_data ?? undefined,
@@ -45,6 +47,30 @@ const mapStoredMessageToConversationMessage = (
   conversionCache.set(message, mapped);
   return mapped;
 };
+
+/**
+ * The optimistic message is a separate shape from a stored one — it has no
+ * status field, so `failed` is carried explicitly rather than derived. It only
+ * exists before the backend assigns ids, and it is the only record of a send
+ * that died there.
+ */
+export const mapOptimisticMessageToConversationMessage = (
+  message: OptimisticMessage,
+): MessageType => ({
+  type: message.role === "user" ? ("user" as const) : ("bot" as const),
+  response: message.content,
+  message_id: message.id,
+  date: message.createdAt?.toISOString(),
+  fileIds: message.fileIds,
+  fileData: message.fileData,
+  selectedTool: message.toolName ?? undefined,
+  toolCategory: message.toolCategory ?? undefined,
+  selectedWorkflow: message.selectedWorkflow ?? undefined,
+  selectedCalendarEvent: message.selectedCalendarEvent ?? undefined,
+  replyToMessage: message.replyToMessage ?? undefined,
+  loading: false,
+  failed: message.failed,
+});
 
 export const useConversation = () => {
   const activeConversationId = useChatStore(
@@ -72,26 +98,10 @@ export const useConversation = () => {
       !activeConversationId &&
       optimisticMessage.conversationId === null
     ) {
-      const optimisticMsg: MessageType = {
-        type:
-          optimisticMessage.role === "user"
-            ? ("user" as const)
-            : ("bot" as const),
-        response: optimisticMessage.content,
-        message_id: optimisticMessage.id,
-        date: optimisticMessage.createdAt?.toISOString(),
-        fileIds: optimisticMessage.fileIds,
-        fileData: optimisticMessage.fileData,
-        selectedTool: optimisticMessage.toolName ?? undefined,
-        toolCategory: optimisticMessage.toolCategory ?? undefined,
-        selectedWorkflow: optimisticMessage.selectedWorkflow ?? undefined,
-        selectedCalendarEvent:
-          optimisticMessage.selectedCalendarEvent ?? undefined,
-        replyToMessage: optimisticMessage.replyToMessage ?? undefined,
-        loading: false,
-      };
-
-      return [...messages, optimisticMsg];
+      return [
+        ...messages,
+        mapOptimisticMessageToConversationMessage(optimisticMessage),
+      ];
     }
 
     return messages;

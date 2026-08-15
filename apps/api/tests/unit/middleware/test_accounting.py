@@ -30,7 +30,11 @@ from app.constants.llm import (
 )
 from app.models.payment_models import PlanType
 from app.services import llm_metering
-from app.services.cost_budget import BUDGET_WRAPUP_NOTICE, BudgetCheck
+from app.services.cost_budget import (
+    BUDGET_WRAPUP_NOTICE,
+    BudgetCheck,
+    is_budget_wrapup_threshold,
+)
 from shared.py.wide_events import log
 
 CONFIG: dict[str, Any] = {
@@ -424,6 +428,21 @@ async def test_hard_wall_stop_short_circuits_and_skips_the_wrapup_notice() -> No
     handler.assert_not_called()
     assert response.result == [AIMessage(content="You've reached today's usage limit.")]
     assert not any(w.get("msg") == "budget_wrapup_notice" for w in log.get().get("warnings", []))
+
+
+def test_a_plan_with_no_configured_budget_never_reaches_the_wrapup_threshold() -> None:
+    # Both shipped plans carry a non-zero budget, so this guard is only
+    # reachable through the config seam — but without it a budget of 0 makes
+    # `spent >= 0` true from the very first request, and every run would be
+    # told to wrap up before it had done anything.
+    #
+    # Lives here rather than beside is_budget_wrapup_threshold's own tests
+    # because the mutation gate mutates cost_budget.py against THIS file:
+    # scripts/ci/mutation-matrix.py picks the alphabetically first test file
+    # that references the module, and middleware/ sorts before services/.
+    with patch("app.services.cost_budget.get_daily_cost_budget_usd", return_value=0.0):
+        assert is_budget_wrapup_threshold(0.0, PlanType.FREE) is False
+        assert is_budget_wrapup_threshold(5.0, PlanType.FREE) is False
 
 
 # --- recursion high-water mark ------------------------------------------------ #

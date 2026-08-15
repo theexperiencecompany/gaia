@@ -7,7 +7,7 @@ export const entry: AlternativeData = {
   category: "productivity-suite",
   tagline: "All-in-one workspace for notes, wikis, and project management",
   painPoints: [
-    "Setup overhead is immense — building systems takes longer than actually working",
+    "Setup overhead is immense: building systems takes longer than actually working",
     "No proactive assistance; Notion waits for you to do everything manually",
     "AI features are shallow add-ons, not deeply integrated into workflows",
     "Expensive at scale, especially for teams needing advanced permissions",
@@ -15,7 +15,7 @@ export const entry: AlternativeData = {
   ],
   metaTitle: "Best Notion Alternative in 2026",
   metaDescription:
-    "Looking for a Notion alternative that actually works for you? GAIA is a proactive AI assistant that manages tasks, email, and calendar automatically — no templates required.",
+    "Looking for a Notion alternative that actually works for you? GAIA is a proactive AI assistant that manages tasks, email, and calendar automatically, no templates required.",
   keywords: [
     "notion alternative",
     "best notion alternative",
@@ -36,7 +36,7 @@ export const entry: AlternativeData = {
     "self-hosted note taking",
   ],
   whyPeopleLook:
-    "Notion is powerful but demands a lot from its users. People spend hours building databases, templates, and linked views before they can do any real work. As teams grow, the friction compounds: permission structures get complicated, mobile performance degrades, and the promise of an 'all-in-one' workspace turns into an 'all-or-nothing' maintenance burden. Many users want an assistant that actively helps them — not another canvas they have to fill. GAIA takes the opposite approach: it connects to your existing tools and proactively manages your tasks, email, and calendar without requiring you to rebuild your workflow from scratch.",
+    "Notion is powerful but demands a lot from its users. People spend hours building databases, templates, and linked views before they can do any real work. As teams grow, the friction compounds: permission structures get complicated, mobile performance degrades, and the promise of an 'all-in-one' workspace turns into an 'all-or-nothing' maintenance burden. Many users want an assistant that actively helps them, not another canvas they have to fill. GAIA takes the opposite approach: it connects to your existing tools and proactively manages your tasks, email, and calendar without requiring you to rebuild your workflow from scratch.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Task and to-do management with natural language input",
@@ -46,7 +46,7 @@ export const entry: AlternativeData = {
     "Workflow automation replacing manual Notion database triggers",
   ],
   gaiaAdvantages: [
-    "Proactive — GAIA surfaces what needs your attention without you asking",
+    "Proactive: GAIA surfaces what needs your attention without you asking",
     "No setup required; connects to Gmail, Google Calendar, and 50+ tools instantly",
     "Open-source and self-hostable so your data stays under your control",
     "Free tier available; Pro starts at $20/month with no per-seat pricing for individuals",
@@ -67,7 +67,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA free to use like Notion's free tier?",
       answer:
-        "Yes. GAIA has a free tier that includes core AI assistant features. Pro plans start at $20/month. If you self-host, GAIA is always free — unlike Notion, which restricts self-hosting entirely.",
+        "Yes. GAIA has a free tier that includes core AI assistant features. Pro plans start at $20/month. If you self-host, GAIA is always free, unlike Notion, which restricts self-hosting entirely.",
     },
     {
       question: "Does GAIA have a database or wiki feature?",
@@ -89,7 +89,7 @@ export const entry: AlternativeData = {
     },
     {
       feature: "Email management",
-      gaia: "Full Gmail integration — triages inbox, drafts replies, converts emails into tasks or calendar events automatically",
+      gaia: "Full Gmail integration: triages inbox, drafts replies, converts emails into tasks or calendar events automatically",
       competitor:
         "No native email integration; emails can only be clipped manually via the Notion Web Clipper browser extension",
     },
@@ -107,7 +107,7 @@ export const entry: AlternativeData = {
     },
     {
       feature: "Calendar integration",
-      gaia: "Full Google Calendar integration — reads, creates, and updates events; auto-prepares briefings before meetings",
+      gaia: "Full Google Calendar integration: reads, creates, and updates events; auto-prepares briefings before meetings",
       competitor:
         "Calendar view for Notion databases with limited Google Calendar sync; no proactive meeting preparation",
     },
@@ -115,7 +115,7 @@ export const entry: AlternativeData = {
       feature: "Pricing",
       gaia: "Free tier available; Pro from $20/month flat; self-hosting entirely free with no per-seat cost",
       competitor:
-        "Plus at $10/user/month; Business at $20/user/month; Enterprise at custom pricing — scales with headcount",
+        "Plus at $10/user/month; Business at $20/user/month; Enterprise at custom pricing, scaling with headcount",
     },
   ],
 };

@@ -28,7 +28,7 @@ class TestGenerateDescriptionFromMessage:
 
         assert description == "New Chat"
 
-    @patch("app.agents.llm.chatbot.get_default_llm")
+    @patch("app.agents.llm.chatbot.get_helper_llm")
     @patch("app.agents.llm.chatbot.ainvoke_llm", new_callable=AsyncMock)
     async def test_uses_llm_response_on_success(
         self, mock_ainvoke: AsyncMock, mock_get_default: MagicMock
@@ -45,7 +45,7 @@ class TestGenerateDescriptionFromMessage:
 
 
 class TestDoPromptNoStream:
-    @patch("app.agents.llm.chatbot.get_default_llm")
+    @patch("app.agents.llm.chatbot.get_helper_llm")
     @patch("app.agents.llm.chatbot.ainvoke_llm", new_callable=AsyncMock)
     async def test_propagates_operational_llm_failures(
         self, mock_ainvoke: AsyncMock, mock_get_default: MagicMock

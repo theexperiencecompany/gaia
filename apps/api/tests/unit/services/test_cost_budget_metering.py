@@ -21,6 +21,7 @@ from app.config.rate_limits import RateLimitPeriod
 from app.db.redis import redis_cache
 from app.services import cost_budget
 from app.services.cost_budget import get_cost, get_request_tokens, record_model_call_usage
+from shared.py.wide_events import log
 
 USER = "u-metering"
 REQUEST = "root-req-1"
@@ -171,3 +172,85 @@ class TestDegradation:
             cached_tokens=0,
             reasoning_tokens=0,
         )
+
+
+@pytest.mark.unit
+class TestTokenOnlyCalls:
+    """A priced-at-zero call still burned real tokens.
+
+    ``record_llm_call`` books ``cost_usd=0`` when the pricing lookup misses, so
+    gating the durable rollup on spend alone would lose the token breakdown for
+    exactly the calls that need re-pricing later. Each of the four counters has
+    to be able to trigger the rollup on its own — the existing tests always send
+    input and output together, so a single ``or`` flipped to ``and`` in that
+    chain changes nothing they can see.
+    """
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("input_tokens", 7),
+            ("output_tokens", 7),
+            ("cached_tokens", 7),
+            ("reasoning_tokens", 7),
+        ],
+    )
+    async def test_any_single_token_counter_books_the_rollup(
+        self, rollup: AsyncMock, field: str, value: int
+    ) -> None:
+        counters = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0,
+        }
+        counters[field] = value
+
+        await record_model_call_usage(USER, 0.0, REQUEST, charge_to_budget=True, **counters)
+
+        assert rollup.await_count == 1
+        assert rollup.await_args.kwargs[field] == value
+
+    async def test_a_call_with_neither_spend_nor_tokens_books_nothing(
+        self, rollup: AsyncMock
+    ) -> None:
+        await record_model_call_usage(
+            USER,
+            0.0,
+            REQUEST,
+            input_tokens=0,
+            output_tokens=0,
+            charge_to_budget=True,
+        )
+
+        rollup.assert_not_awaited()
+
+    async def test_unattributed_token_data_is_not_rolled_up(self, rollup: AsyncMock) -> None:
+        """The rollup is per-user; with no user there is nothing to book it
+        against, and writing it anyway would file another user's spend under a
+        null key."""
+        await record_model_call_usage(
+            None,
+            0.0,
+            REQUEST,
+            input_tokens=10,
+            output_tokens=5,
+            charge_to_budget=True,
+        )
+
+        rollup.assert_not_awaited()
+
+    async def test_a_failed_rollup_is_named_in_the_warning(self, rollup: AsyncMock) -> None:
+        """Fail-open is only safe if the failure is findable: the operation label
+        is what tells you the durable Mongo write dropped rather than the Redis
+        pipeline."""
+        log.reset()
+        rollup.side_effect = RuntimeError("mongo down")
+
+        await record_model_call_usage(
+            USER, 0.5, REQUEST, input_tokens=10, output_tokens=5, charge_to_budget=True
+        )
+
+        failures = [w for w in log.get().get("warnings", []) if w.get("operation")]
+        assert [w["operation"] for w in failures] == ["mongo_cost_rollup"]
+        assert failures[0]["error_type"] == "RuntimeError"

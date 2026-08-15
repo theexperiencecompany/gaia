@@ -80,7 +80,7 @@ def processor() -> DocumentProcessor:
     """Return a DocumentProcessor with mocked parser and llm."""
     with (
         patch("app.utils.file_utils.LlamaParse"),
-        patch("app.utils.file_utils.get_default_llm", return_value=_mock_llm()),
+        patch("app.utils.file_utils.get_helper_llm", return_value=_mock_llm()),
     ):
         proc = DocumentProcessor(user_id="u-test")
     return proc

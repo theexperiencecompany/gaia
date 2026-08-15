@@ -70,6 +70,11 @@ export const workflowFormSchema = z.object({
     .transform((val) => val.trim() || undefined)
     .optional(),
   prompt: z.string().min(1, "Prompt is required").max(5000, "Prompt too long"),
+  icon: z.string().max(64).nullable(),
+  icon_color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Invalid color")
+    .nullable(),
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
@@ -90,6 +95,8 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
   title: "",
   description: undefined,
   prompt: "",
+  icon: null,
+  icon_color: null,
   activeTab: "manual",
   selectedTrigger: "",
   trigger_config: {
@@ -137,6 +144,8 @@ export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
     title: workflow.title,
     description: workflow.description || undefined,
     prompt: workflow.prompt || workflow.description || workflow.title,
+    icon: workflow.icon ?? null,
+    icon_color: workflow.icon_color ?? null,
     activeTab,
     selectedTrigger,
     trigger_config: workflow.trigger_config,

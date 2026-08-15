@@ -47,6 +47,7 @@ from app.models.workflow_models import (
     GeneratedPromptOutput,
     GeneratedStep,
     GeneratedWorkflow,
+    IntegrationRef,
     PromptTriggerHint,
     TriggerConfig,
     TriggerType,
@@ -317,6 +318,84 @@ class TestCreateWorkflow:
         assert isinstance(result, Workflow)
         # Should NOT queue generation when steps are provided
         mock_queue.assert_not_awaited()
+
+    @patch(
+        "app.services.workflow.service.compute_missing_integrations",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.find_system_workflow", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_create_returns_existing_system_workflow_instead_of_duplicate(
+        self, mock_create, mock_find_system, mock_chroma, _mock_scheduler, _mock_missing
+    ):
+        """A system workflow is one-per-user: reaching the same definition from the
+        explore card after the provisioner already made it must hand back that
+        workflow, not create a second copy."""
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+        already_provisioned = _make_workflow()
+        mock_find_system.return_value = already_provisioned
+
+        request = _make_create_request(
+            steps=[WorkflowStep(id="s1", title="Triage", description="d")]
+        )
+        request.system_workflow_key = "gmail:email_intelligence"
+
+        result = await WorkflowService.create_workflow(request, USER_ID)
+
+        assert result is already_provisioned
+        mock_find_system.assert_awaited_once_with(USER_ID, "gmail:email_intelligence")
+        mock_create.assert_not_awaited()
+
+    @patch(
+        "app.services.workflow.service.compute_missing_integrations",
+        new_callable=AsyncMock,
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_create_stays_inactive_when_steps_need_unconnected_integrations(
+        self, _mock_create, mock_activate, mock_chroma, _mock_scheduler, mock_missing
+    ):
+        """Supplied steps skip generation, so the generation-time gate never runs on
+        them. A workflow needing an app the user hasn't connected must still be
+        created switched off rather than firing and failing on its first run."""
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+        mock_missing.return_value = [IntegrationRef(id="gmail", name="Gmail")]
+
+        request = _make_create_request(
+            steps=[WorkflowStep(id="s1", title="Read inbox", description="d")]
+        )
+        result = await WorkflowService.create_workflow(request, USER_ID)
+
+        assert result.activated is False
+        mock_activate.assert_not_awaited()
+
+    @patch(
+        "app.services.workflow.service.compute_missing_integrations",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_create_activates_when_no_integrations_missing(
+        self, _mock_create, mock_activate, mock_chroma, _mock_scheduler, _mock_missing
+    ):
+        """The counterpart to the above: nothing missing means it still switches on."""
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+
+        request = _make_create_request(
+            steps=[WorkflowStep(id="s1", title="Remind me", description="d")]
+        )
+        result = await WorkflowService.create_workflow(request, USER_ID)
+
+        assert result.activated is True
+        mock_activate.assert_awaited_once()
 
     @patch(
         "app.services.workflow.service.WorkflowService._generate_workflow_steps",

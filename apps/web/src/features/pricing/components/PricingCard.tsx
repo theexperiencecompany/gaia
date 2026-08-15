@@ -12,6 +12,10 @@ import { ShineBorder } from "@/components/ui/shine-border";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
+import {
+  type PricingOffer,
+  usePricingModalStore,
+} from "@/stores/pricingModalStore";
 
 import { CENTS_PER_DOLLAR, MONTHS_PER_YEAR } from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
@@ -65,6 +69,11 @@ function getPriceDisplay(
   };
 }
 
+/** What the tier costs once the offer's percentage comes off. */
+function getOfferPrice(price: number, offer: PricingOffer) {
+  return Math.round(price * (1 - offer.discountPercent / 100));
+}
+
 export function PricingCard({
   title,
   price,
@@ -92,6 +101,22 @@ export function PricingCard({
     isLoading: isCreatingSubscription,
     error: paymentError,
   } = useDodoPayments();
+  // An offer the modal was opened with (the founder's letter, for one) rides
+  // along to checkout so the code is already applied when the page loads. The
+  // discounted figures run through the same price maths as the list ones, so
+  // the card can strike the list price and show what the reader will pay.
+  const offer = usePricingModalStore((s) => s.offer);
+  const offerDisplay =
+    offer && price > 0
+      ? getPriceDisplay(
+          getOfferPrice(price, offer),
+          originalPrice,
+          durationIsMonth,
+        )
+      : null;
+  const offerPerMonthDollars = offerDisplay?.perMonthDollars ?? null;
+  const offerYearlyTotalDollars = offerDisplay?.yearlyTotalDollars ?? null;
+  const offerMonthsFree = offerDisplay?.monthsFree ?? null;
   const user = useUser();
   const router = useRouter();
 
@@ -146,7 +171,7 @@ export function PricingCard({
       return;
     }
 
-    await createSubscriptionAndRedirect(planId);
+    await createSubscriptionAndRedirect(planId, offer?.discountCode);
   };
 
   const getButtonText = () => {
@@ -233,16 +258,23 @@ export function PricingCard({
 
       {/* Price */}
       <div className="px-6 pb-5">
-        <div className="flex items-baseline gap-1.5">
+        <div className="flex items-baseline gap-2">
+          {offerPerMonthDollars !== null && (
+            <span className="text-2xl font-normal text-zinc-500 line-through">
+              ${perMonthDollars.toLocaleString()}
+            </span>
+          )}
           <NumberFlow
-            value={perMonthDollars}
+            value={offerPerMonthDollars ?? perMonthDollars}
             format={{
               style: "currency",
               currency: "USD",
               maximumFractionDigits: 0,
             }}
             willChange
-            className="text-5xl font-semibold tracking-tight"
+            className={`text-5xl font-semibold tracking-tight${
+              offerPerMonthDollars !== null ? " text-success" : ""
+            }`}
           />
           <span className="text-base font-normal text-zinc-400">/ month</span>
         </div>
@@ -258,14 +290,32 @@ export function PricingCard({
           {!!yearlyTotalDollars && (
             <>
               <span aria-hidden className="size-1 rounded-full bg-zinc-600" />
-              <span className="text-sm font-normal text-zinc-400">
-                ${yearlyTotalDollars.toLocaleString()}
-              </span>
+              {offerYearlyTotalDollars === null ? (
+                <span className="text-sm font-normal text-zinc-400">
+                  ${yearlyTotalDollars.toLocaleString()}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-sm font-normal">
+                  <span className="text-zinc-500 line-through">
+                    ${yearlyTotalDollars.toLocaleString()}
+                  </span>
+                  <span className="text-success">
+                    ${offerYearlyTotalDollars.toLocaleString()}
+                  </span>
+                </span>
+              )}
             </>
           )}
           {showSavings && (
             <Chip color="success" size="sm" variant="flat">
-              {monthsFree} months free
+              {offerMonthsFree === null ? (
+                `${monthsFree} months free`
+              ) : (
+                <span className="flex items-center gap-1">
+                  <span className="line-through opacity-60">{monthsFree}</span>
+                  <span>{offerMonthsFree} months free</span>
+                </span>
+              )}
             </Chip>
           )}
         </div>

@@ -85,7 +85,7 @@ export const PROACTIVE_MESSAGES: ChatMessage[] = [
     id: "dev-pr3",
     role: "assistant",
     content:
-      "The Sentry error on /api/auth is marked P1 — want me to draft a Slack message to the #oncall channel?",
+      "The Sentry error on /api/auth is marked P1. Want me to draft a Slack message to the #oncall channel?",
     delay: 600,
   },
 ];
@@ -154,7 +154,7 @@ export const PR_MESSAGES: ChatMessage[] = [
     id: "dev-pr5r",
     role: "assistant",
     content:
-      "Start with #214 — it's 3 days old and blocks the auth release. I've summarized the 23 changed files. Want the highlights?",
+      "Start with #214: it's 3 days old and blocks the auth release. I've summarized the 23 changed files. Want the highlights?",
     delay: 700,
   },
 ];
@@ -164,7 +164,7 @@ export const INCIDENT_MESSAGES: ChatMessage[] = [
     id: "dev-inc1",
     role: "assistant",
     content:
-      "P1 alert: /api/payments/webhook is erroring at 847/min — started 3 minutes ago.",
+      "P1 alert: /api/payments/webhook is erroring at 847/min, started 3 minutes ago.",
   },
   {
     id: "dev-inc2",

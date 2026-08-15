@@ -828,3 +828,82 @@ class TestCancelBroadcast:
 
 def test_both_executor_tools_are_exported_for_the_comms_agent() -> None:
     assert [tool.name for tool in tools] == ["call_executor", "cancel_executor"]
+
+
+@pytest.mark.unit
+class TestDispatchThreadsTheTurnsIdentity:
+    """What the comms turn hands the executor about *which* turn it is.
+
+    ``bot_message_id`` is the original live turn's message: a HIL pause resumes
+    onto it rather than minting a rival placeholder, so losing it here is the
+    same user-visible split as losing it in the queue — the client renders a
+    second bubble with its own tool accordion and the first one never finishes.
+    """
+
+    async def test_the_bot_message_id_reaches_the_executor_run(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        await call_executor_with(
+            config=config_for(bot_message_id="bmsg-7"), task="check my calendar"
+        )
+        await drain_background_tasks()
+
+        assert spawned_runs[0]["run"].bot_message_id == "bmsg-7"
+
+    async def test_a_turn_without_one_dispatches_with_none(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """Only a HIL pause sets it; a plain live turn must dispatch cleanly
+        rather than carrying a stale id from the configurable."""
+        await call_executor_with(config=config_for(), task="check my calendar")
+        await drain_background_tasks()
+
+        assert spawned_runs[0]["run"].bot_message_id is None
+
+    async def test_the_users_own_wording_reaches_the_executor(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """The executor's brief carries the verbatim request alongside comms'
+        paraphrase, so a detail comms dropped is still recoverable downstream."""
+        await call_executor_with(
+            config=config_for(),
+            task="triage the inbox",
+            verbatim_request="pls archive the junk mail and flag the offer thing",
+        )
+        await drain_background_tasks()
+
+        brief = spawned_runs[0]["task"]
+        assert brief.startswith(
+            "Original request (verbatim):\npls archive the junk mail and flag the offer thing"
+        )
+        assert "triage the inbox" in brief
+
+
+@pytest.mark.unit
+class TestDispatchAcknowledgement:
+    """Comms writes its user-facing reply from this string, before the executor
+    has run a single tool. It is the one place where the wording *is* the
+    behaviour: it must not read as completion, and it has to name the approval
+    gate the user may be about to see. Asserted verbatim rather than by
+    substring — a reworded clause that quietly drops "Nothing has run yet" or
+    the approval sentence is exactly the regression that would ship a bot
+    announcing work it has not done.
+    """
+
+    async def test_the_acknowledgement_is_exact(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        response = await call_executor_with(config=config_for(), task="send the email")
+        task_id = task_id_from(response)
+
+        assert response == (
+            f"Task accepted (task_id: {task_id}). Nothing has run yet — this only means the "
+            "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
+            "finished. Risky actions pause for the user's approval first and they see an "
+            "approval card; if that happens the work waits on them, not on you. Acknowledge "
+            "that you are on it, and say the action is waiting for their approval if one is "
+            "pending. This guidance applies ONLY to this acknowledgment. The real result "
+            "arrives later as its own message and supersedes it completely: by then the gate "
+            "is settled, so report what happened and never ask again for an approval the "
+            "user has already given."
+        )

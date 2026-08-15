@@ -61,7 +61,10 @@ from app.agents.llm.client import (
     is_default_model_config,
 )
 from app.agents.llm.exceptions import LLMNotConfiguredError
-from app.agents.middleware.completion import work_looks_unfinished
+from app.agents.middleware.completion import (
+    completion_nudges_spent,
+    work_looks_unfinished,
+)
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.llm import (
@@ -613,7 +616,7 @@ def create_agent(
             # tool-free answer can't loop. Comms never opts in and ends normally.
             if (
                 require_finish_to_end
-                and state.get("completion_nudges", 0) < MAX_COMPLETION_NUDGES
+                and completion_nudges_spent(state) < MAX_COMPLETION_NUDGES
                 and work_looks_unfinished(state)
             ):
                 return "nudge_continue"
@@ -669,9 +672,10 @@ def create_agent(
         return finish_task_node(tool_calls, store=store)
 
     def nudge_continue_node(state: State) -> State:
-        n = state.get("completion_nudges", 0)
-        notice = HumanMessage(content=COMPLETION_NUDGE_MESSAGE)
-        return State(messages=[notice], completion_nudges=n + 1)
+        # The message IS the tally: completion_nudges_spent counts these back out
+        # of the current delegation, so there is no counter to keep in sync.
+        del state
+        return State(messages=[HumanMessage(content=COMPLETION_NUDGE_MESSAGE)])
 
     async def anudge_continue_node(state: State) -> State:
         return nudge_continue_node(state)

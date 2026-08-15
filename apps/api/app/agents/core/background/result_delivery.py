@@ -471,9 +471,9 @@ def _merge_tool_data(
     pending never overwrites settled.
     """
 
-    def _status(entry: ToolDataEntry) -> str:
+    def _is_settled(entry: ToolDataEntry) -> bool:
         data = entry.get("data")
-        return data.get("status", "") if isinstance(data, dict) else ""
+        return isinstance(data, dict) and data.get("status") in _SETTLED_APPROVAL_STATUSES
 
     merged = list(existing)
     index_by_approval = {
@@ -487,9 +487,7 @@ def _merge_tool_data(
                 index_by_approval[approval_id] = len(merged) - 1
             continue
         i = index_by_approval[approval_id]
-        if _status(merged[i]) in _SETTLED_APPROVAL_STATUSES and _status(entry) not in (
-            _SETTLED_APPROVAL_STATUSES
-        ):
+        if _is_settled(merged[i]) and not _is_settled(entry):
             continue  # pending replay never downgrades a settled decision
         merged[i] = entry
     return merged
@@ -511,7 +509,10 @@ async def _reconcile_approval_statuses(entries: list[ToolDataEntry]) -> list[Too
             reconciled.append(entry)
             continue
         record = await get_approval(approval_id)
-        if record is not None and record.status != data.get("status"):
+        if record is not None:
+            # Restamp unconditionally. Comparing against the current status
+            # first only skipped a dict copy when they already matched, and no
+            # caller can tell the two apart.
             entry = {**entry, "data": {**data, "status": record.status}}
         reconciled.append(entry)
     return reconciled

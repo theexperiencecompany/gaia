@@ -42,6 +42,26 @@ class TestComposeTaskBrief:
         assert out.startswith("Original request (verbatim):\npls archive the junk mail")
         assert "archive the promos and flag the offer letter" in out
 
+    def test_the_brief_layout_is_exact(self):
+        """The executor reads this back as its own instructions, so the layout is
+        the contract: sections separated by a blank line, criteria one per line.
+        Run the criteria together and the definition of done becomes one unreadable
+        line the model is asked to satisfy item by item."""
+        out = compose_executor_brief(
+            "triage my inbox",
+            ["promos archived", "offer flagged"],
+            verbatim_request="pls sort my mail",
+        )
+
+        assert out == (
+            "Original request (verbatim):\npls sort my mail"
+            "\n\n"
+            "triage my inbox"
+            "\n\n"
+            "Definition of done (every item must be true before you finish):\n"
+            "- promos archived\n- offer flagged"
+        )
+
 
 class TestCallExecutorComposition:
     async def test_acceptance_criteria_reach_the_dispatched_task(self):

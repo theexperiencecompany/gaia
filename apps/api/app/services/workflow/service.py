@@ -184,6 +184,22 @@ class WorkflowService:
         workflow_id: str | None = None
         trigger_ids: list[str] = []
 
+        # A system workflow is one-per-user, keyed by system_workflow_key. The user
+        # can reach the same definition from two directions — connecting the
+        # integration (the provisioner) or adding its explore card — so hand back
+        # the one they already have instead of creating a near-duplicate.
+        if request.system_workflow_key:
+            existing = await workflow_repository.find_system_workflow(
+                user_id, request.system_workflow_key
+            )
+            if existing:
+                log.info(
+                    f"{LogTag.WORKFLOW} System workflow already exists for user, returning it",
+                    system_workflow_key=request.system_workflow_key,
+                    workflow={"id": existing.id},
+                )
+                return existing
+
         try:
             # Calculate next_run for scheduled workflows with timezone awareness
             trigger_config = request.trigger_config
@@ -228,6 +244,8 @@ class WorkflowService:
                 title=request.title,
                 description=request.description or "",
                 prompt=request.prompt,
+                icon=request.icon,
+                icon_color=request.icon_color,
                 steps=workflow_steps,
                 trigger_config=trigger_config,
                 activated=False,  # Start in pending state
@@ -310,7 +328,21 @@ class WorkflowService:
                 trigger_config=trigger_config,
             )
 
-            integration_skipped = (
+            # Steps supplied by the caller (adding an explore card) skip generation,
+            # so the generation-time gate never runs on them. Apply the same rule
+            # here: a workflow whose steps need apps the user hasn't connected is
+            # created inactive rather than switched on and failing on first run.
+            missing_step_integrations = await compute_missing_integrations(
+                compute_required_integrations(workflow.steps), user_id
+            )
+            if missing_step_integrations:
+                log.info(
+                    f"{LogTag.WORKFLOW} Workflow created inactive — steps need unconnected integrations",
+                    id=workflow.id,
+                    missing_integrations=[m.id for m in missing_step_integrations],
+                )
+
+            integration_skipped = bool(missing_step_integrations) or (
                 trigger_config.type == TriggerType.INTEGRATION and not integration_connected
             )
 
@@ -1244,6 +1276,17 @@ class WorkflowService:
             "description": row.description,
             "slug": row.slug,
             "prompt": row.prompt,
+            "icon": row.icon,
+            "icon_color": row.icon_color,
+            # Present only on the built-in cards: lets the client dedupe against a
+            # workflow the user was already provisioned, and name the integration
+            # that sets it up automatically.
+            "system_workflow_key": row.system_workflow_key,
+            "source_integration": row.source_integration,
+            # The card advertises "Daily at 8am" / "on new email", so adding it has
+            # to reproduce that trigger — without this the client can only guess,
+            # and every added workflow silently became manual.
+            "trigger_config": row.trigger_config.model_dump(mode="json"),
             "steps": normalized_steps,
             "created_at": row.created_at,
             "creator": format_creator(row, default_name=default_creator_name),

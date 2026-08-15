@@ -30,7 +30,7 @@ async def test_decompose_parses_llm_json_response() -> None:
     query = f"unique-llm-path-{uuid4()}"
     with (
         patch("app.utils.research_utils.ainvoke_llm", new_callable=AsyncMock) as llm,
-        patch("app.utils.research_utils.get_default_llm", return_value=object()),
+        patch("app.utils.research_utils.get_helper_llm", return_value=object()),
     ):
         llm.return_value = response
         queries = await decompose_research_queries(query, "web", "", 1)

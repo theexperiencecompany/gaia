@@ -1,5 +1,6 @@
 from typing import Any
 
+from app.agents.llm.types import LLMProviderName
 from app.models.models_models import DevModelOption
 
 GEMINI_PROVIDER = "gemini"
@@ -43,9 +44,13 @@ RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 # "verify or continue" nudges instead of ending. "Unfinished" means a tracked todo
 # is still pending, or fewer than COMPLETION_MIN_TOOL_CALLS tools were executed on
 # a delegated task — the "one lookup then assert a conclusion" failure a good model
-# would keep digging past. Bounded so a genuinely quick task costs at most this
-# many extra steps. Only the executor opts in (require_finish_to_end); comms may
-# always end in plain text.
+# would keep digging past. Both counts are scoped to the CURRENT delegation
+# (middleware.completion.current_delegation), not the executor thread, which
+# outlives it: counting the thread let each delegation inherit the previous one's
+# tools and nudges, so the guard fired once per conversation and never again.
+# Bounded so a genuinely quick task costs at most this many extra steps per
+# delegation. Only the executor opts in (require_finish_to_end); comms may always
+# end in plain text.
 MAX_COMPLETION_NUDGES = 1
 COMPLETION_MIN_TOOL_CALLS = 2
 COMPLETION_NUDGE_MESSAGE = (
@@ -297,25 +302,25 @@ OPENROUTER_APP_CATEGORIES = ["personal-agent", "general-chat"]
 # ignore OpenRouter `model_kwargs`/`reasoning`. This menu is NEVER used in production.
 DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "minimax-m3": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "minimax/minimax-m3",
         "model_kwargs": {"provider": {"only": ["minimax"]}},
         "reasoning": True,
     },
     "glm-5.2": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "z-ai/glm-5.2",
         "model_kwargs": {"provider": {"only": ["z-ai"]}},
         "reasoning": True,
     },
     "gemini-3.5-flash": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "google/gemini-3.5-flash",
         "model_kwargs": None,
         "reasoning": False,
     },
     "deepseek-v4": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "deepseek/deepseek-v4-pro",
         "model_kwargs": None,
         "reasoning": False,
@@ -324,7 +329,7 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # Pinned snapshot — same id also served by the cheap OpenRouter-compatible
         # lanes (e.g. Nous Research), so the custom endpoint below can run the
         # identical model for A/B-ing routes.
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "deepseek/deepseek-v4-flash-0731",
         # Provider-routing pin: without it the upstream rotates per request and
         # the per-upstream prompt cache never chains (measured).
@@ -334,13 +339,13 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "custom": {
         # The env-defined endpoint (DEV_LLM_* settings). `model` None = don't pin
         # one here; the client's own default (DEV_LLM_MODEL) serves the request.
-        "provider": "custom",
+        "provider": LLMProviderName.CUSTOM,
         "model": None,
         "model_kwargs": None,
         "reasoning": False,
     },
     "gemini-3.1-flash-lite": {
-        "provider": "gemini",
+        "provider": LLMProviderName.GEMINI,
         "model": "gemini-3.1-flash-lite",
         "model_kwargs": None,
         "reasoning": False,

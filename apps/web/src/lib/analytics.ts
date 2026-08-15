@@ -139,6 +139,14 @@ export const ANALYTICS_EVENTS = {
   ERROR_OCCURRED: "error:occurred",
   API_ERROR: "api:error",
 
+  // Founder letter events
+  FOUNDER_LETTER_SHOWN: "founder_letter:shown",
+  FOUNDER_LETTER_OPENED: "founder_letter:opened",
+  FOUNDER_LETTER_DISCOUNT_CTA_CLICKED: "founder_letter:discount_cta_clicked",
+  FOUNDER_LETTER_CODE_COPIED: "founder_letter:code_copied",
+  FOUNDER_LETTER_MEETING_CLICKED: "founder_letter:meeting_clicked",
+  FOUNDER_LETTER_DISMISSED: "founder_letter:dismissed",
+
   // What's new events
   WHATS_NEW_CARD_SHOWN: "whats_new:card_shown",
   WHATS_NEW_CARD_CLICKED: "whats_new:card_clicked",

@@ -42,6 +42,20 @@ from langchain_core.utils import _merge as _merge_module
 
 _IDEMPOTENT_STRING_KEYS = frozenset({"id", "output_version", "model_provider", "model_name"})
 
+# Modules that did `from ._merge import merge_dicts`, so each holds its own
+# reference that patching `_merge` alone cannot reach. Typed as Any because the
+# rebind below writes an attribute typeshed does not declare on them — the whole
+# point of a monkeypatch — and `ModuleType` would reject the assignment.
+_REBIND_TARGETS: tuple[Any, ...] = (
+    _ai_messages,
+    _base_messages,
+    _chat_messages,
+    _function_messages,
+    _tool_messages,
+    _chat_generation,
+    _generation,
+)
+
 
 def merge_dicts(left: dict[str, Any], *others: dict[str, Any]) -> dict[str, Any]:
     r"""Merge dictionaries, treating equal-valued identity/metadata strings
@@ -89,15 +103,7 @@ def merge_dicts(left: dict[str, Any], *others: dict[str, Any]) -> dict[str, Any]
 def apply() -> None:
     """Rebind the module-level `merge_dicts` name everywhere it was imported."""
     _merge_module.merge_dicts = merge_dicts
-    for module in (
-        _ai_messages,
-        _base_messages,
-        _chat_messages,
-        _function_messages,
-        _tool_messages,
-        _chat_generation,
-        _generation,
-    ):
+    for module in _REBIND_TARGETS:
         module.merge_dicts = merge_dicts
 
 
