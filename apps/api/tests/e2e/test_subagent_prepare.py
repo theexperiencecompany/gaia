@@ -22,6 +22,7 @@ import pytest
 
 from app.agents.core.subagents import handoff_tools
 from app.agents.core.subagents.handoff_tools import prepare_subagent_execution
+from app.agents.core.subagents.subagent_helpers import AgentContextMessages
 
 pytestmark = pytest.mark.e2e
 
@@ -75,7 +76,11 @@ def gmail_subagent(monkeypatch: pytest.MonkeyPatch):
     # its own subsystem and none of them is what this file is about.
     monkeypatch.setattr(
         "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-        AsyncMock(return_value=SystemMessage(content="dynamic context")),
+        AsyncMock(
+            return_value=AgentContextMessages(
+                stable=SystemMessage(content="dynamic context"), volatile_tail=None
+            )
+        ),
     )
     return graph
 

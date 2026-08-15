@@ -46,6 +46,7 @@ from app.agents.core.subagents.handoff_tools import (
 )
 from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
+from app.agents.core.subagents.subagent_helpers import AgentContextMessages
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     SubagentOutcome,
@@ -55,7 +56,7 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
 from app.models.hil_models import HILApprovalRecord
-from tests.helpers import create_fake_llm
+from tests.helpers import PassthroughFakeLLM, create_fake_llm
 
 HANDOFF_MODULE = "app.agents.core.subagents.handoff_tools"
 BASE_SUBAGENT_MODULE = "app.agents.core.subagents.base_subagent"
@@ -409,7 +410,11 @@ async def real_subagent_seams():
         patch(f"{HANDOFF_MODULE}.get_stream_writer", return_value=MagicMock()),
         patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            AsyncMock(return_value=SystemMessage(content="ctx")),
+            AsyncMock(
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="ctx"), volatile_tail=None
+                )
+            ),
         ),
         patch(
             "app.utils.agent_utils.get_tool_registry",
@@ -758,7 +763,11 @@ class TestBuildInitialMessages:
 
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new=AsyncMock(return_value=SystemMessage(content="Context: time is now.")),
+            new=AsyncMock(
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="Context: time is now."), volatile_tail=None
+                )
+            ),
         ):
             messages = await build_initial_messages(
                 system_message=system_msg,
@@ -777,7 +786,11 @@ class TestBuildInitialMessages:
 
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new=AsyncMock(return_value=SystemMessage(content="ctx")),
+            new=AsyncMock(
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="ctx"), volatile_tail=None
+                )
+            ),
         ):
             messages = await build_initial_messages(
                 system_message=system_msg,
@@ -794,7 +807,11 @@ class TestBuildInitialMessages:
 
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new=AsyncMock(return_value=SystemMessage(content="ctx")),
+            new=AsyncMock(
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="ctx"), volatile_tail=None
+                )
+            ),
         ):
             messages = await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
@@ -821,9 +838,9 @@ class TestBuildInitialMessages:
             query: str,
             subagent_id: str | None = None,
             **kwargs: object,
-        ) -> SystemMessage:
+        ) -> AgentContextMessages:
             captured_queries.append(query)
-            return SystemMessage(content="ctx")
+            return AgentContextMessages(stable=SystemMessage(content="ctx"), volatile_tail=None)
 
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
@@ -1548,7 +1565,7 @@ GATED_TASK = "post the release note to #eng"
 GATED_ANSWER = "release note posted to #eng"
 
 
-class _GatedSubagentLLM:
+class _GatedSubagentLLM(PassthroughFakeLLM):
     """Posts the note, then finishes with the result. Message-driven, never counted.
 
     A HIL resume replays the executor's tool node and shows the model the same
@@ -1558,15 +1575,6 @@ class _GatedSubagentLLM:
 
     def __init__(self) -> None:
         self.invocations = 0
-
-    def with_config(self, **_kwargs: Any) -> _GatedSubagentLLM:
-        return self
-
-    def bind_tools(self, _tools: Any, **_kwargs: Any) -> _GatedSubagentLLM:
-        return self
-
-    def with_retry(self, **_kwargs: Any) -> _GatedSubagentLLM:
-        return self
 
     async def ainvoke(self, messages: Any, **_kwargs: Any) -> AIMessage:
         self.invocations += 1
@@ -1667,7 +1675,11 @@ def handoff_seams(gated_subagent):
         ),
         patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            AsyncMock(return_value=SystemMessage(content="ctx")),
+            AsyncMock(
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="ctx"), volatile_tail=None
+                )
+            ),
         ),
         patch(
             "app.utils.agent_utils.get_tool_registry",
@@ -1879,7 +1891,11 @@ async def background_dispatch_seams():
         ),
         patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            AsyncMock(return_value=SystemMessage(content="ctx")),
+            AsyncMock(
+                return_value=AgentContextMessages(
+                    stable=SystemMessage(content="ctx"), volatile_tail=None
+                )
+            ),
         ),
         patch(
             "app.utils.agent_utils.get_tool_registry",

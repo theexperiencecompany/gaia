@@ -28,6 +28,7 @@ from app.agents.tools.core.tool_runtime_config import (
 )
 from app.constants.general import FINISH_TASK_NAME
 from app.override.langgraph_bigtool.create_agent import create_agent
+from tests.helpers import PassthroughFakeLLM
 
 
 @tool
@@ -54,24 +55,17 @@ def spawn_subagent(task: str = "") -> str:
     return task
 
 
-class _FakeLLM:
+class _FakeLLM(PassthroughFakeLLM):
     """Simple fake LLM for create_agent flow tests."""
 
     def __init__(self) -> None:
         self.bind_calls: list[list[str]] = []
         self._invoke_count = 0
 
-    def with_config(self, configurable: dict[str, Any] | None = None) -> "_FakeLLM":
-        return self
-
-    def bind_tools(self, tools: list[Any]) -> "_FakeLLM":
+    def bind_tools(self, tools: Any, **_kwargs: Any) -> "_FakeLLM":
+        # Overridden only to record what was bound; the assertions read this.
         names = [getattr(t, "name", str(t)) for t in tools]
         self.bind_calls.append(names)
-        return self
-
-    def with_retry(self, **_kwargs: Any) -> "_FakeLLM":
-        # ainvoke_llm/invoke_llm wrap the bound model in with_llm_retry before
-        # invoking; the fake retry is a no-op passthrough.
         return self
 
     async def ainvoke(self, _messages: list[Any], config: Any = None) -> AIMessage:
