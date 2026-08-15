@@ -179,3 +179,7 @@ evlog.map.json
 
 # Redis snapshot — created if a local redis-server is started from the repo root.
 dump.rdb
+
+# mutmut per-invocation workdirs (scripts/test/mutation.sh, removed on exit
+# but left behind by an interrupted local run)
+.mutation-*/
