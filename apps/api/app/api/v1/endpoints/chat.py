@@ -176,6 +176,12 @@ async def chat_stream_endpoint(
         conversation_id=conversation_id,
         user_id=user_id,
     )
+    # Server-side GROUND TRUTH for a chat message, and the one to count for
+    # volume: it fires for every surface (web, desktop, and bots via
+    # endpoints/bot.py) and no ad blocker can drop it. The web client also
+    # emits `chat:message_sent` for the same message — that is INTENT, kept
+    # deliberately for the composer context it carries. Two names, two
+    # meanings; see the comment in apps/web/src/hooks/useSendMessage.ts.
     capture_context_event(
         AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
         {

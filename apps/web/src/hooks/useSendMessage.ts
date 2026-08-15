@@ -220,9 +220,19 @@ export const useSendMessage = () => {
         isOnboardingDemo: false,
       };
 
-      // Canonical capture for every send path (composer, workflow auto-send,
-      // retry, voice). User-authored free text (message content, workflow
-      // titles) is intentionally NOT sent — booleans/IDs only.
+      // Canonical CLIENT capture for every send path (composer, workflow
+      // auto-send, retry, voice). User-authored free text (message content,
+      // workflow titles) is intentionally NOT sent — booleans/IDs only.
+      //
+      // Deliberately distinct from the server's `chat:message_submitted`
+      // (apps/api/app/api/v1/endpoints/chat.py), which fires for the same
+      // message. This one is INTENT — the user pressed send. That one is
+      // GROUND TRUTH — the request reached the backend. The gap between the
+      // two is the ad-blocked + failed-request rate, which is the point of
+      // keeping both. Do not "deduplicate" them into one event: count
+      // `chat:message_submitted` for volume, and use this one only for the
+      // composer context (tool/workflow/calendar selection) and `was_queued`,
+      // which the server never sees.
       trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
         has_text: ctx.content.length > 0,
         file_count: ctx.files.length,

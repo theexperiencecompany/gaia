@@ -206,6 +206,8 @@ Event properties are counts, enums, durations, booleans and ids — never messag
 
 Capture **after the operation succeeds**, not before it starts — an event emitted on entry counts attempts as successes. Failure is its own event with a `reason`, not a missing one. Prefer the server: a client-side capture is lost to ad blockers, so anything the backend already sees belongs there.
 
+**One user action, one event name** — with one deliberate exception. `chat:message_sent` (web client, intent) and `chat:message_submitted` (server, ground truth) both fire for the same message on purpose: the gap between them measures the ad-blocked and failed-request rate, and the client one carries composer context (`was_queued`, tool/workflow selection) the server never receives. Count `chat:message_submitted` for volume. Do not collapse the pair, and do not add another one — a second emitter of the *same* name double-counts silently, which is worse than two honest names.
+
 ## Design System
 
 The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the repo root. It covers:
