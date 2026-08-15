@@ -159,4 +159,3 @@ class TestFailurePropagation:
 
         assert result.returncode == 0, result.stderr
         assert len(mutated) == 6
-
