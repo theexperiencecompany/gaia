@@ -179,3 +179,9 @@ evlog.map.json
 
 # Redis snapshot — created if a local redis-server is started from the repo root.
 dump.rdb
+
+# mutation.sh works in a per-invocation .mutation-<pid> copy of app/ + tests/.
+# It is removed on exit, but a killed run leaves one behind and it is thousands
+# of files — one `git add -A` away from the index.
+.mutation-*/
+mutants/
