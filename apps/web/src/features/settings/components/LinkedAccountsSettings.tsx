@@ -12,6 +12,7 @@ import {
 } from "@heroui/modal";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { BOT_PLATFORM_ICONS, BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -37,24 +38,24 @@ interface PlatformConfig {
 const PLATFORMS: PlatformConfig[] = [
   {
     id: "telegram",
-    name: "Telegram",
+    name: BOT_PLATFORM_LABELS.telegram,
     description: "Chat with GAIA on Telegram",
-    image: "/images/icons/macos/telegram.webp",
+    image: BOT_PLATFORM_ICONS.telegram,
     color: "#0088cc",
     connectedDescription: "Message your bot on Telegram to chat with GAIA",
   },
   {
     id: "whatsapp",
-    name: "WhatsApp",
-    image: "/images/icons/macos/whatsapp.webp",
+    name: BOT_PLATFORM_LABELS.whatsapp,
+    image: BOT_PLATFORM_ICONS.whatsapp,
     color: "#25D366",
     description: "Connect GAIA to WhatsApp (Beta)",
     connectedDescription: "Message GAIA on WhatsApp",
   },
   {
     id: "imessage",
-    name: "iMessage",
-    image: "/images/icons/macos/imessage.webp",
+    name: BOT_PLATFORM_LABELS.imessage,
+    image: BOT_PLATFORM_ICONS.imessage,
     color: "#34C759",
     description: "Text GAIA over iMessage (Pro)",
     connectedDescription: "Message GAIA from your iPhone or Mac",
@@ -63,16 +64,16 @@ const PLATFORMS: PlatformConfig[] = [
   },
   {
     id: "slack",
-    name: "Slack",
-    image: "/images/icons/macos/slack.webp",
+    name: BOT_PLATFORM_LABELS.slack,
+    image: BOT_PLATFORM_ICONS.slack,
     color: "#4A154B",
     description: "Bring GAIA into your Slack workspace",
     connectedDescription: "Use /gaia in Slack to chat with GAIA",
   },
   {
     id: "discord",
-    name: "Discord",
-    image: "/images/icons/macos/discord.webp",
+    name: BOT_PLATFORM_LABELS.discord,
+    image: BOT_PLATFORM_ICONS.discord,
     color: "#5865F2",
     description: "Use GAIA directly from Discord servers and DMs",
     connectedDescription: "Use /gaia in Discord to chat with GAIA",
