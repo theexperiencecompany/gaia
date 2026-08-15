@@ -463,6 +463,8 @@ class TestCallAgentSilent:
         (Not regression-marked: the fix is already in base, so this pins behavior
         rather than proving red-without-fix.)"""
         patches = _common_patches()
+        request = _make_request()
+        user = _make_user()
         with (
             patches["construct"],
             patches["get_graph"],
@@ -478,8 +480,6 @@ class TestCallAgentSilent:
             ),
             pytest.raises(RuntimeError, match="429 Too Many Requests"),
         ):
-            request = _make_request()
-            user = _make_user()
             await call_agent_silent(request=request, conversation_id="conv-1", user=user)
 
     @pytest.mark.asyncio
@@ -655,6 +655,8 @@ class TestCallAgentSilent:
     async def test_a_message_construction_failure_propagates(self):
         """Every seam inside call_agent_silent propagates, not just the graph run."""
         patches = _common_patches()
+        request = _make_request()
+        user = _make_user()
         with (
             patch(
                 "app.agents.core.agent.construct_langchain_messages",
@@ -669,6 +671,4 @@ class TestCallAgentSilent:
             patches["log"],
             pytest.raises(RuntimeError, match="silent boom"),
         ):
-            request = _make_request()
-            user = _make_user()
             await call_agent_silent(request=request, conversation_id="conv-1", user=user)
