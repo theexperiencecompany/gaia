@@ -32,6 +32,7 @@ from app.services.cost_budget import (
     is_daily_budget_exhausted,
     record_model_call_usage,
 )
+from shared.py.wide_events import log
 
 USER = "u-wall"
 REQUEST = "root-req-wall"
@@ -194,6 +195,27 @@ class TestThreadingGaps:
             check = await get_budget_stop_reason(USER, None, REQUEST)
 
         assert check == (None, None, None)
+
+    async def test_a_plan_lookup_failure_names_the_user_it_stopped_enforcing_for(
+        self,
+    ) -> None:
+        """Failing open means an over-budget user keeps spending. The warning is
+        the only trace that happened, so it has to say who and why — a bare
+        "budget check failed" cannot be turned into a refund or a bug report."""
+        log.reset()
+        await _spend(get_daily_cost_budget_usd(PlanType.FREE))
+
+        with patch(
+            "app.services.cost_budget.payment_service.get_cached_plan_type",
+            AsyncMock(side_effect=RuntimeError("payments down")),
+        ):
+            await get_budget_stop_reason(USER, None, REQUEST)
+
+        failed_open = [w for w in log.get().get("warnings", []) if "failing open" in w["msg"]]
+        assert len(failed_open) == 1
+        assert failed_open[0]["user"] == {"id": USER}
+        assert failed_open[0]["error"] == "payments down"
+        assert failed_open[0]["error_type"] == "RuntimeError"
 
     async def test_a_missing_request_id_still_enforces_the_daily_wall(self) -> None:
         await _spend(get_daily_cost_budget_usd(PlanType.FREE))

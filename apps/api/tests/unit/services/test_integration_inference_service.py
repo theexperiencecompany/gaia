@@ -80,6 +80,9 @@ class TestInferIntegrationCategory:
         prompt = mock_llm.invoke.await_args.args[1][0].content
         assert "My Tool" in prompt
         assert "x.example" in prompt  # domain extracted from server_url
+        # The label becomes ``agent_name`` on the llm_call wide event, which is
+        # how this lane's auxiliary COGS is split from the other one-shots.
+        assert mock_llm.invoke.await_args.kwargs["label"] == "integration_category"
 
     async def test_unrecognized_category_falls_back_to_other(self, mock_llm):
         mock_llm.invoke.return_value = SimpleNamespace(text="flying-spaghetti")
