@@ -53,6 +53,21 @@ class TestGetHelperLlm:
         )
         assert helper_llm is mock_chat_openrouter.return_value.model_copy.return_value
 
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_a_callers_temperature_reaches_the_model(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        mock_chat_openrouter.return_value = MagicMock()
+
+        get_helper_llm(temperature=0.9)
+
+        # The cap is the only thing this factory overrides; a creative caller's
+        # temperature has to survive the hop through get_default_llm untouched.
+        assert mock_chat_openrouter.call_args.kwargs["temperature"] == 0.9
+
     @patch("app.agents.llm.client.get_default_llm")
     @patch("app.agents.llm.client.settings")
     def test_sim_mode_returns_default_llm_untouched(

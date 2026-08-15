@@ -291,7 +291,7 @@ if [ "$MUTMUT_RC" -ne 0 ]; then
     exit 0
   fi
   if [ ! -f "$WORKDIR/mutants/mutmut-stats.json" ]; then
-    echo "MUTATION RUN FAILED (no state produced) — see mutmut's output above." >&2
+    echo "MUTATION RUN FAILED for $MODULE (no state produced) — see mutmut's output above." >&2
     exit 1
   fi
 fi
@@ -330,7 +330,7 @@ NO_TESTS_LIST="$(printf '%s\n' "$RESULTS" | grep ": no tests$" || true)"
 NO_TESTS="$(printf '%s\n' "$NO_TESTS_LIST" | grep -c . || true)"
 NOT_CHECKED="$(printf '%s\n' "$RESULTS" | grep -c ": not checked$" || true)"
 if [ "${NOT_CHECKED:-0}" -gt 0 ]; then
-  echo "MUTATION RUN INCOMPLETE — $NOT_CHECKED mutant(s) were never checked;" >&2
+  echo "MUTATION RUN INCOMPLETE for $MODULE — $NOT_CHECKED mutant(s) were never checked;" >&2
   echo "the run was interrupted. See mutmut's output above." >&2
   exit 1
 fi
@@ -461,7 +461,7 @@ if [ -n "$LOGGING" ]; then
   echo "$LOGGING" >&2
 fi
 if [ -n "$REAL_SURVIVORS" ]; then
-  echo "MUTATION FAILED — the suite would not notice if this code were wrong:" >&2
+  echo "MUTATION FAILED in $MODULE — the suite would not notice if this code were wrong:" >&2
   echo "$REAL_SURVIVORS" >&2
   exit 1
 fi
