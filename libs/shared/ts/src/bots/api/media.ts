@@ -7,7 +7,7 @@
  *
  * @module
  */
-import type { AxiosInstance } from "axios";
+import axios, { type AxiosInstance } from "axios";
 import type { BotFileData } from "../types";
 
 type Headers = Record<string, string>;
@@ -97,6 +97,29 @@ export async function downloadArtifactRequest(
   );
   const contentType = String(
     respHeaders["content-type"] ?? "application/octet-stream",
+  );
+  return { data: Buffer.from(data as ArrayBuffer), contentType };
+}
+
+/**
+ * Downloads bytes directly from a CDN URL (e.g. a signed browser-automation
+ * step screenshot). No GAIA auth is involved — the URL itself is already the
+ * authorization (a signed, short-lived Cloudinary link), so this bypasses the
+ * bot-authenticated client entirely.
+ */
+export async function downloadUrlRequest(
+  url: string,
+): Promise<{ data: Buffer; contentType: string }> {
+  const { data, headers } = await axios.get(url, {
+    responseType: "arraybuffer",
+    // Matches downloadArtifactRequest's cap — the largest per-platform
+    // outbound limit (WhatsApp, 100 MB) so a lower cap here never rejects a
+    // file before OUTBOUND_FILE_LIMITS gets a chance to apply the platform one.
+    maxContentLength: 100 * 1024 * 1024,
+    maxBodyLength: 100 * 1024 * 1024,
+  });
+  const contentType = String(
+    headers["content-type"] ?? "application/octet-stream",
   );
   return { data: Buffer.from(data as ArrayBuffer), contentType };
 }

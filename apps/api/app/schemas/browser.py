@@ -50,6 +50,7 @@ class BrowserHandoffSnapshot(BaseModel):
     handoff_id: str
     category: SensitiveCategory = SensitiveCategory.NONE
     reason: str
+    session_id: str | None = None
     live_view_url: str | None = None
     status: HandoffStatus = HandoffStatus.PENDING
 

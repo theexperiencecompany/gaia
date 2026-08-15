@@ -204,3 +204,39 @@ async def publish_outbound_file(
         filename=filename,
     )
     return True
+
+
+async def publish_outbound_photo(
+    platform: ConversationSource, user_id: str, url: str, filename: str, caption: str | None = None
+) -> bool:
+    """Enqueue a CDN-hosted image (e.g. a browser-automation step screenshot) for
+    the bot to deliver as a photo.
+
+    Unlike :func:`publish_outbound_file`, the bot fetches the bytes directly
+    from ``url`` — nothing is proxied through the session artifact store.
+    Best-effort: unknown platform, unlinked account, unavailable broker, and
+    publish errors all return False without raising.
+    """
+    prep = await _prepare(platform, user_id, "publish_outbound_photo")
+    if isinstance(prep, OutboundResult):
+        return False
+    queue_name, destination_id, publisher = prep
+
+    envelope = OutboundMessageEnvelope(
+        platform=platform.value,
+        destination_id=destination_id,
+        attachment=OutboundAttachment(url=url, filename=filename, caption=caption),
+    )
+    try:
+        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+    except Exception as e:
+        log.error("publish_outbound_photo: publish failed", platform=platform.value, error=str(e))
+        return False
+
+    log.info(
+        "outbound_photo_published",
+        platform=platform.value,
+        queue=queue_name,
+        filename=filename,
+    )
+    return True

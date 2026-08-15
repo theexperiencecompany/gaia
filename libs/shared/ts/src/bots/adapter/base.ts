@@ -35,6 +35,7 @@
 
 import { Analytics, type AnalyticsContext, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
+import { downloadUrlRequest } from "../api/media";
 import { loadConfig } from "../config";
 import type { OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
@@ -340,11 +341,23 @@ export abstract class BaseBotAdapter {
     destinationId: string,
     attachment: OutboundAttachment,
   ): Promise<{ data: Buffer; contentType: string } | null> {
-    const artifact = await this.gaia.downloadArtifact(
-      attachment.conversation_id,
-      attachment.path,
-      { platform: this.platform, platformUserId: destinationId },
-    );
+    let artifact: { data: Buffer; contentType: string };
+    if (attachment.url) {
+      artifact = await downloadUrlRequest(attachment.url);
+    } else {
+      if (!attachment.conversation_id || !attachment.path) {
+        // The envelope schema's refine already guarantees exactly one source —
+        // reaching here means a malformed envelope slipped past validation.
+        throw new Error(
+          "outbound attachment has neither `url` nor `conversation_id`/`path`",
+        );
+      }
+      artifact = await this.gaia.downloadArtifact(
+        attachment.conversation_id,
+        attachment.path,
+        { platform: this.platform, platformUserId: destinationId },
+      );
+    }
     const limit = OUTBOUND_FILE_LIMITS[this.platform];
     if (artifact.data.length > limit) {
       // `platform` is already on every line's envelope — repeating it as a

@@ -111,6 +111,7 @@ async def browser_task(
                         handoff_id=handoff_id,
                         category=req.category,
                         reason=req.reason,
+                        session_id=session.session_id,
                         live_view_url=session.live_view_url,
                         status=HandoffStatus.PENDING,
                     )
@@ -123,6 +124,7 @@ async def browser_task(
                         handoff_id=handoff_id,
                         category=req.category,
                         reason=req.reason,
+                        session_id=session.session_id,
                         live_view_url=session.live_view_url,
                         status=status,
                     )
