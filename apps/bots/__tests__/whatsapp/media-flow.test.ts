@@ -431,7 +431,7 @@ describe("WhatsAppAdapter - unsupported media (extractMedia returns null)", () =
     await flushQueue();
 
     expect(lastSentBody()).toBe(unsupportedMediaMessage("contacts"));
-    expect(lastSentBody()).toMatch(/contacts messages/i);
+    expect(lastSentBody()).toMatch(/contact cards/i);
     expect(handleStreamingChat).not.toHaveBeenCalled();
     expect(mockMediaDownload).not.toHaveBeenCalled();
   });

@@ -14,6 +14,7 @@ import pytest
 
 from app.models.user_models import UserDocument
 from app.services.platform_link_service import Platform, PlatformLinkService
+from app.utils.errors import create_error
 
 
 def _user(**fields) -> UserDocument:
@@ -45,7 +46,7 @@ class TestPlatform:
         assert Platform.is_valid("") is False
 
     def test_values_returns_all_platforms(self):
-        assert set(Platform.values()) == {"discord", "slack", "telegram", "whatsapp"}
+        assert set(Platform.values()) == {"discord", "imessage", "slack", "telegram", "whatsapp"}
 
 
 class TestGetUserByPlatformId:
@@ -166,6 +167,70 @@ class TestUnlinkAccount:
 
         with pytest.raises(ValueError, match="User not found"):
             await PlatformLinkService.unlink_account(sample_user_id, "discord")
+
+    async def test_imessage_unlink_releases_photon_registration(self, mock_repo, sample_user_id):
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
+        )
+        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
+
+        with patch(
+            "app.services.platform_link_service.unregister_shared_user",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_unregister:
+            result = await PlatformLinkService.unlink_account(sample_user_id, "imessage")
+
+        assert result.status == "disconnected"
+        mock_unregister.assert_awaited_once_with("+15551234567")
+
+    async def test_non_imessage_unlink_never_touches_photon(self, mock_repo, sample_user_id):
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"discord": {"id": "discord123"}}
+        )
+        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
+
+        with patch(
+            "app.services.platform_link_service.unregister_shared_user", new_callable=AsyncMock
+        ) as mock_unregister:
+            await PlatformLinkService.unlink_account(sample_user_id, "discord")
+
+        mock_unregister.assert_not_awaited()
+
+    async def test_unlink_without_imessage_link_skips_photon(self, mock_repo, sample_user_id):
+        mock_repo.get.return_value = _user(id=sample_user_id)
+        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
+
+        with patch(
+            "app.services.platform_link_service.unregister_shared_user", new_callable=AsyncMock
+        ) as mock_unregister:
+            await PlatformLinkService.unlink_account(sample_user_id, "imessage")
+
+        mock_unregister.assert_not_awaited()
+
+    async def test_photon_failure_still_unlinks_and_warns(self, mock_repo, sample_user_id):
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
+        )
+        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
+
+        with (
+            patch(
+                "app.services.platform_link_service.unregister_shared_user",
+                new_callable=AsyncMock,
+                side_effect=create_error(
+                    message="Could not disconnect your number from iMessage",
+                    why="Photon returned HTTP 500 for DELETE /users/pu-1/",
+                    status_code=502,
+                ),
+            ),
+            patch("app.services.platform_link_service.log") as mock_log,
+        ):
+            result = await PlatformLinkService.unlink_account(sample_user_id, "imessage")
+
+        assert result.status == "disconnected"
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.kwargs["error_type"] == "AppError"
 
 
 class TestGetLinkedPlatforms:

@@ -1,16 +1,17 @@
 from collections.abc import Mapping
-import re
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
 from app.db.redis import redis_cache
+from app.decorators import enforce_rate_limit
 from app.models.platform_models import (
     DisconnectPlatformResponse,
     GetPlatformLinksResponse,
+    InitiatePlatformConnectRequest,
     InitiatePlatformConnectResponse,
     LinkPlatformRequest,
     LinkPlatformResponse,
@@ -20,6 +21,7 @@ from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.outbound_delivery import notify_account_linked
 from app.services.photon.photon_client import redirect_deep_link, register_shared_user
 from app.services.platform_link_service import (
+    IMESSAGE_REGISTRATION_FEATURE_KEY,
     Platform,
     PlatformLinkService,
     require_platform_plan,
@@ -28,8 +30,6 @@ from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 router = APIRouter()
-
-E164_PHONE_PATTERN = re.compile(r"^\+[1-9]\d{6,14}$")
 
 
 def _require_user_id(current_user: Mapping[str, object]) -> str:
@@ -216,10 +216,13 @@ async def disconnect_platform(
     return result
 
 
-@router.get("/{platform}/connect")
+@router.post(
+    "/{platform}/connect",
+    responses={422: {"description": "iMessage requires an E.164 phone number in the body."}},
+)
 async def initiate_platform_connect(
     platform: str,
-    phone: str | None = Query(default=None, description="E.164 number, iMessage only"),
+    body: InitiatePlatformConnectRequest,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> InitiatePlatformConnectResponse:
     """Initiate platform connection via OAuth or manual instructions.
@@ -305,12 +308,13 @@ async def initiate_platform_connect(
     # iMessage manual flow: Photon's shared pool only delivers to registered
     # numbers, so the user's phone must be allowlisted before they can text.
     if platform == "imessage":
-        if not phone or not E164_PHONE_PATTERN.fullmatch(phone):
+        if not body.phone:
             raise HTTPException(
                 status_code=422,
                 detail="A phone number in E.164 format (e.g. +15551234567) is required for iMessage.",
             )
-        photon_user = await register_shared_user(phone)
+        await enforce_rate_limit(user_id, IMESSAGE_REGISTRATION_FEATURE_KEY)
+        photon_user = await register_shared_user(body.phone)
         log.audit(
             "imessage number registered for linking",
             actor=user_id,

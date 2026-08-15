@@ -140,15 +140,16 @@ export default function LinkedAccountsSettings() {
     try {
       setConnectingPlatform(platformId);
 
-      const query = phoneNumber
-        ? `?phone=${encodeURIComponent(phoneNumber)}`
-        : "";
-      const data = await apiService.get<{
+      const data = await apiService.post<{
         auth_url?: string;
         instructions?: string;
         action_link?: string;
         auth_type: string;
-      }>(`/platform-links/${platformId}/connect${query}`, { silent: true });
+      }>(
+        `/platform-links/${platformId}/connect`,
+        phoneNumber ? { phone: phoneNumber } : {},
+        { silent: true },
+      );
 
       if (data.auth_url) {
         const width = 600;

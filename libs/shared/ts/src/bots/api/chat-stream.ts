@@ -112,6 +112,11 @@ const STREAM_TIMEOUT_MS = 600_000;
 /** No-data inactivity timeout (5 min). */
 const INACTIVITY_TIMEOUT_MS = 300_000;
 
+export const BOT_STREAM_ERROR = {
+  notAuthenticated: "not_authenticated",
+  planRequired: "plan_required",
+} as const;
+
 /** The subset of an SSE `data:` frame the streamer acts on. */
 interface SseFrame {
   keepalive?: boolean;
@@ -226,9 +231,9 @@ async function streamChatOnce(
           receivedKeepalive = true;
           return false;
         }
-        if (frame.error === "not_authenticated") {
+        if (frame.error === BOT_STREAM_ERROR.notAuthenticated) {
           finish();
-          await onError(new Error("not_authenticated"));
+          await onError(new Error(BOT_STREAM_ERROR.notAuthenticated));
           return true;
         }
         if (frame.error) {

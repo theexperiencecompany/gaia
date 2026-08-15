@@ -1,6 +1,7 @@
 import type { Conversation, Todo, Workflow } from "@gaia/shared";
 import {
   buildAuthLinkMessage,
+  buildPlanRequiredMessage,
   convertToDiscordMarkdown,
   convertToImessageText,
   convertToSlackMrkdwn,
@@ -433,6 +434,20 @@ describe("convertToWhatsAppMarkdown", () => {
   it("converts field values with **Name:** pattern to *Name:*", () => {
     expect(convertToWhatsAppMarkdown("**Name:** Aryan")).toBe("*Name:* Aryan");
   });
+
+  it("keeps the line after an empty heading marker", () => {
+    expect(convertToWhatsAppMarkdown("#\nBody")).toBe("#\nBody");
+  });
+
+  it("keeps the blank line a bare > quote marker introduces", () => {
+    expect(convertToWhatsAppMarkdown("> quote\n>\nnext")).toBe("quote\n\nnext");
+  });
+
+  it("does not let a bare bullet marker swallow the next line", () => {
+    expect(convertToWhatsAppMarkdown("- item\n-\nnext")).toBe(
+      "• item\n-\nnext",
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -479,6 +494,18 @@ describe("convertToImessageText", () => {
   it("preserves fenced code blocks unchanged", () => {
     const input = "```\nconst x = 1; // **not bold**\n```";
     expect(convertToImessageText(input)).toBe(input);
+  });
+
+  it("keeps the line after an empty heading marker", () => {
+    expect(convertToImessageText("#\nBody")).toBe("#\nBody");
+  });
+
+  it("keeps the blank line a bare > quote marker introduces", () => {
+    expect(convertToImessageText("> quote\n>\nnext")).toBe("quote\n\nnext");
+  });
+
+  it("does not let a bare bullet marker swallow the next line", () => {
+    expect(convertToImessageText("- item\n-\nnext")).toBe("• item\n-\nnext");
   });
 });
 
@@ -565,6 +592,19 @@ describe("buildAuthLinkMessage", () => {
     expect(buildAuthLinkMessage("https://x")).toBe(
       buildAuthLinkMessage("https://x"),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildPlanRequiredMessage — the single canonical upgrade prompt
+// ---------------------------------------------------------------------------
+describe("buildPlanRequiredMessage", () => {
+  it("names the plan and shows the pricing URL bare so it stays linkable", () => {
+    const url = "https://gaia.com/pricing";
+    const msg = buildPlanRequiredMessage(url);
+    expect(msg).toContain(url);
+    expect(msg).toContain("Pro");
+    expect(msg).not.toContain("](");
   });
 });
 

@@ -146,6 +146,9 @@ importers:
       hono:
         specifier: ^4.12.29
         version: 4.12.29
+      spectrum-ts:
+        specifier: ^12.7.0
+        version: 12.7.0(typescript@6.0.0-beta)
       vite:
         specifier: ^7.3.6
         version: 7.3.6(@types/node@26.1.1)(jiti@2.7.0)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(tsx@4.23.11)(yaml@2.9.0)
@@ -25284,7 +25287,7 @@ snapshots:
   '@opentelemetry/instrumentation-undici@0.29.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/core': 2.10.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/instrumentation': 0.219.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.43.0
     transitivePeerDependencies:
@@ -25806,16 +25809,37 @@ snapshots:
       nice-grpc: 2.1.17
       nice-grpc-common: 2.0.4
 
+  '@photon-ai/otel@3.6.0(typescript@6.0.0-beta)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/api-logs': 0.218.0
+      '@opentelemetry/context-async-hooks': 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/core': 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/exporter-logs-otlp-http': 0.218.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/exporter-metrics-otlp-http': 0.218.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/exporter-trace-otlp-http': 0.218.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources': 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-logs': 0.218.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-metrics': 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-base': 2.9.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/semantic-conventions': 1.43.0
+      typescript: 6.0.0-beta
+    optionalDependencies:
+      '@opentelemetry/instrumentation': 0.219.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/instrumentation-undici': 0.29.0(@opentelemetry/api@1.9.1)
+    transitivePeerDependencies:
+      - supports-color
+
   '@photon-ai/otel@3.6.0(typescript@7.0.2)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/api-logs': 0.218.0
       '@opentelemetry/context-async-hooks': 2.10.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/core': 2.10.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/exporter-logs-otlp-http': 0.218.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/exporter-metrics-otlp-http': 0.218.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/exporter-trace-otlp-http': 0.218.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources': 2.9.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources': 2.10.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-logs': 0.218.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-metrics': 2.10.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-base': 2.9.0(@opentelemetry/api@1.9.1)
@@ -29825,6 +29849,20 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  '@spectrum-ts/core@12.7.0(typescript@6.0.0-beta)':
+    dependencies:
+      '@photon-ai/otel': 3.6.0(typescript@6.0.0-beta)
+      '@photon-ai/proto': 0.2.4
+      '@repeaterjs/repeater': 3.1.0
+      marked: 18.0.9
+      mime-types: 3.0.2
+      open-graph-scraper: 6.12.0
+      typescript: 6.0.0-beta
+      vcf: 2.1.2
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - supports-color
+
   '@spectrum-ts/core@12.7.0(typescript@7.0.2)':
     dependencies:
       '@photon-ai/otel': 3.6.0(typescript@7.0.2)
@@ -29835,6 +29873,21 @@ snapshots:
       open-graph-scraper: 6.12.0
       typescript: 7.0.2
       vcf: 2.1.2
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - supports-color
+
+  '@spectrum-ts/imessage@12.7.0(@spectrum-ts/core@12.7.0(typescript@6.0.0-beta))(typescript@6.0.0-beta)':
+    dependencies:
+      '@grpc/grpc-js': 1.14.4
+      '@photon-ai/advanced-imessage': 2.1.0(@grpc/grpc-js@1.14.4)(nice-grpc-common@2.0.4)(nice-grpc@2.1.17)
+      '@photon-ai/otel': 3.6.0(typescript@6.0.0-beta)
+      '@spectrum-ts/core': 12.7.0(typescript@6.0.0-beta)
+      lru-cache: 11.5.2
+      marked: 18.0.9
+      nice-grpc: 2.1.17
+      nice-grpc-common: 2.0.4
+      typescript: 6.0.0-beta
       zod: 4.3.6
     transitivePeerDependencies:
       - supports-color
@@ -29854,11 +29907,26 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@spectrum-ts/slack@12.7.0(@spectrum-ts/core@12.7.0(typescript@6.0.0-beta))(typescript@6.0.0-beta)':
+    dependencies:
+      '@photon-ai/slack': 0.2.0
+      '@spectrum-ts/core': 12.7.0(typescript@6.0.0-beta)
+      typescript: 6.0.0-beta
+      zod: 4.3.6
+
   '@spectrum-ts/slack@12.7.0(@spectrum-ts/core@12.7.0(typescript@7.0.2))(typescript@7.0.2)':
     dependencies:
       '@photon-ai/slack': 0.2.0
       '@spectrum-ts/core': 12.7.0(typescript@7.0.2)
       typescript: 7.0.2
+      zod: 4.3.6
+
+  '@spectrum-ts/telegram@12.7.0(@spectrum-ts/core@12.7.0(typescript@6.0.0-beta))(typescript@6.0.0-beta)':
+    dependencies:
+      '@photon-ai/telegram-ts': 10.0.0
+      '@spectrum-ts/core': 12.7.0(typescript@6.0.0-beta)
+      marked: 18.0.9
+      typescript: 6.0.0-beta
       zod: 4.3.6
 
   '@spectrum-ts/telegram@12.7.0(@spectrum-ts/core@12.7.0(typescript@7.0.2))(typescript@7.0.2)':
@@ -29869,10 +29937,24 @@ snapshots:
       typescript: 7.0.2
       zod: 4.3.6
 
+  '@spectrum-ts/terminal@12.7.0(@spectrum-ts/core@12.7.0(typescript@6.0.0-beta))(typescript@6.0.0-beta)':
+    dependencies:
+      '@spectrum-ts/core': 12.7.0(typescript@6.0.0-beta)
+      typescript: 6.0.0-beta
+      zod: 4.3.6
+
   '@spectrum-ts/terminal@12.7.0(@spectrum-ts/core@12.7.0(typescript@7.0.2))(typescript@7.0.2)':
     dependencies:
       '@spectrum-ts/core': 12.7.0(typescript@7.0.2)
       typescript: 7.0.2
+      zod: 4.3.6
+
+  '@spectrum-ts/whatsapp-business@12.7.0(@spectrum-ts/core@12.7.0(typescript@6.0.0-beta))(typescript@6.0.0-beta)':
+    dependencies:
+      '@photon-ai/whatsapp-business': 0.2.0
+      '@spectrum-ts/core': 12.7.0(typescript@6.0.0-beta)
+      mime-types: 3.0.2
+      typescript: 6.0.0-beta
       zod: 4.3.6
 
   '@spectrum-ts/whatsapp-business@12.7.0(@spectrum-ts/core@12.7.0(typescript@7.0.2))(typescript@7.0.2)':
@@ -40383,6 +40465,19 @@ snapshots:
       spdy-transport: 3.0.0
     transitivePeerDependencies:
       - supports-color
+
+  spectrum-ts@12.7.0(typescript@6.0.0-beta):
+    dependencies:
+      '@spectrum-ts/core': 12.7.0(typescript@6.0.0-beta)
+      '@spectrum-ts/imessage': 12.7.0(@spectrum-ts/core@12.7.0(typescript@6.0.0-beta))(typescript@6.0.0-beta)
+      '@spectrum-ts/slack': 12.7.0(@spectrum-ts/core@12.7.0(typescript@6.0.0-beta))(typescript@6.0.0-beta)
+      '@spectrum-ts/telegram': 12.7.0(@spectrum-ts/core@12.7.0(typescript@6.0.0-beta))(typescript@6.0.0-beta)
+      '@spectrum-ts/terminal': 12.7.0(@spectrum-ts/core@12.7.0(typescript@6.0.0-beta))(typescript@6.0.0-beta)
+      '@spectrum-ts/whatsapp-business': 12.7.0(@spectrum-ts/core@12.7.0(typescript@6.0.0-beta))(typescript@6.0.0-beta)
+    transitivePeerDependencies:
+      - ffmpeg-static
+      - supports-color
+      - typescript
 
   spectrum-ts@12.7.0(typescript@7.0.2):
     dependencies:

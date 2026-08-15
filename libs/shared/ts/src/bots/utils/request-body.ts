@@ -1,3 +1,5 @@
+import { readStreamBytesCapped } from "./stream-bytes";
+
 /** Sentinel returned when the body exceeds the cap. */
 export const BODY_TOO_LARGE = Symbol("body-too-large");
 
@@ -30,7 +32,8 @@ export const WEBHOOK_BODY_READ_TIMEOUT_MS = 10_000;
  * is cancelled, which resolves the in-flight `read()` and unblocks the loop.
  *
  * The bytes are returned exactly as received — a requirement for HMAC
- * signature checks and protobuf decoding downstream.
+ * signature checks and protobuf decoding downstream. One byte past the cap is
+ * read so that a body sitting exactly on the limit is still accepted.
  */
 export async function readBodyBytesBounded(
   request: Request,
@@ -40,41 +43,13 @@ export async function readBodyBytesBounded(
   const body = request.body;
   if (!body) return new Uint8Array(0);
 
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    // Cancelling resolves the pending read() with done=true, unblocking the
-    // loop even if the stream has stalled with no bytes arriving.
-    void reader.cancel();
-  }, timeoutMs);
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel();
-        return BODY_TOO_LARGE;
-      }
-      chunks.push(value);
-    }
-  } finally {
-    clearTimeout(timer);
-    reader.releaseLock();
-  }
-
+  const { bytes, timedOut } = await readStreamBytesCapped(
+    body,
+    maxBytes + 1,
+    timeoutMs,
+  );
+  if (bytes.byteLength > maxBytes) return BODY_TOO_LARGE;
   if (timedOut) return BODY_READ_TIMEOUT;
-
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
   return bytes;
 }
 

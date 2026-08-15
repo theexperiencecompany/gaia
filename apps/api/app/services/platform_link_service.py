@@ -23,6 +23,9 @@ from app.models.platform_models import (
 )
 from app.models.user_models import PlatformLinkRecord, user_to_legacy_dict
 from app.services.payments.payment_service import payment_service
+from app.services.photon.photon_client import unregister_shared_user
+from app.utils.errors import AppError
+from shared.py.wide_events import log
 
 
 class Platform(str, Enum):
@@ -51,17 +54,45 @@ class Platform(str, Enum):
 
 PREMIUM_PLATFORMS: frozenset[str] = frozenset({Platform.IMESSAGE.value})
 
+IMESSAGE_REGISTRATION_FEATURE_KEY = "imessage_registration"
+
+
+async def _release_imessage_number(user_id: str, phone_number: str) -> None:
+    """Release the number to Photon's pool; the GAIA unlink already succeeded, so a Photon failure only warns."""
+    try:
+        released = await unregister_shared_user(phone_number)
+    except AppError as e:
+        log.warning(
+            "imessage photon unregister failed",
+            user={"id": user_id},
+            provider=Platform.IMESSAGE.value,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return
+
+    if released:
+        log.audit(
+            "imessage number unregistered",
+            actor=user_id,
+            provider=Platform.IMESSAGE.value,
+        )
+
+
+async def platform_requires_upgrade(user_id: str, platform: str) -> bool:
+    """True when ``platform`` is Pro-only and ``user_id`` is on the free plan."""
+    if platform not in PREMIUM_PLATFORMS:
+        return False
+    return await payment_service.get_cached_plan_type(user_id) == PlanType.FREE
+
 
 async def require_platform_plan(user_id: str, platform: str) -> None:
     """Raise the standard 429 upsell when a free user tries to link a paid-only platform."""
-    if platform not in PREMIUM_PLATFORMS:
-        return
-    plan = await payment_service.get_cached_plan_type(user_id)
-    if plan == PlanType.FREE:
+    if await platform_requires_upgrade(user_id, platform):
         raise RateLimitExceededException(
             feature=f"{platform}_linking",
             plan_required=PlanType.PRO.value,
-            current_plan=plan.value,
+            current_plan=PlanType.FREE.value,
         )
 
 
@@ -156,10 +187,22 @@ class PlatformLinkService:
     async def unlink_account(
         user_id: str, platform: str, _use_object_id: bool = False
     ) -> DisconnectPlatformResponse:
-        """Unlink a platform account from a GAIA user. Raises ValueError if the user is not found."""
+        """Unlink a platform account from a GAIA user. Raises ValueError if the user is not found.
+
+        Owns the Photon cleanup for iMessage so every unlink path gets it — the
+        settings page and the bot's own /unlink both land here.
+        """
+        # Read before the $unset, or the number to release is already gone.
+        linked = await PlatformLinkService.get_linked_platforms(user_id)
+        entry = linked.get(platform)
+
         result = await user_repository.unlink_platform(user_id, platform)
         if result is None:
             raise ValueError("User not found")
+
+        if platform == Platform.IMESSAGE.value and entry:
+            await _release_imessage_number(user_id, entry["platformUserId"])
+
         return DisconnectPlatformResponse(status="disconnected", platform=platform)
 
     @staticmethod

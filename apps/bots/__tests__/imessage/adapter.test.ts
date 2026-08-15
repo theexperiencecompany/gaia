@@ -45,6 +45,7 @@ vi.mock("@gaia/shared", async () => {
       unsupportedMediaMessage: vi.fn(real.unsupportedMediaMessage),
       mediaKindFromMime: vi.fn(real.mediaKindFromMime),
       readBodyBytesBounded: vi.fn(real.readBodyBytesBounded),
+      readStreamBytesCapped: vi.fn(real.readStreamBytesCapped),
       BODY_TOO_LARGE: real.BODY_TOO_LARGE,
       BODY_READ_TIMEOUT: real.BODY_READ_TIMEOUT,
       WEBHOOK_MAX_BODY_BYTES: real.WEBHOOK_MAX_BODY_BYTES,
@@ -73,6 +74,61 @@ function makeSpace(overrides: Partial<FakeSpace> = {}): FakeSpace {
     stopTyping: vi.fn(async () => undefined),
     ...overrides,
   };
+}
+
+const ATTACHMENT_CHUNK = 256;
+const CAP = 1000;
+
+function makeAttachment(overrides: { size?: number } = {}) {
+  const content = {
+    type: "attachment" as const,
+    id: "att-1",
+    name: "photo.jpg",
+    mimeType: "image/jpeg",
+    size: overrides.size ?? 1024,
+    produced: 0,
+    cancelled: false,
+    read: vi.fn(async () => Buffer.alloc(ATTACHMENT_CHUNK)),
+    stream: vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            content.produced += ATTACHMENT_CHUNK;
+            controller.enqueue(new Uint8Array(ATTACHMENT_CHUNK));
+          },
+          cancel() {
+            content.cancelled = true;
+          },
+        }),
+    ),
+  };
+  return content;
+}
+
+function makeVoice() {
+  const content = {
+    type: "voice" as const,
+    id: "voice-1",
+    mimeType: "audio/ogg",
+    duration: 4,
+    size: 2048,
+    produced: 0,
+    cancelled: false,
+    read: vi.fn(async () => Buffer.alloc(ATTACHMENT_CHUNK)),
+    stream: vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            content.produced += ATTACHMENT_CHUNK;
+            controller.enqueue(new Uint8Array(ATTACHMENT_CHUNK));
+          },
+          cancel() {
+            content.cancelled = true;
+          },
+        }),
+    ),
+  };
+  return content;
 }
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
@@ -271,21 +327,55 @@ describe("handleInboundMessage routing", () => {
     );
   });
 
+  it("transcribes a standalone voice note instead of dropping it", async () => {
+    const { adapter, priv } = makeAdapter();
+    const space = makeSpace();
+    const content = makeVoice();
+    priv.handleInboundMessage(space, makeMessage({ content }));
+    await drainQueues(priv);
+
+    const resolveMock = (
+      adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
+    ).resolveIncomingMedia;
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+      kind: "audio",
+      isVoiceNote: true,
+      mimeType: "audio/ogg",
+      sizeBytes: 2048,
+    });
+    expect(space.send).not.toHaveBeenCalledWith(
+      expect.stringContaining("I can't process"),
+    );
+  });
+
+  it("reads a voice note through the same capped stream as an attachment", async () => {
+    const { adapter, priv } = makeAdapter();
+    const space = makeSpace();
+    const content = makeVoice();
+    priv.handleInboundMessage(space, makeMessage({ content }));
+    await drainQueues(priv);
+
+    const resolveMock = (
+      adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
+    ).resolveIncomingMedia;
+    const download = resolveMock.mock.calls[0][1] as (
+      maxBytes: number,
+    ) => Promise<Uint8Array>;
+
+    const bytes = await download(CAP);
+
+    expect(content.read).not.toHaveBeenCalled();
+    expect(bytes.byteLength).toBe(CAP);
+    expect(content.cancelled).toBe(true);
+  });
+
   it("routes attachment content through resolveIncomingMedia", async () => {
     const { adapter, priv } = makeAdapter();
     const space = makeSpace();
-    const read = vi.fn(async () => Buffer.from("bytes"));
     priv.handleInboundMessage(
       space,
-      makeMessage({
-        content: {
-          type: "attachment",
-          id: "att-1",
-          name: "photo.jpg",
-          mimeType: "image/jpeg",
-          read,
-        },
-      }),
+      makeMessage({ content: makeAttachment() }),
     );
     await drainQueues(priv);
     const resolveMock = (
@@ -297,6 +387,204 @@ describe("handleInboundMessage routing", () => {
       "+15550100",
       space.id,
     );
+  });
+
+  it("forwards the attachment's declared size so an oversize file is rejected before any download", async () => {
+    const { adapter, priv } = makeAdapter();
+    const space = makeSpace();
+    const content = makeAttachment({ size: 42_000_000 });
+    priv.handleInboundMessage(space, makeMessage({ content }));
+    await drainQueues(priv);
+    const resolveMock = (
+      adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
+    ).resolveIncomingMedia;
+    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+      sizeBytes: 42_000_000,
+    });
+    expect(content.read).not.toHaveBeenCalled();
+  });
+
+  it("downloads through a capped stream instead of buffering the whole attachment", async () => {
+    const { adapter, priv } = makeAdapter();
+    const space = makeSpace();
+    const content = makeAttachment();
+    priv.handleInboundMessage(space, makeMessage({ content }));
+    await drainQueues(priv);
+    const resolveMock = (
+      adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
+    ).resolveIncomingMedia;
+    const download = resolveMock.mock.calls[0][1] as (
+      maxBytes: number,
+    ) => Promise<Uint8Array>;
+
+    const bytes = await download(CAP);
+
+    expect(content.read).not.toHaveBeenCalled();
+    expect(bytes.byteLength).toBe(CAP);
+    expect(content.produced).toBeLessThanOrEqual(CAP + 2 * ATTACHMENT_CHUNK);
+    expect(content.cancelled).toBe(true);
+  });
+});
+
+describe("multi-part (group) content", () => {
+  function groupMessage(items: unknown[]) {
+    return makeMessage({
+      content: {
+        type: "group",
+        items: items.map((content, index) => ({ id: `p${index}`, content })),
+      },
+    });
+  }
+
+  function resolveMockOf(adapter: ImessageAdapter) {
+    return (
+      adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
+    ).resolveIncomingMedia;
+  }
+
+  it("routes an attachment plus its caption through the media path", async () => {
+    const { adapter, priv } = makeAdapter();
+    const space = makeSpace();
+    priv.handleInboundMessage(
+      space,
+      groupMessage([
+        makeAttachment(),
+        { type: "text", text: "explain this meme" },
+      ]),
+    );
+    await drainQueues(priv);
+
+    const resolveMock = resolveMockOf(adapter);
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+      kind: "image",
+      mimeType: "image/jpeg",
+      caption: "explain this meme",
+    });
+    expect(space.send).not.toHaveBeenCalledWith(
+      expect.stringContaining("I can't process"),
+    );
+  });
+
+  it("routes a text-only multi-part message through the text path", async () => {
+    const { adapter, priv } = makeAdapter();
+    const space = makeSpace();
+    priv.handleInboundMessage(
+      space,
+      groupMessage([
+        { type: "text", text: "first line" },
+        { type: "text", text: "second line" },
+      ]),
+    );
+    await drainQueues(priv);
+
+    expect(resolveMockOf(adapter)).not.toHaveBeenCalled();
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: "first line\nsecond line" }),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      undefined,
+    );
+  });
+
+  it("sends stacked images as ONE chat turn carrying every attachment", async () => {
+    const { adapter, priv } = makeAdapter();
+    const space = makeSpace();
+    let uploaded = 0;
+    resolveMockOf(adapter).mockImplementation(
+      async (media: { caption?: string }) => {
+        uploaded += 1;
+        return {
+          action: "chat" as const,
+          text: media.caption ?? "media",
+          attachments: [
+            {
+              fileId: `file-${uploaded}`,
+              url: `https://cdn.gaia/${uploaded}`,
+              filename: `photo-${uploaded}.jpg`,
+              type: "file",
+            },
+          ],
+        };
+      },
+    );
+
+    priv.handleInboundMessage(
+      space,
+      groupMessage([
+        makeAttachment(),
+        makeAttachment(),
+        makeAttachment(),
+        { type: "text", text: "three pics" },
+      ]),
+    );
+    await drainQueues(priv);
+
+    expect(resolveMockOf(adapter)).toHaveBeenCalledTimes(3);
+    expect(handleStreamingChat).toHaveBeenCalledTimes(1);
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        message: "three pics",
+        fileIds: ["file-1", "file-2", "file-3"],
+      }),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      undefined,
+    );
+  });
+
+  it("replies about the part it actually received, never about groups", async () => {
+    const { priv } = makeAdapter();
+    const space = makeSpace();
+    priv.handleInboundMessage(
+      space,
+      groupMessage([{ type: "contact", name: { first: "Ada" } }]),
+    );
+    await drainQueues(priv);
+
+    const sent = space.send.mock.calls[0][0] as string;
+    expect(sent).toContain("contact cards");
+    expect(sent).not.toContain("group");
+  });
+
+  it("routes a voice part inside a multi-part message with its caption", async () => {
+    const { adapter, priv } = makeAdapter();
+    const space = makeSpace();
+    priv.handleInboundMessage(
+      space,
+      groupMessage([makeVoice(), { type: "text", text: "what did I say" }]),
+    );
+    await drainQueues(priv);
+
+    const resolveMock = resolveMockOf(adapter);
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+      kind: "audio",
+      isVoiceNote: true,
+      caption: "what did I say",
+    });
+    expect(handleStreamingChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("still replies unsupported for a standalone contact card", async () => {
+    const { priv } = makeAdapter();
+    const space = makeSpace();
+    priv.handleInboundMessage(
+      space,
+      makeMessage({ content: { type: "contact", name: { first: "Ada" } } }),
+    );
+    await drainQueues(priv);
+
+    const sent = space.send.mock.calls[0][0] as string;
+    expect(sent).toContain("contact cards");
   });
 });
 

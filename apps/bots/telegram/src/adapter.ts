@@ -667,7 +667,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           await this.editHtml(
             (t, opts) =>
               ctx.api.editMessageText(chatId, currentMessageId, t, opts),
-            renderForPlatform(errMsg, "telegram"),
+            errMsg,
             (e) =>
               this.adapterLogger.error(
                 "edit_message_text_failed",

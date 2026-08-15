@@ -17,6 +17,7 @@ import {
   type RichMessage,
   type RichMessageTarget,
   readBodyBytesBounded,
+  readStreamBytesCapped,
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
@@ -27,13 +28,7 @@ import {
   wideLog,
   withWideEvent,
 } from "@gaia/shared";
-import {
-  type Attachment,
-  attachment,
-  type Message,
-  type Space,
-  Spectrum,
-} from "spectrum-ts";
+import { attachment, type Message, type Space, Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import {
   IMESSAGE_SERVER_PORT,
@@ -70,6 +65,23 @@ async function createSpectrumApp(config: ImessageConfig) {
 
 type SpectrumApp = Awaited<ReturnType<typeof createSpectrumApp>>;
 type ImessageInstance = ReturnType<typeof imessage<SpectrumApp["__providers"]>>;
+type MessagePart = Extract<
+  Message["content"],
+  { type: "group" }
+>["items"][number];
+type MediaContent = Extract<
+  Message["content"],
+  { type: "attachment" } | { type: "voice" }
+>;
+
+async function readMediaBytes(
+  content: MediaContent,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  const stream = (await content.stream()) as ReadableStream<Uint8Array>;
+  const { bytes } = await readStreamBytesCapped(stream, maxBytes);
+  return bytes;
+}
 
 export class ImessageAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "imessage";
@@ -209,9 +221,9 @@ export class ImessageAdapter extends BaseBotAdapter {
       return;
     }
 
-    if (content.type === "attachment") {
+    if (content.type === "attachment" || content.type === "voice") {
       this.enqueueForUser(handle, () =>
-        this.handleMediaMessage(handle, space, content).catch((err) =>
+        this.handleMediaMessage(handle, space, [content]).catch((err) =>
           this.adapterLogger.error("media_message_processing_failed", {
             user_hash: handleHash,
             message_id: message.id,
@@ -222,7 +234,20 @@ export class ImessageAdapter extends BaseBotAdapter {
       return;
     }
 
-    if (content.type === "group" || content.type === "contact") {
+    if (content.type === "group") {
+      this.enqueueForUser(handle, () =>
+        this.handleMultiPartMessage(handle, space, content.items).catch((err) =>
+          this.adapterLogger.error("multipart_message_processing_failed", {
+            user_hash: handleHash,
+            message_id: message.id,
+            ...sanitizeErrorForLog(err),
+          }),
+        ),
+      );
+      return;
+    }
+
+    if (content.type === "contact") {
       this.enqueueForUser(handle, async () => {
         try {
           await this.sendImessageText(
@@ -448,17 +473,67 @@ export class ImessageAdapter extends BaseBotAdapter {
     }
   }
 
+  private async handleMultiPartMessage(
+    handle: string,
+    space: Space,
+    items: MessagePart[],
+  ): Promise<void> {
+    const handleHash = hashLogIdentifier(handle);
+    const texts: string[] = [];
+    const mediaParts: MediaContent[] = [];
+    const ignored: string[] = [];
+
+    for (const item of items) {
+      const part = item.content;
+      if (part.type === "text") texts.push(part.text);
+      else if (part.type === "markdown") texts.push(part.markdown);
+      else if (part.type === "attachment" || part.type === "voice")
+        mediaParts.push(part);
+      else {
+        ignored.push(part.type);
+        this.adapterLogger.info("multipart_item_ignored", {
+          user_hash: handleHash,
+          message_type: part.type,
+        });
+      }
+    }
+
+    const caption = texts.join("\n").trim();
+
+    if (mediaParts.length > 0) {
+      await this.handleMediaMessage(handle, space, mediaParts, caption);
+      return;
+    }
+    if (caption) {
+      await this.handleIncomingMessage(handle, space, caption);
+      return;
+    }
+
+    const [firstIgnored] = ignored;
+    if (!firstIgnored) {
+      this.adapterLogger.warn("multipart_message_empty", {
+        user_hash: handleHash,
+      });
+      return;
+    }
+    await this.sendImessageText(space, unsupportedMediaMessage(firstIgnored));
+  }
+
   private async handleMediaMessage(
     handle: string,
     space: Space,
-    content: Attachment,
+    contents: MediaContent[],
+    caption?: string,
   ): Promise<void> {
     const handleHash = hashLogIdentifier(handle);
-    const kind = mediaKindFromMime(content.mimeType);
+    const kinds = contents.map((content) =>
+      mediaKindFromMime(content.mimeType),
+    );
     this.adapterLogger.info("media_message_started", {
       user_hash: handleHash,
-      media_kind: kind,
-      mime_type: content.mimeType,
+      media_kind: kinds[0],
+      mime_type: contents[0].mimeType,
+      part_count: contents.length,
     });
 
     await space.startTyping().catch(() => undefined);
@@ -466,39 +541,51 @@ export class ImessageAdapter extends BaseBotAdapter {
     try {
       await this.ensureWelcomed(handle, space);
 
-      const incoming: IncomingMedia = {
-        kind,
-        isVoiceNote: false,
-        mimeType: content.mimeType,
-        filename: content.name,
-      };
-      const outcome = await this.resolveIncomingMedia(
-        incoming,
-        async () => new Uint8Array(await content.read()),
-        handle,
-        space.id,
-      );
+      const uploaded: BotFileData[] = [];
+      const transcripts: string[] = [];
+      let filePrompt = "";
 
-      if (outcome.action === "reply") {
-        await this.sendImessageText(space, outcome.text);
-      } else {
-        await this.handleStreamingMessage(
+      for (const [index, content] of contents.entries()) {
+        const incoming: IncomingMedia = {
+          kind: kinds[index],
+          isVoiceNote: content.type === "voice",
+          mimeType: content.mimeType,
+          filename: content.name,
+          sizeBytes: content.size,
+          caption,
+        };
+        const outcome = await this.resolveIncomingMedia(
+          incoming,
+          (maxBytes) => readMediaBytes(content, maxBytes),
           handle,
-          space,
-          outcome.text,
-          outcome.attachments,
+          space.id,
         );
+
+        if (outcome.action === "reply") {
+          await this.sendImessageText(space, outcome.text);
+        } else if (outcome.attachments.length > 0) {
+          uploaded.push(...outcome.attachments);
+          if (!filePrompt) filePrompt = outcome.text;
+        } else {
+          transcripts.push(outcome.text);
+        }
+      }
+
+      const text =
+        transcripts.length > 0 ? transcripts.join("\n\n") : filePrompt;
+      if (uploaded.length > 0 || text) {
+        await this.handleStreamingMessage(handle, space, text, uploaded);
       }
     } catch (err) {
       this.adapterLogger.error("media_message_failed", {
         user_hash: handleHash,
-        media_kind: kind,
+        media_kind: kinds[0],
         ...sanitizeErrorForLog(err),
       });
       try {
         await this.sendImessageText(
           space,
-          friendlyMediaError(kind, err, this.gaia.getPricingUrl()),
+          friendlyMediaError(kinds[0], err, this.gaia.getPricingUrl()),
         );
       } catch (sendErr) {
         this.adapterLogger.error("media_error_message_send_failed", {
