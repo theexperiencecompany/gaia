@@ -92,6 +92,23 @@ export function unsupportedMediaMessage(kind: string): string {
 }
 
 /**
+ * Reply for media the platform announced but delivered no way to fetch — the
+ * payload carries metadata with no attachment handle, so there is nothing to
+ * download and no error worth surfacing as a failure. Distinct from
+ * {@link unsupportedMediaMessage}, which answers a kind GAIA chooses not to
+ * process: here the kind is supported and the bytes simply never arrive.
+ */
+export function unfetchableMediaMessage(
+  kind: MediaKind,
+  isVoiceNote: boolean,
+): string {
+  if (isVoiceNote) {
+    return "Voice notes aren't supported here yet — please type your message instead.";
+  }
+  return `That ${kind} arrived without its file, so there's nothing for me to open. Please try sending it again.`;
+}
+
+/**
  * Maps an upload/transcribe failure to a user-facing reply. Pass `pricingUrl`
  * so the rate-limit (429) reply can point users at the upgrade page, matching
  * the chat-stream rate-limit notice.

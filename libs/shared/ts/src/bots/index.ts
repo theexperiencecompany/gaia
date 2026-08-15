@@ -162,6 +162,7 @@ export {
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   truncateResponse,
+  unfetchableMediaMessage,
   unsupportedMediaMessage,
   WEBHOOK_BODY_READ_TIMEOUT_MS,
   WEBHOOK_MAX_BODY_BYTES,

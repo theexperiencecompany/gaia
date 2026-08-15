@@ -230,14 +230,23 @@ if [ "$MUTMUT_RC" -ne 0 ]; then
   # run even though the tests are fine. Self-verify: run the same selection
   # in the plain workdir copy. Passes there -> mutmut-phase artifact, skip
   # with a reason. Fails there too -> a real breakage, fail loudly.
-  if grep -q "Failed to run clean test" "$WORKDIR/mutmut.log"; then
+  # Two mutmut-internal failure shapes share one diagnosis: the module's tests
+  # are fine, but the module does not survive mutmut's in-process instrumented
+  # phases. "Failed to run clean test" is the clean phase; a
+  # BadTestExecutionCommandsException (pytest usage error, exit 4) is the stats
+  # phase dying earlier — the instrumented copy cannot even be imported by
+  # conftest, which is what import-time work such as `settings = get_settings()`
+  # does under mutmut's trampolines. Either way the plain copy decides: passing
+  # there means a documented mutmut 3.7 limitation, not untested code.
+  if grep -qE "Failed to run clean test|BadTestExecutionCommandsException" "$WORKDIR/mutmut.log"; then
     if "$VENV_PY" -m pytest -q "$TESTFILE" -p no:randomly -p no:random-order \
         -o 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300' \
         > "$WORKDIR/plain-check.log" 2>&1; then
       echo "SKIP: $MODULE — the tests pass in the plain copy but fail under"
       echo "      mutmut's single-process phase transitions. Module-level state"
-      echo "      (singletons/caches) does not survive stats->clean->mutants in"
-      echo "      one process — a documented mutmut 3.7 limitation for such modules."
+      echo "      (singletons/caches, import-time side effects) does not survive"
+      echo "      stats->clean->mutants in one process — a documented mutmut 3.7"
+      echo "      limitation for such modules."
       exit 0
     fi
     echo "REAL FAILURE: $MODULE's tests fail in the plain copy too — see" >&2

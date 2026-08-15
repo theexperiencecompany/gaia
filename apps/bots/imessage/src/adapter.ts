@@ -23,6 +23,7 @@ import {
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
+  unfetchableMediaMessage,
   unsupportedMediaMessage,
   WEBHOOK_MAX_BODY_BYTES,
   wideLog,
@@ -546,9 +547,23 @@ export class ImessageAdapter extends BaseBotAdapter {
       let filePrompt = "";
 
       for (const [index, content] of contents.entries()) {
+        const isVoiceNote = content.type === "voice";
+        if (!content.id) {
+          this.adapterLogger.info("media_unfetchable", {
+            user_hash: handleHash,
+            media_kind: kinds[index],
+            reason: "no_attachment_id",
+          });
+          await this.sendImessageText(
+            space,
+            unfetchableMediaMessage(kinds[index], isVoiceNote),
+          );
+          continue;
+        }
+
         const incoming: IncomingMedia = {
           kind: kinds[index],
-          isVoiceNote: content.type === "voice",
+          isVoiceNote,
           mimeType: content.mimeType,
           filename: content.name,
           sizeBytes: content.size,

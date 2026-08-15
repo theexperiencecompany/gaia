@@ -42,6 +42,7 @@ vi.mock("@gaia/shared", async () => {
     converters: {
       extractSubcommandArgs: vi.fn(real.extractSubcommandArgs),
       friendlyMediaError: vi.fn(real.friendlyMediaError),
+      unfetchableMediaMessage: vi.fn(real.unfetchableMediaMessage),
       unsupportedMediaMessage: vi.fn(real.unsupportedMediaMessage),
       mediaKindFromMime: vi.fn(real.mediaKindFromMime),
       readBodyBytesBounded: vi.fn(real.readBodyBytesBounded),
@@ -105,10 +106,10 @@ function makeAttachment(overrides: { size?: number } = {}) {
   return content;
 }
 
-function makeVoice() {
+function makeVoice(overrides: { id?: string } = { id: "voice-1" }) {
   const content = {
     type: "voice" as const,
-    id: "voice-1",
+    id: overrides.id,
     mimeType: "audio/ogg",
     duration: 4,
     size: 2048,
@@ -349,6 +350,29 @@ describe("handleInboundMessage routing", () => {
     );
   });
 
+  it("replies honestly when a voice note arrives without fetchable bytes", async () => {
+    const { adapter, priv } = makeAdapter();
+    const space = makeSpace();
+    const content = makeVoice({ id: undefined });
+    priv.handleInboundMessage(space, makeMessage({ content }));
+    await drainQueues(priv);
+
+    const resolveMock = (
+      adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
+    ).resolveIncomingMedia;
+    expect(resolveMock).not.toHaveBeenCalled();
+    expect(content.stream).not.toHaveBeenCalled();
+    expect(content.read).not.toHaveBeenCalled();
+
+    const sent = space.send.mock.calls.map((call) => call[0] as string);
+    expect(sent).toContain(
+      "Voice notes aren't supported here yet — please type your message instead.",
+    );
+    expect(sent.some((text) => text.includes("Something went wrong"))).toBe(
+      false,
+    );
+  });
+
   it("reads a voice note through the same capped stream as an attachment", async () => {
     const { adapter, priv } = makeAdapter();
     const space = makeSpace();
@@ -539,6 +563,26 @@ describe("multi-part (group) content", () => {
       expect.anything(),
       undefined,
     );
+  });
+
+  it("sends only the reply when no media part could be ingested", async () => {
+    const { adapter, priv } = makeAdapter();
+    const space = makeSpace();
+    priv.handleInboundMessage(
+      space,
+      groupMessage([
+        makeVoice({ id: undefined }),
+        { type: "text", text: "listen to this" },
+      ]),
+    );
+    await drainQueues(priv);
+
+    expect(resolveMockOf(adapter)).not.toHaveBeenCalled();
+    const sent = space.send.mock.calls.map((call) => call[0] as string);
+    expect(sent).toContain(
+      "Voice notes aren't supported here yet — please type your message instead.",
+    );
+    expect(handleStreamingChat).not.toHaveBeenCalled();
   });
 
   it("replies about the part it actually received, never about groups", async () => {

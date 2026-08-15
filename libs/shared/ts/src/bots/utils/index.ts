@@ -70,6 +70,7 @@ export {
   mediaKindFromMime,
   OUTBOUND_FILE_LIMITS,
   processBotMedia,
+  unfetchableMediaMessage,
   unsupportedMediaMessage,
 } from "./media";
 export {
