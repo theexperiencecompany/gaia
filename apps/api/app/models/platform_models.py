@@ -93,11 +93,13 @@ class DisconnectPlatformResponse(BaseModel):
 class InitiatePlatformConnectResponse(BaseModel):
     """Response model for initiating platform connection."""
 
-    auth_url: str | None = Field(None, description="OAuth authorization URL (if OAuth configured)")
+    auth_url: str | None = Field(
+        default=None, description="OAuth authorization URL (if OAuth configured)"
+    )
     auth_type: str = Field(..., description="Authentication type ('oauth' or 'manual')")
     instructions: str | None = Field(
-        None, description="Manual linking instructions (if manual auth)"
+        default=None, description="Manual linking instructions (if manual auth)"
     )
     action_link: str | None = Field(
-        None, description="Optional deep-link for manual auth (e.g. Telegram bot URL)"
+        default=None, description="Optional deep-link for manual auth (e.g. Telegram bot URL)"
     )
