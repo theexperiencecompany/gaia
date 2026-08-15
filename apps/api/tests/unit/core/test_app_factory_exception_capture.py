@@ -7,15 +7,40 @@ that relies on the context lands on a fresh anonymous profile — a crash nobody
 can trace to the user who hit it. These pin the explicit attribution.
 """
 
+from contextlib import asynccontextmanager
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from httpx import ASGITransport, AsyncClient
 import pytest
 from pytest_mock import MockerFixture
 
 from app.core.app_factory import create_app
+
+
+@asynccontextmanager
+async def _noop_lifespan(app: FastAPI):
+    yield
+
+
+def _cors_only_middleware(app: FastAPI) -> None:
+    """The conftest's hermetic stack: no Redis, no WorkOS.
+
+    `create_app()` raw installs Redis-backed middleware, so on a runner without
+    Redis a ConnectionError surfaces before the route is reached and the handler
+    under test sees the wrong exception entirely.
+    """
+    app.add_middleware(CORSMiddleware, allow_origins=["*"])
+
+
+def _hermetic_app() -> FastAPI:
+    with (
+        patch("app.core.app_factory.lifespan", _noop_lifespan),
+        patch("app.core.app_factory.configure_middleware", _cors_only_middleware),
+    ):
+        return create_app()
 
 
 def _client(app: FastAPI) -> AsyncClient:
@@ -35,7 +60,7 @@ def _app_with_boom_route(mocker: MockerFixture, user: dict[str, Any] | None) -> 
     authenticated request that then crashes.
     """
     mocker.patch("app.core.app_factory.providers.is_available", return_value=True)
-    app = create_app()
+    app = _hermetic_app()
 
     @app.get("/boom")
     async def _boom(request: Request) -> None:
@@ -90,7 +115,7 @@ async def test_missing_posthog_provider_still_returns_the_json_500(
     """Apps built without the production lifespan have no provider; a raising
     handler would turn the JSON body into a bare Starlette 500."""
     mocker.patch("app.core.app_factory.providers.is_available", return_value=False)
-    app = create_app()
+    app = _hermetic_app()
 
     @app.get("/boom")
     async def _boom() -> None:
