@@ -30,9 +30,11 @@ export {
   getSimpleTimeGreeting,
 } from "./greetingUtils";
 export {
+  displaySafeStreamText,
   NEW_MESSAGE_BREAK_TOKEN,
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
   splitMessageByBreaks,
+  trailingPartialBreakLength,
 } from "./messageBreakUtils";
 export type {
   OpenUIActionEventLike,

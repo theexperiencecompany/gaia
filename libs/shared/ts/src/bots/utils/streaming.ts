@@ -22,6 +22,7 @@ import type { Analytics } from "../../analytics";
 import { BOT_EVENTS } from "../../analytics/events/bots";
 import type { ApprovalRequestData } from "../../chat";
 import {
+  displaySafeStreamText,
   NEW_MESSAGE_BREAK_TOKEN,
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
 } from "../../utils/messageBreakUtils";
@@ -139,8 +140,9 @@ async function _handleStream(
   };
 
   const updateDisplay = async (text: string) => {
-    // Strip any unprocessed break tags before displaying
-    const cleaned = text.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim();
+    // Strip complete break tags AND withhold a trailing half-streamed token, so
+    // a partial `<NEW_MESSAGE_B` split across chunks never leaks into the bubble.
+    const cleaned = displaySafeStreamText(text);
     if (!cleaned) return;
     const truncated = truncateResponse(cleaned, platform);
     if (truncated === sentText) return;
