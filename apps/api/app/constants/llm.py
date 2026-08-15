@@ -264,18 +264,6 @@ HELPER_MAX_OUTPUT_TOKENS = 8_000
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
 OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
-# Route the paid model to the CHEAPEST provider on OpenRouter (sort: price).
-# Without consistent routing, OpenRouter load-balances across resellers whose
-# per-upstream prompt caches never chain (measured: a conversation split across
-# routing params flapped and capped at ~64%). ``sort: price`` + the session_id
-# sticky-routing key keeps every request of a conversation on the cheapest
-# provider that holds its warm cache. Passed via ChatOpenRouter's ``model_kwargs``
-# (the OpenRouter ``provider`` routing param) and inherited by child agents via
-# agent_helpers._inherit_from_parent_configurable so subagents stay on the same lane.
-PAID_MODEL_PROVIDER_SLUG = "deepseek"
-# No explicit routing: the session_id sticky-routing key pins the paid lane to
-# the provider holding its warm cache (see the routing note above the default).
-PAID_MODEL_MODEL_KWARGS: dict[str, object] | None = None
 # Comms-specific reasoning: "low" instead of the executor's "medium". Comms is
 # mostly routing/ack work, so the reasoning budget is most useful for the executor's
 # tool selection. GLM 5.2 also documents "high"/"xhigh" efforts — revisit these

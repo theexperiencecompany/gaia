@@ -34,6 +34,11 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
 from app.constants.log_tags import LogTag
+from app.helpers.message_helpers import (
+    DYNAMIC_CONTEXT_MARKER,
+    MEMORY_RECALL_MARKER,
+    MEMORY_VOLATILE_MARKER,
+)
 from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import PRUNED_MESSAGE_IDS_KEY, State
 from shared.py.wide_events import log
@@ -77,7 +82,7 @@ def _is_dynamic_context(msg: AnyMessage) -> bool:
     still carry a single combined message with both ``dynamic_context`` and
     ``memory_message`` — those keep working as the stable dynamic slot.
     """
-    return _has_marker(msg, "dynamic_context") or _has_marker(msg, "memory_message")
+    return _has_marker(msg, DYNAMIC_CONTEXT_MARKER) or _has_marker(msg, "memory_message")
 
 
 def _is_memory_recall(msg: AnyMessage) -> bool:
@@ -87,7 +92,7 @@ def _is_memory_recall(msg: AnyMessage) -> bool:
     ``memory_message``) so it slots at the tail of the system block instead of
     collapsing into the stable dynamic slot.
     """
-    return _has_marker(msg, "memory_recall")
+    return _has_marker(msg, MEMORY_RECALL_MARKER)
 
 
 def _is_memory_volatile(msg: AnyMessage) -> bool:
@@ -97,7 +102,7 @@ def _is_memory_volatile(msg: AnyMessage) -> bool:
     AFTER the time message — the last message in the request — where its
     churn never shifts the byte-stable prefix ahead of it.
     """
-    return _has_marker(msg, "memory_volatile")
+    return _has_marker(msg, MEMORY_VOLATILE_MARKER)
 
 
 def _is_todo_context(msg: AnyMessage) -> bool:

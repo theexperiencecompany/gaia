@@ -332,9 +332,13 @@ async def create_agent_context_message(
     # Split them into a volatile tail placed AFTER the conversation/time: the
     # stable context stays in the cached prefix, the churn sits at the very
     # end of the request where it cannot shift anything.
+    # Each section is either empty or its own "\n\n" separator plus a block, so
+    # the concatenation carries one leading separator that has nothing before
+    # it. removeprefix, not lstrip("\n"): only THAT separator should go, while
+    # a section's own leading blank lines are its content.
     volatile_content = (
         memories_section + skills_section + metadata_section + instructions_section
-    ).lstrip("\n")
+    ).removeprefix("\n\n")
     volatile_msg = (
         _mark_memory_volatile(SystemMessage(content=volatile_content)) if volatile_content else None
     )

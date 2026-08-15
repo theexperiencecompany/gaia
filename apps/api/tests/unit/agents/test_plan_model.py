@@ -1,12 +1,14 @@
 """Behavior tests for app.agents.llm.plan_model (per-plan LLM routing).
 
-Locks: free -> default Gemini pin, any paid plan -> MiniMax via OpenRouter
-(with comms reasoning + provider pin), a lookup failure keeps the default
-model, and the dev-only overrides pin/stash/clear model fields exactly.
+Locks: free -> default model pin, any paid plan -> the paid model via
+OpenRouter with comms reasoning and no provider routing, an exhausted monthly
+budget -> a recorded downgrade, a lookup failure keeps the default model, and
+the dev-only overrides pin/stash/clear model fields exactly.
 """
 
 from unittest.mock import AsyncMock, patch
 
+from app.agents.llm import plan_model as pm
 from app.agents.llm.client import PROVIDER_MODELS
 from app.agents.llm.plan_model import (
     apply_dev_executor_model,
@@ -20,7 +22,6 @@ from app.constants.llm import (
     DEFAULT_MODEL_NAME,
     DEV_MODEL_OPTIONS,
     OPENROUTER_REASONING,
-    PAID_MODEL_MODEL_KWARGS,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
 )
@@ -73,14 +74,10 @@ class TestApplyPlanModel:
         assert configurable["model"] == PAID_MODEL_NAME
         assert configurable["model_name"] == PAID_MODEL_NAME
         assert configurable["reasoning"] == COMMS_REASONING
-        # model_kwargs is applied only when there is routing to pin. The lane
-        # now relies on session_id sticky routing instead of a hard provider
-        # pin, so PAID_MODEL_MODEL_KWARGS is None and the key must be ABSENT —
-        # writing None into it would send an explicit null to the provider.
-        if PAID_MODEL_MODEL_KWARGS is None:
-            assert "model_kwargs" not in configurable
-        else:
-            assert configurable["model_kwargs"] == PAID_MODEL_MODEL_KWARGS
+        # The lane relies on session_id sticky routing, not a hard provider
+        # pin, so there is no routing to send and the key must be ABSENT —
+        # writing None into it crashes the SDK's **model_kwargs spread.
+        assert "model_kwargs" not in configurable
 
     async def test_lookup_failure_keeps_the_default_model(self) -> None:
         configurable = _configurable()
@@ -92,6 +89,45 @@ class TestApplyPlanModel:
             await apply_plan_model(configurable, "user-1")
 
         assert configurable == {"provider": "unset", "model": "unset", "model_name": "unset"}
+
+
+class TestPlanModelWideEvent:
+    """The ``plan_model`` namespace is the only operator-visible record of which
+    lane a request ran on. ``degraded`` in particular is how a support question
+    ("why did my pro chat feel slower?") gets answered, so the field names and
+    values are a contract, not narration."""
+
+    async def _plan_model_field(self, *, exhausted: bool) -> dict[str, object]:
+        with (
+            patch(
+                "app.services.payments.payment_service.payment_service.get_cached_plan_type",
+                new_callable=AsyncMock,
+                return_value=PlanType.PRO,
+            ),
+            patch.object(
+                pm, "_pro_monthly_budget_exhausted", new_callable=AsyncMock
+            ) as budget_spent,
+            patch.object(pm, "spawn_background_task"),
+            patch.object(pm, "log") as log,
+        ):
+            budget_spent.return_value = exhausted
+            await apply_plan_model(_configurable(), "user-1")
+
+        return log.set.call_args.kwargs["plan_model"]
+
+    async def test_a_served_pro_request_records_its_lane_undegraded(self) -> None:
+        assert await self._plan_model_field(exhausted=False) == {
+            "plan": PlanType.PRO.value,
+            "model": PAID_MODEL_NAME,
+            "degraded": False,
+        }
+
+    async def test_a_budget_exhausted_pro_request_records_the_downgrade(self) -> None:
+        assert await self._plan_model_field(exhausted=True) == {
+            "plan": PlanType.PRO.value,
+            "model": DEFAULT_MODEL_NAME,
+            "degraded": True,
+        }
 
 
 class TestApplyDevModelOverride:
@@ -161,7 +197,7 @@ class TestApplyDevModelOverride:
     async def test_non_reasoning_option_clears_a_prior_reasoning_pin(self) -> None:
         configurable = self._config()
         configurable["reasoning"] = COMMS_REASONING
-        configurable["model_kwargs"] = PAID_MODEL_MODEL_KWARGS
+        configurable["model_kwargs"] = {"provider": {"only": ["deepseek"]}}
         apply_dev_model_override(
             configurable, comms_model="deepseek-v4-flash", executor_model=None, use_defaults=False
         )

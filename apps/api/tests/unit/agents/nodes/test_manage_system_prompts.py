@@ -23,6 +23,7 @@ from app.agents.core.nodes.manage_system_prompts import (
     _is_dynamic_context,
     manage_system_prompts_node,
 )
+from app.helpers.message_helpers import MEMORY_VOLATILE_MARKER
 from app.override.langgraph_bigtool.utils import State
 
 
@@ -148,14 +149,17 @@ class TestManageSystemPrompts:
         """OpenAI-wire providers (OpenRouter / custom — the production default
         route) accept system messages anywhere, so the volatile slots move
         AFTER the conversation: ``[static, dynamic, ...conversation, todo,
-        memory_recall, time]``. The conversation then joins the provider's
-        implicit-cache prefix instead of re-sending uncached every turn.
+        memory_recall, time, memory_volatile]``. The conversation then joins the
+        provider's implicit-cache prefix instead of re-sending uncached every
+        turn, and the per-turn volatile tail sits behind even the clock — it
+        churns hardest, so nothing cacheable may sit behind it.
         """
         msgs = [
             _static("prompt"),
             _dynamic("ctx"),
             SystemMessage(content="todo", additional_kwargs={"todo_context": True}),
             SystemMessage(content="mem", additional_kwargs={"memory_recall": True}),
+            SystemMessage(content="volatile", additional_kwargs={MEMORY_VOLATILE_MARKER: True}),
             HumanMessage(content="hello"),
             AIMessage(content="reply"),
             HumanMessage(content="time", additional_kwargs={"time_context": True}),
@@ -172,17 +176,21 @@ class TestManageSystemPrompts:
             ("system", "todo"),
             ("system", "mem"),
             ("human", "time"),
+            ("system", "volatile"),
         ]
 
     def test_leading_layout_preserved_for_gemini(self) -> None:
         """Gemini only promotes a leading contiguous run of SystemMessages to
         ``system_instruction`` — the volatile slots must stay in the leading
-        block or they are silently dropped."""
+        block or they are silently dropped. That includes the per-turn volatile
+        tail, which the OpenAI-wire route puts last: on Gemini it rejoins the
+        leading run rather than being placed where the API would discard it."""
         msgs = [
             _static("prompt"),
             _dynamic("ctx"),
             SystemMessage(content="todo", additional_kwargs={"todo_context": True}),
             SystemMessage(content="mem", additional_kwargs={"memory_recall": True}),
+            SystemMessage(content="volatile", additional_kwargs={MEMORY_VOLATILE_MARKER: True}),
             HumanMessage(content="hello"),
             HumanMessage(content="time", additional_kwargs={"time_context": True}),
         ]
@@ -195,6 +203,7 @@ class TestManageSystemPrompts:
             ("system", "ctx"),
             ("system", "todo"),
             ("system", "mem"),
+            ("system", "volatile"),
             ("human", "hello"),
             ("human", "time"),
         ]

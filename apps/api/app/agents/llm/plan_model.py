@@ -20,7 +20,6 @@ from app.constants.llm import (
     DEV_MODEL_OPTIONS,
     MONTHLY_BUDGET_TTL_SECONDS,
     OPENROUTER_REASONING,
-    PAID_MODEL_MODEL_KWARGS,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
     PRO_MONTHLY_COST_BUDGET_USD,
@@ -89,15 +88,13 @@ async def apply_plan_model(configurable: AgentConfigurable, user_id: str | None)
     else:
         # Paid lane via OpenRouter, comms-specific reasoning. The executor +
         # provider subagents inherit this model from `configurable` (see
-        # agent_helpers._inherit_from_parent_configurable). No explicit provider
-        # routing: the session_id sticky-routing key pins the paid lane to the
-        # provider holding its warm cache, and setting model_kwargs=None here
-        # would crash the SDK's **model_kwargs spread — leave the key ABSENT so
-        # the client's default (no routing) applies.
+        # agent_helpers._inherit_from_parent_configurable). `model_kwargs` is
+        # deliberately never set: the session_id sticky-routing key pins the
+        # paid lane to the provider holding its warm cache, so there is no
+        # routing to send, and writing None into the key would crash the SDK's
+        # **model_kwargs spread. Absent leaves the client's default in place.
         _pin_model(configurable, PAID_MODEL_PROVIDER, PAID_MODEL_NAME)
         configurable["reasoning"] = COMMS_REASONING
-        if PAID_MODEL_MODEL_KWARGS is not None:
-            configurable["model_kwargs"] = PAID_MODEL_MODEL_KWARGS
 
     log.set(plan_model={"plan": plan.value, "model": configurable["model"], "degraded": degraded})
 
