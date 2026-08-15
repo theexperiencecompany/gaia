@@ -107,7 +107,7 @@ async def _fetch_provider_metadata_block(
     if not metadata:
         return ""
     lines = [f"- {k}: {v}" for k, v in metadata.items()]
-    return f"\n\nUSER CONTEXT FOR {integration.name.upper()}:\n" + "\n".join(lines) + "\n"
+    return f"USER CONTEXT FOR {integration.name.upper()}:\n" + "\n".join(lines) + "\n"
 
 
 async def _fetch_instructions_block(integration_id: str | None, user_id: str | None) -> str:
@@ -136,7 +136,7 @@ async def _fetch_instructions_block(integration_id: str | None, user_id: str | N
     integration = get_integration_by_id(integration_id)
     label = integration.name if integration else integration_id
     return (
-        f"\n\nCUSTOM INSTRUCTIONS FOR {label.upper()} (set by the user — honor these):\n"
+        f"CUSTOM INSTRUCTIONS FOR {label.upper()} (set by the user — honor these):\n"
         f"{content.strip()}\n"
     )
 
@@ -187,6 +187,8 @@ async def create_agent_context_message(
         memories_text: Pre-fetched memories section; if provided, skips
             ChromaDB lookup. Memory fetched by the caller is passed through
             the handoff payload so subagents don't re-run the same search.
+            A section's own text only — the blank line between sections is
+            added here, so a leading one of its own renders as an extra gap.
         skills_text: Pre-fetched skills section; same rationale as memories.
         provider_metadata: Pre-fetched provider metadata dict; if provided,
             skips the Mongo lookup (the handoff path already fetched it for
@@ -247,7 +249,7 @@ async def create_agent_context_message(
                     f"{LogTag.AGENT} Added memories to subagent context",
                     memory_count=len(results.memories),
                 )
-                return "\n\nBased on our previous conversations:\n" + "\n".join(
+                return "Based on our previous conversations:\n" + "\n".join(
                     f"- {mem.content}" for mem in results.memories
                 )
         except Exception as e:
@@ -292,7 +294,7 @@ async def create_agent_context_message(
             if integration_block:
                 block = f"{block}\n\n{integration_block}" if block else integration_block
 
-        return f"\n\n{block}" if block else ""
+        return block
 
     async def _fetch_integrations_manifest() -> str:
         # Executor-only: the agent that actually performs handoffs gets the live
@@ -332,13 +334,22 @@ async def create_agent_context_message(
     # Split them into a volatile tail placed AFTER the conversation/time: the
     # stable context stays in the cached prefix, the churn sits at the very
     # end of the request where it cannot shift anything.
-    # Each section is either empty or its own "\n\n" separator plus a block, so
-    # the concatenation carries one leading separator that has nothing before
-    # it. removeprefix, not lstrip("\n"): only THAT separator should go, while
-    # a section's own leading blank lines are its content.
-    volatile_content = (
-        memories_section + skills_section + metadata_section + instructions_section
-    ).removeprefix("\n\n")
+    # Sections are joined here, never self-separating. Each used to carry its
+    # own leading "\n\n" and be concatenated, which put a separator in front of
+    # the first one that then had to be scraped back off — and the scrape was a
+    # blunt lstrip that also ate a section's own leading blank lines. This is
+    # the shape the stable half above and build_dynamic_context_messages both
+    # already use: bare parts, one join, no repair afterwards.
+    volatile_content = "\n\n".join(
+        section
+        for section in (
+            memories_section,
+            skills_section,
+            metadata_section,
+            instructions_section,
+        )
+        if section
+    )
     volatile_msg = (
         _mark_memory_volatile(SystemMessage(content=volatile_content)) if volatile_content else None
     )

@@ -12,9 +12,11 @@ fetch inside the function short-circuits before touching Chroma or Mongo.
 """
 
 from typing import cast
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.agents.core.subagents import subagent_helpers
 from app.agents.core.subagents.subagent_helpers import create_agent_context_message
 from app.helpers.message_helpers import DYNAMIC_CONTEXT_MARKER, MEMORY_VOLATILE_MARKER
 from app.models.agent_models import AgentConfigurable
@@ -42,9 +44,10 @@ class TestCreateAgentContextMessage:
         assert messages.stable.additional_kwargs[DYNAMIC_CONTEXT_MARKER] is True
 
     async def test_the_volatile_tail_starts_at_its_content(self) -> None:
-        # Sections carry their own leading "\n\n" separator so they concatenate;
-        # the first one's has nothing before it and must not survive into the
-        # message, or every request opens its tail with a blank line.
+        # The separator between sections belongs to the assembly, so a single
+        # section gets none in front of it. When each section carried its own,
+        # the first one's had nothing before it and every request opened its
+        # tail with a blank line unless something scraped it back off.
         messages = await create_agent_context_message(
             _configurable(), skills_text="Installable skills:\n- alpha"
         )
@@ -52,9 +55,22 @@ class TestCreateAgentContextMessage:
         assert messages.volatile_tail is not None
         assert messages.volatile_tail.content == "Installable skills:\n- alpha"
 
-    async def test_the_volatile_tail_keeps_a_sections_own_leading_blank_line(self) -> None:
-        # Only the separator is stripped. A block that deliberately opens with a
-        # blank line keeps it — the bytes a section chose are its own.
+    async def test_two_sections_are_separated_by_exactly_one_blank_line(self) -> None:
+        messages = await create_agent_context_message(
+            _configurable(),
+            memories_text="Based on our previous conversations:\n- likes tea",
+            skills_text="Installable skills:\n- alpha",
+        )
+
+        assert messages.volatile_tail is not None
+        assert messages.volatile_tail.content == (
+            "Based on our previous conversations:\n- likes tea\n\nInstallable skills:\n- alpha"
+        )
+
+    async def test_a_sections_own_text_is_joined_verbatim(self) -> None:
+        # The assembly adds a separator and nothing else — it never edits what a
+        # section chose to send. A block that deliberately opens with a blank
+        # line keeps it, which the old blunt lstrip of the concatenation ate.
         messages = await create_agent_context_message(
             _configurable(), skills_text="\nIndented block:\n  - alpha"
         )
@@ -67,6 +83,26 @@ class TestCreateAgentContextMessage:
 
         assert messages.volatile_tail is not None
         assert messages.volatile_tail.additional_kwargs[MEMORY_VOLATILE_MARKER] is True
+
+    async def test_the_integrations_manifest_rides_the_stable_half(self) -> None:
+        # Executor-only, and deliberately NOT in the volatile tail: the list
+        # changes on connect/disconnect, not per turn, so it belongs inside the
+        # cacheable prefix. Putting it in the tail would re-send it every turn
+        # for nothing; dropping it leaves the executor unable to name the
+        # subagent_ids it hands off to.
+        with patch.object(
+            subagent_helpers,
+            "build_connected_integrations_manifest",
+            AsyncMock(return_value="Connected:\n- Slack (slack)"),
+        ):
+            messages = await create_agent_context_message(
+                _configurable(user_id="u1"),
+                skills_text="",
+                include_connected_integrations=True,
+            )
+
+        assert "Connected:\n- Slack (slack)" in messages.stable.content
+        assert messages.volatile_tail is None
 
     async def test_nothing_volatile_this_turn_sends_no_tail_at_all(self) -> None:
         # An empty SystemMessage would still cost a request slot and, worse,
