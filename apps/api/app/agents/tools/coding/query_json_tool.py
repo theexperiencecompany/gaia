@@ -211,7 +211,14 @@ def _match_condition(record: JSONRecord, cond: dict[str, object]) -> bool:
             return actual > value if op == "gt" else actual < value
         if isinstance(actual, (int, float)) and isinstance(value, (int, float)):
             return actual > value if op == "gt" else actual < value
-        if isinstance(actual, list) and isinstance(value, list):
+        # The `and` here is narrowing for mypy, not a runtime guard: if only one
+        # side were a list the comparison below would raise TypeError and return
+        # False, which is exactly what falling through to `return False` does.
+        # So `and` -> `or` is a provably equivalent mutation — verified by
+        # exhaustive search over every pairing of 21 JSON-shaped values (str,
+        # int, float, bool, None, list, dict, tuple, set, bytes) against both
+        # ops: 882 pairings, zero distinguishing inputs. No test can kill it.
+        if isinstance(actual, list) and isinstance(value, list):  # pragma: no mutate
             try:
                 return bool(actual > value if op == "gt" else actual < value)
             except TypeError:

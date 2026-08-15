@@ -91,6 +91,64 @@ def test_match_condition_type_mismatch_is_false_not_error() -> None:
     assert _match_condition({"n": "abc"}, {"field": "n", "op": "gt", "value": 5}) is False
 
 
+@pytest.mark.parametrize(
+    "actual,op,value,expected",
+    [
+        (5, "gt", 3, True),
+        (3, "gt", 5, False),
+        (3, "lt", 5, True),
+        (5, "lt", 3, False),
+        (5, "gt", 5, False),
+        (2.5, "gt", 2, True),
+        (2, "lt", 2.5, True),
+    ],
+)
+def test_match_condition_compares_numbers_numerically(
+    actual: float, op: str, value: float, expected: bool
+) -> None:
+    """Numeric gt/lt is its own branch — the string and list cases do not cover it."""
+    assert _match_condition({"n": actual}, {"field": "n", "op": op, "value": value}) is expected
+
+
+@pytest.mark.parametrize(
+    "actual,value",
+    [
+        ("b", "b"),
+        (5, 5),
+        (2.5, 2.5),
+        ([1, 2], [1, 2]),
+    ],
+)
+def test_match_condition_gt_and_lt_are_strict_at_the_boundary(
+    actual: object, value: object
+) -> None:
+    """Equal values match neither gt nor lt — the comparison is strict, not >=/<=.
+
+    Every kind is checked because the ordering is implemented per kind, so a
+    boundary slip in one branch is invisible to the others.
+    """
+    assert _match_condition({"x": actual}, {"field": "x", "op": "gt", "value": value}) is False
+    assert _match_condition({"x": actual}, {"field": "x", "op": "lt", "value": value}) is False
+
+
+def test_match_condition_unorderable_lists_are_a_non_match_not_a_crash() -> None:
+    """Mixed element kinds raise TypeError inside the comparison; that is a
+    non-match, matching the runtime behaviour before the strict rewrite."""
+    assert (
+        _match_condition({"xs": [1, 2]}, {"field": "xs", "op": "gt", "value": ["a", "b"]}) is False
+    )
+
+
+def test_match_condition_dict_field_is_a_non_match() -> None:
+    """Dicts are unordered in py3 — comparing them is a non-match, not an error."""
+    assert _match_condition({"d": {"a": 1}}, {"field": "d", "op": "gt", "value": {"a": 0}}) is False
+
+
+def test_match_condition_mixed_kinds_are_a_non_match() -> None:
+    """A number against a string never compares — no branch should claim it does."""
+    assert _match_condition({"n": 5}, {"field": "n", "op": "lt", "value": "abc"}) is False
+
+
 def test_match_condition_same_kind_lists_compare_lexicographically() -> None:
     """List fields are legal Python comparisons — a list value query must
     match lexicographically, not silently return False (regression: the strict
@@ -222,6 +280,31 @@ def test_group_count_by() -> None:
         group_count_by="from",
     )
     assert out == [{"value": "github", "count": 2}, {"value": "bob@co.com", "count": 1}]
+
+
+def test_group_count_by_ranks_by_count_not_by_group_value() -> None:
+    """Groups come back most-frequent first, independent of how the keys sort.
+
+    The existing fixture's keys happen to sort into the same order as their
+    counts, so dropping the count sort key was invisible. These keys sort the
+    opposite way: "z" outranks "a" alphabetically but has fewer records.
+    """
+    recs: list[dict[str, object]] = [{"g": "a"}, {"g": "a"}, {"g": "z"}]
+
+    out = _apply_query(
+        recs,
+        where=[],
+        match="all",
+        fields=None,
+        sort_by=None,
+        order="desc",
+        limit=50,
+        count_only=False,
+        unique_by=None,
+        group_count_by="g",
+    )
+
+    assert out == [{"value": "a", "count": 2}, {"value": "z", "count": 1}]
 
 
 def test_sort_with_missing_field_does_not_crash() -> None:
