@@ -249,6 +249,22 @@ def with_unit_mirror(
     """
     mirror = f"tests/unit/{Path(module_rel).parent}/test_{Path(module_rel).stem}.py"
     ordered = [hit.removeprefix("apps/api/") for hit in hits]
+    # Unit tier only. Every selected file is re-run once PER MUTANT, so an e2e
+    # file in this list is paid for tens of times: app/workers/tasks/
+    # workflow_tasks.py picked up tests/e2e/test_workflow_execution.py, which
+    # compiles real graphs, and the module collapsed from 9.43 to 0.11
+    # mutations/second — all 35 mutants hit mutmut's per-mutant timeout and the
+    # run proved nothing. This is the instrument's documented scope (see the
+    # hermetic-fence note in scripts/test/mutation.sh); the slower tiers are
+    # already run properly, once, by test-python.
+    #
+    # Kept as a filter rather than a cap: dropping the slow tiers is what makes
+    # the run finish, and dropping *arbitrary* files is what re-introduces the
+    # false-green this function exists to prevent — so every unit file stays.
+    unit_only = [hit for hit in ordered if hit.startswith("tests/unit/")]
+    # A module whose only coverage is integration/e2e keeps it: measuring it
+    # slowly beats not measuring it, and reporting "no test file" would be a lie.
+    ordered = unit_only or ordered
     if (repo_root / mirror).exists():
         ordered = [mirror, *(hit for hit in ordered if hit != mirror)]
     return ordered
