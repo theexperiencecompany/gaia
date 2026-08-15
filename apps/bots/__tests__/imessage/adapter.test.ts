@@ -55,10 +55,9 @@ vi.mock("@gaia/shared", async () => {
   });
 });
 
-import { handleStreamingChat } from "@gaia/shared";
+import { handleStreamingChat, MEDIA_READ_TIMEOUT_MS } from "@gaia/shared";
 import { attachment } from "spectrum-ts";
 import { ImessageAdapter } from "../../imessage/src/adapter";
-import { MEDIA_READ_TIMEOUT_MS } from "../../imessage/src/constants";
 
 interface FakeSpace {
   id: string;

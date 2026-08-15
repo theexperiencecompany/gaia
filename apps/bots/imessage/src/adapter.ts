@@ -11,6 +11,7 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
+  MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,
   type OutboundAttachment,
@@ -34,7 +35,6 @@ import { attachment, type Message, type Space, Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import {
   IMESSAGE_SERVER_PORT,
-  MEDIA_READ_TIMEOUT_MS,
   RECENT_MESSAGE_IDS_MAX,
   WELCOME_AUTH_CHECK_TIMEOUT_MS,
 } from "./constants";
