@@ -9,13 +9,15 @@ when any test file imports it, imports from it, or names it in a string
 literal (patch target).
 
 Input:  changed app module paths on stdin (one per line, repo-root-relative).
-Output: {"modules": [{"module": ..., "testfile": ...}, ...]}
+Output: [{"module": ..., "testfiles": [...], "changed_lines": [...]}, ...]
+        Every test file referencing the module, not one — see with_unit_mirror.
 Exit 1 with a ::error message when a changed module has no test file.
 """
 
 from __future__ import annotations
 
 import ast
+from collections.abc import Sequence
 import io
 import json
 import os
@@ -230,6 +232,28 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
     return hits
 
 
+def with_unit_mirror(
+    module_rel: str, hits: Sequence[str], repo_root: Path = TESTS_DIR.parent
+) -> list[str]:
+    """Every test file for a module, its unit mirror first — the gate's full set.
+
+    The mirror used to short-circuit the scan instead of joining it: a module
+    that had one was measured against ONLY that file, and a module without one
+    against whichever hit sorted first. Either way the rest were discarded, so
+    mutants covered only by a discarded file were reported as "no covering
+    test" — informational, failing nothing. ``app/agents/tools/executor_tool.py``
+    is the extreme case: measured against the file the sort picked, all 65 of
+    its mutants land in that bucket and the gate reports OK having killed
+    nothing; measured against every referencing file, 24 real survivors appear
+    on lines the PR changed.
+    """
+    mirror = f"tests/unit/{Path(module_rel).parent}/test_{Path(module_rel).stem}.py"
+    ordered = [hit.removeprefix("apps/api/") for hit in hits]
+    if (repo_root / mirror).exists():
+        ordered = [mirror, *(hit for hit in ordered if hit != mirror)]
+    return ordered
+
+
 def main() -> int:
     changed = [line.strip() for line in sys.stdin if line.strip()]
     merge_base = _merge_base()
@@ -259,14 +283,11 @@ def main() -> int:
             continue
         rel_py = rel.removeprefix("app/")
         rel_py = rel_py.removesuffix(".py")
+        testfiles = with_unit_mirror(rel_py, _test_files_for(rel_py))
+        if testfiles:
+            matrix.append(_entry(rel, testfiles, merge_base))
+            continue
         unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
-        if (TESTS_DIR.parent / unit_mirror).exists():
-            matrix.append(_entry(rel, unit_mirror, merge_base))
-            continue
-        hits = _test_files_for(rel_py)
-        if hits:
-            matrix.append(_entry(rel, hits[0].removeprefix("apps/api/"), merge_base))
-            continue
         failures.append(
             f"changed module {rel} has no test file anywhere (looked for {unit_mirror} "
             "and AST importers/patch targets). Changed code must ship tests."
@@ -279,7 +300,7 @@ def main() -> int:
     return 0
 
 
-def _entry(module_rel: str, testfile: str, merge_base: str) -> dict[str, object]:
+def _entry(module_rel: str, testfiles: list[str], merge_base: str) -> dict[str, object]:
     """Module matrix entry with the PR's changed line ranges for this file.
 
     The gate is diff-driven: a survivor only fails the lane when its mutation
@@ -288,7 +309,7 @@ def _entry(module_rel: str, testfile: str, merge_base: str) -> dict[str, object]
     coverage.
     """
     ranges = _changed_line_ranges(f"apps/api/{module_rel}", merge_base)
-    return {"module": module_rel, "testfile": testfile, "changed_lines": ranges}
+    return {"module": module_rel, "testfiles": testfiles, "changed_lines": ranges}
 
 
 def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:
