@@ -345,6 +345,9 @@ class TestGetSettings:
         data = response.json()
         assert data["authenticated"] is True
         assert data["user_name"] == "Alice"
+        # Whose integrations were fetched. Unasserted, a null user id here
+        # returns another account's settings — or none — and still 200s.
+        mock_integrations.assert_awaited_once_with("uid1")
 
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
