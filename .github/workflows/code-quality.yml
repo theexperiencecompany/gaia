@@ -889,22 +889,34 @@ jobs:
   # anywhere, zero mutants (tests do not cover the changed lines), any
   # surviving mutant, or the lane budget being exceeded.
   #
-  # Self-contained by design: an earlier version fed the module list through
-  # a job output into a matrix (`include: ${{ fromJSON(needs.X.outputs.matrix) }}`)
-  # — the matrix job never materialized because output values containing
-  # quotes corrupt the expression context (verified with a minimal probe
-  # workflow: hardcoded include works, literal fromJSON works, fromJSON of a
-  # job output does not). One job that computes the list and runs the
-  # modules itself (xargs -P for bounded parallelism on the runner) has no
-  # such surface to break. mutation.sh is parallel-safe (per-invocation
-  # workdir), so concurrent runs never race on shared state.
+  # Sharded across runners, but each shard still computes the whole module
+  # list itself and keeps its own slice. The module list is deliberately NOT
+  # passed between jobs: an earlier version fed it through a job output into
+  # a matrix (`include: ${{ fromJSON(needs.X.outputs.matrix) }}`) and the
+  # matrix job never materialized, because output values containing quotes
+  # corrupt the expression context (verified with a minimal probe workflow:
+  # hardcoded include works, literal fromJSON works, fromJSON of a job output
+  # does not). A literal shard list has no such surface. Recomputing the
+  # matrix per shard costs seconds and is deterministic — every shard diffs
+  # the same two commits — so the slices cannot disagree.
+  #
+  # mutation.sh is parallel-safe (per-invocation workdir), so neither the
+  # in-job parallelism nor the concurrent shards race on shared state.
   test-mutation:
     needs: [changes]
     if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
-    # A large changed module can carry hundreds of mutants (each running its
-    # covering tests once) — a 745-mutant module takes ~13 min. The xargs
-    # parallelism overlaps modules, so this is the per-module worst case.
+    strategy:
+      # Every shard reports: one shard's survivor must not hide the rest of
+      # the diff's, or the next push fixes one module and uncovers another.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    # A runner has 4 vCPU and mutmut is CPU-bound, so a shard's own
+    # parallelism caps at 4 and shards are the only way to add throughput.
+    # Sized against the worst case seen: a 52-module diff needed ~2h in one
+    # job (11 modules done at the 30 min cancel), which is ~15 min per shard
+    # here, and a single 745-mutant module takes ~13 min on its own.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -919,6 +931,9 @@ jobs:
         run: uv sync --frozen --package gaia --group backend --group dev
       - name: Mutation check (zero survivors required, per changed module)
         run: bash scripts/ci/mutation-check.sh
+        env:
+          MUTATION_SHARD: ${{ matrix.shard }}
+          MUTATION_SHARDS: 8
 
   quality-gate:
     name: Quality gate (required)
