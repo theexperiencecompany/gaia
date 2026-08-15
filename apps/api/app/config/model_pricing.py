@@ -31,12 +31,16 @@ DEFAULT_PRICING = ModelPricing(
 
 # The aux lane (AUX_MODEL_NAME) is a DIFFERENT model id — the ORIGINAL V4
 # Flash release, not the re-post-trained 0731 revision the graph uses — so its
-# calls get a separate prompt-cache namespace. It is NOT the same model as DEFAULT_MODEL_NAME — OpenRouter
-# publishes its own rates for it (input 0.00014 / output 0.00028 vs the
-# default's 0.00008 / 0.00018) — so it must be priced at its own rate, not the
-# default's, or the aux COGS is under-counted by ~1.75x. Kept as a constant
-# here rather than a seed entry because the alias is an internal routing id,
-# not a model users can select.
+# calls get a separate prompt-cache namespace. It is NOT the same model as
+# DEFAULT_MODEL_NAME and does not share its rate card, so it must be priced at
+# its own rate: the values below against the catalogue-seeded default
+# (0.00009 / 0.00018 — see scripts/seed_models.py) make the aux lane ~1.55x the
+# input rate, and pricing it as the default would under-count aux COGS by that
+# much. Kept as a constant here rather than a seed entry because the id is an
+# internal routing choice, not a model users can select — which also means
+# nothing reconciles it against OpenRouter's live listing. The unit test pins
+# these values, NOT that they still match upstream; re-check them by hand
+# whenever either model id is re-pointed.
 AUX_MODEL_PRICING = ModelPricing(
     input_cost_per_1k=0.00014,
     output_cost_per_1k=0.00028,

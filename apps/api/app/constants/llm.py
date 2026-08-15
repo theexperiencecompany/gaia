@@ -176,17 +176,19 @@ UNKNOWN_MODEL_NAME = "unknown"
 # vision, …). This is NOT the same model as the default: OpenRouter serves the
 # bare id as the ORIGINAL V4 Flash release ("0423", created Apr 2026), while
 # DEFAULT_MODEL_NAME is the re-post-trained "0731" revision (Aug 2026) — same
-# architecture family (284B/13B-active MoE, 1M context, identical pricing),
-# different model version. Aux one-shots (follow-up suggestions, conversation
+# architecture family (284B/13B-active MoE, 1M context), different model
+# version — and NOT the same rate card. Aux one-shots (follow-up suggestions, conversation
 # naming) are therefore served by the older revision — a deliberate tradeoff:
 # the separate model id is what gives these calls their own provider-side
 # cache namespace. They must NOT share the conversation's namespace — their
 # ~30k tokens/turn of new blocks were evicting the conversation chain between
 # turns (measured: real-graph hit rate capped at ~63% while the intra-turn
 # steady state is 87–91%). A separate id lets the aux calls chain with each
-# other and stops the eviction. (Pricing on OpenRouter is identical to the
-# default; the app's AUX_MODEL_PRICING meter entry is separate and should be
-# kept in sync with the live catalog.)
+# other and stops the eviction. This id is priced SEPARATELY from the default
+# — see AUX_MODEL_PRICING, which is what meters it, and which is hand-written
+# here rather than seeded because the id is an internal routing choice, not a
+# model users can select. Nothing reconciles it against OpenRouter's live
+# listing, so it has to be re-checked by hand whenever either id is re-pointed.
 AUX_MODEL_NAME = "deepseek/deepseek-v4-flash"
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
