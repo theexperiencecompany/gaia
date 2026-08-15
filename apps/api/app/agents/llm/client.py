@@ -418,9 +418,12 @@ def register_llm_providers() -> None:
 
 def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     """The single factory for the default model (``DEFAULT_MODEL_NAME``, served over
-    OpenRouter) used by EVERY auxiliary LLM task — follow-ups, research, memory
-    extraction, integration inference, profile/holo cards, vision helpers, workflow
-    generation, context summarization, onboarding, one-shot helpers. The pro model is
+    OpenRouter) used by EVERY auxiliary LLM task — follow-ups, research,
+    integration inference, profile/holo cards, vision helpers, workflow
+    generation, context summarization, onboarding, one-shot helpers. The memory
+    pipeline is the one exception: it prefers direct Gemini for cache isolation
+    and only lands here when that lane is unavailable (see
+    :func:`ainvoke_structured_gemini`). The pro model is
     reserved for the main chat agent (see ``plan_model``); auxiliary tasks never use it.
     ``temperature`` lets creative tasks opt into more variation. Instances are
     cached per temperature so hot paths reuse one HTTP client instead of
@@ -896,7 +899,8 @@ async def ainvoke_structured(
     is what the call's spend is metered against). Adds the transient-retry + fallback
     of :func:`ainvoke_llm`. Runs on :func:`get_helper_llm` — structured output is
     always a small JSON blob, never the large-output case. Returns the validated
-    ``schema`` instance. Raises if Google is not configured (see ``get_default_llm``).
+    ``schema`` instance. Raises ``LLMNotConfiguredError`` when ``OPENROUTER_API_KEY``
+    is unset — this lane is OpenRouter, not Google (see :func:`get_default_llm`).
 
     Runs on :data:`AUX_MODEL_NAME` — a separate model id (the ORIGINAL V4 Flash
     release, not the re-post-trained 0731 revision the graph uses), which is

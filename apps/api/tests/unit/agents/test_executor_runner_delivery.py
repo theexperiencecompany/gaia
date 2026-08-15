@@ -1190,6 +1190,41 @@ class TestDeferredFollowUpPush:
         ws.assert_not_awaited()
 
 
+class TestExecutorFinalFollowUpRouting:
+    """The executor-final follow-up one-shot must carry the conversation's
+    sticky-routing key.
+
+    Without it the call has no ``session_id``, so OpenRouter lands it on an
+    arbitrary upstream per call and its prompt head never chains with the
+    graph-path follow-ups — measured at 0% cache hit on every executor-final
+    follow-up. The conversation id IS that key, so which config the call is
+    made with is the behaviour here, not an implementation detail.
+    """
+
+    async def _config_of_follow_up_call(self, *, msg_type: str) -> dict | None:
+        with patch.object(
+            rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]
+        ) as follow_ups:
+            await rd._build_follow_up_actions(
+                msg_type=msg_type,
+                notification_text="the answer",
+                user_msg_content="the question",
+                user_id="user-1",
+                conversation_id="conv-1",
+            )
+        if not follow_ups.await_args_list:
+            return None
+        return follow_ups.await_args.args[2]
+
+    async def test_the_conversation_id_is_the_calls_session_key(self) -> None:
+        config = await self._config_of_follow_up_call(msg_type="final")
+
+        assert config == {"configurable": {"user_id": "user-1", "session_id": "conv-1"}}
+
+    async def test_a_non_final_result_never_makes_the_call(self) -> None:
+        assert await self._config_of_follow_up_call(msg_type="error") is None
+
+
 def _logged(mock, level: str) -> tuple[str, dict]:
     """(message, kwargs) of the last call at ``level``, message asserted real.
 
