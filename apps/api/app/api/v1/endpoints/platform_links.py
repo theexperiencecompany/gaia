@@ -320,9 +320,8 @@ async def initiate_platform_connect(
             actor=user_id,
             provider=platform,
         )
-        log.set(outcome="success", auth_type="manual")
+        log.set(outcome="success", auth_type="manual")  # pragma: no mutate
         return InitiatePlatformConnectResponse(
-            auth_url=None,
             auth_type="manual",
             instructions="Open the link on your iPhone or Mac, then text /auth to your GAIA iMessage number to link your account.",
             action_link=redirect_deep_link(photon_user.id),

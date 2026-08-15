@@ -10,8 +10,10 @@ from app.models.payment_models import PlanType
 from app.models.platform_models import DisconnectPlatformResponse, PlatformLinkResult
 from app.services.photon.photon_client import PhotonUser
 from app.services.platform_link_service import IMESSAGE_REGISTRATION_FEATURE_KEY
+from tests.conftest import FAKE_USER
 
 BASE = "/api/v1/platform-links"
+FAKE_USER_ID = FAKE_USER["user_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -358,20 +360,22 @@ PLAN_PATCH = "app.services.platform_link_service.payment_service.get_cached_plan
 class TestImessagePremiumGate:
     @pytest.mark.asyncio
     async def test_free_user_link_returns_429_upsell(self, client: AsyncClient) -> None:
-        with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE):
+        with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE) as mock_plan:
             resp = await client.post(f"{BASE}/imessage", json={"token": "tok123"})
 
         assert resp.status_code == 429
+        mock_plan.assert_awaited_once_with(FAKE_USER_ID)
         detail = resp.json()["detail"]
         assert detail["plan_required"] == "pro"
         assert detail["current_plan"] == "free"
 
     @pytest.mark.asyncio
     async def test_free_user_connect_returns_429_upsell(self, client: AsyncClient) -> None:
-        with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE):
+        with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE) as mock_plan:
             resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
 
         assert resp.status_code == 429
+        mock_plan.assert_awaited_once_with(FAKE_USER_ID)
         assert resp.json()["detail"]["plan_required"] == "pro"
 
     @pytest.mark.asyncio
@@ -425,6 +429,9 @@ class TestImessagePremiumGate:
             resp = await client.post(f"{BASE}/imessage/connect", json={})
 
         assert resp.status_code == 422
+        assert resp.json()["detail"] == (
+            "A phone number in E.164 format (e.g. +15551234567) is required for iMessage."
+        )
 
     @pytest.mark.asyncio
     async def test_pro_user_connect_malformed_phone_422(self, client: AsyncClient) -> None:
@@ -457,12 +464,21 @@ class TestImessagePremiumGate:
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ) as mock_register,
+            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
         ):
             resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
 
         assert resp.status_code == 200
+        mock_log.audit.assert_called_once_with(
+            "imessage number registered for linking", actor=FAKE_USER_ID, provider="imessage"
+        )
         body = resp.json()
         assert body["auth_type"] == "manual"
+        assert body["auth_url"] is None
+        assert body["instructions"] == (
+            "Open the link on your iPhone or Mac, then text /auth to your GAIA iMessage "
+            "number to link your account."
+        )
         assert body["action_link"] == "https://spectrum.photon.codes/users/pu_123/redirect"
         mock_register.assert_awaited_once_with("+15551234567")
 
@@ -483,7 +499,7 @@ class TestImessagePremiumGate:
             resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
 
         assert resp.status_code == 200
-        assert mock_limit.await_args.args[1] == IMESSAGE_REGISTRATION_FEATURE_KEY
+        mock_limit.assert_awaited_once_with(FAKE_USER_ID, IMESSAGE_REGISTRATION_FEATURE_KEY)
 
     @pytest.mark.asyncio
     async def test_connect_over_registration_quota_returns_429(self, client: AsyncClient) -> None:
