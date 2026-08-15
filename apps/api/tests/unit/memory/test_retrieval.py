@@ -471,6 +471,34 @@ class TestHydrateCandidates:
         got = await self._hydrate([str(live.id)], [], [live])
         assert got == [live]
 
+    async def test_forget_after_exactly_now_is_already_expired(self) -> None:
+        """The expiry boundary is inclusive.
+
+        A row whose forget_after IS the read instant is gone, not live for one
+        more tick. The clock is frozen because the comparison runs against
+        datetime.now() inside the function — against a real clock the equal
+        case is unreachable, so nothing pinned which way the boundary fell.
+        """
+        frozen = datetime(2026, 1, 1, tzinfo=UTC)
+        expiring = make_row("expires exactly now", forget_after=frozen)
+
+        with patch.object(retrieval, "datetime") as clock:
+            clock.now.return_value = frozen
+            got = await self._hydrate([str(expiring.id)], [], [expiring])
+
+        assert got == []
+
+    async def test_forget_after_one_tick_ahead_is_still_live(self) -> None:
+        """The other side of the same boundary, so the direction is pinned."""
+        frozen = datetime(2026, 1, 1, tzinfo=UTC)
+        live = make_row("expires next tick", forget_after=frozen + timedelta(microseconds=1))
+
+        with patch.object(retrieval, "datetime") as clock:
+            clock.now.return_value = frozen
+            got = await self._hydrate([str(live.id)], [], [live])
+
+        assert got == [live]
+
     async def test_kinds_filter_excludes_other_kinds(self) -> None:
         fact = make_row("a fact", kind=MemoryKind.FACT.value)
         experience = make_row("an experience", kind=MemoryKind.EXPERIENCE.value)

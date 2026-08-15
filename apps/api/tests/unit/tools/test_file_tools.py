@@ -193,6 +193,59 @@ class TestConstructContent:
 
         assert _construct_content(docs, similar) == ""
 
+    def test_dict_summary_without_content_uses_the_placeholder(self) -> None:
+        """A data block with no content still contributes its id and a placeholder.
+
+        The exact wording is the contract — it is what the agent reads when a
+        document has no usable summary.
+        """
+        docs = [_file("f1", summary={"data": {"page_number": 1}})]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1"}), 0.8)]
+
+        content = _construct_content(docs, similar)
+
+        assert content == "Document ID: f1\nDescription: Description not available!\n\n"
+
+    def test_dict_summary_with_a_non_mapping_data_block_uses_the_placeholder(self) -> None:
+        """The pre-strict behaviour: never silently drop the document."""
+        docs = [_file("f1", summary={"data": "not-a-mapping"})]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1"}), 0.8)]
+
+        content = _construct_content(docs, similar)
+
+        assert content == "Document ID: f1\nDescription: Description not available!\n\n"
+
+    def test_dict_summary_with_no_data_block_uses_the_placeholder(self) -> None:
+        docs = [_file("f1", summary={"other": 1})]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1"}), 0.8)]
+
+        content = _construct_content(docs, similar)
+
+        assert content == "Document ID: f1\nDescription: Description not available!\n\n"
+
+    def test_a_malformed_page_does_not_stop_the_search_for_the_target(self) -> None:
+        """A bad page is skipped, not treated as the end of the document.
+
+        The target sits after two unusable pages, so abandoning the scan at the
+        first one loses a page that is present.
+        """
+        docs = [
+            _file(
+                "f1",
+                summary=[
+                    {"data": "not-a-mapping"},
+                    {"nodata": True},
+                    {"data": {"page_number": 3, "content": "page three"}},
+                ],
+            )
+        ]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1", "page_number": 3}), 0.8)]
+
+        content = _construct_content(docs, similar)
+
+        assert "Page Number: 3" in content
+        assert "page three" in content
+
 
 class TestSearchUploadedFiles:
     async def test_happy_path_returns_constructed_content(self) -> None:
