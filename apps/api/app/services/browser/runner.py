@@ -41,6 +41,7 @@ from app.services.browser.policy import resolve_strategy
 from app.services.browser.screenshots import upload_step_screenshot
 from app.services.browser.session import SteelBrowserSession
 from app.services.browser.tools import build_browser_tools
+from app.services.llm_metering import record_llm_call
 from shared.py.wide_events import log
 
 if TYPE_CHECKING:
@@ -81,6 +82,8 @@ class BrowserTaskRunner:
         stream_screenshots: bool,
         use_vision: bool,
         solve_captcha: bool,
+        user_id: str | None = None,
+        root_request_id: str | None = None,
         autonomous_override: bool | None = None,
     ) -> None:
         self._session = session
@@ -95,6 +98,8 @@ class BrowserTaskRunner:
         self._stream_screenshots = stream_screenshots
         self._use_vision = use_vision
         self._solve_captcha = solve_captcha
+        self._user_id = user_id
+        self._root_request_id = root_request_id
         self._autonomous = autonomous_override
         self._agent: Any = None
         self._stopped = False
@@ -300,4 +305,31 @@ class BrowserTaskRunner:
         summary = final or (
             "Completed the browser task." if success else "Could not complete the browser task."
         )
+        await self._record_usage(history)
         return await self._finish(status, success, str(summary))
+
+    async def _record_usage(self, history: AgentHistoryList[BaseModel]) -> None:
+        """Price and record the run's LLM spend into GAIA's usage pipeline.
+
+        Browser-Use tracks its own per-model token totals on
+        ``history.usage.by_model`` (populated whenever ``Agent.run`` returns
+        normally — not on the timeout/cancellation/CDP-failure paths above,
+        which return before a history exists). One :func:`record_llm_call`
+        per model matches how ``LLMAccountingMiddleware`` records the chat
+        graph's own multi-model runs; token counts are re-priced through
+        GAIA's own catalog rather than trusting Browser-Use's bundled pricing
+        data. This is agent-graph work the user asked for (the ``browser_task``
+        tool), so it charges the budget like any other tool-driven model call.
+        """
+        usage = history.usage
+        if usage is None:
+            return
+        for model_name, stats in usage.by_model.items():
+            await record_llm_call(
+                user_id=self._user_id,
+                model_name=model_name,
+                input_tokens=stats.prompt_tokens,
+                output_tokens=stats.completion_tokens,
+                root_request_id=self._root_request_id,
+                charge_to_budget=True,
+            )

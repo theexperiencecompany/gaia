@@ -218,12 +218,23 @@ class CommonSettings(BaseAppSettings):
 
     # LLM that drives the browser agent — decoupled from the chat harness so
     # browser work uses a deliberately-chosen, vision-capable model. Provider:
-    # openai | anthropic | google | openrouter. The key is sourced from the
-    # matching GAIA setting (OPENAI_API_KEY / GOOGLE_API_KEY / OPENROUTER_API_KEY;
-    # anthropic has no GAIA-wide key) unless BROWSER_USE_LLM_API_KEY is set. Defaults to a
-    # cheap, vision-capable model to keep per-task token cost low.
+    # openai | anthropic | google | openrouter | deepseek. The key is sourced
+    # from the matching GAIA setting (OPENAI_API_KEY / GOOGLE_API_KEY /
+    # OPENROUTER_API_KEY; anthropic and deepseek have no GAIA-wide key) unless
+    # BROWSER_USE_LLM_API_KEY is set. Defaults to a cheap, vision-capable model
+    # to keep per-task token cost low.
+    #
+    # The default below is manually kept equal to VISION_MODEL_PROVIDER /
+    # VISION_MODEL_NAME in app/constants/llm.py (currently gemini / the model
+    # DEFAULT_GEMINI_MODEL_NAME points at) rather than importing that constant:
+    # app.constants.llm imports app.models.models_models -> app.db.repositories.base
+    # -> app.db.redis -> app.config.settings, a real circular import back into this
+    # module (verified — `settings` is not yet bound in this file when that chain
+    # runs). Breaking it means extracting the vision-model constants into a module
+    # with no import path back to settings; that's a change to files outside this
+    # component's scope, so it's called out here rather than made silently.
     BROWSER_USE_LLM_PROVIDER: str = "google"
-    BROWSER_USE_LLM_MODEL: str = "gemini-2.5-flash"
+    BROWSER_USE_LLM_MODEL: str = "gemini-3.1-flash-lite"
     BROWSER_USE_LLM_API_KEY: str | None = None
     BROWSER_USE_LLM_BASE_URL: str | None = None
     # Vision (screenshots to the model) is the biggest cost driver — keep it on
@@ -250,6 +261,40 @@ class CommonSettings(BaseAppSettings):
     BROWSER_USE_PAYMENT_STRATEGY: str = "handoff"
     BROWSER_USE_CREDENTIALS_STRATEGY: str = "handoff"
     BROWSER_USE_IRREVERSIBLE_STRATEGY: str = "handoff"
+
+    # ----------------------------------------------
+    # Browser host (our own low-RAM Chromium host — replaces self-hosted Steel)
+    # ----------------------------------------------
+    # One long-lived Chromium, one isolated browser context per session, a
+    # per-session CDP-filtering proxy, and an authenticated screencast live view.
+    # The API reaches the host by service name on the internal overlay network;
+    # the host port is never published. Locally override to http://localhost:8930.
+    BROWSER_HOST_URL: str = "http://browser-host:8930"  # NOSONAR python:S5332 — internal docker service, plain HTTP on the private network by design (TLS terminates at the edge)
+    # Port the host binds inside its container.
+    BROWSER_HOST_PORT: int = 8930
+    # Hard cap on concurrent browser contexts the single Chromium will hold.
+    BROWSER_HOST_MAX_SESSIONS: int = 6
+    # Dispose a context after this many seconds with no activity and no live viewer.
+    BROWSER_HOST_IDLE_TTL_SECONDS: int = 300
+    # Run Chromium headed (under Xvfb) instead of --headless=new, for anti-bot.
+    BROWSER_HOST_HEADED: bool = False
+    # Override the Chromium binary; when unset the host resolves Playwright's bundled one.
+    BROWSER_HOST_CHROMIUM_PATH: str | None = None
+
+    # ----------------------------------------------
+    # Dev-only LLM overrides (honored only when ENV=development)
+    # ----------------------------------------------
+    # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage
+    # (e.g. Nous Research's discounted DeepSeek lane). All three must be set; the
+    # "custom" provider is registered exclusively in development (see
+    # register_llm_providers), so these have no effect in production.
+    DEV_LLM_BASE_URL: str | None = None
+    DEV_LLM_API_KEY: str | None = None
+    DEV_LLM_MODEL: str | None = None
+    # Default model for every dev request that doesn't pick one in the chat-header
+    # selector — any DEV_MODEL_OPTIONS key from app/constants/llm.py ("custom" =
+    # the endpoint above). An explicit selector choice still wins.
+    DEV_DEFAULT_MODEL: str | None = None
 
     # ----------------------------------------------
     # GitHub Integration (for Skill Discovery)

@@ -34,7 +34,7 @@ from app.services.browser.bot_delivery import BotProgressDelivery
 from app.services.browser.concurrency import session_slot
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
 from app.services.browser.handoff import await_handoff, create_pending_handoff
-from app.services.browser.llm import build_browser_llm
+from app.services.browser.llm import build_browser_llm, resolve_use_vision
 from app.services.browser.profiles import domain_of, get_profile_id, save_profile_id
 from app.services.browser.runner import BrowserTaskRunner
 from app.services.browser.session import steel_session
@@ -54,6 +54,7 @@ async def browser_task(
     user_id: str = configurable.get("user_id") or ""
     conversation_id: str = configurable.get("thread_id") or ""
     stream_id: str | None = configurable.get("stream_id")
+    root_request_id: str | None = configurable.get("root_request_id")
     source_category = configurable.get("source_category")
     is_bot = source_category == SourceCategory.BOT.value
 
@@ -100,6 +101,7 @@ async def browser_task(
     domain = domain_of(start_url)
     profile_id = await get_profile_id(user_id, domain)
     full_task = task if not start_url else f"{task}\n\nStart at: {start_url}"
+    use_vision = await resolve_use_vision()
 
     try:
         async with session_slot(), steel_session(profile_id=profile_id) as session:
@@ -142,8 +144,10 @@ async def browser_task(
                 max_actions_per_step=settings.BROWSER_USE_MAX_ACTIONS_PER_STEP,
                 task_timeout_seconds=settings.BROWSER_USE_TASK_TIMEOUT_SECONDS,
                 stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
-                use_vision=settings.BROWSER_USE_VISION,
+                use_vision=use_vision,
                 solve_captcha=settings.BROWSER_USE_SOLVE_CAPTCHA,
+                user_id=user_id or None,
+                root_request_id=root_request_id,
             )
             result = await runner.run(full_task)
 
