@@ -319,6 +319,12 @@ class TestPrepareRunFromItemResumeIdentity:
         assert prepared.run.bot_message_id == "orig-msg-1"
         assert prepared.run.kind is RunKind.QUEUED  # shares the queue's re-dispatch path
 
+        # The client folds the new stream into the ORIGINAL turn's message
+        # instead of opening a second placeholder, so the id has to reach the
+        # browser on the stream_started event too — not just the run object.
+        event = ws.broadcast_to_user.await_args.args[1]
+        assert event["bot_message_id"] == "orig-msg-1"
+
     async def test_plain_queued_item_has_no_bot_message_id(self) -> None:
         item = build_run_item(
             task="do it",
@@ -340,3 +346,8 @@ class TestPrepareRunFromItemResumeIdentity:
 
         assert prepared is not None
         assert prepared.run.bot_message_id is None
+
+        # Present and null rather than absent: the client branches on the key,
+        # so a plain queued run must say "open a fresh placeholder" explicitly.
+        event = ws.broadcast_to_user.await_args.args[1]
+        assert event["bot_message_id"] is None
