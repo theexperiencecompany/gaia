@@ -198,6 +198,39 @@ class TestResetSession:
 
 
 # ---------------------------------------------------------------------------
+# _resolve_user_id — the id every bot capture and audit line attributes to
+# ---------------------------------------------------------------------------
+
+
+class TestResolveUserId:
+    """One seam, four call sites. A wrong answer here silently moves an event
+    or an audit record onto a different PostHog profile."""
+
+    def test_prefers_the_auth_middleware_shape(self):
+        from app.api.v1.endpoints.bot import _resolve_user_id
+
+        assert _resolve_user_id({"user_id": "uid1", "_id": "other"}) == "uid1"
+
+    def test_falls_back_to_the_platform_link_shape(self):
+        """PlatformLinkService returns `_id` with no `user_id`."""
+        from app.api.v1.endpoints.bot import _resolve_user_id
+
+        assert _resolve_user_id({"_id": "507f1f77bcf86cd799439011"}) == ("507f1f77bcf86cd799439011")
+
+    def test_a_document_with_neither_key_yields_empty_not_the_string_none(self):
+        """`str(user.get("_id", None))` would return the literal "None" here —
+        a garbage distinct_id that looks valid and silently creates a profile."""
+        from app.api.v1.endpoints.bot import _resolve_user_id
+
+        assert _resolve_user_id({}) == ""
+
+    def test_a_falsy_id_does_not_leak_through(self):
+        from app.api.v1.endpoints.bot import _resolve_user_id
+
+        assert _resolve_user_id({"user_id": None, "_id": None}) == ""
+
+
+# ---------------------------------------------------------------------------
 # GET /bot/auth-status/{platform}/{platform_user_id}
 # ---------------------------------------------------------------------------
 
@@ -613,6 +646,7 @@ class TestBotTranscribe:
         mock_transcribe: AsyncMock,
         mock_capture: MagicMock,
         client: AsyncClient,
+        fake_user: dict,
     ):
         """The event carries sizes, never the transcript — it is user speech."""
         audio = b"fake-audio-bytes"
@@ -625,6 +659,11 @@ class TestBotTranscribe:
         assert response.json()["text"] == "hello there"
         mock_capture.assert_called_once()
         args = mock_capture.call_args.args
+        # args[0] is the distinct_id and is the whole point: a bot route is
+        # auth-excluded, so a wrong or None id silently lands the event on an
+        # anonymous profile. Five mutants of exactly this argument survived
+        # until it was asserted.
+        assert args[0] == fake_user["user_id"]
         assert args[1] == AnalyticsEvents.BOT_AUDIO_TRANSCRIBED
         assert args[2] == {
             "audio_bytes": len(audio),

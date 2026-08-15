@@ -54,6 +54,18 @@ from shared.py.wide_events import get_trace_id, log, log_context
 router = APIRouter()
 
 
+def _resolve_user_id(user: dict[str, Any]) -> str:
+    """The stable GAIA user id from a user document, or "" if it carries neither key.
+
+    Both keys must be tried: ``PlatformLinkService`` returns a transitional
+    shape (``_id``, no ``user_id``) while the auth middleware's
+    ``build_user_context()`` returns the opposite. This is the id every bot
+    capture and audit line attributes to, so a wrong answer here silently moves
+    the record onto another profile.
+    """
+    return str(user.get("user_id") or user.get("_id") or "")
+
+
 async def require_bot_api_key(request: Request) -> None:
     """Verify that the request has a valid bot API key (set by BotAuthMiddleware)."""
     if not getattr(request.state, "bot_api_key_valid", False):
@@ -249,7 +261,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
         return StreamingResponse(auth_required(), media_type="text/event-stream")
 
-    user_id = user.get("user_id") or str(user.get("_id", ""))
+    user_id = _resolve_user_id(user)
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform, outcome="success")
     # Bot routes are auth-excluded, so the PostHog request context carries no
@@ -483,7 +495,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     if not user:
         raise HTTPException(status_code=401, detail="User not authenticated")
 
-    user_id = user.get("user_id") or str(user.get("_id", ""))
+    user_id = _resolve_user_id(user)
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform)
 
@@ -523,7 +535,7 @@ async def check_auth_status(
     # The linked id is returned, not just the boolean: it is what the bot uses as
     # its PostHog distinct_id, so bot events land on the same profile as this
     # user's web and API events instead of a parallel `<platform>:<id>` ghost.
-    user_id = (user.get("user_id") or str(user.get("_id", ""))) if user else None
+    user_id = _resolve_user_id(user) if user else None
     log.set(outcome="success")
     return BotAuthStatusResponse(
         authenticated=user is not None,
@@ -578,7 +590,7 @@ async def get_settings(
             connected_integrations=[],
         )
 
-    user_id = user.get("user_id") or str(user.get("_id", ""))
+    user_id = _resolve_user_id(user)
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
 
     connected_integrations_list = []
