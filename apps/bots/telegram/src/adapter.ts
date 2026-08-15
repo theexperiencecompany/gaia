@@ -28,11 +28,13 @@ import {
   buildAuthLinkMessage,
   createBotLogger,
   extractSubcommandArgs,
+  fetchBytesCapped,
   friendlyMediaError,
   handleStreamingChat,
   hashLogIdentifier,
   htmlToPlainText,
   type IncomingMedia,
+  MEDIA_READ_TIMEOUT_MS,
   type MediaKind,
   type OutboundAttachment,
   type PlatformName,
@@ -106,6 +108,8 @@ export interface TelegramMedia {
   filename?: string;
   /** Telegram file_id, resolved to a download URL via getFile. */
   fileId: string;
+  /** Size Telegram declares for the file, when it reports one. */
+  sizeBytes?: number;
 }
 
 /**
@@ -126,6 +130,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       isVoiceNote: false,
       mimeType: "image/jpeg",
       fileId: largest.file_id,
+      sizeBytes: largest.file_size,
     };
   }
   if (msg.voice) {
@@ -134,6 +139,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       isVoiceNote: true,
       mimeType: msg.voice.mime_type ?? "audio/ogg",
       fileId: msg.voice.file_id,
+      sizeBytes: msg.voice.file_size,
     };
   }
   if (msg.audio) {
@@ -143,6 +149,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       mimeType: msg.audio.mime_type ?? "audio/mpeg",
       filename: msg.audio.file_name,
       fileId: msg.audio.file_id,
+      sizeBytes: msg.audio.file_size,
     };
   }
   if (msg.document) {
@@ -152,6 +159,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       mimeType: msg.document.mime_type ?? "application/octet-stream",
       filename: msg.document.file_name,
       fileId: msg.document.file_id,
+      sizeBytes: msg.document.file_size,
     };
   }
   const video = msg.video ?? msg.video_note ?? msg.animation;
@@ -161,6 +169,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       isVoiceNote: false,
       mimeType: "video/mp4",
       fileId: video.file_id,
+      sizeBytes: video.file_size,
     };
   }
   if (msg.sticker) {
@@ -169,6 +178,7 @@ export function extractTelegramMedia(msg: Message): TelegramMedia | null {
       isVoiceNote: false,
       mimeType: "image/webp",
       fileId: msg.sticker.file_id,
+      sizeBytes: msg.sticker.file_size,
     };
   }
   return null;
@@ -667,7 +677,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           await this.editHtml(
             (t, opts) =>
               ctx.api.editMessageText(chatId, currentMessageId, t, opts),
-            renderForPlatform(errMsg, "telegram"),
+            errMsg,
             (e) =>
               this.adapterLogger.error(
                 "edit_message_text_failed",
@@ -723,6 +733,7 @@ export class TelegramAdapter extends BaseBotAdapter {
       isVoiceNote: extracted.isVoiceNote,
       mimeType: extracted.mimeType,
       filename: extracted.filename,
+      sizeBytes: extracted.sizeBytes,
       caption,
     };
     await this.handleTelegramMedia(ctx, userId, media, extracted.fileId);
@@ -747,7 +758,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     try {
       const outcome = await this.resolveIncomingMedia(
         media,
-        () => this.downloadTelegramFile(fileId),
+        (maxBytes) => this.downloadTelegramFile(fileId, maxBytes),
         userId,
         chatId.toString(),
       );
@@ -778,23 +789,27 @@ export class TelegramAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Downloads a Telegram file by id. `getFile` returns a path under the Bot API
-   * file endpoint; we fetch the raw bytes from there. Telegram caps Bot API
-   * downloads at 20 MB — larger files throw and surface as a friendly error.
+   * Downloads a Telegram file by id, reading at most `maxBytes`. `getFile`
+   * returns a path under the Bot API file endpoint; we stream the raw bytes
+   * from there and stop at the cap, so an oversize file is never buffered
+   * whole. Telegram caps Bot API downloads at 20 MB — larger files throw and
+   * surface as a friendly error.
    */
-  private async downloadTelegramFile(fileId: string): Promise<Uint8Array> {
+  private async downloadTelegramFile(
+    fileId: string,
+    maxBytes: number,
+  ): Promise<Uint8Array> {
     const file = await this.bot.api.getFile(fileId);
     if (!file.file_path) {
       throw new Error("Telegram getFile returned no file_path");
     }
     const url = `https://api.telegram.org/file/bot${this.token}/${file.file_path}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(
-        `Telegram file download failed with status ${res.status}`,
-      );
-    }
-    return new Uint8Array(await res.arrayBuffer());
+    return fetchBytesCapped(
+      url,
+      maxBytes,
+      "Telegram file",
+      MEDIA_READ_TIMEOUT_MS,
+    );
   }
 
   // ---------------------------------------------------------------------------

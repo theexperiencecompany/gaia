@@ -11,9 +11,10 @@
  * 2. markdown fidelity → WhatsApp `**bold**` becomes `*bold*` (real converter)
  * 3. long reply → split into multiple bubbles, each within the platform limit
  * 4. auth prompt → the rendered "link your account" message is delivered
- * 5. edit support → Telegram edits in place; WhatsApp only ever sends
- * 6. outbound delivery → deliverOutbound records an outbound-delivery event
- * 7. command path → an ephemeral reply records an ephemeral event
+ * 5. plan gate → the rendered upgrade prompt with the pricing URL is delivered
+ * 6. edit support → Telegram edits in place; WhatsApp only ever sends
+ * 7. outbound delivery → deliverOutbound records an outbound-delivery event
+ * 8. command path → an ephemeral reply records an ephemeral event
  */
 
 import type { PlatformName } from "@gaia/shared";
@@ -157,6 +158,19 @@ describe("HarnessAdapter — auth prompt", () => {
     const delivered = texts(events).join("\n");
     expect(delivered).toContain("https://gaia.test/auth?t=xyz");
     expect(delivered).toContain("Link your account");
+  });
+});
+
+describe("HarnessAdapter — plan gate", () => {
+  it("delivers the rendered upgrade prompt on plan_required", async () => {
+    const events = await drive(
+      "telegram",
+      { error: "plan_required" },
+      "do something",
+    );
+    const delivered = texts(events).join("\n");
+    expect(delivered).toContain("https://gaia.test/pricing");
+    expect(delivered).toContain("Pro");
   });
 });
 

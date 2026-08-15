@@ -440,6 +440,8 @@ class ProductionSettings(CommonSettings):
     WHATSAPP_PHONE_NUMBER: str | None = (
         None  # E.164 without +, e.g. "15551234567" — used for wa.me links
     )
+    SPECTRUM_PROJECT_ID: str | None = None
+    SPECTRUM_PROJECT_SECRET: str | None = None
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
@@ -656,6 +658,8 @@ class DevelopmentSettings(CommonSettings):
     WHATSAPP_PHONE_NUMBER: str | None = (
         None  # E.164 without +, e.g. "15551234567" — used for wa.me links
     )
+    SPECTRUM_PROJECT_ID: str | None = None
+    SPECTRUM_PROJECT_SECRET: str | None = None
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)

@@ -382,7 +382,7 @@ export function convertToWhatsAppMarkdown(text: string): string {
         // become ``### *Heading*`` (after bold) and then ``**Heading**`` once
         // the heading rule wraps the already-emphasised content in ``*`` —
         // re-introducing the double asterisks we tried to remove.
-        .replaceAll(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
+        .replaceAll(/^#{1,6}[ \t]+(\S[^\n]*)$/gm, "*$1*") // # Heading → *Heading*
         // Horizontal-rule remover MUST run before the bold rule. Otherwise
         // ``***`` on its own line followed by ``**Heading**`` lets the bold
         // regex's ``[^*]`` greedy-match the inter-line newlines and pair
@@ -395,8 +395,28 @@ export function convertToWhatsAppMarkdown(text: string): string {
         .replaceAll(/\*\*\*([^*\n]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
         .replaceAll(/\*\*([^*\n]+)\*\*/g, "*$1*") // **bold** → *bold*
         .replaceAll(/\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g, "$1 ($2)") // [label](url) → label (url)
-        .replaceAll(/^(\s*)[*\-+]\s+/gm, "$1• ") // - / * / + bullet → •
-        .replaceAll(/^>\s*/gm, ""), // > quote → strip prefix
+        .replaceAll(/^([ \t]*)[*\-+][ \t]+/gm, "$1• ") // - / * / + bullet → •
+        .replaceAll(/^>[ \t]*/gm, ""), // > quote → strip prefix
+  );
+}
+
+/**
+ * iMessage renders no markup at all, so every markdown construct degrades to
+ * plain text: emphasis markers are stripped, links become `label (url)`,
+ * headings/quotes lose their prefixes. Fenced code blocks are preserved
+ * verbatim (content matters more than the stray backticks).
+ */
+export function convertToImessageText(text: string): string {
+  return applyOutsideCodeBlocks(text, (segment) =>
+    segment
+      .replaceAll(/^#{1,6}[ \t]+(\S[^\n]*)$/gm, "$1")
+      .replaceAll(/^[-_*]{3,}$/gm, "")
+      .replaceAll(/\*\*\*([^*\n]+)\*\*\*/g, "$1")
+      .replaceAll(/\*\*([^*\n]+)\*\*/g, "$1")
+      .replaceAll(/`([^`\n]+)`/g, "$1")
+      .replaceAll(/\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g, "$1 ($2)")
+      .replaceAll(/^([ \t]*)[*\-+][ \t]+/gm, "$1• ")
+      .replaceAll(/^>[ \t]*/gm, ""),
   );
 }
 
@@ -429,6 +449,7 @@ export const PLATFORM_MARKDOWN: Record<PlatformName, (text: string) => string> =
     slack: convertToSlackMrkdwn,
     telegram: convertToTelegramHtml,
     whatsapp: convertToWhatsAppMarkdown,
+    imessage: convertToImessageText,
   };
 
 /**
@@ -470,6 +491,14 @@ export function buildAuthLinkMessage(authUrl: string): string {
     "**Link your account to GAIA**\n\n" +
     "Tap below to sign in — once you're connected, you can use everything right here.\n" +
     `${authUrl}`
+  );
+}
+
+export function buildPlanRequiredMessage(pricingUrl: string): string {
+  return (
+    "🔒 **This platform is part of GAIA Pro**\n\n" +
+    "Upgrade to keep chatting here.\n" +
+    `${pricingUrl}`
   );
 }
 
