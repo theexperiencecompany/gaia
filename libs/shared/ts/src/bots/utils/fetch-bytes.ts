@@ -33,13 +33,14 @@ export async function fetchBytesCapped(
   source: string,
   timeoutMs?: number,
 ): Promise<Uint8Array> {
-  const controller = new AbortController();
+  const controller =
+    timeoutMs === undefined ? undefined : new AbortController();
   const timer =
-    timeoutMs === undefined
+    controller === undefined
       ? undefined
       : setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { signal: controller?.signal });
     return await readResponseBytesCapped(response, maxBytes, source, timeoutMs);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
