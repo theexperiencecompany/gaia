@@ -16,6 +16,7 @@ silence-read-as-success this gate exists to stop.
 
 import ast
 import json
+from pathlib import Path
 import re
 import sys
 
@@ -23,14 +24,12 @@ survivor, workdir, changed_ranges = sys.argv[1].strip().split(": ", 1)[0], sys.a
 module_path = sys.argv[4]
 module, mutant_name = survivor.rsplit(".", 1)
 mutant_file = f"{workdir}/mutants/{module.replace('.', '/')}.py"
-src = open(mutant_file).read()
+src = Path(mutant_file).read_text()
 # The mutants dict is per function, named without the mutant id:
 # mutants_<base>__mutmut['_mutmut_orig'] = <base>__mutmut_orig
 base = re.sub(r"__mutmut_\d+$", "", mutant_name)
 dict_name = f"mutants_{base}__mutmut"
-orig_match = re.search(
-    rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*(\w+)", src, re.MULTILINE
-)
+orig_match = re.search(rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*(\w+)", src, re.MULTILINE)
 if not orig_match:
     sys.exit(1)
 orig_name = orig_match.group(1)
@@ -49,7 +48,7 @@ def _def_lines(path: str) -> dict[str, int]:
             elif isinstance(child, ast.ClassDef):
                 walk(child, f"{prefix}{child.name}.")
 
-    walk(ast.parse(open(path).read()), "")
+    walk(ast.parse(Path(path).read_text()), "")
     return found
 
 
@@ -63,9 +62,7 @@ def _def_lines(path: str) -> dict[str, int]:
 # mutmut names the original `x_<func>__mutmut_orig`, or
 # `xǁ<Class>ǁ<method>__mutmut_orig` for a method.
 qualified = orig_name.removesuffix("__mutmut_orig")
-qualified = (
-    ".".join(qualified.split("ǁ")[1:]) if "ǁ" in qualified else qualified.removeprefix("x_")
-)
+qualified = ".".join(qualified.split("ǁ")[1:]) if "ǁ" in qualified else qualified.removeprefix("x_")
 orig_line = _def_lines(f"{workdir}/{module_path}").get(qualified)
 if orig_line is None:
     sys.exit(1)
@@ -107,7 +104,7 @@ _LOG_NARRATION = {"debug", "info"}
 def _excluded_span(path: str, line_no: int):
     """Span of the log.debug/log.info call covering line_no, or None."""
     try:
-        tree = ast.parse(open(path).read())
+        tree = ast.parse(Path(path).read_text())
     except SyntaxError:
         return None
     best = None
@@ -251,7 +248,7 @@ def _unobservable_get_default(
     so the replacement must be falsy as well. Anything unparseable fails closed.
     """
     try:
-        tree = ast.parse(open(path).read())
+        tree = ast.parse(Path(path).read_text())
     except SyntaxError:
         return False
     for node in ast.walk(tree):
@@ -280,6 +277,8 @@ def _unobservable_get_default(
             _mutated_token(span, line_no, orig_line, mut_line)
         ) and _only_boolean_uses(node)
     return False
+
+
 def _unobservable_ensure_ascii(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
@@ -297,7 +296,7 @@ def _unobservable_ensure_ascii(
     here without that same proof.
     """
     try:
-        tree = ast.parse(open(path).read())
+        tree = ast.parse(Path(path).read_text())
     except SyntaxError:
         return False
     for node in ast.walk(tree):
