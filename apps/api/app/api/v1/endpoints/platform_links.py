@@ -24,6 +24,7 @@ from app.services.platform_link_service import (
     IMESSAGE_REGISTRATION_FEATURE_KEY,
     Platform,
     PlatformLinkService,
+    register_pending_imessage_number,
     require_platform_plan,
 )
 from app.utils.errors import create_error
@@ -315,6 +316,10 @@ async def initiate_platform_connect(
             )
         await enforce_rate_limit(user_id, IMESSAGE_REGISTRATION_FEATURE_KEY)
         photon_user = await register_shared_user(body.phone)
+        # Recorded before the user is sent off to text /auth: an unrecorded
+        # registration that is never linked holds its pool seat with nothing
+        # left pointing at it.
+        await register_pending_imessage_number(user_id, body.phone)
         log.audit(
             "imessage number registered for linking",
             actor=user_id,

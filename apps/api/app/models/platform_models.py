@@ -3,9 +3,12 @@
 Pydantic models for platform account linking and authentication.
 """
 
+from datetime import datetime
 from typing import Annotated, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.db.repositories.base import MongoDocument
 
 
 class LinkPlatformRequest(BaseModel):
@@ -81,6 +84,30 @@ class LinkPlatformResponse(BaseModel):
     platform: str = Field(..., description="Platform name")
     platform_user_id: str | None = Field(None, description="Platform user ID")
     connected_at: str | None = Field(None, description="Connection timestamp")
+
+
+class PendingPlatformRegistrationDocument(MongoDocument):
+    """A platform handle provisioned upstream but not yet linked to the GAIA user.
+
+    iMessage is the only producer today: connecting registers the number on
+    Photon's shared pool before the user proves ownership by texting ``/auth``.
+    The record is what lets an abandoned registration be found and released —
+    without it the pool seat is allocated with nothing in GAIA pointing at it.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str
+    platform: str
+    platform_user_id: str
+    created_at: datetime
+
+
+class PendingPlatformRegistrationUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    platform_user_id: str | None = None
+    created_at: datetime | None = None
 
 
 class DisconnectPlatformResponse(BaseModel):

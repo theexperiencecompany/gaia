@@ -464,6 +464,10 @@ class TestImessagePremiumGate:
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ) as mock_register,
+            patch(
+                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                new_callable=AsyncMock,
+            ),
             patch("app.api.v1.endpoints.platform_links.log") as mock_log,
         ):
             resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
@@ -495,6 +499,10 @@ class TestImessagePremiumGate:
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ),
+            patch(
+                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                new_callable=AsyncMock,
+            ),
         ):
             resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
 
@@ -521,6 +529,32 @@ class TestImessagePremiumGate:
         assert resp.status_code == 429
         assert resp.json()["detail"]["feature"] == IMESSAGE_REGISTRATION_FEATURE_KEY
         mock_register.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_pro_user_connect_records_the_pending_registration(
+        self, client: AsyncClient
+    ) -> None:
+        """Unrecorded, an abandoned registration holds its pool seat forever."""
+        photon_user = PhotonUser(id="pu_123", phoneNumber="+15551234567")
+        with (
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
+            patch("app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock),
+            patch(
+                "app.api.v1.endpoints.platform_links.register_shared_user",
+                new_callable=AsyncMock,
+                return_value=photon_user,
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                new_callable=AsyncMock,
+            ) as mock_pending,
+        ):
+            resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
+
+        assert resp.status_code == 200
+        # Both arguments: a pending record filed under the wrong user is a leak
+        # the sweep can still reap, but the swap-on-reconnect path never sees.
+        assert mock_pending.await_args.args == (FAKE_USER_ID, "+15551234567")
 
     @pytest.mark.asyncio
     async def test_other_platform_connect_is_not_throttled(self, client: AsyncClient) -> None:
