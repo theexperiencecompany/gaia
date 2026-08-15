@@ -90,7 +90,7 @@ HANDOFF_POLL_INTERVAL_SECONDS = 1.0
 HANDOFF_KEY_TTL_SECONDS = 3600
 
 # Chat acks when a handoff is resolved by a natural-language reply.
-BROWSER_HANDOFF_ACK_CONTINUE = "Got it — continuing the browser task."
+BROWSER_HANDOFF_ACK_CONTINUE = "Got it, continuing the browser task."
 BROWSER_HANDOFF_ACK_CANCEL = "Okay, I've stopped the browser task."
 
 # Upper bound on how many times one task may hand off to the human, so a

@@ -40,6 +40,10 @@ _HOST_EXTRA_ARGS: tuple[str, ...] = (
     "--disable-component-update",
     "--no-sandbox",
     "--disable-dev-shm-usage",
+    # Render at a normal laptop resolution — the headless default (~800x600)
+    # makes sites collapse to their mobile layout and screenshots look broken.
+    "--window-size=1280,900",
+    "--force-device-scale-factor=1",
 )
 # Poll budget for Chromium to publish its DevTools endpoint after launch.
 _CDP_READY_TIMEOUT_SECONDS = 30.0

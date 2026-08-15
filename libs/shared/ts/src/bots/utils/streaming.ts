@@ -18,7 +18,7 @@
  *   await handleStreamingChat(gaia, request, editMessage, onAuth, onErr,
  *     STREAMING_DEFAULTS.discord);
  */
-import type { AnalyticsContext } from "../../analytics";
+import type { Analytics } from "../../analytics";
 import { BOT_EVENTS } from "../../analytics/events/bots";
 import type { ApprovalRequestData } from "../../chat";
 import {
@@ -44,21 +44,13 @@ import { wideLog, withWideEvent } from "./wide-events";
 
 const logger = createBotLogger("shared", "streaming");
 
-/** The approval window is hours, so "360 minutes" is not a usable way to say it. */
-function formatExpiry(seconds: number): string {
-  const minutes = Math.max(1, Math.round(seconds / 60));
-  if (minutes < 60) return minutes === 1 ? "1 minute" : `${minutes} minutes`;
-  const hours = Math.round(minutes / 60);
-  return hours === 1 ? "1 hour" : `${hours} hours`;
-}
-
 /** Render a PENDING HIL approval as a yes/no prompt for a bot message. Only
  * pending approvals are surfaced out-of-band (see handleApprovalUpdate); settled
  * ones are narrated by the agent's streamed reply. */
 function formatApprovalPrompt(data: ApprovalRequestData): string {
   return (
-    `**Approval needed:** ${data.summary}\n` +
-    `Reply **yes** to approve or **no** to decline. This expires in ${formatExpiry(data.timeout_seconds)}.`
+    `**Approval needed:**\n${data.summary}\n\n` +
+    `Reply **yes** to approve or **no** to decline.`
   );
 }
 
@@ -367,7 +359,7 @@ export async function handleStreamingChat(
   onAuthError: (authUrl: string) => Promise<void>,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
-  analytics?: AnalyticsContext,
+  analytics?: Analytics,
 ): Promise<void> {
   // Latency + high-cardinality observability for the chat pipeline. user_hash
   // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
@@ -412,10 +404,11 @@ async function runStreamingChat(
   onAuthError: (authUrl: string) => Promise<void>,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
-  analytics: AnalyticsContext | undefined,
+  analytics: Analytics | undefined,
   userHash: string | undefined,
   channelHash: string | undefined,
 ): Promise<void> {
+  const distinctId = `${request.platform}:${request.platformUserId}`;
   const startMs = Date.now();
   let responseLength = 0;
   let hadError = false;
@@ -423,12 +416,14 @@ async function runStreamingChat(
   let chunkCount = 0;
   let conversationId = "";
 
-  analytics?.client.capture(analytics.distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+  analytics?.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
     interaction_type: "chat",
+    channel_id: request.channelId,
     message_length: request.message.length,
   });
 
-  analytics?.client.capture(analytics.distinctId, BOT_EVENTS.CHAT_STARTED, {
+  analytics?.capture(distinctId, BOT_EVENTS.CHAT_STARTED, {
+    channel_id: request.channelId,
     message_length: request.message.length,
     streaming_enabled: options.streaming,
   });
@@ -457,8 +452,9 @@ async function runStreamingChat(
     });
     // Do not ship the raw error string — it can contain paths, request IDs,
     // or upstream-echoed tokens. `context` is enough to bucket failures.
-    analytics?.client.capture(analytics.distinctId, BOT_EVENTS.ERROR, {
+    analytics?.capture(distinctId, BOT_EVENTS.ERROR, {
       context: "chat:streaming",
+      channel_id: request.channelId,
       duration_ms: Date.now() - startMs,
     });
     await onGenericError(formattedError);
@@ -526,15 +522,12 @@ async function runStreamingChat(
       conversation_id: conversationId || undefined,
     });
     if (!hadError) {
-      analytics?.client.capture(
-        analytics.distinctId,
-        BOT_EVENTS.CHAT_COMPLETED,
-        {
-          duration_ms: Date.now() - startMs,
-          response_length: responseLength,
-          streaming_enabled: options.streaming,
-        },
-      );
+      analytics?.capture(distinctId, BOT_EVENTS.CHAT_COMPLETED, {
+        channel_id: request.channelId,
+        duration_ms: Date.now() - startMs,
+        response_length: responseLength,
+        streaming_enabled: options.streaming,
+      });
     }
   }
 }

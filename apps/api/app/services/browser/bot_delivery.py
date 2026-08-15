@@ -7,6 +7,8 @@ artifact the web card renders, sent through the platform's native image
 message instead of a pasted link.
 """
 
+from urllib.parse import urlparse
+
 from app.constants.browser import HandoffStatus
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
@@ -35,11 +37,15 @@ class BotProgressDelivery:
         self._conversation_id = conversation_id
         self._stream_screenshots = stream_screenshots
 
-    async def session(self, snapshot: BrowserSessionSnapshot) -> None:
-        await self._text(f"Using a browser to: {snapshot.task}")
+    async def session(self, _snapshot: BrowserSessionSnapshot) -> None:
+        # No message: the HIL approval ack + the first step photo already tell the
+        # user the browser has started. A third "opening a browser" line is noise.
+        return
 
     async def step(self, snapshot: BrowserStepSnapshot) -> None:
-        caption = f"Step {snapshot.index}: {snapshot.goal}".strip()
+        # The step photo IS the progress. Caption it with the page, not the
+        # agent's internal reasoning ("goal") — that reads as noise to a user.
+        caption = _step_caption(snapshot.index, snapshot.title, snapshot.url)
         # Only a real (http) CDN URL is worth sending as a photo; the dev-only
         # inline data URL fallback is not something to upload to a platform.
         if (
@@ -70,7 +76,20 @@ class BotProgressDelivery:
         await self._text(msg)
 
     async def result(self, snapshot: BrowserResultSnapshot) -> None:
-        await self._text(snapshot.summary)
+        # Don't echo Browser-Use's raw final text — the assistant sends the
+        # natural, user-facing summary right after. Just close out the progress.
+        await self._text(
+            "✅ Done." if snapshot.success else "⚠️ The browser task didn't fully complete."
+        )
 
     async def _text(self, message: str) -> None:
         await publish_outbound_message(self._platform, self._user_id, [message])
+
+
+def _step_caption(index: int, title: str | None, url: str | None) -> str:
+    """A short, human caption for a step photo — the page, never the agent's goal."""
+    label = (title or "").strip()
+    if not label and url:
+        host = urlparse(url).hostname
+        label = host or ""
+    return f"Step {index} · {label}" if label else f"Step {index}"
