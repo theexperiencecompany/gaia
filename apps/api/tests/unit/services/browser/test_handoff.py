@@ -6,24 +6,26 @@ from app.constants.browser import HandoffDecision, HandoffStatus
 from app.services.browser import handoff as handoff_mod
 
 
-@pytest.fixture
-def fake_redis(monkeypatch):
-    store: dict[str, dict] = {}
+class _FakeRedisCache:
+    def __init__(self) -> None:
+        self.store: dict[str, object] = {}
 
-    async def _get(key, model=None):
-        return store.get(key)
+    async def get(self, key, model=None):
+        return self.store.get(key)
 
-    async def _set(key, value, ttl=None, model=None):
-        store[key] = value
+    async def set(self, key, value, ttl=None, model=None):
+        self.store[key] = value
         return True
 
-    async def _delete(key):
-        store.pop(key, None)
+    async def delete(self, key):
+        self.store.pop(key, None)
 
-    monkeypatch.setattr(handoff_mod, "get_cache", _get)
-    monkeypatch.setattr(handoff_mod, "set_cache", _set)
-    monkeypatch.setattr(handoff_mod, "delete_cache", _delete)
-    return store
+
+@pytest.fixture
+def fake_redis(monkeypatch):
+    fake = _FakeRedisCache()
+    monkeypatch.setattr(handoff_mod, "redis_cache", fake)
+    return fake.store
 
 
 async def test_continue(fake_redis):

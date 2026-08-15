@@ -67,6 +67,15 @@ BrowserCardSnapshot = (
 )
 
 
+class HandoffRecord(BaseModel):
+    """The Redis-side state of one live-view handoff (see ``services/browser/handoff.py``)."""
+
+    status: HandoffStatus
+    user_id: str
+    conversation_id: str
+    reason: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Sensitive-action classifier
 # ---------------------------------------------------------------------------

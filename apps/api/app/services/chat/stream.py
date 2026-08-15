@@ -394,7 +394,7 @@ async def _resolve_pending_approval_turn(
 
 async def _resolve_pending_browser_handoff_turn(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     state: _StreamState,
@@ -413,8 +413,11 @@ async def _resolve_pending_browser_handoff_turn(
 
     try:
         action = await resolve_handoff_from_message(conversation_id, user_id, message)
-    except Exception as e:  # noqa: BLE001 — chat must survive an optional-feature lookup
-        log.error(f"{LogTag.CHAT} Pending browser-handoff check failed; normal turn: {e}")
+    except Exception as e:  # chat must survive an optional-feature lookup
+        log.error(
+            f"{LogTag.CHAT} Pending browser-handoff check failed; normal turn",
+            error_type=type(e).__name__,
+        )
         return False
 
     if action not in ("continue", "cancel"):

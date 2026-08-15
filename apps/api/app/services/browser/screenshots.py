@@ -32,6 +32,7 @@ def _upload_and_sign(png: bytes, public_id: str) -> str:
         folder=_SCREENSHOT_FOLDER,
         overwrite=True,
     )
+    url: str
     url, _ = cloudinary_url(
         f"{_SCREENSHOT_FOLDER}/{public_id}",
         resource_type="image",
@@ -47,8 +48,9 @@ async def upload_step_screenshot(png: bytes, conversation_id: str, index: int) -
     public_id = f"{conversation_id}/step_{index}"
     try:
         return await asyncio.to_thread(_upload_and_sign, png, public_id)
-    except Exception as exc:  # noqa: BLE001 — a screenshot is non-essential progress
+    except Exception as exc:  # a screenshot is non-essential progress
         log.warning(
-            f"{LogTag.AGENT} Browser screenshot upload failed; using inline fallback: {exc}"
+            f"{LogTag.BROWSER} Browser screenshot upload failed; using inline fallback",
+            error_type=type(exc).__name__,
         )
         return None

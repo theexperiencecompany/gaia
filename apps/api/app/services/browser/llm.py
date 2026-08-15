@@ -8,30 +8,36 @@ those. Imports are local so the heavy ``browser_use`` package loads only when a
 browser task actually runs.
 """
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from app.config.settings import settings
 from app.services.browser.exceptions import BrowserUnavailableError
 
-# provider -> (settings attribute holding the fallback API key)
-_PROVIDER_KEY_ATTR: dict[str, str] = {
-    "openai": "OPENAI_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "google": "GOOGLE_API_KEY",
-}
+if TYPE_CHECKING:
+    from browser_use.llm.base import BaseChatModel
+
+
+def _provider_fallback_keys() -> dict[str, str | None]:
+    """The GAIA API key each provider falls back to when no browser-specific key is set."""
+    return {
+        "openai": settings.OPENAI_API_KEY,
+        "openrouter": settings.OPENROUTER_API_KEY,
+        "google": settings.GOOGLE_API_KEY,
+    }
+
+
 # OpenRouter is OpenAI-wire-compatible; Browser-Use talks to it via ChatOpenAI.
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 def _resolve_api_key(provider: str) -> str | None:
-    if settings.BROWSER_USE_LLM_API_KEY:
-        return settings.BROWSER_USE_LLM_API_KEY
-    attr = _PROVIDER_KEY_ATTR.get(provider)
-    return getattr(settings, attr, None) if attr else None
+    override: str | None = settings.BROWSER_USE_LLM_API_KEY
+    return override or _provider_fallback_keys().get(provider)
 
 
-def build_browser_llm() -> Any:
+def build_browser_llm() -> BaseChatModel:
     """Build the Browser-Use chat model for the configured provider.
 
     Raises :class:`BrowserUnavailableError` when the provider is unknown or its

@@ -12,10 +12,12 @@ hand off, proceed autonomously, or abort. The runner knows nothing about SSE,
 Redis, or bots.
 """
 
+from __future__ import annotations
+
 import asyncio
 import base64
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.constants.browser import (
     BROWSER_TAKEOVER_PREAMBLE,
@@ -41,12 +43,18 @@ from app.services.browser.session import SteelBrowserSession
 from app.services.browser.tools import build_browser_tools
 from shared.py.wide_events import log
 
+if TYPE_CHECKING:
+    from browser_use.agent.views import AgentHistoryList, AgentOutput
+    from browser_use.browser.views import BrowserStateSummary
+    from browser_use.llm.base import BaseChatModel
+    from pydantic import BaseModel
+
 EmitFn = Callable[[BrowserCardSnapshot], Awaitable[None]]
 RequestHandoffFn = Callable[[HandoffRequest], Awaitable[HandoffStatus]]
 IsCancelledFn = Callable[[], Awaitable[bool]]
 
 
-def _summarize_actions(agent_output: Any) -> tuple[list[str], str]:
+def _summarize_actions(agent_output: AgentOutput) -> tuple[list[str], str]:
     names: list[str] = []
     parts: list[str] = []
     for action in getattr(agent_output, "action", None) or []:
@@ -63,7 +71,7 @@ class BrowserTaskRunner:
         *,
         session: SteelBrowserSession,
         conversation_id: str,
-        llm: Any,
+        llm: BaseChatModel,
         emit: EmitFn,
         request_handoff: RequestHandoffFn,
         is_cancelled: IsCancelledFn,
@@ -185,16 +193,18 @@ class BrowserTaskRunner:
         status = await self._request_handoff(HandoffRequest(category=cat, reason=reason))
         if status == HandoffStatus.COMPLETED:
             self._handed_off = True
-            log.info(f"{LogTag.AGENT} Browser takeover completed by user; agent continuing.")
+            log.info(f"{LogTag.BROWSER} Browser takeover completed by user; agent continuing.")
             return (
                 "The user has completed that step in the browser. The page has advanced — "
                 "continue toward the original goal."
             )
         self._stopped = True
-        log.info(f"{LogTag.AGENT} Browser takeover ended: {status.value}.")
+        log.info(f"{LogTag.BROWSER} Browser takeover ended", status=status.value)
         raise BrowserHandoffCancelled(status.value)
 
-    async def _on_step(self, browser_state_summary: Any, agent_output: Any, n_steps: int) -> None:
+    async def _on_step(
+        self, browser_state_summary: BrowserStateSummary, agent_output: AgentOutput, n_steps: int
+    ) -> None:
         """Fires after the model picks actions, before they execute."""
         self._last_step = n_steps
         goal = (
@@ -241,9 +251,11 @@ class BrowserTaskRunner:
         self._agent.stop()
         if status == HandoffStatus.COMPLETED:
             self._handed_off = True
-            log.info(f"{LogTag.AGENT} Browser step {n_steps} handed off to user; completed.")
+            log.info(f"{LogTag.BROWSER} Browser step handed off to user; completed", step=n_steps)
         else:
-            log.info(f"{LogTag.AGENT} Browser step {n_steps} handoff ended: {status.value}.")
+            log.info(
+                f"{LogTag.BROWSER} Browser step handoff ended", step=n_steps, status=status.value
+            )
         raise BrowserHandoffCancelled(status.value)
 
     async def _render_screenshot(self, raw_b64: str | None, index: int) -> str | None:
@@ -267,7 +279,9 @@ class BrowserTaskRunner:
         await self._emit(result)
         return result
 
-    async def _finish_from_history(self, history: Any) -> BrowserResultSnapshot:
+    async def _finish_from_history(
+        self, history: AgentHistoryList[BaseModel]
+    ) -> BrowserResultSnapshot:
         final = None
         is_done = False
         is_successful: bool | None = None
@@ -275,8 +289,11 @@ class BrowserTaskRunner:
             final = history.final_result()
             is_done = history.is_done()
             is_successful = history.is_successful()
-        except Exception as exc:  # noqa: BLE001 — history shape is version-sensitive
-            log.warning(f"{LogTag.AGENT} Could not read browser history result: {exc}")
+        except Exception as exc:
+            log.warning(
+                f"{LogTag.BROWSER} Could not read browser history result",
+                error_type=type(exc).__name__,
+            )
 
         success = bool(is_done and is_successful is not False)
         status = BrowserSessionStatus.COMPLETED if success else BrowserSessionStatus.FAILED

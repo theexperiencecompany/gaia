@@ -29,10 +29,8 @@ def resolve_strategy(
     if category == SensitiveCategory.NONE:
         return HandoffStrategy.PROCEED
     # A per-task override always wins over the global setting.
-    if autonomous_override is True:
-        return HandoffStrategy.PROCEED
-    if autonomous_override is False:
-        return HandoffStrategy.HANDOFF
+    if autonomous_override is not None:
+        return HandoffStrategy.PROCEED if autonomous_override else HandoffStrategy.HANDOFF
     if settings.BROWSER_USE_AUTONOMOUS_SENSITIVE:
         return HandoffStrategy.PROCEED
 

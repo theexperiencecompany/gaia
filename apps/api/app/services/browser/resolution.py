@@ -42,10 +42,10 @@ async def resolve_handoff_from_message(
     if not handoff_id:
         return None
     record = await get_handoff(handoff_id)
-    if record is None or record.get("status") != HandoffStatus.PENDING.value:
+    if record is None or record.status != HandoffStatus.PENDING:
         return None
 
-    decision = await _interpret(message, record.get("reason", ""))
+    decision = await _interpret(message, record.reason)
     if decision.action == "unrelated":
         return "unrelated"
 
@@ -66,8 +66,11 @@ async def _interpret(message: str, reason: str) -> HandoffReplyDecision:
             _prompt(message, reason),
             label="browser_handoff_conversational_resolve",
         )
-    except Exception as e:  # noqa: BLE001 — an LLM hiccup must not act on its own
-        log.warning(f"{LogTag.AGENT} Browser handoff resolve failed, treating as unrelated: {e}")
+    except Exception as e:  # an LLM hiccup must not act on its own
+        log.warning(
+            f"{LogTag.BROWSER} Browser handoff resolve failed, treating as unrelated",
+            error_type=type(e).__name__,
+        )
         return HandoffReplyDecision(action="unrelated")
 
 

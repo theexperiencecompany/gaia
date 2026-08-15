@@ -656,6 +656,7 @@ warn_no_return = true
 module = [
   "app.db.repositories.*",
   "app.models.notes_models",
+  "app.models.browser_models",
   "app.models.todo_models",
   "app.models.mail_models",
   "app.models.workflow_execution_models",

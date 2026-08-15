@@ -48,7 +48,7 @@ def build_steel_client() -> AsyncSteel:
 def resolve_cdp_url(session_id: str, websocket_url: str) -> str:
     """CDP connect URL Browser-Use attaches to. Defaults to Steel's advertised
     ``websocketUrl``; ``STEEL_CDP_CONNECT_URL`` overrides for split networks."""
-    override = settings.STEEL_CDP_CONNECT_URL
+    override: str | None = settings.STEEL_CDP_CONNECT_URL
     if override:
         return override.format(session_id=session_id) if "{session_id}" in override else override
     return websocket_url
@@ -94,7 +94,7 @@ async def steel_session(
 
     try:
         created = await client.sessions.create(**create_kwargs)
-    except Exception as exc:  # noqa: BLE001 — translate any SDK/transport failure
+    except Exception as exc:  # translate any SDK/transport failure
         await client.close()
         raise BrowserUnavailableError(
             f"Could not create a Steel browser session at {settings.STEEL_API_URL}: {exc}"
@@ -110,17 +110,18 @@ async def steel_session(
         profile_id=getattr(created, "profile_id", None) or profile_id,
     )
     log.set(browser={"session_id": session.session_id, "operation": "create"})
-    log.info(f"{LogTag.AGENT} Steel session created: {session.session_id}")
+    log.info(f"{LogTag.BROWSER} Steel session created")
 
     try:
         yield session
     finally:
         try:
             await client.sessions.release(session.session_id)
-            log.info(f"{LogTag.AGENT} Steel session released: {session.session_id}")
-        except Exception as exc:  # noqa: BLE001 — best-effort teardown
+            log.info(f"{LogTag.BROWSER} Steel session released")
+        except Exception as exc:
             log.warning(
-                f"{LogTag.AGENT} Failed to release Steel session {session.session_id}: {exc}",
+                f"{LogTag.BROWSER} Failed to release Steel session",
+                error_type=type(exc).__name__,
                 browser={"session_id": session.session_id, "operation": "release_failed"},
             )
         await client.close()

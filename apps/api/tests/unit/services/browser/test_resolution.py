@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 
 from app.constants.browser import HandoffDecision, HandoffStatus
+from app.schemas.browser import HandoffRecord
 from app.services.browser import resolution as res_mod
 from app.services.browser.resolution import HandoffReplyDecision, resolve_handoff_from_message
 
@@ -12,7 +13,11 @@ def _pending(monkeypatch, action: str):
     monkeypatch.setattr(
         res_mod,
         "get_handoff",
-        AsyncMock(return_value={"status": HandoffStatus.PENDING.value, "reason": "pay"}),
+        AsyncMock(
+            return_value=HandoffRecord(
+                status=HandoffStatus.PENDING, user_id="u1", conversation_id="c1", reason="pay"
+            )
+        ),
     )
     monkeypatch.setattr(
         res_mod, "_interpret", AsyncMock(return_value=HandoffReplyDecision(action=action))

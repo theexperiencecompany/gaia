@@ -11,7 +11,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.constants.browser import HandoffStatus
 from app.constants.log_tags import LogTag
 from app.schemas.browser import HandoffDecisionRequest, HandoffDecisionResponse
 from app.services.browser.handoff import get_handoff, resolve_handoff
@@ -30,10 +29,11 @@ async def get_browser_handoff(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User id required")
+    log.set(user={"id": user_id}, browser={"handoff_id": handoff_id})
     record = await get_handoff(handoff_id)
-    if record is None or record.get("user_id") != user_id:
+    if record is None or record.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Handoff not found")
-    return HandoffDecisionResponse(handoff_id=handoff_id, status=HandoffStatus(record["status"]))
+    return HandoffDecisionResponse(handoff_id=handoff_id, status=record.status)
 
 
 @router.post("/handoffs/{handoff_id}/decision", response_model=HandoffDecisionResponse)
@@ -60,5 +60,7 @@ async def decide_browser_handoff(
     if resolved is None:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Handoff not found or expired")
 
-    log.info(f"{LogTag.CHAT} Browser handoff {handoff_id} -> {resolved.value}")
+    log.info(
+        f"{LogTag.BROWSER} Browser handoff decided", handoff_id=handoff_id, status=resolved.value
+    )
     return HandoffDecisionResponse(handoff_id=handoff_id, status=resolved)

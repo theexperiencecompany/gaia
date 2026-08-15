@@ -6,6 +6,7 @@ Browser-Use does (after the model picks actions, before they execute).
 """
 
 import asyncio
+from typing import ClassVar
 from unittest.mock import AsyncMock
 
 import browser_use
@@ -56,7 +57,7 @@ class _History:
 
 
 class FakeAgent:
-    script: list[dict] = []
+    script: ClassVar[list[dict]] = []
     history = _History()
 
     def __init__(self, **kwargs):

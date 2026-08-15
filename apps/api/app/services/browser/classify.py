@@ -87,9 +87,10 @@ async def classify_step(
         return await ainvoke_structured(
             SensitiveActionVerdict, prompt, label="browser_sensitive_action_classifier"
         )
-    except Exception as exc:  # noqa: BLE001 — never let a classifier failure bypass the gate
+    except Exception as exc:  # never let a classifier failure bypass the gate
         log.warning(
-            f"{LogTag.AGENT} Browser approval classifier failed; failing safe (require approval): {exc}"
+            f"{LogTag.BROWSER} Browser approval classifier failed; failing safe (require approval)",
+            error_type=type(exc).__name__,
         )
         return SensitiveActionVerdict(
             requires_approval=True,

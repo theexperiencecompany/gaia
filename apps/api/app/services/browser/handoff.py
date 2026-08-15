@@ -19,7 +19,9 @@ from app.constants.browser import (
     HandoffDecision,
     HandoffStatus,
 )
-from app.db.redis import delete_cache, get_cache, set_cache
+from app.constants.log_tags import LogTag
+from app.db.redis import redis_cache
+from app.schemas.browser import HandoffRecord
 from shared.py.wide_events import log
 
 
@@ -34,27 +36,31 @@ def _conv_key(conversation_id: str) -> str:
 async def create_pending_handoff(
     handoff_id: str, user_id: str, conversation_id: str, reason: str = ""
 ) -> None:
-    await set_cache(
-        _key(handoff_id),
-        {
-            "status": HandoffStatus.PENDING.value,
-            "user_id": user_id,
-            "conversation_id": conversation_id,
-            "reason": reason,
-        },
-        ttl=HANDOFF_KEY_TTL_SECONDS,
+    record = HandoffRecord(
+        status=HandoffStatus.PENDING,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        reason=reason,
     )
+    await _store(handoff_id, record)
     if conversation_id:
-        await set_cache(_conv_key(conversation_id), handoff_id, ttl=HANDOFF_KEY_TTL_SECONDS)
+        await redis_cache.set(_conv_key(conversation_id), handoff_id, ttl=HANDOFF_KEY_TTL_SECONDS)
 
 
-async def get_handoff(handoff_id: str) -> dict | None:
-    return await get_cache(_key(handoff_id))
+async def _store(handoff_id: str, record: HandoffRecord) -> None:
+    await redis_cache.set(
+        _key(handoff_id), record, ttl=HANDOFF_KEY_TTL_SECONDS, model=HandoffRecord
+    )
+
+
+async def get_handoff(handoff_id: str) -> HandoffRecord | None:
+    return await redis_cache.get(_key(handoff_id), model=HandoffRecord)
 
 
 async def get_conversation_pending_handoff(conversation_id: str) -> str | None:
     """The conversation's in-flight handoff id, if a browser task is waiting."""
-    return await get_cache(_conv_key(conversation_id))
+    handoff_id = await redis_cache.get(_conv_key(conversation_id), model=str)
+    return handoff_id or None
 
 
 async def resolve_handoff(
@@ -67,22 +73,21 @@ async def resolve_handoff(
     record = await get_handoff(handoff_id)
     if record is None:
         return None
-    if record.get("user_id") != user_id:
+    if record.user_id != user_id:
         raise PermissionError("Not authorized to resolve this handoff")
 
-    current = HandoffStatus(record["status"])
-    if current != HandoffStatus.PENDING:
-        return current
+    if record.status != HandoffStatus.PENDING:
+        return record.status
 
     new_status = (
         HandoffStatus.COMPLETED if decision == HandoffDecision.CONTINUE else HandoffStatus.CANCELLED
     )
-    record["status"] = new_status.value
-    await set_cache(_key(handoff_id), record, ttl=HANDOFF_KEY_TTL_SECONDS)
-    conversation_id = record.get("conversation_id")
-    if conversation_id:
-        await delete_cache(_conv_key(conversation_id))
-    log.info(f"Browser handoff {handoff_id} resolved: {new_status.value}")
+    await _store(handoff_id, record.model_copy(update={"status": new_status}))
+    if record.conversation_id:
+        await redis_cache.delete(_conv_key(record.conversation_id))
+    log.info(
+        f"{LogTag.BROWSER} Browser handoff resolved", handoff_id=handoff_id, status=new_status.value
+    )
     return new_status
 
 
@@ -92,9 +97,7 @@ async def await_handoff(handoff_id: str, timeout_seconds: int) -> HandoffStatus:
     deadline = loop.time() + timeout_seconds
     while loop.time() < deadline:
         record = await get_handoff(handoff_id)
-        if record is not None:
-            status = HandoffStatus(record["status"])
-            if status != HandoffStatus.PENDING:
-                return status
+        if record is not None and record.status != HandoffStatus.PENDING:
+            return record.status
         await asyncio.sleep(HANDOFF_POLL_INTERVAL_SECONDS)
     return HandoffStatus.TIMEOUT

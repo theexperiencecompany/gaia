@@ -209,16 +209,18 @@ class CommonSettings(BaseAppSettings):
     # Master switch. When false the tool is registered but reports unavailable
     # instead of spinning up a browser.
     BROWSER_USE_ENABLED: bool = True
-    # Cap on concurrent Steel sessions this deployment will run — each is a real
-    # Chromium instance (~0.5-1.5GB RAM). Excess tasks fail fast with a clear
-    # message rather than thrash the Steel container.
-    BROWSER_USE_MAX_CONCURRENT_SESSIONS: int = 3
+    # Cap on concurrent Steel sessions this deployment will run. Self-hosted
+    # steel-browser holds ONE active session per container (a second create
+    # silently replaces the first, killing that task's CDP connection), so this
+    # must equal the number of Steel instances behind STEEL_API_URL. Excess tasks
+    # fail fast with a clear message rather than clobber a running session.
+    BROWSER_USE_MAX_CONCURRENT_SESSIONS: int = 1
 
     # LLM that drives the browser agent — decoupled from the chat harness so
     # browser work uses a deliberately-chosen, vision-capable model. Provider:
     # openai | anthropic | google | openrouter. The key is sourced from the
-    # matching GAIA setting (OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY
-    # / OPENROUTER_API_KEY) unless BROWSER_USE_LLM_API_KEY is set. Defaults to a
+    # matching GAIA setting (OPENAI_API_KEY / GOOGLE_API_KEY / OPENROUTER_API_KEY;
+    # anthropic has no GAIA-wide key) unless BROWSER_USE_LLM_API_KEY is set. Defaults to a
     # cheap, vision-capable model to keep per-task token cost low.
     BROWSER_USE_LLM_PROVIDER: str = "google"
     BROWSER_USE_LLM_MODEL: str = "gemini-2.5-flash"

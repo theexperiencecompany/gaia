@@ -15,13 +15,18 @@ Two seams the agent reaches for itself:
 Imports of ``browser_use`` are local so the module loads without the package.
 """
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import TYPE_CHECKING
 
 from app.constants.log_tags import LogTag
 from app.services.browser.session import build_steel_client
 from shared.py.wide_events import log
+
+if TYPE_CHECKING:
+    from browser_use import Tools
 
 _CAPTCHA_POLL_INTERVAL_SECONDS = 1.0
 _CAPTCHA_MAX_WAIT_SECONDS = 60
@@ -34,7 +39,7 @@ def build_browser_tools(
     session_id: str,
     solve_captcha: bool,
     handle_takeover: TakeoverFn,
-) -> Any:
+) -> Tools[None]:
     """Build the Browser-Use ``Tools`` the agent can call during a run.
 
     ``handle_takeover(reason, category)`` performs the live-view handoff and
@@ -43,7 +48,7 @@ def build_browser_tools(
     """
     from browser_use import Tools  # noqa: PLC0415
 
-    tools: Any = Tools()
+    tools: Tools[None] = Tools()
 
     @tools.action(
         description=(
@@ -72,8 +77,11 @@ def build_browser_tools(
             while loop.time() < deadline:
                 try:
                     statuses = await steel_client.sessions.captchas.status(session_id)
-                except Exception as exc:  # noqa: BLE001 — solver status is best-effort
-                    log.warning(f"{LogTag.AGENT} CAPTCHA status check failed: {exc}")
+                except Exception as exc:
+                    log.warning(
+                        f"{LogTag.BROWSER} CAPTCHA status check failed",
+                        error_type=type(exc).__name__,
+                    )
                     return "Could not check CAPTCHA status; proceeding."
                 if not any(getattr(item, "is_solving_captcha", False) for item in statuses):
                     return "CAPTCHA solved (or none present)."

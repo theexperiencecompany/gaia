@@ -94,7 +94,7 @@ async def browser_task(
     try:
         llm = build_browser_llm()
     except BrowserUnavailableError as exc:
-        log.warning(f"{LogTag.AGENT} Browser LLM unavailable: {exc}")
+        log.warning(f"{LogTag.BROWSER} Browser LLM unavailable", error_type=type(exc).__name__)
         return f"I can't use the browser right now: {exc}"
 
     domain = domain_of(start_url)
@@ -155,7 +155,7 @@ async def browser_task(
     except BrowserConcurrencyLimit as exc:
         return str(exc)
     except BrowserUnavailableError as exc:
-        log.warning(f"{LogTag.AGENT} Browser session unavailable: {exc}")
+        log.warning(f"{LogTag.BROWSER} Browser session unavailable", error_type=type(exc).__name__)
         await emit(
             BrowserResultSnapshot(
                 status=BrowserSessionStatus.FAILED, success=False, summary=str(exc)
