@@ -20,6 +20,7 @@ export interface Plan {
 
 export interface CreateSubscriptionRequest {
   product_id: string;
+  discount_code?: string;
 }
 
 export interface CreateSubscriptionResponse {

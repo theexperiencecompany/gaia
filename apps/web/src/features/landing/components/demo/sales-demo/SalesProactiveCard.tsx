@@ -11,14 +11,14 @@ const HANDLED_ITEMS = [
   {
     id: "sp-2",
     icon: "gmail",
-    label: "Acme Corp follow-up drafted — trial ends Fri",
+    label: "Acme Corp follow-up drafted: trial ends Fri",
     detail: "flagged",
     flagged: true,
   },
   {
     id: "sp-3",
     icon: "linkedin",
-    label: "TechFlow contact changed roles — flagged",
+    label: "TechFlow contact changed roles: flagged",
     detail: "flagged",
     flagged: true,
   },

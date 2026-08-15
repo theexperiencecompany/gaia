@@ -10,7 +10,7 @@ export const entry: AlternativeData = {
     "Core features require paid plans; free tier is limited for real work",
     "No AI that proactively manages your workload or email",
     "Task creation is still mostly manual; integrations require Zapier or similar",
-    "Notification overload — hard to distinguish urgent from routine updates",
+    "Notification overload makes it hard to distinguish urgent from routine updates",
     "Interface complexity grows with project size, leading to abandoned tasks",
   ],
   metaTitle: "Best Asana Alternative in 2026",
@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "tasks from email AI",
   ],
   whyPeopleLook:
-    "Asana has long been a go-to for team task tracking, but many users find it reactive — it only knows what you put in it. Tasks still need to be manually created, deadlines manually set, and priorities manually adjusted. The AI features added in recent years are primarily for project templates and summaries, not for actively managing your day. People look for Asana alternatives when they want a tool that does more of the thinking: an assistant that reads their email, creates tasks automatically, reschedules meetings, and surfaces what needs attention before they have to ask.",
+    "Asana has long been a go-to for team task tracking, but many users find it reactive: it only knows what you put in it. Tasks still need to be manually created, deadlines manually set, and priorities manually adjusted. The AI features added in recent years are primarily for project templates and summaries, not for actively managing your day. People look for Asana alternatives when they want a tool that does more of the thinking: an assistant that reads their email, creates tasks automatically, reschedules meetings, and surfaces what needs attention before they have to ask.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Task creation from emails and calendar invites automatically",
@@ -47,7 +47,7 @@ export const entry: AlternativeData = {
     "Proactive deadline nudges before tasks slip through the cracks",
     "Graph-based memory remembers context across all your tools",
     "No per-seat overhead for individual users and small teams",
-    "Available on desktop, mobile, web, and bots — one assistant everywhere",
+    "Available on desktop, mobile, web, and bots: one assistant everywhere",
   ],
   migrationSteps: [
     "Export Asana projects and tasks as CSV from the export menu",
@@ -59,7 +59,7 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA create tasks automatically from email?",
       answer:
-        "Yes. GAIA monitors your Gmail inbox and can automatically create tasks, set deadlines, and assign priorities based on email content — something Asana cannot do without a separate integration.",
+        "Yes. GAIA monitors your Gmail inbox and can automatically create tasks, set deadlines, and assign priorities based on email content, something Asana cannot do without a separate integration.",
     },
     {
       question: "Does GAIA support team collaboration like Asana?",

@@ -5,7 +5,9 @@
  */
 
 const SYSTEM_CREATOR_ID = "system";
-const GAIA_LOGO_SRC = "/images/logos/experience_black_bg.png";
+// The GAIA mark, not the Experience Company one — these surfaces are attributed
+// to "GAIA Team", so the logo has to match the name.
+const GAIA_LOGO_SRC = "/brand/gaia_logo.svg";
 
 export interface ResolvableCreator {
   id?: string | null;
@@ -13,7 +15,7 @@ export interface ResolvableCreator {
   avatar?: string | null;
 }
 
-function isSystemCreator(
+export function isSystemCreator(
   creator: ResolvableCreator | null | undefined,
 ): boolean {
   return creator?.id === SYSTEM_CREATOR_ID;

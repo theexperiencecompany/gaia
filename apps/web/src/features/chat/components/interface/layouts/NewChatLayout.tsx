@@ -58,6 +58,7 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
             setShowUseCases={setShowUseCases}
             showDescriptionAsTooltip={true}
             hideUserWorkflows={false}
+            columns={3}
           />
         )}
       </div>

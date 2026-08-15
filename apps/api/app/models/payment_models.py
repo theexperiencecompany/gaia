@@ -34,6 +34,9 @@ class CreateSubscriptionRequest(BaseModel):  # type: ignore[explicit-any]
 
     product_id: str = Field(..., description="Product ID to subscribe to")
     quantity: int = Field(1, description="Quantity of subscriptions")
+    discount_code: str | None = Field(
+        None, description="Discount code pre-applied on the hosted checkout page"
+    )
 
 
 # Response Models

@@ -45,9 +45,19 @@ git worktree add --detach "$WT" "$BASE" >/dev/null
 # Only files that actually claim to pin a bug are worth running here, and
 # importing just those keeps an unrelated file's collection error from
 # aborting the run.
+#
+# Anchored on the DECORATOR, not on any mention of it. A plain substring match
+# enlists a file that merely names the marker in prose: it picked up
+# tests/unit/agents/test_llm_helper_output_cap.py, which holds no marked test
+# but whose docstring spells the decorator out while explaining this very lane
+# — the file documenting the trap tripped it. The lane then ran that file on
+# base, where the symbol under test does not exist, and reported an ERROR.
+# This stays a pre-filter; the authoritative selection is pytest's own
+# `-m regression` below, which reports "nothing collected" (exit 5) if the
+# grep were ever over-eager again.
 regression_files=()
 for f in "${changed[@]}"; do
-  if grep -q 'pytest\.mark\.regression' "$REPO_ROOT/$f"; then
+  if grep -qE '^[[:space:]]*@pytest\.mark\.regression' "$REPO_ROOT/$f"; then
     regression_files+=("$f")
   fi
 done

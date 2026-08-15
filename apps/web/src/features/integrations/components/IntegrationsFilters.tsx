@@ -1,24 +1,12 @@
 "use client";
 
+import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { Tab, Tabs } from "@heroui/tabs";
 import { SearchIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-const CATEGORIES = [
-  { key: "all", label: "All" },
-  { key: "productivity", label: "Productivity" },
-  { key: "communication", label: "Communication" },
-  { key: "developer", label: "Developer" },
-  { key: "analytics", label: "Analytics" },
-  { key: "finance", label: "Finance" },
-  { key: "ai-ml", label: "AI & ML" },
-  { key: "education", label: "Education" },
-  { key: "personal", label: "Personal" },
-  { key: "capabilities", label: "Capabilities" },
-  { key: "other", label: "Other" },
-];
+import { INTEGRATION_CATEGORIES } from "@/features/integrations/constants/categories";
+import { cn } from "@/lib/utils";
 
 const SORT_OPTIONS = [
   { key: "popular", label: "Most Popular" },
@@ -32,9 +20,10 @@ interface IntegrationsFiltersProps {
     category?: string;
     sort?: string;
   }) => void;
+  /** Controlled by the parent so external controls (featured banners) stay in sync. */
+  category: string;
   initialFilters?: {
     search?: string;
-    category?: string;
     sort?: string;
   };
 }
@@ -78,10 +67,10 @@ function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
 
 export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
   onFilterChange,
+  category,
   initialFilters = {},
 }) => {
   const [search, setSearch] = useState(initialFilters.search || "");
-  const [category, setCategory] = useState(initialFilters.category || "all");
   const [sort, setSort] = useState(initialFilters.sort || "popular");
   const hasSyncedParams = useRef(false);
 
@@ -93,7 +82,6 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
     if (urlSearch || urlCategory) {
       hasSyncedParams.current = true;
       if (urlSearch) setSearch(urlSearch);
-      if (urlCategory) setCategory(urlCategory);
       onFilterChange({
         search: urlSearch || search,
         category: urlCategory || category,
@@ -112,7 +100,6 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
   };
 
   const handleCategoryChange = (key: string) => {
-    setCategory(key);
     onFilterChange({ search, category: key, sort });
   };
 
@@ -123,17 +110,23 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
 
   return (
     <div className="mb-8 space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
-        <div className="flex-1 min-w-0 overflow-x-auto">
-          <Tabs
-            selectedKey={category}
-            onSelectionChange={(key) => handleCategoryChange(key as string)}
-            variant="light"
-          >
-            {CATEGORIES.map((cat) => (
-              <Tab key={cat.key} title={cat.label} />
-            ))}
-          </Tabs>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
+        <div className="flex flex-1 min-w-0 flex-wrap items-center gap-2">
+          {INTEGRATION_CATEGORIES.map((cat) => (
+            <Chip
+              key={cat.key}
+              variant={category === cat.key ? "solid" : "flat"}
+              color={category === cat.key ? "primary" : "default"}
+              size="lg"
+              className={cn(
+                "cursor-pointer font-light! backdrop-blur-2xl!",
+                category !== cat.key && "bg-white/5! text-foreground-500",
+              )}
+              onClick={() => handleCategoryChange(cat.key)}
+            >
+              {cat.label}
+            </Chip>
+          ))}
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
