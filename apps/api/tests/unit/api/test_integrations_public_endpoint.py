@@ -118,6 +118,66 @@ class TestGetPublicIntegration:
         assert resp.json()["authType"] == "bearer"
 
     @pytest.mark.asyncio
+    async def test_native_integration_projects_each_tools_name_and_description(
+        self, client: AsyncClient
+    ) -> None:
+        """Both fields reach the response; a tool without a description is null."""
+        fake_native = MagicMock()
+        fake_native.id = "googlecalendar"
+        fake_native.name = "Google Calendar"
+        fake_native.description = "Calendar integration"
+        fake_native.category = "productivity"
+        fake_native.managed_by = "self"
+        fake_native.mcp_config = None
+        fake_native.content = None
+
+        with (
+            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", [fake_native]),
+            patch(
+                f"{_PUBLIC}.get_integration_tools",
+                new_callable=AsyncMock,
+                return_value=[
+                    {"name": "create_event", "description": "Create event"},
+                    {"name": "list_events"},
+                ],
+            ),
+        ):
+            resp = await client.get(f"{BASE}/public/googlecalendar")
+
+        tools = resp.json()["tools"]
+        assert [t["name"] for t in tools] == ["create_event", "list_events"]
+        assert tools[0]["description"] == "Create event"
+        assert tools[1]["description"] is None
+
+    @pytest.mark.asyncio
+    async def test_native_integration_skips_a_tool_that_is_not_a_mapping(
+        self, client: AsyncClient
+    ) -> None:
+        """A malformed stored tool is dropped, not rendered as an empty entry."""
+        fake_native = MagicMock()
+        fake_native.id = "googlecalendar"
+        fake_native.name = "Google Calendar"
+        fake_native.description = "Calendar integration"
+        fake_native.category = "productivity"
+        fake_native.managed_by = "self"
+        fake_native.mcp_config = None
+        fake_native.content = None
+
+        with (
+            patch(f"{_PUBLIC}.OAUTH_INTEGRATIONS", [fake_native]),
+            patch(
+                f"{_PUBLIC}.get_integration_tools",
+                new_callable=AsyncMock,
+                return_value=["not-a-mapping", {"name": "create_event"}],
+            ),
+        ):
+            resp = await client.get(f"{BASE}/public/googlecalendar")
+
+        body = resp.json()
+        assert [t["name"] for t in body["tools"]] == ["create_event"]
+        assert body["toolCount"] == 1
+
+    @pytest.mark.asyncio
     async def test_native_internal_integration_skipped(self, client: AsyncClient) -> None:
         """Internal integrations are not returned as native matches."""
         fake_native = MagicMock()
@@ -578,3 +638,78 @@ class TestSearchIntegrations:
 
         assert resp.status_code == 500
         assert "Failed to search" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_search_reports_the_vector_stores_relevance_scores(
+        self, client: AsyncClient
+    ) -> None:
+        """The float score reaches the response body, not a zeroed placeholder.
+
+        similarity_search_with_relevance_scores returns FLOAT scores, so reading
+        them with an int-only accessor would silently rank every result at 0.0.
+        Nothing asserted the value before, so that mutation survived.
+        """
+        search_results = [
+            {"integration_id": "id1", "relevance_score": 0.95},
+            {"integration_id": "id2", "relevance_score": 0.8},
+        ]
+
+        with (
+            patch(
+                f"{_PUBLIC}.search_public_integrations",
+                new_callable=AsyncMock,
+                return_value=search_results,
+            ),
+            patch(f"{_PUBLIC}.integration_repository") as mock_repo,
+        ):
+            mock_repo.find_public_by_ids = AsyncMock(
+                return_value=[_integration("id1", "A"), _integration("id2", "B")]
+            )
+            resp = await client.get(f"{BASE}/search", params={"q": "tool"})
+
+        scores = [item["relevanceScore"] for item in resp.json()["integrations"]]
+        assert scores == [0.95, 0.8]
+
+    @pytest.mark.asyncio
+    async def test_search_orders_by_the_vector_store_not_the_repository(
+        self, client: AsyncClient
+    ) -> None:
+        """Ranking follows the search hit order even when the repo returns it reversed."""
+        search_results = [
+            {"integration_id": "id1", "relevance_score": 0.95},
+            {"integration_id": "id2", "relevance_score": 0.1},
+        ]
+
+        with (
+            patch(
+                f"{_PUBLIC}.search_public_integrations",
+                new_callable=AsyncMock,
+                return_value=search_results,
+            ),
+            patch(f"{_PUBLIC}.integration_repository") as mock_repo,
+        ):
+            mock_repo.find_public_by_ids = AsyncMock(
+                return_value=[_integration("id2", "B"), _integration("id1", "A")]
+            )
+            resp = await client.get(f"{BASE}/search", params={"q": "tool"})
+
+        assert [i["integrationId"] for i in resp.json()["integrations"]] == ["id1", "id2"]
+
+    @pytest.mark.asyncio
+    async def test_search_ignores_a_result_that_is_not_a_mapping(self, client: AsyncClient) -> None:
+        """A malformed hit is skipped rather than crashing the whole search."""
+        search_results = [{"integration_id": "id1", "relevance_score": 0.5}, "not-a-mapping"]
+
+        with (
+            patch(
+                f"{_PUBLIC}.search_public_integrations",
+                new_callable=AsyncMock,
+                return_value=search_results,
+            ),
+            patch(f"{_PUBLIC}.integration_repository") as mock_repo,
+        ):
+            mock_repo.find_public_by_ids = AsyncMock(return_value=[_integration("id1", "A")])
+            resp = await client.get(f"{BASE}/search", params={"q": "tool"})
+
+        assert resp.status_code == 200
+        assert [i["integrationId"] for i in resp.json()["integrations"]] == ["id1"]
