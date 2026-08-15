@@ -114,6 +114,53 @@ def test_test_files_for_finds_patch_string(tmp_path: Path) -> None:
     assert hits == [str(tmp_path / "tests/unit/api/test_conversations.py")]
 
 
+def test_test_files_for_prefers_the_modules_mirror_directory(tmp_path: Path) -> None:
+    """The module's own mirror directory beats an alphabetically earlier hit.
+
+    ``app/decorators/rate_limiting.py`` really did pick
+    ``tests/unit/agents/.../test_edit_tool.py`` — a file that only imports a
+    module which applies the decorator — over the tests that drive the
+    decorator directly, and mutating against it crashed the CI lane.
+    """
+    _write(
+        tmp_path,
+        "unit/agents/tools/coding/test_edit_tool.py",
+        "from app.agents.tools.coding import edit\n"
+        'patch("app.decorators.rate_limiting.tiered_limiter")\n',
+    )
+    _write(
+        tmp_path,
+        "unit/decorators/test_rate_limiter_tiers.py",
+        "from app.decorators.rate_limiting import tiered_rate_limit\n",
+    )
+
+    hits = mm._test_files_for("decorators/rate_limiting", tmp_path)
+
+    assert hits[0] == str(tmp_path / "unit/decorators/test_rate_limiter_tiers.py")
+
+
+def test_test_files_for_keeps_the_unit_tier_ahead_of_a_mirrored_real_tier(
+    tmp_path: Path,
+) -> None:
+    """Tier order outranks the mirror directory — a real-tier file skips
+    without USE_REAL_SERVICES, leaving the mutation run with zero covering
+    tests."""
+    _write(
+        tmp_path,
+        "integration/real/decorators/test_rate_limiting.py",
+        "from app.decorators.rate_limiting import tiered_rate_limit\n",
+    )
+    _write(
+        tmp_path,
+        "unit/zzz/test_late_alphabetically.py",
+        "from app.decorators.rate_limiting import tiered_rate_limit\n",
+    )
+
+    hits = mm._test_files_for("decorators/rate_limiting", tmp_path)
+
+    assert hits[0] == str(tmp_path / "unit/zzz/test_late_alphabetically.py")
+
+
 def test_tokens_without_comments_treats_trailing_and_whole_line_comments_as_inert() -> None:
     """A trailing `# noqa` and a whole-line comment both disappear from the
     token stream — the two shapes the suppression burn-down actually produced.

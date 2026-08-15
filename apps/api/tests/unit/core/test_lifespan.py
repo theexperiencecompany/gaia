@@ -3,8 +3,8 @@
 The guard must never block boot: token-less environments (local dev without
 Infisical, the schemathesis live server) legitimately run without analytics —
 the SILENT loader no-ops captures. Missing config is a loud log line, not a
-fatal error. The client-init path (tokens present) must fetch the provider
-and register shutdown.
+fatal error. The client-init path (tokens present) must fetch the provider and
+close it when the lifespan ends.
 """
 
 import pytest
@@ -53,7 +53,6 @@ async def test_missing_posthog_config_logs_loudly_but_boots(
     _boot_patches(mocker)
     log_error = mocker.patch("app.core.lifespan.log.error")
     providers_get = mocker.patch("app.core.lifespan.providers.get")
-    register = mocker.patch("app.core.lifespan.atexit.register")
 
     async with lifespan(None):
         pass
@@ -62,46 +61,66 @@ async def test_missing_posthog_config_logs_loudly_but_boots(
     assert log_error.call_args.kwargs["missing_var"] == expected_missing
     assert "PostHog not configured" in log_error.call_args.args[0]
     providers_get.assert_not_called()
-    register.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_full_posthog_config_initialises_client_and_registers_shutdown(
+async def test_full_posthog_config_initialises_client_and_shuts_it_down(
     mocker: MockerFixture,
 ) -> None:
-    """With both keys present the client is fetched by provider name and its
-    shutdown is registered at exit."""
+    """With both keys present the client is fetched by provider name and closed
+    when the lifespan ends.
+
+    ``shutdown()``, not ``flush()``: flush only drains the queue, leaving the
+    consumer threads, the flag poller, and exception capture alive.
+    """
     _set_posthog(mocker, "phc_test", "https://ph.example.com")
     _boot_patches(mocker)
     log_error = mocker.patch("app.core.lifespan.log.error")
     fake_client = mocker.Mock()
     providers_get = mocker.patch("app.core.lifespan.providers.get", return_value=fake_client)
-    register = mocker.patch("app.core.lifespan.atexit.register")
 
     async with lifespan(None):
-        pass
+        fake_client.shutdown.assert_not_called()
 
     log_error.assert_not_called()
     providers_get.assert_called_once_with("posthog")
-    register.assert_called_once_with(fake_client.shutdown)
+    fake_client.shutdown.assert_called_once_with()
+    fake_client.flush.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_client_is_shut_down_even_when_the_app_body_raises(
+    mocker: MockerFixture,
+) -> None:
+    """A crash inside the running app must still close the client — otherwise a
+    failing pod drops every event still sitting in the queue."""
+    _set_posthog(mocker, "phc_test", "https://ph.example.com")
+    _boot_patches(mocker)
+    mocker.patch("app.core.lifespan.log.error")
+    fake_client = mocker.Mock()
+    mocker.patch("app.core.lifespan.providers.get", return_value=fake_client)
+
+    with pytest.raises(RuntimeError, match="Startup failed"):
+        async with lifespan(None):
+            raise ValueError("boom")
+
+    fake_client.shutdown.assert_called_once_with()
 
 
 @pytest.mark.asyncio
 async def test_full_config_with_unregistered_provider_skips_shutdown(
     mocker: MockerFixture,
 ) -> None:
-    """A missing provider registration (client None) must not attempt to
-    register shutdown on None."""
+    """A missing provider registration (client None) must not attempt to shut
+    down None."""
     _set_posthog(mocker, "phc_test", "https://ph.example.com")
     _boot_patches(mocker)
     providers_get = mocker.patch("app.core.lifespan.providers.get", return_value=None)
-    register = mocker.patch("app.core.lifespan.atexit.register")
 
     async with lifespan(None):
         pass
 
     providers_get.assert_called_once_with("posthog")
-    register.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -111,10 +130,8 @@ async def test_partial_config_never_initialises_client(mocker: MockerFixture) ->
     _set_posthog(mocker, "phc_test", None)
     _boot_patches(mocker)
     providers_get = mocker.patch("app.core.lifespan.providers.get")
-    register = mocker.patch("app.core.lifespan.atexit.register")
 
     async with lifespan(None):
         pass
 
     providers_get.assert_not_called()
-    register.assert_not_called()

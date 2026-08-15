@@ -404,7 +404,6 @@ function WebSection() {
   );
 }
 
-r;
 export default function DownloadPage() {
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center">

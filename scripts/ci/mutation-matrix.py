@@ -226,7 +226,25 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
         consumers = _importers_of(module)
         for consumer in consumers:
             hits.extend(_test_files_for(consumer.replace("app.", "", 1), tests_dir))
-    hits.sort(key=lambda p: (not p.startswith(str(tests_dir / "unit")), p))
+    # Unit tier first, then the module's own mirror directory, then
+    # alphabetical. Without the mirror key the winner is whichever path sorts
+    # first, which is an alphabetical accident rather than the module's real
+    # test: app/decorators/rate_limiting.py picked
+    # tests/unit/agents/tools/coding/test_edit_tool.py — a file that only
+    # imports a module which *applies* the decorator — over
+    # tests/unit/decorators/test_rate_limiter_tiers.py, which drives the
+    # decorator directly. That accidental pick also crashed mutmut, whose
+    # trampoline cannot resolve the `<frozen importlib._bootstrap>` caller
+    # frame produced when a mutated function runs at import time.
+    unit_dir = tests_dir / "unit"
+    mirror_dir = unit_dir / Path(module_rel).parent
+    hits.sort(
+        key=lambda p: (
+            not p.startswith(str(unit_dir)),
+            Path(p).parent != mirror_dir,
+            p,
+        )
+    )
     return hits
 
 

@@ -73,7 +73,7 @@ class TestPlatformOAuthCallback:
                 return_value=link_result,
             ),
             patch(f"{_MODULE}.notify_account_linked", new_callable=AsyncMock),
-            patch(f"{_MODULE}.capture_context_event") as mock_capture,
+            patch(f"{_MODULE}.capture_event") as mock_capture,
         ):
             resp = await client.get(
                 f"{BASE}/discord/callback",
@@ -83,7 +83,11 @@ class TestPlatformOAuthCallback:
 
         assert resp.status_code in (302, 307)
         assert "oauth_success=true" in resp.headers["location"]
+        # Explicit user id, not the request context: the platform OAuth
+        # redirect carries no WorkOS session, so a context capture would land
+        # the link on an anonymous profile.
         mock_capture.assert_called_once_with(
+            "uid1",
             AnalyticsEvents.INTEGRATION_CONNECTED,
             {"integration_id": "discord", "is_new_link": True},
         )

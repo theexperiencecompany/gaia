@@ -303,3 +303,115 @@ class TestRateLimitHitAnalytics:
                 await wrapped()
 
         mock_capture.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# enforce_tiered_limit — the manual metering seam
+# ---------------------------------------------------------------------------
+
+
+class TestEnforceTieredLimit:
+    """``enforce_tiered_limit`` is what non-decorated callers (bot endpoints,
+    background paths) use to meter a feature, so the arguments it forwards to
+    the limiter are the whole contract — a dropped ``feature_key`` silently
+    meters the wrong bucket."""
+
+    @pytest.mark.asyncio
+    async def test_forwards_user_feature_and_resolved_plan_to_the_limiter(self) -> None:
+        from app.decorators.rate_limiting import enforce_tiered_limit
+
+        subscription = MagicMock(plan_type=PlanType.PRO)
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=subscription,
+            ) as mock_status,
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new_callable=AsyncMock,
+            ) as mock_check,
+        ):
+            await enforce_tiered_limit("user-1", "fake_feature")
+
+        mock_status.assert_awaited_once_with("user-1")
+        mock_check.assert_awaited_once_with(
+            user_id="user-1",
+            feature_key="fake_feature",
+            user_plan=PlanType.PRO,
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_planless_subscription_meters_as_free(self) -> None:
+        """No plan on the subscription record means FREE limits, not None —
+        passing None through would blow up limit lookup at the storage seam."""
+        from app.decorators.rate_limiting import enforce_tiered_limit
+
+        subscription = MagicMock(plan_type=None)
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=subscription,
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new_callable=AsyncMock,
+            ) as mock_check,
+        ):
+            await enforce_tiered_limit("user-1", "fake_feature")
+
+        assert mock_check.await_args.kwargs["user_plan"] == PlanType.FREE
+
+    @pytest.mark.asyncio
+    async def test_captures_the_paid_plan_hit_and_re_raises(self) -> None:
+        from app.decorators.rate_limiting import enforce_tiered_limit
+        from app.services.analytics_service import AnalyticsEvents
+
+        subscription = MagicMock(plan_type=PlanType.PRO)
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=subscription,
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new_callable=AsyncMock,
+                side_effect=RateLimitExceededException("fake_feature"),
+            ),
+            patch("app.decorators.rate_limiting.capture_event") as mock_capture,
+        ):
+            with pytest.raises(RateLimitExceededException):
+                await enforce_tiered_limit("user-1", "fake_feature")
+
+        mock_capture.assert_called_once_with(
+            "user-1",
+            AnalyticsEvents.RATE_LIMIT_HIT,
+            {"feature": "fake_feature", "plan": "pro"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_the_free_hit_and_still_re_raises(self) -> None:
+        """FREE hits are captured by the limit-upsell seam — a second event
+        here would double-count every free user's wall."""
+        from app.decorators.rate_limiting import enforce_tiered_limit
+
+        subscription = MagicMock(plan_type=PlanType.FREE)
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=subscription,
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new_callable=AsyncMock,
+                side_effect=RateLimitExceededException("fake_feature"),
+            ),
+            patch("app.decorators.rate_limiting.capture_event") as mock_capture,
+        ):
+            with pytest.raises(RateLimitExceededException):
+                await enforce_tiered_limit("user-1", "fake_feature")
+
+        mock_capture.assert_not_called()

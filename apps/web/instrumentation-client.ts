@@ -102,7 +102,13 @@ if (typeof window !== "undefined") {
     try {
       const { default: posthog } = await import("posthog-js");
       posthog.init(posthogProjectToken, {
+        // Ingestion goes through the first-party /ingest proxy (see the
+        // rewrites in next.config.mjs, which point it at
+        // NEXT_PUBLIC_POSTHOG_HOST) so ad blockers cannot drop events.
+        // ui_host names the real instance so the toolbar and "view in
+        // PostHog" links resolve to the configured region, not the US default.
         api_host: "/ingest",
+        ui_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
         defaults: "2025-05-24",
         capture_exceptions: true,
         debug: process.env.NODE_ENV === "development",

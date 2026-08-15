@@ -146,7 +146,6 @@ export default function MobileMenu() {
                           });
                           closeSheet();
                         }}
-                        r
                       >
                         {link.label}
                       </Link>

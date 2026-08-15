@@ -8,7 +8,7 @@ import httpx
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.outbound_delivery import notify_account_linked
 from app.services.platform_link_service import PlatformLinkService
 from shared.py.wide_events import log
@@ -227,7 +227,13 @@ async def _handle_platform_oauth_callback(
                 provider=config.platform,
                 is_new_link=bool(link_result.is_new_link),
             )
-            capture_context_event(
+            # capture_event, not capture_context_event: this is a third-party
+            # OAuth redirect, so the request carries no WorkOS session for the
+            # PostHog context middleware to identify. The user id comes from the
+            # signed state token — pass it explicitly or the event lands on an
+            # anonymous profile.
+            capture_event(
+                user_id,
                 AnalyticsEvents.INTEGRATION_CONNECTED,
                 {
                     "integration_id": config.platform,

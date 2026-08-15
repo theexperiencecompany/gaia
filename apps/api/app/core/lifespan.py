@@ -1,4 +1,3 @@
-import atexit
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -52,8 +51,6 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
             await unified_startup("main_app")
             if settings.POSTHOG_PROJECT_TOKEN and settings.POSTHOG_HOST:
                 posthog_client = providers.get("posthog")
-                if posthog_client is not None:
-                    atexit.register(posthog_client.shutdown)
             start_browser_reaper()
             start_revoke_listener()
             start_up_listener()
@@ -67,6 +64,11 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
         await stop_revoke_listener()
         await stop_browser_reaper()
         if posthog_client is not None:
-            posthog_client.flush()
+            # shutdown(), not flush(): it flushes the queue AND joins the
+            # consumer threads, stops the feature-flag poller, and closes
+            # exception capture. flush() alone leaves those running, and an
+            # atexit hook would only fire at process exit — too late for a
+            # reload or a lifespan that ends while the process lives on.
+            posthog_client.shutdown()
         await unified_shutdown("main_app")
         _CONTEXT_EXECUTOR.shutdown(wait=False)
