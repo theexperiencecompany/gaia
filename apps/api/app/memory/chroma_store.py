@@ -271,7 +271,7 @@ async def query_conversation_chunks(
     metadatas = (result.get("metadatas") or [[]])[0]
     distances = (result.get("distances") or [[]])[0]
     return [
-        (str(text_bag(metadata, "date")), document, 1.0 - distance)
+        (text_bag(metadata, "date"), document, 1.0 - distance)
         for document, metadata, distance in zip(documents, metadatas, distances)
     ]
 

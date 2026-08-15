@@ -50,7 +50,6 @@ from app.utils.json_helpers import (
     bool_bag,
     dict_bag,
     float_bag,
-    int_bag,
     list_bag,
     text_bag,
     text_opt_bag,
@@ -325,7 +324,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
             "identifier": text_bag(issue, "identifier"),
             "title": text_bag(issue, "title"),
             "description": text_bag(issue, "description"),
-            "priority": priority_to_str(int_bag(issue, "priority")),
+            "priority": priority_to_str(float_bag(issue, "priority")),
             "state": text_opt_bag(dict_bag(issue, "state"), "name"),
             "dueDate": text_opt_bag(issue, "dueDate"),
             "estimate": float_bag(issue, "estimate"),
@@ -685,8 +684,8 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                 )
             elif h.get("fromPriority") is not None or h.get("toPriority") is not None:
                 entry["change_type"] = "priority"
-                entry["from"] = priority_to_str(int_bag(h, "fromPriority"))
-                entry["to"] = priority_to_str(int_bag(h, "toPriority"))
+                entry["from"] = priority_to_str(float_bag(h, "fromPriority"))
+                entry["to"] = priority_to_str(float_bag(h, "toPriority"))
             elif history_label_names(h.get("addedLabels")):
                 entry["change_type"] = "labels_added"
                 entry["labels"] = history_label_names(h.get("addedLabels"))
@@ -738,7 +737,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                         {
                             "identifier": text_opt_bag(issue, "identifier"),
                             "title": text_opt_bag(issue, "title"),
-                            "priority": priority_to_str(int_bag(issue, "priority")),
+                            "priority": priority_to_str(float_bag(issue, "priority")),
                             "assignee": text_opt_bag(dict_bag(issue, "assignee"), "name")
                             if issue.get("assignee")
                             else None,

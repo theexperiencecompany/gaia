@@ -9,7 +9,7 @@ from difflib import SequenceMatcher
 
 from app.constants.log_tags import LogTag
 from app.services.composio.proxy_client import proxy_request_sync
-from app.utils.json_helpers import dict_bag, int_bag, text_opt_bag
+from app.utils.json_helpers import dict_bag, float_bag, text_opt_bag
 from shared.py.wide_events import log
 
 LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql"
@@ -148,14 +148,15 @@ def priority_to_int(priority: str) -> int:
     return mapping.get(priority.lower(), 0)
 
 
-def priority_to_str(priority: int | str) -> str:
+def priority_to_str(priority: float | str) -> str:
     """Convert Linear priority to a readable string.
 
-    The Linear API sends an int for some queries and the label string for
-    others; both go through the same mapping (string labels that are not
-    canonical keys fall back to "none", exactly as before).
+    Linear's schema types priority as ``Float!``, and some queries send the
+    label string instead; both go through the same mapping (2.0 and 2 hash
+    equal, so a float lands on the same entry). String labels that are not
+    canonical keys fall back to "none", exactly as before.
     """
-    mapping: dict[int | str, str] = {
+    mapping: dict[float | str, str] = {
         0: "none",
         1: "urgent",
         2: "high",
@@ -172,7 +173,7 @@ def format_issue_summary(issue: dict[str, object]) -> dict[str, object]:
         "identifier": issue.get("identifier"),
         "title": issue.get("title"),
         "state": text_opt_bag(dict_bag(issue, "state"), "name") if issue.get("state") else None,
-        "priority": priority_to_str(int_bag(issue, "priority")),
+        "priority": priority_to_str(float_bag(issue, "priority")),
         "assignee": text_opt_bag(dict_bag(issue, "assignee"), "name")
         if issue.get("assignee")
         else None,

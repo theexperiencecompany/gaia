@@ -81,10 +81,10 @@ def _normalize_example_blocks(raw: object) -> WritingStyleExampleBlocks | None:
         if not body:
             return None
         return WritingStyleExampleBlocks(
-            greeting=str(text_bag(raw, "greeting")),
+            greeting=text_bag(raw, "greeting"),
             body=body,
-            signoff=str(text_bag(raw, "signoff")),
-            name=str(text_bag(raw, "name")),
+            signoff=text_bag(raw, "signoff"),
+            name=text_bag(raw, "name"),
         )
     if isinstance(raw, str) and raw.strip():
         return WritingStyleExampleBlocks(greeting="", body=[raw.strip()], signoff="", name="")

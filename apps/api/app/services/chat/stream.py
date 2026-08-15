@@ -566,7 +566,7 @@ def _parse_complete_message(chunk: str) -> tuple[str, bool]:
     """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker."""
     nostream_json = json.loads(chunk.removeprefix("nostream: "))
     if isinstance(nostream_json, dict):
-        return str(text_bag(nostream_json, "complete_message")), bool(
+        return text_bag(nostream_json, "complete_message"), bool(
             nostream_json.get("cancelled", False)
         )
     return "", False

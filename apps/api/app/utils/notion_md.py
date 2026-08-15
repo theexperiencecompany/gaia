@@ -1,19 +1,5 @@
 """Notion ↔ Markdown bidirectional conversion utilities.
 
-    value = bag.get(key)
-    return value if isinstance(value, str) else default
-
-
-def list_bag(bag: dict[str, object], key: str) -> list[object]:
-    value = bag.get(key)
-    return value if isinstance(value, list) else []
-
-
-def bool_bag(bag: dict[str, object], key: str, default: bool = False) -> bool:
-    value = bag.get(key)
-    return value if isinstance(value, bool) else default
-
-
 Provides:
 - blocks_to_markdown(): Convert Notion blocks → Markdown string
 - markdown_to_notion_blocks(): Convert Markdown string → NOTION_ADD_MULTIPLE_PAGE_CONTENT format

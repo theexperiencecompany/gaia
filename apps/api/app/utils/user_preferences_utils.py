@@ -101,7 +101,7 @@ def _example_blocks_to_text(raw: object) -> str:
     if not isinstance(raw, dict):
         return ""
     sections: list[str] = []
-    greeting = str(text_bag(raw, "greeting")).strip()
+    greeting = text_bag(raw, "greeting").strip()
     if greeting:
         sections.append(greeting)
     for paragraph in raw.get("body", []):
@@ -109,10 +109,10 @@ def _example_blocks_to_text(raw: object) -> str:
         if text:
             sections.append(text)
     signoff_lines: list[str] = []
-    signoff = str(text_bag(raw, "signoff")).strip()
+    signoff = text_bag(raw, "signoff").strip()
     if signoff:
         signoff_lines.append(signoff)
-    name = str(text_bag(raw, "name")).strip()
+    name = text_bag(raw, "name").strip()
     if name:
         signoff_lines.append(name)
     if signoff_lines:

@@ -315,7 +315,7 @@ async def _resolve_subagent(
     # Handle custom MCPs (returned as dict from MongoDB)
     if isinstance(resolved, dict):
         # Custom MCP - resolved is a dict
-        integration_id = str(text_bag(resolved, "id"))
+        integration_id = text_bag(resolved, "id")
         integration_name = str(resolved.get("name", integration_id))
 
         if not integration_id:
@@ -410,7 +410,7 @@ async def _build_integration_metadata(
             return IntegrationMetadata(
                 icon_url=text_opt_bag(integration, "icon_url"),
                 integration_id=integration_id,
-                name=str(text_bag(integration, "name") or integration_id),
+                name=text_bag(integration, "name") or integration_id,
             )
         return None
     platform_integ = get_subagent_by_id(integration_id)

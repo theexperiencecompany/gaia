@@ -253,7 +253,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     # The resolved user is a plain user dict (middleware state or the platform
     # lookup); its shape matches AuthenticatedUser, which is what the services take.
     user = cast(AuthenticatedUser, user)
-    user_id = text_bag(user, "user_id") or str(text_bag(user, "_id"))
+    user_id = text_bag(user, "user_id") or text_bag(user, "_id")
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform, outcome="success")
 
