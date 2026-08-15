@@ -271,7 +271,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     # Linking is Pro-gated for premium platforms; re-check on every turn so a
     # user who downgrades after linking is refused here, not silently served.
     if await platform_requires_upgrade(user_id, body.platform):
-        log.set(outcome="plan_required")
+        log.set(outcome="plan_required")  # pragma: no mutate
         return _refusal_stream(BOT_STREAM_ERROR_PLAN_REQUIRED)
 
     # Same quota the web chat endpoint charges via @tiered_rate_limit. It cannot

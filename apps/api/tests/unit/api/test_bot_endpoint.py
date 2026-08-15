@@ -451,12 +451,13 @@ class TestBotChatStream:
                 new_callable=AsyncMock,
                 return_value={"_id": "u1"},
             ),
-            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE) as mock_plan,
         ):
             response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("imessage"))
 
         assert response.status_code == 200
         assert response.text == 'data: {"error": "plan_required"}\n\n'
+        mock_plan.assert_awaited_once_with("u1")
         mock_tiered.assert_not_awaited()
 
     @pytest.mark.parametrize(

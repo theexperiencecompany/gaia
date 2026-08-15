@@ -40,6 +40,7 @@ echo "sweep: $TOTAL modules, $PARALLEL parallel"
 #    with no test anywhere are recorded as a finding (NO_TEST), not a failure.
 python3 - "$OUT_DIR/modules.txt" "$OUT_DIR/entries.txt" "$OUT_DIR/no-test.txt" << 'EOF'
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -103,19 +104,19 @@ def _tests_for(rel_py: str, seen: set[str] | None = None) -> list[str]:
 for module in Path(modules_file).read_text().splitlines():
     rel = module.removeprefix("apps/api/")
     rel_py = rel.removeprefix("app/").removesuffix(".py")
-    unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
-    if (tests_dir / unit_mirror).exists():
-        entries.append((rel, unit_mirror))
-        continue
-    hits = _tests_for(rel_py)
-    if hits:
-        entries.append((rel, hits[0].removeprefix("apps/api/")))
+    # Same selection policy as the CI matrix, from the same function — this
+    # used to be a second copy of it, and its mirror check was dead besides
+    # (it joined "tests/unit/..." onto tests_dir, giving "tests/tests/unit/...").
+    # Run from apps/api, so the repo-relative paths are already correct here.
+    testfiles = mm.with_unit_mirror(rel_py, _tests_for(rel_py), Path("."))
+    if testfiles:
+        entries.append((rel, testfiles))
         continue
     no_test.append(rel)
 
 with open(entries_file, "w") as f:
-    for module, testfile in entries:
-        f.write(f"{module} {testfile}\n")
+    for module, testfiles in entries:
+        f.write(f"{module} {json.dumps(testfiles, separators=(',', ':'))}\n")
 with open(no_test_file, "w") as f:
     for module in no_test:
         f.write(f"{module}\n")
@@ -135,10 +136,10 @@ trap 'kill "$SAMPLER_PID" 2>/dev/null || true' EXIT
 # 4. Run the sweep with bounded parallelism; every verdict lands in its own
 #    log so the summary below can classify precisely.
 COUNT=0
-while read -r module testfile; do
+while read -r module testfiles; do
   COUNT=$((COUNT + 1))
   SLUG="$(echo "$module" | tr '/' '_')"
-  bash "$REPO_ROOT/scripts/test/mutation.sh" "$module" "$testfile" > "$OUT_DIR/$SLUG.log" 2>&1 &
+  bash "$REPO_ROOT/scripts/test/mutation.sh" "$module" "$testfiles" > "$OUT_DIR/$SLUG.log" 2>&1 &
   if [ "$(jobs -r -p | wc -l)" -ge "$PARALLEL" ]; then
     wait -n || true
   fi
@@ -154,7 +155,7 @@ SKIP=0
 FAIL=0
 NO_TEST="$(wc -l < "$OUT_DIR/no-test.txt" | tr -d ' ')"
 : > "$OUT_DIR/survivors.txt"
-while read -r module testfile; do
+while read -r module testfiles; do
   SLUG="$(echo "$module" | tr '/' '_')"
   LOG="$OUT_DIR/$SLUG.log"
   if grep -q "Mutation: OK" "$LOG"; then
