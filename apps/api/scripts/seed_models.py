@@ -110,9 +110,9 @@ def get_models_configuration() -> list[dict[str, Any]]:
             "lowest_tier": PlanType.FREE.value,
             "is_active": True,
             "is_default": True,
-            "pricing_per_1k_input_tokens": 0.00009,
-            "pricing_per_1k_output_tokens": 0.00018,
-            "pricing_per_1k_cached_input_tokens": 0.000018,
+            "pricing_per_1k_input_tokens": 0.00014,
+            "pricing_per_1k_output_tokens": 0.00028,
+            "pricing_per_1k_cached_input_tokens": 0.000028,
         },
         # Superseded as the default; kept seeded so the direct-Gemini lane and
         # the dev model menu still resolve pricing for it.

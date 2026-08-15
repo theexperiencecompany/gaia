@@ -29,22 +29,23 @@ DEFAULT_PRICING = ModelPricing(
     cached_input_cost_per_1k=0.001 * DEFAULT_CACHED_INPUT_FRACTION,
 )
 
-# The aux lane (AUX_MODEL_NAME) is a DIFFERENT model id — the ORIGINAL V4
-# Flash release, not the re-post-trained 0731 revision the graph uses — so its
-# calls get a separate prompt-cache namespace. It is NOT the same model as
-# DEFAULT_MODEL_NAME and does not share its rate card, so it must be priced at
-# its own rate: the values below against the catalogue-seeded default
-# (0.00009 / 0.00018 — see scripts/seed_models.py) make the aux lane ~1.55x the
-# input rate, and pricing it as the default would under-count aux COGS by that
-# much. Kept as a constant here rather than a seed entry because the id is an
-# internal routing choice, not a model users can select — which also means
-# nothing reconciles it against OpenRouter's live listing. The unit test pins
-# these values, NOT that they still match upstream; re-check them by hand
-# whenever either model id is re-pointed.
+# The aux lane (AUX_MODEL_NAME) is a DIFFERENT model id — "DeepSeek V4 Flash
+# 0423" (Apr 2026), not the "0731" revision (Jul 2026) the graph runs — so its
+# calls get a separate prompt-cache namespace. Two ids, two rate cards: 0423 is
+# roughly 0.46x 0731's input rate, so pricing the aux lane at the default's
+# rate would OVER-count aux COGS by ~2.2x. Values below are OpenRouter's
+# published per-1k rates for `deepseek/deepseek-v4-flash`, read from
+# https://openrouter.ai/api/v1/models.
+#
+# Kept as a constant rather than a seed entry because the id is an internal
+# routing choice, not a model users can select — which also means nothing
+# reconciles it against the live listing. The unit test pins these values, NOT
+# that they still match upstream; re-check them by hand whenever either model
+# id is re-pointed.
 AUX_MODEL_PRICING = ModelPricing(
-    input_cost_per_1k=0.00014,
-    output_cost_per_1k=0.00028,
-    cached_input_cost_per_1k=0.000028,  # 20% of input, matching OpenRouter's listing
+    input_cost_per_1k=0.00006426,
+    output_cost_per_1k=0.00012852,
+    cached_input_cost_per_1k=0.000012852,  # 20% of input, matching OpenRouter's listing
 )
 
 

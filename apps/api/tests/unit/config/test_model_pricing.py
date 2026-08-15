@@ -254,10 +254,10 @@ class TestGetModelPricing:
 
 class TestAuxModelPricing:
     """Tests for the aux-lane pricing — a separate model id under
-    AUX_MODEL_NAME (the original V4 Flash release, not the revision the graph
-    uses), priced at its OWN published rate (not the default's): the two ids
-    carry different OpenRouter prices, so normalizing the alias to the
-    default's rate would under-count aux COGS by ~1.75x."""
+    AUX_MODEL_NAME ("V4 Flash 0423", not the "0731" revision the graph runs),
+    priced at its OWN published rate. The two ids carry different OpenRouter
+    rate cards, and 0423 is the CHEAPER of the two, so pricing the aux lane at
+    the default's rate would over-count aux COGS by ~2.2x."""
 
     @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
     async def test_aux_model_priced_at_its_own_rate(self, mock_get_model: AsyncMock) -> None:
@@ -270,17 +270,18 @@ class TestAuxModelPricing:
     @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
     async def test_aux_rate_differs_from_default_rate(self, mock_get_model: AsyncMock) -> None:
         mock_get_model.return_value = _make_model(
-            pricing_per_1k_input_tokens=0.00008,
-            pricing_per_1k_output_tokens=0.00018,
-            pricing_per_1k_cached_input_tokens=0.000016,
+            pricing_per_1k_input_tokens=0.00014,
+            pricing_per_1k_output_tokens=0.00028,
+            pricing_per_1k_cached_input_tokens=0.000028,
         )
 
         default_pricing = await get_model_pricing(DEFAULT_MODEL_NAME)
 
-        # Different release, different price: the alias is more expensive than the
-        # default — normalizing it to the default's rate would under-count spend.
+        # Different release, different rate card: 0423 is CHEAPER than the 0731
+        # the graph runs, so normalizing the aux lane to the default's rate
+        # would over-count its spend.
         assert default_pricing != AUX_MODEL_PRICING
-        assert AUX_MODEL_PRICING.input_cost_per_1k > default_pricing.input_cost_per_1k
+        assert AUX_MODEL_PRICING.input_cost_per_1k < default_pricing.input_cost_per_1k
 
     @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
     async def test_aux_spend_meters_at_aux_rate_end_to_end(self, mock_pricing: AsyncMock) -> None:
@@ -290,13 +291,14 @@ class TestAuxModelPricing:
             AUX_MODEL_NAME, input_tokens=100_000, output_tokens=2_000, cached_tokens=80_000
         )
 
-        # uncached input: (100000 - 80000) / 1000 * 0.00014 = 0.0028
-        # cached input:   80000 / 1000 * 0.000028          = 0.00224
-        # output:         2000 / 1000 * 0.00028            = 0.00056
-        assert result["input_cost"] == pytest.approx(0.0028)
-        assert result["cached_input_cost"] == pytest.approx(0.00224)
-        assert result["output_cost"] == pytest.approx(0.00056)
-        assert result["total_cost"] == pytest.approx(0.0056)
+        # Costs are rounded to 6dp by calculate_token_cost:
+        # uncached input: (100000 - 80000) / 1000 * 0.00006426  = 0.0012852  -> 0.001285
+        # cached input:   80000 / 1000 * 0.000012852            = 0.00102816 -> 0.001028
+        # output:         2000 / 1000 * 0.00012852              = 0.00025704 -> 0.000257
+        assert result["input_cost"] == pytest.approx(0.001285)
+        assert result["cached_input_cost"] == pytest.approx(0.001028)
+        assert result["output_cost"] == pytest.approx(0.000257)
+        assert result["total_cost"] == pytest.approx(0.00257)
 
 
 # ---------------------------------------------------------------------------

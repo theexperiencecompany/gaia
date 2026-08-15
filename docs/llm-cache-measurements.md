@@ -101,10 +101,18 @@ Two follow-up fixes in this PR close the biggest measured gaps:
   the call, the request's `model` field flipped per call (primary → fallback →
   primary → …) and the per-model cache could never chain. Once a run falls
   back, later calls use the fallback directly.
-- **Aux calls get their own cache namespace** — the memory-pipeline and
-  follow-up calls now run the same underlying model under a different id
-  (`AUX_MODEL_NAME`), so their ~30k tokens/turn of new blocks can no longer
-  evict the conversation from its namespace.
+- **Aux calls get their own cache namespace** — the follow-up and other
+  one-shot calls now run under a different id (`AUX_MODEL_NAME`), so their
+  ~30k tokens/turn of new blocks can no longer evict the conversation from its
+  namespace. Note this is a genuinely different model, not an alias of the
+  same weights: OpenRouter serves `deepseek/deepseek-v4-flash` as "V4 Flash
+  0423" (Apr 2026) and `…-0731` as "V4 Flash 0731" (Jul 2026), at different
+  rate cards. There is no second id resolving to 0731, so a separate namespace
+  and the newer revision cannot both be had on this provider — the aux lane
+  trades model version for isolation, deliberately.
+  The memory pipeline is NOT covered by this: a separate id on the same
+  provider was measured and did not hold (see the concurrency finding above),
+  which is why it runs on direct Gemini instead.
 
 Real-graph runs measure **76.3%** on the 15-turn driver (up from the 70.5%
 baseline), with the comms at 83–91% per turn and the cached prefix growing
@@ -119,22 +127,27 @@ change: the new turn's messages, the volatile tail (~370 tokens), and the
 follow-up one-shot (~2k at its ~65% ceiling because its per-turn context
 churns) — plus occasional provider-side flakes (2 turns in 15).
 
-**Tested and reverted: OpenRouter `session_id` sticky routing.** The
-conversation id was pinned on every request (comms, executor, subagents,
-aux) via a post-`bind_tools` bind — wire-verified at 100% coverage. The
-A/B on the same 15-turn driver measured **no benefit (64.2% pinned vs
-70.5% unpinned)** — OpenRouter's default routing already keeps a client's
-requests on the same upstream (turn-to-turn cache continuity was identical
-with and without the pin), and the pin has a real cost: it fragments the
-shared byte-identical ~19k system prefix across per-conversation upstreams,
-so a new conversation starts cold (turn 0: 0% cached pinned vs 79% cached
-unpinned — the unpinned run hit a warm upstream's copy of the shared
-prefix). Reverted on that evidence; the mechanism is documented here so it
-is not re-attempted without new data.
+**History — the first `session_id` attempt, and why the shipped one differs.**
+An earlier revision pinned the conversation id on *every* request including
+the aux one-shots, via a post-`bind_tools` bind, wire-verified at 100%
+coverage. That A/B measured **no benefit (64.2% pinned vs 70.5% unpinned)**
+and was reverted: sharing one session across the conversation AND its aux
+calls fragments the byte-identical ~19k system prefix across per-conversation
+upstreams, so a new conversation starts cold (turn 0: 0% cached pinned vs 79%
+unpinned, the unpinned run hitting a warm upstream's copy of the shared
+prefix).
+
+**What ships is not that.** The aux one-shots now carry their own suffixed
+session (`{session_id}-aux`, see `_aux_structured_runnable`) precisely so they
+cannot re-pin the conversation's provider, and the sticky-flip retry recovers
+the cold-flip case rather than relying on the pin alone. Measured best on the
+real full graph in that shape — 82.2% total, 83–88% steady-state (recorded
+against `DEFAULT_MODEL_NAME` in `app/constants/llm.py`). The reverted variant
+is kept here so the *shared-session* version is not re-attempted without new
+data; it is not a statement about the shipped one.
 
 This PR also bounds the aux calls' cache footprint so the fix is in place
-when the request count drops: the memory-extraction transcript is capped at
-10k chars (was 24k) and the volatile memory-recall slot at 8k chars
+when the request count drops: the volatile memory-recall slot is capped at 8k chars
 (head+tail), cutting ~30k tokens/turn of new cache blocks. The remaining
 lever to unlock the layout's demonstrated 95% ceiling in the real graph is
 reducing the number of requests between comms calls — batching the
