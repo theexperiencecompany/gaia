@@ -1,0 +1,434 @@
+import asyncio
+from collections import defaultdict, deque
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
+from crawl4ai.content_filter_strategy import BM25ContentFilter
+from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+
+from app.config.settings import settings
+from app.constants.log_tags import LogTag
+from app.constants.search import CRAWL4AI_CLOSE_TIMEOUT_SECONDS, CRAWL4AI_WAIT_UNTIL
+from app.utils.background_tasks import spawn_background_task
+from app.utils.concurrency import loop_bound_semaphore
+from shared.py.wide_events import log
+
+# Tags that are almost never primary content; dropped before markdown conversion.
+_EXCLUDED_TAGS = ["nav", "header", "footer", "aside", "form", "script", "style", "noscript"]
+_BM25_THRESHOLD = 1.0
+
+
+def _build_markdown_generator(content_query: str | None = None) -> DefaultMarkdownGenerator:
+    """Build a markdown generator tuned for clean, LLM-ready output.
+
+    Plain fetch keeps the full raw markdown — links, emails and inline text are
+    preserved (boilerplate is already removed via ``excluded_tags``). Deep
+    research passes a ``content_query`` so BM25 keeps only the passages most
+    relevant to the topic. (A pruning filter was dropping inline links, so it is
+    not used for plain fetch.)
+    """
+    content_filter = (
+        BM25ContentFilter(user_query=content_query, bm25_threshold=_BM25_THRESHOLD)
+        if content_query
+        else None
+    )
+    return DefaultMarkdownGenerator(
+        content_source="cleaned_html",
+        content_filter=content_filter,
+        options={
+            "ignore_links": False,
+            "ignore_images": True,
+            "skip_internal_links": True,
+            "body_width": 0,
+            "escape_html": False,
+        },
+    )
+
+
+def _build_run_config(
+    *,
+    page_timeout_ms: int,
+    semaphore_count: int,
+    content_query: str | None,
+    thorough: bool,
+) -> CrawlerRunConfig:
+    """Build a crawl run config.
+
+    ``thorough`` (single-page fetch) scrolls the whole page, lets late JS and
+    animations settle, and enables ``magic`` (overlay handling + light stealth)
+    so lazy-loaded / scroll-revealed content is captured. It is several times
+    slower, so batch crawls (deep research) leave it off. ``networkidle`` is
+    deliberately not used — it hangs on SPAs that hold persistent connections.
+    """
+    kwargs: dict[str, Any] = {
+        "page_timeout": page_timeout_ms,
+        "wait_until": CRAWL4AI_WAIT_UNTIL,
+        "semaphore_count": semaphore_count,
+        "markdown_generator": _build_markdown_generator(content_query),
+        "excluded_tags": _EXCLUDED_TAGS,
+        "word_count_threshold": 10,
+        "remove_overlay_elements": True,
+        "verbose": False,
+    }
+    if thorough:
+        kwargs.update(scan_full_page=True, magic=True, delay_before_return_html=1.0)
+    return CrawlerRunConfig(**kwargs)
+
+
+# Shared semaphore binding for the process-wide browser concurrency cap. The
+# limit itself is sourced from ``settings.CRAWL4AI_MAX_BROWSERS`` (env-driven,
+# already clamped to a safe minimum); see ``constants/search.py`` for context
+# on why the cap exists.
+def get_browser_semaphore() -> asyncio.Semaphore:
+    """Return the shared browser semaphore bound to the running loop."""
+    return loop_bound_semaphore("crawl4ai_browser", settings.CRAWL4AI_MAX_BROWSERS)
+
+
+async def _close_crawler(crawler: AsyncWebCrawler, context_name: str) -> None:
+    try:
+        await crawler.close()
+    except Exception as e:
+        log.warning(
+            f"{LogTag.TOOL} browser close failed",
+            context_name=context_name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+
+def _spawn_shielded_close(crawler: AsyncWebCrawler, context_name: str) -> asyncio.Task[None]:
+    return spawn_background_task(_close_crawler(crawler, context_name))
+
+
+@asynccontextmanager
+async def managed_crawler(
+    config: BrowserConfig | None = None,
+    *,
+    context_name: str = "crawl4ai",
+) -> AsyncIterator[AsyncWebCrawler]:
+    """Yield a started ``AsyncWebCrawler`` whose teardown survives cancellation.
+
+    ``async with AsyncWebCrawler()`` runs ``close()`` inside ``__aexit__``, so a
+    ``CancelledError`` arriving mid-close (stream cancellation, tool timeout,
+    client disconnect) aborts the cleanup and orphans the Playwright driver
+    subprocess (~50-130 MB each; these accumulated for days in prod). Running
+    ``close()`` as a detached task means cancellation of the calling task can
+    no longer interrupt the browser teardown; ``app.utils.browser_reaper`` is
+    the backstop for anything that still slips through.
+    """
+    crawler = AsyncWebCrawler(config=config or BrowserConfig(headless=True, verbose=False))
+    try:
+        await crawler.start()
+    except BaseException:
+        # start() may have spawned the driver before failing — close it too.
+        _spawn_shielded_close(crawler, context_name)
+        raise
+    try:
+        yield crawler
+    finally:
+        close_task = _spawn_shielded_close(crawler, context_name)
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(close_task), timeout=CRAWL4AI_CLOSE_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            # close() is wedged; it keeps running detached and the reaper
+            # collects the driver if it never finishes.
+            log.warning(
+                f"{LogTag.TOOL} browser close still running ; leaving it to finish in background",
+                context_name=context_name,
+                crawl4ai_close_timeout_seconds=CRAWL4AI_CLOSE_TIMEOUT_SECONDS,
+            )
+
+
+def _normalize_url(url: str) -> str:
+    """Normalize URL for tolerant matching across redirects/canonicalization."""
+    parts = urlsplit(url)
+    path = parts.path or ""
+    if path != "/":
+        path = path.rstrip("/")
+    return urlunsplit(
+        (
+            parts.scheme.lower(),
+            parts.netloc.lower(),
+            path,
+            parts.query,
+            "",
+        )
+    )
+
+
+def _pop_available_index(
+    bucket: deque[int],
+    remaining_indices: set[int],
+) -> int | None:
+    while bucket:
+        idx = bucket.popleft()
+        if idx in remaining_indices:
+            return idx
+    return None
+
+
+def _match_result_to_request_index(
+    result: object,
+    *,
+    remaining_indices: set[int],
+    requested_by_exact: dict[str, deque[int]],
+    requested_by_normalized: dict[str, deque[int]],
+) -> int | None:
+    candidate_urls = []
+    result_url = getattr(result, "url", None)
+    redirected_url = getattr(result, "redirected_url", None)
+    if isinstance(result_url, str) and result_url:
+        candidate_urls.append(result_url)
+    if isinstance(redirected_url, str) and redirected_url:
+        candidate_urls.append(redirected_url)
+
+    # Prefer exact match first.
+    for candidate in candidate_urls:
+        index = _pop_available_index(
+            requested_by_exact[candidate],
+            remaining_indices,
+        )
+        if index is not None:
+            return index
+
+    # Fall back to normalized URL matching.
+    for candidate in candidate_urls:
+        normalized = _normalize_url(candidate)
+        index = _pop_available_index(
+            requested_by_normalized[normalized],
+            remaining_indices,
+        )
+        if index is not None:
+            return index
+
+    return None
+
+
+def _extract_content_or_error(
+    *,
+    result: object,
+    context_name: str,
+    max_content_chars: int | None,
+) -> tuple[str | None, str | None]:
+    markdown = getattr(result, "markdown", None)
+    # With a markdown_generator configured, ``result.markdown`` is a
+    # MarkdownGenerationResult (not a str): prefer the pruned ``fit_markdown``,
+    # fall back to ``raw_markdown``. Keep the plain-str path for safety/back-compat.
+    if isinstance(markdown, str):
+        text = markdown
+    elif markdown is not None:
+        text = getattr(markdown, "fit_markdown", None) or getattr(markdown, "raw_markdown", None)
+    else:
+        text = None
+    if getattr(result, "success", False) and isinstance(text, str) and text.strip():
+        if max_content_chars is not None:
+            return text[:max_content_chars], None
+        return text, None
+
+    error_message = getattr(result, "error_message", None)
+    return None, str(error_message or f"{context_name} returned empty content")
+
+
+async def _recover_with_single_url_crawls(
+    urls: Sequence[str],
+    *,
+    page_timeout_ms: int,
+    total_timeout_seconds: float,
+    context_name: str,
+    max_content_chars: int | None,
+    content_query: str | None = None,
+    thorough: bool = False,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Best-effort recovery path after batch timeout to avoid all-or-nothing failures."""
+    recovery_timeout = max(10.0, min(total_timeout_seconds, page_timeout_ms / 1000 + 10.0))
+
+    run_config = _build_run_config(
+        page_timeout_ms=page_timeout_ms,
+        semaphore_count=1,
+        content_query=content_query,
+        thorough=thorough,
+    )
+    browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
+
+    contents: dict[str, str] = {}
+    errors: dict[str, str] = {}
+
+    try:
+        async with (
+            get_browser_semaphore(),
+            managed_crawler(browser_config, context_name=context_name) as crawler,
+        ):
+            for url in urls:
+                try:
+                    single_results = await asyncio.wait_for(
+                        crawler.arun_many(urls=[url], config=run_config),
+                        timeout=recovery_timeout,
+                    )
+                except TimeoutError:
+                    errors[url] = (
+                        f"{context_name} timed out after {total_timeout_seconds:.0f}s "
+                        "(recovery: single URL timeout)"
+                    )
+                    continue
+                except Exception as e:
+                    errors[url] = f"{context_name} recovery error: {e}"
+                    continue
+
+                if not single_results:
+                    errors[url] = f"{context_name} returned no result"
+                    continue
+
+                content, error = _extract_content_or_error(
+                    result=single_results[0],
+                    context_name=context_name,
+                    max_content_chars=max_content_chars,
+                )
+                if content is not None:
+                    contents[url] = content
+                elif error is not None:
+                    errors[url] = error
+    except Exception as e:
+        fallback_error = (
+            f"{context_name} timed out after {total_timeout_seconds:.0f}s and recovery failed: {e}"
+        )
+        return {}, dict.fromkeys(urls, fallback_error)
+
+    return contents, errors
+
+
+async def batch_fetch_with_crawl4ai(
+    urls: Sequence[str],
+    *,
+    page_timeout_ms: int,
+    total_timeout_seconds: float,
+    semaphore_count: int,
+    max_content_chars: int | None = None,
+    context_name: str = "crawl4ai",
+    content_query: str | None = None,
+    thorough: bool = False,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Fetch multiple URLs with a single crawl4ai crawler via arun_many.
+
+    Pass ``content_query`` to rank each page's content by relevance to a topic
+    (BM25) instead of returning the full raw markdown — used by deep research.
+    Pass ``thorough`` to scroll + settle + handle overlays for richer single-page
+    captures (see ``_build_run_config``).
+    """
+    if not urls:
+        return {}, {}
+
+    run_config = _build_run_config(
+        page_timeout_ms=page_timeout_ms,
+        semaphore_count=semaphore_count,
+        content_query=content_query,
+        thorough=thorough,
+    )
+    browser_config = BrowserConfig(headless=True, browser_mode="dedicated", verbose=False)
+
+    try:
+        async with (
+            get_browser_semaphore(),
+            managed_crawler(browser_config, context_name=context_name) as crawler,
+        ):
+            results = await asyncio.wait_for(
+                crawler.arun_many(urls=list(urls), config=run_config),
+                timeout=total_timeout_seconds,
+            )
+    except TimeoutError:
+        log.warning(
+            f"{LogTag.TOOL} batch timed out ; retrying URLs individually",
+            context_name=context_name,
+            total_timeout_seconds=total_timeout_seconds,
+        )
+        return await _recover_with_single_url_crawls(
+            urls,
+            page_timeout_ms=page_timeout_ms,
+            total_timeout_seconds=total_timeout_seconds,
+            context_name=context_name,
+            max_content_chars=max_content_chars,
+            content_query=content_query,
+            thorough=thorough,
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        error = f"{context_name} batch error: {e}"
+        log.warning(
+            f"{LogTag.TOOL} batch error", context_name=context_name, error_type=type(e).__name__
+        )
+        return {}, dict.fromkeys(urls, error)
+
+    requested_by_exact: dict[str, deque[int]] = defaultdict(deque)
+    requested_by_normalized: dict[str, deque[int]] = defaultdict(deque)
+    for idx, requested_url in enumerate(urls):
+        requested_by_exact[requested_url].append(idx)
+        requested_by_normalized[_normalize_url(requested_url)].append(idx)
+
+    remaining_indices: set[int] = set(range(len(urls)))
+    matched_results: dict[int, object] = {}
+    unmatched_results: list[object] = []
+
+    for result in results:
+        index = _match_result_to_request_index(
+            result,
+            remaining_indices=remaining_indices,
+            requested_by_exact=requested_by_exact,
+            requested_by_normalized=requested_by_normalized,
+        )
+        if index is None:
+            unmatched_results.append(result)
+            continue
+
+        matched_results[index] = result
+        remaining_indices.discard(index)
+
+    if unmatched_results and remaining_indices:
+        # Best-effort fallback when crawl4ai returns result objects without matchable URL fields.
+        for index, result in zip(sorted(remaining_indices), unmatched_results):
+            matched_results[index] = result
+            remaining_indices.discard(index)
+
+    contents: dict[str, str] = {}
+    errors: dict[str, str] = {}
+
+    for index, requested_url in enumerate(urls):
+        result = matched_results.get(index)
+        if result is None:
+            continue
+
+        extracted_content, extracted_error = _extract_content_or_error(
+            result=result,
+            context_name=context_name,
+            max_content_chars=max_content_chars,
+        )
+        if extracted_content is not None:
+            contents[requested_url] = extracted_content
+        elif extracted_error is not None:
+            errors[requested_url] = extracted_error
+
+    if len(results) > len(urls):
+        log.warning(
+            f"{LogTag.TOOL} returned results for URLs; ignoring extras",
+            context_name=context_name,
+            results_count=len(results),
+            urls_count=len(urls),
+        )
+
+    unmatched_count = max(len(unmatched_results) - len(matched_results), 0)
+    if unmatched_count:
+        log.warning(
+            f"{LogTag.TOOL} could not map results to requested URLs",
+            context_name=context_name,
+            unmatched_count=unmatched_count,
+        )
+
+    for url in urls:
+        if url not in contents and url not in errors:
+            errors[url] = f"{context_name} returned no result"
+
+    return contents, errors

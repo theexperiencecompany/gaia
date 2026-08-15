@@ -1,0 +1,191 @@
+# Follow-up suggestions: the `follow_up_actions` SSE frame, and the register of
+# the reply that carries it.
+#
+# The gate is `suggestions: true` -> `suggestion` (suites/quality.py ->
+# _suggestion_check): the stream must carry 3-4 follow-up actions, each non-empty
+# and <= 50 characters. Two constraints follow from the wire and both are
+# load-bearing here:
+#
+# 1. The frame is emitted ONLY for turns that do NOT delegate to the executor —
+#    a delegated turn ships its suggestions out-of-band (WebSocket + Mongo).
+#    Every prompt below is therefore a turn the comms agent answers itself:
+#    conversation, opinion, a decision, a bit of social advice. None of them
+#    needs a tool, so none of them should reach the executor. A case here that
+#    starts delegating is a real signal, not a broken case — the reply changed
+#    shape, and the user stopped getting suggestions.
+#
+# 2. Every case is SINGLE-turn, deliberately. followups.yaml documents the
+#    reason: on turn 2 of a multi-turn conversation the generator returned only
+#    2 items in ~40% of observed runs (FollowUpActions has no min_length=3 — the
+#    root fix belongs in follow_up_actions_node, not in a YAML workaround), so a
+#    3-4 gate on a later turn flips on model whim. Single-turn suggestion gating
+#    is the shape already proven in everyday.yaml and domains.yaml.
+#
+# `suggestion` alone rejects every forgery the offline checker can build (an
+# empty run, an echo, and an authored counterfeit all carry no follow_up_actions
+# frame), so each case pairs it with a `must_not_communicate` chosen for THAT
+# case's failure mode — the hedge, the canned-empathy opener, the refusal to
+# pick a side. A correct reply cannot contain those strings; the lazy reply
+# reliably does.
+
+- id: quality-followup-x-new-job-nerves
+  ticket: "Nervous-before-a-new-job share — suggestions offered, and no canned-empathy opener."
+  tags: [followup]
+  prompt: "i start a new job on monday and i'm honestly bricking it"
+  setup:
+    counterfeit:
+      text: "I'm sorry to hear that. As an AI, I can't experience nerves myself, but here are seven evidence-based strategies for managing first-day anxiety: 1) prepare your outfit the night before, 2) plan your commute, 3) practise your introduction, 4) get eight hours of sleep, 5) eat a proper breakfast, 6) arrive ten minutes early, 7) remember that everyone was new once."
+      messages:
+        - {role: user, content: "i start a new job on monday and i'm honestly bricking it"}
+        - {role: assistant, content: "I'm sorry to hear that. As an AI, I can't experience nerves myself, but here are seven evidence-based strategies for managing first-day anxiety: 1) prepare your outfit the night before, 2) plan your commute, 3) practise your introduction, 4) get eight hours of sleep, 5) eat a proper breakfast, 6) arrive ten minutes early, 7) remember that everyone was new once."}
+  expected:
+    category: followup
+    communicate: []
+    must_not_communicate:
+      - "i'm sorry to hear that"
+      - "i’m sorry to hear that"
+      - "as an ai"
+      - "as a language model"
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply contains a numbered or bulleted list."
+        - "MUST NOT: the reply states or implies that it is an AI, a model, or a program."
+        - "MUST: the reply is three sentences or fewer."
+    score: {gates: [suggestion, must_not_communicate]}
+
+- id: quality-followup-x-one-book
+  ticket: "User asks for exactly one recommendation — hedging into a list is the failure."
+  tags: [followup]
+  prompt: "give me one book to read next. one. not a list"
+  setup:
+    counterfeit:
+      text: "As an AI, I don't have personal preferences, but here are five widely acclaimed books to consider: Pachinko by Min Jin Lee, The Overstory by Richard Powers, Piranesi by Susanna Clarke, Educated by Tara Westover, and A Gentleman in Moscow by Amor Towles. Let me know which genre appeals and I can narrow it down."
+      messages:
+        - {role: user, content: "give me one book to read next. one. not a list"}
+        - {role: assistant, content: "As an AI, I don't have personal preferences, but here are five widely acclaimed books to consider: Pachinko by Min Jin Lee, The Overstory by Richard Powers, Piranesi by Susanna Clarke, Educated by Tara Westover, and A Gentleman in Moscow by Amor Towles. Let me know which genre appeals and I can narrow it down."}
+  expected:
+    category: followup
+    communicate: []
+    must_not_communicate:
+      - "i don't have personal preferences"
+      - "i don’t have personal preferences"
+      - "i don't have preferences"
+      - "as an ai"
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply names exactly one book title."
+        - "MUST NOT: the reply names a second book as an alternative."
+        - "MUST NOT: the reply asks the user what they usually read before naming one."
+    score: {gates: [suggestion, must_not_communicate]}
+
+- id: quality-followup-x-saturday-choice
+  ticket: "Asked to break a tie — 'only you can decide' is the failure, not humility."
+  tags: [followup]
+  prompt: "free saturday. do i finally do my tax return or fix the bike? pick one for me"
+  setup:
+    counterfeit:
+      text: "Only you can decide which of these matters more right now. Both are worthwhile uses of a free Saturday, so it comes down to your deadlines, your energy levels and which one has been weighing on you most. Consider the consequences of delaying each and weigh them against how you're feeling."
+      messages:
+        - {role: user, content: "free saturday. do i finally do my tax return or fix the bike? pick one for me"}
+        - {role: assistant, content: "Only you can decide which of these matters more right now. Both are worthwhile uses of a free Saturday, so it comes down to your deadlines, your energy levels and which one has been weighing on you most. Consider the consequences of delaying each and weigh them against how you're feeling."}
+  expected:
+    category: followup
+    communicate: []
+    must_not_communicate:
+      - "only you can decide"
+      - "i can't make that decision for you"
+      - "i can’t make that decision for you"
+      - "as an ai"
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply picks one of the two, unambiguously."
+        - "MUST NOT: the reply lists arguments for both and leaves the choice open."
+        - "MUST: the reply gives one reason for the pick, in one sentence or less."
+    score: {gates: [suggestion, must_not_communicate]}
+
+- id: quality-followup-x-birthday-off
+  ticket: "Asked to take a side on a small work grievance — refusing to have a view is the failure."
+  tags: [followup]
+  prompt: "am i being unreasonable for wanting my actual birthday off work"
+  setup:
+    counterfeit:
+      text: "I can't take sides on workplace matters, but here's a balanced view of both perspectives. From your side, personal time is important and birthdays matter to many people. From your employer's side, staffing levels and business needs have to be considered. Ultimately this depends on your company's policies and your relationship with your manager."
+      messages:
+        - {role: user, content: "am i being unreasonable for wanting my actual birthday off work"}
+        - {role: assistant, content: "I can't take sides on workplace matters, but here's a balanced view of both perspectives. From your side, personal time is important and birthdays matter to many people. From your employer's side, staffing levels and business needs have to be considered. Ultimately this depends on your company's policies and your relationship with your manager."}
+  expected:
+    category: followup
+    communicate: []
+    must_not_communicate:
+      - "i can't take sides"
+      - "i can’t take sides"
+      - "as an ai"
+      - "as a language model"
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply answers the question asked — it says whether or not this is unreasonable."
+        - "MUST NOT: the reply presents both sides and declines to land on one."
+        - "MUST: the reply is three sentences or fewer."
+    score: {gates: [suggestion, must_not_communicate]}
+
+- id: quality-followup-x-condolence-text
+  ticket: "Helping the user write to a grieving friend — the reply must engage, not disclaim."
+  tags: [followup]
+  prompt: "my best mate's dad died last week and i still haven't texted her. i don't know what to say"
+  setup:
+    counterfeit:
+      text: "As an AI, I'm not able to help with that kind of deeply personal message, as grief is a very individual experience and what works for one person may not work for another. You know your friend best, so trust your instincts about what to say to her."
+      messages:
+        - {role: user, content: "my best mate's dad died last week and i still haven't texted her. i don't know what to say"}
+        - {role: assistant, content: "As an AI, I'm not able to help with that kind of deeply personal message, as grief is a very individual experience and what works for one person may not work for another. You know your friend best, so trust your instincts about what to say to her."}
+  expected:
+    category: followup
+    communicate: []
+    must_not_communicate:
+      - "as an ai"
+      - "as a language model"
+      - "i'm not able to help"
+      - "i’m not able to help"
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply gives words the user could actually send, not a description of what kind of message to send."
+        - "MUST NOT: the reply tells the user that only they know what to say."
+        - "MUST NOT: the reply lectures about the stages of grief."
+    score: {gates: [suggestion, must_not_communicate]}
+
+- id: quality-followup-x-flatmate-dishes
+  ticket: "Low-stakes social script — the reply must produce it, not offer to."
+  tags: [followup]
+  prompt: "how do i tell my flatmate to stop leaving her dishes in the sink without it turning into a whole thing"
+  setup:
+    counterfeit:
+      text: "I'd be happy to help with that! Here are eight communication strategies for navigating roommate conflict: use I-statements, choose a neutral time, avoid accusatory language, propose a shared cleaning rota, acknowledge their perspective, keep the tone light, follow up in writing, and revisit the agreement in a fortnight."
+      messages:
+        - {role: user, content: "how do i tell my flatmate to stop leaving her dishes in the sink without it turning into a whole thing"}
+        - {role: assistant, content: "I'd be happy to help with that! Here are eight communication strategies for navigating roommate conflict: use I-statements, choose a neutral time, avoid accusatory language, propose a shared cleaning rota, acknowledge their perspective, keep the tone light, follow up in writing, and revisit the agreement in a fortnight."}
+  expected:
+    category: followup
+    communicate: []
+    must_not_communicate:
+      - "i'd be happy to help"
+      - "i’d be happy to help"
+      - "i would be happy to help"
+      - "as an ai"
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply contains a specific sentence the user could say out loud to the flatmate."
+        - "MUST NOT: the reply contains a numbered or bulleted list of techniques."
+        - "MUST NOT: the reply uses the phrase 'I-statement' or any other named communication framework."
+    score: {gates: [suggestion, must_not_communicate]}

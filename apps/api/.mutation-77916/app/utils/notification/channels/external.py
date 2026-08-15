@@ -1,0 +1,101 @@
+"""External messaging-platform notification adapter.
+
+Backend-originated messages for WhatsApp/Slack/Telegram/Discord are no longer
+sent from Python. This adapter renders notification content to platform-agnostic
+CommonMark text and publishes it to the per-platform RabbitMQ queue the bot
+processes consume; the bots own all platform formatting and the actual send.
+
+Subclasses set only ``channel_type`` and ``platform``.
+"""
+
+from __future__ import annotations
+
+from abc import abstractmethod
+from typing import TypedDict
+
+from app.config.settings import settings
+from app.models.chat_models import ConversationSource
+from app.models.notification.notification_models import (
+    ActionType,
+    ChannelDeliveryStatus,
+    NotificationRequest,
+)
+from app.services.outbound_delivery import OutboundResult, publish_outbound_message
+from app.utils.notification.channels.base import ChannelAdapter
+
+
+class ExternalPayload(TypedDict):
+    """What this adapter hands the bot consumers: the rendered CommonMark parts."""
+
+    parts: list[str]
+
+
+def _join_nonempty(*segments: str, sep: str = "\n") -> str:
+    """Join only the non-empty segments with ``sep`` (no leading/trailing seps)."""
+    return sep.join(s for s in segments if s)
+
+
+class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
+    """Publishes notification content to a platform's outbound queue."""
+
+    @property
+    @abstractmethod
+    def platform(self) -> ConversationSource:
+        """Conversation source whose outbound queue this adapter publishes to."""
+        ...
+
+    @property
+    def channel_type(self) -> str:
+        # CHANNEL_TYPE_X and ConversationSource.X.value are the same string, so
+        # derive the channel type from the platform instead of restating it.
+        return self.platform.value
+
+    def can_handle(self, notification: NotificationRequest) -> bool:
+        """Always claim the notification; the real guards live downstream.
+
+        External adapters are auto-injected by the orchestrator regardless of
+        the explicit channel list. The orchestrator's preference check and the
+        platform-link lookup in ``publish_outbound_message`` decide whether the
+        message is actually delivered.
+        """
+        return True
+
+    async def transform(self, notification: NotificationRequest) -> ExternalPayload:
+        """Render notification content to platform-agnostic CommonMark parts.
+
+        The bot consumer converts each part to the platform's native formatting
+        before sending — no platform-specific markdown is produced here.
+        """
+        content = notification.content
+        app_url = settings.FRONTEND_URL.rstrip("/")
+        title = content.title or ""
+        body = content.body or ""
+        text = _join_nonempty(f"**{title}**" if title else "", body)
+
+        if content.actions:
+            links = [
+                f"[{action.label}]({app_url}{action.config.redirect.url})"
+                for action in content.actions
+                if action.type == ActionType.REDIRECT and action.config.redirect
+            ]
+            if links:
+                text = _join_nonempty(text, " · ".join(links), sep="\n\n")
+
+        return ExternalPayload(parts=[text])
+
+    async def deliver(self, content: ExternalPayload, user_id: str) -> ChannelDeliveryStatus:
+        """Publish the rendered parts to the user's linked platform chat.
+
+        Returns a success status when the broker accepts the message, an error
+        when the publish itself fails (so retries/alerting fire), and a skip when
+        the user has no linked platform or there is nothing to send.
+        """
+        parts = content.get("parts", [])
+        result = await publish_outbound_message(self.platform, user_id, parts)
+        if result is OutboundResult.PUBLISHED:
+            return self._success()
+        if result is OutboundResult.FAILED:
+            # Broker unavailable or a publish error — a real failure, not a skip,
+            # so retries/alerting that key off FAILED still fire during an outage.
+            return self._error(f"{self.channel_type}: outbound publish failed")
+        return self._skipped(f"{self.channel_type}: not linked or nothing to publish")

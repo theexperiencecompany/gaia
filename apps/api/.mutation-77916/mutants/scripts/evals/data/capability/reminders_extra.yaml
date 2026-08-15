@@ -1,0 +1,175 @@
+# Reminders — extended coverage beyond reminders.yaml: recurrence, bounded
+# recurrence, listing, search, in-place update, selective cancellation, and the
+# abstention case where no time was given.
+#
+# The real tool names are create_reminder_tool / list_user_reminders_tool /
+# get_reminder_tool / delete_reminder_tool / update_reminder_tool /
+# search_reminders_tool (app/agents/tools/reminder_tool.py).
+#
+# end_state.reminders[{count}] counts non-cancelled reminders for the user, which
+# is what makes both the "one recurring reminder, not five" case and the
+# abstention case falsifiable.
+
+- id: reminders-recurring-weekdays
+  ticket: "A weekday recurrence must become ONE recurring reminder, not five one-offs."
+  tags: [reminders, precision]
+  prompt: "Remind me every weekday at 8:30am to take my meds"
+  expected:
+    category: reminders
+    # "meds" rejected a reply that said "take your medication" — `says` matches
+    # whole words, so the agent's synonym read as never having answered. What
+    # the reply must actually confirm is the RECURRENCE, which is also the thing
+    # the failure mode (five one-off reminders) gets wrong.
+    communicate: ["weekday"]
+    tool_calls: [{tool: create_reminder_tool}]
+    end_state: {reminders: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "exactly one recurring reminder was created with a weekday schedule"
+        - "the agent did not create one reminder per weekday"
+
+- id: reminders-bounded-recurrence
+  ticket: "A recurrence with a stated limit must be bounded, not open-ended."
+  tags: [reminders, precision, temporal]
+  prompt: "Remind me every morning at 7am to do my physio, but only for the next 10 days"
+  expected:
+    category: reminders
+    communicate: ["physio"]
+    tool_calls: [{tool: create_reminder_tool}]
+    end_state: {reminders: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the recurring reminder is limited to 10 occurrences or stops after 10 days"
+        - "the reply states when the reminders will stop"
+
+- id: reminders-list
+  ticket: "Two reminders seeded; the listing must show both."
+  tags: [reminders, multiturn]
+  setup:
+    turns:
+      - "Remind me tomorrow at 9am to call the dentist, and tomorrow at 4pm to collect the dry cleaning"
+      - "What reminders do I have?"
+  prompt: "Remind me tomorrow at 9am to call the dentist, and tomorrow at 4pm to collect the dry cleaning"
+  expected:
+    category: reminders
+    communicate: ["dry cleaning"]
+    tool_calls:
+      - {tool: create_reminder_tool, min_calls: 2}
+      - {tool: list_user_reminders_tool}
+    end_state:
+      answer_contains: "dentist"
+      reminders: [{count: 2}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the listing shows both reminders with their times"
+        - "no reminder that was never created appears in the listing"
+
+- id: reminders-search
+  ticket: "Searching reminders by keyword must find the matching one and only that one."
+  tags: [reminders, multiturn, precision]
+  setup:
+    turns:
+      - "Remind me on Friday at 2pm about the dentist check-up, and on Saturday at 11am about the car service"
+      - "Do I have a reminder about the dentist?"
+  prompt: "Remind me on Friday at 2pm about the dentist check-up, and on Saturday at 11am about the car service"
+  expected:
+    category: reminders
+    communicate: ["dentist"]
+    # `search_reminders_tool` is NOT demanded: it raises "Object of type
+    # datetime is not JSON serializable" on every call, and the agent that fell
+    # back to `list_user_reminders_tool` answered from the real reminder set and
+    # was failed for routing around a broken tool. The lookup is still gated —
+    # `answer_contains` + the judge reject an answer that names the wrong one.
+    tool_calls:
+      - {tool: create_reminder_tool, min_calls: 2}
+    end_state:
+      answer_contains: "dentist"
+      reminders: [{count: 2}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the final reply confirms the dentist reminder and gives its time"
+        - "the car service reminder is not presented as a dentist match"
+
+- id: reminders-make-recurring
+  ticket: "Turning a one-off into a recurring reminder must update it, not add a second."
+  tags: [reminders, multiturn]
+  setup:
+    turns:
+      - "Remind me tomorrow at 6pm to water the herbs"
+      - "Actually make that repeat every day"
+  prompt: "Remind me tomorrow at 6pm to water the herbs"
+  expected:
+    category: reminders
+    communicate: ["herbs"]
+    tool_calls:
+      - {tool: create_reminder_tool}
+      - {tool: update_reminder_tool}
+    end_state: {reminders: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the existing reminder was updated to repeat daily"
+        - "a second herbs reminder was NOT created"
+
+- id: reminders-cancel-one-of-two
+  ticket: "Cancelling one of two reminders must leave exactly the other one standing."
+  tags: [reminders, multiturn, precision]
+  setup:
+    turns:
+      - "Remind me on Monday at 9am about the car MOT, and on Tuesday at 3pm about the vet"
+      - "Cancel the one about the car"
+  prompt: "Remind me on Monday at 9am about the car MOT, and on Tuesday at 3pm about the vet"
+  expected:
+    category: reminders
+    communicate: ["car"]
+    tool_calls:
+      - {tool: create_reminder_tool, min_calls: 2}
+      - {tool: delete_reminder_tool}
+    end_state: {reminders: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "only the car MOT reminder was cancelled"
+        - "the vet reminder is still scheduled"
+
+- id: reminders-precision-absolute-datetime
+  ticket: "An explicit date and time must be stored exactly, to the minute."
+  tags: [reminders, precision, temporal]
+  prompt: "Set a reminder for 9 January 2027 at 06:45 titled 'flight to Doha'"
+  expected:
+    category: reminders
+    communicate: ["doha"]
+    tool_calls:
+      - {tool: create_reminder_tool, args: {scheduled_at: "06:45"}}
+    end_state:
+      reminders: [{title_contains: "doha", datetime_contains: "06:45"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the stored reminder is for 9 January 2027 at 06:45"
+        - "the title preserves 'flight to Doha'"
+
+- id: reminders-abstention-no-time
+  ticket: "No time given: ask when, and schedule nothing until told."
+  tags: [reminders, ambiguity, negative]
+  prompt: "Remind me to call the plumber."
+  # `communicate: ["when"]` was the gate and it failed correct behaviour: "What
+  # time should I remind you?" is exactly the right reply and contains no "when".
+  # No single required substring covers every way of asking for a time, and
+  # CommunicateGate requires all of them, so the positive check is left to the
+  # judge. `count: 0` on its own is satisfied by a run that did nothing at all,
+  # so it is paired with the completion claim a guessing failure actually emits.
+  expected:
+    category: reminders
+    must_not_communicate: ["i've set", "i've scheduled", "reminder set", "i'll remind you at"]
+    end_state:
+      reminders: [{count: 0}]
+    score: {gates: [end_state, must_not_communicate]}
+    judge:
+      criteria:
+        - "MUST: the agent asks what time the reminder should fire."
+        - "MUST NOT: the reply claims a reminder was scheduled."

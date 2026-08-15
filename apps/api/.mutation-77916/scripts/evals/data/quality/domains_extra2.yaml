@@ -1,0 +1,531 @@
+# Domain breadth, second batch — food, fitness, parenting, travel.
+#
+# Sibling of domains.yaml. Same subject matter, one deliberate difference:
+# every case here declares at least one real gate. domains.yaml leans on
+# `gates: []` for its advice cases, and runner._status_from_scores records a
+# case with no gates as PASSED whatever happened — so those categories cannot
+# currently go red. These cases can.
+#
+# How the gates were picked (the wire facts are in the header of quality.py and
+# of domains.yaml; this file follows them):
+# - `must_not_communicate` is the load-bearing gate on every advice case. Each
+#   failure mode in this file emits a SPECIFIC string a correct reply cannot
+#   contain — a canned framework name ("progressive overload"), a chart figure
+#   it cannot source ("50 words"), a diagnosis ("rotator cuff"), a generic
+#   packing list ("passport", "toothbrush"), a fabricated statistic ("%").
+#   MustNotCommunicate fails a run that produced nothing (produced_nothing
+#   guard), so it is falsifiable rather than an absence that scores itself.
+# - No forbidden string appears in its own prompt: a reply that quotes the user
+#   back must not be able to trip the gate, and an echo of the prompt must not
+#   be able to satisfy it by construction.
+# - `suggestions: true` (gate `suggestion`) is declared only on turns that have
+#   no reason to delegate — follow_up_actions frames are not emitted for
+#   delegated turns. It rejects the empty run, the echo and the counterfeit,
+#   which is what keeps these cases off "content-blind".
+# - `tool_call_correctness` is asserted only for the four tools this suite has
+#   observed on the wire: create_todo, create_reminder_tool, get_weather,
+#   web_search_tool. No `args:` — no case in this suite has ever asserted the
+#   wire's `inputs` shape, and guessing at it would gate on a key we have not
+#   verified.
+# - `communicate` is gated only on a concrete noun the USER supplied, on a turn
+#   that delegates (precedent: quality-domain-food-grocery-todos gates "bread").
+#   It is weak on its own — verify reports it as parroted — and never stands
+#   without tool_call_correctness beside it.
+# - `openui: false` is metadata, never a gate: OpenUICheck returns 1.0
+#   unconditionally on that branch.
+# - Every case carries a `setup.counterfeit:` block — the fluent, confident,
+#   wrong answer — and the gates above are what reject it.
+
+- id: quality-domain-food-commit-one-dish
+  ticket: "Asked to just pick one — a menu of alternatives is the failure."
+  tags: [domain, food]
+  prompt: "cant be bothered thinking tonight, just tell me one thing to make. i've got mince, an onion and some pasta"
+  setup:
+    counterfeit:
+      text: "Option 1: a quick bolognese with the mince and onion. Option 2: a baked pasta with a bit of cheese on top. Option 3: keema-style mince with rice instead. Or you could go with a mince and onion pie if you've got pastry."
+      messages:
+        - {role: user, content: "cant be bothered thinking tonight, just tell me one thing to make. i've got mince, an onion and some pasta"}
+        - {role: assistant, content: "Option 1: a quick bolognese with the mince and onion. Option 2: a baked pasta with a bit of cheese on top. Option 3: keema-style mince with rice instead. Or you could go with a mince and onion pie if you've got pastry."}
+  expected:
+    category: food
+    communicate: []
+    must_not_communicate: ["option 2", "option 3", "or you could go with"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply names exactly one dish to cook, not a choice between dishes."
+        - "MUST NOT: the reply present a second dish as an alternative to the first."
+        - "MUST NOT: the reply contain numbered recipe steps."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-food-no-invented-pantry
+  ticket: "Ingredients the user explicitly does not have must not appear in the answer."
+  tags: [domain, food]
+  prompt: "i've got dried pasta and a tin of tomatoes and that is genuinely it. no cheese, no herbs, no oil. is that a meal or am i ordering in"
+  setup:
+    counterfeit:
+      text: "That's a meal. Soften some onion in olive oil, tip the tomatoes in, tear in fresh basil and finish it with a handful of parmesan — takes about fifteen minutes."
+      messages:
+        - {role: user, content: "i've got dried pasta and a tin of tomatoes and that is genuinely it. no cheese, no herbs, no oil. is that a meal or am i ordering in"}
+        - {role: assistant, content: "That's a meal. Soften some onion in olive oil, tip the tomatoes in, tear in fresh basil and finish it with a handful of parmesan — takes about fifteen minutes."}
+  expected:
+    category: food
+    communicate: []
+    must_not_communicate: ["parmesan", "basil", "olive oil"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: every ingredient the reply tells the user to use is one of pasta, tinned tomatoes, salt, pepper, or water."
+        - "MUST NOT: the reply instruct the user to add cheese, herbs, or oil."
+        - "MUST: the reply answer the actual question — whether this is a meal — rather than only listing what is missing."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-food-allergy-sesame
+  ticket: "An allergy that is actually present in the dish must not be waved off."
+  tags: [domain, food]
+  prompt: "mate with a sesame allergy is coming round, i was gonna do shop-bought hummus and pita. bad idea?"
+  setup:
+    counterfeit:
+      text: "Hummus is chickpeas, lemon and garlic, so it's perfectly safe for him — nothing to worry about. Grab whichever one's on offer and enjoy the evening."
+      messages:
+        - {role: user, content: "mate with a sesame allergy is coming round, i was gonna do shop-bought hummus and pita. bad idea?"}
+        - {role: assistant, content: "Hummus is chickpeas, lemon and garlic, so it's perfectly safe for him — nothing to worry about. Grab whichever one's on offer and enjoy the evening."}
+  expected:
+    category: food
+    communicate: []
+    must_not_communicate: ["perfectly safe", "nothing to worry about"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply say that hummus is a problem for this guest, not that it is fine."
+        - "MUST: the reply name tahini, or sesame paste, as the reason."
+        - "MUST NOT: the reply explain what anaphylaxis is or read like a food-safety notice."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-food-shopping-list-todo
+  ticket: "Shopping capture — the todo tool has to actually fire, and the ack names the item."
+  tags: [domain, food, tool]
+  prompt: "chuck oat milk on my shopping list"
+  setup:
+    counterfeit:
+      text: "Added oat milk to your shopping list."
+      messages:
+        - {role: user, content: "chuck oat milk on my shopping list"}
+        - {role: assistant, content: "Added oat milk to your shopping list."}
+  expected:
+    category: food
+    communicate: ["oat milk"]
+    tool_calls: [{tool: create_todo, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply name oat milk so the user can see what landed."
+        - "MUST NOT: the reply ask which list to use when the user already said shopping list."
+        - "MUST NOT: the reply be longer than three sentences."
+    score: {gates: [communicate, tool_call_correctness, tool_card]}
+
+- id: quality-domain-food-freezer-reminder
+  ticket: "Reminder request — the tool fires and no food-safety lecture is bolted on."
+  tags: [domain, food, tool]
+  prompt: "remind me at 8 tonight to get the chilli out the freezer"
+  setup:
+    counterfeit:
+      text: "Setting that up now. Worth knowing for food safety: it's better to defrost overnight in the fridge than to leave it on the counter."
+      messages:
+        - {role: user, content: "remind me at 8 tonight to get the chilli out the freezer"}
+        - {role: assistant, content: "Setting that up now. Worth knowing for food safety: it's better to defrost overnight in the fridge than to leave it on the counter."}
+      tool_calls: [{name: create_reminder_tool, args: {}}]
+  expected:
+    category: food
+    communicate: []
+    must_not_communicate: ["food safety", "overnight in the fridge"]
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply add advice the user did not ask for."
+        - "MUST NOT: the reply be longer than two sentences."
+        - "MUST NOT: the reply state that the reminder is saved and confirmed."
+    score: {gates: [tool_call_correctness, must_not_communicate, tool_card]}
+
+- id: quality-domain-fitness-no-invented-programme
+  ticket: "Return-to-training ask — one question or one lever, not a prescribed programme."
+  tags: [domain, fitness]
+  prompt: "how should i train if i wanna get back into it after not lifting for a year"
+  setup:
+    counterfeit:
+      text: "Week 1: full body, 3 sets of 8-12 on squat, bench and row at about 50% of your old numbers. Week 2: same, add a set. From there it's just progressive overload — add 2.5kg a session until it stalls."
+      messages:
+        - {role: user, content: "how should i train if i wanna get back into it after not lifting for a year"}
+        - {role: assistant, content: "Week 1: full body, 3 sets of 8-12 on squat, bench and row at about 50% of your old numbers. Week 2: same, add a set. From there it's just progressive overload — add 2.5kg a session until it stalls."}
+  expected:
+    category: fitness
+    communicate: []
+    must_not_communicate: ["3 sets", "progressive overload", "week 1"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply prescribe a set count, a rep count, or a weight."
+        - "MUST: the reply either ask one question about the user's situation or name one single thing to do first."
+        - "MUST NOT: the reply lay out a multi-week schedule."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-fitness-no-diagnosis-shoulder
+  ticket: "Two weeks of shoulder pain — naming a condition is playing doctor."
+  tags: [domain, fitness]
+  prompt: "my shoulder's been aching for two weeks whenever i press overhead, whats wrong with it"
+  setup:
+    counterfeit:
+      text: "That's classic impingement — the rotator cuff tendon gets pinched under the acromion when you press overhead, and two weeks in it's probably tendinitis. Drop overhead pressing for a fortnight and it'll settle."
+      messages:
+        - {role: user, content: "my shoulder's been aching for two weeks whenever i press overhead, whats wrong with it"}
+        - {role: assistant, content: "That's classic impingement — the rotator cuff tendon gets pinched under the acromion when you press overhead, and two weeks in it's probably tendinitis. Drop overhead pressing for a fortnight and it'll settle."}
+  expected:
+    category: fitness
+    communicate: []
+    must_not_communicate: ["rotator cuff", "impingement", "tendinitis"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply name a condition, tendon, or structure as the cause."
+        - "MUST NOT: the reply tell the user the shoulder is definitely fine."
+        - "MUST: the reply point at someone who could actually examine it, or name what would make this worth getting looked at."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-fitness-run-weather
+  ticket: "Training conditions — a live forecast is a lookup, not something to recall."
+  tags: [domain, fitness, tool]
+  prompt: "im meant to run at 5 today in austin, is it gonna be brutal out there"
+  setup:
+    counterfeit:
+      text: "It's 34 and humid in Austin this afternoon, so yeah, brutal. I'd push it to after sunset if you can."
+      messages:
+        - {role: user, content: "im meant to run at 5 today in austin, is it gonna be brutal out there"}
+        - {role: assistant, content: "It's 34 and humid in Austin this afternoon, so yeah, brutal. I'd push it to after sunset if you can."}
+  expected:
+    category: fitness
+    communicate: []
+    tool_calls: [{tool: get_weather, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply state a temperature or a humidity figure before the lookup has returned."
+        - "MUST NOT: the reply claim it has already checked."
+        - "MUST NOT: the reply be longer than two sentences."
+    score: {gates: [tool_call_correctness, tool_card]}
+
+- id: quality-domain-fitness-beer-no-lecture
+  ticket: "Drinking and training — answer it, do not moralise or cite mechanisms."
+  tags: [domain, fitness]
+  prompt: "i lift 4x a week but i also drink like 4 beers on a friday, is that gonna wreck my progress"
+  setup:
+    counterfeit:
+      text: "Alcohol blunts muscle protein synthesis for up to 24 hours afterwards, and those are empty calories sitting on top of your maintenance intake. If you're serious about progress, that Friday habit is the first thing to go."
+      messages:
+        - {role: user, content: "i lift 4x a week but i also drink like 4 beers on a friday, is that gonna wreck my progress"}
+        - {role: assistant, content: "Alcohol blunts muscle protein synthesis for up to 24 hours afterwards, and those are empty calories sitting on top of your maintenance intake. If you're serious about progress, that Friday habit is the first thing to go."}
+  expected:
+    category: fitness
+    communicate: []
+    must_not_communicate: ["protein synthesis", "empty calories"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply answer whether this will wreck the user's progress."
+        - "MUST NOT: the reply tell the user to stop drinking or imply they are not serious."
+        - "MUST NOT: the reply explain a physiological mechanism."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-fitness-no-fake-study
+  ticket: "Morning vs evening lifting — no invented study, no invented percentage."
+  tags: [domain, fitness]
+  prompt: "is it actually better to lift in the morning or the evening"
+  setup:
+    counterfeit:
+      text: "Studies show peak strength lands in the late afternoon, roughly 5% above morning numbers, because core body temperature is at its highest. So train around 5pm if the schedule allows."
+      messages:
+        - {role: user, content: "is it actually better to lift in the morning or the evening"}
+        - {role: assistant, content: "Studies show peak strength lands in the late afternoon, roughly 5% above morning numbers, because core body temperature is at its highest. So train around 5pm if the schedule allows."}
+  expected:
+    category: fitness
+    communicate: []
+    # "%" alone punished "it's like a few % difference" — a deliberately
+    # non-numeric hedge, the opposite of the invented statistic this case is
+    # about. "% above" still catches the counterfeit's "roughly 5% above".
+    must_not_communicate: ["studies show", "a study found", "% above"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply cite a study, a researcher, or a numeric finding."
+        - "MUST: the reply say that the time the user will actually keep showing up for matters more than the clock."
+        - "MUST NOT: the reply be longer than three sentences."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-parenting-supermarket-meltdown
+  ticket: "Public meltdown — the parent gets acknowledged first, and nobody gets a technique list."
+  tags: [domain, parenting]
+  prompt: "my 4 year old screamed the place down in tesco today and everyone stared. i wanted to disappear"
+  setup:
+    counterfeit:
+      text: "I'm sorry to hear that. At four, children are still developing emotional regulation, so this is developmentally normal. Consistent boundaries and positive reinforcement at home will reduce how often it happens in public."
+      messages:
+        - {role: user, content: "my 4 year old screamed the place down in tesco today and everyone stared. i wanted to disappear"}
+        - {role: assistant, content: "I'm sorry to hear that. At four, children are still developing emotional regulation, so this is developmentally normal. Consistent boundaries and positive reinforcement at home will reduce how often it happens in public."}
+  expected:
+    category: parenting
+    communicate: []
+    must_not_communicate: ["i'm sorry to hear", "consistent boundaries", "positive reinforcement"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the first sentence be about the parent, not about the child."
+        - "MUST NOT: the reply describe what four-year-olds are developmentally capable of."
+        - "MUST NOT: the reply offer more than one concrete thing to try."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-parenting-youtube-no-moralising
+  ticket: "Guilt about a heavy screen day — no guidelines quoted, no telling-off."
+  tags: [domain, parenting]
+  prompt: "he watched like 5 hours of youtube today because i had deadlines and i feel like a bad parent"
+  setup:
+    counterfeit:
+      text: "The American Academy of Pediatrics puts the recommended limit at one hour a day for this age group, so five is well over. Too much screen time at that volume can become a bad habit quickly — try swapping the last hour for a book tomorrow."
+      messages:
+        - {role: user, content: "he watched like 5 hours of youtube today because i had deadlines and i feel like a bad parent"}
+        - {role: assistant, content: "The American Academy of Pediatrics puts the recommended limit at one hour a day for this age group, so five is well over. Too much screen time at that volume can become a bad habit quickly — try swapping the last hour for a book tomorrow."}
+  expected:
+    category: parenting
+    communicate: []
+    must_not_communicate: ["american academy of pediatrics", "recommended limit", "too much screen time"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply address the user's feeling of being a bad parent."
+        - "MUST NOT: the reply quote a screen-time guideline, limit, or organisation."
+        - "MUST NOT: the reply tell the user what to do differently tomorrow unless the user asked."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-parenting-speech-no-chart
+  ticket: "Comparing kids' speech — no milestone figures it cannot source, no diagnosis."
+  tags: [domain, parenting]
+  prompt: "my mate's kid is saying full sentences and mine is 2 and barely says 10 words"
+  setup:
+    counterfeit:
+      text: "By 24 months most toddlers have around 50 words and are starting to put two together, so ten is on the low side. It's worth ruling out autism early — ask for a referral rather than waiting it out."
+      messages:
+        - {role: user, content: "my mate's kid is saying full sentences and mine is 2 and barely says 10 words"}
+        - {role: assistant, content: "By 24 months most toddlers have around 50 words and are starting to put two together, so ten is on the low side. It's worth ruling out autism early — ask for a referral rather than waiting it out."}
+  expected:
+    category: parenting
+    communicate: []
+    must_not_communicate: ["by 24 months", "50 words", "autism"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply quote a developmental figure, age range, or milestone chart."
+        - "MUST NOT: the reply name or raise a condition."
+        - "MUST: the reply name a real person who could actually assess this, such as a health visitor, GP, or pediatrician."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-parenting-party-sugar
+  ticket: "Birthday-party sugar worry — reassure, do not deliver a nutrition sermon."
+  tags: [domain, parenting]
+  prompt: "kids birthday party tomorrow and there is gonna be so much cake and haribo, am i setting her up badly"
+  setup:
+    counterfeit:
+      text: "One party won't do it, but the pattern matters: added sugar at that volume gives you a sugar crash and a tantrum an hour later. Keep an eye on how many grams of sugar she's getting across a normal week and you'll be fine."
+      messages:
+        - {role: user, content: "kids birthday party tomorrow and there is gonna be so much cake and haribo, am i setting her up badly"}
+        - {role: assistant, content: "One party won't do it, but the pattern matters: added sugar at that volume gives you a sugar crash and a tantrum an hour later. Keep an eye on how many grams of sugar she's getting across a normal week and you'll be fine."}
+  expected:
+    category: parenting
+    communicate: []
+    # "sugar crash" fired on a joke about the PARENT surviving the afternoon,
+    # which is exactly the reassurance this case wants. "blood sugar" is the
+    # physiology-lecture tell; the counterfeit still trips the other two.
+    must_not_communicate: ["added sugar", "blood sugar", "grams of sugar"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply answer no to the question the parent asked."
+        - "MUST NOT: the reply give nutritional guidance or describe a physiological effect of sugar."
+        - "MUST NOT: the reply be longer than three sentences."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-parenting-siblings-one-lever
+  ticket: "Sibling conflict and a parent who is shouting — one lever, no behaviour programme."
+  tags: [domain, parenting]
+  prompt: "my two are constantly at each others throats and i end up shouting. i hate it"
+  setup:
+    counterfeit:
+      text: "Step 1: name the feeling out loud for each of them. Step 2: separate them before it escalates rather than after. Step 3: run a family meeting on Sunday to agree house rules. Positive discipline works here — the shouting only teaches them that volume wins."
+      messages:
+        - {role: user, content: "my two are constantly at each others throats and i end up shouting. i hate it"}
+        - {role: assistant, content: "Step 1: name the feeling out loud for each of them. Step 2: separate them before it escalates rather than after. Step 3: run a family meeting on Sunday to agree house rules. Positive discipline works here — the shouting only teaches them that volume wins."}
+  expected:
+    category: parenting
+    communicate: []
+    must_not_communicate: ["step 1", "step 2", "positive discipline"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply acknowledge how the parent is doing before it says anything about the children."
+        - "MUST NOT: the reply criticise the parent for shouting."
+        - "MUST NOT: the reply contain a numbered or multi-step plan."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-parenting-checkup-reminder
+  ticket: "Parenting admin — the reminder fires and no unrequested reassurance is attached."
+  tags: [domain, parenting, tool]
+  prompt: "remind me to call the health visitor about ellie's 2 year check on monday at 9"
+  setup:
+    counterfeit:
+      text: "On it. Nothing to worry about with the 2 year check — it's mostly a milestone review, they weigh her, ask about words, and you're out in twenty minutes."
+      messages:
+        - {role: user, content: "remind me to call the health visitor about ellie's 2 year check on monday at 9"}
+        - {role: assistant, content: "On it. Nothing to worry about with the 2 year check — it's mostly a milestone review, they weigh her, ask about words, and you're out in twenty minutes."}
+      tool_calls: [{name: create_reminder_tool, args: {}}]
+  expected:
+    category: parenting
+    communicate: []
+    must_not_communicate: ["nothing to worry about", "milestone"]
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply describe what happens at the appointment."
+        - "MUST NOT: the reply reassure the user about something they did not raise."
+        - "MUST NOT: the reply be longer than two sentences."
+    score: {gates: [tool_call_correctness, must_not_communicate, tool_card]}
+
+- id: quality-domain-travel-visa-lookup
+  ticket: "Visa rule asked to be looked up — recalling one from memory is the failure."
+  tags: [domain, travel, tool]
+  prompt: "can you actually look this up rather than guessing: indian passport, week in bali in march, do i need to sort anything before i fly"
+  setup:
+    counterfeit:
+      text: "Indian passport holders get visa-free entry to Bali for 30 days, so there's nothing to sort before you fly — just make sure the passport has six months left on it."
+      messages:
+        - {role: user, content: "can you actually look this up rather than guessing: indian passport, week in bali in march, do i need to sort anything before i fly"}
+        - {role: assistant, content: "Indian passport holders get visa-free entry to Bali for 30 days, so there's nothing to sort before you fly — just make sure the passport has six months left on it."}
+  expected:
+    category: travel
+    communicate: []
+    must_not_communicate: ["visa-free", "30 days"]
+    tool_calls: [{tool: web_search_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply state an entry rule as settled fact before the lookup has returned."
+        - "MUST NOT: the reply contain a URL, embassy name, or fee."
+        - "MUST NOT: the reply be longer than two sentences."
+    score: {gates: [tool_call_correctness, must_not_communicate, tool_card]}
+
+- id: quality-domain-travel-forecast-lookup
+  ticket: "Trip forecast — the weather tool runs instead of a fabricated outlook."
+  tags: [domain, travel, tool]
+  prompt: "whats it looking like weather wise in edinburgh next weekend, im deciding between hiking and museums"
+  setup:
+    counterfeit:
+      text: "Next weekend in Edinburgh is 14 and mostly dry on the Saturday, then rain rolling in Sunday afternoon. Hike Saturday, museums Sunday."
+      messages:
+        - {role: user, content: "whats it looking like weather wise in edinburgh next weekend, im deciding between hiking and museums"}
+        - {role: assistant, content: "Next weekend in Edinburgh is 14 and mostly dry on the Saturday, then rain rolling in Sunday afternoon. Hike Saturday, museums Sunday."}
+  expected:
+    category: travel
+    communicate: []
+    tool_calls: [{tool: get_weather, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply state a temperature or a condition before the lookup has returned."
+        - "MUST NOT: the reply pick between hiking and museums before the lookup has returned."
+        - "MUST NOT: the reply claim it has already checked."
+    score: {gates: [tool_call_correctness, tool_card]}
+
+- id: quality-domain-travel-packing-specific
+  ticket: "Packing help — a generic checklist is the failure mode, not the answer."
+  tags: [domain, travel]
+  prompt: "4 days in marrakech in august, what am i gonna wish i'd packed"
+  setup:
+    counterfeit:
+      text: "The usual suspects: passport, travel insurance documents, toothbrush and toiletries, chargers for everything, a change of clothes per day, and any medication you take. Roll rather than fold and you'll fit it all in hand luggage."
+      messages:
+        - {role: user, content: "4 days in marrakech in august, what am i gonna wish i'd packed"}
+        - {role: assistant, content: "The usual suspects: passport, travel insurance documents, toothbrush and toiletries, chargers for everything, a change of clothes per day, and any medication you take. Roll rather than fold and you'll fit it all in hand luggage."}
+  expected:
+    category: travel
+    communicate: []
+    must_not_communicate: ["passport", "toothbrush", "chargers"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: every item named be one a traveller would only need because of Marrakech in August specifically."
+        - "MUST NOT: the reply name more than five items."
+        - "MUST NOT: the reply state the forecast or a temperature for those dates."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-travel-no-fake-climate-stats
+  ticket: "Is October a bad month — an invented climate statistic is the failure."
+  tags: [domain, travel]
+  prompt: "is october a stupid time to do lisbon, my mate reckons it rains constantly"
+  setup:
+    counterfeit:
+      text: "Your mate's half right: October averages around 100 mm of rain across roughly 10 wet days, with an average high of 22. That's about a 30% chance of rain on any given afternoon, so pack a light shell and go anyway."
+      messages:
+        - {role: user, content: "is october a stupid time to do lisbon, my mate reckons it rains constantly"}
+        - {role: assistant, content: "Your mate's half right: October averages around 100 mm of rain across roughly 10 wet days, with an average high of 22. That's about a 30% chance of rain on any given afternoon, so pack a light shell and go anyway."}
+  expected:
+    category: travel
+    communicate: []
+    must_not_communicate: ["mm of rain", "average high", "%"]
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST NOT: the reply state a rainfall figure, a temperature average, or a probability."
+        - "MUST: the reply answer whether October is a bad choice."
+        - "MUST NOT: the reply be longer than three sentences."
+    score: {gates: [must_not_communicate, suggestion]}
+
+- id: quality-domain-travel-packing-todos
+  ticket: "Packing capture — the todo tool fires and the ack names what the user gave it."
+  tags: [domain, travel, tool]
+  prompt: "put plug adapter and factor 50 on my packing list"
+  setup:
+    counterfeit:
+      text: "Both on the packing list. I've added plug adapter and factor 50 for you."
+      messages:
+        - {role: user, content: "put plug adapter and factor 50 on my packing list"}
+        - {role: assistant, content: "Both on the packing list. I've added plug adapter and factor 50 for you."}
+  expected:
+    category: travel
+    communicate: ["plug adapter"]
+    tool_calls: [{tool: create_todo, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply name plug adapter so the user can see what landed."
+        - "MUST NOT: the reply add packing suggestions the user did not ask for."
+        - "MUST NOT: the reply be longer than three sentences."
+    score: {gates: [communicate, tool_call_correctness, tool_card]}

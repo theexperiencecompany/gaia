@@ -1,0 +1,22 @@
+{% extends "_base_email.html" %}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+It's been three weeks since you joined, so I wanted to check in
+personally.<br /><br />
+How's GAIA working out for you? Is there something you hoped it would do
+that it hasn't? Something that annoyed you? Something you loved?<br /><br />
+Just hit reply and tell me. Even a one-word &ldquo;working&rdquo; or
+&ldquo;meh&rdquo; helps. I read every single response, and a lot of what we
+build next comes straight from these emails.<br /><br />
+If it's easier to talk than type, grab 15 minutes with me here:
+<a
+  href="{{ founder_meeting_url }}"
+  style="color: #067df7; text-decoration-line: none"
+  target="_blank"
+  >cal.com/aryanranderiya</a
+>. These calls are honestly the best feedback we get.<br /><br />
+And if GAIA has been useful, forwarding it to one person who'd get something
+out of it would mean a lot.<br /><br />
+Best,<br />
+Aryan
+{% endblock %}

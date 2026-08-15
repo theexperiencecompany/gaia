@@ -1,0 +1,171 @@
+# Tracked todos — four cases beyond tracked_todos.yaml's create / due-date /
+# canvas-update / list. These cover the fields and decisions that file does not
+# reach: the `purpose` text, choosing tracked vs plain for two items in one
+# request, targeting a named tracked todo when two exist, and setting priority
+# as a real property at creation time rather than as canvas prose.
+#
+# end_state.tracked_todos reads todo_repository.list_active_tracked, so `count`
+# means ACTIVE tracked todos. A tracked todo is also an ordinary todo row
+# carrying the gaia-tracked label, which is why the priority assertion below
+# goes through the `todos` projection — `tracked_todos` has no priority field.
+#
+# `purpose` is matched against the whole document text (title + description +
+# canvas), so it asserts the phrase was recorded somewhere durable rather than
+# only spoken in the reply.
+
+- id: tracked-purpose-and-exact-figure
+  ticket: "A stated purpose and an exact figure must both be stored; rounding the figure or dropping the purpose is the failure."
+  tags: [tracked_todos]
+  prompt: >-
+    Track my move to Berlin. The purpose is 'international relocation', and note
+    on the canvas that the shipping quote from Vandenberg is exactly 3,180
+    euros — do not round it.
+  setup:
+    counterfeit:
+      text: >-
+        Tracking your Berlin move — I have noted the shipping quote of about
+        3,200 euros from Vandenberg on the canvas.
+      messages:
+        - {role: user, content: "Track my move to Berlin."}
+        - role: assistant
+          content: >-
+            Tracking your Berlin move — I have noted the shipping quote of about
+            3,200 euros from Vandenberg on the canvas.
+      tool_calls:
+        - name: create_tracked_todo
+          args: {title: "Move to Berlin", initial_canvas: "Shipping quote from Vandenberg: ~3,200 EUR"}
+      end_state:
+        tracked_todos:
+          - {title_contains: "berlin", purpose: null}
+          - {title_contains: "berlin", canvas_contains: null}
+  expected:
+    category: tracked_todos
+    communicate: ["3,180"]
+    tool_calls: [{tool: create_tracked_todo, min_calls: 1}]
+    end_state:
+      tracked_todos:
+        - {title_contains: "berlin", purpose: "international relocation"}
+        - {title_contains: "berlin", canvas_contains: "3,180"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the canvas carries the figure 3,180 unrounded."
+        - "MUST NOT: the reply approximates the quote with 'about' or a rounded number."
+
+- id: tracked-vs-plain-todo
+  ticket: "One request asks for one tracked item and one plain todo; tracking both is the failure that quietly costs the user a canvas per errand."
+  tags: [tracked_todos]
+  prompt: >-
+    Two things: start a tracked todo for my PhD application so you can keep
+    notes on it as it goes, and just add a plain todo to buy stamps — nothing to
+    track there.
+  setup:
+    counterfeit:
+      text: "Both are set up and I will keep notes on each as things move."
+      messages:
+        - {role: user, content: "start a tracked todo for my PhD application, and just add a plain todo to buy stamps"}
+        - {role: assistant, content: "Both are set up and I will keep notes on each as things move."}
+      tool_calls:
+        - {name: create_tracked_todo, args: {title: "PhD application"}}
+        - {name: create_tracked_todo, args: {title: "Buy stamps"}}
+      end_state:
+        tracked_todos: [{count: 2}, {title_contains: "phd"}]
+        todos:
+          - {count: 2}
+          - {title_contains: "stamps", completed: false}
+  expected:
+    category: tracked_todos
+    tool_calls:
+      - {tool: create_tracked_todo, min_calls: 1}
+      - {tool: create_todo, min_calls: 1}
+    end_state:
+      # Exactly one ACTIVE tracked todo, but two todo rows: the tracked PhD one
+      # and the plain stamps one.
+      tracked_todos: [{count: 1}, {title_contains: "phd"}]
+      todos:
+        - {count: 2}
+        - {title_contains: "stamps", completed: false}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the stamps item was created as an ordinary todo."
+        - "MUST NOT: a canvas or tracking was set up for the stamps item."
+
+- id: tracked-note-goes-on-the-named-one
+  ticket: "With two tracked todos open, a note addressed to one by name must not land on the other."
+  tags: [tracked_todos, multiturn]
+  setup:
+    turns:
+      - "Start a tracked todo: sell the campervan"
+      - "Start another tracked todo: rebuild the garden fence"
+      - "On the campervan one — note that its MOT runs out in November"
+    counterfeit:
+      text: "Noted — the MOT runs out in November."
+      messages:
+        - {role: user, content: "On the campervan one — note that its MOT runs out in November"}
+        - {role: assistant, content: "Noted — the MOT runs out in November."}
+      tool_calls:
+        - {name: create_tracked_todo, args: {title: "sell the campervan"}}
+        - {name: create_tracked_todo, args: {title: "rebuild the garden fence"}}
+        - {name: update_tracked_todo_canvas, args: {content: "MOT runs out in November"}}
+      end_state:
+        tracked_todos:
+          - {count: 2}
+          - {title_contains: "campervan", canvas_contains: null}
+  prompt: "Start a tracked todo: sell the campervan"
+  expected:
+    category: tracked_todos
+    # "november" arrives in turn 3, so it is not in `prompt` and an echo of
+    # turn 1 cannot satisfy it.
+    communicate: ["november"]
+    tool_calls:
+      - {tool: create_tracked_todo, min_calls: 2}
+      - {tool: update_tracked_todo_canvas, min_calls: 1}
+    end_state:
+      tracked_todos:
+        - {count: 2}
+        - {title_contains: "campervan", canvas_contains: "november"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the note was written to the campervan canvas."
+        - "MUST NOT: a third tracked todo was created for the note."
+
+- id: tracked-priority-is-a-property
+  ticket: "Priority stated at creation must be set on the todo, not written into the canvas as prose."
+  tags: [tracked_todos]
+  prompt: >-
+    Start a tracked todo to prepare for the OFSTED inspection — it is high
+    priority and the deadline is 30 September.
+  setup:
+    counterfeit:
+      text: >-
+        Started tracking the OFSTED inspection prep. I have put high priority
+        and the 30 September deadline at the top of its canvas.
+      messages:
+        - {role: user, content: "Start a tracked todo to prepare for the OFSTED inspection"}
+        - role: assistant
+          content: >-
+            Started tracking the OFSTED inspection prep. I have put high
+            priority and the 30 September deadline at the top of its canvas.
+      tool_calls:
+        - name: create_tracked_todo
+          args:
+            title: "Prepare for the OFSTED inspection"
+            initial_canvas: "Priority: high. Deadline: 30 September."
+      end_state:
+        tracked_todos: [{count: 1}, {title_contains: "ofsted"}]
+        todos: [{title_contains: "ofsted", completed: false, priority: null}]
+  expected:
+    category: tracked_todos
+    tool_calls: [{tool: create_tracked_todo, args: {priority: "high"}, min_calls: 1}]
+    end_state:
+      tracked_todos: [{count: 1}, {title_contains: "ofsted"}]
+      # The tracked todo is a todo row, so the priority projection reads the
+      # real stored property — canvas prose about priority cannot satisfy it.
+      todos: [{title_contains: "ofsted", completed: false, priority: "high"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: priority was passed as a property when the tracked todo was created."
+        - "MUST NOT: the deadline was recorded only as canvas text with no due date set."

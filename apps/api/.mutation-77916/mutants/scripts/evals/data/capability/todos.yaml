@@ -1,0 +1,71 @@
+# Todos family — the executor's todo tools (create/list/update/bulk via the
+# todo service; end_state verified in Mongo through the same service).
+
+- id: todos-create-simple
+  ticket: "User asks to create a todo; agent must create it and confirm."
+  tags: [todos]
+  prompt: "Add a todo: buy milk"
+  expected:
+    category: todos
+    communicate: ["milk"]
+    tool_calls: [{tool: create_todo}]
+    end_state: {todos: [{title_contains: "milk", completed: false}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the todo was created"
+        - "the reply is concise and helpful"
+
+- id: todos-create-and-list
+  ticket: "Create a todo and list todos; both tools must fire and the title relayed."
+  tags: [todos]
+  prompt: "Add a todo: pick up dry cleaning, then list all my todos"
+  expected:
+    category: todos
+    communicate: ["dry cleaning"]
+    tool_calls: [{tool: create_todo}, {tool: list_todos}]
+    end_state: {todos: [{title_contains: "dry cleaning", completed: false}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms creation and presents the todo list"
+
+- id: todos-complete
+  ticket: "Create a todo and mark it complete; end_state must show completed=true."
+  tags: [todos]
+  prompt: "Add a todo: pay rent, then mark it as complete"
+  expected:
+    category: todos
+    communicate: ["pay rent"]
+    tool_calls: [{tool: create_todo}, {tool: update_todo}]
+    end_state: {todos: [{title_contains: "rent", completed: true}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the todo was created and completed"
+
+- id: todos-bulk-complete
+  ticket: "Create several todos and complete them in one turn; all must end completed."
+  tags: [todos]
+  prompt: "Add three todos: water the plants, walk the dog, take out trash. Then complete all of them."
+  expected:
+    category: todos
+    communicate: ["water the plants"]
+    # `tool_calls` used to also demand bulk_complete_todos AND update_todo x3.
+    # Those are alternative routes to the same outcome, and ToolCallCorrectness
+    # is all-or-nothing, so no correct agent could satisfy both — which is why
+    # the entry sat outside `gates` doing nothing. Creating three todos is the
+    # part that is genuinely required whichever way they are completed; that is
+    # now gated, and the completion route is the end state's business.
+    tool_calls:
+      - {tool: create_todo, min_calls: 3}
+    end_state:
+      todos:
+        - {title_contains: "plants", completed: true}
+        - {title_contains: "dog", completed: true}
+        - {title_contains: "trash", completed: true}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms all three todos were created and completed"
+        - "all three were completed, whether in one bulk call or three updates"
