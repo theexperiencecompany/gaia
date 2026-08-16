@@ -10,10 +10,11 @@ Covers:
 - chatbot: default-model one-shot path, error handling
 """
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langchain_openrouter import ChatOpenRouter
 from pydantic import SecretStr
 import pytest
@@ -689,3 +690,55 @@ class TestProviderModelFieldId:
 
     def test_gemini_declares_its_model_under_the_same_id_as_openrouter(self) -> None:
         assert _MODEL_FIELD.id == "model"
+
+
+class TestFallbackRunsOnTheOtherProvider:
+    """The fallback must actually leave the failed lane.
+
+    Regression: the fallback runnable carried its lane via ``with_config``, but the
+    invoke re-passed the run's own config — and LangChain merges a passed config
+    OVER a bound one, so the just-failed provider, model and pin were all restored
+    and the "failover" retried the same dead lane. Nothing caught it because no
+    test drove the fallback path with a real config attached.
+    """
+
+    @pytest.mark.regression
+    async def test_the_fallback_attempt_does_not_inherit_the_failed_lane(self) -> None:
+        seen: dict[str, Any] = {}
+
+        def _record(_input: Any, config: RunnableConfig | None = None) -> AIMessage:
+            seen.update((config or {}).get("configurable", {}))
+            return AIMessage(content="from-fallback")
+
+
+        def _boom(_input: Any, config: RunnableConfig | None = None) -> AIMessage:
+            raise ConnectionError("primary down")
+
+        primary = RunnableLambda(_boom)
+        failed_lane_config: RunnableConfig = cast(
+            RunnableConfig,
+            {
+                "configurable": {
+                    "provider": "openrouter",
+                    "model": "dead-model",
+                    "model_kwargs": {"provider": {"only": ["dead-vendor"]}},
+                }
+            },
+        )
+        fallback_config: RunnableConfig = cast(
+            RunnableConfig, {"configurable": {"provider": "gemini", "model": "gemini-x"}}
+        )
+
+        result = await ainvoke_llm(
+            primary,
+            "hi",
+            fallback=RunnableLambda(_record),
+            config=failed_lane_config,
+            fallback_config=fallback_config,
+        )
+
+        assert result.content == "from-fallback"
+        assert seen["provider"] == "gemini"
+        assert seen["model"] == "gemini-x"
+        # the dead lane's routing pin must not ride along to the new provider
+        assert "model_kwargs" not in seen

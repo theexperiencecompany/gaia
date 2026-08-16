@@ -13,6 +13,7 @@ entirely by the queue's serializer. That table is what made model selection
 unreadable and its bugs invisible.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
@@ -28,12 +29,16 @@ from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     DEV_MODEL_OPTIONS,
+    MODEL_FIELD_ID,
+    MODEL_KWARGS_FIELD_ID,
     MONTHLY_BUDGET_TTL_SECONDS,
     OPENROUTER_REASONING,
     PAID_MODEL_MODEL_KWARGS,
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
     PRO_MONTHLY_COST_BUDGET_USD,
+    PROVIDER_FIELD_ID,
+    REASONING_FIELD_ID,
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
@@ -51,6 +56,13 @@ from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
+
+#: Every configurable key a lane owns. These must be REPLACED wholesale on a lane
+#: change, never merged into — a leftover key is the previous lane still steering
+#: the request.
+BINDING_FIELD_IDS: frozenset[str] = frozenset(
+    {PROVIDER_FIELD_ID, MODEL_FIELD_ID, REASONING_FIELD_ID, MODEL_KWARGS_FIELD_ID}
+)
 
 
 class AgentRole(StrEnum):
@@ -103,6 +115,11 @@ class ModelLane:
         ``None`` so the client's own default survives — the custom dev endpoint
         pins no model, and a non-reasoning model must not carry a reasoning pin.
         """
+        # Literal keys, not the *_FIELD_ID constants: the return is an
+        # AgentConfigurable, and mypy only checks TypedDict keys when they are
+        # literals (`literal-required`). The TypedDict IS the enforcement here —
+        # stronger than a constant, since it also checks the value types.
+        # BINDING_FIELD_IDS below keeps the id set itself in one place.
         keys: AgentConfigurable = {"provider": self.provider}
         if self.model is not None:
             keys["model"] = self.model
@@ -111,6 +128,21 @@ class ModelLane:
         if self.provider_pin is not None:
             keys["model_kwargs"] = self.provider_pin
         return keys
+
+    def rebind(self, configurable: Mapping[str, Any]) -> dict[str, Any]:
+        """``configurable`` with THIS lane's binding keys, and the previous lane's cleared.
+
+        A plain merge is not enough, and that is why the fallback silently did
+        nothing: LangChain merges a passed config OVER a ``with_config`` one
+        (later wins), so re-passing the run's config restored the very provider
+        that had just failed. Stale keys must be REMOVED, not just overwritten —
+        the fallback drops the pin, and an un-cleared ``model_kwargs`` would carry
+        the old provider's routing onto the new one.
+        """
+        return {
+            **{k: v for k, v in configurable.items() if k not in BINDING_FIELD_IDS},
+            **self.binding_keys(),
+        }
 
     @classmethod
     def from_configurable(cls, raw: object) -> "ModelLane | None":
@@ -134,15 +166,16 @@ class ModelLane:
         """The same run on the next configured provider, or ``None`` when there
         is no other one.
 
-        The pin is dropped because it names providers on the lane we are leaving;
-        carrying it to a different provider is how a fallback turns one failure
-        into two.
+        The pin AND the reasoning config are dropped: both are OpenRouter-wire
+        concepts (``client._openrouter_wire_configurables`` declares them, while
+        the Gemini lane declares only the model), so carrying either onto a
+        different provider is how a fallback turns one failure into two.
         """
         nxt = next_fallback_provider(self.provider)
         if nxt is None:
             return None
         provider, model = nxt
-        return replace(self, provider=provider, model=model, provider_pin=None)
+        return replace(self, provider=provider, model=model, provider_pin=None, reasoning=None)
 
 
 def _reasoning_for(role: AgentRole, paid: bool) -> dict[str, Any]:

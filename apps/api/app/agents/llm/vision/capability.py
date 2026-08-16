@@ -10,6 +10,7 @@ from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MODEL_NAME,
     GEMINI_PROVIDER,
+    LANE_FIELD_ID,
     OPENROUTER_PROVIDER,
 )
 from app.models.agent_models import agent_configurable
@@ -30,7 +31,7 @@ class MediaDelivery(Enum):
 
 def active_lane(config: RunnableConfig) -> tuple[str, str]:
     """The (provider, model) this run will actually call."""
-    lane = ModelLane.from_configurable(agent_configurable(config).get("lane"))
+    lane = ModelLane.from_configurable(agent_configurable(config).get(LANE_FIELD_ID))
     if lane is None:
         return DEFAULT_LLM_PROVIDER, DEFAULT_MODEL_NAME
     return lane.provider, lane.model or DEFAULT_MODEL_NAME

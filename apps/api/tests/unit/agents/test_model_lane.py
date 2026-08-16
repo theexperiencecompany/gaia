@@ -209,7 +209,7 @@ class TestSerializationRoundTrip:
         )
 
         with pytest.raises((AttributeError, TypeError)):
-            resolved.model = "something-else"  # type: ignore[misc]
+            setattr(resolved, "model", "something-else")  # noqa: B010
 
 
 class TestFallback:
@@ -235,7 +235,9 @@ class TestFallback:
         assert fallback.provider == LLMProviderName.GEMINI
         assert fallback.model == "gemini-x"
         assert fallback.provider_pin is None
-        assert fallback.reasoning == COMMS_REASONING
+        # reasoning is an OpenRouter-wire concept like the pin; it must not ride
+        # onto a Gemini lane that never declared the field.
+        assert fallback.reasoning is None
 
     def test_no_other_configured_provider_yields_no_fallback(self) -> None:
         only = ModelLane(

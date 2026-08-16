@@ -57,7 +57,7 @@ from app.agents.llm.client import ainvoke_llm, invoke_llm
 from app.agents.llm.lane import ModelLane
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
-from app.constants.llm import RECURSION_WRAPUP_THRESHOLD_STEPS
+from app.constants.llm import LANE_FIELD_ID, RECURSION_WRAPUP_THRESHOLD_STEPS
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     DynamicToolNode,
@@ -85,11 +85,19 @@ from shared.py.wide_events import log
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
 
+def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfig:
+    """``config`` rebound onto ``lane`` — the config the fallback attempt runs under."""
+    return cast(
+        RunnableConfig,
+        {**config, "configurable": lane.rebind(config.get("configurable") or {})},
+    )
+
+
 def _prepare_fallback(
     llm: LanguageModelLike,
     tools_to_bind: list[BaseTool],
     model_configurations: AgentConfigurable,
-) -> Callable[[], Runnable] | None:
+) -> tuple[Callable[[], Runnable], "ModelLane"] | None:
     """Factory that re-binds this run on the NEXT configured provider, with the
     same tools. Zero-arg so the (per-turn, tool-list-sized) binding only happens
     if the primary actually fails. ``None`` when no other provider is configured.
@@ -100,13 +108,11 @@ def _prepare_fallback(
     every tier resolves to that model the graph had no fallback at all — one 402
     or 401 from OpenRouter killed the whole turn on every execution path.
     """
-    lane = ModelLane.from_configurable(model_configurations.get("lane"))
+    lane = ModelLane.from_configurable(model_configurations.get(LANE_FIELD_ID))
     fallback_lane = lane.fallback() if lane else None
     if fallback_lane is None:
         return None
-    return lambda: llm.with_config(  # type: ignore[attr-defined]
-        configurable=fallback_lane.binding_keys()
-    ).bind_tools(tools_to_bind)
+    return (lambda: llm.bind_tools(tools_to_bind), fallback_lane)  # type: ignore[attr-defined]
 
 
 def create_agent(
@@ -229,14 +235,15 @@ def create_agent(
         model_configurations = agent_configurable(config)
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-        fallback = _prepare_fallback(llm, tools_to_bind, model_configurations)
+        prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state)
         response = invoke_llm(
             llm_with_tools,
             state["messages"],
-            fallback=fallback,
+            fallback=prepared[0] if prepared else None,
             config=config,
             label=agent_name,
+            fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
         )
 
         if not response.tool_calls and not response.content:
@@ -284,9 +291,14 @@ def create_agent(
 
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-        fallback = _prepare_fallback(llm, tools_to_bind, model_configurations)
+        prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         invoke_fn = functools.partial(
-            ainvoke_llm, llm_with_tools, fallback=fallback, config=config, label=agent_name
+            ainvoke_llm,
+            llm_with_tools,
+            fallback=prepared[0] if prepared else None,
+            config=config,
+            label=agent_name,
+            fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
         )
 
         try:

@@ -502,6 +502,7 @@ async def ainvoke_llm(
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
+    fallback_config: RunnableConfig | None = None,
 ) -> Any:
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
@@ -547,9 +548,14 @@ async def ainvoke_llm(
                     messages, config=_with_usage_handler(config, usage_handler)
                 )
             except LLM_FALLBACK_EXCEPTIONS as primary_error:
+                # The fallback runs under ``fallback_config`` when given. Reusing
+                # ``config`` here is what made provider failover a no-op: LangChain
+                # merges a passed config OVER a ``with_config`` one, so the run's
+                # own configurable put the just-failed provider straight back.
                 return _stamp_fallback(
                     await _resolve_fallback(fallback, label, primary_error).ainvoke(
-                        messages, config=_with_usage_handler(config, usage_handler)
+                        messages,
+                        config=_with_usage_handler(fallback_config or config, usage_handler),
                     )
                 )
     finally:
@@ -566,13 +572,16 @@ def invoke_llm(
     config: RunnableConfig | None = None,
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+    fallback_config: RunnableConfig | None = None,
 ) -> Any:
     """Sync counterpart of :func:`ainvoke_llm`."""
     try:
         return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
         return _stamp_fallback(
-            _resolve_fallback(fallback, label, primary_error).invoke(messages, config=config)
+            _resolve_fallback(fallback, label, primary_error).invoke(
+                messages, config=fallback_config or config
+            )
         )
 
 
