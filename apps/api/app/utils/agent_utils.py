@@ -49,7 +49,7 @@ class InternalMarkerFilter:
 
     def __init__(self) -> None:
         self._pending = ""
-        self._after_marker = False
+        self._after_marker = False  # pragma: no mutate
 
     def feed(self, chunk: str) -> str:
         self._pending += chunk

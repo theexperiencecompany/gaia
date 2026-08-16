@@ -27,13 +27,17 @@ mutant_file = f"{workdir}/mutants/{module.replace('.', '/')}.py"
 src = Path(mutant_file).read_text()
 # The mutants dict is per function, named without the mutant id:
 # mutants_<base>__mutmut['_mutmut_orig'] = <base>__mutmut_orig
+# For a method the right-hand side is qualified — `Class.xǁClassǁmethod__mutmut_orig`
+# — so accept a dotted name and keep its last component.
 base = re.sub(r"__mutmut_\d+$", "", mutant_name)
 dict_name = f"mutants_{base}__mutmut"
-orig_match = re.search(rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*(\w+)", src, re.MULTILINE)
+orig_match = re.search(rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*([\w.]+)", src, re.MULTILINE)
 if not orig_match:
     sys.exit(1)
-orig_name = orig_match.group(1)
-blocks = re.split(r"^(?:async )?def ", src, flags=re.MULTILINE)
+orig_name = orig_match.group(1).rsplit(".", 1)[-1]
+# Methods are indented, so the split must tolerate leading whitespace — otherwise
+# a method's body reads as empty and orig == mutant, a false EQUIV verdict.
+blocks = re.split(r"^[ \t]*(?:async )?def ", src, flags=re.MULTILINE)
 
 
 def _def_lines(path: str) -> dict[str, int]:
@@ -83,6 +87,9 @@ def _normalized(lines: list[str]) -> list[str]:
 
 orig_raw = _body(orig_name)
 mut_raw = _body(mutant_name)
+if not orig_raw or not mut_raw:
+    # Failing to locate either body is a classifier bug, never proof of equivalence.
+    sys.exit(1)
 orig_lines = _normalized(orig_raw)
 mut_lines = _normalized(mut_raw)
 if orig_lines == mut_lines:

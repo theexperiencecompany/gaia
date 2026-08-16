@@ -443,6 +443,20 @@ class TestInternalMarkerFilter:
         assert marker_filter.feed("hello [EXEC") == "hello "
         assert marker_filter.flush() == "[EXEC"
 
+    def test_leading_whitespace_of_a_message_is_preserved(self) -> None:
+        assert self._run(["  hi", " there"]) == "  hi there"
+
+    def test_text_without_a_bracket_is_never_held_back(self) -> None:
+        marker_filter = InternalMarkerFilter()
+        assert marker_filter.feed("hello") == "hello"
+        assert marker_filter.flush() == ""
+        assert marker_filter.flush() == ""
+
+    @pytest.mark.parametrize("prefix", ["[", "[E", "[EX", "[EXECUTOR_RESULT"])
+    def test_every_prefix_length_is_held_so_a_split_marker_cannot_leak(self, prefix: str) -> None:
+        rest = EXECUTOR_RESULT_MARKER[len(prefix) :]
+        assert self._run([f"x {prefix}", f"{rest}\nhi"]) == "x hi"
+
     def test_batch_strip_and_stream_filter_agree(self) -> None:
         text = f"{EXECUTOR_RESULT_MARKER}\nfoo [x] bar"
         assert self._run([text]) == strip_internal_agent_markers(text)
