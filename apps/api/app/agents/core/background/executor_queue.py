@@ -16,7 +16,7 @@ keeps the import graph acyclic.
 from dataclasses import dataclass
 from enum import StrEnum
 import json
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 from uuid import uuid4
 
 from app.agents.core.background.session import ExecutorRun, RunKind, create_session
@@ -31,6 +31,7 @@ from app.constants.executor import (
     EXECUTOR_COLLECT_MARKER_TTL,
     EXECUTOR_COLLECTION_TASK,
 )
+from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
@@ -42,37 +43,21 @@ from shared.py.wide_events import log
 # The run kind is carried explicitly on ExecutorRun, never parsed from the id.
 QUEUED_STREAM_ID_PREFIX = "queued_"
 
-# Keys from configurable that are safe to serialize into queue items.
-# Filters out non-serializable LangGraph internals (e.g. Runtime objects).
-_CONFIGURABLE_SCALAR_KEYS = frozenset(
-    {
-        "thread_id",
-        "conversation_id",
-        "user_id",
-        "email",
-        "user_timezone",
-        "user_name",
-        "stream_id",
-        "provider",
-        "model_name",
-        "max_tokens",
-        "selected_tool",
-        "tool_category",
-        "subagent_id",
-        "vfs_session_id",
-        "user_message_id",
-        "active_todo_id",
-        "execution_mode",
-        "conversation_source",
-        "source_category",
-        # Workflow context must survive queueing: without it a queued workflow
-        # run loses its id and the delivery path silently downgrades the result
-        # from the completion notification to a plain conversation message.
-        "workflow_id",
-        "workflow_title",
-        "workflow_notify_on_completion",
-    }
-)
+# Every GAIA-owned configurable key is safe to carry across a queue hop by
+# construction, so AgentConfigurable IS the allowlist. The hand-maintained list
+# this replaces had silently fallen behind it and was dropping the OpenRouter
+# provider pin, plan_type, root_request_id, langfuse_trace_id and the HIL intent
+# judge's user_messages — a queued run was not a smaller run, it was a different
+# one. What must still be filtered is LangGraph's own runtime keys
+# (checkpoint_ns, checkpoint_id, __pregel_*, Runtime objects), which are exactly
+# the keys NOT declared on AgentConfigurable.
+_OWNED_KEYS: frozenset[str] = frozenset(AgentConfigurable.__annotations__)
+
+# Owned keys that are nonetheless scoped to ONE dispatch and must not ride along
+# to the next: hil_resume_replay means "this exact call is a replay", so carrying
+# it would make a fresh run probe its subagent threads for interrupts it cannot
+# have.
+_RUN_SCOPED_KEYS: frozenset[str] = frozenset({HIL_RESUME_CONFIG_KEY})
 
 
 class ExecutorRunItem(TypedDict, total=False):
@@ -381,21 +366,36 @@ def build_run_item(
     }
 
 
+def _is_json_safe(value: object) -> bool:
+    try:
+        json.dumps(value)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def safe_configurable(configurable: AgentConfigurable) -> AgentConfigurable:
     """The serializable subset of a ``configurable``, safe to persist and rebuild
-    a run from. Filters out non-serializable LangGraph internals (Runtime objects).
+    a run from — the GAIA-owned keys minus the run-scoped ones.
 
-    ``_CONFIGURABLE_SCALAR_KEYS`` is the allowlist, so every surviving key is an
-    ``AgentConfigurable`` key by construction (Type Safety item 12).
+    Every surviving key is an ``AgentConfigurable`` key by construction (Type
+    Safety item 12). A declared key holding an unserializable value is dropped
+    with a WARNING rather than in silence: silent dropping is how a queued run
+    quietly stopped being the run the user started.
     """
-    return cast(
-        AgentConfigurable,
-        {
-            k: v
-            for k, v in configurable.items()
-            if k in _CONFIGURABLE_SCALAR_KEYS and isinstance(v, str | int | float | bool | None)
-        },
-    )
+    kept: dict[str, Any] = {}
+    for key, value in configurable.items():
+        if key not in _OWNED_KEYS or key in _RUN_SCOPED_KEYS:
+            continue
+        if not _is_json_safe(value):
+            log.warning(
+                f"{LogTag.AGENT} Dropping unserializable configurable key from a queued run",
+                configurable_key=key,
+                value_type=type(value).__name__,
+            )
+            continue
+        kept[key] = value
+    return cast(AgentConfigurable, kept)
 
 
 async def prepare_run_from_item(
