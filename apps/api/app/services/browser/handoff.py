@@ -21,7 +21,7 @@ from app.constants.browser import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.schemas.browser import HandoffRecord
+from app.schemas.browser import HandoffOutcome, HandoffRecord
 from shared.py.wide_events import log
 
 
@@ -64,9 +64,10 @@ async def get_conversation_pending_handoff(conversation_id: str) -> str | None:
 
 
 async def resolve_handoff(
-    handoff_id: str, decision: HandoffDecision, user_id: str
+    handoff_id: str, decision: HandoffDecision, user_id: str, message: str | None = None
 ) -> HandoffStatus | None:
-    """Resolve a pending handoff. Returns the new status, None if it does not
+    """Resolve a pending handoff, optionally attaching a free-text note the user
+    sends back with a continue. Returns the new status, None if it does not
     exist/expired. Raises ``PermissionError`` if the caller does not own it.
     One-time: a settled handoff keeps its original status.
     """
@@ -82,7 +83,8 @@ async def resolve_handoff(
     new_status = (
         HandoffStatus.COMPLETED if decision == HandoffDecision.CONTINUE else HandoffStatus.CANCELLED
     )
-    await _store(handoff_id, record.model_copy(update={"status": new_status}))
+    note = (message or "").strip() or None
+    await _store(handoff_id, record.model_copy(update={"status": new_status, "message": note}))
     if record.conversation_id:
         await redis_cache.delete(_conv_key(record.conversation_id))
     log.info(
@@ -91,13 +93,14 @@ async def resolve_handoff(
     return new_status
 
 
-async def await_handoff(handoff_id: str, timeout_seconds: int) -> HandoffStatus:
-    """Block until the handoff is resolved or ``timeout_seconds`` elapses."""
+async def await_handoff(handoff_id: str, timeout_seconds: int) -> HandoffOutcome:
+    """Block until the handoff is resolved or ``timeout_seconds`` elapses, returning
+    the terminal status plus any note the user attached."""
     loop = asyncio.get_event_loop()
     deadline = loop.time() + timeout_seconds
     while loop.time() < deadline:
         record = await get_handoff(handoff_id)
         if record is not None and record.status != HandoffStatus.PENDING:
-            return record.status
+            return HandoffOutcome(status=record.status, message=record.message)
         await asyncio.sleep(HANDOFF_POLL_INTERVAL_SECONDS)
-    return HandoffStatus.TIMEOUT
+    return HandoffOutcome(status=HandoffStatus.TIMEOUT)

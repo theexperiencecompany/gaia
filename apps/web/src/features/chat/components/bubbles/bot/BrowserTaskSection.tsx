@@ -1,22 +1,27 @@
 "use client";
 
+import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
+import { Input } from "@heroui/input";
+import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { Spinner } from "@heroui/spinner";
 import {
+  AiWebBrowsingIcon,
   Alert01Icon,
   CheckmarkCircle02Icon,
   CreditCardIcon,
   CursorInWindowIcon,
   EyeIcon,
-  GlobeIcon,
+  FullScreenIcon,
   ShieldUserIcon,
   SquareArrowUpRight02Icon,
   StopCircleIcon,
 } from "@icons";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "@/components/shared/icons";
 import { useImageDialog } from "@/stores/uiStore";
 import type {
   BrowserFrameMessage,
@@ -176,13 +181,19 @@ function useLiveBrowser(socketUrl: string | null, interactive: boolean) {
     };
     const onKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
-      const printable = e.key.length === 1;
+      // CDP only fires a key's default action (submit a form, insert a newline)
+      // when `text` is set. A single character sends itself; Enter must send the
+      // carriage return "\r" or nothing happens — verified against a real page.
+      // Other non-printable keys (Tab, Backspace, arrows) act on their virtual
+      // key code alone and take no text.
+      const text =
+        e.key.length === 1 ? e.key : e.key === "Enter" ? "\r" : undefined;
       send({
         type: "key",
         event: "keyDown",
         key: e.key,
         code: e.code,
-        text: printable ? e.key : undefined,
+        text,
         windowsVirtualKeyCode: e.keyCode,
         nativeVirtualKeyCode: e.keyCode,
       });
@@ -357,6 +368,119 @@ function StepRow({ step }: { step: BrowserStepSnapshot }) {
   );
 }
 
+// Once the task is done the live session is gone (its live view would 404), so
+// the card replays the captured step screenshots instead — a navigable slideshow
+// (main frame + prev/next + a filmstrip), the in-card twin of the shared recap
+// page (services/browser/replay.py).
+function RecapViewer({ steps }: { steps: BrowserStepSnapshot[] }) {
+  const { openDialog } = useImageDialog();
+  const shots = useMemo(
+    () =>
+      steps.filter((s): s is BrowserStepSnapshot & { screenshot: string } =>
+        Boolean(s.screenshot),
+      ),
+    [steps],
+  );
+  const [idx, setIdx] = useState(0);
+  const count = shots.length;
+  const go = useCallback(
+    (i: number) => setIdx(Math.max(0, Math.min(count - 1, i))),
+    [count],
+  );
+
+  if (count === 0) return null;
+  const safeIdx = Math.min(idx, count - 1);
+  const current = shots[safeIdx];
+  const atStart = safeIdx <= 0;
+  const atEnd = safeIdx >= count - 1;
+
+  return (
+    <div className="overflow-hidden rounded-2xl bg-zinc-900">
+      <div className="group relative bg-zinc-950">
+        <button
+          type="button"
+          onClick={() => openDialog(current.screenshot)}
+          className="block w-full"
+          aria-label={`Enlarge step ${current.index} screenshot`}
+        >
+          <Image
+            src={current.screenshot}
+            alt={`Step ${current.index} screenshot`}
+            width={1280}
+            height={720}
+            className="h-auto w-full"
+            unoptimized
+          />
+          <span className="pointer-events-none absolute right-2.5 top-2.5 flex size-7 items-center justify-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100">
+            <FullScreenIcon className="size-3.5" />
+          </span>
+        </button>
+        {!atStart && (
+          <Button
+            isIconOnly
+            radius="full"
+            size="sm"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100 data-[hover=true]:bg-black/65"
+            aria-label="Previous step"
+            onPress={() => go(safeIdx - 1)}
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+        )}
+        {!atEnd && (
+          <Button
+            isIconOnly
+            radius="full"
+            size="sm"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100 data-[hover=true]:bg-black/65"
+            aria-label="Next step"
+            onPress={() => go(safeIdx + 1)}
+          >
+            <ChevronRight className="size-4" />
+          </Button>
+        )}
+      </div>
+
+      <div className="flex items-center justify-center gap-2 py-2.5">
+        <span className="text-xs font-medium text-zinc-400">
+          Step {current.index}
+        </span>
+        <span className="size-1 rounded-full bg-zinc-600" />
+        <span className="text-xs tabular-nums text-zinc-500">
+          <span className="text-zinc-200">{safeIdx + 1}</span> / {count}
+        </span>
+      </div>
+
+      {count > 1 && (
+        <div className="flex gap-2 overflow-x-auto border-t border-white/5 p-2.5">
+          {shots.map((s, i) => (
+            <button
+              key={`recap-thumb-${s.index}`}
+              type="button"
+              onClick={() => go(i)}
+              aria-label={`Go to step ${s.index}`}
+              className={`shrink-0 overflow-hidden rounded-lg transition ${
+                i === safeIdx
+                  ? "opacity-100 ring-2 ring-[#00bbff]"
+                  : "opacity-60 ring-1 ring-white/10 hover:opacity-100 hover:ring-white/25"
+              }`}
+            >
+              <Image
+                src={s.screenshot}
+                alt=""
+                width={96}
+                height={54}
+                className="h-[52px] w-[92px] object-cover"
+                unoptimized
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Resolved elsewhere (chat, another device) or after a reload — server status
 // is the source of truth, so the card never sits on a stale "pending".
 const RESOLVED_META: Record<
@@ -365,10 +489,10 @@ const RESOLVED_META: Record<
 > = {
   completed: {
     icon: CheckmarkCircle02Icon,
-    label: "Done — resuming the task.",
+    label: "Done, resuming the task.",
   },
   cancelled: { icon: StopCircleIcon, label: "Stopped." },
-  timeout: { icon: StopCircleIcon, label: "Timed out — the task was stopped." },
+  timeout: { icon: StopCircleIcon, label: "Timed out, the task was stopped." },
 };
 
 function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
@@ -377,9 +501,18 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
   const [serverStatus, setServerStatus] = useState<BrowserHandoffStatus | null>(
     null,
   );
+  const [note, setNote] = useState("");
+  // The primary action starts as "open the full browser"; only once the user has
+  // actually opened it does the confirm ("Done") make sense as the next step.
+  const [opened, setOpened] = useState(false);
   const meta = HANDOFF_META[handoff.category] ?? HANDOFF_META.none;
   const Icon = meta.icon;
   const liveToken = useLiveViewToken(handoff.session_id);
+  const pageUrl =
+    handoff.live_view_url && liveToken
+      ? liveViewPageUrl(handoff.live_view_url, liveToken)
+      : null;
+  const hasNote = note.trim().length > 0;
 
   const settled = serverStatus && serverStatus !== "pending";
 
@@ -398,11 +531,15 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
     };
   }, [decided, settled, handoff.handoff_id]);
 
-  const decide = async (decision: "continue" | "cancel") => {
+  const decide = async (decision: "continue" | "cancel", message?: string) => {
     setPending(true);
     setDecided(decision);
     try {
-      await browserApi.postHandoffDecision(handoff.handoff_id, decision);
+      await browserApi.postHandoffDecision(
+        handoff.handoff_id,
+        decision,
+        message,
+      );
     } catch {
       setDecided(null);
     } finally {
@@ -417,8 +554,8 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
           <Icon className="size-4 text-amber-400" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-amber-100">{meta.title}</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-amber-200/70">
+          <p className="text-sm font-semibold text-amber-50">{meta.title}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-amber-200/60">
             {handoff.reason}
           </p>
         </div>
@@ -427,9 +564,9 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
       {handoff.live_view_url && liveToken && (
         <div className="mt-3">
           <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
-            <CursorInWindowIcon className="size-3.5 text-amber-300/80" />
-            <span className="text-[11px] font-medium text-amber-200/80">
-              Live browser — you're in control
+            <CursorInWindowIcon className="size-3.5 text-amber-300/70" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-200/50">
+              Live browser, you're in control
             </span>
           </div>
           <LiveBrowserCanvas
@@ -456,48 +593,164 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
           );
         })()
       ) : (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            color="warning"
-            radius="full"
-            className="font-medium"
-            isLoading={pending}
-            startContent={
-              !pending ? (
-                <CheckmarkCircle02Icon className="size-4" />
-              ) : undefined
-            }
-            onPress={() => decide("continue")}
-          >
-            I've done it — continue
-          </Button>
-          {handoff.live_view_url && liveToken && (
+        <div className="mt-3 space-y-2.5 border-t border-amber-500/15 pt-3">
+          {!opened && pageUrl ? (
             <Button
               as="a"
-              href={liveViewPageUrl(handoff.live_view_url, liveToken)}
+              href={pageUrl}
               target="_blank"
               rel="noopener noreferrer"
-              size="sm"
-              variant="flat"
+              color="warning"
               radius="full"
-              startContent={<SquareArrowUpRight02Icon className="size-4" />}
+              className="w-full font-semibold"
+              endContent={<SquareArrowUpRight02Icon className="size-4" />}
+              onPress={() => setOpened(true)}
             >
-              Open full browser
+              Open the browser to sign in
+            </Button>
+          ) : (
+            <Button
+              color="warning"
+              radius="full"
+              className="w-full font-semibold"
+              isLoading={pending}
+              startContent={
+                !pending ? (
+                  <CheckmarkCircle02Icon className="size-4" />
+                ) : undefined
+              }
+              onPress={() => decide("continue", note.trim() || undefined)}
+            >
+              {hasNote ? "Send note and continue" : "I'm done, continue"}
             </Button>
           )}
-          <Button
-            size="sm"
-            variant="light"
-            radius="full"
-            className="ml-auto text-zinc-400"
-            startContent={<StopCircleIcon className="size-4" />}
-            onPress={() => decide("cancel")}
-          >
-            Stop
-          </Button>
+
+          <div className="flex items-center gap-2">
+            <Input
+              size="sm"
+              radius="full"
+              value={note}
+              onValueChange={setNote}
+              isDisabled={pending}
+              aria-label="Note for the assistant"
+              placeholder={'Or tell me what to do, e.g. "just grab the photo"'}
+              classNames={{
+                inputWrapper:
+                  "bg-black/25 data-[hover=true]:bg-black/35 group-data-[focus=true]:bg-black/35",
+                input: "text-amber-50 placeholder:text-amber-200/35",
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  decide("continue", note.trim() || undefined);
+                }
+              }}
+            />
+            <Button
+              variant="light"
+              size="sm"
+              radius="full"
+              className="shrink-0 text-amber-200/50"
+              startContent={<StopCircleIcon className="size-4" />}
+              onPress={() => decide("cancel")}
+            >
+              Stop
+            </Button>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// The same shimmer the chat loading text uses (LoadingIndicator.tsx) — a bright
+// sweep over dim-white, so "what it's doing right now" reads identically.
+function ShimmerText({ text }: { text: string }) {
+  return (
+    <span
+      className="animate-shine bg-size-[200%_100%] bg-clip-text text-transparent"
+      style={{
+        backgroundImage:
+          "linear-gradient(90deg, rgb(255 255 255 / 0.3) 20%, rgb(255 255 255) 50%, rgb(255 255 255 / 0.3) 80%)",
+      }}
+    >
+      {text}
+    </span>
+  );
+}
+
+// The live browser, in its own surface. Full-screen expands only this preview
+// (not the whole card) and keeps the current action captioned at the bottom.
+function LivePreview({
+  socketUrl,
+  pageUrl,
+  currentTask,
+}: {
+  socketUrl: string;
+  pageUrl: string;
+  currentTask?: string;
+}) {
+  const [fullscreen, setFullscreen] = useState(false);
+  // One socket: the canvas mounts inline OR in the modal, never both at once.
+  const canvas = (
+    <LiveBrowserCanvas socketUrl={socketUrl} interactive={false} />
+  );
+
+  return (
+    <div className="rounded-2xl bg-zinc-900 p-3">
+      <div className="mb-2 flex items-center gap-1.5 px-0.5">
+        <EyeIcon className="size-3.5 text-zinc-400" />
+        <span className="text-xs font-medium text-zinc-300">Live preview</span>
+        <Button
+          isIconOnly
+          size="sm"
+          variant="light"
+          radius="full"
+          className="ml-auto size-6 min-w-6 text-zinc-400"
+          aria-label="Full screen live preview"
+          onPress={() => setFullscreen(true)}
+        >
+          <FullScreenIcon className="size-4" />
+        </Button>
+      </div>
+
+      {!fullscreen && canvas}
+
+      <div className="mt-2 px-0.5">
+        <Button
+          as="a"
+          href={pageUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          size="sm"
+          variant="light"
+          radius="full"
+          className="h-7 px-2 text-xs text-zinc-400"
+          startContent={<SquareArrowUpRight02Icon className="size-3.5" />}
+        >
+          Open full browser
+        </Button>
+      </div>
+
+      <Modal
+        isOpen={fullscreen}
+        onOpenChange={setFullscreen}
+        size="full"
+        scrollBehavior="inside"
+      >
+        <ModalContent className="bg-zinc-950">
+          <ModalBody className="flex flex-col gap-4 p-4 sm:p-6">
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              {fullscreen && <div className="w-full max-w-6xl">{canvas}</div>}
+            </div>
+            {currentTask && (
+              <div className="mx-auto w-full max-w-6xl shrink-0 rounded-2xl bg-zinc-900 px-4 py-3 text-sm">
+                <ShimmerText text={currentTask} />
+              </div>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </div>
   );
 }
@@ -512,7 +765,6 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
     [snapshots],
   );
 
-  const liveViewToken = useLiveViewToken(session?.session_id);
   const pendingHandoff = handoffs.find((h) => h.status === "pending");
   const status: BrowserSessionStatus =
     result?.status ??
@@ -520,66 +772,91 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
   const statusMeta = STATUS_META[status];
   const active = !result;
   const working = active && !pendingHandoff;
+  // Only an active session has an owner — minting a live-view token after it
+  // ends 403s ("Not authorized for this session"). Fetch it only while the live
+  // view is actually shown; the done state renders the recap instead.
+  const liveViewToken = useLiveViewToken(working ? session?.session_id : null);
+  // What the agent is doing right now — the latest step's goal, surfaced live
+  // on the (collapsed) steps header so the user sees progress without expanding.
+  const currentTask = working ? steps[steps.length - 1]?.goal : undefined;
 
   return (
     <div className="w-full max-w-lg rounded-2xl bg-zinc-800 p-4">
-      <div className="mb-1 flex items-center gap-2">
-        <GlobeIcon className="size-4 text-zinc-400" />
+      <div className="flex items-center gap-2">
+        <AiWebBrowsingIcon className="size-4 text-zinc-400" />
         <span className="text-sm font-semibold text-zinc-100">Browser</span>
-        <Chip
-          size="sm"
-          variant="flat"
-          color={statusMeta.color}
-          className="ml-auto"
-          startContent={
-            working ? (
-              <Spinner size="sm" color="current" className="mr-1" />
-            ) : undefined
-          }
-        >
-          {statusMeta.label}
-        </Chip>
+        <div className="ml-auto flex items-center gap-1.5">
+          {working && (
+            <Spinner size="sm" color="current" className="text-[#00bbff]" />
+          )}
+          <Chip
+            size="sm"
+            variant="flat"
+            color={statusMeta.color}
+            // Browser accent is #00bbff — apply it to the live "Working" state.
+            classNames={
+              working
+                ? { base: "!bg-[#00bbff]/15", content: "!text-[#00bbff]" }
+                : undefined
+            }
+          >
+            {statusMeta.label}
+          </Chip>
+        </div>
       </div>
 
       {session?.task && (
-        <p className="mb-3 text-[13px] leading-snug text-zinc-300">
+        <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-zinc-400">
           {session.task}
         </p>
       )}
 
-      {session?.live_view_url && working && liveViewToken && (
-        <div className="mb-3">
-          <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
-            <EyeIcon className="size-3.5 text-zinc-400" />
-            <span className="text-[11px] font-medium text-zinc-400">
-              Live browser
-            </span>
-          </div>
-          <LiveBrowserCanvas
+      <div className="mt-3 space-y-3">
+        {working && session?.live_view_url && liveViewToken && (
+          <LivePreview
             socketUrl={liveViewSocketUrl(session.live_view_url, liveViewToken)}
-            interactive={false}
+            pageUrl={liveViewPageUrl(session.live_view_url, liveViewToken)}
+            currentTask={currentTask}
           />
-          <div className="mt-2">
-            <Button
-              as="a"
-              href={liveViewPageUrl(session.live_view_url, liveViewToken)}
-              target="_blank"
-              rel="noopener noreferrer"
-              size="sm"
-              variant="flat"
-              radius="full"
-              startContent={<SquareArrowUpRight02Icon className="size-4" />}
-            >
-              Open full browser
-            </Button>
-          </div>
-        </div>
-      )}
+        )}
 
-      <div className="space-y-2">
-        {steps.map((step) => (
-          <StepRow key={`browser-step-${step.index}`} step={step} />
-        ))}
+        {result && <RecapViewer steps={steps} />}
+
+        {steps.length > 0 && (
+          <Accordion isCompact className="px-0" variant="light">
+            <AccordionItem
+              key="steps"
+              aria-label="Steps"
+              title={
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 text-sm font-medium text-zinc-300">
+                    Steps
+                  </span>
+                  <Chip
+                    size="sm"
+                    variant="flat"
+                    classNames={{
+                      base: "h-5 bg-zinc-700",
+                      content: "px-1.5 text-xs text-zinc-300",
+                    }}
+                  >
+                    {steps.length}
+                  </Chip>
+                  {currentTask && (
+                    <span className="min-w-0 flex-1 truncate text-xs">
+                      <ShimmerText text={currentTask} />
+                    </span>
+                  )}
+                </div>
+              }
+              classNames={{ trigger: "py-2", content: "space-y-2 pb-2" }}
+            >
+              {steps.map((step) => (
+                <StepRow key={`browser-step-${step.index}`} step={step} />
+              ))}
+            </AccordionItem>
+          </Accordion>
+        )}
 
         {pendingHandoff && (
           <HandoffPrompt

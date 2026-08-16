@@ -1,8 +1,11 @@
-"""Tests for BrowserTaskRunner — progress, the mid-run handoff, cancel, timeout.
+"""Tests for BrowserTaskRunner — progress, the agent-driven handoff, cancel, timeout.
 
 Browser-Use is faked so the tests exercise the runner's orchestration without a
 real browser: a scripted FakeAgent invokes the runner's step callback exactly as
-Browser-Use does (after the model picks actions, before they execute).
+Browser-Use does (after the model picks actions, before they execute). The runner
+no longer judges sensitivity itself — the agent hands off for itself by calling
+``_handle_takeover`` (the ``request_human_takeover`` / ``solve_captcha_with_help``
+actions), which is what the takeover tests below exercise directly.
 """
 
 import asyncio
@@ -13,7 +16,6 @@ import browser_use
 import pytest
 
 from app.constants.browser import BrowserEventKind, BrowserSessionStatus, HandoffStatus
-from app.schemas.browser import SensitiveActionVerdict
 from app.services.browser import runner as runner_mod
 from app.services.browser.runner import BrowserTaskRunner
 from app.services.browser.session import BrowserHostSession
@@ -84,11 +86,8 @@ class FakeAgent:
 
 @pytest.fixture
 def patch_browser(monkeypatch):
-    from unittest.mock import AsyncMock
-
     monkeypatch.setattr(browser_use, "Agent", FakeAgent)
-    # The runner starts the browser and registers the stealth init script on it, so
-    # the fake needs awaitable start() / _cdp_add_init_script().
+    # The runner constructs a Browser over CDP; the fake needs an awaitable stub.
     monkeypatch.setattr(browser_use, "Browser", lambda **kwargs: AsyncMock())
     # CDN off by default → screenshots fall back to inline data URLs.
     monkeypatch.setattr(runner_mod, "upload_step_screenshot", AsyncMock(return_value=None))
@@ -135,38 +134,18 @@ def _collector():
     return events, emit
 
 
-def _safe(monkeypatch):
-    monkeypatch.setattr(
-        runner_mod,
-        "classify_step",
-        AsyncMock(return_value=SensitiveActionVerdict(requires_approval=False)),
-    )
-
-
-def _sensitive(monkeypatch, category):
-    monkeypatch.setattr(
-        runner_mod,
-        "classify_step",
-        AsyncMock(return_value=SensitiveActionVerdict(requires_approval=True, category=category)),
-    )
-
-
 async def test_takeover_completed_lets_agent_continue():
-    from unittest.mock import AsyncMock
-
     _, emit = _collector()
     runner = _make_runner(
         emit=emit, request_handoff=AsyncMock(return_value=HandoffStatus.COMPLETED)
     )
     out = await runner._handle_takeover("Enter your card", "payment")
-    assert "continue" in out.lower()
+    assert "verify" in out.lower() or "continue" in out.lower()
     assert runner._handed_off is True
     assert runner._stopped is False
 
 
 async def test_takeover_cancelled_stops_run():
-    from unittest.mock import AsyncMock
-
     from app.services.browser.exceptions import BrowserHandoffCancelled
 
     _, emit = _collector()
@@ -180,8 +159,6 @@ async def test_takeover_cancelled_stops_run():
 
 
 async def test_takeover_bounded_by_max_handoffs():
-    from unittest.mock import AsyncMock
-
     from app.constants.browser import MAX_HANDOFFS_PER_TASK
     from app.services.browser.exceptions import BrowserHandoffCancelled
 
@@ -195,11 +172,10 @@ async def test_takeover_bounded_by_max_handoffs():
         await runner._handle_takeover("one too many", "none")
 
 
-async def test_happy_path_emits_steps_and_result(patch_browser, monkeypatch):
-    _safe(monkeypatch)
+async def test_happy_path_emits_steps_and_result(patch_browser):
     FakeAgent.script = [
-        {"goal": "Open site", "actions": [("go_to_url", {"url": "x"})]},
-        {"goal": "Read results", "actions": [("extract_content", {})]},
+        {"goal": "Open site", "actions": [("navigate", {"url": "x"})]},
+        {"goal": "Read results", "actions": [("extract", {})]},
     ]
     events, emit = _collector()
     result = await _make_runner(emit=emit).run("do a thing")
@@ -213,15 +189,12 @@ async def test_happy_path_emits_steps_and_result(patch_browser, monkeypatch):
 
 
 async def test_screenshot_uses_cdn_url_when_available(patch_browser, monkeypatch):
-    from unittest.mock import AsyncMock
-
-    _safe(monkeypatch)
     monkeypatch.setattr(
         runner_mod,
         "upload_step_screenshot",
         AsyncMock(return_value="https://cdn.example.com/browser_steps/c1/step_1.png?sig=abc"),
     )
-    FakeAgent.script = [{"goal": "Open", "actions": [("go_to_url", {"url": "x"})]}]
+    FakeAgent.script = [{"goal": "Open", "actions": [("navigate", {"url": "x"})]}]
     events, emit = _collector()
     await _make_runner(emit=emit).run("x")
 
@@ -229,77 +202,14 @@ async def test_screenshot_uses_cdn_url_when_available(patch_browser, monkeypatch
     assert step.screenshot.startswith("https://cdn.example.com/")
 
 
-async def test_handoff_completed_marks_completed(patch_browser, monkeypatch):
-    from app.constants.browser import HandoffStrategy, SensitiveCategory
-
-    _sensitive(monkeypatch, SensitiveCategory.PAYMENT)
-    monkeypatch.setattr(
-        runner_mod,
-        "resolve_strategy",
-        lambda cat, autonomous_override=None: HandoffStrategy.HANDOFF,
-    )
-    FakeAgent.script = [{"goal": "Confirm & Pay", "actions": [("click_element", {"text": "Pay"})]}]
-    events, emit = _collector()
-    handoff = AsyncMock(return_value=HandoffStatus.COMPLETED)
-
-    runner = _make_runner(emit=emit, request_handoff=handoff)
-    result = await runner.run("pay")
-    handoff.assert_awaited_once()
-    assert result.status == BrowserSessionStatus.COMPLETED
-    # The agent never executed the sensitive action itself.
-    assert runner._agent.executed == []
-
-
-async def test_handoff_cancelled_marks_cancelled(patch_browser, monkeypatch):
-    from app.constants.browser import HandoffStrategy, SensitiveCategory
-
-    _sensitive(monkeypatch, SensitiveCategory.PAYMENT)
-    monkeypatch.setattr(
-        runner_mod,
-        "resolve_strategy",
-        lambda cat, autonomous_override=None: HandoffStrategy.HANDOFF,
-    )
-    FakeAgent.script = [{"goal": "Confirm & Pay", "actions": [("click_element", {"text": "Pay"})]}]
-    events, emit = _collector()
-    handoff = AsyncMock(return_value=HandoffStatus.CANCELLED)
-
-    runner = _make_runner(emit=emit, request_handoff=handoff)
-    result = await runner.run("pay")
-    assert result.status == BrowserSessionStatus.CANCELLED
-    assert runner._agent.executed == []
-
-
-async def test_proceed_strategy_runs_action(patch_browser, monkeypatch):
-    from app.constants.browser import HandoffStrategy, SensitiveCategory
-
-    _sensitive(monkeypatch, SensitiveCategory.PAYMENT)
-    monkeypatch.setattr(
-        runner_mod,
-        "resolve_strategy",
-        lambda cat, autonomous_override=None: HandoffStrategy.PROCEED,
-    )
-    FakeAgent.script = [{"goal": "Pay with agent card", "actions": [("click_element", {})]}]
-    events, emit = _collector()
-    handoff = AsyncMock()
-
-    runner = _make_runner(emit=emit, request_handoff=handoff)
-    result = await runner.run("pay")
-    handoff.assert_not_awaited()  # autonomous — no handoff
-    assert runner._agent.executed == ["Pay with agent card"]
-    assert result.status == BrowserSessionStatus.COMPLETED
-
-
-async def test_cancellation_stops_run(patch_browser, monkeypatch):
-    _safe(monkeypatch)
-    FakeAgent.script = [{"goal": "step", "actions": [("go_to_url", {})]}]
+async def test_cancellation_stops_run(patch_browser):
+    FakeAgent.script = [{"goal": "step", "actions": [("navigate", {})]}]
     events, emit = _collector()
     result = await _make_runner(emit=emit, is_cancelled=AsyncMock(return_value=True)).run("x")
     assert result.status == BrowserSessionStatus.CANCELLED
 
 
 async def test_timeout_marks_failed(patch_browser, monkeypatch):
-    _safe(monkeypatch)
-
     async def _slow_run(self, max_steps):
         await asyncio.sleep(1)
         return _History()

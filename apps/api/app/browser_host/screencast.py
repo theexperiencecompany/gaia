@@ -30,10 +30,12 @@ if TYPE_CHECKING:
 
     from app.browser_host.chromium import ChromiumHost, HostSession
 
-# Lossless PNG so the live view is pixel-identical to the real page (no JPEG
-# artifacts on text). ``_SCREENCAST_QUALITY`` only applies to the "jpeg" fallback.
-_SCREENCAST_FORMAT = "png"
-_SCREENCAST_QUALITY = 95
+# JPEG, not PNG: a live view is judged on smoothness, and a 1920-wide PNG frame is
+# ~8-10x larger than JPEG (and slower to encode in Chromium + decode in the browser),
+# which is what makes the stream lag. q82 keeps text crisp while cutting the per-frame
+# bytes enough to stream fluidly. ``_SCREENCAST_QUALITY`` applies only to "jpeg".
+_SCREENCAST_FORMAT = "jpeg"
+_SCREENCAST_QUALITY = 82
 # The frame is captured at the page's CSS viewport resolution (BROWSER_VIEWPORT_*,
 # currently 1920x1200); these caps sit above it so the frame is never downscaled.
 _DEFAULT_MAX_WIDTH = 2560
@@ -171,7 +173,15 @@ async def _send_frames(client_ws: WebSocket, frames: asyncio.Queue[str], meta: _
     while True:
         data = await frames.get()
         await client_ws.send_text(
-            json.dumps({"type": "frame", "data": data, "url": meta.url, "title": meta.title})
+            json.dumps(
+                {
+                    "type": "frame",
+                    "data": data,
+                    "format": _SCREENCAST_FORMAT,
+                    "url": meta.url,
+                    "title": meta.title,
+                }
+            )
         )
 
 

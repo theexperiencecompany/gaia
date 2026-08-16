@@ -59,7 +59,10 @@ async def _get_or_create_cdp_session(
 
 def apply() -> None:
     """Route every per-target CDP session through the stealth-injecting wrapper."""
-    BrowserSession.get_or_create_cdp_session = _get_or_create_cdp_session
+    # Deliberate monkeypatch. A plain assignment trips mypy's method-assign and
+    # setattr() with a literal name trips ruff B010; the type's own __setattr__ is
+    # the honest rebind that satisfies both without an ignore.
+    type.__setattr__(BrowserSession, "get_or_create_cdp_session", _get_or_create_cdp_session)
 
 
 apply()

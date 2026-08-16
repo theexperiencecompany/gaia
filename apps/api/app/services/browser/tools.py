@@ -61,10 +61,13 @@ def build_browser_tools(
             description=(
                 "Hand a CAPTCHA to the human to solve in the live browser. Call this "
                 "when you see a CAPTCHA/reCAPTCHA/hCaptcha challenge; the user solves "
-                "it and you then continue."
+                "it and you then continue. `challenge` is shown to the user verbatim "
+                "as their instruction, so write it as a short second-person directive "
+                "describing exactly what to solve (e.g. 'Select all squares with "
+                "motorcycles, then click Verify')."
             )
         )
-        async def solve_captcha_with_help() -> str:
-            return await handle_takeover("A CAPTCHA needs you to solve it in the browser.", "none")
+        async def solve_captcha_with_help(challenge: str) -> str:
+            return await handle_takeover(challenge, "none")
 
     return tools

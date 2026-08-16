@@ -55,14 +55,6 @@ class SensitiveCategory(str, Enum):
     IRREVERSIBLE = "irreversible"
 
 
-class HandoffStrategy(str, Enum):
-    """What to do when the agent reaches a sensitive step."""
-
-    HANDOFF = "handoff"  # pause, surface live-view, let the human do it, then continue
-    PROCEED = "proceed"  # let the agent do it autonomously (e.g. a configured agent card)
-    ABORT = "abort"  # stop the task rather than do it
-
-
 class HandoffStatus(str, Enum):
     PENDING = "pending"
     COMPLETED = "completed"  # user finished the step in live-view → resume
@@ -94,6 +86,12 @@ HANDOFF_KEY_TTL_SECONDS = 3600
 # carries no 32-char session id and no long ?t= token. TTL bounds the link's life.
 BROWSER_LIVE_CODE_KEY_PREFIX = "browser:livecode:"
 BROWSER_LIVE_CODE_TTL_SECONDS = 3600
+
+# Replay: a short code maps to a finished session's screenshot set, so the recap
+# link (browser.heygaia.io/replays/{code}) plays every step back as a slideshow.
+# Longer-lived than the live code — a recap should still open days later.
+BROWSER_REPLAY_CODE_KEY_PREFIX = "browser:replay:"
+BROWSER_REPLAY_CODE_TTL_SECONDS = 7 * 24 * 3600
 # Bytes of entropy for the code (token_urlsafe → ~1.3 chars/byte, so ~12 chars).
 BROWSER_LIVE_CODE_ENTROPY_BYTES = 9
 
@@ -116,59 +114,6 @@ BROWSER_TAKEOVER_PREAMBLE = (
     "image-grid challenge, do NOT attempt to solve it yourself — call the "
     "`solve_captcha_with_help` action immediately on the FIRST challenge so the user "
     "solves it in the live browser, then continue. Never keep clicking challenge tiles."
-)
-
-# ---------------------------------------------------------------------------
-# Sensitive-action classification. A structural allowlist of Browser-Use action
-# names that can never commit or leak secrets (pure navigation / reading). Steps
-# whose planned actions are ALL in this set skip the LLM classifier — a
-# deterministic fast path. Interactive actions go to the classifier.
-# ---------------------------------------------------------------------------
-# ``request_human_takeover`` is the agent asking for help — inherently safe, and
-# it must not be gated by the classifier (that would double-handle the handoff).
-# Deterministic "always sensitive" backstop so the money step never rides on a
-# single LLM call: a committing action on one of these URL paths, or an action
-# whose target reads like a commit, forces a handoff regardless of the judge.
-PAYMENT_URL_PATTERNS: tuple[str, ...] = (
-    "/checkout",
-    "/payment",
-    "/pay",
-    "/billing",
-    "/confirm-order",
-    "/purchase",
-    "/subscribe",
-    "/place-order",
-)
-PAYMENT_ACTION_HINTS: tuple[str, ...] = (
-    "pay",
-    "place order",
-    "buy now",
-    "confirm purchase",
-    "complete purchase",
-    "complete order",
-    "subscribe",
-    "checkout",
-)
-
-NON_COMMITTING_ACTIONS: frozenset[str] = frozenset(
-    {
-        "request_human_takeover",
-        "go_to_url",
-        "search",
-        "search_google",
-        "go_back",
-        "scroll",
-        "scroll_down",
-        "scroll_up",
-        "scroll_to_text",
-        "wait",
-        "wait_for_captcha_solution",
-        "extract_content",
-        "extract_structured_data",
-        "read_content",
-        "get_dropdown_options",
-        "done",
-    }
 )
 
 # Desktop viewport for the browser agent so pages render at a normal laptop

@@ -119,7 +119,7 @@ _VIEWER_TEMPLATE = """<!doctype html>
   ws.onmessage = function (ev) {
     var msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
-    if (msg.type === "frame") { img.src = "data:image/png;base64," + msg.data; }
+    if (msg.type === "frame") { img.src = "data:image/" + (msg.format || "jpeg") + ";base64," + msg.data; }
   };
   function send(obj) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
   function toFramePoint(e) {

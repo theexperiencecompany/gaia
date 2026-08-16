@@ -68,7 +68,7 @@ async def decide_browser_handoff(
     )
 
     try:
-        resolved = await resolve_handoff(handoff_id, payload.decision, user_id)
+        resolved = await resolve_handoff(handoff_id, payload.decision, user_id, payload.message)
     except PermissionError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to resolve this handoff"

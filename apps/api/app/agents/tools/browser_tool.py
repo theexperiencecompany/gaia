@@ -28,6 +28,7 @@ from app.schemas.browser import (
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
     BrowserStepSnapshot,
+    HandoffOutcome,
     HandoffRequest,
 )
 from app.services.browser.bot_delivery import BotProgressDelivery
@@ -38,6 +39,35 @@ from app.services.browser.runner import BrowserTaskRunner
 from app.services.browser.session import browser_session
 from app.templates.docstrings.browser_tool_docs import BROWSER_TASK
 from shared.py.wide_events import log
+
+# Screenshots stream into the chat live, so the reply must never narrate them.
+_NO_META = (
+    "The step-by-step screenshots were already shown to the user in this chat, so do "
+    "NOT mention screenshots, tools, steps, or 'browser vision' — speak only to the outcome."
+)
+
+
+def _agent_result_message(result: BrowserResultSnapshot) -> str:
+    """Outcome-specific guidance for the assistant's reply — so it confirms a real
+    result, owns a stop, or reports a failure, but never claims success it didn't get."""
+    summary = result.summary.strip()
+    if result.status == BrowserSessionStatus.COMPLETED and result.success:
+        return (
+            f"BROWSER TASK COMPLETED. What was accomplished: {summary or 'the task finished'}.\n\n"
+            f"Reply with a short, natural confirmation of what you found or did. {_NO_META}"
+        )
+    if result.status == BrowserSessionStatus.CANCELLED:
+        return (
+            "BROWSER TASK STOPPED BY THE USER before it finished — it did NOT complete, so "
+            "there is no result and you must not claim one.\n\n"
+            f"Briefly acknowledge you've stopped and ask if they'd like you to try again or "
+            f"do something else. {_NO_META}"
+        )
+    return (
+        f"BROWSER TASK DID NOT COMPLETE. Last state: {summary or 'the task could not be finished'}.\n\n"
+        f"Tell the user honestly and briefly that it couldn't be finished, and why if it's clear. "
+        f"Do not fabricate a result. {_NO_META}"
+    )
 
 
 @tool
@@ -50,7 +80,13 @@ async def browser_task(
 ) -> str:
     configurable = config.get("configurable", {})
     user_id: str = configurable.get("user_id") or ""
-    conversation_id: str = configurable.get("thread_id") or ""
+    # The USER-facing conversation, never the executor's derived `thread_id`
+    # (`executor_<conv>`). A handoff registered here is resolved by a chat reply
+    # ("done"/"stop") that arrives on the comms conversation id — keying it by the
+    # prefixed thread_id would make that lookup miss and the handoff never resume.
+    conversation_id: str = (
+        configurable.get("conversation_id") or configurable.get("thread_id") or ""
+    )
     stream_id: str | None = configurable.get("stream_id")
     root_request_id: str | None = configurable.get("root_request_id")
     source_category = configurable.get("source_category")
@@ -103,7 +139,7 @@ async def browser_task(
         async with browser_session(user_id=user_id, start_url=start_url) as session:
             log.set(browser={"session_id": session.session_id})
 
-            async def request_handoff(req: HandoffRequest) -> HandoffStatus:
+            async def request_handoff(req: HandoffRequest) -> HandoffOutcome:
                 handoff_id = uuid.uuid4().hex
                 await create_pending_handoff(handoff_id, user_id, conversation_id, req.reason)
                 await emit(
@@ -116,7 +152,7 @@ async def browser_task(
                         status=HandoffStatus.PENDING,
                     )
                 )
-                status = await await_handoff(
+                outcome = await await_handoff(
                     handoff_id, settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS
                 )
                 await emit(
@@ -126,10 +162,10 @@ async def browser_task(
                         reason=req.reason,
                         session_id=session.session_id,
                         live_view_url=session.live_view_url,
-                        status=status,
+                        status=outcome.status,
                     )
                 )
-                return status
+                return outcome
 
             runner = BrowserTaskRunner(
                 session=session,
@@ -146,11 +182,12 @@ async def browser_task(
                 stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
                 use_vision=use_vision,
                 solve_captcha=settings.BROWSER_USE_SOLVE_CAPTCHA,
+                flash_mode=settings.BROWSER_USE_FLASH_MODE,
                 user_id=user_id or None,
                 root_request_id=root_request_id,
             )
             result = await runner.run(full_task)
-            return result.summary
+            return _agent_result_message(result)
     except BrowserConcurrencyLimit as exc:
         return str(exc)
     except BrowserUnavailableError as exc:

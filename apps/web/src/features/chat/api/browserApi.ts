@@ -46,10 +46,11 @@ export const browserApi = {
   postHandoffDecision: async (
     handoffId: string,
     decision: BrowserHandoffDecision,
+    message?: string,
   ): Promise<HandoffDecisionResponse | null> => {
     return apiService.post<HandoffDecisionResponse>(
       `/browser/handoffs/${handoffId}/decision`,
-      { decision },
+      { decision, message },
       { silent: true },
     );
   },

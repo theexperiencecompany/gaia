@@ -30,6 +30,7 @@ from app.constants.log_tags import LogTag
 from app.services.browser import registry
 from app.services.browser.live_code import resolve_live_code
 from app.services.browser.live_view import render_live_view_page
+from app.services.browser.replay import render_replay_page, resolve_replay_code
 from app.services.browser.takeover_token import (
     takeover_token_ttl_seconds,
     verify_takeover_token,
@@ -40,6 +41,22 @@ router = APIRouter(tags=["Browser"])
 
 # WebSocket close code for "session unknown or has no live stream" (app 4xxx range).
 _WS_SESSION_GONE = 4404
+
+
+@router.get("/replays/{code}")
+async def replay_page(code: str) -> HTMLResponse:
+    """Standalone recap slideshow for a finished session. ``code`` resolves to the
+    session + step count in Redis; the step screenshots are public R2 URLs, so no
+    per-session auth is needed (the code itself is the unguessable capability)."""
+    log.set(browser={"operation": "replay_page"})
+    record = await resolve_replay_code(code)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Recap not found or expired"
+        )
+    log.set(browser={"session_id": record.session_id})
+    log.info(f"{LogTag.BROWSER} browser replay page served")
+    return HTMLResponse(content=render_replay_page(record))
 
 
 @router.get("/live/{code}")

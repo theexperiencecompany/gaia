@@ -3,7 +3,6 @@
 * ``BrowserCardSnapshot`` union — the ``browser_task_data`` SSE card payloads
   the runner streams (session header, per-step timeline, live-view handoff
   prompt, final result). The frontend folds the accumulated array by ``kind``.
-* ``SensitiveActionVerdict`` — structured output of the LLM sensitivity judge.
 * ``HandoffRequest`` — internal runner→tool contract for a mid-run handoff.
 """
 
@@ -61,6 +60,8 @@ class BrowserResultSnapshot(BaseModel):
     success: bool
     summary: str
     steps: int = 0
+    # A recap slideshow of every step's screenshot — surfaced on success or failure.
+    replay_url: str | None = None
 
 
 BrowserCardSnapshot = (
@@ -75,6 +76,16 @@ class HandoffRecord(BaseModel):
     user_id: str
     conversation_id: str
     reason: str = ""
+    # Optional free-text note the user sends back when continuing ("just grab the
+    # photo, skip the login"). Delivered to the agent as guidance on resume.
+    message: str | None = None
+
+
+class HandoffOutcome(BaseModel):
+    """How a handoff resolved: the terminal status plus the user's optional note."""
+
+    status: HandoffStatus
+    message: str | None = None
 
 
 class LiveCodeRecord(BaseModel):
@@ -84,28 +95,16 @@ class LiveCodeRecord(BaseModel):
     user_id: str
 
 
+class ReplayRecord(BaseModel):
+    """What a short replay code resolves to: the finished session and its step count."""
+
+    session_id: str
+    steps: int
+
+
 # ---------------------------------------------------------------------------
 # Sensitive-action classifier
 # ---------------------------------------------------------------------------
-
-
-class SensitiveActionVerdict(BaseModel):
-    """Structured verdict from the sensitivity judge for one planned step."""
-
-    requires_approval: bool = Field(
-        description=(
-            "True only if the planned action submits a payment, enters "
-            "credentials/OTP, or performs an irreversible/hard-to-undo action."
-        )
-    )
-    category: SensitiveCategory = Field(
-        default=SensitiveCategory.NONE,
-        description="Which kind of sensitive action this is, or 'none' if safe.",
-    )
-    reason: str = Field(
-        default="",
-        description="One short sentence: what the agent is about to do and why it is sensitive.",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +123,7 @@ class HandoffDecisionRequest(BaseModel):
     """Body of ``POST /browser/handoffs/{handoff_id}/decision``."""
 
     decision: HandoffDecision
+    message: str | None = Field(default=None, max_length=2000)
 
 
 class HandoffDecisionResponse(BaseModel):
