@@ -322,6 +322,27 @@ def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
     return available
 
 
+def next_fallback_provider(current: str | None) -> tuple[LLMProviderName, str] | None:
+    """The highest-priority configured provider other than ``current``, and the
+    model to run on it. ``None`` when nothing else is usable.
+
+    The agent graph selects its lane by ``configurable["provider"]`` and never
+    fails over on its own, so this is what a caller that caught a provider
+    failure retries onto. A provider with no model configured is skipped rather
+    than returned with an empty model: the custom dev endpoint's
+    ``PROVIDER_MODELS`` entry is ``settings.DEV_LLM_MODEL or ""``, and pinning
+    ``""`` would trade one dead provider for a guaranteed bad request.
+    """
+    available = _get_available_providers()
+    for priority in sorted(PROVIDER_PRIORITY):
+        name = PROVIDER_PRIORITY[priority]
+        if name == current or name not in available:
+            continue
+        if model := PROVIDER_MODELS.get(name):
+            return name, model
+    return None
+
+
 def _get_ordered_providers(
     available_providers: dict[LLMProviderName, ProviderLLM],
     preferred_provider: LLMProviderName | None,
