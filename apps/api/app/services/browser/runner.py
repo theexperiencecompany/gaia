@@ -19,6 +19,7 @@ import base64
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
+from app.browser_host.stealth import STEALTH_INIT_SCRIPT
 from app.constants.browser import (
     BROWSER_TAKEOVER_PREAMBLE,
     BROWSER_VIEWPORT_HEIGHT,
@@ -139,6 +140,18 @@ class BrowserTaskRunner:
             device_scale_factor=1,
             no_viewport=False,
         )
+
+        # Stealth must be registered on Browser-Use's own CDP connection: an init
+        # script added on any other connection (e.g. the host's) does not fire for
+        # its navigations. Start the browser, then register before the agent runs.
+        await browser.start()
+        try:
+            await browser._cdp_add_init_script(STEALTH_INIT_SCRIPT)
+        except Exception as exc:
+            log.warning(
+                f"{LogTag.BROWSER} stealth init script registration failed",
+                error_type=type(exc).__name__,
+            )
 
         agent_kwargs: dict[str, Any] = {
             "task": task + BROWSER_TAKEOVER_PREAMBLE,

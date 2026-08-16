@@ -87,7 +87,9 @@ def patch_browser(monkeypatch):
     from unittest.mock import AsyncMock
 
     monkeypatch.setattr(browser_use, "Agent", FakeAgent)
-    monkeypatch.setattr(browser_use, "Browser", lambda **kwargs: object())
+    # The runner starts the browser and registers the stealth init script on it, so
+    # the fake needs awaitable start() / _cdp_add_init_script().
+    monkeypatch.setattr(browser_use, "Browser", lambda **kwargs: AsyncMock())
     # CDN off by default → screenshots fall back to inline data URLs.
     monkeypatch.setattr(runner_mod, "upload_step_screenshot", AsyncMock(return_value=None))
     FakeAgent.script = []
@@ -114,6 +116,10 @@ def _make_runner(*, emit, request_handoff=None, is_cancelled=None, task_timeout=
         max_steps=10,
         max_actions_per_step=5,
         task_timeout_seconds=task_timeout,
+        step_timeout_seconds=180,
+        # 0 so the wall-clock stays equal to task_timeout in these tests (the real
+        # runner adds a per-handoff allowance on top).
+        handoff_timeout_seconds=0,
         stream_screenshots=True,
         use_vision=True,
         solve_captcha=False,

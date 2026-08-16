@@ -31,6 +31,7 @@ import httpx
 from playwright.sync_api import sync_playwright
 
 from app.config.settings import settings
+from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -365,6 +366,9 @@ class ChromiumHost:
         ]
         args.extend(CHROME_DEFAULT_ARGS)
         args.extend(_HOST_EXTRA_ARGS)
+        # Size the window to the viewport so pages paint edge-to-edge instead of into
+        # an 800x600 default (which leaves whitespace around the content in the view).
+        args.append(f"--window-size={BROWSER_VIEWPORT_WIDTH},{BROWSER_VIEWPORT_HEIGHT}")
         if not settings.BROWSER_HOST_HEADED:
             args.append("--headless=new")
         self._proc = await asyncio.create_subprocess_exec(
