@@ -14,6 +14,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_openrouter import ChatOpenRouter
+from pydantic import SecretStr
 import pytest
 
 from app.agents.llm.chatbot import chatbot
@@ -26,15 +28,15 @@ from app.agents.llm.client import (
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
+    _openrouter_wire_configurables,
     ainvoke_llm,
     get_default_llm,
     init_llm,
     register_llm_providers,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
-from app.agents.llm.types import LLMProviderKey
 from app.constants.llm import DEFAULT_MODEL_NAME
-from app.core.lazy_loader import ProviderRegistry, providers
+from app.core.lazy_loader import ProviderRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -673,16 +675,16 @@ class TestProviderModelFieldId:
         runnable, _ = llm._prepare({"configurable": configurable})
         return getattr(runnable, "model", None)
 
-    def test_openrouter_takes_its_model_from_the_model_key(self) -> None:
-        register_llm_providers()
-        llm = providers.get(LLMProviderKey.OPENROUTER)
+    def test_openrouter_exposes_its_model_under_the_same_id(self) -> None:
+        """Driven through the real wire helper rather than the provider registry:
+        the hermetic fence blanks OPENROUTER_API_KEY, so the registered provider
+        is ``None`` in CI and there is no client to resolve. The client is
+        constructed here with a dummy key — no network, construction only."""
+        llm = _openrouter_wire_configurables(
+            ChatOpenRouter(model="vendor/default", api_key=SecretStr("test-key"))
+        )
 
         assert self._resolved_model(llm, {"model": "vendor/probe-model"}) == "vendor/probe-model"
-
-    def test_openrouter_ignores_the_legacy_model_name_key(self) -> None:
-        register_llm_providers()
-        llm = providers.get(LLMProviderKey.OPENROUTER)
-
         assert self._resolved_model(llm, {"model_name": "legacy"}) != "legacy"
 
     def test_gemini_declares_its_model_under_the_same_id_as_openrouter(self) -> None:
