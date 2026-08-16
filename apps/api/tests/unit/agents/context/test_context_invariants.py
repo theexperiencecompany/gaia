@@ -6,6 +6,7 @@ regressions kept coming back. These are the same rules as executable assertions,
 and they hold across all five tiers.
 """
 
+from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -25,10 +26,18 @@ from tests._harness.context_sources import (
     knowledge,
     memory,
 )
+from tests.helpers import captured_wide_event
 
 from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext
-from app.agents.context.slots import PromptSlot, slot_of
+from app.agents.context.slots import (
+    DYNAMIC_CONTEXT_MARKER,
+    LEGACY_DYNAMIC_MARKER,
+    MEMORY_RECALL_MARKER,
+    PromptSlot,
+    slot_of,
+)
+from app.constants.log_tags import LogTag
 
 RICH_SOURCES = ContextSources(
     core_memory="- Prefers short answers.",
@@ -348,3 +357,229 @@ class TestOneFailingSourceCostsOnlyItsOwnSection:
 
         rendered = "\n".join(text_of(m) for m in assembled.messages())
         assert own_text not in rendered
+
+
+@pytest.mark.unit
+class TestAnAssemblyDefectDegradesToAByteStableEmptyBlock:
+    """The whole-assembly fallback is kept deliberately — a defect in the
+    assembler must not cost a user their turn — and keeping it is what obliges
+    proving it does exactly what it claims. Per-section failures are contained
+    upstream, so this path only fires on a real defect, and every property below
+    is one the fallback could silently get wrong: the block still has to hold
+    the stable slot, and it has to be the SAME bytes every time or a persistent
+    failure invalidates the prompt cache on every call on top of the original
+    problem.
+    """
+
+    @staticmethod
+    def _defective_gather() -> object:
+        return patch(
+            "app.agents.context.assemble._gather_sections",
+            AsyncMock(side_effect=RuntimeError("assembler defect")),
+        )
+
+    async def test_the_turn_still_gets_a_context_and_it_is_empty(self) -> None:
+        with self._defective_gather():
+            assembled = await assemble_context(COMMS_CONTEXT)
+
+        assert text_of(assembled.stable) == ""
+        assert assembled.volatile is None
+        assert assembled.messages() == [assembled.stable]
+
+    async def test_the_empty_block_still_holds_the_stable_slot(self) -> None:
+        """Unmarked it would not resolve to the slot, so the pruning node would
+        leave a *stale* dynamic block from an earlier turn standing beside it —
+        serving outdated identity rather than none."""
+        with self._defective_gather():
+            assembled = await assemble_context(COMMS_CONTEXT)
+
+        assert slot_of(assembled.stable) is PromptSlot.DYNAMIC_STABLE
+        assert assembled.stable.additional_kwargs[DYNAMIC_CONTEXT_MARKER] is True
+        assert assembled.stable.additional_kwargs[LEGACY_DYNAMIC_MARKER] is True
+
+    async def test_a_persistent_failure_produces_identical_bytes_every_call(self) -> None:
+        with self._defective_gather():
+            first = await assemble_context(COMMS_CONTEXT)
+            second = await assemble_context(COMMS_CONTEXT)
+
+        assert text_of(first.stable) == text_of(second.stable)
+        assert first.stable.additional_kwargs == second.stable.additional_kwargs
+
+    async def test_the_defect_reaches_the_wide_event_with_the_tier_and_user(self) -> None:
+        """Silent degradation is what makes this fallback dangerous. An empty
+        context looks exactly like a user with nothing stored, so the only way
+        anyone learns it happened is this error — and it has to name the turn."""
+        async with captured_wide_event() as event:
+            with self._defective_gather():
+                await assemble_context(COMMS_CONTEXT)
+
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} Error assembling agent context",
+                "error": "assembler defect",
+                "error_type": "RuntimeError",
+                "tier": COMMS_CONTEXT.tier.value,
+                "user_id": COMMS_CONTEXT.user_id,
+            }
+        ]
+
+
+@pytest.mark.unit
+class TestTheGatherSlotsEachSectionWhereItDeclared:
+    """The gather runs every section as one flat list and splits the results
+    back apart by position. Nothing about that is self-checking: get the split
+    wrong and per-turn content silently lands in the byte-stable prefix, which
+    is the exact regression this whole package exists to prevent.
+    """
+
+    async def test_stable_and_volatile_content_do_not_cross_over(self) -> None:
+        with fake_context_sources(RICH_SOURCES):
+            assembled = await assemble_context(COMMS_CONTEXT)
+
+        stable = text_of(assembled.stable)
+        volatile = text_of(assembled.volatile)
+        for declared_stable in ("Ada", "Asia/Kolkata", "Gmail"):
+            assert declared_stable in stable
+            assert declared_stable not in volatile
+        for declared_volatile in (
+            "Prefers short answers",
+            "Ships on Fridays",
+            "GAIA can run scheduled workflows",
+            "ship the context refactor",
+        ):
+            assert declared_volatile in volatile
+            assert declared_volatile not in stable
+
+    async def test_an_empty_section_leaves_no_blank_gap(self) -> None:
+        """Sections that render nothing are dropped, not joined as empty
+        strings — otherwise every absent section adds a stray separator and the
+        block arrives padded with blank lines."""
+        with fake_context_sources(ContextSources()):
+            assembled = await assemble_context(COMMS_CONTEXT)
+
+        assert text_of(assembled.stable) == "User Name: Ada\nUser Timezone: Asia/Kolkata"
+
+    async def test_nothing_per_turn_to_say_means_no_volatile_message_at_all(self) -> None:
+        """An empty volatile block would still occupy its slot and cost bytes."""
+        with fake_context_sources(ContextSources()):
+            assembled = await assemble_context(COMMS_CONTEXT)
+
+        assert assembled.volatile is None
+        assert assembled.messages() == [assembled.stable]
+
+
+@pytest.mark.unit
+class TestTheAssemblyIsRecordedOnTheWideEvent:
+    """``dynamic_context`` is how anyone answers "what did the agent actually
+    see?" for a turn that already happened. A wrong field here does not break a
+    prompt, so nothing else would ever catch it — it just makes every later
+    investigation quietly lie."""
+
+    async def test_it_records_what_each_slot_received(self) -> None:
+        async with captured_wide_event() as event:
+            with fake_context_sources(RICH_SOURCES):
+                assembled = await assemble_context(COMMS_CONTEXT)
+
+        assert event["dynamic_context"] == {
+            "tier": "comms",
+            "source": "web",
+            "has_core_memory": True,
+            "has_memories": True,
+            "has_gaia_knowledge": True,
+            # Comms holds no file or shell tools, so it is given no skills.
+            "has_skills": False,
+            "has_active_todo": False,
+            "execution_mode": "interactive",
+            "stable_chars": len(text_of(assembled.stable)),
+            "memory_recall_chars": len(text_of(assembled.volatile)),
+            "has_memory_recall": True,
+        }
+
+    async def test_an_empty_assembly_is_recorded_as_empty(self) -> None:
+        async with captured_wide_event() as event:
+            with fake_context_sources(ContextSources()):
+                await assemble_context(COMMS_CONTEXT)
+
+        record = event["dynamic_context"]
+        assert record["has_core_memory"] is False
+        assert record["has_memories"] is False
+        assert record["has_gaia_knowledge"] is False
+        assert record["has_memory_recall"] is False
+        assert record["memory_recall_chars"] == 0
+        assert record["stable_chars"] > 0
+
+    async def test_the_real_channel_is_recorded_when_there_is_one(self) -> None:
+        """``web`` is the default for a turn with no channel, not a label to
+        stamp on every turn — a Slack turn recorded as web is unfindable."""
+        async with captured_wide_event() as event:
+            with fake_context_sources(ContextSources()):
+                await assemble_context(replace(COMMS_CONTEXT, source="slack"))
+
+        assert event["dynamic_context"]["source"] == "slack"
+
+    async def test_a_background_run_bound_to_a_todo_is_recorded_as_such(self) -> None:
+        async with captured_wide_event() as event:
+            with fake_context_sources(ContextSources()):
+                await assemble_context(
+                    replace(COMMS_CONTEXT, execution_mode="background", active_todo_id="todo-7")
+                )
+
+        record = event["dynamic_context"]
+        assert record["execution_mode"] == "background"
+        assert record["has_active_todo"] is True
+
+
+@pytest.mark.unit
+class TestEachBlockDeclaresItsOwnSlot:
+    """``manage_system_prompts_node`` resolves a message to a slot by its
+    marker, not by where it sits. An unmarked block is not recognised as the
+    slot's holder, so the stale copy from the previous turn is never replaced —
+    the thread stacks dynamic blocks and the cache prefix shatters, which is the
+    exact regression the pruning node exists to prevent.
+    """
+
+    async def test_the_stable_block_declares_the_stable_slot(self) -> None:
+        with fake_context_sources(RICH_SOURCES):
+            assembled = await assemble_context(COMMS_CONTEXT)
+
+        assert slot_of(assembled.stable) is PromptSlot.DYNAMIC_STABLE
+        assert assembled.stable.additional_kwargs[DYNAMIC_CONTEXT_MARKER] is True
+
+    async def test_the_stable_block_also_answers_to_the_pre_split_marker(self) -> None:
+        """Threads checkpointed before the stable/volatile split carry only the
+        legacy key; dropping it strands every one of them with an unresolvable
+        block that never gets replaced."""
+        with fake_context_sources(RICH_SOURCES):
+            assembled = await assemble_context(COMMS_CONTEXT)
+
+        assert assembled.stable.additional_kwargs[LEGACY_DYNAMIC_MARKER] is True
+
+    async def test_the_volatile_block_declares_the_recall_slot(self) -> None:
+        with fake_context_sources(RICH_SOURCES):
+            assembled = await assemble_context(COMMS_CONTEXT)
+
+        assert assembled.volatile is not None
+        assert slot_of(assembled.volatile) is PromptSlot.MEMORY_RECALL
+        assert assembled.volatile.additional_kwargs[MEMORY_RECALL_MARKER] is True
+
+
+@pytest.mark.unit
+class TestAWorkerTierRecordsItsOwnSections:
+    """Comms is given no skills section at all, so the skills field can only be
+    proven on a tier that actually has one — asserted on comms it would read as
+    ``False`` whatever the code did."""
+
+    async def test_the_executor_records_the_skills_it_was_given(self) -> None:
+        async with captured_wide_event() as event:
+            with fake_context_sources(RICH_SOURCES):
+                await assemble_context(replace(COMMS_CONTEXT, tier=AgentTier.EXECUTOR))
+
+        assert event["dynamic_context"]["tier"] == "executor"
+        assert event["dynamic_context"]["has_skills"] is True
+
+    async def test_comms_is_recorded_as_having_no_skills(self) -> None:
+        async with captured_wide_event() as event:
+            with fake_context_sources(RICH_SOURCES):
+                await assemble_context(COMMS_CONTEXT)
+
+        assert event["dynamic_context"]["has_skills"] is False

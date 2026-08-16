@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from langchain_core.messages import SystemMessage
 
 from app.agents.context.section_context import SectionContext
-from app.agents.context.sections import sections_for
+from app.agents.context.sections import Section, sections_for
 from app.agents.context.slots import (
     DYNAMIC_CONTEXT_MARKER,
     LEGACY_DYNAMIC_MARKER,
@@ -43,6 +43,18 @@ class AssembledContext:
         return [self.stable] if self.volatile is None else [self.stable, self.volatile]
 
 
+async def _render_section(section: Section, ctx: SectionContext) -> tuple[str, str]:
+    """A section's id alongside its rendered text.
+
+    The id travels WITH the result so nothing downstream has to re-derive which
+    text belongs to which section. Gathering bare strings and pairing them back
+    against the section list by position is the one place a per-turn section can
+    silently land in the byte-stable block — the failure this whole package
+    exists to prevent — and an off-by-one there is invisible in the output.
+    """
+    return section.id, await section.fetch(ctx)
+
+
 async def _gather_sections(ctx: SectionContext) -> AssembledContext:
     """Gather every section that applies to ``ctx.tier`` and slot the results.
 
@@ -52,24 +64,27 @@ async def _gather_sections(ctx: SectionContext) -> AssembledContext:
     stable_sections = sections_for(ctx.tier, PromptSlot.DYNAMIC_STABLE)
     volatile_sections = sections_for(ctx.tier, PromptSlot.MEMORY_RECALL)
 
-    results = await asyncio.gather(
-        *(section.fetch(ctx) for section in (*stable_sections, *volatile_sections))
+    rendered = dict(
+        await asyncio.gather(
+            *(_render_section(section, ctx) for section in (*stable_sections, *volatile_sections))
+        )
     )
-    split = len(stable_sections)
-    stable_by_id = dict(zip((s.id for s in stable_sections), results[:split], strict=True))
-    volatile_by_id = dict(zip((s.id for s in volatile_sections), results[split:], strict=True))
 
-    stable_text = STABLE_SECTION_JOIN.join(part for part in stable_by_id.values() if part)
-    volatile_text = VOLATILE_SECTION_JOIN.join(part for part in volatile_by_id.values() if part)
+    stable_text = STABLE_SECTION_JOIN.join(
+        text for section in stable_sections if (text := rendered[section.id])
+    )
+    volatile_text = VOLATILE_SECTION_JOIN.join(
+        text for section in volatile_sections if (text := rendered[section.id])
+    )
 
     log.set(
         dynamic_context={
             "tier": ctx.tier.value,
             "source": ctx.source or "web",
-            "has_core_memory": bool(volatile_by_id.get("core_memory")),
-            "has_memories": bool(volatile_by_id.get("memory_recall")),
-            "has_gaia_knowledge": bool(volatile_by_id.get("gaia_knowledge")),
-            "has_skills": bool(volatile_by_id.get("skills")),
+            "has_core_memory": bool(rendered.get("core_memory")),
+            "has_memories": bool(rendered.get("memory_recall")),
+            "has_gaia_knowledge": bool(rendered.get("gaia_knowledge")),
+            "has_skills": bool(rendered.get("skills")),
             "has_active_todo": bool(ctx.active_todo_id),
             "execution_mode": ctx.execution_mode,
             "stable_chars": len(stable_text),

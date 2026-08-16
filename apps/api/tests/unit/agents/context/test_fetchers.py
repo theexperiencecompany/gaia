@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from tests._harness.context_sources import knowledge, memory
+from tests.helpers import captured_wide_event
 
 from app.agents.context.fetchers import (
     build_active_todo_banner,
@@ -21,11 +22,19 @@ from app.agents.context.fetchers import (
     build_memory_recall_block,
     build_tracked_todos_block,
     build_workspace_session_banner,
+    format_active_todo_banner,
 )
 from app.agents.context.section_context import ExecutionMode, SectionContext
+from app.agents.context.text import (
+    CORE_MEMORY_HEADER,
+    GAIA_KNOWLEDGE_HEADER,
+    MEMORY_RECALL_HEADER,
+)
 from app.agents.context.tiers import AgentTier
+from app.agents.workspace.paths import session_dir
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
+from app.utils.artifact_utils import artifact_url_base
 
 
 def ctx(
@@ -49,7 +58,12 @@ def ctx(
 class TestMemoryRecallBlock:
     async def test_renders_every_memory_with_its_date(self) -> None:
         """Dated, not raw: temporal reasoning ("how long ago", "which first")
-        has to be answerable from the injected text without another tool call."""
+        has to be answerable from the injected text without another tool call.
+
+        Asserted as the exact block rather than substrings — the header names
+        what the dates mean, and the ``- `` bullets are what keep two memories
+        from reading as one sentence. A substring check sees none of that.
+        """
         results = MemorySearchResult(
             memories=[
                 memory("User likes coffee", mentioned="2026-01-05"),
@@ -60,10 +74,20 @@ class TestMemoryRecallBlock:
         with patch("app.memory.engine.memory_engine.recall", AsyncMock(return_value=results)):
             block = await build_memory_recall_block(ctx(query="coffee"))
 
-        assert "User likes coffee" in block
-        assert "[mentioned 2026-01-05]" in block
-        assert "User prefers dark mode" in block
-        assert "[mentioned 2026-02-11]" in block
+        assert block == (
+            f"{MEMORY_RECALL_HEADER}\n"
+            "- User likes coffee [mentioned 2026-01-05]\n"
+            "- User prefers dark mode [mentioned 2026-02-11]"
+        )
+
+    async def test_it_recalls_against_this_turn_for_this_user(self) -> None:
+        """Recalling on the wrong user or ignoring the query returns someone
+        else's memories, or this user's least relevant ones."""
+        recall = AsyncMock(return_value=MemorySearchResult(memories=[], total_count=0))
+        with patch("app.memory.engine.memory_engine.recall", recall):
+            await build_memory_recall_block(ctx(user_id="user-7", query="what did I promise?"))
+
+        recall.assert_awaited_once_with("user-7", "what did I promise?", limit=5)
 
     async def test_no_memories_yields_no_block(self) -> None:
         with patch(
@@ -79,6 +103,23 @@ class TestMemoryRecallBlock:
         ):
             assert await build_memory_recall_block(ctx()) == ""
 
+    async def test_a_failed_recall_is_visible_in_the_wide_event(self) -> None:
+        async with captured_wide_event() as event:
+            with patch(
+                "app.memory.engine.memory_engine.recall",
+                AsyncMock(side_effect=RuntimeError("chroma down")),
+            ):
+                await build_memory_recall_block(ctx(user_id="user-7"))
+
+        assert event["warnings"] == [
+            {
+                "msg": "Error retrieving memories",
+                "error": "chroma down",
+                "error_type": "RuntimeError",
+                "user_id": "user-7",
+            }
+        ]
+
 
 @pytest.mark.unit
 class TestCoreMemoryBlock:
@@ -89,7 +130,14 @@ class TestCoreMemoryBlock:
         ):
             block = await build_core_memory_block(ctx())
 
-        assert "Ships on Fridays" in block
+        assert block == f"{CORE_MEMORY_HEADER}\n- Ships on Fridays"
+
+    async def test_it_reads_the_core_for_this_user(self) -> None:
+        core = AsyncMock(return_value="")
+        with patch("app.memory.engine.memory_engine.get_core_context", core):
+            await build_core_memory_block(ctx(user_id="user-7"))
+
+        core.assert_awaited_once_with("user-7")
 
     async def test_empty_core_context_yields_no_block(self) -> None:
         with patch("app.memory.engine.memory_engine.get_core_context", AsyncMock(return_value="")):
@@ -102,17 +150,55 @@ class TestCoreMemoryBlock:
         ):
             assert await build_core_memory_block(ctx()) == ""
 
+    async def test_failure_is_visible_in_the_wide_event(self) -> None:
+        async with captured_wide_event() as event:
+            with patch(
+                "app.memory.engine.memory_engine.get_core_context",
+                AsyncMock(side_effect=RuntimeError("redis down")),
+            ):
+                await build_core_memory_block(ctx(user_id="user-7"))
+
+        assert event["warnings"] == [
+            {
+                "msg": "Error retrieving core memory context",
+                "error": "redis down",
+                "error_type": "RuntimeError",
+                "user_id": "user-7",
+            }
+        ]
+
 
 @pytest.mark.unit
 class TestGaiaKnowledgeBlock:
     async def test_renders_each_result(self) -> None:
+        """Two results, not one: with a single item the ``\\n`` joining them is
+        unobservable, so a separator that stopped separating would read as two
+        capabilities run together into one sentence and no test would notice."""
         with patch(
             "app.services.gaia_knowledge_service.gaia_knowledge_service.search_knowledge",
-            AsyncMock(return_value=[knowledge("Gaia can manage calendar")]),
+            AsyncMock(
+                return_value=[
+                    knowledge("Gaia can manage calendar"),
+                    knowledge("Gaia can run scheduled workflows"),
+                ]
+            ),
         ):
             block = await build_gaia_knowledge_block(ctx(query="calendar"))
 
-        assert "Gaia can manage calendar" in block
+        assert block == (
+            f"{GAIA_KNOWLEDGE_HEADER}\n"
+            "- Gaia can manage calendar\n"
+            "- Gaia can run scheduled workflows"
+        )
+
+    async def test_it_searches_on_this_turns_query(self) -> None:
+        search = AsyncMock(return_value=[])
+        with patch(
+            "app.services.gaia_knowledge_service.gaia_knowledge_service.search_knowledge", search
+        ):
+            await build_gaia_knowledge_block(ctx(query="what can you do?"))
+
+        search.assert_awaited_once_with(query="what can you do?", limit=5)
 
     async def test_no_results_yields_no_block(self) -> None:
         with patch(
@@ -127,6 +213,22 @@ class TestGaiaKnowledgeBlock:
             AsyncMock(side_effect=RuntimeError("chroma fail")),
         ):
             assert await build_gaia_knowledge_block(ctx()) == ""
+
+    async def test_failure_is_visible_in_the_wide_event(self) -> None:
+        async with captured_wide_event() as event:
+            with patch(
+                "app.services.gaia_knowledge_service.gaia_knowledge_service.search_knowledge",
+                AsyncMock(side_effect=RuntimeError("chroma fail")),
+            ):
+                await build_gaia_knowledge_block(ctx())
+
+        assert event["warnings"] == [
+            {
+                "msg": "Error retrieving GAIA knowledge",
+                "error": "chroma fail",
+                "error_type": "RuntimeError",
+            }
+        ]
 
 
 @pytest.mark.unit
@@ -210,14 +312,17 @@ class TestTrackedTodosBlock:
 class TestWorkspaceSessionBanner:
     async def test_states_both_the_directory_and_the_public_url(self) -> None:
         """The agent needs the directory to write where the watcher scans, and
-        the URL base to link what it wrote. Missing either makes it guess."""
+        the URL base to link what it wrote. Missing either makes it guess — and
+        a wrong path is the silent failure, so both are pinned exactly."""
         banner = await build_workspace_session_banner(
             SectionContext(tier=AgentTier.EXECUTOR, vfs_session_id="sess-1")
         )
 
-        assert "sess-1" in banner
-        assert "Session directory:" in banner
-        assert "Public artifact URL:" in banner
+        assert banner == (
+            f"Session directory: {session_dir('sess-1')}\n"
+            "Public artifact URL: a file at `artifacts/<name>` is served at "
+            f"{artifact_url_base('sess-1')}/<name>"
+        )
 
     async def test_no_vfs_session_id_never_guesses_a_directory(self) -> None:
         """A fallback to ``thread_id`` would name ``executor_<conv>``, sending
@@ -231,13 +336,44 @@ class TestWorkspaceSessionBanner:
 
 @pytest.mark.unit
 class TestActiveTodoBanner:
-    async def test_names_the_todo_it_binds_the_run_to(self) -> None:
-        todo = TodoDocument(id="todo-7", user_id="u1", title="Ship the refactor")
+    async def test_it_states_the_binding_the_write_target_and_the_escape_hatch(self) -> None:
+        """Every line here is an instruction the agent acts on: which todo the
+        run is bound to, that the canvas is the default write target, the exact
+        tool call to make, and that another todo needs an explicit id. Asserting
+        two substrings left the rest free to rot into nonsense unnoticed."""
+        todo = TodoDocument(id="todo-7", user_id="user1", title="Ship the refactor")
         with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=todo)):
             banner = await build_active_todo_banner(ctx(active_todo_id="todo-7"))
 
-        assert "todo-7" in banner
-        assert "Ship the refactor" in banner
+        assert banner == format_active_todo_banner(todo)
+        assert banner == (
+            "🎯 ACTIVE TODO (this run is bound to this todo)\n"
+            "   id: todo-7\n"
+            "   title: Ship the refactor\n"
+            "\n"
+            "   Default write target for this turn: this todo's canvas.\n"
+            '   - Use `update_tracked_todo_canvas(todo_id="todo-7", ...)` for any progress, '
+            "outcome, or learning from this run.\n"
+            "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this "
+            "todo (rare).\n"
+            "   - To work on a different todo, you must reference it explicitly by id."
+        )
+
+    def test_an_untitled_todo_still_renders_a_usable_banner(self) -> None:
+        """A blank title would leave the line dangling; the agent still needs
+        the id, which is the part it acts on."""
+        banner = format_active_todo_banner(TodoDocument(id="todo-9", user_id="user1", title=""))
+
+        assert "   id: todo-9\n" in banner
+        assert "   title: Untitled\n" in banner
+
+    async def test_it_reads_the_bound_todo_scoped_to_its_owner(self) -> None:
+        """Unscoped, a guessed id would surface another user's todo."""
+        get = AsyncMock(return_value=None)
+        with patch("app.db.repositories.todos.todo_repository.get", get):
+            await build_active_todo_banner(ctx(user_id="user-7", active_todo_id="todo-7"))
+
+        get.assert_awaited_once_with("todo-7", user_id="user-7")
 
     async def test_a_missing_todo_yields_no_banner(self) -> None:
         with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=None)):
@@ -249,6 +385,18 @@ class TestActiveTodoBanner:
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
             assert await build_active_todo_banner(ctx(active_todo_id="todo-7")) == ""
+
+    async def test_failure_is_visible_in_the_wide_event(self) -> None:
+        async with captured_wide_event() as event:
+            with patch(
+                "app.db.repositories.todos.todo_repository.get",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
+            ):
+                await build_active_todo_banner(ctx(active_todo_id="todo-7"))
+
+        assert event["warnings"] == [
+            {"msg": "active_todo_banner_fetch_failed", "error": "mongo down"}
+        ]
 
 
 @pytest.mark.unit
@@ -266,22 +414,45 @@ class TestBackgroundBanner:
 class TestASectionDeclinesWhenItsContextIsAbsent:
     """The precondition lives with the read, not at the call site, so a section
     registered directly against a fetcher cannot be given a context it needs and
-    render a header over nothing."""
+    render a header over nothing.
+
+    Every source below is patched to return real content on purpose. Left
+    unpatched, a broken precondition would reach a store that is not there,
+    raise, and be swallowed into the same ``""`` these tests assert — so they
+    would pass whether the guard worked or not. Pinned this way, dropping the
+    guard renders the content and the test goes red.
+    """
 
     async def test_no_user_means_no_core_memory(self) -> None:
-        assert await build_core_memory_block(ctx(user_id=None)) == ""
+        with patch(
+            "app.memory.engine.memory_engine.get_core_context",
+            AsyncMock(return_value="- Ships on Fridays"),
+        ):
+            assert await build_core_memory_block(ctx(user_id=None)) == ""
 
     @pytest.mark.parametrize("missing", [{"user_id": None}, {"query": None}])
     async def test_recall_needs_both_a_user_and_a_query(self, missing: dict[str, None]) -> None:
-        assert await build_memory_recall_block(ctx(**missing)) == ""
+        results = MemorySearchResult(memories=[memory("User likes coffee")], total_count=1)
+        with patch("app.memory.engine.memory_engine.recall", AsyncMock(return_value=results)):
+            assert await build_memory_recall_block(ctx(**missing)) == ""
 
     async def test_no_query_means_no_knowledge_lookup(self) -> None:
-        assert await build_gaia_knowledge_block(ctx(query=None)) == ""
+        with patch(
+            "app.services.gaia_knowledge_service.gaia_knowledge_service.search_knowledge",
+            AsyncMock(return_value=[knowledge("Gaia can manage calendar")]),
+        ):
+            assert await build_gaia_knowledge_block(ctx(query=None)) == ""
 
     async def test_no_user_means_no_tracked_todos(self) -> None:
-        assert await build_tracked_todos_block(ctx(user_id=None)) == ""
+        with patch(
+            "app.agents.context.fetchers._cached_tracked_todos_summary",
+            AsyncMock(return_value="Tracked: ship the refactor"),
+        ):
+            assert await build_tracked_todos_block(ctx(user_id=None)) == ""
 
     @pytest.mark.parametrize("missing", ["user_id", "active_todo_id"])
     async def test_the_active_todo_banner_needs_both_ids(self, missing: str) -> None:
+        todo = TodoDocument(id="todo-7", user_id="user1", title="Ship the refactor")
         present: dict[str, str | None] = {"user_id": "user1", "active_todo_id": "todo-7"}
-        assert await build_active_todo_banner(ctx(**{**present, missing: None})) == ""
+        with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=todo)):
+            assert await build_active_todo_banner(ctx(**{**present, missing: None})) == ""
