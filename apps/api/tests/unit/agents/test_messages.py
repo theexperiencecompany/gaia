@@ -175,6 +175,65 @@ class TestConstructLangchainMessages:
         assert ctx.source == "whatsapp"
 
     @pytest.mark.asyncio
+    async def test_every_field_the_context_is_built_from_survives_the_trip(self) -> None:
+        """This function's whole job is turning the auth payload into the shape
+        assembly reads. Every field dropped here is a section that silently
+        renders nothing — the user's writing style stops being honoured, or a
+        background run believes a human is waiting — with no error anywhere.
+        """
+        p = _patches()
+        user_dict = {
+            "timezone": "Asia/Kolkata",
+            "onboarding": {
+                "preferences": {"tone": "formal"},
+                "writing_style": {"case": "lower"},
+            },
+        }
+        with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}],
+                user_id="uid-1",
+                user_name="Alice",
+                user_dict=user_dict,
+                query="hi",
+                active_todo_id="todo-7",
+                execution_mode="background",
+                source="slack",
+            )
+
+        ctx = mock_dyn.call_args.args[0]
+        assert ctx.writing_style == {"case": "lower"}
+        assert ctx.active_todo_id == "todo-7"
+        assert ctx.execution_mode == "background"
+        assert ctx.source == "slack"
+
+    @pytest.mark.asyncio
+    async def test_a_user_with_no_onboarding_answers_carries_none_not_a_crash(self) -> None:
+        p = _patches()
+        with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}], user_id="uid-1", user_dict={}
+            )
+
+        ctx = mock_dyn.call_args.args[0]
+        assert ctx.user_timezone is None
+        assert ctx.user_preferences is None
+        assert ctx.writing_style is None
+
+    @pytest.mark.asyncio
+    async def test_an_unauthenticated_turn_carries_no_user_fields(self) -> None:
+        p = _patches()
+        with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}], user_dict=None
+            )
+
+        ctx = mock_dyn.call_args.args[0]
+        assert ctx.user_timezone is None
+        assert ctx.user_preferences is None
+        assert ctx.writing_style is None
+
+    @pytest.mark.asyncio
     async def test_source_passed_to_static_prompt_selector(self) -> None:
         """The per-channel static prompt is selected via the ``source`` kwarg
         on ``create_system_message``. Different sources must produce different
@@ -452,3 +511,102 @@ class TestTriggerContext:
 
         call_args = mock_wf.call_args
         assert call_args[0][2] == trigger
+
+
+class TestTheOnboardingProbeSeesTheUsersActualMessage:
+    """Whether a turn is an onboarding turn is decided partly by what the user
+    just said, so the probe has to receive the user's LATEST message — not the
+    first, not the assistant's reply, and not with the whitespace a chat client
+    leaves on it. Getting this wrong misclassifies the turn, and onboarding is
+    exactly when the agent knows least about the user.
+    """
+
+    @staticmethod
+    def _probe() -> Any:
+        return patch(
+            "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
+            new_callable=AsyncMock,
+            return_value=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_it_receives_the_latest_user_message_trimmed(self) -> None:
+        p = _patches()
+        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
+            await construct_langchain_messages(
+                messages=[
+                    {"role": "user", "content": "an earlier question"},
+                    {"role": "assistant", "content": "an earlier answer"},
+                    {"role": "user", "content": "  what can you do?  "},
+                ],
+                user_id="uid-1",
+                conversation_id="conv-1",
+            )
+
+        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="what can you do?")
+
+    @pytest.mark.asyncio
+    async def test_a_thread_ending_on_the_assistant_carries_no_user_message(self) -> None:
+        """A trailing assistant turn means the user has not spoken on this call;
+        passing its text would have the probe classify on GAIA's own words.
+
+        Reachable only alongside a selected tool — with neither a user message
+        nor a tool the function refuses the turn outright.
+        """
+        p = _patches()
+        with (
+            p["create_system"],
+            p["build_dynamic"],
+            p["format_files"],
+            p["format_tool"],
+            self._probe() as probe,
+        ):
+            await construct_langchain_messages(
+                messages=[
+                    {"role": "user", "content": "hello"},
+                    {"role": "assistant", "content": "hi there"},
+                ],
+                user_id="uid-1",
+                conversation_id="conv-1",
+                selected_tool="gmail",
+            )
+
+        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="")
+
+    @pytest.mark.asyncio
+    async def test_an_empty_thread_carries_no_user_message(self) -> None:
+        p = _patches()
+        with (
+            p["create_system"],
+            p["build_dynamic"],
+            p["format_files"],
+            p["format_tool"],
+            self._probe() as probe,
+        ):
+            await construct_langchain_messages(
+                messages=[], user_id="uid-1", conversation_id="conv-1", selected_tool="gmail"
+            )
+
+        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="")
+
+    @pytest.mark.asyncio
+    async def test_a_turn_with_neither_a_message_nor_a_tool_is_refused(self) -> None:
+        """The refusal is what makes the two cases above reachable only with a
+        tool — worth pinning, since silently sending an empty turn to the model
+        would burn a call and return nothing useful."""
+        p = _patches()
+        with p["create_system"], p["build_dynamic"], p["format_files"]:
+            with pytest.raises(ValueError, match="No human message or selected tool"):
+                await construct_langchain_messages(messages=[], user_id="uid-1")
+
+    @pytest.mark.asyncio
+    async def test_a_turn_outside_a_conversation_is_never_probed(self) -> None:
+        """Without a conversation there is no onboarding state to read, so the
+        Mongo probe would be a query on nothing."""
+        p = _patches()
+        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}], user_id="uid-1"
+            )
+
+        probe.assert_not_awaited()
