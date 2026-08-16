@@ -972,13 +972,40 @@ jobs:
           MODULE: ${{ matrix.module }}
           TESTFILES: ${{ matrix.testfiles }}
           RANGES: ${{ matrix.ranges }}
-        # `timeout`, not an in-script watchdog: bash will not run a trap while
-        # it is waiting on a foreground child, so a signal sent to the script
-        # queues behind the very thing that is stuck. timeout signals the
-        # process directly. Bounded UNDER the job cap on purpose — GitHub keeps
-        # no log at all for a job it cancels itself, which is why this module
-        # has failed four times with zero evidence.
-        run: timeout --signal=KILL 1500 bash scripts/test/mutation.sh "$MODULE" "$TESTFILES" "$RANGES"
+        # Three deliberate choices, each one paid for with a 40-minute blind CI
+        # round on app/decorators/rate_limiting.py:
+        #
+        # 1. `> shard.log` — the runner only ends a step when the step's
+        #    stdout/stderr PIPE closes. mutation.sh starts mutmut with
+        #    start_new_session=True, so a stray mutmut child survives every
+        #    kill and, holding the inherited pipe, kept the step alive until
+        #    the JOB cap — and a job cancelled at timeout-minutes keeps no log
+        #    at all. Redirected to a file, an orphan holds a file descriptor
+        #    and the step ends the moment bash does.
+        # 2. `timeout` — bash defers traps while waiting on a foreground
+        #    child, so an in-script watchdog can never fire; timeout signals
+        #    from outside. 1500s is ~25x the slowest module measured.
+        # 3. `cat` afterwards — so the log is in the step output on every
+        #    path, including a timeout kill.
+        run: |
+          rc=0
+          timeout --signal=KILL 1500             bash scripts/test/mutation.sh "$MODULE" "$TESTFILES" "$RANGES"             > shard.log 2>&1 || rc=$?
+          cat shard.log
+          if [ "$rc" = "137" ] || [ "$rc" = "124" ]; then
+            echo "::error::mutation shard for $MODULE exceeded 25 minutes and was killed by timeout(1) — see the log above for the last phase reached"
+          fi
+          exit "$rc"
+      - name: Upload shard log
+        # Belt and braces for the diagnosis path: runs even when the step
+        # above fails or the job is cancelled, so the evidence survives the
+        # one scenario that has destroyed it five times.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-log-${{ strategy.job-index }}
+          path: shard.log
+          retention-days: 3
+          if-no-files-found: ignore
 
   quality-gate:
     name: Quality gate (required)
