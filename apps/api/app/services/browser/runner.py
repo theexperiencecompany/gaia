@@ -20,7 +20,6 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from app.constants.browser import (
-    BROWSER_DEVICE_SCALE_FACTOR,
     BROWSER_TAKEOVER_PREAMBLE,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
@@ -135,7 +134,9 @@ class BrowserTaskRunner:
         browser = Browser(
             cdp_url=self._session.cdp_url,
             viewport={"width": BROWSER_VIEWPORT_WIDTH, "height": BROWSER_VIEWPORT_HEIGHT},
-            device_scale_factor=BROWSER_DEVICE_SCALE_FACTOR,
+            # The live-view surface DPR is set host-side (screencast.py); Browser-Use
+            # ignores device_scale_factor when connecting over CDP, so leave it at 1 here.
+            device_scale_factor=1,
             no_viewport=False,
         )
 

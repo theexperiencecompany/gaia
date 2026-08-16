@@ -22,6 +22,11 @@ from typing import TYPE_CHECKING, Any
 from cdp_use.client import CDPClient
 
 from app.browser_host.pumps import pump_until_first_close
+from app.constants.browser import (
+    BROWSER_DEVICE_SCALE_FACTOR,
+    BROWSER_VIEWPORT_HEIGHT,
+    BROWSER_VIEWPORT_WIDTH,
+)
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -78,6 +83,20 @@ async def run_live_view(host: ChromiumHost, session: HostSession, client_ws: Web
         )
         page_session: str = attached["sessionId"]
         await cdp.send_raw("Page.enable", {}, session_id=page_session)
+        # Render the surface at 2x so the streamed frames are retina-sharp. Browser-Use's
+        # device_scale_factor is ignored when it *connects* over CDP (it only applies on a
+        # browser it launches), so the host owns this. Input x/y arrive in these hi-DPI
+        # frame pixels and are divided back to CSS pixels in ``_mouse_params``.
+        await cdp.send_raw(
+            "Emulation.setDeviceMetricsOverride",
+            {
+                "width": BROWSER_VIEWPORT_WIDTH,
+                "height": BROWSER_VIEWPORT_HEIGHT,
+                "deviceScaleFactor": BROWSER_DEVICE_SCALE_FACTOR,
+                "mobile": False,
+            },
+            session_id=page_session,
+        )
 
         meta = _PageMeta()
         await _refresh_meta(cdp, target_id, meta)
@@ -211,7 +230,13 @@ def _mouse_params(message: dict[str, Any]) -> dict[str, Any]:
     params: dict[str, Any] = {"type": message["event"]}
     for field in _MOUSE_FIELDS:
         if field in message:
-            params[field] = message[field]
+            value = message[field]
+            # Positions arrive in hi-DPI frame pixels (the surface is rendered at
+            # BROWSER_DEVICE_SCALE_FACTOR); CDP Input wants CSS pixels. Scroll deltas
+            # are already CSS-relative, so only x/y are converted.
+            if field in ("x", "y"):
+                value = value / BROWSER_DEVICE_SCALE_FACTOR
+            params[field] = value
     return params
 
 
