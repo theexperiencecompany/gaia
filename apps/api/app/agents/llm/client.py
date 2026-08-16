@@ -129,7 +129,12 @@ def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     return llm
 
 
-_MODEL_FIELD = ConfigurableField(id="model_name", name="Model", description="Which model to use")
+# Gemini's own attribute is ``model``; OpenRouter's is ``model_name`` (see
+# _openrouter_wire_configurables). The two used to be exposed under SWAPPED
+# configurable ids in one flat namespace (prefix_keys=False), so a bag naming
+# only one of them silently resolved a different model on the other lane — which
+# is why every writer had to set both keys. One id, one meaning.
+_MODEL_FIELD = ConfigurableField(id="model", name="Model", description="Which model to use")
 
 
 def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:

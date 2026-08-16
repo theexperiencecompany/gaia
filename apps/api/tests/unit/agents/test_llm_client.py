@@ -18,6 +18,7 @@ import pytest
 
 from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
+    _MODEL_FIELD,
     LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
@@ -31,8 +32,9 @@ from app.agents.llm.client import (
     register_llm_providers,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
+from app.agents.llm.types import LLMProviderKey
 from app.constants.llm import DEFAULT_MODEL_NAME
-from app.core.lazy_loader import ProviderRegistry
+from app.core.lazy_loader import ProviderRegistry, providers
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -648,3 +650,40 @@ class TestChatbot:
 
         with pytest.raises(RuntimeError, match="event loop is closed"):
             await chatbot([HumanMessage(content="hello")])
+
+
+class TestProviderModelFieldId:
+    """Both provider lanes must read the model from the SAME configurable key.
+
+    They historically did not. Gemini's ``model`` attribute was bound to the
+    field id ``"model_name"`` while OpenRouter's ``model_name`` attribute was
+    bound to the field id ``"model"`` — two swapped ids sharing one flat
+    namespace (``prefix_keys=False``). That collision is the entire reason every
+    writer had to set both keys, and why a configurable carrying only one of them
+    silently resolved a *different* model than the one it named.
+
+    Scope: the OpenRouter case is exercised end-to-end through the real registry.
+    The Gemini case is asserted on the field id directly, because the hermetic
+    env blanks ``GOOGLE_API_KEY`` and the provider therefore resolves to ``None``
+    — there is no Gemini client to drive here. The id is the whole contract.
+    """
+
+    @staticmethod
+    def _resolved_model(llm: Any, configurable: dict[str, str]) -> str | None:
+        runnable, _ = llm._prepare({"configurable": configurable})
+        return getattr(runnable, "model", None)
+
+    def test_openrouter_takes_its_model_from_the_model_key(self) -> None:
+        register_llm_providers()
+        llm = providers.get(LLMProviderKey.OPENROUTER)
+
+        assert self._resolved_model(llm, {"model": "vendor/probe-model"}) == "vendor/probe-model"
+
+    def test_openrouter_ignores_the_legacy_model_name_key(self) -> None:
+        register_llm_providers()
+        llm = providers.get(LLMProviderKey.OPENROUTER)
+
+        assert self._resolved_model(llm, {"model_name": "legacy"}) != "legacy"
+
+    def test_gemini_declares_its_model_under_the_same_id_as_openrouter(self) -> None:
+        assert _MODEL_FIELD.id == "model"
