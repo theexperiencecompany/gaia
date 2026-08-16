@@ -144,9 +144,10 @@ class TestNarrateExecutorResult:
 
     @pytest.mark.regression
     async def test_provider_failure_retries_the_narration_on_the_fallback_provider(self) -> None:
+        graph = _fake_comms_graph()
         silent = AsyncMock(side_effect=[_provider_error(), ("revoiced on fallback", {})])
         with (
-            _patch_graph(_fake_comms_graph()),
+            _patch_graph(graph),
             patch(f"{MODULE}.execute_graph_silent", silent),
             patch(f"{MODULE}.pin_fallback_provider", return_value=True) as pin,
             patch(f"{MODULE}.log") as mock_log,
@@ -155,8 +156,11 @@ class TestNarrateExecutorResult:
 
         assert text == "revoiced on fallback"
         assert silent.await_count == 2
-        first_config = silent.await_args_list[0].args[2]
+        first_call, second_call = silent.await_args_list
+        first_config = first_call.args[2]
         pin.assert_called_once_with(first_config["configurable"])
+        assert second_call.args == (graph, first_call.args[1], first_config)
+        assert second_call.kwargs == {}
         mock_log.warning.assert_called_once()
         message, kwargs = mock_log.warning.call_args.args[0], mock_log.warning.call_args.kwargs
         assert "retrying on fallback" in message
