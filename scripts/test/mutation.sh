@@ -144,20 +144,42 @@ _phase() {
   echo "[phase +$(( $(date +%s) - START_EPOCH ))s] $1" >&2
 }
 (
-  sleep "$MUTATION_WATCHDOG_S"
+  # Poll the sentinel rather than one long sleep, so the trap can retire this
+  # watchdog by DELETING A FILE instead of signalling it. Two earlier attempts
+  # went wrong here: killing the subshell orphans its sleep, which holds stdout
+  # open and hangs any pipeline reading this script; and killing the sleep does
+  # not kill the subshell at all — sleep merely returns and the subshell runs
+  # on to the kill below, which shot the script dead AFTER it had printed
+  # "Mutation: OK" and turned 14 passing shards into exit 1.
+  waited=0
+  while [ "$waited" -lt "$MUTATION_WATCHDOG_S" ]; do
+    [ -f "$PHASE_FILE" ] || exit 0
+    sleep 2
+    waited=$((waited + 2))
+  done
+  [ -f "$PHASE_FILE" ] || exit 0
   echo "WATCHDOG: $MODULE exceeded ${MUTATION_WATCHDOG_S}s, still in phase '$(cat "$PHASE_FILE" 2>/dev/null)'." >&2
   echo "          Killed here so this log survives — a job cancelled by" >&2
   echo "          GitHub's timeout keeps no log at all." >&2
   kill -TERM "$SCRIPT_PID" 2>/dev/null
 ) &
 WATCHDOG_PID=$!
-# Detach it from job control, or bash prints a "Terminated: sleep" notice into
-# the lane log every time the trap cleans it up.
-disown "$WATCHDOG_PID" 2>/dev/null || true
 # pkill -P first: killing the subshell alone orphans its `sleep`, which keeps
 # the inherited stdout/stderr open and hangs any pipeline reading this script
 # long after it has finished.
-trap 'pkill -P "$WATCHDOG_PID" 2>/dev/null; kill "$WATCHDOG_PID" 2>/dev/null; rm -f "$PHASE_FILE"; [ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"' EXIT
+# Retire the watchdog by removing its sentinel and waiting for it to notice —
+# no signals, so bash never prints a "Terminated: sleep" notice into the lane
+# log, and nothing can outlive this script holding its stdout open.
+_cleanup() {
+  rm -f "$PHASE_FILE"
+  wait "$WATCHDOG_PID" 2>/dev/null
+  [ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"
+}
+trap _cleanup EXIT
+# EXIT alone does not run on a signal, so a watchdog-killed run used to leave
+# its scratch copy of app/ + tests/ on disk. `exit` here re-enters the EXIT
+# trap, so cleanup happens exactly once either way.
+trap 'exit 143' TERM INT
 _phase "copy workdir"
 mkdir -p "$WORKDIR"
 cp -r app "$WORKDIR/app"
