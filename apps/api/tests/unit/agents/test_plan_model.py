@@ -230,6 +230,15 @@ class TestPinFallbackProvider:
         assert configurable["model_name"] == "gemini-x"
         assert "model_kwargs" not in configurable
 
+    def test_pins_even_when_no_provider_kwargs_were_set(self) -> None:
+        configurable = _configurable()
+        with patch(
+            "app.agents.llm.plan_model.next_fallback_provider",
+            return_value=("gemini", "gemini-x"),
+        ):
+            assert pin_fallback_provider(configurable) is True
+        assert configurable == {"provider": "gemini", "model": "gemini-x", "model_name": "gemini-x"}
+
     def test_no_other_provider_leaves_the_configurable_untouched(self) -> None:
         configurable = _configurable()
         with patch("app.agents.llm.plan_model.next_fallback_provider", return_value=None):

@@ -61,6 +61,7 @@ class TestNarrateExecutorResult:
             text = await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER)
 
         assert text == f"Done. {RESULT_TEXT}"
+        assert silent.await_args.args[0] is graph
         initial = silent.await_args.args[1]
         message = initial["messages"][0]
         assert isinstance(message, HumanMessage)
@@ -148,6 +149,7 @@ class TestNarrateExecutorResult:
             _patch_graph(_fake_comms_graph()),
             patch(f"{MODULE}.execute_graph_silent", silent),
             patch(f"{MODULE}.pin_fallback_provider", return_value=True) as pin,
+            patch(f"{MODULE}.log") as mock_log,
         ):
             text = await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER)
 
@@ -155,6 +157,14 @@ class TestNarrateExecutorResult:
         assert silent.await_count == 2
         first_config = silent.await_args_list[0].args[2]
         pin.assert_called_once_with(first_config["configurable"])
+        mock_log.warning.assert_called_once()
+        message, kwargs = mock_log.warning.call_args.args[0], mock_log.warning.call_args.kwargs
+        assert "retrying on fallback" in message
+        assert kwargs == {
+            "error": "402 insufficient credits",
+            "error_type": "ConnectionError",
+            "conversation_id": CONVERSATION_ID,
+        }
 
     async def test_provider_failure_with_no_fallback_provider_returns_empty_string(self) -> None:
         silent = AsyncMock(side_effect=_provider_error())
