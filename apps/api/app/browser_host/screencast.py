@@ -30,11 +30,11 @@ if TYPE_CHECKING:
 
     from app.browser_host.chromium import ChromiumHost, HostSession
 
-_SCREENCAST_QUALITY = 90
+_SCREENCAST_QUALITY = 95
 # The page renders at 2x (BROWSER_DEVICE_SCALE_FACTOR), so a 1280x800 viewport has
-# a 2560x1600 surface; capture at 1.5x and let it supersample down for crisp text.
-_DEFAULT_MAX_WIDTH = 1920
-_DEFAULT_MAX_HEIGHT = 1200
+# a 2560x1600 surface; capture it 1:1 at high quality so text stays retina-sharp.
+_DEFAULT_MAX_WIDTH = 2560
+_DEFAULT_MAX_HEIGHT = 1600
 # Bounded so a slow viewer applies backpressure by dropping stale frames, not by
 # stalling Chromium (we ack every frame regardless).
 _FRAME_QUEUE_SIZE = 2
