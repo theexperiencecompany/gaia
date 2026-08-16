@@ -6,6 +6,8 @@ regressions kept coming back. These are the same rules as executable assertions,
 and they hold across all five tiers.
 """
 
+from unittest.mock import AsyncMock, patch
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 import pytest
 from tests._harness.context_chain import (
@@ -17,8 +19,15 @@ from tests._harness.context_chain import (
     slots_of,
     text_of,
 )
-from tests._harness.context_sources import ContextSources, knowledge, memory
+from tests._harness.context_sources import (
+    ContextSources,
+    fake_context_sources,
+    knowledge,
+    memory,
+)
 
+from app.agents.context.assemble import assemble_context_safely
+from app.agents.context.sections import SectionContext
 from app.agents.context.slots import PromptSlot, slot_of
 
 RICH_SOURCES = ContextSources(
@@ -275,3 +284,67 @@ class TestWorkspaceSessionNeverGuesses:
 
         assembled = " ".join(text_of(m) for m in messages if m.type == "system")
         assert f"{tier.value}-thread" not in assembled
+
+
+#: Each fallible read a comms turn performs, paired with the text only its own
+#: section renders — so a survivor can be told apart from the section that failed.
+FALLIBLE_SOURCES = [
+    ("app.memory.engine.memory_engine.get_core_context", "Prefers short answers"),
+    ("app.memory.engine.memory_engine.recall", "Ships on Fridays"),
+    (
+        "app.services.gaia_knowledge_service.gaia_knowledge_service.search_knowledge",
+        "GAIA can run scheduled workflows",
+    ),
+    ("app.agents.context.fetchers._cached_tracked_todos_summary", "ship the context refactor"),
+    ("app.agents.context.fetchers.get_connected_integrations_named", "Gmail"),
+]
+
+COMMS_CONTEXT = SectionContext(
+    tier=AgentTier.COMMS,
+    user_id="user-alpha",
+    user_name="Ada",
+    user_timezone="Asia/Kolkata",
+    query="what is on my plate?",
+)
+
+
+@pytest.mark.unit
+class TestOneFailingSourceCostsOnlyItsOwnSection:
+    """Sections are gathered concurrently, so a section that raises instead of
+    degrading takes the whole gather down with it — and the assembly-wide
+    fallback then serves an *empty* stable block. A transient error on one
+    enrichment read therefore strips the user's name, timezone, preferences,
+    connected integrations and memories from the same turn.
+
+    ``build_tracked_todos_block`` was the one fetcher that left its service call
+    unguarded, so a Mongo blip on the todo service silently cost a comms turn
+    every other piece of context it had.
+    """
+
+    @pytest.mark.parametrize(("target", "own_text"), FALLIBLE_SOURCES)
+    async def test_every_other_section_survives(self, target: str, own_text: str) -> None:
+        with (
+            fake_context_sources(RICH_SOURCES),
+            patch(target, AsyncMock(side_effect=RuntimeError("source down"))),
+        ):
+            assembled = await assemble_context_safely(COMMS_CONTEXT)
+
+        rendered = "\n".join(text_of(m) for m in assembled.messages())
+        survivors = [text for _, text in FALLIBLE_SOURCES if text != own_text]
+        for text in ("Ada", "Asia/Kolkata", *survivors):
+            assert text in rendered, (
+                f"{target} failing erased {text!r}, which it has nothing to do with"
+            )
+
+    @pytest.mark.parametrize(("target", "own_text"), FALLIBLE_SOURCES)
+    async def test_only_the_failing_section_is_missing(self, target: str, own_text: str) -> None:
+        """Guards the test above from passing vacuously: if a patched target
+        were not actually on the section's path, nothing would have degraded."""
+        with (
+            fake_context_sources(RICH_SOURCES),
+            patch(target, AsyncMock(side_effect=RuntimeError("source down"))),
+        ):
+            assembled = await assemble_context_safely(COMMS_CONTEXT)
+
+        rendered = "\n".join(text_of(m) for m in assembled.messages())
+        assert own_text not in rendered

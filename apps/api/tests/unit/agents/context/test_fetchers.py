@@ -16,6 +16,7 @@ from app.agents.context.fetchers import (
     build_core_memory_block,
     build_gaia_knowledge_block,
     build_memory_recall_block,
+    build_tracked_todos_block,
     build_workspace_session_banner,
 )
 from app.models.memory_models import MemorySearchResult
@@ -141,6 +142,46 @@ class TestConnectedIntegrationsManifest:
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
             assert await build_connected_integrations_manifest("u1", header="HEADER:") == ""
+
+
+@pytest.mark.unit
+class TestTrackedTodosBlock:
+    async def test_renders_the_cached_summary(self) -> None:
+        with patch(
+            "app.agents.context.fetchers._cached_tracked_todos_summary",
+            AsyncMock(return_value="Tracked: ship the refactor"),
+        ):
+            assert await build_tracked_todos_block("u1") == "Tracked: ship the refactor"
+
+    async def test_a_pinned_view_bypasses_the_cache(self) -> None:
+        """Caching the pinned form would surface one run's bound todo on every
+        other turn for that user until the TTL expired — the cache key is the
+        user alone."""
+        cached = AsyncMock(return_value="cached summary")
+        with (
+            patch("app.agents.context.fetchers._cached_tracked_todos_summary", cached),
+            patch(
+                "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+                AsyncMock(return_value="pinned summary"),
+            ),
+        ):
+            assert await build_tracked_todos_block("u1", "todo-7") == "pinned summary"
+
+        cached.assert_not_awaited()
+
+    async def test_failure_yields_no_block(self) -> None:
+        with patch(
+            "app.agents.context.fetchers._cached_tracked_todos_summary",
+            AsyncMock(side_effect=RuntimeError("mongo down")),
+        ):
+            assert await build_tracked_todos_block("u1") == ""
+
+    async def test_a_pinned_view_failing_yields_no_block(self) -> None:
+        with patch(
+            "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+            AsyncMock(side_effect=RuntimeError("mongo down")),
+        ):
+            assert await build_tracked_todos_block("u1", "todo-7") == ""
 
 
 @pytest.mark.unit

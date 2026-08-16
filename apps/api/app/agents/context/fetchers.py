@@ -93,11 +93,20 @@ async def build_tracked_todos_block(user_id: str, active_todo_id: str | None = N
     keyed by user alone, so caching the pinned form would show one run's bound
     todo on every other turn until the TTL expired.
     """
-    if active_todo_id:
-        return await tracked_todo_service.get_active_tracked_summary(
-            user_id, active_todo_id=active_todo_id
+    try:
+        if active_todo_id:
+            return await tracked_todo_service.get_active_tracked_summary(
+                user_id, active_todo_id=active_todo_id
+            )
+        return await _cached_tracked_todos_summary(user_id)
+    except Exception as e:
+        log.warning(
+            "Error retrieving tracked todos",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
         )
-    return await _cached_tracked_todos_summary(user_id)
+        return ""
 
 
 def build_workspace_session_banner(session_id: str) -> str:
