@@ -129,9 +129,10 @@ One module builds the per-run context for comms, the executor, provider subagent
 
 - `apps/api/app/agents/context/slots.py` — `PromptSlot`, the canonical message order `[static, dynamic_stable, onboarding, todo_context, background_executor, executor_status, memory_recall, …conversation…, time]`, plus the marker read/write helpers. The two constraints that fix this order (Gemini's leading-contiguous system block; longest-common-prefix cache matching) are documented there.
 - `apps/api/app/agents/context/tiers.py` — `AgentTier`, the closed set of tiers a section declares applicability against.
-- `apps/api/app/agents/context/sections.py` — `Section(id, slot, applies_to, order, fetch)`, `SectionContext`, and the section × tier table.
-- `apps/api/app/agents/context/fetchers.py` — the reads behind the sections (memory recall, core memory, GAIA knowledge, tracked todos, connected-integrations manifest, run banners). Each degrades to `""` rather than raising.
-- `apps/api/app/agents/context/assemble.py` — `assemble_context` / `assemble_context_safely`: gathers the applicable sections concurrently and emits the stable + volatile system messages.
+- `apps/api/app/agents/context/section_context.py` — `SectionContext`, the closed shape every section reads from. Its own module so the fetchers can take it without importing the table that calls them.
+- `apps/api/app/agents/context/sections.py` — `Section(id, slot, applies_to, order, fetch)` and the section × tier table. A row points straight at its body in `fetchers.py`; the private functions here are only the sections that genuinely branch before rendering.
+- `apps/api/app/agents/context/fetchers.py` — the section bodies (memory recall, core memory, GAIA knowledge, tracked todos, connected-integrations manifest, run banners). Each takes the whole `SectionContext`, declines to render when the context it needs is absent, and degrades to `""` rather than raising.
+- `apps/api/app/agents/context/assemble.py` — `assemble_context`: gathers the applicable sections concurrently and emits the stable + volatile system messages, degrading to an empty stable block if the gather itself fails.
 - `apps/api/app/agents/core/nodes/pre_model_hooks.py` — the hook chains each graph runs before every LLM call. `manage_system_prompts_node` runs LAST and places every message by `PromptSlot`.
 
 Tests: `apps/api/tests/_harness/context_chain.py` produces the *effective* array (post-hook, pre-LLM) in-process for any tier, with no graph, checkpointer or LLM; `apps/api/tests/unit/agents/context/` asserts the slot, cache-prefix and user-independence invariants against it.
