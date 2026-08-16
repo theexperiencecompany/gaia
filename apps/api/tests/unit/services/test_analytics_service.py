@@ -1,11 +1,13 @@
 """Unit tests for analytics service."""
 
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.services.analytics_service import (
     AnalyticsEvents,
+    capture_context_event,
     capture_event,
     identify_user,
     track_payment_event,
@@ -126,6 +128,84 @@ class TestCaptureEvent:
 
         # Should not raise
         capture_event("user1", "test:event")
+
+
+# ---------------------------------------------------------------------------
+# capture_context_event
+# ---------------------------------------------------------------------------
+
+
+class TestCaptureContextEvent:
+    """The helper every authenticated route uses.
+
+    It sends NO distinct_id on purpose — PostHogRequestContextMiddleware has
+    already identified the request — so the only things a test can hold it to
+    are the event name, the payload, and the fact that it stays silent when
+    no client is configured. None of that was asserted anywhere.
+    """
+
+    def test_sends_the_event_and_merges_the_timestamp(self, mock_posthog):
+        capture_context_event("test:event", {"key": "value"})
+
+        mock_posthog.capture.assert_called_once()
+        kwargs = mock_posthog.capture.call_args.kwargs
+        assert kwargs.get("event") == "test:event"
+        props = kwargs.get("properties")
+        assert props["key"] == "value"
+        assert "timestamp" in props
+
+    def test_sends_no_distinct_id_so_the_request_context_supplies_it(self, mock_posthog):
+        """Passing one here would override the identified context and is the
+        difference between this helper and capture_event."""
+        capture_context_event("test:event", {"key": "value"})
+
+        call = mock_posthog.capture.call_args
+        assert "distinct_id" not in call.kwargs
+        assert call.args == ()
+
+    def test_none_properties_still_carries_a_timestamp(self, mock_posthog):
+        capture_context_event("test:event", None)
+
+        props = mock_posthog.capture.call_args.kwargs.get("properties")
+        assert "timestamp" in props
+
+    def test_the_timestamp_is_offset_aware_utc(self, mock_posthog):
+        """`datetime.now()` without UTC yields naive local time, which
+        isoformats without an offset — PostHog then reads it as whatever the
+        runner's timezone happens to be."""
+        capture_context_event("test:event")
+
+        stamped = mock_posthog.capture.call_args.kwargs["properties"]["timestamp"]
+        parsed = datetime.fromisoformat(stamped)
+        assert parsed.tzinfo is not None
+        assert parsed.utcoffset() == timedelta(0)
+
+    def test_captures_nothing_when_no_client_is_configured(self, mock_posthog_none):
+        """A token-less environment must no-op, not raise — the SILENT
+        provider strategy is what lets local dev run without analytics."""
+        capture_context_event("test:event", {"key": "value"})
+
+    def test_a_failing_client_does_not_propagate(self, mock_posthog):
+        """Analytics must never take down the request it is measuring."""
+        mock_posthog.capture.side_effect = Exception("PostHog error")
+
+        capture_context_event("test:event")
+
+    def test_a_failing_client_is_reported_loudly(self, mock_posthog):
+        """Swallowed silently, a broken PostHog client looks exactly like a
+        quiet product. log.error lands in the wide event's errors[], so the
+        payload is queryable — and therefore assertable."""
+        mock_posthog.capture.side_effect = RuntimeError("PostHog error")
+
+        with patch("app.services.analytics_service.log") as mock_log:
+            capture_context_event("test:event")
+
+        mock_log.error.assert_called_once()
+        assert mock_log.error.call_args.args[0] == "Failed to capture event in PostHog"
+        kwargs = mock_log.error.call_args.kwargs
+        assert kwargs["event"] == "test:event"
+        assert kwargs["error"] == "PostHog error"
+        assert kwargs["error_type"] == "RuntimeError"
 
 
 # ---------------------------------------------------------------------------

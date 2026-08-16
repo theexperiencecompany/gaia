@@ -935,10 +935,16 @@ jobs:
     needs: [changes, test-mutation-plan]
     if: needs.changes.outputs.has_python == 'true' && needs.test-mutation-plan.outputs.count != '0'
     runs-on: ubuntu-latest
-    # Per MODULE now, not per lane. The slowest honest module measured is ~1.2
-    # min; 20 leaves room for a genuinely large one without letting a hang sit
-    # for an hour. mutation.sh caps its own mutmut child below this.
-    timeout-minutes: 20
+    # Per MODULE, not per lane — which is what makes a generous cap cheap: a
+    # slow shard no longer holds up the other 53.
+    #
+    # 35, not 20, because app/decorators/rate_limiting.py exceeded 20 on CI
+    # while taking 18s-7min locally (reproduced with and without Redis). Its
+    # selection is 10 unit files re-run per mutant, and a 2-core runner with a
+    # cold cache is simply far slower than a laptop. If it is a genuine hang
+    # rather than slowness this cap will say so, in isolation, without costing
+    # any other module.
+    timeout-minutes: 35
     strategy:
       # Every module reports. Stopping at the first failure would hide the
       # rest, and this gate's whole value is the complete list.
