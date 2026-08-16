@@ -904,6 +904,71 @@ class TestExecuteGraphStreaming:
         )
 
     @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_held_marker_prefix_is_released_when_the_stream_ends(self, mock_sm):
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        from langchain_core.messages import AIMessageChunk as AIMC
+
+        chunk = MagicMock(spec=AIMC)
+        chunk.text = "see [EXEC"
+        chunk.content = "see [EXEC"
+        graph = AsyncMock()
+        graph.astream = MagicMock(
+            return_value=_async_iter([((), "messages", (chunk, {"agent_name": "comms_agent"}))])
+        )
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+        ):
+            results.append(s)
+
+        streamed = "".join(
+            json.loads(r[len("data: ") :])["response"]
+            for r in results
+            if r.startswith("data: ") and "response" in r
+        )
+        assert streamed == "see [EXEC"
+        final = next(r for r in results if r.startswith("nostream: "))
+        assert json.loads(final[len("nostream: ") :])["complete_message"] == "see [EXEC"
+
+    @patch("app.helpers.agent_helpers.record_interruption", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_held_marker_prefix_is_released_on_cancellation(self, mock_sm, _record):
+        mock_sm.is_cancelled = AsyncMock(side_effect=[False, True])
+
+        from langchain_core.messages import AIMessageChunk as AIMC
+
+        def _chunk(text: str) -> MagicMock:
+            c = MagicMock(spec=AIMC)
+            c.text = text
+            c.content = text
+            return c
+
+        events = [
+            ((), "messages", (_chunk("see [EXEC"), {"agent_name": "comms_agent"})),
+            ((), "messages", (_chunk("never streamed"), {"agent_name": "comms_agent"})),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {"stream_id": "s1"}}
+        ):
+            results.append(s)
+
+        streamed = "".join(
+            json.loads(r[len("data: ") :])["response"]
+            for r in results
+            if r.startswith("data: ") and "response" in r
+        )
+        assert streamed == "see [EXEC"
+        final = next(r for r in results if r.startswith("nostream: "))
+        payload = json.loads(final[len("nostream: ") :])
+        assert payload == {"complete_message": "see [EXEC", "cancelled": True}
+
+    @patch("app.helpers.agent_helpers.stream_manager")
     async def test_handles_2_tuple_events(self, mock_sm):
         """When subgraphs=True but event is 2-tuple, handle gracefully."""
         mock_sm.is_cancelled = AsyncMock(return_value=False)
