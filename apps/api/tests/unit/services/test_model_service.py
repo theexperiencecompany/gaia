@@ -69,5 +69,3 @@ class TestGetModelById:
 
         assert exc_info.value.status_code == 500
         assert exc_info.value.detail == "Failed to fetch model"
-
-
