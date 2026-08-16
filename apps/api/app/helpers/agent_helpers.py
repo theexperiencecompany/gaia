@@ -225,11 +225,13 @@ def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
     return [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
 
 
-# NOSONAR python:S107 — these parameters form one cohesive LangGraph execution
-# config surface (user context, model, auth, tracing, execution params). Grouping
-# them into a dataclass would not reduce the surface, only move it, and every
-# caller already passes them as explicit keyword args.
-async def build_agent_config(  # NOSONAR python:S107
+# These parameters form one cohesive LangGraph execution config surface (user
+# context, model, auth, tracing, execution params). Grouping them into a dataclass
+# would not reduce the surface, only move it. Keyword-only instead: every caller
+# already passed them by name, and a 19-argument positional signature is a
+# mis-ordering waiting to happen.
+async def build_agent_config(
+    *,
     conversation_id: str,
     user: AgentUserContext,
     agent_name: str,
