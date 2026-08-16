@@ -17,6 +17,7 @@ from app.agents.core.background.comms_narrator import (
     record_executor_cancellation,
 )
 from app.agents.core.graph_manager import GraphUnavailableError
+from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.constants.agents import (
     EXECUTOR_CANCELLED_MARKER,
@@ -166,3 +167,35 @@ class TestRecordExecutorCancellation:
         graph.aupdate_state = AsyncMock(side_effect=RuntimeError("checkpoint down"))
         with _patch_graph(graph):
             await record_executor_cancellation(CONVERSATION_ID, "task-42", "send the email")
+
+
+class TestNarrationResolvesItsOwnCommsLane:
+    """Background narration is a top-level run with no parent to inherit from.
+
+    It has to resolve its OWN lane, at the comms tier — the same model the user's
+    interactive turns get, and the plan_type stamp the budget wall reads. Nothing
+    asserted this, so mutating the role or the agent name survived the suite.
+    """
+
+    async def test_it_asks_for_a_comms_lane_on_the_comms_agent(self) -> None:
+        graph = _fake_comms_graph()
+        built = AsyncMock(return_value={"configurable": {}})
+        with (
+            _patch_graph(graph),
+            patch(f"{MODULE}.build_agent_config", built),
+            patch(f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("narrated", {}))),
+        ):
+            await narrate_executor_result(
+                result_text=RESULT_TEXT,
+                msg_type="final",
+                conversation_id=CONVERSATION_ID,
+                user=USER,
+            )
+
+        kwargs = built.await_args.kwargs
+        assert kwargs["role"] is AgentRole.COMMS
+        assert kwargs["agent_name"] == "comms_agent"
+        assert kwargs["conversation_id"] == CONVERSATION_ID
+        # No base_configurable: inheriting one would carry a stale lane from
+        # whatever run happened to be in flight.
+        assert "base_configurable" not in kwargs
