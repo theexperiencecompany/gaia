@@ -30,9 +30,12 @@ if TYPE_CHECKING:
 
     from app.browser_host.chromium import ChromiumHost, HostSession
 
+# Lossless PNG so the live view is pixel-identical to the real page (no JPEG
+# artifacts on text). ``_SCREENCAST_QUALITY`` only applies to the "jpeg" fallback.
+_SCREENCAST_FORMAT = "png"
 _SCREENCAST_QUALITY = 95
 # The page renders at 2x (BROWSER_DEVICE_SCALE_FACTOR), so a 1280x800 viewport has
-# a 2560x1600 surface; capture it 1:1 at high quality so text stays retina-sharp.
+# a 2560x1600 surface; capture it 1:1 so text stays retina-sharp.
 _DEFAULT_MAX_WIDTH = 2560
 _DEFAULT_MAX_HEIGHT = 1600
 # Bounded so a slow viewer applies backpressure by dropping stale frames, not by
@@ -154,16 +157,14 @@ async def _refresh_meta(cdp: CDPClient, target_id: str, meta: _PageMeta) -> None
 async def _start_screencast(
     cdp: CDPClient, page_session: str, max_width: int, max_height: int
 ) -> None:
-    await cdp.send_raw(
-        "Page.startScreencast",
-        {
-            "format": "jpeg",
-            "quality": _SCREENCAST_QUALITY,
-            "maxWidth": max_width,
-            "maxHeight": max_height,
-        },
-        session_id=page_session,
-    )
+    params: dict[str, Any] = {
+        "format": _SCREENCAST_FORMAT,
+        "maxWidth": max_width,
+        "maxHeight": max_height,
+    }
+    if _SCREENCAST_FORMAT == "jpeg":
+        params["quality"] = _SCREENCAST_QUALITY
+    await cdp.send_raw("Page.startScreencast", params, session_id=page_session)
 
 
 async def _send_frames(client_ws: WebSocket, frames: asyncio.Queue[str], meta: _PageMeta) -> None:
