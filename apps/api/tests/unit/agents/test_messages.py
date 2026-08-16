@@ -21,6 +21,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.context.assemble import AssembledContext
+from app.agents.context.slots import ONBOARDING_MARKER
 from app.agents.context.tiers import AgentTier
 from app.agents.core.messages import construct_langchain_messages
 from app.models.message_models import (
@@ -610,3 +611,108 @@ class TestTheOnboardingProbeSeesTheUsersActualMessage:
             )
 
         probe.assert_not_awaited()
+
+
+class TestAnOnboardingTurnKeepsBothItsPromptAndTheUsersIdentity:
+    """The onboarding prompt used to be stamped ``memory_message`` — the stable
+    block's OWN marker — and emitted after it, so the single-occupant slot kept
+    the prompt and dropped the identity block. Every onboarding turn reached the
+    model with no user name, timezone, preferences or integrations manifest,
+    which is precisely the turn where knowing the user matters most.
+
+    It has its own slot now. Both halves are pinned here: the prompt arrives,
+    and it arrives *beside* identity rather than instead of it.
+    """
+
+    PROMPT = "Welcome! Ask about their inbox."
+
+    def _probe(self) -> Any:
+        return patch(
+            "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
+            new_callable=AsyncMock,
+            return_value=self.PROMPT,
+        )
+
+    async def _run(self) -> list[Any]:
+        p = _patches()
+        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe():
+            return await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}],
+                user_id="uid-1",
+                conversation_id="conv-1",
+            )
+
+    @pytest.mark.asyncio
+    async def test_the_prompt_reaches_the_model_verbatim(self) -> None:
+        onboarding = [
+            m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
+        ]
+
+        assert len(onboarding) == 1
+        assert onboarding[0].content == self.PROMPT
+
+    @pytest.mark.asyncio
+    async def test_the_identity_block_is_still_there(self) -> None:
+        assert DYNAMIC_MSG in await self._run()
+
+    @pytest.mark.asyncio
+    async def test_the_prompt_does_not_claim_the_stable_blocks_slot(self) -> None:
+        """Carrying ``memory_message`` is what made it evict identity; the
+        pruning node keeps only the latest holder of that marker."""
+        (onboarding,) = [
+            m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
+        ]
+
+        assert onboarding.additional_kwargs.get("memory_message") is not True
+        assert onboarding.additional_kwargs.get("dynamic_context") is not True
+
+    @pytest.mark.asyncio
+    async def test_it_follows_the_stable_block_rather_than_replacing_it(self) -> None:
+        result = await self._run()
+        onboarding = next(m for m in result if m.additional_kwargs.get(ONBOARDING_MARKER) is True)
+
+        assert result.index(onboarding) > result.index(DYNAMIC_MSG)
+
+    @pytest.mark.asyncio
+    async def test_an_ordinary_turn_carries_no_onboarding_message(self) -> None:
+        p = _patches()
+        with (
+            p["create_system"],
+            p["build_dynamic"],
+            p["format_files"],
+            patch(
+                "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            result = await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}],
+                user_id="uid-1",
+                conversation_id="conv-1",
+            )
+
+        assert not [m for m in result if m.additional_kwargs.get(ONBOARDING_MARKER)]
+
+
+class TestTheClockIsRenderedInTheUsersTimezone:
+    @pytest.mark.asyncio
+    async def test_the_users_zone_reaches_the_clock(self) -> None:
+        """A clock built in the wrong zone makes "this afternoon" and "tomorrow"
+        resolve to the wrong day for anyone outside UTC."""
+        p = _patches()
+        with (
+            p["create_system"],
+            p["build_dynamic"],
+            p["format_files"],
+            patch(
+                "app.agents.core.messages.build_current_time_message",
+                return_value=HumanMessage(content="now", additional_kwargs={"time_context": True}),
+            ) as clock,
+        ):
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}],
+                user_dict={"timezone": "Asia/Kolkata"},
+            )
+
+        clock.assert_called_once_with(user_timezone="Asia/Kolkata")
