@@ -928,7 +928,10 @@ jobs:
   # slowest module rather than their sum, and a module that hangs takes down
   # only its own shard.
   test-mutation:
-    name: Mutation
+    # Named explicitly: the default appends EVERY matrix value, so each of the
+    # 50+ checks would carry its full test-file JSON and the module — the only
+    # part a reader needs — would be truncated away in the checks list.
+    name: Mutation ${{ matrix.module }}
     needs: [changes, test-mutation-plan]
     if: needs.changes.outputs.has_python == 'true' && needs.test-mutation-plan.outputs.count != '0'
     runs-on: ubuntu-latest
