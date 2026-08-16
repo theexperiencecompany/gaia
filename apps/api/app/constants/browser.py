@@ -164,3 +164,6 @@ NON_COMMITTING_ACTIONS: frozenset[str] = frozenset(
 # mobile layout and makes screenshots look broken).
 BROWSER_VIEWPORT_WIDTH = 1280
 BROWSER_VIEWPORT_HEIGHT = 800
+# Render at 2x so page text is retina-sharp in the live view and step images; the
+# screencast captures the hi-DPI surface and downscales, which supersamples.
+BROWSER_DEVICE_SCALE_FACTOR = 2

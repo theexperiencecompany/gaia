@@ -20,6 +20,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from app.constants.browser import (
+    BROWSER_DEVICE_SCALE_FACTOR,
     BROWSER_TAKEOVER_PREAMBLE,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
@@ -134,7 +135,7 @@ class BrowserTaskRunner:
         browser = Browser(
             cdp_url=self._session.cdp_url,
             viewport={"width": BROWSER_VIEWPORT_WIDTH, "height": BROWSER_VIEWPORT_HEIGHT},
-            device_scale_factor=1,
+            device_scale_factor=BROWSER_DEVICE_SCALE_FACTOR,
             no_viewport=False,
         )
 
