@@ -11,6 +11,7 @@ to the comms checkpoint.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import HumanMessage
+import pytest
 
 from app.agents.core.background.comms_narrator import (
     narrate_executor_result,
@@ -26,6 +27,11 @@ from app.constants.agents import (
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 MODULE = "app.agents.core.background.comms_narrator"
+
+
+def _provider_error() -> ConnectionError:
+    return ConnectionError("402 insufficient credits")
+
 
 USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
 CONVERSATION_ID = "conv-1"
@@ -134,6 +140,42 @@ class TestNarrateExecutorResult:
             patch(f"{MODULE}.execute_graph_silent", AsyncMock(side_effect=RuntimeError("boom"))),
         ):
             assert await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER) == ""
+
+    @pytest.mark.regression
+    async def test_provider_failure_retries_the_narration_on_the_fallback_provider(self) -> None:
+        silent = AsyncMock(side_effect=[_provider_error(), ("revoiced on fallback", {})])
+        with (
+            _patch_graph(_fake_comms_graph()),
+            patch(f"{MODULE}.execute_graph_silent", silent),
+            patch(f"{MODULE}.pin_fallback_provider", return_value=True) as pin,
+        ):
+            text = await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER)
+
+        assert text == "revoiced on fallback"
+        assert silent.await_count == 2
+        first_config = silent.await_args_list[0].args[2]
+        pin.assert_called_once_with(first_config["configurable"])
+
+    async def test_provider_failure_with_no_fallback_provider_returns_empty_string(self) -> None:
+        silent = AsyncMock(side_effect=_provider_error())
+        with (
+            _patch_graph(_fake_comms_graph()),
+            patch(f"{MODULE}.execute_graph_silent", silent),
+            patch(f"{MODULE}.pin_fallback_provider", return_value=False),
+        ):
+            assert await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER) == ""
+        assert silent.await_count == 1
+
+    async def test_programming_errors_are_not_retried_on_another_provider(self) -> None:
+        silent = AsyncMock(side_effect=RuntimeError("boom"))
+        with (
+            _patch_graph(_fake_comms_graph()),
+            patch(f"{MODULE}.execute_graph_silent", silent),
+            patch(f"{MODULE}.pin_fallback_provider", return_value=True) as pin,
+        ):
+            assert await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER) == ""
+        assert silent.await_count == 1
+        pin.assert_not_called()
 
 
 class TestRecordExecutorCancellation:

@@ -6,8 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.agents import EXECUTOR_ERROR_MARKER, EXECUTOR_RESULT_MARKER
 from app.models.integration_models import Integration
 from app.utils.agent_utils import (
+    InternalMarkerFilter,
     _lookup_custom_integration_name,
     _resolve_handoff_display_name,
     format_sse_data,
@@ -15,6 +17,7 @@ from app.utils.agent_utils import (
     format_tool_call_entry,
     parse_subagent_id,
     process_custom_event_for_tools,
+    strip_internal_agent_markers,
 )
 
 
@@ -408,3 +411,38 @@ class TestProcessCustomEventForTools:
         ):
             result = process_custom_event_for_tools({"x": 1})
         assert result == {}
+
+
+@pytest.mark.unit
+class TestInternalMarkerFilter:
+    def _run(self, chunks: list[str]) -> str:
+        marker_filter = InternalMarkerFilter()
+        out = "".join(marker_filter.feed(chunk) for chunk in chunks)
+        return out + marker_filter.flush()
+
+    def test_marker_split_across_chunks_never_reaches_the_output(self) -> None:
+        assert self._run(["[EXECUTOR_", "RESULT]\nYou do not have WhatsApp.", " Want help?"]) == (
+            "You do not have WhatsApp. Want help?"
+        )
+
+    def test_marker_after_a_message_break_is_removed_too(self) -> None:
+        text = f"on it\n\n<NEW_MESSAGE_BREAK>\n\n{EXECUTOR_RESULT_MARKER}\nlooks not linked"
+        assert self._run([text]) == "on it\n\n<NEW_MESSAGE_BREAK>\n\nlooks not linked"
+
+    def test_marker_matching_is_case_insensitive_like_the_batch_strip(self) -> None:
+        assert self._run(["[executor_result]\n", "done"]) == "done"
+        assert self._run([EXECUTOR_ERROR_MARKER, " failed"]) == "failed"
+
+    def test_bracketed_text_that_is_not_a_marker_passes_through(self) -> None:
+        assert self._run(["see [the docs] and [EXEC", "UTIVE summary]"]) == (
+            "see [the docs] and [EXECUTIVE summary]"
+        )
+
+    def test_partial_marker_is_held_then_flushed_when_the_stream_ends(self) -> None:
+        marker_filter = InternalMarkerFilter()
+        assert marker_filter.feed("hello [EXEC") == "hello "
+        assert marker_filter.flush() == "[EXEC"
+
+    def test_batch_strip_and_stream_filter_agree(self) -> None:
+        text = f"{EXECUTOR_RESULT_MARKER}\nfoo [x] bar"
+        assert self._run([text]) == strip_internal_agent_markers(text)

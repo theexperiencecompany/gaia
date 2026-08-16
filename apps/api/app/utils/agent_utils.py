@@ -29,19 +29,64 @@ from shared.py.wide_events import log
 StreamWriterCallable = Callable[[dict[str, Any]], None]
 
 
-def strip_internal_agent_markers(text: str) -> str:
-    """Remove internal routing markers an agent may have echoed into user text.
+_INTERNAL_MARKER_PATTERN = re.compile(
+    "|".join(re.escape(marker) for marker in INTERNAL_AGENT_MARKERS),
+    flags=re.IGNORECASE,
+)
+_LONGEST_INTERNAL_MARKER = max(len(marker) for marker in INTERNAL_AGENT_MARKERS)
+
+
+class InternalMarkerFilter:
+    """Streaming remover of internal routing markers an agent may echo into user text.
 
     Markers like ``[EXECUTOR_RESULT]`` wrap the payload handed to comms for
     re-voicing; they are context for the agent, never part of the user-facing
-    reply. A weak model occasionally parrots them verbatim, so strip them
-    deterministically as a hard backstop before delivery.
+    reply. A weak model occasionally parrots them verbatim — and a stream can
+    split one across chunks — so ``feed`` emits text only once it can no longer
+    be the start of a marker, and drops every complete marker (plus the
+    whitespace it dragged in). ``flush`` releases whatever is still held.
     """
-    pattern = re.compile(
-        "|".join(re.escape(marker) for marker in INTERNAL_AGENT_MARKERS),
-        flags=re.IGNORECASE,
-    )
-    return pattern.sub("", text).strip()
+
+    def __init__(self) -> None:
+        self._pending = ""
+        self._after_marker = False
+
+    def feed(self, chunk: str) -> str:
+        self._pending += chunk
+        emitted: list[str] = []
+        while True:
+            if self._after_marker:
+                self._pending = self._pending.lstrip()
+                self._after_marker = not self._pending
+            match = _INTERNAL_MARKER_PATTERN.search(self._pending)
+            if match:
+                emitted.append(self._pending[: match.start()])
+                self._pending = self._pending[match.end() :]
+                self._after_marker = True
+                continue
+            hold = self._held_prefix_length()
+            cut = len(self._pending) - hold
+            emitted.append(self._pending[:cut])
+            self._pending = self._pending[cut:]
+            return "".join(emitted)
+
+    def flush(self) -> str:
+        pending, self._pending = self._pending, ""
+        return pending
+
+    def _held_prefix_length(self) -> int:
+        tail = self._pending[-_LONGEST_INTERNAL_MARKER:].lower()
+        for length in range(len(tail), 0, -1):
+            candidate = tail[-length:]
+            if any(marker.lower().startswith(candidate) for marker in INTERNAL_AGENT_MARKERS):
+                return length
+        return 0
+
+
+def strip_internal_agent_markers(text: str) -> str:
+    """Remove internal routing markers from a complete text; see InternalMarkerFilter."""
+    marker_filter = InternalMarkerFilter()
+    return (marker_filter.feed(text) + marker_filter.flush()).strip()
 
 
 class IntegrationMetadata(TypedDict, total=False):

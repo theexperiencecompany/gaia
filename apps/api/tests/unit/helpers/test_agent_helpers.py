@@ -1,5 +1,6 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -862,6 +863,45 @@ class TestExecuteGraphStreaming:
             results.append(s)
 
         assert any("Hello" in r for r in results)
+
+    @pytest.mark.regression
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_parroted_marker_split_across_chunks_is_stripped_from_the_stream(self, mock_sm):
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        from langchain_core.messages import AIMessageChunk as AIMC
+
+        def _chunk(text: str) -> MagicMock:
+            c = MagicMock(spec=AIMC)
+            c.text = text
+            c.content = text
+            return c
+
+        events = [
+            ((), "messages", (_chunk("[EXECUTOR_"), {"agent_name": "comms_agent"})),
+            ((), "messages", (_chunk("RESULT]\nYou do not have"), {"agent_name": "comms_agent"})),
+            ((), "messages", (_chunk(" WhatsApp."), {"agent_name": "comms_agent"})),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(
+            graph, {}, {"agent_name": "comms_agent", "configurable": {}}
+        ):
+            results.append(s)
+
+        streamed = "".join(
+            json.loads(r[len("data: ") :])["response"]
+            for r in results
+            if r.startswith("data: ") and "response" in r
+        )
+        assert streamed == "You do not have WhatsApp."
+        final = next(r for r in results if r.startswith("nostream: "))
+        assert (
+            json.loads(final[len("nostream: ") :])["complete_message"]
+            == "You do not have WhatsApp."
+        )
 
     @patch("app.helpers.agent_helpers.stream_manager")
     async def test_handles_2_tuple_events(self, mock_sm):

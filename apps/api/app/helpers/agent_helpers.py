@@ -45,6 +45,7 @@ from app.models.models_models import ModelConfig
 from app.models.stream_events import ModelFallbackFrame, ToolOutputPayload
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
+    InternalMarkerFilter,
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
@@ -623,6 +624,7 @@ async def execute_graph_streaming(
         - "custom": application-specific tool events, forwarded as-is.
     """
     complete_message = ""
+    marker_filter = InternalMarkerFilter()
     stream_id = agent_configurable(config).get("stream_id")
     user_id = agent_configurable(config).get("user_id")
 
@@ -757,8 +759,10 @@ async def execute_graph_streaming(
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
                 content = chunk.text
                 if content and config.get("agent_name") == "comms_agent":
-                    yield format_sse_response(content)
-                    complete_message += content
+                    content = marker_filter.feed(content)
+                    if content:
+                        yield format_sse_response(content)
+                        complete_message += content
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
@@ -935,10 +939,18 @@ async def execute_graph_streaming(
                 error=str(e),
                 error_type=type(e).__name__,
             )
+        held = marker_filter.flush()
+        if held:
+            yield format_sse_response(held)
+            complete_message += held
         yield f"nostream: {json.dumps({'complete_message': complete_message, 'cancelled': True})}"
         yield "data: [DONE]\n\n"
         return
 
+    held = marker_filter.flush()
+    if held:
+        yield format_sse_response(held)
+        complete_message += held
     # Yield complete message for DB storage
     yield f"nostream: {json.dumps({'complete_message': complete_message})}"
     yield "data: [DONE]\n\n"

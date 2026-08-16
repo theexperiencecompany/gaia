@@ -9,7 +9,8 @@ persona. This module owns that single invocation.
 from langchain_core.messages import HumanMessage
 
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
-from app.agents.llm.plan_model import apply_plan_model
+from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS
+from app.agents.llm.plan_model import apply_plan_model, pin_fallback_provider
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.constants.agents import (
     EXECUTOR_CANCELLED_MARKER,
@@ -97,7 +98,21 @@ async def narrate_executor_result(
                 ),
             ],
         }
-        notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
+        try:
+            notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
+        except LLM_FALLBACK_EXCEPTIONS as provider_error:
+            # The graph selects its model by configurable["provider"] and never
+            # fails over on its own; one dead provider must not turn the user's
+            # answer into raw executor text — retry once on the next provider.
+            if not pin_fallback_provider(agent_configurable(config)):
+                raise
+            log.warning(
+                f"{LogTag.AGENT} narrate_executor_result: provider failed, retrying on fallback",
+                error=str(provider_error),
+                error_type=type(provider_error).__name__,
+                conversation_id=conversation_id,
+            )
+            notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
         return strip_internal_agent_markers(notification_text)
     except Exception as e:
         log.error(f"{LogTag.AGENT} narrate_executor_result: failed", error=str(e))

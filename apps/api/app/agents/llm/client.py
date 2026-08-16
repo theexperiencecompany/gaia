@@ -317,6 +317,18 @@ def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
     return available
 
 
+def next_fallback_provider(current: str | None) -> tuple[LLMProviderName, str] | None:
+    """The highest-priority configured provider other than ``current`` and its model,
+    or None when nothing else is configured — the graph never fails over on its own,
+    so callers that caught a provider failure use this to retry once elsewhere."""
+    available = _get_available_providers()
+    for priority in sorted(PROVIDER_PRIORITY):
+        name = PROVIDER_PRIORITY[priority]
+        if name != current and name in available:
+            return name, PROVIDER_MODELS[name]
+    return None
+
+
 def _get_ordered_providers(
     available_providers: dict[LLMProviderName, ProviderLLM],
     preferred_provider: LLMProviderName | None,

@@ -10,6 +10,7 @@ per-request ceiling) stay intact; only the model changes.
 
 from typing import Any
 
+from app.agents.llm.client import next_fallback_provider
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
 from app.constants.llm import (
@@ -42,6 +43,22 @@ from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 _DEGRADE_NOTICE_KEY = "cost_budget_notified:{user_id}:{window}"
+
+
+def pin_fallback_provider(configurable: AgentConfigurable) -> bool:
+    """Re-pin ``configurable`` to the next available provider after the current one.
+
+    The agent graph selects its model by ``configurable["provider"]`` and never
+    fails over on its own, so a caller that caught a provider failure uses this
+    to retry once elsewhere. False when no other provider is configured.
+    """
+    fallback = next_fallback_provider(configurable.get("provider"))
+    if fallback is None:
+        return False
+    provider, model = fallback
+    _pin_model(configurable, provider, model)
+    configurable.pop("model_kwargs", None)
+    return True
 
 
 def _pin_model(configurable: AgentConfigurable, provider: str, model: str) -> None:
