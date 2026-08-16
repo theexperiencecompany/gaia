@@ -28,9 +28,11 @@ from app.agents.llm.client import (
     ainvoke_llm,
     get_default_llm,
     init_llm,
+    next_fallback_provider,
     register_llm_providers,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
+from app.agents.llm.types import LLMProviderName
 from app.constants.llm import DEFAULT_MODEL_NAME
 from app.core.lazy_loader import ProviderRegistry
 
@@ -648,3 +650,34 @@ class TestChatbot:
 
         with pytest.raises(RuntimeError, match="event loop is closed"):
             await chatbot([HumanMessage(content="hello")])
+
+
+@pytest.mark.unit
+class TestNextFallbackProvider:
+    @patch("app.agents.llm.client._get_available_providers")
+    def test_returns_the_highest_priority_configured_provider_other_than_current(
+        self, mock_available: MagicMock
+    ) -> None:
+        mock_available.return_value = {
+            LLMProviderName.OPENROUTER: MagicMock(),
+            LLMProviderName.GEMINI: MagicMock(),
+        }
+
+        assert next_fallback_provider(LLMProviderName.OPENROUTER) == (
+            LLMProviderName.GEMINI,
+            PROVIDER_MODELS[LLMProviderName.GEMINI],
+        )
+        assert next_fallback_provider(LLMProviderName.GEMINI) == (
+            LLMProviderName.OPENROUTER,
+            PROVIDER_MODELS[LLMProviderName.OPENROUTER],
+        )
+
+    @patch("app.agents.llm.client._get_available_providers")
+    def test_skips_providers_that_are_not_configured(self, mock_available: MagicMock) -> None:
+        mock_available.return_value = {LLMProviderName.OPENROUTER: MagicMock()}
+
+        assert next_fallback_provider(LLMProviderName.OPENROUTER) is None
+        assert next_fallback_provider(None) == (
+            LLMProviderName.OPENROUTER,
+            PROVIDER_MODELS[LLMProviderName.OPENROUTER],
+        )

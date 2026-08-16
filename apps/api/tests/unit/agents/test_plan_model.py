@@ -7,10 +7,13 @@ model, and the dev-only overrides pin/stash/clear model fields exactly.
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app.agents.llm.plan_model import (
     apply_dev_executor_model,
     apply_dev_model_override,
     apply_plan_model,
+    pin_fallback_provider,
 )
 from app.config.settings import settings
 from app.constants.llm import (
@@ -204,3 +207,31 @@ class TestApplyDevExecutorModel:
         apply_dev_executor_model(parent, executor)
 
         assert executor == {"provider": "inherited", "model_name": "inherited"}
+
+
+@pytest.mark.unit
+class TestPinFallbackProvider:
+    def test_pins_the_next_provider_and_drops_provider_specific_kwargs(self) -> None:
+        configurable: AgentConfigurable = {
+            "provider": PAID_MODEL_PROVIDER,
+            "model": PAID_MODEL_NAME,
+            "model_name": PAID_MODEL_NAME,
+            "model_kwargs": dict(PAID_MODEL_MODEL_KWARGS),
+        }
+        with patch(
+            "app.agents.llm.plan_model.next_fallback_provider",
+            return_value=("gemini", "gemini-x"),
+        ) as nxt:
+            assert pin_fallback_provider(configurable) is True
+
+        nxt.assert_called_once_with(PAID_MODEL_PROVIDER)
+        assert configurable["provider"] == "gemini"
+        assert configurable["model"] == "gemini-x"
+        assert configurable["model_name"] == "gemini-x"
+        assert "model_kwargs" not in configurable
+
+    def test_no_other_provider_leaves_the_configurable_untouched(self) -> None:
+        configurable = _configurable()
+        with patch("app.agents.llm.plan_model.next_fallback_provider", return_value=None):
+            assert pin_fallback_provider(configurable) is False
+        assert configurable == {"provider": "unset", "model": "unset", "model_name": "unset"}
