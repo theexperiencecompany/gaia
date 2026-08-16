@@ -37,9 +37,8 @@ orig_match = re.search(
 if not orig_match:
     sys.exit(1)
 orig_name = orig_match.group(1).rsplit(".", 1)[-1]
-# Methods are indented, so the split must tolerate leading whitespace — otherwise
-# a method's body reads as empty and orig == mutant, a false EQUIV verdict.
-blocks = re.split(r"^[ \t]*(?:async )?def ", src, flags=re.MULTILINE)
+src_lines = src.splitlines()
+mutants_tree = ast.parse(src)
 
 
 def _def_lines(path: str) -> dict[str, int]:
@@ -75,9 +74,15 @@ if orig_line is None:
 
 
 def _body(name: str) -> list[str]:
-    for block in blocks:
-        if block.split("(", 1)[0].strip() == name:
-            return block.splitlines()[1:]
+    """Every line of the mutmut-named function after its ``def`` line.
+
+    Resolved through the AST rather than by slicing the source at each ``def``:
+    methods are indented and a body may contain nested functions, and either
+    would truncate a text split into a false EQUIV.
+    """
+    for node in ast.walk(mutants_tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name:
+            return src_lines[node.lineno : node.end_lineno]
     return []
 
 

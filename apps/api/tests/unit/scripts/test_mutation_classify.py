@@ -5,6 +5,7 @@ classifier reads argv at import, so exercising it in-process would need to
 re-import per case.
 """
 
+import ast
 from pathlib import Path
 import subprocess
 import sys
@@ -27,8 +28,21 @@ ORIGINAL = textwrap.dedent(
                 if tail[-length:] == "[":
                     return length
             return 0
+
+        def walk(self, items: list[str]) -> list[str]:
+            def visit(item: str) -> str:
+                return item.strip()
+
+            seen = [visit(item) for item in items]
+            return seen[:10]
     """
 ).lstrip()
+
+
+def _method_source(method: str) -> str:
+    tree = ast.parse(ORIGINAL)
+    node = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == method)
+    return "\n".join(ORIGINAL.splitlines()[node.lineno - 1 : node.end_lineno])
 
 
 def _mutants_copy(method: str, mutated_line: str, orig_line: str) -> str:
@@ -37,20 +51,18 @@ def _mutants_copy(method: str, mutated_line: str, orig_line: str) -> str:
     entry is the QUALIFIED ``Class.xǁClassǁmethod__mutmut_orig``."""
     orig = f"xǁFilterǁ{method}__mutmut_orig"
     mut = f"xǁFilterǁ{method}__mutmut_1"
-    body = ORIGINAL.split(f"def {method}", 1)[1].split("\n\n")[0]
-    signature, _, rest = body.partition("\n")
-    return textwrap.dedent(
-        f"""
-        class Filter:
-            def {orig}{signature}
-        {rest}
-
-            def {mut}{signature}
-        {rest.replace(orig_line, mutated_line)}
-
-        mutants_xǁFilterǁ{method}__mutmut['_mutmut_orig'] = Filter.{orig}
-        mutants_xǁFilterǁ{method}__mutmut['{mut}'] = Filter.{mut}
-        """
+    source = _method_source(method)
+    return "\n".join(
+        [
+            "class Filter:",
+            source.replace(f"def {method}", f"def {orig}", 1),
+            "",
+            source.replace(f"def {method}", f"def {mut}", 1).replace(orig_line, mutated_line),
+            "",
+            f"mutants_xǁFilterǁ{method}__mutmut['_mutmut_orig'] = Filter.{orig}",
+            f"mutants_xǁFilterǁ{method}__mutmut['{mut}'] = Filter.{mut}",
+            "",
+        ]
     )
 
 
@@ -96,6 +108,16 @@ class TestMethodMutants:
         )
 
         result = _run(workdir, "xǁFilterǁ__init____mutmut_1")
+
+        assert result.returncode == 1, result.stderr
+        assert result.stdout.strip().startswith("CHANGED:")
+
+    def test_a_change_after_a_nested_function_is_still_seen(self, workdir: Path) -> None:
+        (workdir / "mutants" / MODULE_PATH).write_text(
+            _mutants_copy("walk", "return seen[:11]", "return seen[:10]")
+        )
+
+        result = _run(workdir, "xǁFilterǁwalk__mutmut_1")
 
         assert result.returncode == 1, result.stderr
         assert result.stdout.strip().startswith("CHANGED:")
