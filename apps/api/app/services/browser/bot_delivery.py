@@ -69,10 +69,13 @@ class BotProgressDelivery:
             await self._text(f"Browser task handoff {snapshot.status.value}.")
             return
 
-        msg = f"I need you to take over for this step: {snapshot.reason}\n\nReply *done* to continue or *stop* to cancel."
+        msg = (
+            f"I need you to take over for this step:\n{snapshot.reason}\n\n"
+            "Reply *done* when you've finished, or *stop* to cancel."
+        )
         if snapshot.session_id:
             link = live_view_link_with_token(snapshot.session_id, self._user_id)
-            msg += f"\nOpen the live browser: {link}"
+            msg += f"\n\nOpen the live browser: {link}"
         await self._text(msg)
 
     async def result(self, snapshot: BrowserResultSnapshot) -> None:
