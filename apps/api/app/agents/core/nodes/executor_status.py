@@ -18,6 +18,7 @@ from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
+from app.agents.context.slots import EXECUTOR_STATUS_MARKER
 from app.agents.core.background.executor_queue import decode_raw_item, parse_lock_value
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
@@ -25,8 +26,6 @@ from app.db.redis import redis_cache
 from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
-
-EXECUTOR_STATUS_MARKER = "executor_status"
 
 
 async def executor_status_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:

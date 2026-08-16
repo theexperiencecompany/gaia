@@ -1,7 +1,7 @@
 """
 Service tests: call real construct_langchain_messages().
 
-Mock only: build_dynamic_context_messages (needs the memory engine/Redis/Mongo).
+Mock only: the context-assembly module (needs the memory engine/Redis/Mongo).
 Real: create_system_message, format_files_list, format_reply_context,
 format_tool_selection_message, message list construction.
 """
@@ -14,9 +14,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.core.messages import construct_langchain_messages
-from app.helpers.message_helpers import DynamicContextMessages
+from app.agents.context.assemble import AssembledContext
 
-_EMPTY_DYNAMIC = DynamicContextMessages(stable=SystemMessage(content=""), memory_recall=None)
+_EMPTY_DYNAMIC = AssembledContext(stable=SystemMessage(content=""), volatile=None)
 
 
 @pytest.mark.service
@@ -27,7 +27,7 @@ class TestConstructMessagesReal:
         """A simple message must produce at least a SystemMessage and HumanMessage."""
         with (
             patch(
-                "app.agents.core.messages.build_dynamic_context_messages",
+                "app.agents.core.messages.assemble_context_safely",
                 new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):
@@ -49,7 +49,7 @@ class TestConstructMessagesReal:
         """selected_tool must add a tool selection instruction."""
         with (
             patch(
-                "app.agents.core.messages.build_dynamic_context_messages",
+                "app.agents.core.messages.assemble_context_safely",
                 new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):
@@ -68,7 +68,7 @@ class TestConstructMessagesReal:
         """First message must always be a SystemMessage."""
         with (
             patch(
-                "app.agents.core.messages.build_dynamic_context_messages",
+                "app.agents.core.messages.assemble_context_safely",
                 new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):

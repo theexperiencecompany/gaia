@@ -8,10 +8,10 @@ The static main prompt is byte-identical across users/channels. Per-user
 identity (name, timezone, preferences, integrations) lives in the stable
 dynamic-context message; volatile per-turn content (memory recall, knowledge,
 skills, todos) lives in an optional memory-recall message. Both are built by
-``build_dynamic_context_messages``. The current-time HumanMessage is appended
+the shared context-assembly module. The current-time HumanMessage is appended
 LAST so minute ticks never shift the cacheable prefix. These tests exercise the
-orchestration — they patch ``create_system_message`` and
-``build_dynamic_context_messages`` and verify the assembled message list.
+orchestration — they patch ``create_system_message`` and ``assemble_context_safely``
+and verify the assembled message list.
 """
 
 from typing import Any
@@ -21,7 +21,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.core.messages import construct_langchain_messages
-from app.helpers.message_helpers import DynamicContextMessages
+from app.agents.context.assemble import AssembledContext
+from app.agents.context.tiers import AgentTier
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -53,11 +54,9 @@ def _patches(
             return_value=system_msg,
         ),
         "build_dynamic": patch(
-            "app.agents.core.messages.build_dynamic_context_messages",
+            "app.agents.core.messages.assemble_context_safely",
             new_callable=AsyncMock,
-            return_value=DynamicContextMessages(
-                stable=dynamic_msg, memory_recall=memory_recall_msg
-            ),
+            return_value=AssembledContext(stable=dynamic_msg, volatile=memory_recall_msg),
         ),
         "format_workflow": patch(
             "app.agents.core.messages.format_workflow_execution_message",
@@ -166,13 +165,14 @@ class TestConstructLangchainMessages:
                 source="whatsapp",
             )
 
-        kwargs = mock_dyn.call_args.kwargs
-        assert kwargs["user_id"] == "uid-1"
-        assert kwargs["user_name"] == "Alice"
-        assert kwargs["user_timezone"] == "Asia/Kolkata"
-        assert kwargs["user_preferences"] == {"tone": "formal"}
-        assert kwargs["query"] == "hi"
-        assert kwargs["source"] == "whatsapp"
+        ctx = mock_dyn.call_args.args[0]
+        assert ctx.tier is AgentTier.COMMS
+        assert ctx.user_id == "uid-1"
+        assert ctx.user_name == "Alice"
+        assert ctx.user_timezone == "Asia/Kolkata"
+        assert ctx.user_preferences == {"tone": "formal"}
+        assert ctx.query == "hi"
+        assert ctx.source == "whatsapp"
 
     @pytest.mark.asyncio
     async def test_source_passed_to_static_prompt_selector(self) -> None:

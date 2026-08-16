@@ -1,0 +1,119 @@
+"""The single entry point every agent tier uses to build its run context.
+
+Before this, comms and the four worker tiers each built their own dynamic-context
+message, and the two implementations had already drifted far enough that
+subagent per-turn content was landing in the byte-stable cache prefix. There is
+now one function; a tier is an argument to it.
+"""
+
+import asyncio
+from dataclasses import dataclass
+
+from langchain_core.messages import SystemMessage
+
+from app.agents.context.sections import SectionContext, sections_for
+from app.agents.context.slots import (
+    DYNAMIC_CONTEXT_MARKER,
+    LEGACY_DYNAMIC_MARKER,
+    MEMORY_RECALL_MARKER,
+    PromptSlot,
+    mark,
+)
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
+
+#: Sections within the stable block are single lines or short line groups, so
+#: they read as one block. Volatile sections are paragraphs and get a blank line.
+_STABLE_JOIN = "\n"
+_VOLATILE_JOIN = "\n\n"
+
+
+@dataclass(frozen=True)
+class AssembledContext:
+    """The two system messages a tier's dynamic context becomes.
+
+    ``stable`` holds what changes only when the user edits a preference or
+    connects an integration, and sits inside the cacheable prefix. ``volatile``
+    holds what was retrieved against this turn and sits at the tail of the system
+    block, so it can never shift the bytes ahead of it. ``volatile`` is ``None``
+    when there is nothing per-turn to say.
+    """
+
+    stable: SystemMessage
+    volatile: SystemMessage | None
+
+    def messages(self) -> list[SystemMessage]:
+        return [self.stable] if self.volatile is None else [self.stable, self.volatile]
+
+
+async def assemble_context(ctx: SectionContext) -> AssembledContext:
+    """Gather every section that applies to ``ctx.tier`` and slot the results.
+
+    A section that fails returns ``""`` rather than raising (see
+    ``fetchers``), so a degraded context never costs the user their turn.
+    """
+    stable_sections = sections_for(ctx.tier, PromptSlot.DYNAMIC_STABLE)
+    volatile_sections = sections_for(ctx.tier, PromptSlot.MEMORY_RECALL)
+
+    results = await asyncio.gather(
+        *(section.fetch(ctx) for section in (*stable_sections, *volatile_sections))
+    )
+    split = len(stable_sections)
+    stable_by_id = dict(zip((s.id for s in stable_sections), results[:split], strict=True))
+    volatile_by_id = dict(zip((s.id for s in volatile_sections), results[split:], strict=True))
+
+    stable_text = _STABLE_JOIN.join(part for part in stable_by_id.values() if part)
+    volatile_text = _VOLATILE_JOIN.join(part for part in volatile_by_id.values() if part)
+
+    log.set(
+        dynamic_context={
+            "tier": ctx.tier.value,
+            "source": ctx.source or "web",
+            "has_core_memory": bool(volatile_by_id.get("core_memory")),
+            "has_memories": bool(volatile_by_id.get("memory_recall")),
+            "has_gaia_knowledge": bool(volatile_by_id.get("gaia_knowledge")),
+            "has_skills": bool(volatile_by_id.get("skills")),
+            "has_active_todo": bool(ctx.active_todo_id),
+            "execution_mode": ctx.execution_mode,
+            "stable_chars": len(stable_text),
+            "memory_recall_chars": len(volatile_text),
+            "has_memory_recall": bool(volatile_text),
+        }
+    )
+
+    return AssembledContext(
+        stable=mark(
+            SystemMessage(content=stable_text),
+            DYNAMIC_CONTEXT_MARKER,
+            # Threads checkpointed before the split resolve on this key.
+            LEGACY_DYNAMIC_MARKER,
+        ),
+        volatile=(
+            mark(SystemMessage(content=volatile_text), MEMORY_RECALL_MARKER)
+            if volatile_text
+            else None
+        ),
+    )
+
+
+async def assemble_context_safely(ctx: SectionContext) -> AssembledContext:
+    """``assemble_context``, degrading to an empty stable block on failure.
+
+    The empty block is byte-stable on purpose: a persistent failure here must not
+    produce a *different* prompt every minute, which would invalidate the prompt
+    cache on every call on top of the original problem.
+    """
+    try:
+        return await assemble_context(ctx)
+    except Exception as e:
+        log.error(
+            f"{LogTag.AGENT} Error assembling agent context",
+            error=str(e),
+            error_type=type(e).__name__,
+            tier=ctx.tier.value,
+            user_id=ctx.user_id,
+        )
+        return AssembledContext(
+            stable=mark(SystemMessage(content=""), DYNAMIC_CONTEXT_MARKER, LEGACY_DYNAMIC_MARKER),
+            volatile=None,
+        )

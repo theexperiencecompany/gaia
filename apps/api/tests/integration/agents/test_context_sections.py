@@ -1,0 +1,162 @@
+"""The two context sections with real behaviour behind them, un-mocked.
+
+The unit tier fakes every section's read, which is what makes those tests fast
+and deterministic — and also what makes them blind to the fake drifting from the
+real service. These two sections have the most logic between the store and the
+rendered text (a status filter plus a name resolution; a pin, a sort and a
+relative-time render), so they are where a fake is most likely to be wrong while
+staying green.
+
+Real production code from the section down; mocked only at the repository and
+catalog seams, one layer below the behaviour under test.
+"""
+
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from app.agents.context.sections import SectionContext
+from app.agents.context.slots import PromptSlot
+from app.agents.context.text import EXECUTOR_CONNECTED_INTEGRATIONS_HEADER
+from app.agents.context.tiers import AgentTier
+from app.models.todo_models import TodoDocument
+
+USER = "user-integration-1"
+
+
+def _ctx(**overrides: object) -> SectionContext:
+    return SectionContext(tier=AgentTier.EXECUTOR, user_id=USER, **overrides)  # type: ignore[arg-type]
+
+
+def _section(section_id: str):
+    from app.agents.context.sections import SECTIONS
+
+    return next(s for s in SECTIONS if s.id == section_id)
+
+
+@pytest.mark.integration
+class TestConnectedIntegrationsManifest:
+    """Runs the real ``get_connected_integrations_named`` — the status filter and
+    the custom-MCP name resolution — over mocked integration records."""
+
+    @staticmethod
+    def _records(*records: dict[str, str]):
+        return patch(
+            "app.services.integrations.user_integrations.get_user_integration_records",
+            AsyncMock(return_value=list(records)),
+        )
+
+    async def test_only_connected_integrations_reach_the_agent(self) -> None:
+        """A disconnected integration listed as available is worse than absent:
+        the executor hands off to it and the handoff fails."""
+        with self._records(
+            {"integration_id": "gmail", "status": "connected"},
+            {"integration_id": "slack", "status": "disconnected"},
+            {"integration_id": "notion", "status": "pending"},
+        ):
+            block = await _section("integrations_manifest").fetch(_ctx())
+
+        assert "gmail" in block
+        assert "slack" not in block
+        assert "notion" not in block
+
+    async def test_the_executor_gets_the_handoff_framed_header(self) -> None:
+        with self._records({"integration_id": "gmail", "status": "connected"}):
+            block = await _section("integrations_manifest").fetch(_ctx())
+
+        assert block.startswith(EXECUTOR_CONNECTED_INTEGRATIONS_HEADER)
+
+    async def test_comms_gets_the_capability_framed_header_instead(self) -> None:
+        with self._records({"integration_id": "gmail", "status": "connected"}):
+            block = await _section("integrations_manifest").fetch(
+                SectionContext(tier=AgentTier.COMMS, user_id=USER)
+            )
+
+        assert not block.startswith(EXECUTOR_CONNECTED_INTEGRATIONS_HEADER)
+        assert "gmail" in block
+
+    async def test_no_connected_integrations_yields_nothing_at_all(self) -> None:
+        with self._records({"integration_id": "gmail", "status": "disconnected"}):
+            assert await _section("integrations_manifest").fetch(_ctx()) == ""
+
+    async def test_the_manifest_is_a_stable_section(self) -> None:
+        """It changes on connect/disconnect, never per turn — so it belongs in
+        the cacheable prefix, and a reclassification must be deliberate."""
+        assert _section("integrations_manifest").slot is PromptSlot.DYNAMIC_STABLE
+
+
+@pytest.mark.integration
+class TestTrackedTodosSummary:
+    """Runs the real ``get_active_tracked_summary`` — the pin, the ordering and
+    the line rendering — over mocked todo documents."""
+
+    @staticmethod
+    def _todos(*docs: TodoDocument):
+        return patch(
+            "app.db.repositories.todos.todo_repository.list_active_tracked",
+            AsyncMock(return_value=list(docs)),
+        )
+
+    @staticmethod
+    def _todo(todo_id: str, title: str) -> TodoDocument:
+        return TodoDocument(
+            id=todo_id,
+            user_id=USER,
+            title=title,
+            created_at=datetime.now(UTC) - timedelta(days=1),
+        )
+
+    async def test_every_active_todo_is_listed(self) -> None:
+        with self._todos(self._todo("t1", "Ship the refactor"), self._todo("t2", "Review the PR")):
+            block = await _section("tracked_todos").fetch(
+                SectionContext(tier=AgentTier.COMMS, user_id=USER)
+            )
+
+        assert "Ship the refactor" in block
+        assert "Review the PR" in block
+
+    async def test_the_bound_todo_is_pinned_to_the_top(self) -> None:
+        """The run is bound to it, so it has to be the one the agent sees first
+        — otherwise the canvas write-target directive names a todo buried in a
+        list of fifteen."""
+        with self._todos(self._todo("t1", "Unrelated work"), self._todo("t2", "The bound one")):
+            block = await _section("tracked_todos").fetch(
+                SectionContext(tier=AgentTier.COMMS, user_id=USER, active_todo_id="t2")
+            )
+
+        assert block.index("The bound one") < block.index("Unrelated work")
+
+    async def test_no_active_todos_yields_nothing(self) -> None:
+        with self._todos():
+            block = await _section("tracked_todos").fetch(
+                SectionContext(tier=AgentTier.COMMS, user_id=USER)
+            )
+
+        assert block == ""
+
+    async def test_a_pinned_view_bypasses_the_cache(self) -> None:
+        """The pin is per-run-binding. Cached, one run's pin would leak into
+        every other turn for the same user until the TTL expired."""
+        calls: list[str] = []
+
+        async def _get_cache(key: str) -> str:
+            calls.append(key)
+            return "STALE SUMMARY"
+
+        with (
+            self._todos(self._todo("t1", "Fresh todo")),
+            patch("app.agents.context.fetchers.get_cache", _get_cache),
+            patch("app.agents.context.fetchers.set_cache", AsyncMock()),
+        ):
+            pinned = await _section("tracked_todos").fetch(
+                SectionContext(tier=AgentTier.COMMS, user_id=USER, active_todo_id="t1")
+            )
+
+        assert "Fresh todo" in pinned
+        assert "STALE SUMMARY" not in pinned
+        assert calls == [], "the pinned view consulted the shared cache"
+
+    async def test_the_summary_is_a_volatile_section(self) -> None:
+        """It changes as the agent works, so it must not sit in the prefix."""
+        assert _section("tracked_todos").slot is PromptSlot.MEMORY_RECALL
