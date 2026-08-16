@@ -31,7 +31,9 @@ src = Path(mutant_file).read_text()
 # — so accept a dotted name and keep its last component.
 base = re.sub(r"__mutmut_\d+$", "", mutant_name)
 dict_name = f"mutants_{base}__mutmut"
-orig_match = re.search(rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*([\w.]+)", src, re.MULTILINE)
+orig_match = re.search(
+    rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*([\w.]+)", src, re.MULTILINE
+)
 if not orig_match:
     sys.exit(1)
 orig_name = orig_match.group(1).rsplit(".", 1)[-1]
