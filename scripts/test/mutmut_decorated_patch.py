@@ -210,6 +210,10 @@ from mutmut.configuration import Config as _Config
 from mutmut.mutation import trampoline as _trampoline_mod
 from mutmut.state import state as _state
 
+# filename -> "is this frame inside a mutated source path". Keyed on the raw
+# co_filename, so it also short-circuits the resolve() itself.
+_USER_CODE_CACHE: dict[str, bool] = {}
+
 
 def _patched_record_trampoline_hit(name: str, caller: str | None = None) -> None:
     assert not name.startswith("src."), (
@@ -229,8 +233,22 @@ def _patched_record_trampoline_hit(name: str, caller: str | None = None) -> None
             # --- patched guard: synthetic frames are not user code ---
             if filename.startswith("<") and filename.endswith(">"):
                 continue
-            file_path = _Path(filename).resolve(strict=True)
-            if any(path in file_path.parents for path in mutated_source_paths):
+            # --- patched: memoise the answer per filename ---
+            # Upstream calls Path(filename).resolve(strict=True) here, which is
+            # a SYSCALL, and this runs for every stack frame of every
+            # trampolined call — millions of times in a test that exercises a
+            # mutated function in a loop. The set of filenames is tiny and
+            # mutated_source_paths is fixed for the run, so the whole question
+            # is answerable once per file. On a laptop with a warm page cache
+            # the difference hides; on a CI runner it is the difference between
+            # app/decorators/rate_limiting.py taking 18 seconds and being
+            # killed at a 35-minute cap.
+            is_user_code = _USER_CODE_CACHE.get(filename)
+            if is_user_code is None:
+                file_path = _Path(filename).resolve(strict=True)
+                is_user_code = any(path in file_path.parents for path in mutated_source_paths)
+                _USER_CODE_CACHE[filename] = is_user_code
+            if is_user_code:
                 # only include stack frames of user-code; exclude mutmut and 3rd library stack frames
                 c -= 1
 
