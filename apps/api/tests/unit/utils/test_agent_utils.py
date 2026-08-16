@@ -452,10 +452,13 @@ class TestInternalMarkerFilter:
         assert marker_filter.flush() == ""
         assert marker_filter.flush() == ""
 
+    @pytest.mark.parametrize("lead", ["x ", "xx "])
     @pytest.mark.parametrize("prefix", ["[", "[E", "[EX", "[EXECUTOR_RESULT"])
-    def test_every_prefix_length_is_held_so_a_split_marker_cannot_leak(self, prefix: str) -> None:
+    def test_every_prefix_length_is_held_so_a_split_marker_cannot_leak(
+        self, lead: str, prefix: str
+    ) -> None:
         rest = EXECUTOR_RESULT_MARKER[len(prefix) :]
-        assert self._run([f"x {prefix}", f"{rest}\nhi"]) == "x hi"
+        assert self._run([f"{lead}{prefix}", f"{rest}\nhi"]) == f"{lead}hi"
 
     def test_batch_strip_and_stream_filter_agree(self) -> None:
         text = f"{EXECUTOR_RESULT_MARKER}\nfoo [x] bar"
