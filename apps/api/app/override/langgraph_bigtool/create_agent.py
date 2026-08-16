@@ -33,6 +33,7 @@ from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import LanguageModelLike
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
@@ -112,7 +113,10 @@ def _prepare_fallback(
     fallback_lane = lane.fallback() if lane else None
     if fallback_lane is None:
         return None
-    return (lambda: llm.bind_tools(tools_to_bind), fallback_lane)  # type: ignore[attr-defined]
+    # cast rather than an attr-defined suppression: the registry genuinely holds a
+    # tool-binding chat model, LanguageModelLike just doesn't declare bind_tools.
+    bindable = cast(BaseChatModel, llm)
+    return (lambda: bindable.bind_tools(tools_to_bind), fallback_lane)
 
 
 def create_agent(

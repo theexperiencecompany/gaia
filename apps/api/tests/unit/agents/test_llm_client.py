@@ -710,7 +710,6 @@ class TestFallbackRunsOnTheOtherProvider:
             seen.update((config or {}).get("configurable", {}))
             return AIMessage(content="from-fallback")
 
-
         def _boom(_input: Any, config: RunnableConfig | None = None) -> AIMessage:
             raise ConnectionError("primary down")
 

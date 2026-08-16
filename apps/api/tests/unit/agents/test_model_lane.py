@@ -208,8 +208,9 @@ class TestSerializationRoundTrip:
             max_input_tokens=DEFAULT_MAX_TOKENS,
         )
 
+        field = "model"
         with pytest.raises((AttributeError, TypeError)):
-            setattr(resolved, "model", "something-else")  # noqa: B010
+            setattr(resolved, field, "something-else")
 
 
 class TestFallback:
