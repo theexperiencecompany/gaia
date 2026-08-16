@@ -64,8 +64,14 @@ def _redis_roundtrip(configurable: AgentConfigurable) -> AgentConfigurable:
 
 
 @pytest.mark.integration
-@pytest.mark.regression
 class TestQueuedRunRebuild:
+    """Not regression-marked, deliberately: these drive the post-lane rebuild
+    (`ModelLane`, an async `build_agent_config`), neither of which exists on the
+    base revision, so they ERROR there rather than fail — and an error proves the
+    harness broke, not that the bug is caught. The drop bug itself is pinned
+    red-first by TestSafeConfigurable in tests/unit/agents/test_executor_queue.py;
+    this file is the integration gap-fill alongside it."""
+
     async def test_the_rebuilt_executor_keeps_the_provider_pin(self) -> None:
         """Without the pin the queued run load-balances off the first-party lane
         onto throttled resellers — a 429 on the user's second message only."""
