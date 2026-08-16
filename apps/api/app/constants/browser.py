@@ -111,7 +111,11 @@ BROWSER_TAKEOVER_PREAMBLE = (
     "\n\nIMPORTANT: For any payment, login/password/OTP/2FA, or irreversible or "
     "legally-binding confirmation, do NOT do it yourself — call the "
     "`request_human_takeover` action first so the user completes that step in the "
-    "live browser, then continue toward the goal."
+    "live browser, then continue toward the goal.\n"
+    "If you encounter a CAPTCHA, reCAPTCHA, hCaptcha, or an 'I'm not a robot' / "
+    "image-grid challenge, do NOT attempt to solve it yourself — call the "
+    "`solve_captcha_with_help` action immediately on the FIRST challenge so the user "
+    "solves it in the live browser, then continue. Never keep clicking challenge tiles."
 )
 
 # ---------------------------------------------------------------------------
