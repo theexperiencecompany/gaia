@@ -966,6 +966,13 @@ jobs:
       - name: Sync Python dependencies
         run: uv sync --frozen --package gaia --group backend --group dev
       - name: Mutation check (zero survivors required)
+        # STEP-level timeout, distinct from both the job cap and timeout(1)
+        # below. When a STEP times out the runner force-terminates its whole
+        # process tree and the job CONTINUES — the upload step runs and the
+        # job concludes 'failure', keeping its logs. When the JOB times out,
+        # the run is cancelled and GitHub retains nothing, which is how one
+        # shard produced zero evidence across six attempts.
+        timeout-minutes: 28
         # Through env, not inline expansion: the values are generated, but an
         # inline ${{ }} in a run block is a shell-injection seam regardless.
         env:
