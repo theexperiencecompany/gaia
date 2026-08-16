@@ -2,6 +2,20 @@ from typing import Any
 
 from app.models.models_models import DevModelOption
 
+# The ``configurable`` keys LangChain's own field resolution reads. Written at
+# TWO definition sites (the Gemini lane's ConfigurableField and the OpenRouter
+# lane's) and produced at a third (ModelLane.binding_keys), and nothing enforced
+# that the three agreed — which is exactly how the Gemini and OpenRouter model
+# ids ended up SWAPPED, silently resolving a different model than the config
+# named. One definition, referenced from every site (Type Safety item 18).
+MODEL_FIELD_ID = "model"
+PROVIDER_FIELD_ID = "provider"
+REASONING_FIELD_ID = "reasoning"
+MODEL_KWARGS_FIELD_ID = "model_kwargs"
+
+# The configurable key the whole resolved ModelLane rides under.
+LANE_FIELD_ID = "lane"
+
 GEMINI_PROVIDER = "gemini"
 OPENROUTER_PROVIDER = "openrouter"
 
@@ -117,7 +131,7 @@ SIM_STUB_MODEL_NAME = "gaia-sim-stub"
 
 # Per-plan model policy (hardcoded; not user-selectable). Both tiers currently
 # run the SAME model, so plan routing is a no-op on model choice and the pro
-# monthly-budget degrade in apply_plan_model has nothing to degrade to — kept in
+# monthly-budget degrade in resolve_lane has nothing to degrade to — kept in
 # place deliberately, so re-pointing PAID_MODEL_NAME at a stronger model is the
 # only change needed to make that guard bite again.
 PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
@@ -254,7 +268,7 @@ PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
 # Rolling monthly USD cost budget for pro: the ECONOMIC guard. Set ~1x the
 # subscription price so the worst-case whale is break-even. On exhaustion pro
 # is NOT blocked — model routing degrades to the free-tier model for the rest
-# of the month (see apply_plan_model).
+# of the month (see resolve_lane).
 PRO_MONTHLY_COST_BUDGET_USD = 25.00  # TUNE
 
 # TTLs for the budget Redis keys: sized just past their window so keys expire

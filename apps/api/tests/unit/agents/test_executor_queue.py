@@ -280,11 +280,19 @@ class TestSafeConfigurable:
             "thread_id": "t",
             "conversation_id": "c",
             "user_id": "u",
+            # THE model selection. Dropping it made a queued run resolve a fresh
+            # lane instead of continuing the one the user's turn started on.
+            "lane": {
+                "provider": "openrouter",
+                "model": "deepseek/deepseek-v4-flash-0731",
+                "reasoning": {"effort": "low"},
+                # The OpenRouter first-party pin. Dropping it load-balances the
+                # queued run onto throttled resellers — the exact 429s it prevents.
+                "provider_pin": {"provider": {"only": ["deepseek"]}},
+                "max_input_tokens": 1_000_000,
+            },
             "provider": "openrouter",
             "model": "deepseek/deepseek-v4-flash-0731",
-            "model_name": "deepseek/deepseek-v4-flash-0731",
-            # The OpenRouter first-party pin. Dropping it load-balances the queued
-            # run onto throttled resellers — the exact 429s the pin exists to stop.
             "model_kwargs": {"provider": {"only": ["deepseek"]}},
             "reasoning": {"effort": "low"},
             "plan_type": "pro",

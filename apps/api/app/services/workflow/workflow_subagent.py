@@ -162,7 +162,7 @@ class WorkflowSubagentRunner:
             "timezone": user_timezone,
         }
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=thread_id,
             user=user,
             thread_id=subagent_thread_id,
@@ -253,7 +253,7 @@ class WorkflowSubagentRunner:
             f"{LogTag.WORKFLOW} Completed. Response: chars",
             complete_message_count=len(complete_message),
         )
-        return complete_message if complete_message else "Task completed"
+        return complete_message or "Task completed"
 
     @staticmethod
     async def _forced_finalize(

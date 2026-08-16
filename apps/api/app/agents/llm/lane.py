@@ -21,6 +21,7 @@ from app.agents.llm.client import next_fallback_provider
 from app.agents.llm.types import LLMProviderName
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
+from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
     COMMS_REASONING,
     DEFAULT_LLM_PROVIDER,
@@ -36,6 +37,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.models.agent_models import AgentConfigurable
 from app.models.models_models import DevModelOption
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -49,11 +51,6 @@ from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
-
-_DEGRADE_NOTICE_KEY = "cost_budget_notified:{user_id}:{window}"
-
-#: The configurable key the whole lane rides under.
-LANE_CONFIG_KEY = "lane"
 
 
 class AgentRole(StrEnum):
@@ -74,7 +71,9 @@ class ModelLane:
     """A complete, resolved model selection. Immutable on purpose: a lane is
     decided once per turn and inherited, never edited in flight."""
 
-    provider: str
+    #: The logical lane, not a free string: an unknown provider must fail at the
+    #: boundary that produced it, not as a silent miss in the alternatives map.
+    provider: LLMProviderName
     #: ``None`` means "let the client use its own configured default" — the
     #: env-defined custom dev endpoint serves ``DEV_LLM_MODEL`` this way.
     model: str | None
@@ -94,6 +93,25 @@ class ModelLane:
             "max_input_tokens": self.max_input_tokens,
         }
 
+    def binding_keys(self) -> AgentConfigurable:
+        """The top-level ``configurable`` keys LangChain's own field resolution
+        reads — ``provider`` picks the alternative, the rest are ConfigurableFields
+        (see ``client._openrouter_wire_configurables``).
+
+        Written ONLY by ``build_agent_config`` from the lane, and read only by
+        LangChain. GAIA code reads the lane. A key is omitted rather than set to
+        ``None`` so the client's own default survives — the custom dev endpoint
+        pins no model, and a non-reasoning model must not carry a reasoning pin.
+        """
+        keys: AgentConfigurable = {"provider": self.provider}
+        if self.model is not None:
+            keys["model"] = self.model
+        if self.reasoning is not None:
+            keys["reasoning"] = self.reasoning
+        if self.provider_pin is not None:
+            keys["model_kwargs"] = self.provider_pin
+        return keys
+
     @classmethod
     def from_configurable(cls, raw: object) -> "ModelLane | None":
         """Rebuild a lane from a configurable, or ``None`` when there isn't one.
@@ -105,7 +123,7 @@ class ModelLane:
         if not isinstance(raw, dict) or "provider" not in raw:
             return None
         return cls(
-            provider=str(raw["provider"]),
+            provider=LLMProviderName(raw["provider"]),
             model=raw.get("model"),
             reasoning=raw.get("reasoning"),
             provider_pin=raw.get("provider_pin"),
@@ -124,7 +142,7 @@ class ModelLane:
         if nxt is None:
             return None
         provider, model = nxt
-        return replace(self, provider=str(provider), model=model, provider_pin=None)
+        return replace(self, provider=provider, model=model, provider_pin=None)
 
 
 def _reasoning_for(role: AgentRole, paid: bool) -> dict[str, Any]:
@@ -143,7 +161,7 @@ def _reasoning_for(role: AgentRole, paid: bool) -> dict[str, Any]:
 
 def _default_lane() -> ModelLane:
     return ModelLane(
-        provider=DEFAULT_LLM_PROVIDER,
+        provider=LLMProviderName(DEFAULT_LLM_PROVIDER),
         model=DEFAULT_MODEL_NAME,
         reasoning=OPENROUTER_REASONING,
         provider_pin=None,
@@ -160,7 +178,7 @@ def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
     prior OpenRouter pin cannot leak onto a Gemini-routed model.
     """
     return ModelLane(
-        provider=option["provider"],
+        provider=LLMProviderName(option["provider"]),
         model=option["model"] or None,
         reasoning=_reasoning_for(role, paid=True) if option["reasoning"] else None,
         provider_pin=option["model_kwargs"],
@@ -168,8 +186,8 @@ def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
     )
 
 
-def dev_option_for(model_id: str | None, use_defaults: bool) -> DevModelOption | None:
-    """The dev-menu entry a request selected, or ``None``.
+def dev_model_id(model_id: str | None, use_defaults: bool) -> str | None:
+    """The dev-menu key a request selected, or ``None``.
 
     ``use_defaults`` means the request expressed no preference, so the
     env-configured ``DEV_DEFAULT_MODEL`` applies — that is what routes bots,
@@ -186,7 +204,13 @@ def dev_option_for(model_id: str | None, use_defaults: bool) -> DevModelOption |
             )
             return None
         model_id = dev_default
-    return DEV_MODEL_OPTIONS.get(model_id or "")
+    return model_id if model_id in DEV_MODEL_OPTIONS else None
+
+
+def dev_option_for(model_id: str | None, use_defaults: bool) -> DevModelOption | None:
+    """The dev-menu entry a request selected, or ``None``."""
+    resolved = dev_model_id(model_id, use_defaults)
+    return DEV_MODEL_OPTIONS.get(resolved) if resolved else None
 
 
 async def resolve_lane(
@@ -233,7 +257,7 @@ async def resolve_lane(
 
     return (
         ModelLane(
-            provider=PAID_MODEL_PROVIDER,
+            provider=LLMProviderName(PAID_MODEL_PROVIDER),
             model=PAID_MODEL_NAME,
             reasoning=_reasoning_for(role, paid=True),
             provider_pin=PAID_MODEL_MODEL_KWARGS,
@@ -267,7 +291,7 @@ async def _notify_degrade_once(user_id: str) -> None:
         client = redis_cache.redis
         if client is None:
             return
-        key = _DEGRADE_NOTICE_KEY.format(
+        key = COST_BUDGET_NOTIFIED_KEY.format(
             user_id=user_id, window=get_time_window_key(RateLimitPeriod.MONTH)
         )
         if not await client.set(key, "1", nx=True, ex=MONTHLY_BUDGET_TTL_SECONDS):
@@ -296,10 +320,10 @@ async def _notify_degrade_once(user_id: str) -> None:
 
 
 __all__ = [
-    "LANE_CONFIG_KEY",
     "AgentRole",
     "LLMProviderName",
     "ModelLane",
+    "dev_model_id",
     "dev_option_for",
     "resolve_lane",
 ]

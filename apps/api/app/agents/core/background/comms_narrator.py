@@ -9,7 +9,7 @@ persona. This module owns that single invocation.
 from langchain_core.messages import HumanMessage
 
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
-from app.agents.llm.plan_model import apply_plan_model
+from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.constants.agents import (
     EXECUTOR_CANCELLED_MARKER,
@@ -18,7 +18,6 @@ from app.constants.agents import (
 )
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
-from app.models.agent_models import agent_configurable
 from app.models.user_models import AuthenticatedUser
 from app.utils.agent_utils import strip_internal_agent_markers
 from shared.py.wide_events import log
@@ -68,16 +67,15 @@ async def narrate_executor_result(
         )
         return ""
     try:
-        config = build_agent_config(
+        # A fresh background task with no parent configurable to inherit from, so
+        # build_agent_config resolves its own comms lane and stamps plan_type —
+        # matching the interactive comms path and keeping the budget wall enforced.
+        config = await build_agent_config(
             conversation_id=conversation_id,
             user=user,
             agent_name="comms_agent",
+            role=AgentRole.COMMS,
         )
-        # Fresh background task with no parent configurable to inherit from, so
-        # route the model by plan (Pro -> paid model, Free -> default) and stamp
-        # plan_type here — matching the interactive comms path and keeping the
-        # budget wall enforced on this turn.
-        await apply_plan_model(agent_configurable(config), user.get("user_id"))
         initial_state = {
             "messages": [
                 # MUST be a HumanMessage. The message type is load-bearing here:

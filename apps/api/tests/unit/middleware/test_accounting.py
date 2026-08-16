@@ -30,8 +30,7 @@ from shared.py.wide_events import log
 CONFIG: dict[str, Any] = {
     "configurable": {
         "thread_id": "conv-1",
-        "model_name": "gemini-3-pro",
-        "provider": "gemini",
+        "lane": {"provider": "gemini", "model": "gemini-3-pro"},
         "user_id": "user-1",
     }
 }
@@ -348,10 +347,13 @@ async def test_unknown_model_and_provider_when_the_config_is_bare() -> None:
     assert model["provider"] == "unknown"
 
 
-async def test_legacy_model_key_is_accepted_when_model_name_is_absent() -> None:
+async def test_a_run_with_no_lane_reports_an_unknown_model_rather_than_guessing() -> None:
+    """A bag written before lanes existed (in-flight queue item, stored HIL
+    resume_item) has no lane. Accounting must say so, not invent a model name."""
     mw = LLMAccountingMiddleware(agent_name="a")
-    model = await _call(mw, _ai(), config={"configurable": {"model": "gpt-legacy"}})
-    assert model["name"] == "gpt-legacy"
+    model = await _call(mw, _ai(), config={"configurable": {"user_id": "u1"}})
+    assert model["name"] == "unknown"
+    assert model["provider"] == "unknown"
 
 
 # --- handoff latency ---------------------------------------------------------- #

@@ -30,7 +30,7 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
 )
-from app.agents.llm.plan_model import apply_dev_executor_model
+from app.agents.llm.lane import AgentRole, dev_option_for
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
@@ -704,22 +704,21 @@ async def prepare_executor_execution(
     }
 
     # Build config
-    config = build_agent_config(
+    config = await build_agent_config(
         conversation_id=thread_id,
         user=user,
         thread_id=executor_thread_id,
         base_configurable=configurable,
         agent_name="executor_agent",
+        role=AgentRole.EXECUTOR,
+        # DEV-ONLY: the switcher's executor pick, stashed by comms. Present only
+        # in development; otherwise the executor inherits comms's lane.
+        dev_option=dev_option_for(configurable.get("dev_executor_model"), use_defaults=False),
         subagent_id="executor_agent",  # Use agent_name as the memory namespace id
         vfs_session_id=vfs_session_id,
         recursion_limit=EXECUTOR_RECURSION_LIMIT,
     )
     new_configurable = agent_configurable(config)
-
-    # DEV-ONLY: if the chat-header selector chose an executor model, pin it here —
-    # after the inherit-from-comms copy, so it overrides the comms model for the
-    # executor (and provider subagents that inherit from it). No-op in production.
-    apply_dev_executor_model(configurable, new_configurable)
 
     # Create system message (executor-specific)
     system_message = create_system_message(

@@ -116,14 +116,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         self._excluded_tools.add("spawn_subagent")
         self._tool_space = tool_space
         self._store: BaseStore | None = store
-        self._tool_runtime_config = (
-            tool_runtime_config
-            if tool_runtime_config
-            else ToolRuntimeConfig(
-                initial_tool_names=["read", "bash"],
-                enable_retrieve_tools=True,
-                include_subagents_in_retrieve=False,
-            )
+        self._tool_runtime_config = tool_runtime_config or ToolRuntimeConfig(
+            initial_tool_names=["read", "bash"],
+            enable_retrieve_tools=True,
+            include_subagents_in_retrieve=False,
         )
 
         self.tools = [self._create_spawn_subagent_tool()]
@@ -321,7 +317,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         # stale; the conversation uuid keeps them collectable with the conversation.
         thread_id = f"{SPAWN_THREAD_PREFIX}{conversation_id}_{tool_call_id}"
 
-        spawn_config = build_agent_config(
+        spawn_config = await build_agent_config(
             conversation_id=conversation_id,
             user={
                 "user_id": user_id,

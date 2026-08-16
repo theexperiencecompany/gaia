@@ -27,37 +27,23 @@ from app.constants.cache import (
     EXECUTOR_QUEUE_TTL,
 )
 from app.constants.executor import (
+    CONFIGURABLE_OWNED_KEYS,
+    CONFIGURABLE_RUN_SCOPED_KEYS,
     EXECUTOR_COLLECT_MARKER_PREFIX,
     EXECUTOR_COLLECT_MARKER_TTL,
     EXECUTOR_COLLECTION_TASK,
 )
-from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
+from app.utils.general_utils import is_json_safe
 from shared.py.wide_events import log
 
 # Cosmetic prefix for queued stream ids — kept for log greppability only.
 # The run kind is carried explicitly on ExecutorRun, never parsed from the id.
 QUEUED_STREAM_ID_PREFIX = "queued_"
-
-# Every GAIA-owned configurable key is safe to carry across a queue hop by
-# construction, so AgentConfigurable IS the allowlist. The hand-maintained list
-# this replaces had silently fallen behind it and was dropping the OpenRouter
-# provider pin, plan_type, root_request_id, langfuse_trace_id and the HIL intent
-# judge's user_messages — a queued run was not a smaller run, it was a different
-# one. What must still be filtered is LangGraph's own runtime keys
-# (checkpoint_ns, checkpoint_id, __pregel_*, Runtime objects), which are exactly
-# the keys NOT declared on AgentConfigurable.
-_OWNED_KEYS: frozenset[str] = frozenset(AgentConfigurable.__annotations__)
-
-# Owned keys that are nonetheless scoped to ONE dispatch and must not ride along
-# to the next: hil_resume_replay means "this exact call is a replay", so carrying
-# it would make a fresh run probe its subagent threads for interrupts it cannot
-# have.
-_RUN_SCOPED_KEYS: frozenset[str] = frozenset({HIL_RESUME_CONFIG_KEY})
 
 
 class ExecutorRunItem(TypedDict, total=False):
@@ -366,14 +352,6 @@ def build_run_item(
     }
 
 
-def _is_json_safe(value: object) -> bool:
-    try:
-        json.dumps(value)
-    except (TypeError, ValueError):
-        return False
-    return True
-
-
 def safe_configurable(configurable: AgentConfigurable) -> AgentConfigurable:
     """The serializable subset of a ``configurable``, safe to persist and rebuild
     a run from — the GAIA-owned keys minus the run-scoped ones.
@@ -385,9 +363,9 @@ def safe_configurable(configurable: AgentConfigurable) -> AgentConfigurable:
     """
     kept: dict[str, Any] = {}
     for key, value in configurable.items():
-        if key not in _OWNED_KEYS or key in _RUN_SCOPED_KEYS:
+        if key not in CONFIGURABLE_OWNED_KEYS or key in CONFIGURABLE_RUN_SCOPED_KEYS:
             continue
-        if not _is_json_safe(value):
+        if not is_json_safe(value):
             log.warning(
                 f"{LogTag.AGENT} Dropping unserializable configurable key from a queued run",
                 configurable_key=key,

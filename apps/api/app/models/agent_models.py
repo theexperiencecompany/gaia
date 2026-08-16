@@ -99,17 +99,22 @@ class AgentConfigurable(TypedDict, total=False):
     root_request_id: str
 
     # --- model selection ----------------------------------------------------
+    #: THE model selection: a serialized :class:`~app.agents.llm.lane.ModelLane`,
+    #: resolved once per turn and inherited verbatim by every child agent, queue
+    #: hop and HIL resume. **This is the only model key GAIA code reads.**
+    #:
+    #: Absent on a bag written before lanes existed (an in-flight queue item, a
+    #: stored HIL ``resume_item``); ``ModelLane.from_configurable`` returns
+    #: ``None`` for those and the caller resolves a fresh lane.
+    lane: dict[str, Any]
+    #: LangChain's own binding keys, written from the lane by
+    #: ``build_agent_config`` and read ONLY by LangChain's field resolution:
+    #: ``provider`` selects the configurable_alternative, the rest are
+    #: ConfigurableFields. Never read these in GAIA code — they are the
+    #: expansion, not the decision. Read ``lane``.
     provider: str
-    #: ``model`` and ``model_name`` are written together and always agree;
-    #: both exist because different consumers grew up reading different names.
     model: str
-    model_name: str
-    max_tokens: int
-    #: OpenRouter provider-routing pin, inherited by subagents so they stay on
-    #: the first-party lane instead of load-balancing onto throttled resellers.
     model_kwargs: dict[str, Any]
-    #: Reasoning-effort config; comms sets its own lower effort, the executor
-    #: and provider subagents keep the client default.
     reasoning: dict[str, Any]
 
     # --- run scope ----------------------------------------------------------
@@ -127,7 +132,7 @@ class AgentConfigurable(TypedDict, total=False):
     conversation_source: str | None
     source_category: str
     #: The user's resolved plan tier (``PlanType`` value), stamped by
-    #: ``apply_plan_model`` on the top-level configurable and inherited by
+    #: ``resolve_lane`` on the top-level configurable and inherited by
     #: children. The accounting middleware's budget wall reads it to avoid a
     #: Redis plan lookup on the hot path; absent, the wall derives the tier
     #: from the cached plan itself.
@@ -148,9 +153,10 @@ class AgentConfigurable(TypedDict, total=False):
     #: Set only on a HIL resume re-dispatch; the handoff tool probes it to tell
     #: a replayed call from a fresh one. Keyed by ``HIL_RESUME_CONFIG_KEY``.
     hil_resume_replay: bool
-    #: DEV-ONLY: the executor model picked in the dev model switcher. The
-    #: executor builds its own configurable, so the choice rides down here.
-    __dev_executor_model__: str
+    #: DEV-ONLY: the DEV_MODEL_OPTIONS key picked for the executor in the dev
+    #: model switcher. The executor builds its own configurable rather than
+    #: inheriting comms's lane wholesale, so the choice rides down here.
+    dev_executor_model: str
 
 
 def agent_configurable(config: RunnableConfig | None) -> AgentConfigurable:

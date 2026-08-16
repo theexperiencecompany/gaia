@@ -54,7 +54,9 @@ FAKE_CONFIG = {
     "configurable": {
         "thread_id": "conv-1",
         "user_id": "user-123",
-        "model_name": "gpt-4o",
+        # The lane's expanded binding key — `model_name` is no longer part of the
+        # configurable contract.
+        "model": "gpt-4o",
     }
 }
 
@@ -81,20 +83,13 @@ def _common_patches():
             "app.agents.core.agent.build_initial_state",
             return_value=FAKE_STATE,
         ),
+        # Model selection now happens INSIDE build_agent_config (it resolves the
+        # lane), so patching it replaces the whole thing — no separate
+        # plan-routing / dev-override mutations to stub out.
         "build_config": patch(
             "app.agents.core.agent.build_agent_config",
-            return_value=FAKE_CONFIG,
-        ),
-        "apply_plan": patch(
-            "app.agents.core.agent.apply_plan_model",
             new_callable=AsyncMock,
-        ),
-        # The dev-only model override runs after apply_plan_model and would
-        # otherwise pop model_name off the shared FAKE_CONFIG when
-        # use_default_models=True (the request default) with a DEV_DEFAULT_MODEL
-        # entry configured — polluting every later test in this module.
-        "apply_dev_model": patch(
-            "app.agents.core.agent.apply_dev_model_override",
+            return_value=FAKE_CONFIG,
         ),
         "log": patch("app.agents.core.agent.log"),
     }
@@ -116,8 +111,6 @@ class TestCoreAgentLogic:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
         ):
             graph, state, config = await _core_agent_logic(
@@ -140,8 +133,6 @@ class TestCoreAgentLogic:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
         ):
             await _core_agent_logic(
@@ -164,8 +155,6 @@ class TestCoreAgentLogic:
             patches["get_graph"],
             patches["build_state"] as mock_build_state,
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
         ):
             await _core_agent_logic(
@@ -186,8 +175,6 @@ class TestCoreAgentLogic:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"] as mock_log,
         ):
             await _core_agent_logic(
@@ -224,8 +211,6 @@ class TestCallAgent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
@@ -270,8 +255,6 @@ class TestCallAgent:
                     }
                 },
             ),
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
@@ -310,8 +293,6 @@ class TestCallAgent:
                     }
                 },
             ),
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
@@ -340,8 +321,6 @@ class TestCallAgent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
         ):
             gen = await call_agent(
@@ -372,10 +351,10 @@ class TestCallAgent:
                 return_value=FAKE_GRAPH,
             ),
             patch("app.agents.core.agent.build_initial_state", return_value=FAKE_STATE),
-            patch("app.agents.core.agent.build_agent_config", return_value=FAKE_CONFIG),
             patch(
-                "app.agents.core.agent.apply_plan_model",
+                "app.agents.core.agent.build_agent_config",
                 new_callable=AsyncMock,
+                return_value=FAKE_CONFIG,
             ),
             patch("app.agents.core.agent.log"),
         ):
@@ -407,8 +386,6 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -435,8 +412,6 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -460,8 +435,6 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -494,8 +467,6 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -531,8 +502,6 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -564,8 +533,6 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -598,8 +565,6 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"] as mock_log,
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -633,8 +598,6 @@ class TestCallAgentSilent:
             patches["get_graph"],
             patches["build_state"],
             patches["build_config"],
-            patches["apply_plan"],
-            patches["apply_dev_model"],
             patches["log"],
             pytest.raises(RuntimeError, match="silent boom"),
         ):
