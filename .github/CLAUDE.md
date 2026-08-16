@@ -28,8 +28,8 @@ lists, parsing output, loops, multi-line shell — lives in a script under
 `scripts/ci/` (or `scripts/test/` for tooling), and the step calls it:
 
 ```yaml
-- name: Mutation check
-  run: bash scripts/ci/mutation-check.sh
+- name: Compute the mutation matrix
+  run: bash scripts/ci/mutation-plan.sh
 ```
 
 Not heredocs, not inline `for` loops, not python embedded in YAML. Scripts

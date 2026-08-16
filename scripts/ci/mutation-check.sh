@@ -5,8 +5,11 @@
 # anywhere, zero mutants (tests do not cover the changed lines), any
 # surviving mutant, or the lane budget being exceeded.
 #
-# Used by the test-mutation lane (code-quality.yml) — the workflow step is
-# just `bash scripts/ci/mutation-check.sh`; all logic lives here.
+# LOCAL entry point: runs the whole changed-module set in one process, which
+# is what you want on a laptop. CI does not use this — it shards the same
+# matrix one module per runner (scripts/ci/mutation-plan.sh + the test-mutation
+# job in code-quality.yml), because in a single process the slowest modules
+# hold every worker and the rest never start.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
