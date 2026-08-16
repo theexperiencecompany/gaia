@@ -123,47 +123,20 @@ fi
 # imported under two paths (observed in CI for app.db.chroma).
 WORKDIR="$(pwd)/.mutation-$$"
 
-# Phase tracking + a self-imposed watchdog.
+# Phase tracking.
 #
-# GitHub retains NO LOG for a job it cancels at timeout-minutes. This module
-# was killed that way three runs running, so the one artifact that would say
-# WHERE it was stuck never survived — the whole reason it stayed a mystery.
-# Exiting on our own terms, before the job cap, keeps the log; the phase name
-# turns "it hung" into "it hung in <phase>".
-#
-# Not the same as the mutmut child's own timeout below: that one covers only
-# `mutmut run`, so a hang anywhere else in this script — the workdir copy,
-# `mutmut results`, the per-survivor classifier loop — sails straight past it.
-# That is why the child cap never fired on the module that kept dying.
+# The lane bounds this script with `timeout` (see the test-mutation step in
+# code-quality.yml) rather than an in-script watchdog: bash does not run a trap
+# while it is waiting on a foreground child, so a signal sent to this script
+# would queue behind whatever is stuck. What this side owes is a breadcrumb —
+# a killed run's last printed phase is what turns "it hung" into "it hung in
+# <phase>".
 PHASE_FILE="$(mktemp)"
-MUTATION_WATCHDOG_S="${MUTATION_WATCHDOG_S:-1500}"
 START_EPOCH="$(date +%s)"
-SCRIPT_PID=$$
 _phase() {
   printf '%s' "$1" > "$PHASE_FILE"
   echo "[phase +$(( $(date +%s) - START_EPOCH ))s] $1" >&2
 }
-(
-  # Poll the sentinel rather than one long sleep, so the trap can retire this
-  # watchdog by DELETING A FILE instead of signalling it. Two earlier attempts
-  # went wrong here: killing the subshell orphans its sleep, which holds stdout
-  # open and hangs any pipeline reading this script; and killing the sleep does
-  # not kill the subshell at all — sleep merely returns and the subshell runs
-  # on to the kill below, which shot the script dead AFTER it had printed
-  # "Mutation: OK" and turned 14 passing shards into exit 1.
-  waited=0
-  while [ "$waited" -lt "$MUTATION_WATCHDOG_S" ]; do
-    [ -f "$PHASE_FILE" ] || exit 0
-    sleep 2
-    waited=$((waited + 2))
-  done
-  [ -f "$PHASE_FILE" ] || exit 0
-  echo "WATCHDOG: $MODULE exceeded ${MUTATION_WATCHDOG_S}s, still in phase '$(cat "$PHASE_FILE" 2>/dev/null)'." >&2
-  echo "          Killed here so this log survives — a job cancelled by" >&2
-  echo "          GitHub's timeout keeps no log at all." >&2
-  kill -TERM "$SCRIPT_PID" 2>/dev/null
-) &
-WATCHDOG_PID=$!
 # pkill -P first: killing the subshell alone orphans its `sleep`, which keeps
 # the inherited stdout/stderr open and hangs any pipeline reading this script
 # long after it has finished.
@@ -172,13 +145,13 @@ WATCHDOG_PID=$!
 # log, and nothing can outlive this script holding its stdout open.
 _cleanup() {
   rm -f "$PHASE_FILE"
-  wait "$WATCHDOG_PID" 2>/dev/null
   [ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"
 }
 trap _cleanup EXIT
-# EXIT alone does not run on a signal, so a watchdog-killed run used to leave
-# its scratch copy of app/ + tests/ on disk. `exit` here re-enters the EXIT
-# trap, so cleanup happens exactly once either way.
+# EXIT alone does not run on a signal, so a killed run would leave its scratch
+# copy of app/ + tests/ on disk. `exit` re-enters the EXIT trap, so cleanup
+# happens exactly once either way. (A SIGKILL from `timeout` skips both, which
+# is what .mutation-*/ in apps/api/.gitignore covers.)
 trap 'exit 143' TERM INT
 _phase "copy workdir"
 mkdir -p "$WORKDIR"
