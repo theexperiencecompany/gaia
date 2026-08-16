@@ -17,7 +17,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.agents.context.sections import SECTIONS, Section, SectionContext
+from app.agents.context.section_context import SectionContext
+from app.agents.context.sections import SECTIONS, Section
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import EXECUTOR_CONNECTED_INTEGRATIONS_HEADER
 from app.agents.context.tiers import AgentTier

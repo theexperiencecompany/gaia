@@ -2,8 +2,8 @@ from typing import Any, Literal
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
-from app.agents.context.assemble import assemble_context_safely
-from app.agents.context.sections import SectionContext
+from app.agents.context.assemble import assemble_context
+from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import ONBOARDING_MARKER, mark
 from app.agents.context.tiers import AgentTier
 from app.helpers.message_helpers import (
@@ -96,7 +96,7 @@ async def construct_langchain_messages(
         else ""
     )
 
-    assembled = await assemble_context_safely(
+    assembled = await assemble_context(
         SectionContext(
             tier=AgentTier.COMMS,
             user_id=user_id,

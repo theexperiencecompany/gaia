@@ -26,8 +26,8 @@ from langgraph.errors import GraphRecursionError
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 
-from app.agents.context.assemble import assemble_context_safely
-from app.agents.context.sections import SectionContext
+from app.agents.context.assemble import assemble_context
+from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
 from app.agents.core.subagents.base_subagent import SubAgentFactory
 from app.agents.llm.client import init_llm
@@ -187,7 +187,7 @@ class WorkflowSubagentRunner:
             additional_kwargs={"visible_to": {"workflow_agent"}},
         )
 
-        assembled = await assemble_context_safely(
+        assembled = await assemble_context(
             SectionContext.from_configurable(
                 AgentTier.WORKFLOW_AUTHORING,
                 configurable,

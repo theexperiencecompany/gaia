@@ -10,7 +10,7 @@ dynamic-context message; volatile per-turn content (memory recall, knowledge,
 skills, todos) lives in an optional memory-recall message. Both are built by
 the shared context-assembly module. The current-time HumanMessage is appended
 LAST so minute ticks never shift the cacheable prefix. These tests exercise the
-orchestration — they patch ``create_system_message`` and ``assemble_context_safely``
+orchestration — they patch ``create_system_message`` and ``assemble_context``
 and verify the assembled message list.
 """
 
@@ -54,7 +54,7 @@ def _patches(
             return_value=system_msg,
         ),
         "build_dynamic": patch(
-            "app.agents.core.messages.assemble_context_safely",
+            "app.agents.core.messages.assemble_context",
             new_callable=AsyncMock,
             return_value=AssembledContext(stable=dynamic_msg, volatile=memory_recall_msg),
         ),

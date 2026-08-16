@@ -20,7 +20,7 @@ from uuid import uuid4
 import pytest
 
 from app.agents.context import sections
-from app.agents.context.sections import SectionContext
+from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
 from app.agents.tools import integration_instructions_tools as tool_mod
 from app.agents.workspace.skill_loader import library_hash

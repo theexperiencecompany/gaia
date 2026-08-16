@@ -75,7 +75,7 @@ def gmail_subagent(monkeypatch: pytest.MonkeyPatch):
     # The context message pulls memories, skills and stored instructions; each is
     # its own subsystem and none of them is what this file is about.
     monkeypatch.setattr(
-        "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+        "app.agents.core.subagents.subagent_runner.assemble_context",
         AsyncMock(
             return_value=AssembledContext(
                 stable=SystemMessage(

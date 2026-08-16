@@ -26,8 +26,8 @@ from tests._harness.context_sources import (
     memory,
 )
 
-from app.agents.context.assemble import assemble_context_safely
-from app.agents.context.sections import SectionContext
+from app.agents.context.assemble import assemble_context
+from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot, slot_of
 
 RICH_SOURCES = ContextSources(
@@ -327,7 +327,7 @@ class TestOneFailingSourceCostsOnlyItsOwnSection:
             fake_context_sources(RICH_SOURCES),
             patch(target, AsyncMock(side_effect=RuntimeError("source down"))),
         ):
-            assembled = await assemble_context_safely(COMMS_CONTEXT)
+            assembled = await assemble_context(COMMS_CONTEXT)
 
         rendered = "\n".join(text_of(m) for m in assembled.messages())
         survivors = [text for _, text in FALLIBLE_SOURCES if text != own_text]
@@ -344,7 +344,7 @@ class TestOneFailingSourceCostsOnlyItsOwnSection:
             fake_context_sources(RICH_SOURCES),
             patch(target, AsyncMock(side_effect=RuntimeError("source down"))),
         ):
-            assembled = await assemble_context_safely(COMMS_CONTEXT)
+            assembled = await assemble_context(COMMS_CONTEXT)
 
         rendered = "\n".join(text_of(m) for m in assembled.messages())
         assert own_text not in rendered

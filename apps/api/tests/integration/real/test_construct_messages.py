@@ -27,7 +27,7 @@ class TestConstructMessagesReal:
         """A simple message must produce at least a SystemMessage and HumanMessage."""
         with (
             patch(
-                "app.agents.core.messages.assemble_context_safely",
+                "app.agents.core.messages.assemble_context",
                 new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):
@@ -49,7 +49,7 @@ class TestConstructMessagesReal:
         """selected_tool must add a tool selection instruction."""
         with (
             patch(
-                "app.agents.core.messages.assemble_context_safely",
+                "app.agents.core.messages.assemble_context",
                 new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):
@@ -68,7 +68,7 @@ class TestConstructMessagesReal:
         """First message must always be a SystemMessage."""
         with (
             patch(
-                "app.agents.core.messages.assemble_context_safely",
+                "app.agents.core.messages.assemble_context",
                 new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):

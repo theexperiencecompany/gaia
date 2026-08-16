@@ -24,8 +24,8 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.store.memory import InMemoryStore
 import time_machine
 
-from app.agents.context.assemble import assemble_context_safely
-from app.agents.context.sections import SectionContext
+from app.agents.context.assemble import assemble_context
+from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot, slot_of
 from app.agents.context.tiers import AgentTier
 from app.agents.core.messages import construct_langchain_messages
@@ -264,7 +264,7 @@ async def _seed_workflow(
         content=WORKFLOW_AGENT_SYSTEM_PROMPT,
         additional_kwargs={"visible_to": {"workflow_agent"}},
     )
-    assembled = await assemble_context_safely(
+    assembled = await assemble_context(
         SectionContext.from_configurable(
             AgentTier.WORKFLOW_AUTHORING,
             configurable,

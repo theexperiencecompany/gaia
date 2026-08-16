@@ -411,7 +411,7 @@ async def real_subagent_seams():
         # no active LangGraph runnable context for get_stream_writer() to hook.
         patch(f"{HANDOFF_MODULE}.get_stream_writer", return_value=MagicMock()),
         patch(
-            "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+            "app.agents.core.subagents.subagent_runner.assemble_context",
             AsyncMock(
                 return_value=AssembledContext(
                     stable=SystemMessage(
@@ -755,7 +755,7 @@ class TestSubagentRunnerHelpers:
 def _assembled_context():
     """Stub the assembly step; these tests are about the seeder, not the sections."""
     return patch(
-        "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+        "app.agents.core.subagents.subagent_runner.assemble_context",
         new_callable=AsyncMock,
         return_value=AssembledContext(
             stable=SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True}),
@@ -1652,7 +1652,7 @@ def handoff_seams(gated_subagent):
             AsyncMock(return_value=[]),
         ),
         patch(
-            "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+            "app.agents.core.subagents.subagent_runner.assemble_context",
             AsyncMock(
                 return_value=AssembledContext(
                     stable=SystemMessage(
@@ -1871,7 +1871,7 @@ async def background_dispatch_seams():
             AsyncMock(return_value=[]),
         ),
         patch(
-            "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+            "app.agents.core.subagents.subagent_runner.assemble_context",
             AsyncMock(
                 return_value=AssembledContext(
                     stable=SystemMessage(

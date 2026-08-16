@@ -1,8 +1,13 @@
-"""Fixed prompt text the context sections inject.
+"""Fixed prompt text the context sections inject, and the separators joining them.
 
 Separated from the sections that place it so a wording change is a diff a
 reviewer can read without also reading the fetch logic around it.
 """
+
+#: Sections within the stable block are single lines or short line groups, so
+#: they read as one block. Volatile sections are paragraphs and get a blank line.
+STABLE_SECTION_JOIN = "\n"
+VOLATILE_SECTION_JOIN = "\n\n"
 
 BACKGROUND_EXECUTION_BANNER = (
     "🤖 BACKGROUND EXECUTION (no human is reading this turn)\n"

@@ -5,6 +5,10 @@ how to fetch its text. Tier differences are therefore rows in :data:`SECTIONS`
 rather than branches in five separate builders — adding a section to a tier is
 one edit to one ``applies_to`` set.
 
+A row points straight at its body in ``fetchers``; the private functions here are
+only the sections that genuinely branch before rendering, and exist because they
+branch, not to adapt one signature to another.
+
 The slot each section declares is the correctness-critical part. Anything whose
 text depends on the current query or turn is volatile and belongs in
 ``MEMORY_RECALL``, at the tail of the system block. Anything that changes only
@@ -15,10 +19,10 @@ backwards is what silently destroys the prompt cache.
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Literal
 
 from app.agents.context.fetchers import (
     build_active_todo_banner,
+    build_background_banner,
     build_connected_integrations_manifest,
     build_core_memory_block,
     build_gaia_knowledge_block,
@@ -26,9 +30,9 @@ from app.agents.context.fetchers import (
     build_tracked_todos_block,
     build_workspace_session_banner,
 )
+from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import (
-    BACKGROUND_EXECUTION_BANNER,
     CONNECTED_INTEGRATIONS_HEADER,
     EXECUTOR_CONNECTED_INTEGRATIONS_HEADER,
 )
@@ -39,73 +43,10 @@ from app.agents.workspace.system_docs import integration_skills_block
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID
-from app.models.agent_models import AgentConfigurable
 from app.services.integration_instructions_service import get_instructions
 from app.services.provider_metadata_service import get_provider_metadata
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
 from shared.py.wide_events import log
-
-ExecutionMode = Literal["interactive", "background"]
-
-
-@dataclass(frozen=True)
-class SectionContext:
-    """Everything any section is allowed to read.
-
-    A closed, typed shape rather than the run's ``configurable``: a section that
-    could reach into the whole bag would be free to grow a dependency on
-    anything, and "what does context assembly actually depend on?" would once
-    again only be answerable by reading every fetch.
-    """
-
-    tier: AgentTier
-    user_id: str | None = None
-    user_name: str | None = None
-    user_timezone: str | None = None
-    #: Onboarding answers; open by construction, so no fixed shape.
-    user_preferences: dict[str, Any] | None = None
-    writing_style: dict[str, Any] | None = None
-    #: What this turn is about — the retrieval query for every volatile section.
-    query: str | None = None
-    subagent_id: str | None = None
-    integration_id: str | None = None
-    vfs_session_id: str | None = None
-    active_todo_id: str | None = None
-    execution_mode: ExecutionMode = "interactive"
-    #: Conversation channel. Observability only; no section branches on it.
-    source: str | None = None
-
-    @classmethod
-    def from_configurable(
-        cls,
-        tier: AgentTier,
-        configurable: AgentConfigurable,
-        *,
-        query: str | None = None,
-        user_id: str | None = None,
-        subagent_id: str | None = None,
-        integration_id: str | None = None,
-        user_preferences: dict[str, Any] | None = None,
-        writing_style: dict[str, Any] | None = None,
-    ) -> "SectionContext":
-        """Read a run's configurable into the closed section shape."""
-        mode = configurable.get("execution_mode") or "interactive"
-        return cls(
-            tier=tier,
-            user_id=user_id or configurable.get("user_id"),
-            user_name=configurable.get("user_name"),
-            user_timezone=configurable.get("user_timezone"),
-            user_preferences=user_preferences,
-            writing_style=writing_style,
-            query=query,
-            subagent_id=subagent_id,
-            integration_id=integration_id,
-            vfs_session_id=configurable.get("vfs_session_id"),
-            active_todo_id=configurable.get("active_todo_id"),
-            execution_mode="background" if mode == "background" else "interactive",
-            source=configurable.get("conversation_source"),
-        )
-
 
 SectionFetch = Callable[[SectionContext], Awaitable[str]]
 
@@ -148,15 +89,6 @@ async def _user_prefs(ctx: SectionContext) -> str:
         ctx.user_preferences or {}, writing_style=ctx.writing_style
     )
     return f"User Preferences:\n{formatted}" if formatted else ""
-
-
-async def _workspace_session(ctx: SectionContext) -> str:
-    # Only ``vfs_session_id`` is trusted. Falling back to ``thread_id`` would
-    # state ``/workspace/sessions/executor_<conv>/``, sending deliverables
-    # outside the directory the artifact watcher scans, where they are lost.
-    if not ctx.vfs_session_id:
-        return ""
-    return build_workspace_session_banner(ctx.vfs_session_id)
 
 
 async def _integrations_manifest(ctx: SectionContext) -> str:
@@ -221,26 +153,6 @@ async def _custom_instructions(ctx: SectionContext) -> str:
 # --- volatile sections: retrieved against this turn, churn turn to turn -------
 
 
-async def _core_memory(ctx: SectionContext) -> str:
-    return await build_core_memory_block(ctx.user_id) if ctx.user_id else ""
-
-
-async def _memory_recall(ctx: SectionContext) -> str:
-    if not (ctx.user_id and ctx.query):
-        return ""
-    return await build_memory_recall_block(ctx.user_id, ctx.query)
-
-
-async def _gaia_knowledge(ctx: SectionContext) -> str:
-    return await build_gaia_knowledge_block(ctx.query) if ctx.query else ""
-
-
-async def _tracked_todos(ctx: SectionContext) -> str:
-    if not ctx.user_id:
-        return ""
-    return await build_tracked_todos_block(ctx.user_id, ctx.active_todo_id)
-
-
 async def _skills(ctx: SectionContext) -> str:
     """Installable skills, plus this subagent's integration-specific ones."""
     if not ctx.user_id:
@@ -266,23 +178,19 @@ async def _skills(ctx: SectionContext) -> str:
     return block
 
 
-async def _background_banner(ctx: SectionContext) -> str:
-    return BACKGROUND_EXECUTION_BANNER if ctx.execution_mode == "background" else ""
-
-
-async def _active_todo_banner(ctx: SectionContext) -> str:
-    if not (ctx.user_id and ctx.active_todo_id):
-        return ""
-    return await build_active_todo_banner(ctx.user_id, ctx.active_todo_id)
-
-
 #: The section × tier table. Ordering within a slot is by ``order``; the two
 #: run banners deliberately sort last so their directives land with recency,
 #: immediately before the conversation begins.
 SECTIONS: tuple[Section, ...] = (
     Section("user_identity", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 10, _user_identity),
     Section("user_prefs", PromptSlot.DYNAMIC_STABLE, frozenset({AgentTier.COMMS}), 20, _user_prefs),
-    Section("workspace_session", PromptSlot.DYNAMIC_STABLE, WORKER_TIERS, 30, _workspace_session),
+    Section(
+        "workspace_session",
+        PromptSlot.DYNAMIC_STABLE,
+        WORKER_TIERS,
+        30,
+        build_workspace_session_banner,
+    ),
     Section(
         "integrations_manifest",
         PromptSlot.DYNAMIC_STABLE,
@@ -305,15 +213,19 @@ SECTIONS: tuple[Section, ...] = (
         _custom_instructions,
     ),
     Section(
-        "core_memory", PromptSlot.MEMORY_RECALL, frozenset({AgentTier.COMMS}), 10, _core_memory
+        "core_memory",
+        PromptSlot.MEMORY_RECALL,
+        frozenset({AgentTier.COMMS}),
+        10,
+        build_core_memory_block,
     ),
-    Section("memory_recall", PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, _memory_recall),
+    Section("memory_recall", PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, build_memory_recall_block),
     Section(
         "gaia_knowledge",
         PromptSlot.MEMORY_RECALL,
         frozenset({AgentTier.COMMS}),
         30,
-        _gaia_knowledge,
+        build_gaia_knowledge_block,
     ),
     Section("skills", PromptSlot.MEMORY_RECALL, WORKER_TIERS, 40, _skills),
     Section(
@@ -321,10 +233,12 @@ SECTIONS: tuple[Section, ...] = (
         PromptSlot.MEMORY_RECALL,
         frozenset({AgentTier.COMMS}),
         50,
-        _tracked_todos,
+        build_tracked_todos_block,
     ),
-    Section("bg_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 60, _background_banner),
-    Section("active_todo_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 70, _active_todo_banner),
+    Section("bg_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 60, build_background_banner),
+    Section(
+        "active_todo_banner", PromptSlot.MEMORY_RECALL, ALL_TIERS, 70, build_active_todo_banner
+    ),
 )
 
 

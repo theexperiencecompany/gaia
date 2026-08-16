@@ -123,7 +123,7 @@ class TestBuildInitialMessages:
     @staticmethod
     def _assembled(volatile: SystemMessage | None = None) -> Any:
         return patch(
-            "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+            "app.agents.core.subagents.subagent_runner.assemble_context",
             new_callable=AsyncMock,
             return_value=AssembledContext(
                 stable=SystemMessage(
@@ -582,7 +582,7 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="executor sys"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+                "app.agents.core.subagents.subagent_runner.assemble_context",
                 new_callable=AsyncMock,
                 return_value=AssembledContext(
                     stable=SystemMessage(
@@ -644,7 +644,7 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="executor sys"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+                "app.agents.core.subagents.subagent_runner.assemble_context",
                 new_callable=AsyncMock,
                 return_value=AssembledContext(
                     stable=SystemMessage(
@@ -697,7 +697,7 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="executor sys"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+                "app.agents.core.subagents.subagent_runner.assemble_context",
                 new_callable=AsyncMock,
                 return_value=AssembledContext(
                     stable=SystemMessage(
@@ -737,7 +737,7 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="sys"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+                "app.agents.core.subagents.subagent_runner.assemble_context",
                 new_callable=AsyncMock,
                 return_value=AssembledContext(
                     stable=SystemMessage(
@@ -775,7 +775,7 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="sys"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+                "app.agents.core.subagents.subagent_runner.assemble_context",
                 new_callable=AsyncMock,
                 return_value=AssembledContext(
                     stable=SystemMessage(

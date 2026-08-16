@@ -183,7 +183,7 @@ async def test_finished_spawn_is_recovered_not_rerun_when_a_sibling_pauses(
     # ChromaDB in production).
     with (
         patch(
-            "app.agents.core.subagents.subagent_runner.assemble_context_safely",
+            "app.agents.core.subagents.subagent_runner.assemble_context",
             AsyncMock(
                 return_value=AssembledContext(
                     stable=SystemMessage(

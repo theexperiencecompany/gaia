@@ -20,8 +20,8 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command, StateSnapshot, interrupt
 
-from app.agents.context.assemble import assemble_context_safely
-from app.agents.context.sections import SectionContext
+from app.agents.context.assemble import assemble_context
+from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
 from app.agents.core.graph_manager import (
@@ -213,7 +213,7 @@ async def build_initial_messages(
     """
     log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
 
-    assembled = await assemble_context_safely(
+    assembled = await assemble_context(
         SectionContext.from_configurable(
             tier,
             configurable,

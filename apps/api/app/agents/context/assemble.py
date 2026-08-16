@@ -11,7 +11,8 @@ from dataclasses import dataclass
 
 from langchain_core.messages import SystemMessage
 
-from app.agents.context.sections import SectionContext, sections_for
+from app.agents.context.section_context import SectionContext
+from app.agents.context.sections import sections_for
 from app.agents.context.slots import (
     DYNAMIC_CONTEXT_MARKER,
     LEGACY_DYNAMIC_MARKER,
@@ -19,13 +20,9 @@ from app.agents.context.slots import (
     PromptSlot,
     mark,
 )
+from app.agents.context.text import STABLE_SECTION_JOIN, VOLATILE_SECTION_JOIN
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
-
-#: Sections within the stable block are single lines or short line groups, so
-#: they read as one block. Volatile sections are paragraphs and get a blank line.
-_STABLE_JOIN = "\n"
-_VOLATILE_JOIN = "\n\n"
 
 
 @dataclass(frozen=True)
@@ -46,7 +43,7 @@ class AssembledContext:
         return [self.stable] if self.volatile is None else [self.stable, self.volatile]
 
 
-async def assemble_context(ctx: SectionContext) -> AssembledContext:
+async def _gather_sections(ctx: SectionContext) -> AssembledContext:
     """Gather every section that applies to ``ctx.tier`` and slot the results.
 
     A section that fails returns ``""`` rather than raising (see
@@ -62,8 +59,8 @@ async def assemble_context(ctx: SectionContext) -> AssembledContext:
     stable_by_id = dict(zip((s.id for s in stable_sections), results[:split], strict=True))
     volatile_by_id = dict(zip((s.id for s in volatile_sections), results[split:], strict=True))
 
-    stable_text = _STABLE_JOIN.join(part for part in stable_by_id.values() if part)
-    volatile_text = _VOLATILE_JOIN.join(part for part in volatile_by_id.values() if part)
+    stable_text = STABLE_SECTION_JOIN.join(part for part in stable_by_id.values() if part)
+    volatile_text = VOLATILE_SECTION_JOIN.join(part for part in volatile_by_id.values() if part)
 
     log.set(
         dynamic_context={
@@ -96,15 +93,16 @@ async def assemble_context(ctx: SectionContext) -> AssembledContext:
     )
 
 
-async def assemble_context_safely(ctx: SectionContext) -> AssembledContext:
-    """``assemble_context``, degrading to an empty stable block on failure.
+async def assemble_context(ctx: SectionContext) -> AssembledContext:
+    """The context ``ctx.tier`` hands its model — the one entry point for it.
 
-    The empty block is byte-stable on purpose: a persistent failure here must not
-    produce a *different* prompt every minute, which would invalidate the prompt
-    cache on every call on top of the original problem.
+    Degrades to an empty stable block if the gather itself fails. That block is
+    byte-stable on purpose: a persistent failure here must not produce a
+    *different* prompt every minute, which would invalidate the prompt cache on
+    every call on top of the original problem.
     """
     try:
-        return await assemble_context(ctx)
+        return await _gather_sections(ctx)
     except Exception as e:
         log.error(
             f"{LogTag.AGENT} Error assembling agent context",
