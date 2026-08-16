@@ -150,18 +150,14 @@ class TestTrackedTodosSummary:
         assert block == ""
 
     async def test_a_pinned_view_bypasses_the_cache(self, user: str) -> None:
-        """The pin is per-run-binding. Cached, one run's pin would leak into
-        every other turn for the same user until the TTL expired."""
-        calls: list[str] = []
-
-        async def _get_cache(key: str) -> str:
-            calls.append(key)
-            return "STALE SUMMARY"
+        """The pin is per-run-binding, but the cache is keyed by user alone —
+        so serving a pinned view from it would show one run's bound todo on
+        every other turn for that user until the TTL expired."""
+        cached = AsyncMock(return_value="STALE SUMMARY")
 
         with (
             self._todos(self._todo("t1", "Fresh todo", user)),
-            patch("app.agents.context.fetchers.get_cache", _get_cache),
-            patch("app.agents.context.fetchers.set_cache", AsyncMock()),
+            patch("app.agents.context.fetchers._cached_tracked_todos_summary", cached),
         ):
             pinned = await _section("tracked_todos").fetch(
                 SectionContext(tier=AgentTier.COMMS, user_id=user, active_todo_id="t1")
@@ -169,7 +165,7 @@ class TestTrackedTodosSummary:
 
         assert "Fresh todo" in pinned
         assert "STALE SUMMARY" not in pinned
-        assert calls == [], "the pinned view consulted the shared cache"
+        cached.assert_not_awaited()
 
     async def test_the_summary_is_a_volatile_section(self) -> None:
         """It changes as the agent works, so it must not sit in the prefix."""

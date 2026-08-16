@@ -13,8 +13,8 @@ from app.agents.context.text import (
     MEMORY_RECALL_HEADER,
 )
 from app.agents.workspace.paths import session_dir
-from app.db.redis import get_cache, set_cache
 from app.db.repositories.todos import todo_repository
+from app.decorators.caching import Cacheable
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.todo_models import TodoDocument
@@ -81,32 +81,23 @@ async def build_gaia_knowledge_block(query: str) -> str:
     return f"{GAIA_KNOWLEDGE_HEADER}\n{lines}"
 
 
-async def build_tracked_todos_block(user_id: str, active_todo_id: str | None = None) -> str:
-    """Active tracked-todo summary, Redis-cached briefly.
+@Cacheable(key_pattern="tracked_todos:summary:{user_id}", ttl=_TRACKED_TODOS_CACHE_TTL)
+async def _cached_tracked_todos_summary(user_id: str) -> str:
+    return await tracked_todo_service.get_active_tracked_summary(user_id)
 
-    A pinned view is per-run-binding, so it bypasses the cache entirely —
-    caching it would cross-pollinate other turns on the same user.
+
+async def build_tracked_todos_block(user_id: str, active_todo_id: str | None = None) -> str:
+    """Active tracked-todo summary, briefly cached.
+
+    A pinned view is per-run-binding and deliberately skips the cache: it is
+    keyed by user alone, so caching the pinned form would show one run's bound
+    todo on every other turn until the TTL expired.
     """
     if active_todo_id:
         return await tracked_todo_service.get_active_tracked_summary(
             user_id, active_todo_id=active_todo_id
         )
-
-    cache_key = f"tracked_todos:summary:{user_id}"
-    try:
-        cached = await get_cache(cache_key)
-        if cached:
-            return cached if isinstance(cached, str) else str(cached)
-    except Exception as cache_err:
-        log.debug("tracked_todo_summary.cache_get_failed", error=str(cache_err))
-
-    summary = await tracked_todo_service.get_active_tracked_summary(user_id)
-    if summary:
-        try:
-            await set_cache(cache_key, summary, ttl=_TRACKED_TODOS_CACHE_TTL)
-        except Exception as cache_err:
-            log.debug("tracked_todo_summary.cache_set_failed", error=str(cache_err))
-    return summary
+    return await _cached_tracked_todos_summary(user_id)
 
 
 def build_workspace_session_banner(session_id: str) -> str:

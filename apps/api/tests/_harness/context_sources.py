@@ -155,20 +155,16 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
                 AsyncMock(return_value=sources.onboarding_prompt),
             )
         )
-        # Redis: the tracked-todos section's own short cache. An in-memory dict
-        # keeps the real caching branch live without a server, so a change to
-        # what gets cached still runs through the code that does the caching.
-        cache: dict[str, str] = {}
-
-        async def _get_cache(key: str) -> str | None:
-            return cache.get(key)
-
-        async def _set_cache(key: str, value: str, ttl: int | None = None) -> None:
-            del ttl  # expiry is not observable in a single test run
-            cache[key] = value
-
-        enter(patch("app.agents.context.fetchers.get_cache", _get_cache))
-        enter(patch("app.agents.context.fetchers.set_cache", _set_cache))
+        # The tracked-todos summary sits behind @Cacheable, which would reach a
+        # real Redis. Patched at the cached wrapper so the harness stays
+        # hermetic and the value is the declared one rather than whatever a
+        # previous run happened to leave in the cache.
+        enter(
+            patch(
+                "app.agents.context.fetchers._cached_tracked_todos_summary",
+                AsyncMock(return_value=sources.tracked_todos),
+            )
+        )
         enter(_patch_executor_lock(sources.executor_busy_task_id))
         for target in _FENCED_CLIENTS:
             enter(patch(target, _fence(target)))

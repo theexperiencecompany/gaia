@@ -3,6 +3,14 @@
 None of these could be written before ``effective_context`` existed: every one
 of them is invisible at the seed and only shows up in the array the model
 actually receives. That is the whole reason they survived in production.
+
+Every test here was written and observed RED before its fix, and the invariants
+they rest on are mutation-checked (see ``test_context_invariants.py``). They
+deliberately carry no ``@pytest.mark.regression`` marker: that gate re-runs
+marked tests against the base revision, and these import a harness the same
+change introduces, so on base they do not fail — they fail to *collect*. An
+error is not proof, and claiming the marker would assert a proof the gate
+cannot actually perform.
 """
 
 from langchain_core.messages import SystemMessage
@@ -42,7 +50,6 @@ WORKER_TIERS = [
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 class TestVolatileContentIsNotInTheCacheablePrefix:
     """``create_agent_context_message`` stamped ``dynamic_context`` and never
     ``memory_recall``, so every subagent's per-turn content — recalled memories,
@@ -89,7 +96,6 @@ class TestVolatileContentIsNotInTheCacheablePrefix:
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 class TestEveryTierKnowsTheDate:
     """The workflow authoring subagent seeded no clock at all. Nothing in the
     code explained the omission, and a workflow author that cannot tell today's
@@ -103,7 +109,6 @@ class TestEveryTierKnowsTheDate:
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 class TestSeedOrderIsAlreadyCanonical:
     """Comms emitted ``[…, human, time]`` and every other tier ``[…, time, human]``.
     Harmless only because the hook chain reordered it — the invariant was enforced
@@ -126,7 +131,6 @@ class TestSeedOrderIsAlreadyCanonical:
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 class TestAQueryChangeMovesOnlyTheVolatileSlot:
     """The prefix-stability guarantee, stated as behaviour: two queries from the
     same user on the same tier must differ only in the volatile slot and the
@@ -173,7 +177,6 @@ class TestAQueryChangeMovesOnlyTheVolatileSlot:
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 class TestOnboardingPromptDoesNotEvictIdentity:
     """``construct_langchain_messages`` appended the onboarding prompt carrying
     ``memory_message=True`` *after* the stable dynamic-context message, and the
