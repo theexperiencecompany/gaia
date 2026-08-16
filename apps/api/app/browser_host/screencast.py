@@ -69,11 +69,15 @@ class _PageMeta:
 
 async def run_live_view(host: ChromiumHost, session: HostSession, client_ws: WebSocket) -> None:
     """Stream the session's focused page to a live-view client and apply its input."""
-    host.add_viewer(session.session_id)
-    cdp = CDPClient(host.root_ws_url)
-    await cdp.start()
+    # add_viewer MUST be inside the try: it protects the session from the idle
+    # reaper (which skips viewer_count > 0), so if setup below fails before the
+    # finally, an un-removed viewer would strand the session forever — a permanent
+    # capacity leak that only a host restart clears.
     background: set[asyncio.Task[Any]] = set()
+    cdp = CDPClient(host.root_ws_url)
+    host.add_viewer(session.session_id)
     try:
+        await cdp.start()
         target_id = await host.focused_target_id(session.session_id)
         attached = await cdp.send_raw(
             "Target.attachToTarget", {"targetId": target_id, "flatten": True}
