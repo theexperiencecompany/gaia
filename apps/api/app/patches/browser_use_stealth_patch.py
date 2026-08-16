@@ -31,6 +31,7 @@ _INJECTED_ATTR = "_gaia_stealth_target_ids"
 async def _get_or_create_cdp_session(
     self: BrowserSession, target_id: str | None = None, focus: bool = True
 ) -> CDPSession:
+    """Wrap Browser-Use's per-target session accessor to inject stealth once per target."""
     cdp_session = await _original_get_or_create_cdp_session(self, target_id=target_id, focus=focus)
 
     injected: set[str] | None = getattr(self, _INJECTED_ATTR, None)
@@ -58,7 +59,7 @@ async def _get_or_create_cdp_session(
 
 def apply() -> None:
     """Route every per-target CDP session through the stealth-injecting wrapper."""
-    BrowserSession.get_or_create_cdp_session = _get_or_create_cdp_session  # type: ignore[method-assign]
+    BrowserSession.get_or_create_cdp_session = _get_or_create_cdp_session
 
 
 apply()
