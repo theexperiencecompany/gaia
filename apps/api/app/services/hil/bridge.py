@@ -211,6 +211,16 @@ async def recall_declined_call(
 
 def build_summary(tool_name: str, args: dict[str, Any], integration_name: str | None) -> str:
     """Deterministic one-line summary of a gated call (no LLM in the hot path)."""
+    if tool_name == "browser_task":
+        # A browser task's whole intent is its ``task`` — but a weak model can
+        # write a long paragraph, so keep the card scannable: the first sentence,
+        # or a clipped lead. Never dump ``start_url`` or truncate mid-word.
+        task = str(args.get("task", "")).strip()
+        if not task:
+            return "Start a browser task"
+        first = task.split(". ", 1)[0].strip().rstrip(".")
+        concise = first if 0 < len(first) <= 140 else clip_text(task, 140)
+        return f"Start a browser task — {concise}"
     label = tool_name.replace("_", " ").strip().capitalize()
     if integration_name:
         label = f"{label} ({integration_name})"
