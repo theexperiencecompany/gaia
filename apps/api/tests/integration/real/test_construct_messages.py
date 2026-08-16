@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
-from app.agents.core.messages import construct_langchain_messages
 from app.agents.context.assemble import AssembledContext
+from app.agents.core.messages import construct_langchain_messages
 
 _EMPTY_DYNAMIC = AssembledContext(stable=SystemMessage(content=""), volatile=None)
 

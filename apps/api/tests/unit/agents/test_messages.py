@@ -20,9 +20,9 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
-from app.agents.core.messages import construct_langchain_messages
 from app.agents.context.assemble import AssembledContext
 from app.agents.context.tiers import AgentTier
+from app.agents.core.messages import construct_langchain_messages
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,

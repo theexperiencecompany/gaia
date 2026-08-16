@@ -36,9 +36,9 @@ from psycopg_pool import AsyncConnectionPool
 import pytest
 
 from app.agents.core.graph_builder import build_graph as build_graph_module
-from app.agents.core.nodes import pre_model_hooks as pre_model_hooks_module
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
+from app.agents.core.nodes import pre_model_hooks as pre_model_hooks_module
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
