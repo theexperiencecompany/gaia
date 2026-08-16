@@ -70,20 +70,20 @@ _VIEWER_TEMPLATE = """<!doctype html>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #09090b; color: #e4e4e7;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-  body { display: flex; flex-direction: column; align-items: center; padding: 16px 20px; gap: 14px; }
-  header { width: 100%; max-width: 1280px; display: flex; align-items: center; justify-content: space-between; }
+  body { display: flex; flex-direction: column; height: 100vh; }
+  header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; }
   .brand { display: flex; align-items: center; gap: 10px; }
-  .brand img { height: 26px; display: block; }
+  .brand img { height: 24px; display: block; }
   .status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #a1a1aa; }
   .status .dot { width: 8px; height: 8px; border-radius: 999px; background: #71717a; }
   .status.live { color: #d4d4d8; }
   .status.live .dot { background: #22c55e; }
   .status.connecting .dot { background: #f59e0b; }
   .status.ended .dot { background: #ef4444; }
-  #screen { max-width: 100%; max-height: 85vh; border-radius: 12px;
+  main { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 14px 14px; }
+  #screen { max-width: 100%; max-height: 100%; border-radius: 10px;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.07); background: #18181b;
     cursor: crosshair; outline: none; touch-action: none; }
-  footer { font-size: 12px; color: #52525b; }
 </style>
 </head>
 <body>
@@ -91,8 +91,7 @@ _VIEWER_TEMPLATE = """<!doctype html>
   <div class="brand"><img src="__WORDMARK__" alt="GAIA" /></div>
   <div id="status" class="status connecting"><span class="dot"></span><span id="statusLabel">Connecting\u2026</span></div>
 </header>
-<canvas id="screen" width="1280" height="800" tabindex="0"></canvas>
-<footer>You have live control of this browser</footer>
+<main><canvas id="screen" width="1280" height="800" tabindex="0"></canvas></main>
 <script>
 (function () {
   var canvas = document.getElementById("screen");
