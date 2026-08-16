@@ -162,8 +162,8 @@ NON_COMMITTING_ACTIONS: frozenset[str] = frozenset(
 # Desktop viewport for the browser agent so pages render at a normal laptop
 # resolution instead of the ~800x600 CDP default (which collapses sites to their
 # mobile layout and makes screenshots look broken).
-BROWSER_VIEWPORT_WIDTH = 1280
-BROWSER_VIEWPORT_HEIGHT = 800
-# Render at 2x so page text is retina-sharp in the live view and step images; the
-# screencast captures the hi-DPI surface and downscales, which supersamples.
-BROWSER_DEVICE_SCALE_FACTOR = 2
+# A large, real desktop viewport. The screencast frame is captured at the CSS
+# viewport resolution (device_scale_factor does NOT add frame pixels), so a bigger
+# viewport is what makes the live view and step images high-resolution / retina-crisp.
+BROWSER_VIEWPORT_WIDTH = 1920
+BROWSER_VIEWPORT_HEIGHT = 1200
