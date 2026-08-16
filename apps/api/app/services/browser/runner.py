@@ -81,6 +81,8 @@ class BrowserTaskRunner:
         max_steps: int,
         max_actions_per_step: int,
         task_timeout_seconds: int,
+        step_timeout_seconds: int,
+        handoff_timeout_seconds: int,
         stream_screenshots: bool,
         use_vision: bool,
         solve_captcha: bool,
@@ -97,6 +99,14 @@ class BrowserTaskRunner:
         self._max_steps = max_steps
         self._max_actions_per_step = max_actions_per_step
         self._task_timeout = task_timeout_seconds
+        # A step that hands off waits on the human for up to the handoff timeout, so
+        # its budget is active-work time PLUS a full handoff; the overall wall-clock
+        # likewise allows every permitted handoff to run its full duration on top of
+        # the active-work budget, so live-view takeovers are never starved by a timeout.
+        self._step_timeout = step_timeout_seconds + handoff_timeout_seconds
+        self._wall_clock_timeout = (
+            task_timeout_seconds + MAX_HANDOFFS_PER_TASK * handoff_timeout_seconds
+        )
         self._stream_screenshots = stream_screenshots
         self._use_vision = use_vision
         self._solve_captcha = solve_captcha
@@ -136,6 +146,7 @@ class BrowserTaskRunner:
             "register_should_stop_callback": self._should_stop,
             "use_vision": self._use_vision,
             "max_actions_per_step": self._max_actions_per_step,
+            "step_timeout": self._step_timeout,
             "tools": build_browser_tools(
                 solve_captcha=self._solve_captcha,
                 handle_takeover=self._handle_takeover,
@@ -145,7 +156,7 @@ class BrowserTaskRunner:
 
         try:
             history = await asyncio.wait_for(
-                self._agent.run(max_steps=self._max_steps), timeout=self._task_timeout
+                self._agent.run(max_steps=self._max_steps), timeout=self._wall_clock_timeout
             )
         except (BrowserHandoffCancelled, InterruptedError):
             if self._handed_off:

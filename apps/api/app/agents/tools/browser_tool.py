@@ -141,6 +141,8 @@ async def browser_task(
                 max_steps=settings.BROWSER_USE_MAX_STEPS,
                 max_actions_per_step=settings.BROWSER_USE_MAX_ACTIONS_PER_STEP,
                 task_timeout_seconds=settings.BROWSER_USE_TASK_TIMEOUT_SECONDS,
+                step_timeout_seconds=settings.BROWSER_USE_STEP_TIMEOUT_SECONDS,
+                handoff_timeout_seconds=settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS,
                 stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
                 use_vision=use_vision,
                 solve_captcha=settings.BROWSER_USE_SOLVE_CAPTCHA,
