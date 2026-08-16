@@ -37,7 +37,9 @@ from app.services.browser.handoff import await_handoff, create_pending_handoff
 from app.services.browser.llm import build_browser_llm, resolve_use_vision
 from app.services.browser.runner import BrowserTaskRunner
 from app.services.browser.session import browser_session
+from app.services.browser.tasks import record_browser_task
 from app.templates.docstrings.browser_tool_docs import BROWSER_TASK
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 # Screenshots stream into the chat live, so the reply must never narrate them.
@@ -187,6 +189,20 @@ async def browser_task(
                 root_request_id=root_request_id,
             )
             result = await runner.run(full_task)
+            if user_id:
+                # Record the finished task for the user's browser history (settings).
+                # Best-effort background write: a completed task must still return
+                # its result even if history persistence hiccups.
+                spawn_background_task(
+                    record_browser_task(
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        task=task,
+                        session_id=session.session_id,
+                        result=result,
+                    ),
+                    name="record_browser_task",
+                )
             return _agent_result_message(result)
     except BrowserConcurrencyLimit as exc:
         return str(exc)

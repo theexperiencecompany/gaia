@@ -62,6 +62,7 @@ async def create_all_indexes() -> None:
             create_hil_approvals_indexes(),
             create_pending_platform_registration_indexes(),
             create_browser_profiles_indexes(),
+            create_browser_tasks_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -95,6 +96,7 @@ async def create_all_indexes() -> None:
             "hil_approvals",
             "pending_platform_registrations",
             "browser_profiles",
+            "browser_tasks",
         ]
 
         index_results = {}
@@ -1149,6 +1151,24 @@ async def create_browser_profiles_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating browser_profiles indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_browser_tasks_indexes() -> None:
+    """Create indexes for the browser_tasks collection.
+
+    The settings history lists a user's tasks newest-first, so index on
+    (user_id, created_at desc) to serve that query without a scan.
+    """
+    browser_tasks_collection = get_async_collection("browser_tasks")
+    try:
+        await browser_tasks_collection.create_index([("user_id", 1), ("created_at", -1)])
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating browser_tasks indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

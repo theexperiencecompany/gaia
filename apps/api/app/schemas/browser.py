@@ -6,6 +6,7 @@
 * ``HandoffRequest`` — internal runner→tool contract for a mid-run handoff.
 """
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -136,3 +137,25 @@ class LiveViewTokenResponse(BaseModel):
 
     token: str
     expires_in: int = Field(description="Seconds until the token expires.")
+
+
+class BrowserTaskResponse(BaseModel):
+    """One row in the user's browser task history (settings)."""
+
+    id: str
+    task: str
+    status: BrowserSessionStatus
+    success: bool
+    steps: int
+    created_at: datetime | None
+    conversation_id: str
+    screenshots: list[str] = Field(
+        default_factory=list, description="Recap step screenshot URLs, in order."
+    )
+
+
+class BrowserLoginResponse(BaseModel):
+    """A saved browser login. Only the domain is exposed — never the encrypted state."""
+
+    domain: str
+    updated_at: datetime | None

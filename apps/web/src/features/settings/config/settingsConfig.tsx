@@ -1,4 +1,5 @@
 import {
+  AiWebBrowsingIcon,
   Brain02Icon,
   ChartLineData02Icon,
   ComputerIcon,
@@ -100,6 +101,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     icon: ComputerIcon,
     href: "/settings/devices",
     beta: true,
+  },
+  {
+    key: "browser",
+    label: "Browser",
+    icon: AiWebBrowsingIcon,
+    href: "/settings/browser",
   },
   // Only rendered inside the Electron app (filtered in SettingsSidebar).
   {

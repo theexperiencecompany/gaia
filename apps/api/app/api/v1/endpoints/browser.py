@@ -16,21 +16,25 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.constants.log_tags import LogTag
 from app.schemas.browser import (
+    BrowserLoginResponse,
+    BrowserTaskResponse,
     HandoffDecisionRequest,
     HandoffDecisionResponse,
     LiveViewTokenResponse,
 )
 from app.services.browser import registry
 from app.services.browser.handoff import get_handoff, resolve_handoff
+from app.services.browser.profiles import forget_saved_login, list_saved_logins
 from app.services.browser.takeover_token import (
     create_takeover_token,
     takeover_token_ttl_seconds,
 )
+from app.services.browser.tasks import list_browser_tasks
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/browser", tags=["Browser"])
@@ -106,3 +110,43 @@ async def get_live_view_token(
     token = create_takeover_token(session_id, str(user_id))
     log.info(f"{LogTag.BROWSER} browser live view token issued")
     return LiveViewTokenResponse(token=token, expires_in=int(takeover_token_ttl_seconds(token)))
+
+
+@router.get("/tasks", response_model=list[BrowserTaskResponse])
+async def list_browser_tasks_endpoint(
+    user_id: Annotated[str, Depends(get_user_id)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[BrowserTaskResponse]:
+    """The user's browser task history (settings), newest first, with recap URLs."""
+    log.set(user={"id": user_id}, browser={"operation": "list_tasks"})
+    tasks = await list_browser_tasks(user_id, limit=limit)
+    log.set(browser={"result_count": len(tasks)})
+    return tasks
+
+
+@router.get("/logins", response_model=list[BrowserLoginResponse])
+async def list_browser_logins_endpoint(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> list[BrowserLoginResponse]:
+    """Domains the user has a saved browser login for (never the encrypted state)."""
+    log.set(user={"id": user_id}, browser={"operation": "list_logins"})
+    return await list_saved_logins(user_id)
+
+
+@router.delete("/logins/{domain}", status_code=204)
+async def forget_browser_login_endpoint(
+    domain: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> None:
+    """Forget the saved login for one domain."""
+    log.set(user={"id": user_id}, browser={"operation": "forget_login", "domain": domain})
+    await forget_saved_login(user_id, domain)
+
+
+@router.delete("/logins", status_code=204)
+async def clear_browser_logins_endpoint(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> None:
+    """Forget every saved browser login for the user."""
+    log.set(user={"id": user_id}, browser={"operation": "clear_logins"})
+    await forget_saved_login(user_id, None)
