@@ -32,14 +32,18 @@ if TYPE_CHECKING:
 
 # JPEG, not PNG: a live view is judged on smoothness, and a 1920-wide PNG frame is
 # ~8-10x larger than JPEG (and slower to encode in Chromium + decode in the browser),
-# which is what makes the stream lag. q82 keeps text crisp while cutting the per-frame
-# bytes enough to stream fluidly. ``_SCREENCAST_QUALITY`` applies only to "jpeg".
+# which is what makes the stream lag. ``_SCREENCAST_QUALITY`` applies only to "jpeg".
 _SCREENCAST_FORMAT = "jpeg"
-_SCREENCAST_QUALITY = 82
-# The frame is captured at the page's CSS viewport resolution (BROWSER_VIEWPORT_*,
-# currently 1920x1200); these caps sit above it so the frame is never downscaled.
-_DEFAULT_MAX_WIDTH = 2560
-_DEFAULT_MAX_HEIGHT = 1600
+_SCREENCAST_QUALITY = 72
+# Downscale the stream to what the live view actually displays (a chat card ~460px
+# wide, ~1150px full-screen) rather than the full 1920px viewport. A repainting page
+# (scroll, video, animation) emits 70+ fps, and the browser JSON+base64-decodes and
+# image-decodes every frame on its main thread; full-res frames (~29 KB, ~2 MB/s)
+# overwhelm it and jank the stream, while 1280-wide q72 frames (~7 KB, ~0.5 MB/s)
+# stay smooth and stay crisp at the display size. The step screenshots streamed to
+# the recap are a separate, full-resolution path — this cap does not touch them.
+_DEFAULT_MAX_WIDTH = 1280
+_DEFAULT_MAX_HEIGHT = 800
 # Bounded so a slow viewer applies backpressure by dropping stale frames, not by
 # stalling Chromium (we ack every frame regardless).
 _FRAME_QUEUE_SIZE = 2
