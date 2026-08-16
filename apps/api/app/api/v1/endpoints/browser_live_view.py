@@ -28,6 +28,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_cur
 from app.browser_host.pumps import pump_until_first_close
 from app.constants.log_tags import LogTag
 from app.services.browser import registry
+from app.services.browser.live_code import resolve_live_code
 from app.services.browser.live_view import render_live_view_page
 from app.services.browser.takeover_token import (
     takeover_token_ttl_seconds,
@@ -41,41 +42,45 @@ router = APIRouter(tags=["Browser"])
 _WS_SESSION_GONE = 4404
 
 
-@router.get("/live/{session_id}")
+@router.get("/live/{code}")
 async def live_view_page(
-    session_id: str,
+    code: str,
     request: Request,
     t: Annotated[str | None, Query()] = None,
 ) -> HTMLResponse:
-    """Standalone live-view page for a viewer with no web app — a bot user opening
-    the ``?t=`` link. The chat card connects to the WebSocket below directly."""
-    log.set(browser={"session_id": session_id, "operation": "live_view_page"})
-    user_id = await _authorize_page(request, session_id, t)
+    """Standalone live-view page. ``code`` is a short capability code (the bot link)
+    that resolves to a session + owner in Redis; failing that it is treated as a raw
+    session id authorized by the ``?t=`` takeover token or a same-origin cookie (the
+    web chat card)."""
+    log.set(browser={"operation": "live_view_page"})
+    session_id, user_id = await _resolve_target_page(code, request, t)
     owner = await registry.session_owner(session_id)
     if owner is None or owner != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this session"
         )
+    log.set(browser={"session_id": session_id})
     log.info(f"{LogTag.BROWSER} browser live view page served")
     return HTMLResponse(content=render_live_view_page(session_id))
 
 
-@router.websocket("/live/{session_id}")
+@router.websocket("/live/{code}")
 async def live_view_ws(
     websocket: WebSocket,
-    session_id: str,
+    code: str,
     t: Annotated[str | None, Query()] = None,
 ) -> None:
     """Proxy the authenticated live view: host frames out to the viewer, the
-    viewer's mouse/key input back to the host. Auth (cookie session or ``?t=``
-    takeover token) and ownership are checked on connect; a token connection is
-    bounded to the token's remaining lifetime."""
-    log.set(browser={"session_id": session_id, "operation": "live_view_ws"})
+    viewer's mouse/key input back to the host. ``code`` is a short capability code
+    (bot link) or a raw session id + ``?t=`` token / cookie (web card). A token
+    connection is bounded to the token's remaining lifetime."""
+    log.set(browser={"operation": "live_view_ws"})
 
-    resolved = await _authorize_ws(websocket, session_id, t)
+    resolved = await _resolve_target_ws(websocket, code, t)
     if resolved is None:
-        return  # _authorize_ws already closed the socket with a policy-violation code
-    user_id, ttl_seconds = resolved
+        return  # already closed the socket with a policy-violation code
+    session_id, user_id, ttl_seconds = resolved
+    log.set(browser={"session_id": session_id})
 
     entry = await registry.get_session_entry(session_id)
     if entry is None or entry.owner != user_id:
@@ -90,6 +95,32 @@ async def live_view_ws(
     await websocket.accept()
     log.info(f"{LogTag.BROWSER} browser live view proxy opened")
     await _proxy_live_view(websocket, entry.live_ws, ttl_seconds)
+
+
+async def _resolve_target_page(code: str, request: Request, token: str | None) -> tuple[str, str]:
+    """``(session_id, user_id)`` for a GET page: a short capability code (the code is the
+    secret), else ``code`` as a raw session id authorized by the ``?t=`` token or cookie."""
+    record = await resolve_live_code(code)
+    if record is not None:
+        return record.session_id, record.user_id
+    user_id = await _authorize_page(request, code, token)
+    return code, user_id
+
+
+async def _resolve_target_ws(
+    websocket: WebSocket, code: str, token: str | None
+) -> tuple[str, str, float | None] | None:
+    """``(session_id, user_id, ttl_seconds)`` for a WS, or ``None`` (socket closed). The
+    code path has no per-connection deadline — the session reaper bounds it; the token
+    path keeps the token's remaining lifetime."""
+    record = await resolve_live_code(code)
+    if record is not None:
+        return record.session_id, record.user_id, None
+    resolved = await _authorize_ws(websocket, code, token)
+    if resolved is None:
+        return None
+    user_id, ttl_seconds = resolved
+    return code, user_id, ttl_seconds
 
 
 async def _authorize_page(request: Request, session_id: str, token: str | None) -> str:

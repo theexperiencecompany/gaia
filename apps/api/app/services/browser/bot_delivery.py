@@ -17,7 +17,7 @@ from app.schemas.browser import (
     BrowserSessionSnapshot,
     BrowserStepSnapshot,
 )
-from app.services.browser.live_view import live_view_link_with_token
+from app.services.browser.live_view import create_live_view_link
 from app.services.outbound_delivery import publish_outbound_message, publish_outbound_photo
 
 
@@ -74,7 +74,7 @@ class BotProgressDelivery:
             "Reply *done* when you've finished, or *stop* to cancel."
         )
         if snapshot.session_id:
-            link = live_view_link_with_token(snapshot.session_id, self._user_id)
+            link = await create_live_view_link(snapshot.session_id, self._user_id)
             msg += f"\n\nOpen the live browser: {link}"
         await self._text(msg)
 

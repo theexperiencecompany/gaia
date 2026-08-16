@@ -77,6 +77,13 @@ class HandoffRecord(BaseModel):
     reason: str = ""
 
 
+class LiveCodeRecord(BaseModel):
+    """What a short live-view code resolves to: the session it opens and its owner."""
+
+    session_id: str
+    user_id: str
+
+
 # ---------------------------------------------------------------------------
 # Sensitive-action classifier
 # ---------------------------------------------------------------------------

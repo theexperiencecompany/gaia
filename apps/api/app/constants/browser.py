@@ -89,6 +89,14 @@ BROWSER_HANDOFF_CONV_KEY_PREFIX = "browser:handoff:conv:"
 HANDOFF_POLL_INTERVAL_SECONDS = 1.0
 HANDOFF_KEY_TTL_SECONDS = 3600
 
+# A short capability code for the bot's live-view link (browser.heygaia.io/{code}):
+# the code IS the secret and maps to the session + owner in Redis, so the link
+# carries no 32-char session id and no long ?t= token. TTL bounds the link's life.
+BROWSER_LIVE_CODE_KEY_PREFIX = "browser:livecode:"
+BROWSER_LIVE_CODE_TTL_SECONDS = 3600
+# Bytes of entropy for the code (token_urlsafe → ~1.3 chars/byte, so ~12 chars).
+BROWSER_LIVE_CODE_ENTROPY_BYTES = 9
+
 # Chat acks when a handoff is resolved by a natural-language reply.
 BROWSER_HANDOFF_ACK_CONTINUE = "Got it, continuing the browser task."
 BROWSER_HANDOFF_ACK_CANCEL = "Okay, I've stopped the browser task."

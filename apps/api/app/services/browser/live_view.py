@@ -18,7 +18,7 @@ import html
 from pathlib import Path
 
 from app.config.settings import settings
-from app.services.browser.takeover_token import create_takeover_token
+from app.services.browser.live_code import mint_live_code
 
 _WORDMARK_DATA_URI = "data:image/png;base64," + base64.b64encode(
     (Path(__file__).parent / "assets" / "gaia_wordmark_white.png").read_bytes()
@@ -38,10 +38,16 @@ def live_view_url(session_id: str) -> str:
     return f"{_live_view_base()}{_LIVE_VIEW_PATH_TEMPLATE.format(session_id=session_id)}"
 
 
-def live_view_link_with_token(session_id: str, user_id: str) -> str:
-    """A tokened live-view link a bot delivers so ``user_id`` can take over without a web login."""
-    token = create_takeover_token(session_id, user_id)
-    return f"{live_view_url(session_id)}?t={token}"
+async def create_live_view_link(session_id: str, user_id: str) -> str:
+    """A short capability link a bot delivers so ``user_id`` can take over without a web
+    login. ``{vhost}/{code}`` when a dedicated live-view vhost is configured (the vhost
+    rewrites ``/{code}`` to the app's ``/live/{code}``), else ``{host}/live/{code}``. The
+    code maps to the session + owner in Redis — no session id or token in the URL."""
+    code = await mint_live_code(session_id, user_id)
+    base = _live_view_base()
+    if settings.BROWSER_LIVE_VIEW_BASE_URL:
+        return f"{base}/{code}"
+    return f"{base}/live/{code}"
 
 
 def render_live_view_page(session_id: str) -> str:
