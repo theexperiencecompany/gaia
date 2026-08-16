@@ -30,9 +30,9 @@ if TYPE_CHECKING:
 
     from app.browser_host.chromium import ChromiumHost, HostSession
 
-_SCREENCAST_QUALITY = 70
+_SCREENCAST_QUALITY = 90
 _DEFAULT_MAX_WIDTH = 1280
-_DEFAULT_MAX_HEIGHT = 720
+_DEFAULT_MAX_HEIGHT = 800
 # Bounded so a slow viewer applies backpressure by dropping stale frames, not by
 # stalling Chromium (we ack every frame regardless).
 _FRAME_QUEUE_SIZE = 2

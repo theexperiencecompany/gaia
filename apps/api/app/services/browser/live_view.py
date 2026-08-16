@@ -59,28 +59,55 @@ _VIEWER_TEMPLATE = """<!doctype html>
 <title>GAIA — Live browser (__SESSION_ID__)</title>
 <style>
   :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #09090b; color: #e4e4e7;
-    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; box-sizing: border-box; }
-  #status { font-size: 13px; color: #a1a1aa; }
-  #screen { max-width: 100%; max-height: 82vh; border-radius: 12px;
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.08); background: #18181b;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; padding: 16px; gap: 14px; }
+  header { width: 100%; max-width: 1280px; display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: .09em; font-size: 14px; color: #fafafa; }
+  .brand svg { display: block; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px; border-radius: 999px;
+    font-size: 12.5px; font-weight: 500; color: #d4d4d8;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.09); }
+  .chip .dot { width: 8px; height: 8px; border-radius: 999px; background: #a1a1aa; }
+  .chip.live { color: #dcfce7; background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.35); }
+  .chip.live .dot { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,0.22); animation: pulse 2s infinite; }
+  .chip.connecting { color: #fde68a; background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.35); }
+  .chip.connecting .dot { background: #f59e0b; }
+  .chip.ended { color: #fecaca; background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.35); }
+  .chip.ended .dot { background: #ef4444; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .5 } }
+  #screen { max-width: 100%; max-height: 84vh; border-radius: 14px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 24px 64px -24px rgba(0,0,0,0.7); background: #18181b;
     cursor: crosshair; outline: none; touch-action: none; }
+  footer { font-size: 11.5px; color: #52525b; letter-spacing: .02em; }
 </style>
 </head>
 <body>
-<div id="status">Connecting…</div>
-<canvas id="screen" width="1280" height="720" tabindex="0"></canvas>
+<header>
+  <div class="brand">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="#8b5cf6" stroke-width="2"></circle>
+      <circle cx="12" cy="12" r="3.4" fill="#8b5cf6"></circle>
+    </svg>
+    <span>GAIA</span>
+  </div>
+  <div id="status" class="chip connecting"><span class="dot"></span><span id="statusLabel">Connecting…</span></div>
+</header>
+<canvas id="screen" width="1280" height="800" tabindex="0"></canvas>
+<footer>You have live control of this browser</footer>
 <script>
 (function () {
   var canvas = document.getElementById("screen");
   var ctx = canvas.getContext("2d");
   var statusEl = document.getElementById("status");
-  var frameW = 1280, frameH = 720;
+  var statusLabel = document.getElementById("statusLabel");
+  function setStatus(state, label) { statusEl.className = "chip " + state; statusLabel.textContent = label; }
+  var frameW = 1280, frameH = 800;
   var ws = new WebSocket(location.href.replace(/^http/, "ws"));
-  ws.onopen = function () { statusEl.textContent = "Live — you're in control"; canvas.focus(); };
-  ws.onclose = function () { statusEl.textContent = "Session ended"; };
-  ws.onerror = function () { statusEl.textContent = "Connection error"; };
+  ws.onopen = function () { setStatus("live", "Live — you're in control"); canvas.focus(); };
+  ws.onclose = function () { setStatus("ended", "Session ended"); };
+  ws.onerror = function () { setStatus("ended", "Connection error"); };
   var img = new Image();
   img.onload = function () {
     frameW = img.naturalWidth || frameW; frameH = img.naturalHeight || frameH;
