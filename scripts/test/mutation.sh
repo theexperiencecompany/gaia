@@ -122,7 +122,43 @@ fi
 # "cannot load module more than once per process" when the same file is
 # imported under two paths (observed in CI for app.db.chroma).
 WORKDIR="$(pwd)/.mutation-$$"
-trap '[ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"' EXIT
+
+# Phase tracking + a self-imposed watchdog.
+#
+# GitHub retains NO LOG for a job it cancels at timeout-minutes. This module
+# was killed that way three runs running, so the one artifact that would say
+# WHERE it was stuck never survived — the whole reason it stayed a mystery.
+# Exiting on our own terms, before the job cap, keeps the log; the phase name
+# turns "it hung" into "it hung in <phase>".
+#
+# Not the same as the mutmut child's own timeout below: that one covers only
+# `mutmut run`, so a hang anywhere else in this script — the workdir copy,
+# `mutmut results`, the per-survivor classifier loop — sails straight past it.
+# That is why the child cap never fired on the module that kept dying.
+PHASE_FILE="$(mktemp)"
+MUTATION_WATCHDOG_S="${MUTATION_WATCHDOG_S:-1500}"
+START_EPOCH="$(date +%s)"
+SCRIPT_PID=$$
+_phase() {
+  printf '%s' "$1" > "$PHASE_FILE"
+  echo "[phase +$(( $(date +%s) - START_EPOCH ))s] $1" >&2
+}
+(
+  sleep "$MUTATION_WATCHDOG_S"
+  echo "WATCHDOG: $MODULE exceeded ${MUTATION_WATCHDOG_S}s, still in phase '$(cat "$PHASE_FILE" 2>/dev/null)'." >&2
+  echo "          Killed here so this log survives — a job cancelled by" >&2
+  echo "          GitHub's timeout keeps no log at all." >&2
+  kill -TERM "$SCRIPT_PID" 2>/dev/null
+) &
+WATCHDOG_PID=$!
+# Detach it from job control, or bash prints a "Terminated: sleep" notice into
+# the lane log every time the trap cleans it up.
+disown "$WATCHDOG_PID" 2>/dev/null || true
+# pkill -P first: killing the subshell alone orphans its `sleep`, which keeps
+# the inherited stdout/stderr open and hangs any pipeline reading this script
+# long after it has finished.
+trap 'pkill -P "$WATCHDOG_PID" 2>/dev/null; kill "$WATCHDOG_PID" 2>/dev/null; rm -f "$PHASE_FILE"; [ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"' EXIT
+_phase "copy workdir"
 mkdir -p "$WORKDIR"
 cp -r app "$WORKDIR/app"
 cp -r tests "$WORKDIR/tests"
@@ -163,6 +199,7 @@ text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", replacement, text)
 path.write_text(text)
 EOF
 
+_phase "mutmut run"
 echo "mutating $MODULE (tests: ${TESTFILES[*]}) ..."
 
 # Diff-driven scoping: mutmut has no "mutate only these lines" config, but
@@ -364,6 +401,7 @@ fi
 # swallowed: an unreadable read used to be indistinguishable from a clean
 # run, which is the same silence-read-as-success bug the no-verdict guard
 # below exists to stop.
+_phase "collect results"
 if ! RESULTS="$("$VENV_PY" -m mutmut results --all True 2>"$WORKDIR/results-err.log")"; then
   echo "MUTATION RESULTS UNREADABLE — 'mutmut results' failed for $MODULE:" >&2
   cat "$WORKDIR/results-err.log" >&2
@@ -419,6 +457,7 @@ REAL_SURVIVORS=""
 EQUIVALENT=""
 UNCHANGED=""
 LOGGING=""
+_phase "classify survivors"
 if [ -n "$SURVIVORS" ]; then
   while IFS= read -r line; do
     [ -z "$line" ] && continue
