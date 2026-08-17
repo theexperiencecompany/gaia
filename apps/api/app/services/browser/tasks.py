@@ -19,6 +19,7 @@ async def record_browser_task(
     session_id: str,
     result: BrowserResultSnapshot,
     step_goals: list[str] | None = None,
+    step_screenshots: list[str] | None = None,
     source: str = "",
 ) -> None:
     """Persist a finished browser task (any outcome) so it appears in the user's history."""
@@ -32,6 +33,7 @@ async def record_browser_task(
             session_id=session_id,
             steps=result.steps,
             step_goals=step_goals or [],
+            step_screenshots=step_screenshots or [],
             source=source,
             replay_url=result.replay_url,
         )
@@ -43,18 +45,34 @@ async def delete_browser_task(user_id: str, task_id: str) -> bool:
     return await browser_task_repository.delete(task_id, user_id=user_id)
 
 
-def _frames(session_id: str, steps: int, step_goals: list[str]) -> list[BrowserTaskFrame]:
-    """Recap frames (R2 screenshot URL + step caption) in order; empty if R2 is off."""
+def _caption(step_goals: list[str], index: int) -> str | None:
+    return (step_goals[index].strip() or None) if index < len(step_goals) else None
+
+
+def _frames(doc: BrowserTaskDocument) -> list[BrowserTaskFrame]:
+    """Recap frames (screenshot URL + step caption), in step order.
+
+    Uses the screenshots the run actually uploaded. A step whose upload failed
+    has no frame rather than a URL that 404s. Tasks recorded before those URLs
+    were stored fall back to deriving them from the session id.
+    """
+    if doc.step_screenshots:
+        return [
+            BrowserTaskFrame(url=url, caption=_caption(doc.step_goals, i))
+            for i, url in enumerate(doc.step_screenshots)
+            if url
+        ]
+
     base = settings.R2_PUBLIC_BASE_URL
-    if not base or steps < 1:
+    if not base or doc.steps < 1:
         return []
     root = base.rstrip("/")
     return [
         BrowserTaskFrame(
-            url=f"{root}/browser_steps/{session_id}/step_{i}.png",
-            caption=(step_goals[i - 1].strip() or None) if i - 1 < len(step_goals) else None,
+            url=f"{root}/browser_steps/{doc.session_id}/step_{i}.png",
+            caption=_caption(doc.step_goals, i - 1),
         )
-        for i in range(1, steps + 1)
+        for i in range(1, doc.steps + 1)
     ]
 
 
@@ -71,7 +89,7 @@ async def list_browser_tasks(user_id: str, *, limit: int = 20) -> list[BrowserTa
             created_at=doc.created_at,
             conversation_id=doc.conversation_id,
             source=doc.source,
-            frames=_frames(doc.session_id, doc.steps, doc.step_goals),
+            frames=_frames(doc),
         )
         for doc in docs
     ]

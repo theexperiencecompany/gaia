@@ -116,11 +116,18 @@ async def browser_task(
 
     # Captions for the recap ("what's going on" per step), keyed by step index.
     step_goals: dict[int, str] = {}
+    # Only the screenshots that actually reached the CDN. A step whose upload
+    # failed falls back to an inline data URL, which must not be stored as a
+    # history frame — it would render as a permanently broken image.
+    step_shots: dict[int, str] = {}
 
     async def emit(snapshot: BrowserCardSnapshot) -> None:
         writer({BROWSER_TASK_EVENT: snapshot.model_dump(mode="json")})
-        if isinstance(snapshot, BrowserStepSnapshot) and snapshot.goal:
-            step_goals[snapshot.index] = snapshot.goal
+        if isinstance(snapshot, BrowserStepSnapshot):
+            if snapshot.goal:
+                step_goals[snapshot.index] = snapshot.goal
+            if snapshot.screenshot and snapshot.screenshot.startswith("http"):
+                step_shots[snapshot.index] = snapshot.screenshot
         if bot_delivery is None:
             return
         if isinstance(snapshot, BrowserStepSnapshot):
@@ -208,6 +215,9 @@ async def browser_task(
                         session_id=session.session_id,
                         result=result,
                         step_goals=[step_goals.get(i, "") for i in range(1, result.steps + 1)],
+                        step_screenshots=[
+                            step_shots.get(i, "") for i in range(1, result.steps + 1)
+                        ],
                         source=task_source,
                     ),
                     name="record_browser_task",

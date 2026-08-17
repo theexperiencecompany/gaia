@@ -22,6 +22,10 @@ class BrowserTaskDocument(UserScopedDocument):
     session_id: str
     steps: int = 0
     step_goals: list[str] = Field(default_factory=list)
+    # The screenshots that actually reached R2, in step order. Recorded rather
+    # than derived: an upload can fail, and a guessed URL renders as a broken
+    # image in history forever.
+    step_screenshots: list[str] = Field(default_factory=list)
     # Where the task was started from ("web", "telegram", "whatsapp", …).
     source: str = ""
     replay_url: str | None = None
