@@ -146,7 +146,7 @@ def hooks_for(tier: AgentTier) -> list[HookType]:
     return worker_pre_model_hooks(cast(HookType, create_todo_pre_model_hook(source=source)))
 
 
-def build_configurable(
+async def build_configurable(
     tier: AgentTier,
     user: HarnessUser,
     overrides: AgentConfigurable | None = None,
@@ -169,7 +169,7 @@ def build_configurable(
         "name": user.name,
         "timezone": user.timezone,
     }
-    config = build_agent_config(
+    config = await build_agent_config(
         conversation_id="conv-1",
         user=agent_user,
         thread_id=f"{tier.value}-thread",
@@ -316,7 +316,7 @@ async def effective_context(
     resolved_sources = _with_onboarding(sources or ContextSources(), onboarding_prompt)
 
     with time_machine.travel(now, tick=False), fake_context_sources(resolved_sources):
-        config, configurable = build_configurable(tier, resolved_user, configurable_overrides)
+        config, configurable = await build_configurable(tier, resolved_user, configurable_overrides)
         seed = await seed_context(tier, user=resolved_user, query=query, configurable=configurable)
         state = cast(State, {"messages": [*(prior_messages or []), *seed], "todos": []})
         result = await execute_hooks(hooks_for(tier), state, config, InMemoryStore())
@@ -335,5 +335,5 @@ async def seed_only(
     """The pre-hook seed, for the invariants that are about what a tier *emits*."""
     resolved_user = user or HarnessUser()
     with time_machine.travel(now, tick=False), fake_context_sources(sources or ContextSources()):
-        _, configurable = build_configurable(tier, resolved_user, configurable_overrides)
+        _, configurable = await build_configurable(tier, resolved_user, configurable_overrides)
         return await seed_context(tier, user=resolved_user, query=query, configurable=configurable)
