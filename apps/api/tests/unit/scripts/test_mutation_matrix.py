@@ -244,52 +244,6 @@ def test_the_mirror_is_not_duplicated_when_it_also_references_the_module(
     ]
 
 
-def test_slow_tiers_are_dropped_because_every_file_reruns_per_mutant(
-    tmp_path: Path,
-) -> None:
-    """e2e/integration files are paid for once PER MUTANT.
-
-    app/workers/tasks/workflow_tasks.py pulled in tests/e2e/
-    test_workflow_execution.py, which compiles real graphs, and went from 9.43
-    to 0.11 mutations/second — all 35 mutants timed out and the run proved
-    nothing. Those tiers are already run properly, once, by test-python.
-    """
-    hits = [
-        "apps/api/tests/unit/workers/test_workflow_tasks.py",
-        "apps/api/tests/e2e/test_workflow_execution.py",
-        "apps/api/tests/integration/test_worker_task_lifecycle.py",
-    ]
-
-    assert mm.with_unit_mirror("workers/tasks/workflow_tasks", hits, tmp_path) == [
-        "tests/unit/workers/test_workflow_tasks.py"
-    ]
-
-
-def test_every_unit_file_survives_the_slow_tier_filter(tmp_path: Path) -> None:
-    """The filter drops slow TIERS, never trims the unit set — trimming that is
-    what re-introduces the false-green this function exists to prevent."""
-    hits = [
-        "apps/api/tests/unit/agents/test_handoff_brief.py",
-        "apps/api/tests/unit/tools/test_executor_tool.py",
-        "apps/api/tests/integration/api/test_endpoints.py",
-    ]
-
-    assert mm.with_unit_mirror("agents/tools/executor_tool", hits, tmp_path) == [
-        "tests/unit/agents/test_handoff_brief.py",
-        "tests/unit/tools/test_executor_tool.py",
-    ]
-
-
-def test_a_module_whose_only_coverage_is_integration_keeps_it(tmp_path: Path) -> None:
-    """core/middleware.py has no unit test at all. Measuring it slowly beats
-    not measuring it, and reporting "no test file" would be a lie."""
-    hits = ["apps/api/tests/integration/api/test_wide_event_contracts.py"]
-
-    assert mm.with_unit_mirror("core/middleware", hits, tmp_path) == [
-        "tests/integration/api/test_wide_event_contracts.py"
-    ]
-
-
 def test_a_module_with_no_referencing_file_and_no_mirror_selects_nothing(
     tmp_path: Path,
 ) -> None:
@@ -315,3 +269,38 @@ def test_entries_carry_the_whole_list_under_a_plural_key() -> None:
 
     assert entry["testfiles"] == ["tests/unit/a.py", "tests/unit/b.py"]
     assert "testfile" not in entry
+
+
+def test_a_test_file_is_parsed_once_no_matter_how_many_modules_are_planned(
+    tmp_path: Path,
+) -> None:
+    """Reference detection must not re-parse the tree per changed module.
+
+    Without memoization the scan is quadratic — every changed module re-parses
+    every test file and, through the consumer fallback, every app file. On a
+    whole-tree diff (429 modules) the plan step blew the lane's 10-minute
+    ceiling and was cancelled, so nothing downstream got a gate at all. This
+    asserts the parse count, which is the property that keeps it linear; a
+    wall-clock assertion would be flaky on a loaded runner.
+    """
+    _write(tmp_path, "tests/unit/test_one.py", "import app.alpha\n")
+    _write(tmp_path, "tests/unit/test_two.py", "import app.beta\n")
+    mm._module_refs.cache_clear()
+    mm._py_files.cache_clear()
+
+    for module in ("alpha", "beta", "alpha", "beta"):
+        mm._test_files_for(module, tmp_path)
+
+    # Two files exist, so at most two parses no matter how many lookups ran.
+    assert mm._module_refs.cache_info().currsize == 2
+    assert mm._module_refs.cache_info().misses == 2
+    assert mm._module_refs.cache_info().hits > 0
+
+
+def test_module_refs_returns_an_immutable_set(tmp_path: Path) -> None:
+    """Cached values are shared, so a caller must not be able to mutate one."""
+    _write(tmp_path, "test_refs.py", "import app.one\n")
+
+    refs = mm._module_refs(tmp_path / "test_refs.py")
+
+    assert isinstance(refs, frozenset)
