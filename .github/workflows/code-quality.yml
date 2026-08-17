@@ -903,9 +903,18 @@ jobs:
     if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     # A large changed module can carry hundreds of mutants (each running its
-    # covering tests once) — a 745-mutant module takes ~13 min. The xargs
-    # parallelism overlaps modules, so this is the per-module worst case.
-    timeout-minutes: 30
+    # covering tests once) — a 745-mutant module takes ~13 min. The
+    # parallelism in mutation-check.sh overlaps modules, so that is the
+    # per-module worst case, NOT the lane's.
+    #
+    # 30 min was sized against that per-module figure and silently became a
+    # whole-lane budget. A PR touching 22 modules (#1019, which introduced
+    # app/agents/context/) measured 17 of them in 30m18s and was cancelled
+    # with 5 unmeasured — and a cancelled lane fails the quality gate, so the
+    # cap turned "too many modules changed" into an unexplained red X. Raised
+    # to cover that observed worst case with headroom; the module count, not
+    # any single module, is what sets the lane's wall time.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
