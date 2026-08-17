@@ -4,6 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 import pytest
 
 from app.agents.core.nodes.follow_up_actions_node import (
+    _FOLLOW_UP_CONTEXT_MAX_CHARS,
     SUGGEST_FOLLOW_UP_ACTIONS,
     FollowUpActions,
     _pretty_print_messages,
@@ -48,6 +49,27 @@ class TestPrettyPrintMessages:
         messages = [SystemMessage(content="only system")]
         result = _pretty_print_messages(messages)
         assert result == ""
+
+    def test_context_under_the_cap_is_returned_whole(self):
+        messages = [HumanMessage(content="hello"), AIMessage(content="hi there")]
+        expected = "".join(m.pretty_repr() for m in messages)
+        assert len(expected) < _FOLLOW_UP_CONTEXT_MAX_CHARS
+
+        assert _pretty_print_messages(messages) == expected
+
+    def test_context_over_the_cap_keeps_exactly_the_newest_chars(self):
+        # A maxed-out executor result used to flow verbatim into the follow-up
+        # request. The cap trims the HEAD, never the tail: follow-ups react to
+        # the newest exchange, so dropping the end would suggest actions for a
+        # turn that already scrolled past.
+        messages = [HumanMessage(content="A" * 4_000), AIMessage(content="B" * 4_000)]
+        full = "".join(m.pretty_repr() for m in messages)
+        assert len(full) > _FOLLOW_UP_CONTEXT_MAX_CHARS
+
+        result = _pretty_print_messages(messages)
+
+        assert len(result) == _FOLLOW_UP_CONTEXT_MAX_CHARS
+        assert result == full[-_FOLLOW_UP_CONTEXT_MAX_CHARS:]
 
 
 class TestFollowUpActionsNode:

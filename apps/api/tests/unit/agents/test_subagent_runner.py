@@ -144,6 +144,35 @@ class TestBuildInitialMessages:
         assert result[3].content == "Do the thing"
 
     @pytest.mark.asyncio
+    async def test_volatile_tail_is_appended_after_the_task(self):
+        """Shape is [static, stable, time_msg, human_task, volatile_tail].
+
+        The per-turn churn (memories, skills, provider metadata, instructions)
+        must sit at the very END. Anywhere earlier and its bytes shift every
+        message behind it, so the provider's prompt cache misses the whole
+        prefix — a silent throughput regression with no failing request.
+        """
+        tail = SystemMessage(content="Based on our previous conversations:\n- likes tea")
+
+        with patch(
+            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+            new_callable=AsyncMock,
+            return_value=AgentContextMessages(
+                stable=SystemMessage(content="ctx"), volatile_tail=tail
+            ),
+        ):
+            result = await build_initial_messages(
+                system_message=SystemMessage(content="sys"),
+                agent_name="agent",
+                configurable={},
+                task="Do the thing",
+            )
+
+        assert len(result) == 5
+        assert result[4] is tail
+        assert result[3].content == "Do the thing"
+
+    @pytest.mark.asyncio
     async def test_human_message_has_visible_to(self):
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",

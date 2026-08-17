@@ -69,6 +69,7 @@ class TestStickyFlipReplayAccounting:
             primary,
             [HumanMessage(content="hi")],
             config={"configurable": {"user_id": "u1", "model_name": "m", "root_request_id": "r1"}},
+            label="comms_agent",
             meter_auxiliary=False,
         )
 
@@ -77,6 +78,9 @@ class TestStickyFlipReplayAccounting:
         metered_message, configurable = mock_record.await_args.args
         assert metered_message.content == "cold"
         assert configurable["root_request_id"] == "r1"
+        # Booked against the agent that made the call — unattributed spend
+        # cannot be split out of COGS afterwards.
+        assert mock_record.await_args.kwargs["agent_name"] == "comms_agent"
 
     @patch("app.agents.llm.client.record_graph_model_call", new_callable=AsyncMock)
     async def test_no_replay_means_no_extra_metering(self, mock_record: AsyncMock) -> None:

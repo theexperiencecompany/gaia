@@ -25,6 +25,7 @@ from app.agents.llm.client import (
     LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
+    STICKY_FALLBACK_KEY,
     _build_default_llm,
     _create_configurable_llm,
     _get_available_providers,
@@ -34,11 +35,16 @@ from app.agents.llm.client import (
     ainvoke_structured,
     ainvoke_structured_gemini,
     get_default_llm,
+    has_sticky_fallback,
     init_llm,
     register_llm_providers,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
-from app.constants.llm import AUX_MODEL_NAME, DEFAULT_MODEL_NAME
+from app.constants.llm import (
+    AUX_MODEL_NAME,
+    DEFAULT_MODEL_NAME,
+    STICKY_FLIP_RETRY_MIN_INPUT,
+)
 from app.core.lazy_loader import ProviderRegistry
 from shared.py.wide_events import log
 
@@ -508,6 +514,150 @@ class TestAinvokeLlm:
         fallback.ainvoke.assert_not_called()
 
 
+class TestFallbackHandover:
+    """What the fallback is handed when the primary fails: the conversation's
+    sticky session, the caller's messages, a metered config — and a run stamped
+    so the rest of the run skips the broken primary."""
+
+    @staticmethod
+    def _bindable_runnable(result: Any) -> NonCallableMagicMock:
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.bind = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(return_value=result)
+        return runnable
+
+    @patch("app.agents.llm.client.log")
+    async def test_the_fallback_inherits_the_conversation_sticky_session(
+        self, mock_log: MagicMock
+    ) -> None:
+        """The key is BOUND on the runnable, not left in config.
+
+        A config-carried session_id is dropped before the wire, so a fallback
+        that only inherited the config would land on a provider with no warm
+        cache for this conversation.
+        """
+        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
+        fallback = self._bindable_runnable(AIMessage(content="fallback-ok"))
+        config = RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"})
+        messages = [HumanMessage(content="hi")]
+
+        result = await ainvoke_llm(primary, messages, fallback=fallback, config=config)
+
+        assert result.content == "fallback-ok"
+        assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}
+        assert fallback.ainvoke.call_args.args[0] is messages
+        forwarded = fallback.ainvoke.call_args.kwargs["config"]
+        assert forwarded["configurable"]["session_id"] == "conv-1"
+        # The auxiliary meter rides along on the fallback attempt too — its
+        # tokens are as real as the primary's.
+        assert any(
+            isinstance(handler, UsageMetadataCallbackHandler) for handler in forwarded["callbacks"]
+        )
+
+    @patch("app.agents.llm.client.log")
+    async def test_a_provider_failure_stamps_the_run_as_fallen_back(
+        self, mock_log: MagicMock
+    ) -> None:
+        """Sticky: later calls in this run must not alternate back to the
+        primary, which resets the provider's per-model prompt cache each time."""
+        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
+        fallback = self._bindable_runnable(AIMessage(content="fallback-ok"))
+        config = RunnableConfig(configurable={"user_id": "u1"})
+
+        assert not has_sticky_fallback(config)
+        await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback, config=config)
+
+        assert config["configurable"][STICKY_FALLBACK_KEY] is True
+        assert has_sticky_fallback(config)
+
+    def test_a_run_with_no_configurable_has_not_fallen_back(self) -> None:
+        """Plenty of callers invoke with no config at all — the check answers
+        for them instead of blowing up on the missing section."""
+        assert not has_sticky_fallback(None)
+        assert not has_sticky_fallback(RunnableConfig())
+
+    @patch("app.agents.llm.client.log")
+    async def test_the_downgrade_warning_names_the_call_that_fell_back(
+        self, mock_log: MagicMock
+    ) -> None:
+        """The warning is the only record of a downgrade; unlabelled it cannot
+        be attributed to a caller."""
+        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
+        fallback = self._bindable_runnable(AIMessage(content="fallback-ok"))
+
+        await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], fallback=fallback, label="the_judge"
+        )
+
+        assert mock_log.warning.call_args.kwargs["llm"] == {
+            "label": "the_judge",
+            "error_type": "ConnectionError",
+            "fell_back": True,
+        }
+
+
+class TestStickyFlipReplayThresholds:
+    """The cold-cache replay fires on a big prompt whose cache came back cold,
+    and on nothing else: a re-send costs a whole extra request."""
+
+    @staticmethod
+    def _usage_result(content: str, *, prompt: int, cached: int) -> AIMessage:
+        return AIMessage(
+            content=content,
+            usage_metadata={
+                "input_tokens": prompt,
+                "output_tokens": 5,
+                "total_tokens": prompt + 5,
+                "input_token_details": {"cache_read": cached},
+            },
+        )
+
+    def _replaying_primary(self, first: AIMessage, second: AIMessage) -> NonCallableMagicMock:
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(side_effect=[first, second])
+        return runnable
+
+    async def test_a_prompt_exactly_at_the_input_floor_is_replayed(self) -> None:
+        """The floor is inclusive — a prompt that just reaches it still counts."""
+        primary = self._replaying_primary(
+            self._usage_result("cold", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=0),
+            self._usage_result("warm", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=7_900),
+        )
+
+        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=False)
+
+        assert result.content == "warm"
+        assert primary.ainvoke.await_count == 2
+
+    async def test_a_hit_rate_exactly_at_the_floor_is_not_replayed(self) -> None:
+        """At the floor the cache is warm enough; re-sending would just pay twice."""
+        prompt = 10_000
+        primary = self._replaying_primary(
+            self._usage_result("warm", prompt=prompt, cached=int(prompt * 0.92)),
+            self._usage_result("unused", prompt=prompt, cached=prompt),
+        )
+
+        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=False)
+
+        assert result.content == "warm"
+        assert primary.ainvoke.await_count == 1
+
+    async def test_a_result_that_carries_no_usage_at_all_is_returned_as_is(self) -> None:
+        """Structured runnables return a plain schema instance — no usage
+        attribute to read, and nothing to decide a replay on."""
+        parsed = _Extracted(fact="remembered")
+        primary = NonCallableMagicMock()
+        primary.with_retry = MagicMock(return_value=primary)
+        primary.ainvoke = AsyncMock(return_value=parsed)
+
+        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=False)
+
+        assert result is parsed
+        assert primary.ainvoke.await_count == 1
+
+
 # ---------------------------------------------------------------------------
 # ainvoke_structured_gemini — memory-lane provider selection
 # ---------------------------------------------------------------------------
@@ -530,13 +680,29 @@ class TestMemoryLaneProviderSelection:
         self, mock_available: MagicMock, mock_memory_llm: MagicMock, mock_aux: AsyncMock
     ) -> None:
         mock_aux.return_value = _Extracted(fact="from-aux")
+        config = RunnableConfig(configurable={"user_id": "u1"})
 
-        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+        result = await ainvoke_structured_gemini(
+            _Extracted,
+            "transcript",
+            label="memory:extract",
+            temperature=0.4,
+            config=config,
+            timeout=9.0,
+        )
 
         assert result.fact == "from-aux"
         mock_memory_llm.assert_not_called()
+        # The handover is the whole call, not just the schema: a dropped
+        # argument here silently re-defaults it on the lane that actually runs.
         assert mock_aux.await_args.args[0] is _Extracted
-        assert mock_aux.await_args.kwargs["label"] == "memory:extract"
+        assert mock_aux.await_args.args[1] == "transcript"
+        assert mock_aux.await_args.kwargs == {
+            "label": "memory:extract",
+            "temperature": 0.4,
+            "config": config,
+            "timeout": 9.0,
+        }
 
     @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
     @patch("app.agents.llm.client.get_memory_llm")
@@ -546,10 +712,14 @@ class TestMemoryLaneProviderSelection:
     ) -> None:
         mock_ainvoke.return_value = _Extracted(fact="from-gemini")
 
-        result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
+        result = await ainvoke_structured_gemini(
+            _Extracted, "transcript", label="memory:extract", temperature=0.4
+        )
 
         assert result.fact == "from-gemini"
         mock_memory_llm.assert_called_once()
+        assert mock_memory_llm.call_args.kwargs["temperature"] == 0.4
+        assert mock_memory_llm.return_value.with_structured_output.call_args.args[0] is _Extracted
         # A Gemini outage has somewhere to go: ainvoke_llm gets a real fallback
         # factory instead of the None that dropped every extraction.
         assert mock_ainvoke.await_args.kwargs["fallback"] is not None
@@ -981,3 +1151,53 @@ class TestAinvokeStructured:
 
         assert mock_invoke.call_args.kwargs["label"] == "memory_extraction"
         assert mock_invoke.call_args.kwargs["config"] is config
+
+    async def test_the_prompt_and_timeout_reach_the_invoke(self) -> None:
+        """The prompt is the call; the timeout is the ceiling the caller chose.
+
+        A dropped timeout silently reverts to the module default, which is what
+        an interactive caller with a tight budget is trying to avoid.
+        """
+        helper = MagicMock()
+        helper.model_copy = MagicMock(return_value=MagicMock())
+        prompt = [HumanMessage(content="classify this")]
+
+        with (
+            patch("app.agents.llm.client.get_helper_llm", return_value=helper),
+            patch(
+                "app.agents.llm.client.ainvoke_llm",
+                new=AsyncMock(return_value=self._Schema(answer="ok")),
+            ) as mock_invoke,
+        ):
+            await ainvoke_structured(self._Schema, prompt, label="classifier", timeout=12.0)
+
+        assert mock_invoke.call_args.args[1] is prompt
+        assert mock_invoke.call_args.kwargs["timeout"] == 12.0
+
+    async def test_the_aux_lane_runs_on_its_own_sticky_session(self) -> None:
+        """A suffixed session id, bound after ``with_structured_output``.
+
+        Sharing the conversation's id re-pins its provider from a background
+        one-shot; binding before the structured rebuild loses the key entirely,
+        because ``bind_tools`` drops the outer binding's kwargs.
+        """
+        bound = MagicMock(name="bound_runnable")
+        structured = MagicMock(name="structured_runnable")
+        structured.bind = MagicMock(return_value=bound)
+        aux = MagicMock(name="aux_model")
+        aux.with_structured_output = MagicMock(return_value=structured)
+        helper = MagicMock()
+        helper.model_copy = MagicMock(return_value=aux)
+        config = RunnableConfig(configurable={"session_id": "conv-1"})
+
+        with (
+            patch("app.agents.llm.client.get_helper_llm", return_value=helper),
+            patch(
+                "app.agents.llm.client.ainvoke_llm",
+                new=AsyncMock(return_value=self._Schema(answer="ok")),
+            ) as mock_invoke,
+        ):
+            await ainvoke_structured(self._Schema, "prompt", label="judge", config=config)
+
+        assert structured.bind.call_args.kwargs == {"session_id": "conv-1-aux"}
+        assert mock_invoke.call_args.args[0] is bound

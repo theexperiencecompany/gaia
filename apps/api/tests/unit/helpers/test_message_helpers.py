@@ -9,9 +9,25 @@ import pytest
 
 from app.helpers.message_helpers import (
     _CORE_MEMORY_HEADING,
+    AGENDA_CAP_CHARS,
+    AGENDA_TRUNC_MARKER,
+    GAIA_KNOWLEDGE_CAP_CHARS,
+    GAIA_KNOWLEDGE_TRUNC_MARKER,
+    MEMORIES_CAP_CHARS,
+    MEMORIES_TRUNC_MARKER,
+    MEMORY_RECALL_HEAD_CHARS,
     MEMORY_RECALL_MAX_CHARS,
+    MEMORY_RECALL_TAIL_CHARS,
+    RECENT_ACTIVITY_CAP_CHARS,
+    RECENT_ACTIVITY_TRUNC_MARKER,
+    SKILLS_CAP_CHARS,
+    SKILLS_TRUNC_MARKER,
+    TRACKED_TODOS_CAP_CHARS,
+    TRACKED_TODOS_TRUNC_MARKER,
+    _cap_section,
     _get_gaia_knowledge_section,
     _get_user_memories_section,
+    _split_off_section,
     build_dynamic_context_messages,
     create_system_message,
     format_calendar_event_context,
@@ -508,10 +524,28 @@ class TestFormatFilesList:
 # ---------------------------------------------------------------------------
 
 
+CORE_USER_ID = "u1"
+
+
 @contextmanager
-def _dynamic_context_seams(core_context: str, *, active_todo_banner: str = "") -> Iterator[None]:
+def _dynamic_context_seams(
+    core_context: str | Exception,
+    *,
+    active_todo_banner: str = "",
+    memories: str = "",
+    gaia_knowledge: str = "",
+    tracked_todos: str = "",
+) -> Iterator[None]:
     """Stub every I/O fetch `build_dynamic_context_messages` makes except the
     core-memory read, so the volatility split and the caps run for real."""
+
+    async def _core_context(user_id: str) -> str:
+        # Answers for CORE_USER_ID only: a lookup that dropped the id would
+        # otherwise read as a hit and the wrong-user fetch would be invisible.
+        if isinstance(core_context, Exception):
+            raise core_context
+        return core_context if user_id == CORE_USER_ID else ""
+
     with (
         patch("app.helpers.message_helpers.memory_engine") as mock_engine,
         patch(
@@ -519,15 +553,23 @@ def _dynamic_context_seams(core_context: str, *, active_todo_banner: str = "") -
             new=AsyncMock(return_value=""),
         ),
         patch(
+            "app.helpers.message_helpers._get_user_memories_section",
+            new=AsyncMock(return_value=memories),
+        ),
+        patch(
+            "app.helpers.message_helpers._get_gaia_knowledge_section",
+            new=AsyncMock(return_value=gaia_knowledge),
+        ),
+        patch(
             "app.helpers.message_helpers._get_tracked_todos_section",
-            new=AsyncMock(return_value=""),
+            new=AsyncMock(return_value=tracked_todos),
         ),
         patch(
             "app.helpers.message_helpers._build_active_todo_banner",
             new=AsyncMock(return_value=active_todo_banner),
         ),
     ):
-        mock_engine.get_core_context = AsyncMock(return_value=core_context)
+        mock_engine.get_core_context = AsyncMock(side_effect=_core_context)
         yield
 
 
@@ -645,3 +687,309 @@ class TestDynamicContextVolatilitySplit:
         assert content.startswith(RECENT_ACTIVITY_HEADING)
         assert content.endswith("BANNER-END")
         assert "recall truncated to keep the prompt cache warm" in content
+
+    @pytest.mark.asyncio
+    async def test_the_core_read_failing_leaves_both_memory_slots_empty(self) -> None:
+        """A core-memory read that blows up drops the memory slots, nothing else.
+
+        The failure returns a pair of empty strings; a non-empty stand-in would
+        put a placeholder document in front of the model.
+        """
+        with _dynamic_context_seams(RuntimeError("chroma is down")):
+            result = await build_dynamic_context_messages(user_id=CORE_USER_ID, query=None)
+
+        assert result.memory_recall is None
+        assert result.volatile_tail is None
+        assert result.stable.content == ""
+
+    @pytest.mark.asyncio
+    async def test_a_user_with_an_empty_core_gets_no_memory_slots(self) -> None:
+        """No core document at all is not the same as an empty-looking one."""
+        with _dynamic_context_seams(""):
+            result = await build_dynamic_context_messages(user_id=CORE_USER_ID, query=None)
+
+        assert result.memory_recall is None
+        assert result.volatile_tail is None
+
+    @pytest.mark.asyncio
+    async def test_agenda_and_journal_are_joined_by_one_blank_line(self) -> None:
+        """The two volatile sections are emitted verbatim, blank-line separated."""
+        core = (
+            "Loves espresso."
+            f"\n\n{AGENDA_HEADING}\n- ship the cache work"
+            f"\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        )
+        with _dynamic_context_seams(core):
+            result = await build_dynamic_context_messages(user_id=CORE_USER_ID, query=None)
+
+        assert result.volatile_tail is not None
+        assert result.volatile_tail.content == (
+            f"{AGENDA_HEADING}\n- ship the cache work\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        )
+
+    @pytest.mark.asyncio
+    async def test_each_oversized_core_section_is_labelled_by_its_own_marker(self) -> None:
+        """An overflowing agenda and journal each keep their own truncation line.
+
+        The markers are what tell the model its view of that section is partial,
+        and they are byte-stable so an overflowing section emits the same
+        prefix every turn.
+        """
+        agenda = "stale commitment. " * 40 + "A" * AGENDA_CAP_CHARS
+        journal = "stale entry. " * 40 + "J" * RECENT_ACTIVITY_CAP_CHARS
+        core = (
+            f"Loves espresso.\n\n{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{journal}"
+        )
+        with _dynamic_context_seams(core):
+            result = await build_dynamic_context_messages(user_id=CORE_USER_ID, query=None)
+
+        assert result.volatile_tail is not None
+        assert result.volatile_tail.content == (
+            f"{AGENDA_HEADING}{AGENDA_TRUNC_MARKER}\n{'A' * AGENDA_CAP_CHARS}"
+            f"\n\n{RECENT_ACTIVITY_HEADING}{RECENT_ACTIVITY_TRUNC_MARKER}"
+            f"\n{'J' * RECENT_ACTIVITY_CAP_CHARS}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_tail_exactly_at_the_cap_is_left_whole(self) -> None:
+        """The global cap truncates what exceeds it, not what exactly fills it."""
+        banner = "B" * MEMORY_RECALL_MAX_CHARS
+        with _dynamic_context_seams("", active_todo_banner=banner):
+            result = await build_dynamic_context_messages(
+                user_id=CORE_USER_ID, query=None, active_todo_id="t1"
+            )
+
+        assert result.volatile_tail is not None
+        assert result.volatile_tail.content == banner
+
+    @pytest.mark.asyncio
+    async def test_an_oversized_tail_keeps_its_head_marker_and_tail_verbatim(self) -> None:
+        """Over the cap: head + the exact truncation line + tail, nothing else.
+
+        The marker's own bytes are asserted whole — a marker that grew extra
+        characters would still satisfy a substring check while changing what
+        every request sends.
+        """
+        head = "H" * MEMORY_RECALL_HEAD_CHARS
+        middle = "M" * 1_000
+        tail = "T" * MEMORY_RECALL_TAIL_CHARS
+        with _dynamic_context_seams("", active_todo_banner=head + middle + tail):
+            result = await build_dynamic_context_messages(
+                user_id=CORE_USER_ID, query=None, active_todo_id="t1"
+            )
+
+        assert result.volatile_tail is not None
+        assert result.volatile_tail.content == (
+            f"{head}\n…[recall truncated to keep the prompt cache warm]…\n{tail}"
+        )
+
+    @pytest.mark.parametrize(
+        ("volatile", "expected"),
+        [
+            ("\n\n  Xylophone practice at 6.", "  Xylophone practice at 6."),
+            ("\n\nXylophone practice at 6.", "Xylophone practice at 6."),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_the_volatile_core_tail_loses_only_its_leading_blank_lines(
+        self, volatile: str, expected: str
+    ) -> None:
+        """Leading blank lines go; indentation and the first character stay."""
+        with (
+            _dynamic_context_seams(""),
+            patch(
+                "app.helpers.message_helpers._core_memory_parts",
+                new=AsyncMock(return_value=("", volatile)),
+            ),
+        ):
+            result = await build_dynamic_context_messages(user_id=CORE_USER_ID, query=None)
+
+        assert result.volatile_tail is not None
+        assert result.volatile_tail.content == expected
+
+
+class TestCapSection:
+    """``_cap_section`` bounds a volatile section without churning its bytes."""
+
+    def test_a_section_at_exactly_its_budget_is_untouched(self) -> None:
+        """The budget is inclusive — a section that just fits keeps every byte."""
+        text = "n" * 50
+
+        assert _cap_section(text, 50, "...[cut]...") == text
+
+    def test_an_oversized_section_keeps_its_newest_tail_behind_the_marker(self) -> None:
+        """Newest content lives at the END, so the tail is what survives."""
+        text = "oldest. " * 20 + "N" * 30
+
+        assert _cap_section(text, 30, "...[cut]...") == "...[cut]...\n" + "N" * 30
+
+
+class TestSplitOffSection:
+    """``_split_off_section`` cuts at the FIRST occurrence of a heading."""
+
+    def test_a_repeated_heading_splits_at_the_first_one(self) -> None:
+        """Everything from the first heading on is the section, repeats included.
+
+        The journal heading can reappear inside a memory document; splitting at
+        the last one would leave the earlier copy inside the stable core, where
+        its per-turn churn breaks the cached prefix.
+        """
+        context = f"Stable doc.\n\n{AGENDA_HEADING}\n- first\n\n{AGENDA_HEADING}\n- second"
+
+        before, body = _split_off_section(context, AGENDA_HEADING)
+
+        assert before == "Stable doc."
+        assert body == f"\n- first\n\n{AGENDA_HEADING}\n- second"
+
+    def test_a_heading_that_opens_the_core_leaves_nothing_stable(self) -> None:
+        """A core that starts with a churning section has no stable part at all."""
+        before, body = _split_off_section(
+            f"{RECENT_ACTIVITY_HEADING}\n- reviewed a PR", RECENT_ACTIVITY_HEADING
+        )
+
+        assert before == ""
+        assert body == "\n- reviewed a PR"
+
+    def test_an_absent_heading_leaves_the_core_whole(self) -> None:
+        """No section to split off: the core is returned untouched, body empty."""
+        before, body = _split_off_section("Loves espresso.", AGENDA_HEADING)
+
+        assert before == "Loves espresso."
+        assert body == ""
+
+
+# Each volatile section reaches build_dynamic_context_messages by a different
+# route (a call argument, a gathered fetch), so the table names the route.
+_SECTION_MEMORIES = "memories"
+_SECTION_GAIA_KNOWLEDGE = "gaia_knowledge"
+_SECTION_SKILLS = "skills"
+_SECTION_TRACKED_TODOS = "tracked_todos"
+
+
+async def _volatile_tail_for(section: str, text: str) -> SystemMessage | None:
+    """Build the dynamic context with ``text`` as the only volatile section."""
+    seam: dict[str, str] = {}
+    call: dict[str, str | None] = {"user_id": CORE_USER_ID, "query": None}
+    if section == _SECTION_MEMORIES:
+        call["memories_text"] = text
+    elif section == _SECTION_GAIA_KNOWLEDGE:
+        seam["gaia_knowledge"] = text
+        call["query"] = "what can gaia do"
+    elif section == _SECTION_SKILLS:
+        call["skills_text"] = text
+    elif section == _SECTION_TRACKED_TODOS:
+        seam["tracked_todos"] = text
+    else:
+        raise AssertionError(f"unknown volatile section: {section}")
+
+    with _dynamic_context_seams("", **seam):
+        result = await build_dynamic_context_messages(**call)
+    return result.volatile_tail
+
+
+class TestVolatileSectionCaps:
+    """Every volatile section is emitted verbatim until it outgrows its OWN
+    budget, then keeps its newest bytes behind its own truncation marker."""
+
+    @pytest.mark.parametrize(
+        "section",
+        [_SECTION_MEMORIES, _SECTION_GAIA_KNOWLEDGE, _SECTION_SKILLS, _SECTION_TRACKED_TODOS],
+    )
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("\n\n  Xylophone practice at 6.", "  Xylophone practice at 6."),
+            ("\n\nXylophone practice at 6.", "Xylophone practice at 6."),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_a_section_within_budget_is_emitted_verbatim(
+        self, section: str, text: str, expected: str
+    ) -> None:
+        """Leading blank lines are trimmed; nothing else about the body moves."""
+        tail = await _volatile_tail_for(section, text)
+
+        assert tail is not None
+        # The skills section is passed through as given — it has no blank-line
+        # prefix to trim, unlike the fetched sections.
+        assert tail.content == (text if section == _SECTION_SKILLS else expected)
+
+    @pytest.mark.parametrize(
+        ("section", "cap", "marker"),
+        [
+            (_SECTION_MEMORIES, MEMORIES_CAP_CHARS, MEMORIES_TRUNC_MARKER),
+            (_SECTION_GAIA_KNOWLEDGE, GAIA_KNOWLEDGE_CAP_CHARS, GAIA_KNOWLEDGE_TRUNC_MARKER),
+            (_SECTION_SKILLS, SKILLS_CAP_CHARS, SKILLS_TRUNC_MARKER),
+            (_SECTION_TRACKED_TODOS, TRACKED_TODOS_CAP_CHARS, TRACKED_TODOS_TRUNC_MARKER),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_an_oversized_section_keeps_its_tail_behind_its_own_marker(
+        self, section: str, cap: int, marker: str
+    ) -> None:
+        """Each section caps against its own budget with its own marker."""
+        newest = "N" * cap
+        tail = await _volatile_tail_for(section, "stale filler. " * 40 + newest)
+
+        assert tail is not None
+        assert tail.content == f"{marker}\n{newest}"
+
+
+class TestDynamicContextFetchBranches:
+    """The three fetch branches (pinned memories, per-query lookup, neither)
+    each land the same sections in the same slots."""
+
+    @pytest.mark.asyncio
+    async def test_pinned_memories_skip_the_lookup_and_ride_the_volatile_tail(self) -> None:
+        """Given memories, the per-query lookup is never made."""
+        with _dynamic_context_seams("Loves espresso.", memories="\n\nFETCHED memories"):
+            result = await build_dynamic_context_messages(
+                user_id=CORE_USER_ID, query=None, memories_text="\n\nPinned memories"
+            )
+
+        assert result.memory_recall is not None
+        assert result.memory_recall.content == f"{_CORE_MEMORY_HEADING}:\nLoves espresso."
+        assert result.volatile_tail is not None
+        assert result.volatile_tail.content == "Pinned memories"
+
+    @pytest.mark.asyncio
+    async def test_pinned_memories_without_a_user_carry_no_core(self) -> None:
+        """No user id means no core read at all — and no placeholder for one."""
+        with _dynamic_context_seams("Loves espresso."):
+            result = await build_dynamic_context_messages(
+                user_id=None, query=None, memories_text="\n\nPinned memories"
+            )
+
+        assert result.memory_recall is None
+        assert result.volatile_tail is not None
+        assert result.volatile_tail.content == "Pinned memories"
+
+    @pytest.mark.asyncio
+    async def test_a_query_run_gathers_core_memories_and_knowledge(self) -> None:
+        """All three fetches land, in order, each in its own slot."""
+        core = f"Loves espresso.\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        with _dynamic_context_seams(
+            core, memories="\n\nRelevant memories:\n- likes trains", gaia_knowledge="\n\nAbout Gaia"
+        ):
+            result = await build_dynamic_context_messages(
+                user_id=CORE_USER_ID, query="trains", user_name="Ada"
+            )
+
+        assert result.stable.content == "User Name: Ada"
+        assert result.memory_recall is not None
+        assert result.memory_recall.content == f"{_CORE_MEMORY_HEADING}:\nLoves espresso."
+        assert result.volatile_tail is not None
+        assert result.volatile_tail.content == (
+            f"{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+            "\n\nRelevant memories:\n- likes trains"
+            "\n\nAbout Gaia"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_user_and_no_query_yields_no_memory_slots(self) -> None:
+        """Nothing to look anything up with: both memory slots stay empty."""
+        with _dynamic_context_seams("Loves espresso."):
+            result = await build_dynamic_context_messages(user_id=None, query=None)
+
+        assert result.memory_recall is None
+        assert result.volatile_tail is None

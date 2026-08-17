@@ -20,6 +20,7 @@ from app.agents.core.subagents import subagent_helpers
 from app.agents.core.subagents.subagent_helpers import create_agent_context_message
 from app.helpers.message_helpers import DYNAMIC_CONTEXT_MARKER, MEMORY_VOLATILE_MARKER
 from app.models.agent_models import AgentConfigurable
+from shared.py.wide_events import log
 
 pytestmark = pytest.mark.unit
 
@@ -28,6 +29,21 @@ def _configurable(**overrides: str) -> AgentConfigurable:
     return cast(
         AgentConfigurable, {"user_name": "Ada", "user_timezone": "Europe/London", **overrides}
     )
+
+
+class ProviderLookupFailed(RuntimeError):
+    """A distinctly-named failure so the logged error_type cannot be a coincidence."""
+
+
+class InstructionsLookupFailed(RuntimeError):
+    """A distinctly-named failure so the logged error_type cannot be a coincidence."""
+
+
+def _warning(needle: str) -> dict[str, object]:
+    """The single wide-event warning whose message contains ``needle``."""
+    matches = [w for w in log.get().get("warnings", []) if needle in w["msg"]]
+    assert len(matches) == 1, matches
+    return matches[0]
 
 
 class TestCreateAgentContextMessage:
@@ -110,3 +126,96 @@ class TestCreateAgentContextMessage:
         messages = await create_agent_context_message(_configurable(), skills_text="")
 
         assert messages.volatile_tail is None
+
+
+class TestProviderMetadataSection:
+    """The per-integration USER CONTEXT block, in the volatile tail.
+
+    ``github`` is a real entry in ``oauth_config`` (name "GitHub", provider
+    "github"), so the block's header exercises the real casing rather than a
+    stand-in whose upper- and lower-case spellings would be indistinguishable.
+    """
+
+    async def test_the_block_is_assembled_verbatim(self) -> None:
+        with patch.object(subagent_helpers, "get_instructions", AsyncMock(return_value=None)):
+            messages = await create_agent_context_message(
+                _configurable(user_id="u1"),
+                skills_text="",
+                integration_id="github",
+                provider_metadata={"login": "ada", "email": "ada@example.com"},
+            )
+
+        assert messages.volatile_tail is not None
+        assert messages.volatile_tail.content == (
+            "USER CONTEXT FOR GITHUB:\n- login: ada\n- email: ada@example.com\n"
+        )
+
+    async def test_a_failed_lookup_drops_the_section_and_names_the_cause(self) -> None:
+        # The provider lookup is the one section that hits Mongo on the request
+        # path. Losing it must degrade to "no section", and the wide event is
+        # the only place that says WHY — an unnamed cause here is an outage that
+        # reads as a user who simply has no provider metadata.
+        log.reset()
+        with (
+            patch.object(
+                subagent_helpers,
+                "get_provider_metadata",
+                AsyncMock(side_effect=ProviderLookupFailed("mongo unreachable")),
+            ),
+            patch.object(subagent_helpers, "get_instructions", AsyncMock(return_value=None)),
+        ):
+            messages = await create_agent_context_message(
+                _configurable(user_id="u1"),
+                skills_text="",
+                integration_id="github",
+            )
+
+        assert messages.volatile_tail is None
+        warning = _warning("Failed to fetch provider metadata")
+        assert warning["error_type"] == "ProviderLookupFailed"
+        assert warning["error"] == "mongo unreachable"
+        assert warning["provider"] == "github"
+
+
+class TestCustomInstructionsSection:
+    """The user's per-integration instructions, in the volatile tail."""
+
+    async def test_the_block_is_assembled_verbatim(self) -> None:
+        with (
+            patch.object(
+                subagent_helpers, "get_instructions", AsyncMock(return_value="  focus on #eng  ")
+            ),
+            patch.object(subagent_helpers, "get_provider_metadata", AsyncMock(return_value=None)),
+        ):
+            messages = await create_agent_context_message(
+                _configurable(user_id="u1"),
+                skills_text="",
+                integration_id="github",
+            )
+
+        assert messages.volatile_tail is not None
+        assert messages.volatile_tail.content == (
+            "CUSTOM INSTRUCTIONS FOR GITHUB (set by the user — honor these):\nfocus on #eng\n"
+        )
+
+    async def test_a_failed_lookup_drops_the_section_and_names_the_cause(self) -> None:
+        log.reset()
+        with (
+            patch.object(
+                subagent_helpers,
+                "get_instructions",
+                AsyncMock(side_effect=InstructionsLookupFailed("mongo unreachable")),
+            ),
+            patch.object(subagent_helpers, "get_provider_metadata", AsyncMock(return_value=None)),
+        ):
+            messages = await create_agent_context_message(
+                _configurable(user_id="u1"),
+                skills_text="",
+                integration_id="github",
+            )
+
+        assert messages.volatile_tail is None
+        warning = _warning("Failed to fetch custom instructions")
+        assert warning["error_type"] == "InstructionsLookupFailed"
+        assert warning["error"] == "mongo unreachable"
+        assert warning["integration_id"] == "github"
