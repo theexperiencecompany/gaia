@@ -37,6 +37,9 @@ const mockBotStart = vi.fn();
 const mockBotStop = vi.fn().mockResolvedValue(undefined);
 const mockSetMyCommands = vi.fn().mockResolvedValue(undefined);
 const mockGetMe = vi.fn().mockResolvedValue({ username: "gaiabot" });
+const mockGetFile = vi
+  .fn()
+  .mockResolvedValue({ file_path: "photos/file_1.jpg" });
 
 const mockBotInstance = {
   on: mockBotOn,
@@ -46,6 +49,7 @@ const mockBotInstance = {
   stop: mockBotStop,
   api: {
     getMe: mockGetMe,
+    getFile: mockGetFile,
     setMyCommands: mockSetMyCommands,
     editMessageText: vi.fn().mockResolvedValue({}),
     sendMessage: vi.fn().mockResolvedValue({ message_id: 99 }),
@@ -80,6 +84,7 @@ vi.mock("@grammyjs/types", () => ({}));
 
 vi.mock("@gaia/shared", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
+  const real = await import("../../../../libs/shared/ts/src/bots/utils");
   return makeGaiaSharedMock("telegram", {
     streamingDefaults: {
       telegram: {
@@ -111,6 +116,9 @@ vi.mock("@gaia/shared", async () => {
             ? { subcommand: (rawText ?? "").trim().split(/\s+/)[0] || "list" }
             : {},
       ),
+      // The capped reader is real: these tests assert the adapter never
+      // materialises more than the cap it was handed.
+      fetchBytesCapped: vi.fn(real.fetchBytesCapped),
       friendlyMediaError: vi.fn(
         (kind: string) => `Could not process your ${kind}.`,
       ),
@@ -126,7 +134,9 @@ vi.mock("@gaia/shared", async () => {
 // ---------------------------------------------------------------------------
 
 import {
+  fetchBytesCapped,
   handleStreamingChat,
+  MEDIA_READ_TIMEOUT_MS,
   renderForPlatform,
   richMessageToMarkdown,
 } from "@gaia/shared";
@@ -1256,6 +1266,41 @@ describe("extractTelegramMedia", () => {
     });
   });
 
+  it("carries the largest photo's declared file_size as sizeBytes", () => {
+    const msg = {
+      photo: [
+        { file_id: "small", width: 90, height: 90, file_size: 900 },
+        { file_id: "large", width: 1280, height: 1280, file_size: 11_000_000 },
+      ],
+    } as unknown as Message;
+
+    expect(extractTelegramMedia(msg)?.sizeBytes).toBe(11_000_000);
+  });
+
+  it("carries file_size for voice, audio, document, video and sticker", () => {
+    const cases: [Record<string, unknown>, number][] = [
+      [{ voice: { file_id: "v", mime_type: "audio/ogg", file_size: 1 } }, 1],
+      [{ audio: { file_id: "a", mime_type: "audio/mpeg", file_size: 2 } }, 2],
+      [{ document: { file_id: "d", file_size: 3 } }, 3],
+      [{ video: { file_id: "vid", file_size: 4 } }, 4],
+      [{ sticker: { file_id: "s", file_size: 5 } }, 5],
+    ];
+
+    for (const [msg, expected] of cases) {
+      expect(extractTelegramMedia(msg as unknown as Message)?.sizeBytes).toBe(
+        expected,
+      );
+    }
+  });
+
+  it("leaves sizeBytes undefined when Telegram omits file_size", () => {
+    const msg = {
+      document: { file_id: "doc-1", mime_type: "application/pdf" },
+    } as unknown as Message;
+
+    expect(extractTelegramMedia(msg)?.sizeBytes).toBeUndefined();
+  });
+
   it("returns null for a text-only message", () => {
     const msg = { text: "just text" } as unknown as Message;
     expect(extractTelegramMedia(msg)).toBeNull();
@@ -1272,12 +1317,14 @@ function makePhotoCtx(
     caption?: string;
     chatType?: "private" | "group" | "supergroup";
     replyFn?: ReturnType<typeof vi.fn>;
+    fileSize?: number;
   } = {},
 ) {
   const {
     caption,
     chatType = "private",
     replyFn = vi.fn().mockResolvedValue({ message_id: 42 }),
+    fileSize,
   } = overrides;
   return {
     chat: { id: 123456, type: chatType },
@@ -1287,7 +1334,7 @@ function makePhotoCtx(
       caption,
       photo: [
         { file_id: "small", width: 90, height: 90 },
-        { file_id: "large", width: 1280, height: 1280 },
+        { file_id: "large", width: 1280, height: 1280, file_size: fileSize },
       ],
     },
     reply: replyFn,
@@ -1400,6 +1447,100 @@ describe("TelegramAdapter - media message routing", () => {
       "999",
       "123456",
     );
+  });
+
+  it("forwards the declared file size so an oversize photo never reaches getFile", async () => {
+    setResolveOutcome({ action: "reply", text: "ok" });
+
+    const ctx = makePhotoCtx({ fileSize: 11_000_000 });
+    await invokeMediaHandler(ctx);
+
+    const resolve = (
+      adapter as unknown as {
+        resolveIncomingMedia: ReturnType<typeof vi.fn>;
+      }
+    ).resolveIncomingMedia;
+
+    expect(resolve.mock.calls[0][0]).toMatchObject({ sizeBytes: 11_000_000 });
+    expect(mockGetFile).not.toHaveBeenCalled();
+  });
+
+  it("reads the Telegram file through a capped stream instead of buffering it whole", async () => {
+    setResolveOutcome({ action: "reply", text: "ok" });
+    (adapter as unknown as { token: string }).token = "test-token";
+
+    const chunk = 256;
+    let produced = 0;
+    let cancelled = false;
+    const fetchMock = vi.fn(async (_url: string) => ({
+      ok: true,
+      status: 200,
+      body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          produced += chunk;
+          controller.enqueue(new Uint8Array(chunk).fill(4));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await invokeMediaHandler(makePhotoCtx());
+
+      const resolve = (
+        adapter as unknown as {
+          resolveIncomingMedia: ReturnType<typeof vi.fn>;
+        }
+      ).resolveIncomingMedia;
+      const download = resolve.mock.calls[0][1] as (
+        maxBytes: number,
+      ) => Promise<Uint8Array>;
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      const bytes = await download(1000);
+
+      expect(mockGetFile).toHaveBeenCalledWith("large");
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        "https://api.telegram.org/file/bottest-token/photos/file_1.jpg",
+      );
+      expect(bytes.byteLength).toBe(1000);
+      expect(cancelled).toBe(true);
+      expect(produced).toBeLessThanOrEqual(1000 + 2 * chunk);
+      expect(vi.mocked(fetchBytesCapped).mock.calls[0][3]).toBe(
+        MEDIA_READ_TIMEOUT_MS,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("surfaces a failed file download as an error carrying the HTTP status", async () => {
+    setResolveOutcome({ action: "reply", text: "ok" });
+    (adapter as unknown as { token: string }).token = "test-token";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 429, body: null })),
+    );
+
+    try {
+      await invokeMediaHandler(makePhotoCtx());
+
+      const resolve = (
+        adapter as unknown as {
+          resolveIncomingMedia: ReturnType<typeof vi.fn>;
+        }
+      ).resolveIncomingMedia;
+      const download = resolve.mock.calls[0][1] as (
+        maxBytes: number,
+      ) => Promise<Uint8Array>;
+
+      await expect(download(1000)).rejects.toMatchObject({ status: 429 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("ignores a group photo that does not @mention the bot in its caption", async () => {

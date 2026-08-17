@@ -46,11 +46,32 @@ from app.services.bot_token_service import create_bot_session_token
 from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
-from app.services.platform_link_service import Platform, PlatformLinkService
+from app.services.platform_link_service import (
+    Platform,
+    PlatformLinkService,
+    platform_requires_upgrade,
+)
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import get_trace_id, log, log_context
 
 router = APIRouter()
+
+BOT_STREAM_ERROR_NOT_AUTHENTICATED = "not_authenticated"
+BOT_STREAM_ERROR_PLAN_REQUIRED = "plan_required"
+
+
+def _refusal_stream(error_code: str) -> StreamingResponse:
+    """A one-frame SSE reply refusing the turn before any work starts.
+
+    Bots read this endpoint with a streaming body, so a refusal must travel as
+    an SSE error frame — an HTTP error status would leave them an unreadable
+    body. The code is the contract the bot adapters switch on.
+    """
+
+    async def frame() -> AsyncGenerator[str, None]:
+        yield f"data: {json.dumps({'error': error_code})}\n\n"
+
+    return StreamingResponse(frame(), media_type="text/event-stream")
 
 
 async def require_bot_api_key(request: Request) -> None:
@@ -241,16 +262,17 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         )
 
     if not user:
-
-        async def auth_required() -> AsyncGenerator[str, None]:
-            """Emit a single `not_authenticated` SSE event for unlinked users."""
-            yield f"data: {json.dumps({'error': 'not_authenticated'})}\n\n"
-
-        return StreamingResponse(auth_required(), media_type="text/event-stream")
+        return _refusal_stream(BOT_STREAM_ERROR_NOT_AUTHENTICATED)
 
     user_id = user.get("user_id") or str(user.get("_id", ""))
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform, outcome="success")
+
+    # Linking is Pro-gated for premium platforms; re-check on every turn so a
+    # user who downgrades after linking is refused here, not silently served.
+    if await platform_requires_upgrade(user_id, body.platform):
+        log.set(outcome="plan_required")  # pragma: no mutate
+        return _refusal_stream(BOT_STREAM_ERROR_PLAN_REQUIRED)
 
     # Same quota the web chat endpoint charges via @tiered_rate_limit. It cannot
     # be a decorator here: the caller is resolved from a platform link above, so

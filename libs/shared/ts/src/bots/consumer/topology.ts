@@ -28,6 +28,7 @@ export const OUTBOUND_QUEUES: Record<PlatformName, string> = {
   slack: `${OUTBOUND_QUEUE_PREFIX}slack`,
   telegram: `${OUTBOUND_QUEUE_PREFIX}telegram`,
   discord: `${OUTBOUND_QUEUE_PREFIX}discord`,
+  imessage: `${OUTBOUND_QUEUE_PREFIX}imessage`,
 };
 
 /** Dead-letter queue name for a work queue. */

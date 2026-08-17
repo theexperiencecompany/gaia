@@ -11,6 +11,7 @@ from .onboarding_tasks import (
     process_onboarding_intelligence_task,
     process_onboarding_workflows_task,
 )
+from .platform_link_tasks import sweep_abandoned_imessage_registrations
 from .reminder_tasks import cleanup_expired_reminders, process_reminder
 from .sandbox_tasks import sweep_idle_sandboxes
 from .session_tasks import prune_inactive_sessions
@@ -40,6 +41,7 @@ __all__ = [
     "cleanup_stuck_personalization",
     "prune_checkpoint_versions",
     "sweep_idle_sandboxes",
+    "sweep_abandoned_imessage_registrations",
     "prune_inactive_sessions",
     "backfill_active_users",
     "backfill_user_memories",

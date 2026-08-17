@@ -98,11 +98,12 @@
           "bot-discord",
           "bot-slack",
           "bot-telegram",
-          "bot-whatsapp"
+          "bot-whatsapp",
+          "bot-imessage"
         ],
         "projectsRelationship": "fixed",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp --skipNxCache",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },
