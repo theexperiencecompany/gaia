@@ -1,8 +1,11 @@
 """Browser task-history service: record a finished task and list a user's history.
 
-A task's step screenshots already live in R2 (``services/browser/screenshots.py``)
-keyed by session id, so a history row only stores ``session_id`` + ``steps`` and
-rebuilds the recap image URLs on read — durable long after the live session ends.
+A row records the step screenshots the run actually uploaded, rather than deriving
+them from the session id on read. Deriving looks tidier — the R2 key is
+deterministic — but ``services/browser/screenshots.py`` is best-effort by design
+and returns ``None`` when an upload fails, so a derived URL is a guess that
+renders as a permanently broken thumbnail whenever that happens. Store what
+happened; do not recompute what might not exist.
 """
 
 from app.config.settings import settings

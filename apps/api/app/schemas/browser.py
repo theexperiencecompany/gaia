@@ -97,10 +97,13 @@ class LiveCodeRecord(BaseModel):
 
 
 class ReplayRecord(BaseModel):
-    """What a short replay code resolves to: the finished session and its step count."""
+    """What a replay code opens: the screenshots the run actually uploaded."""
 
     session_id: str
     steps: int
+    # The CDN URLs that really exist. Empty on codes minted before these were
+    # stored, which fall back to deriving them from the session id.
+    shots: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

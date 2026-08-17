@@ -9,7 +9,7 @@ arrow-key navigation. The code is the secret; the images are public R2 URLs.
 
 from __future__ import annotations
 
-import html
+import json
 import secrets
 
 from app.config.settings import settings
@@ -26,12 +26,12 @@ def _key(code: str) -> str:
     return f"{BROWSER_REPLAY_CODE_KEY_PREFIX}{code}"
 
 
-async def mint_replay_code(session_id: str, steps: int) -> str:
+async def mint_replay_code(session_id: str, steps: int, shots: list[str] | None = None) -> str:
     """Create a short code resolving to a finished session's screenshot set."""
     code = secrets.token_urlsafe(BROWSER_LIVE_CODE_ENTROPY_BYTES)
     await redis_cache.set(
         _key(code),
-        ReplayRecord(session_id=session_id, steps=steps),
+        ReplayRecord(session_id=session_id, steps=steps, shots=shots or []),
         ttl=BROWSER_REPLAY_CODE_TTL_SECONDS,
         model=ReplayRecord,
     )
@@ -43,12 +43,15 @@ async def resolve_replay_code(code: str) -> ReplayRecord | None:
     return await redis_cache.get(_key(code), model=ReplayRecord)
 
 
-async def create_replay_link(session_id: str, steps: int) -> str | None:
-    """A recap slideshow link, or ``None`` when there is nothing to replay (no steps
-    captured, or R2 isn't configured so no public screenshots exist)."""
-    if steps < 1 or not settings.R2_PUBLIC_BASE_URL:
+async def create_replay_link(session_id: str, shots: list[str]) -> str | None:
+    """A recap slideshow link, or ``None`` when no screenshot was actually uploaded.
+
+    Takes the URLs the run really produced rather than a step count: an upload is
+    best-effort, so a count would promise frames the slideshow cannot show.
+    """
+    if not shots or not settings.R2_PUBLIC_BASE_URL:
         return None
-    code = await mint_replay_code(session_id, steps)
+    code = await mint_replay_code(session_id, len(shots), shots)
     base = (settings.BROWSER_LIVE_VIEW_BASE_URL or settings.HOST).rstrip("/")
     return f"{base}/replays/{code}"
 
@@ -56,8 +59,13 @@ async def create_replay_link(session_id: str, steps: int) -> str | None:
 def render_replay_page(record: ReplayRecord) -> str:
     """The self-contained slideshow HTML for one finished session."""
     r2_base = (settings.R2_PUBLIC_BASE_URL or "").rstrip("/")
-    prefix = f"{r2_base}/browser_steps/{html.escape(record.session_id)}/step_"
-    return _REPLAY_TEMPLATE.replace("__PREFIX__", prefix).replace("__STEPS__", str(record.steps))
+    shots = record.shots or [
+        f"{r2_base}/browser_steps/{record.session_id}/step_{i}.png"
+        for i in range(1, record.steps + 1)
+    ]
+    # Inlined into a <script>, so close any tag sequence the encoder would leave intact.
+    urls = json.dumps(shots).replace("</", "<\\/")
+    return _REPLAY_TEMPLATE.replace("__URLS__", urls)
 
 
 _REPLAY_TEMPLATE = """<!doctype html>
@@ -112,8 +120,7 @@ _REPLAY_TEMPLATE = """<!doctype html>
   </footer>
 </div>
 <script>
-  var PREFIX="__PREFIX__", N=__STEPS__;
-  var urls=[]; for (var i=1;i<=N;i++) urls.push(PREFIX+i+".png");
+  var urls=__URLS__, N=urls.length;
   var idx=0, playing=false, timer=null;
   var main=document.getElementById("main"), film=document.getElementById("film"),
       count=document.getElementById("count"), scrub=document.getElementById("scrub"),

@@ -120,6 +120,8 @@ class BrowserTaskRunner:
         self._handed_off = False
         self._handoffs = 0
         self._last_step = 0
+        # CDN URLs that really uploaded, in step order — the recap's frames.
+        self._shots: list[str] = []
         self._last_step_at = 0.0
         # Step emits run off Browser-Use's loop; the lock keeps them ordered and the
         # set lets _finish() flush them before the result (see _on_step / _finish).
@@ -304,6 +306,8 @@ class BrowserTaskRunner:
         async with self._emit_lock:
             shot_t0 = perf_counter()
             screenshot = await self._render_screenshot(raw_screenshot, n_steps)
+            if screenshot and screenshot.startswith("http"):
+                self._shots.append(screenshot)
             screenshot_ms = round((perf_counter() - shot_t0) * 1000)
             emit_t0 = perf_counter()
             await self._emit(
@@ -345,7 +349,7 @@ class BrowserTaskRunner:
         if self._emit_tasks:
             await asyncio.gather(*self._emit_tasks, return_exceptions=True)
         # A recap slideshow of every step — surfaced whether the task succeeded or not.
-        replay_url = await create_replay_link(self._session.session_id, self._last_step)
+        replay_url = await create_replay_link(self._session.session_id, self._shots)
         result = BrowserResultSnapshot(
             status=status,
             success=success,
