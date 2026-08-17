@@ -13,6 +13,7 @@ that prints a chosen module list. Nothing here runs mutmut.
 
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -20,6 +21,13 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
 PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation-plan.sh"
+
+# Mirrors MAX_SHARDS in the script under test, which tracks the matrix's
+# max-parallel: a wider matrix cannot finish sooner, it only adds a check row
+# and a full setup per job. The packing below is also what keeps a huge diff
+# producing a matrix at all, rather than blowing GitHub's 256-job hard limit
+# and yielding none — and a lane with no matrix is a lane that counts as a pass.
+MAX_SHARDS = 12
 
 
 @pytest.fixture
@@ -56,6 +64,11 @@ def _entry(module: str, testfiles: list[str], changed_lines: list[int]) -> dict[
     return {"module": module, "testfiles": testfiles, "changed_lines": changed_lines}
 
 
+def _groups(outputs: dict[str, str]) -> list[list[dict[str, str]]]:
+    """The modules each shard carries, unpacked from the matrix."""
+    return [json.loads(item["group"]) for item in json.loads(outputs["matrix"])]
+
+
 def test_every_changed_module_gets_its_own_shard(harness) -> None:
     process, outputs = harness(
         [
@@ -66,10 +79,15 @@ def test_every_changed_module_gets_its_own_shard(harness) -> None:
 
     assert process.returncode == 0, process.stderr
     assert outputs["count"] == "2"
-    assert [item["module"] for item in json.loads(outputs["matrix"])] == [
-        "app/a.py",
-        "app/b.py",
-    ]
+    assert [group[0]["module"] for group in _groups(outputs)] == ["app/a.py", "app/b.py"]
+
+
+def test_a_lone_module_names_its_own_check(harness) -> None:
+    # The label is the check name in the PR's list; a reader picks the failing
+    # module out of it without opening anything.
+    _, outputs = harness([_entry("app/a.py", ["tests/unit/test_a.py"], [1])])
+
+    assert [item["label"] for item in json.loads(outputs["matrix"])] == ["app/a.py"]
 
 
 def test_list_arguments_are_emitted_as_json_strings(harness) -> None:
@@ -77,7 +95,7 @@ def test_list_arguments_are_emitted_as_json_strings(harness) -> None:
     # both lists back from exactly this string form.
     _, outputs = harness([_entry("app/a.py", ["tests/unit/test_a.py"], [4, 5])])
 
-    entry = json.loads(outputs["matrix"])[0]
+    entry = _groups(outputs)[0][0]
     assert entry["testfiles"] == '["tests/unit/test_a.py"]'
     assert entry["ranges"] == "[4,5]"
 
@@ -87,7 +105,7 @@ def test_a_module_with_several_test_files_keeps_all_of_them(harness) -> None:
         [_entry("app/a.py", ["tests/unit/test_a.py", "tests/unit/test_b.py"], [1])]
     )
 
-    entry = json.loads(outputs["matrix"])[0]
+    entry = _groups(outputs)[0][0]
     # Compact separators, asserted on a multi-element list because a
     # single-element one renders identically either way.
     assert entry["testfiles"] == '["tests/unit/test_a.py","tests/unit/test_b.py"]'
@@ -102,6 +120,49 @@ def test_no_changed_modules_yields_an_empty_matrix_and_a_zero_count(harness) -> 
     assert process.returncode == 0, process.stderr
     assert outputs["count"] == "0"
     assert json.loads(outputs["matrix"]) == []
+
+
+class TestPackingAHugeDiff:
+    """Over MAX_SHARDS modules, shards carry several modules each.
+
+    GitHub refuses a matrix larger than 256 jobs outright, and the lane would
+    then produce NO matrix — which the gate reads as a skip, and a skipped
+    lane counts as a pass. A 430-module PR is what found this.
+    """
+
+    @staticmethod
+    def _many(count: int) -> list[dict[str, object]]:
+        return [_entry(f"app/m{i}.py", [f"tests/unit/test_m{i}.py"], [i]) for i in range(count)]
+
+    def test_the_matrix_never_exceeds_the_job_limit(self, harness) -> None:
+        process, outputs = harness(self._many(430))
+
+        assert process.returncode == 0, process.stderr
+        assert int(outputs["count"]) == MAX_SHARDS
+
+    def test_every_module_still_runs_exactly_once(self, harness) -> None:
+        # Packing must not drop a module: a silently unmutated module is a
+        # false green, which is worse than a lane that fails.
+        _, outputs = harness(self._many(430))
+
+        packed = [entry["module"] for group in _groups(outputs) for entry in group]
+        assert sorted(packed) == sorted(f"app/m{i}.py" for i in range(430))
+        assert len(packed) == len(set(packed))
+
+    def test_a_packed_shard_says_how_many_it_carries(self, harness) -> None:
+        _, outputs = harness(self._many(430))
+
+        labels = [item["label"] for item in json.loads(outputs["matrix"])]
+        # Every shard says which slice it is and how much it carries, so a red
+        # check is locatable without opening it.
+        assert labels[0] == f"shard 1/{MAX_SHARDS} (36 modules)"
+        assert all(re.fullmatch(r"shard \d+/12 \(\d+ modules\)", label) for label in labels)
+
+    def test_exactly_the_limit_still_gets_one_module_each(self, harness) -> None:
+        _, outputs = harness(self._many(MAX_SHARDS))
+
+        assert int(outputs["count"]) == MAX_SHARDS
+        assert all(len(group) == 1 for group in _groups(outputs))
 
 
 def test_a_failing_matrix_script_fails_the_plan(harness, tmp_path: Path) -> None:
