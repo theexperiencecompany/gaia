@@ -10,7 +10,19 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useBrowserLogins } from "../hooks/useBrowserLogins";
 import type { SavedBrowserLogin } from "../types";
-import { formatRelativeDate } from "../utils";
+
+/** "Expires in 42 days" countdown to the TTL; `soon` flags the last week. */
+function expiresIn(
+  expiresAt: string | null,
+): { text: string; soon: boolean } | null {
+  if (!expiresAt) return null;
+  const days = Math.ceil(
+    (new Date(expiresAt).getTime() - Date.now()) / 86_400_000,
+  );
+  if (days <= 0) return { text: "Expired", soon: true };
+  if (days === 1) return { text: "Expires tomorrow", soon: true };
+  return { text: `Expires in ${days} days`, soon: days <= 7 };
+}
 
 function LoginRow({
   login,
@@ -22,6 +34,7 @@ function LoginRow({
   isForgetting: boolean;
 }) {
   const [faviconFailed, setFaviconFailed] = useState(false);
+  const exp = expiresIn(login.expires_at);
 
   return (
     <div className="group flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/40 p-3">
@@ -44,11 +57,13 @@ function LoginRow({
             {login.domain}
           </span>
         </div>
-        <p className="mt-0.5 text-xs text-zinc-500">
-          {login.updated_at
-            ? `Saved ${formatRelativeDate(login.updated_at)}`
-            : "Saved recently"}
-        </p>
+        {exp && (
+          <p
+            className={`mt-0.5 text-xs ${exp.soon ? "text-amber-400/80" : "text-zinc-500"}`}
+          >
+            {exp.text}
+          </p>
+        )}
       </div>
       <Button
         size="sm"

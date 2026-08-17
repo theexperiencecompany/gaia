@@ -16,6 +16,7 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import OperationFailure
 
+from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
@@ -1148,6 +1149,11 @@ async def create_browser_profiles_indexes() -> None:
     browser_profiles_collection = get_async_collection("browser_profiles")
     try:
         await browser_profiles_collection.create_index([("user_id", 1), ("domain", 1)], unique=True)
+        # Auto-expire session data not used for BROWSER_PROFILE_TTL_DAYS. The clock
+        # is `updated_at`, refreshed on every use, so active sites never expire.
+        await browser_profiles_collection.create_index(
+            [("updated_at", 1)], expireAfterSeconds=BROWSER_PROFILE_TTL_SECONDS
+        )
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating browser_profiles indexes",

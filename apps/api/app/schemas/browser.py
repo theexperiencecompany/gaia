@@ -167,3 +167,4 @@ class BrowserLoginResponse(BaseModel):
 
     domain: str
     updated_at: datetime | None
+    expires_at: datetime | None = None

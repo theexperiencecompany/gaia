@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { Modal, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
+import { Tooltip } from "@heroui/tooltip";
 import {
   AiWebBrowsingIcon,
   Comment01Icon,
@@ -14,6 +15,11 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { RecapSlideshow } from "@/components/browser/RecapSlideshow";
+import {
+  BOT_PLATFORM_ICONS,
+  BOT_PLATFORM_LABELS,
+  isBotPlatform,
+} from "@/config/botPlatforms";
 import { useBrowserTasks } from "../hooks/useBrowserTasks";
 import type { BrowserTask, BrowserTaskStatus } from "../types";
 import { formatRelativeDate } from "../utils";
@@ -24,21 +30,11 @@ const STATUS_META: Record<
 > = {
   completed: { label: "Done", dot: "bg-emerald-500", text: "text-emerald-400" },
   cancelled: { label: "Stopped", dot: "bg-zinc-500", text: "text-zinc-400" },
-  failed: { label: "Couldn't finish", dot: "bg-red-500", text: "text-red-400" },
+  failed: { label: "Failed", dot: "bg-red-500", text: "text-red-400" },
   running: { label: "Working", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
   paused: { label: "Working", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
 };
 
-const SOURCE_LABEL: Record<string, string> = {
-  web: "Web",
-  mobile: "Mobile",
-  desktop: "Desktop",
-  telegram: "Telegram",
-  discord: "Discord",
-  slack: "Slack",
-  whatsapp: "WhatsApp",
-  imessage: "iMessage",
-};
 // Sources whose conversation lives in this app, so we can deep-link to it.
 const IN_APP_SOURCES = new Set(["web", "mobile", "desktop"]);
 
@@ -60,7 +56,6 @@ function TaskRow({
   const hasRecap = task.frames.length > 0;
   const meta = STATUS_META[task.status];
   const thumb = task.frames[0]?.url;
-  const sourceLabel = SOURCE_LABEL[task.source];
   const canOpenChat =
     IN_APP_SOURCES.has(task.source) && task.conversation_id.length > 0;
 
@@ -122,10 +117,23 @@ function TaskRow({
                 </span>
               </>
             )}
-            {sourceLabel && (
+            {isBotPlatform(task.source) && (
               <>
                 <MetaDot />
-                <span>{sourceLabel}</span>
+                <Tooltip
+                  content={`This chat was on ${BOT_PLATFORM_LABELS[task.source]}`}
+                  size="sm"
+                  closeDelay={0}
+                >
+                  <Image
+                    src={BOT_PLATFORM_ICONS[task.source]}
+                    alt={BOT_PLATFORM_LABELS[task.source]}
+                    width={28}
+                    height={28}
+                    className="size-3.5 rounded-[4px]"
+                    unoptimized
+                  />
+                </Tooltip>
               </>
             )}
           </div>

@@ -28,4 +28,6 @@ export interface BrowserTask {
 export interface SavedBrowserLogin {
   domain: string;
   updated_at: string | null;
+  /** When this session data auto-expires (last use + TTL). */
+  expires_at: string | null;
 }
