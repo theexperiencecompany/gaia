@@ -115,7 +115,11 @@ async def init_checkpointer_manager() -> CheckpointerManager:
     Returns:
         CheckpointerManager: The main checkpointer manager
     """
-    conninfo: str = settings.POSTGRES_URL or ""
+    conninfo = settings.POSTGRES_URL
+    if not conninfo:
+        # Empty conninfo is valid to libpq (env/socket fallback) — checkpoints
+        # would land in whatever local Postgres exists instead of failing.
+        raise RuntimeError("POSTGRES_URL is not configured")
     manager = CheckpointerManager(conninfo=conninfo)
     await manager.setup()
     return manager

@@ -117,7 +117,11 @@ async def init_postgresql_engine() -> AsyncEngine:
     """
     log.debug(f"{LogTag.STARTUP} Initializing PostgreSQL async engine")
 
-    postgres_url: str = settings.POSTGRES_URL or ""
+    postgres_url = settings.POSTGRES_URL
+    if not postgres_url:
+        # An empty conninfo is VALID to libpq (env-var/socket fallback) — the
+        # coercion silently connected to whatever local Postgres exists.
+        raise RuntimeError("POSTGRES_URL is not configured")
     url, connect_args = _adapt_url_for_asyncpg(postgres_url)
 
     engine = create_async_engine(

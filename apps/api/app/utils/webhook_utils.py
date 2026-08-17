@@ -42,9 +42,14 @@ async def verify_composio_webhook_signature(request: Request) -> tuple[bytes, st
     # Avoid decoding 143KB body to string and re-encoding
     signed_content = webhook_id.encode() + b"." + timestamp.encode() + b"." + body
 
-    # Generate expected signature
+    # Generate expected signature. Fail loud on a missing secret: an empty
+    # HMAC key is one anyone can compute, turning the only auth on this
+    # endpoint into a pass-through.
+    secret = settings.COMPOSIO_WEBHOOK_SECRET
+    if not secret:
+        raise HTTPException(status_code=500, detail="COMPOSIO_WEBHOOK_SECRET is not configured")
     expected_signature = hmac.new(
-        (settings.COMPOSIO_WEBHOOK_SECRET or "").encode(),
+        secret.encode(),
         signed_content,
         hashlib.sha256,
     ).digest()
