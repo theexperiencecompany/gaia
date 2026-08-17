@@ -133,7 +133,7 @@ def _normalized(lines: list[str]) -> list[str]:
             arg = joined[start + len("cast(") : i]
             out.append(joined[pos:start] + "cast(" + "\n" * arg.count("\n") + "_")
         else:
-            out.append(joined[pos : i])
+            out.append(joined[pos:i])
         pos = i
     out.append(joined[pos:])
     return "".join(out).split("\n")
