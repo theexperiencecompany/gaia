@@ -194,8 +194,12 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
             ) : (
               <Alert01Icon className="mt-px size-4 shrink-0 text-zinc-500" />
             )}
+            {/* The runner's summary is written for the agent ("I have searched
+                for 'mechanical keyboard'…") and the assistant already retells it
+                in its own reply — in the card it is redundant noise, so this
+                line only reports the outcome. */}
             <p className="text-sm leading-snug text-zinc-200">
-              {result.summary}
+              {result.success ? "Complete" : "Didn't finish"}
             </p>
           </div>
         </>

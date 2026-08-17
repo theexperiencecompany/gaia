@@ -21,11 +21,6 @@ from app.services.outbound_delivery import publish_outbound_message, publish_out
 
 # A photo caption should be a glanceable phrase, not a paragraph of the agent's goal.
 _CAPTION_MAX_CHARS = 90
-# One update per step buries the conversation: a real shopping task runs 20+ steps,
-# which is 20 photos in a chat the user also has to read replies in. They already
-# get the live-view link up front and the full recap at the end, so the stream only
-# needs to show that work is happening.
-_MAX_STEP_UPDATES = 5
 
 
 class BotProgressDelivery:
@@ -43,7 +38,6 @@ class BotProgressDelivery:
         self._user_id = user_id
         self._conversation_id = conversation_id
         self._stream_screenshots = stream_screenshots
-        self._step_updates_sent = 0
 
     async def session(self, snapshot: BrowserSessionSnapshot) -> None:
         # Surface the live-view link up front so the user can watch the run as it
@@ -60,9 +54,6 @@ class BotProgressDelivery:
         # page.
         if _is_blank_tab(snapshot.url):
             return
-        if self._step_updates_sent >= _MAX_STEP_UPDATES:
-            return
-        self._step_updates_sent += 1
         # Caption with what the agent is DOING this step (its goal), not the page
         # URL — a raw link reads as noise and invites a mis-click.
         caption = _step_caption(snapshot.index, snapshot.goal, snapshot.action)
