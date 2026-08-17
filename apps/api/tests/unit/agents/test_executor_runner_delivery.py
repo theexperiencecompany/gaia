@@ -124,6 +124,13 @@ class TestDeliverResultRouting:
         assert event["conversation_id"] == "conv-1"
         assert event["message"]["response"] == "result text"
 
+    async def test_the_save_is_attributed_to_the_runs_owner(self) -> None:
+        """update_messages scopes the write by ``user`` — an unattributed save
+        lands on nobody's conversation, so the delivered message is lost."""
+        save, _platform, _ws = await _deliver(ConversationSource.WEB)
+
+        assert save.await_args.kwargs["user"] == {"user_id": "user-1"}
+
     async def test_falls_back_to_raw_executor_text_when_comms_unavailable(self) -> None:
         # comms returns "" → the raw executor text must still be delivered.
         _save, platform, _ws = await _deliver(
