@@ -56,10 +56,8 @@ from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 from app.agents.llm.client import (
     ainvoke_llm,
     get_default_llm,
-    has_sticky_fallback,
     invoke_llm,
     is_default_model_config,
-    materialize_fallback,
 )
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.completion import (
@@ -311,26 +309,12 @@ def create_agent(
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         llm_with_tools = _bind_session_id(llm_with_tools, model_configurations)
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
-        # Sticky fallback: once this run has fallen back, the primary is broken
-        # for the whole run — keep using the fallback so the request's model
-        # field stays constant. Alternating per call resets the provider's
-        # per-model prompt cache every call (measured: the conversation never
-        # joins the cached prefix, capping the hit rate at the static block).
-        fell_back = has_sticky_fallback(config)
-        if fell_back:
-            # The fallback may be a lazy factory; resolve it now (the same
-            # resolution ``_resolve_fallback`` applies).
-            primary_for_call = materialize_fallback(fallback)
-            fallback_for_call = None
-        else:
-            primary_for_call = llm_with_tools
-            fallback_for_call = fallback
         # LLMAccountingMiddleware already charges this call; auxiliary metering
         # here would book it a second time.
         invoke_fn = functools.partial(
             ainvoke_llm,
-            primary_for_call,
-            fallback=fallback_for_call,
+            llm_with_tools,
+            fallback=fallback,
             config=config,
             label=agent_name,
             meter_auxiliary=False,

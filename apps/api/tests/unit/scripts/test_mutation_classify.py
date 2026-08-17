@@ -95,6 +95,33 @@ class TestCastTypeArgument:
 
         assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
 
+    def test_a_wrapped_cast_keeping_the_value_on_the_type_line_is_equivalent(
+        self, workdir: Path
+    ) -> None:
+        # The formatter wraps after `cast(` but often leaves the VALUE beside
+        # the type. Anchoring the blanking at end-of-line missed exactly this
+        # shape, and reported an unkillable mutant on it.
+        _write_mutants(
+            workdir,
+            "    return cast(\n        RealType, make(a, b),\n    )",
+            "    return cast(\n        XXMutatedTypeXX, make(a, b),\n    )",
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_value_change_beside_the_type_is_still_reported(self, workdir: Path) -> None:
+        _write_mutants(
+            workdir,
+            "    return cast(\n        RealType, make(a, b),\n    )",
+            "    return cast(\n        RealType, make(a, c),\n    )",
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
     def test_a_real_change_below_a_wrapped_cast_is_still_reported(self, workdir: Path) -> None:
         # The blanking must reach the type argument and stop. A mutation to the
         # VALUE changes what the function returns.

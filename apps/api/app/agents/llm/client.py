@@ -66,28 +66,6 @@ _ResultT = TypeVar("_ResultT")
 # the rare case the primary actually fails.
 LLMFallback = Runnable | Callable[[], Runnable | None] | None
 
-# Sticky-fallback marker, written into the run's ``configurable`` when a model
-# call falls back. The provider's prompt cache is keyed per model name: if
-# every call alternates between the broken primary and the fallback (the
-# primary fails -> fallback succeeds -> next call retries the primary -> ...),
-# the request's ``model`` field flips per call and the conversation can never
-# chain in the cache (measured: static-prefix-only hits). Once a run has
-# fallen back, later calls use the fallback directly so the model stays
-# constant for the rest of the run.
-STICKY_FALLBACK_KEY = "__llm_fell_back__"
-
-
-def _mark_sticky_fallback(config: RunnableConfig | None) -> None:
-    """Stamp the run's configurable so subsequent calls skip the broken primary."""
-    configurable = (config or {}).get("configurable")
-    if isinstance(configurable, dict):
-        configurable[STICKY_FALLBACK_KEY] = True
-
-
-def has_sticky_fallback(config: RunnableConfig | None) -> bool:
-    """Whether this run has already fallen back (callers use the fallback directly)."""
-    return bool((config or {}).get("configurable", {}).get(STICKY_FALLBACK_KEY))
-
 
 def without_sdk_retry(llm: ChatOpenRouter) -> ChatOpenRouter:
     """Leave retrying to :func:`with_llm_retry`; the SDK's own loop nests under
@@ -555,10 +533,8 @@ def _stamp_fallback(result: _ResultT) -> _ResultT:
     return result
 
 
-def materialize_fallback(fallback: LLMFallback) -> Runnable | None:
-    """Resolve a fallback to a concrete runnable, calling it if it was passed as
-    a zero-arg factory. The single copy — both this module and the bigtool
-    ``create_agent`` override need it."""
+def _materialize_fallback(fallback: LLMFallback) -> Runnable | None:
+    """Resolve a fallback to a concrete runnable, calling a zero-arg factory."""
     return fallback() if callable(fallback) and not isinstance(fallback, Runnable) else fallback
 
 
@@ -575,7 +551,7 @@ def _resolve_fallback(
     # runnable so the fallback's requests stay on the conversation's provider —
     # the config-based value is dropped before the wire, while a bind survives
     # bind_tools and reaches the request params.
-    resolved = materialize_fallback(fallback)
+    resolved = _materialize_fallback(fallback)
     if resolved is None:
         raise primary_error
     log.warning(
@@ -697,10 +673,6 @@ async def ainvoke_llm(
                     await _meter_discarded_replay(discarded, config, label, usage_handler)
                 return result
             except LLM_FALLBACK_EXCEPTIONS as primary_error:
-                # Sticky: once we fall back, later calls in this run must use the
-                # fallback directly — alternating the request's model field per
-                # call resets the provider's per-model prompt cache every call.
-                _mark_sticky_fallback(config)
                 return _stamp_fallback(
                     await _resolve_fallback(
                         fallback,

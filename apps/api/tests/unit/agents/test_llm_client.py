@@ -25,17 +25,16 @@ from app.agents.llm.client import (
     LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
-    STICKY_FALLBACK_KEY,
     _build_default_llm,
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
     _record_auxiliary_usage,
+    _stamp_fallback,
     ainvoke_llm,
     ainvoke_structured,
     ainvoke_structured_gemini,
     get_default_llm,
-    has_sticky_fallback,
     init_llm,
     register_llm_providers,
 )
@@ -556,28 +555,6 @@ class TestFallbackHandover:
         )
 
     @patch("app.agents.llm.client.log")
-    async def test_a_provider_failure_stamps_the_run_as_fallen_back(
-        self, mock_log: MagicMock
-    ) -> None:
-        """Sticky: later calls in this run must not alternate back to the
-        primary, which resets the provider's per-model prompt cache each time."""
-        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
-        fallback = self._bindable_runnable(AIMessage(content="fallback-ok"))
-        config = RunnableConfig(configurable={"user_id": "u1"})
-
-        assert not has_sticky_fallback(config)
-        await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback, config=config)
-
-        assert config["configurable"][STICKY_FALLBACK_KEY] is True
-        assert has_sticky_fallback(config)
-
-    def test_a_run_with_no_configurable_has_not_fallen_back(self) -> None:
-        """Plenty of callers invoke with no config at all — the check answers
-        for them instead of blowing up on the missing section."""
-        assert not has_sticky_fallback(None)
-        assert not has_sticky_fallback(RunnableConfig())
-
-    @patch("app.agents.llm.client.log")
     async def test_the_downgrade_warning_names_the_call_that_fell_back(
         self, mock_log: MagicMock
     ) -> None:
@@ -643,6 +620,36 @@ class TestStickyFlipReplayThresholds:
 
         assert result.content == "warm"
         assert primary.ainvoke.await_count == 1
+
+    async def test_auxiliary_metering_is_on_unless_a_caller_opts_out(self) -> None:
+        """The default is what one-shot callers get without thinking about it.
+
+        Auxiliary calls (vision, summaries, memory extraction) have no graph
+        middleware charging them, so this handler IS their accounting — if it
+        silently defaults off, their tokens are spent and never booked, and
+        nothing anywhere fails.
+        """
+        primary = NonCallableMagicMock()
+        primary.with_retry = MagicMock(return_value=primary)
+        primary.ainvoke = AsyncMock(return_value=AIMessage(content="hi"))
+
+        await ainvoke_llm(primary, [HumanMessage(content="hi")])
+
+        callbacks = primary.ainvoke.await_args.kwargs["config"]["callbacks"]
+        assert any(isinstance(handler, UsageMetadataCallbackHandler) for handler in callbacks)
+
+    async def test_opting_out_of_auxiliary_metering_attaches_no_handler(self) -> None:
+        # The graph lane passes meter_auxiliary=False because
+        # LLMAccountingMiddleware already charges the call; attaching here too
+        # would book it twice.
+        primary = NonCallableMagicMock()
+        primary.with_retry = MagicMock(return_value=primary)
+        primary.ainvoke = AsyncMock(return_value=AIMessage(content="hi"))
+
+        await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=False)
+
+        callbacks = primary.ainvoke.await_args.kwargs["config"].get("callbacks") or []
+        assert not any(isinstance(handler, UsageMetadataCallbackHandler) for handler in callbacks)
 
     async def test_a_result_that_carries_no_usage_at_all_is_returned_as_is(self) -> None:
         """Structured runnables return a plain schema instance — no usage
@@ -1201,3 +1208,39 @@ class TestAinvokeStructured:
 
         assert structured.bind.call_args.kwargs == {"session_id": "conv-1-aux"}
         assert mock_invoke.call_args.args[0] is bound
+
+
+class TestStampFallback:
+    """The marker that tells the rest of the system a downgrade happened.
+
+    It is the only signal that a reply came from the fallback model rather than
+    the one the user is paying for: the SSE layer surfaces it and accounting
+    prices against it. A blanked key here is invisible — the answer still
+    arrives, just attributed to the wrong model.
+    """
+
+    def test_a_fallback_message_is_marked_with_the_model_that_produced_it(self) -> None:
+        message = AIMessage(content="hi")
+
+        stamped = _stamp_fallback(message)
+
+        assert stamped is message
+        assert message.response_metadata["gaia_fell_back"] is True
+        assert message.response_metadata["gaia_fallback_model"] == DEFAULT_MODEL_NAME
+
+    def test_existing_response_metadata_is_kept(self) -> None:
+        # The provider's own metadata rides along; stamping must add to it, not
+        # replace it, or the model/usage the provider reported is lost.
+        message = AIMessage(content="hi", response_metadata={"finish_reason": "stop"})
+
+        _stamp_fallback(message)
+
+        assert message.response_metadata["finish_reason"] == "stop"
+        assert message.response_metadata["gaia_fell_back"] is True
+
+    def test_a_result_that_is_not_a_message_passes_through_untouched(self) -> None:
+        # ainvoke_llm also serves structured calls, whose result is a pydantic
+        # model with no response_metadata at all.
+        result = object()
+
+        assert _stamp_fallback(result) is result
