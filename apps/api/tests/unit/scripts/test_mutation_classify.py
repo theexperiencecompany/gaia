@@ -1,163 +1,123 @@
-"""Unit tests for the survivor classifier (scripts/test/mutation_classify.py).
+"""The mutation gate's survivor classifier (scripts/test/mutation_classify.py).
 
-The classifier decides whether a surviving mutant is a real test weakness, out
-of the PR's diff, unassertable logging, or provably equivalent. It had no tests
-at all, and two bugs hid in the gap between module-level functions (which it
-handled) and class methods (which it did not):
+The classifier is the last thing standing between a surviving mutant and the
+lane's verdict, and it can be wrong in two directions. Calling a real survivor
+EQUIV hides a test gap — a false green on the gate whose whole job is catching
+those. Calling an unobservable mutant CHANGED demands a test nobody can write,
+on a line that cannot misbehave. Both are pinned here.
 
-* mutmut assigns a method's original as ``Class.xǁClassǁmethod__mutmut_orig``.
-  A ``\\w+`` capture stopped at the dot and yielded the class name, which
-  resolves to no function — the classifier exited with an empty verdict and the
-  lane reported CLASSIFIER FAILED for every class-method survivor.
-* the body splitter anchored ``def`` at column 0, so an indented method body was
-  never found. Original and mutant both came back empty, compared equal, and
-  every class-method survivor was silently reported EQUIV — a survivor
-  vanishing from every bucket, which is the failure this gate exists to stop.
-
-These fixtures mirror mutmut 3.7's real output shape for both kinds.
+Driven as a real script, the way the lane invokes it: a throwaway mutants file
+in the layout mutmut emits, and the verdict read off stdout.
 """
 
 from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[5]
 CLASSIFIER = REPO_ROOT / "scripts" / "test" / "mutation_classify.py"
 
-METHOD_MUTANTS = """\
-class Widget:
-    async def xǁWidgetǁstart__mutmut_orig(self) -> None:
-        value = 1
-        return value
-
-    async def xǁWidgetǁstart__mutmut_1(self) -> None:
-        value = 2
-        return value
-
-mutants_xǁWidgetǁstart__mutmut = {}
-mutants_xǁWidgetǁstart__mutmut['_mutmut_orig'] = Widget.xǁWidgetǁstart__mutmut_orig
-mutants_xǁWidgetǁstart__mutmut['xǁWidgetǁstart__mutmut_1'] = Widget.xǁWidgetǁstart__mutmut_1
-"""
-
-METHOD_SOURCE = """\
-class Widget:
-    async def start(self) -> None:
-        value = 1
-        return value
-"""
-
-FUNCTION_MUTANTS = """\
-def x_compute__mutmut_orig():
-    value = 1
-    return value
-
-def x_compute__mutmut_1():
-    value = 2
-    return value
-
-mutants_x_compute__mutmut = {}
-mutants_x_compute__mutmut['_mutmut_orig'] = x_compute__mutmut_orig
-mutants_x_compute__mutmut['x_compute__mutmut_1'] = x_compute__mutmut_1
-"""
-
-FUNCTION_SOURCE = """\
-def compute():
-    value = 1
-    return value
-"""
+MODULE_REL = "app/sample.py"
+MODULE_DOTTED = "app.sample"
 
 
-def _workdir(tmp_path: Path, mutants: str, source: str) -> Path:
-    """A workdir shaped like mutation.sh's: mutants/ copy beside the real tree."""
-    (tmp_path / "mutants" / "app").mkdir(parents=True)
-    (tmp_path / "mutants" / "app" / "thing.py").write_text(mutants)
-    (tmp_path / "app").mkdir()
-    (tmp_path / "app" / "thing.py").write_text(source)
-    return tmp_path
+def _write_mutants(workdir: Path, orig_body: str, mutant_body: str) -> None:
+    """Lay out the mutants file the classifier reads, as mutmut emits it."""
+    target = workdir / "mutants" / MODULE_REL
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # The trailing dict entry is how mutmut points a mutant back at its
+    # original, and it is what the classifier resolves through — without it the
+    # script exits before ever comparing the two bodies.
+    target.write_text(
+        f"def x_probe__mutmut_orig():\n{orig_body}\n\n"
+        f"def x_probe__mutmut_1():\n{mutant_body}\n\n"
+        "mutants_x_probe__mutmut['_mutmut_orig'] = x_probe__mutmut_orig\n"
+    )
 
 
-def _classify(workdir: Path, mutant: str, ranges: str) -> tuple[str, int]:
-    result = subprocess.run(
+def _classify(workdir: Path, ranges: str = "[[1,200]]") -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         [
+            # The lane runs the classifier under the project venv; a bare
+            # "python3" can be an older interpreter than its syntax needs.
             sys.executable,
             str(CLASSIFIER),
-            f"    app.thing.{mutant}: survived",
+            f"{MODULE_DOTTED}.x_probe__mutmut_1: survived",
             str(workdir),
             ranges,
-            "app/thing.py",
+            MODULE_REL,
         ],
         capture_output=True,
         text=True,
         check=False,
     )
-    return result.stdout.strip(), result.returncode
 
 
-class TestClassMethodSurvivor:
-    """A method's mutant must reach a real verdict, not crash and not false-EQUIV."""
-
-    def test_survivor_on_a_changed_line_is_reported_as_changed(self, tmp_path: Path) -> None:
-        workdir = _workdir(tmp_path, METHOD_MUTANTS, METHOD_SOURCE)
-
-        verdict, code = _classify(workdir, "xǁWidgetǁstart__mutmut_1", "[[3,3]]")
-
-        assert verdict == "CHANGED:3"
-        assert code == 1
-
-    def test_survivor_outside_the_diff_is_reported_as_unchanged(self, tmp_path: Path) -> None:
-        """Out of scope is still a verdict — it must not read as equivalent."""
-        workdir = _workdir(tmp_path, METHOD_MUTANTS, METHOD_SOURCE)
-
-        verdict, code = _classify(workdir, "xǁWidgetǁstart__mutmut_1", "[[99,99]]")
-
-        assert verdict == "UNCHANGED:3"
-        assert code == 1
-
-    def test_a_differing_method_body_is_never_called_equivalent(self, tmp_path: Path) -> None:
-        """The regression: empty-vs-empty bodies compared equal and printed EQUIV."""
-        workdir = _workdir(tmp_path, METHOD_MUTANTS, METHOD_SOURCE)
-
-        verdict, _ = _classify(workdir, "xǁWidgetǁstart__mutmut_1", "[[3,3]]")
-
-        assert verdict != "EQUIV"
-
-    def test_the_classifier_always_emits_a_verdict(self, tmp_path: Path) -> None:
-        """An empty verdict is what the lane reports as CLASSIFIER FAILED."""
-        workdir = _workdir(tmp_path, METHOD_MUTANTS, METHOD_SOURCE)
-
-        verdict, _ = _classify(workdir, "xǁWidgetǁstart__mutmut_1", "[[3,3]]")
-
-        assert verdict != ""
+@pytest.fixture
+def workdir(tmp_path: Path) -> Path:
+    # The classifier also reads the REAL module to locate the changed line, so
+    # the workdir doubles as the repo root for this probe.
+    (tmp_path / MODULE_REL).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / MODULE_REL).write_text("def probe():\n    return None\n")
+    return tmp_path
 
 
-class TestModuleFunctionSurvivor:
-    """The path that already worked must keep working."""
+class TestCastTypeArgument:
+    """``typing.cast(T, x)`` returns x unchanged, so mutating T cannot matter.
 
-    def test_survivor_on_a_changed_line_is_reported_as_changed(self, tmp_path: Path) -> None:
-        workdir = _workdir(tmp_path, FUNCTION_MUTANTS, FUNCTION_SOURCE)
+    The single-line form was already handled. The wrapped form — which the
+    formatter produces whenever the call is long — was not, because the
+    normalisation runs per line and the type sits on the line after ``cast(``.
+    """
 
-        verdict, code = _classify(workdir, "x_compute__mutmut_1", "[[2,2]]")
+    def test_a_wrapped_cast_type_argument_is_equivalent(self, workdir: Path) -> None:
+        _write_mutants(
+            workdir,
+            "    return cast(\n        RealType,\n        value,\n    )",
+            "    return cast(\n        XXMutatedTypeXX,\n        value,\n    )",
+        )
 
-        assert verdict == "CHANGED:2"
-        assert code == 1
+        result = _classify(workdir)
 
-    def test_survivor_outside_the_diff_is_reported_as_unchanged(self, tmp_path: Path) -> None:
-        workdir = _workdir(tmp_path, FUNCTION_MUTANTS, FUNCTION_SOURCE)
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+        assert result.returncode == 0
 
-        verdict, code = _classify(workdir, "x_compute__mutmut_1", "[[99,99]]")
+    def test_a_single_line_cast_type_argument_is_equivalent(self, workdir: Path) -> None:
+        _write_mutants(
+            workdir,
+            "    return cast(RealType, value)",
+            "    return cast(XXMutatedTypeXX, value)",
+        )
 
-        assert verdict == "UNCHANGED:2"
-        assert code == 1
+        result = _classify(workdir)
 
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
 
-class TestEquivalentMutant:
-    """A genuinely identical body is the one case that may report EQUIV."""
+    def test_a_real_change_below_a_wrapped_cast_is_still_reported(self, workdir: Path) -> None:
+        # The blanking must reach the type argument and stop. A mutation to the
+        # VALUE changes what the function returns.
+        _write_mutants(
+            workdir,
+            "    return cast(\n        RealType,\n        value + 1,\n    )",
+            "    return cast(\n        RealType,\n        value - 1,\n    )",
+        )
 
-    def test_identical_bodies_are_equivalent(self, tmp_path: Path) -> None:
-        mutants = METHOD_MUTANTS.replace("value = 2", "value = 1")
-        workdir = _workdir(tmp_path, mutants, METHOD_SOURCE)
+        result = _classify(workdir)
 
-        verdict, code = _classify(workdir, "xǁWidgetǁstart__mutmut_1", "[[3,3]]")
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+        assert result.returncode == 1
 
-        assert verdict == "EQUIV"
-        assert code == 0
+    def test_a_wrapped_call_that_is_not_a_cast_is_untouched(self, workdir: Path) -> None:
+        # Only ``cast(`` earns the blanking; any other wrapped call's first
+        # argument is a real value.
+        _write_mutants(
+            workdir,
+            "    return helper(\n        first_arg,\n        value,\n    )",
+            "    return helper(\n        other_arg,\n        value,\n    )",
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr

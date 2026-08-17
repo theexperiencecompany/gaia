@@ -86,9 +86,25 @@ def _body(name: str) -> list[str]:
 
 
 def _normalized(lines: list[str]) -> list[str]:
+    """Blank out what cannot change behaviour, so only real differences remain."""
     # typing.cast(T, x) is documented to return x unchanged at runtime, so a
     # mutant that only changes the type argument is behaviorally identical.
-    return [re.sub(r"cast\(\s*[^,)]+,\s*", "cast(_, ", ln) for ln in lines]
+    #
+    # Two shapes, because this runs per line and the formatter wraps a long
+    # call: `cast(T, x)` on one line, and `cast(` with the type alone on the
+    # next. Only the wrapped form needs the state flag — without it a wrapped
+    # cast was reported as a real survivor, which is a test the author cannot
+    # write, on a line that cannot misbehave.
+    out: list[str] = []
+    type_arg_follows = False
+    for line in lines:
+        if type_arg_follows:
+            out.append(re.sub(r"^\s*[^,]+,\s*$", "_,", line))
+            type_arg_follows = False
+            continue
+        out.append(re.sub(r"cast\(\s*[^,)]+,\s*", "cast(_, ", line))
+        type_arg_follows = bool(re.search(r"\bcast\(\s*$", line))
+    return out
 
 
 orig_raw = _body(orig_name)
