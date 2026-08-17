@@ -900,29 +900,35 @@ class TestRunWorkflows:
             patch(f"{MODULE}.user_repository") as repo,
         ):
             repo.set_suggested_workflows = AsyncMock(side_effect=RuntimeError("mongo"))
-            assert await _run_workflows(
-                user_id=USER,
-                profession="dev",
-                has_gmail=True,
-                focus="",
-                user_timezone="UTC",
-                triage=None,
-                writing_style=None,
-            ) == created
+            assert (
+                await _run_workflows(
+                    user_id=USER,
+                    profession="dev",
+                    has_gmail=True,
+                    focus="",
+                    user_timezone="UTC",
+                    triage=None,
+                    writing_style=None,
+                )
+                == created
+            )
 
     async def test_a_creation_failure_degrades_to_an_empty_list(self, stages: Any) -> None:
         with patch(
             f"{MODULE}._create_onboarding_workflows", AsyncMock(side_effect=RuntimeError("llm"))
         ):
-            assert await _run_workflows(
-                user_id=USER,
-                profession="dev",
-                has_gmail=True,
-                focus="",
-                user_timezone="UTC",
-                triage=None,
-                writing_style=None,
-            ) == []
+            assert (
+                await _run_workflows(
+                    user_id=USER,
+                    profession="dev",
+                    has_gmail=True,
+                    focus="",
+                    user_timezone="UTC",
+                    triage=None,
+                    writing_style=None,
+                )
+                == []
+            )
 
         assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["workflows"] == []
 

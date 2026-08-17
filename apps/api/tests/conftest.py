@@ -97,7 +97,7 @@ from app.models.payment_models import (
 # before any test module is collected, so the package is whole whatever subset
 # a run selects. Do not swap this for a sys.modules stub inside a test file:
 # that poisons the interpreter for every test collected after it.
-import app.services.workflow  # noqa: F401
+importlib.import_module("app.services.workflow")
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy

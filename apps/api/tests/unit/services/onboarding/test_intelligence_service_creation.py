@@ -503,7 +503,9 @@ class TestCreateOnboardingWorkflows:
                 AsyncMock(side_effect=[_card(f"w{i}") for i in range(4)]),
             ),
         ):
-            result = await _create_onboarding_workflows(user_id=USER, profession="dev", has_gmail=True)
+            result = await _create_onboarding_workflows(
+                user_id=USER, profession="dev", has_gmail=True
+            )
 
         assert [r.id for r in result] == ["w0", "w1", "w2", "w3"]
 
@@ -515,7 +517,9 @@ class TestCreateOnboardingWorkflows:
                 AsyncMock(side_effect=[_card("w0"), None, _card("w2"), None]),
             ),
         ):
-            result = await _create_onboarding_workflows(user_id=USER, profession="dev", has_gmail=True)
+            result = await _create_onboarding_workflows(
+                user_id=USER, profession="dev", has_gmail=True
+            )
 
         assert [r.id for r in result] == ["w0", "w2"]
 
@@ -584,7 +588,11 @@ class TestCreateOnboardingWorkflows:
             ) as fallback,
         ):
             result = await _create_onboarding_workflows(
-                user_id=USER, profession="dev", has_gmail=False, focus="ship v2", user_timezone="UTC"
+                user_id=USER,
+                profession="dev",
+                has_gmail=False,
+                focus="ship v2",
+                user_timezone="UTC",
             )
 
         assert result == _fallback_cards()
