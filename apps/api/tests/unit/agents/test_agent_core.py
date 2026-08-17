@@ -152,6 +152,33 @@ class TestCoreAgentLogic:
         assert kwargs["user_name"] == "Alice"
 
     @pytest.mark.asyncio
+    async def test_the_users_onboarding_data_reaches_build_agent_config(self):
+        """``onboarding_preferences(user.get("onboarding"))`` is real, unmocked
+        code in ``_core_agent_logic`` — this proves the pair it derives actually
+        lands on the ``build_agent_config`` call (so the executor and every
+        subagent it hands off to can inherit it), not just that extraction
+        doesn't crash."""
+        user = _make_user(
+            onboarding={
+                "preferences": {"profession": "engineer"},
+                "writing_style": {"summary": "terse"},
+            }
+        )
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"] as mock_build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(request=_make_request(), conversation_id="conv-1", user=user)
+
+        kwargs = mock_build_config.call_args.kwargs
+        assert kwargs["user_preferences"] == {"profession": "engineer"}
+        assert kwargs["writing_style"] == {"summary": "terse"}
+
+    @pytest.mark.asyncio
     async def test_passes_trigger_context(self):
         patches = _common_patches()
         trigger = {"type": "gmail", "email_data": {}}
@@ -678,6 +705,8 @@ class TestTheLaneTheRunResolves:
             "execution_mode": "interactive",
             "source": "web",
             "user_messages": recent_user_messages(request.messages, request.message),
+            "user_preferences": None,
+            "writing_style": None,
             "langfuse_trace_id": "trace-1",
             "langfuse_tags": ["tag-a"],
         }

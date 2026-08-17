@@ -91,6 +91,14 @@ class AgentConfigurable(TypedDict, total=False):
     #: paraphrase of the request.
     user_messages: list[str] | None
     user_message_id: str
+    #: Onboarding preferences / writing style, established once at the root of
+    #: a run tree (wherever a full user document is already in hand — comms,
+    #: background narration, the dev direct-invoke entrypoint) and inherited
+    #: unchanged by every child agent, same as ``user_messages``. Absent when
+    #: the root itself had none; the context sections that read them degrade
+    #: to no section rather than guessing.
+    user_preferences: dict[str, Any] | None
+    writing_style: dict[str, Any] | None
     #: One id for the WHOLE user turn: minted at the top-level
     #: ``build_agent_config`` call and inherited by every child agent (executor,
     #: handoff subagents, spawn loops). The accounting middleware keys the

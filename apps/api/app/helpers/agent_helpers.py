@@ -182,6 +182,12 @@ def _inherit_from_parent_configurable(
     # judge checks the tool call against what the *user* actually asked, not against the
     # agent's restatement of it.
     merged["user_messages"] = base_configurable.get("user_messages") or merged["user_messages"]
+    # Same rule, same reason: established once wherever the root call site had the
+    # full user document in hand, and a child never has its own copy to prefer.
+    merged["user_preferences"] = (
+        base_configurable.get("user_preferences") or merged["user_preferences"]
+    )
+    merged["writing_style"] = base_configurable.get("writing_style") or merged["writing_style"]
     # Child wins; the parent only fills a blank. Written out per key rather than
     # driven by a table so each one is a checked TypedDict access.
     merged["selected_tool"] = merged.get("selected_tool") or base_configurable.get("selected_tool")
@@ -248,6 +254,8 @@ async def build_agent_config(
     execution_mode: ExecutionMode | None = None,
     source: str | None = None,
     user_messages: list[str] | None = None,
+    user_preferences: dict[str, Any] | None = None,
+    writing_style: dict[str, Any] | None = None,
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
     recursion_limit: int = AGENT_RECURSION_LIMIT,
@@ -263,6 +271,10 @@ async def build_agent_config(
             (parent-overrides) by the executor and every subagent, whose own tasks are
             agent-authored paraphrases. The HIL intent judge checks gated tool calls
             against these, so they must be the user's words — not a restatement.
+        user_preferences / writing_style: Onboarding data, same inheritance rule as
+            ``user_messages`` — pass it at whichever root call site already has the
+            full user document in hand (comms, background narration, the dev
+            direct-invoke entrypoint); every child agent inherits it unchanged.
         langfuse_trace_id / langfuse_tags: Bind spans to a Langfuse trace; inherit from
             base_configurable when omitted so the executor lands on the comms trace.
         recursion_limit: Max LangGraph steps before GraphRecursionError. Defaults to the
@@ -297,6 +309,8 @@ async def build_agent_config(
         "active_todo_id": active_todo_id,
         "conversation_source": source,
         "user_messages": user_messages,
+        "user_preferences": user_preferences,
+        "writing_style": writing_style,
     }
     if execution_mode:
         current["execution_mode"] = execution_mode
@@ -347,6 +361,8 @@ async def build_agent_config(
         # The user's own verbatim turns (see build_agent_config). The HIL intent judge
         # reads these; child agents inherit them unchanged.
         "user_messages": resolved["user_messages"],
+        "user_preferences": resolved["user_preferences"],
+        "writing_style": resolved["writing_style"],
         "user_id": user.get("user_id"),
         "email": user.get("email"),
         "user_name": user.get("name", ""),

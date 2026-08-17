@@ -14,7 +14,7 @@ from app.agents.llm.lane import AgentRole
 from app.services.dev_agent_service import _dev_base_configurable, _reject_pause
 from app.utils.errors import AppError
 
-_MOD = "app.services.dev_agent_service"
+MODULE = "app.services.dev_agent_service"
 
 
 def test_a_paused_outcome_raises_conflict_instead_of_returning_empty_text() -> None:
@@ -43,15 +43,19 @@ class TestTheParentConfigurableADirectRunBuilds:
         user.id = "u1"
         user.email = "dev@gaia.local"
         user.name = "Dev"
+        # Explicit: a bare MagicMock attribute is truthy, so onboarding_preferences
+        # would hand build_agent_config two MagicMocks instead of the None a
+        # never-onboarded dev user really has.
+        user.onboarding = None
         return user
 
     async def _build(self, conversation_id: str | None) -> tuple[AsyncMock, str, str]:
         build_config = AsyncMock(return_value={"configurable": {"thread_id": "t"}})
         with (
             patch(
-                f"{_MOD}.require_dev_user", new_callable=AsyncMock, return_value=self._dev_user()
+                f"{MODULE}.require_dev_user", new_callable=AsyncMock, return_value=self._dev_user()
             ),
-            patch(f"{_MOD}.build_agent_config", build_config),
+            patch(f"{MODULE}.build_agent_config", build_config),
         ):
             _, user_id, cid = await _dev_base_configurable(
                 "dev@gaia.local", conversation_id, "executor_agent"
@@ -66,6 +70,8 @@ class TestTheParentConfigurableADirectRunBuilds:
             "user": {"user_id": "u1", "email": "dev@gaia.local", "name": "Dev"},
             "agent_name": "executor_agent",
             "role": AgentRole.EXECUTOR,
+            "user_preferences": None,
+            "writing_style": None,
         }
 
     async def test_a_passed_conversation_id_is_reused_so_turns_share_a_thread(self) -> None:
@@ -77,3 +83,26 @@ class TestTheParentConfigurableADirectRunBuilds:
         _, _, cid = await self._build(None)
 
         assert cid and cid != "conv-1"
+
+
+async def test_the_dev_users_onboarding_data_reaches_the_configurable() -> None:
+    """``_dev_base_configurable`` is the root of both direct-run paths
+    (``run_executor_direct`` / ``run_subagent_direct``) — it already has the
+    full ``UserDocument`` from ``require_dev_user`` in hand, so it must thread
+    ``onboarding`` into ``build_agent_config`` the same way comms does, not
+    leave a direct run blind to preferences a real chat turn would carry."""
+    user_doc = MagicMock(
+        id="dev-user-1",
+        email="dev@gaia.local",
+        name="Dev User",
+        onboarding={
+            "preferences": {"profession": "engineer"},
+            "writing_style": {"summary": "terse"},
+        },
+    )
+    with patch(f"{MODULE}.require_dev_user", AsyncMock(return_value=user_doc)):
+        configurable, user_id, _ = await _dev_base_configurable("dev@gaia.local", None, "executor")
+
+    assert user_id == "dev-user-1"
+    assert configurable["user_preferences"] == {"profession": "engineer"}
+    assert configurable["writing_style"] == {"summary": "terse"}

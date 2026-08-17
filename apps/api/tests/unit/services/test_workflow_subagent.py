@@ -9,8 +9,10 @@ must never hand ``create_workflow`` an empty string as if it were a draft.
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import SystemMessage
 import pytest
 
+from app.agents.context.assemble import AssembledContext
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
 
@@ -34,9 +36,12 @@ async def _execute(draft: str, base_configurable: dict | None = None) -> _Run:
         patch(f"{_MOD}.get_workflow_subagent", new_callable=AsyncMock, return_value=MagicMock()),
         patch(f"{_MOD}.build_agent_config", build_config),
         patch(
-            f"{_MOD}.create_agent_context_message",
+            f"{_MOD}.assemble_context",
             new_callable=AsyncMock,
-            return_value=MagicMock(),
+            return_value=AssembledContext(
+                stable=SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True}),
+                volatile=None,
+            ),
         ),
         patch(
             f"{_MOD}.build_connected_integrations_hint",

@@ -28,6 +28,7 @@ from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
+from app.agents.context.tiers import AgentTier
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     SubagentOutcome,
@@ -335,6 +336,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         user_content = f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
         messages = await build_initial_messages(
             system_message=SystemMessage(content=self._system_prompt),
+            tier=AgentTier.SPAWN,
             agent_name=SPAWN_AGENT_NAME,
             configurable=new_configurable,
             task=user_content,
