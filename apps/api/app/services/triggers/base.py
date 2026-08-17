@@ -8,7 +8,10 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import Any, Literal, TypedDict
+
+from composio_client import APIStatusError
 
 from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup
@@ -156,24 +159,23 @@ class TriggerHandler(ABC):
                 )
                 log.debug(f"{LogTag.TRIGGER} Deleted trigger", trigger_id=trigger_id)
             except Exception as e:
-                error_str = str(e)
-                # 410 Gone means the trigger is already deleted on Composio's side —
-                # the desired end-state is achieved, so treat this as a no-op.
-                if "410" in error_str or "TriggerInstance_TriggerInstanceGone" in error_str:
+                # Composio answers 410 Gone when the trigger instance is already
+                # deleted — the desired end-state, so treat it as a no-op.
+                if isinstance(e, APIStatusError) and e.status_code == HTTPStatus.GONE:
                     log.debug(
                         f"{LogTag.TRIGGER} Trigger already gone on Composio, skipping",
                         trigger_id=trigger_id,
                         user_id=user_id,
                     )
-                else:
-                    log.error(
-                        f"{LogTag.TRIGGER} Failed to delete trigger",
-                        trigger_id=trigger_id,
-                        error=error_str,
-                        error_type=type(e).__name__,
-                        user_id=user_id,
-                    )
-                    success = False
+                    continue
+                log.error(
+                    f"{LogTag.TRIGGER} Failed to delete trigger",
+                    trigger_id=trigger_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
+                success = False
 
         return success
 
