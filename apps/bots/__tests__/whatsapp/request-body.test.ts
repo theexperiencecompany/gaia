@@ -14,12 +14,12 @@
  * 8.  Returns BODY_READ_TIMEOUT when a stalled stream blows the read deadline
  */
 
-import { describe, expect, it, vi } from "vitest";
 import {
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
   readBodyBounded,
-} from "../../whatsapp/src/request-body";
+} from "@gaia/shared";
+import { describe, expect, it, vi } from "vitest";
 
 const enc = new TextEncoder();
 

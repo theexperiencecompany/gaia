@@ -1,6 +1,6 @@
 # apps/bots
 
-Four GAIA chat bots (Discord, Slack, Telegram, WhatsApp) plus a shared Vitest suite. Each bot is an independent ESM package that talks to the GAIA backend by extending `BaseBotAdapter` from `@gaia/shared`. All platform-agnostic logic (commands, streaming, markdown, API client, config) lives in `libs/shared/ts/src/bots/` — the per-bot packages are thin adapters.
+Five GAIA chat bots (Discord, Slack, Telegram, WhatsApp, iMessage) plus a shared Vitest suite. Each bot is an independent ESM package that talks to the GAIA backend by extending `BaseBotAdapter` from `@gaia/shared`. All platform-agnostic logic (commands, streaming, markdown, API client, config) lives in `libs/shared/ts/src/bots/` — the per-bot packages are thin adapters.
 
 ```
 apps/bots/
@@ -8,13 +8,14 @@ apps/bots/
   slack/      @gaia/bot-slack     (@slack/bolt v4, Socket Mode)
   telegram/   @gaia/bot-telegram  (grammY, long polling)
   whatsapp/   @gaia/bot-whatsapp  (Kapso proxy, Hono webhook)
+  imessage/   @gaia/bot-imessage  (Photon Spectrum SDK, Hono webhook)
   __tests__/  Vitest suite (nx project: bots-e2e)
 ```
 
 ## Commands
 
 ```bash
-mise dev:bots                    # all four bots in parallel
+mise dev:bots                    # all five bots in parallel
 nx dev bot-discord               # single bot, hot reload (tsx watch)
 nx build bot-discord             # tsup → dist/index.js, all deps bundled
 nx test bots-e2e                 # Vitest (or: mise test:bots)
@@ -37,12 +38,12 @@ mise ci:docker:bot-<platform>    # Dagger Docker build
 
 Each bot's `index.ts` is three lines: `runBotProcess(new XAdapter(), allCommands)` (`adapter/process-lifecycle.ts`). That owns the whole process lifecycle once — boot, `SIGINT`/`SIGTERM` → `adapter.shutdown(signal)`, and `unhandledRejection` / `uncaughtException` → one final `process_fault` event before a non-zero exit. Do not hand-wire signal handlers in a bot package; without the fault handlers Node prints a raw multi-line V8 stack instead, which carries no `trace_id`, no `service` and no `outcome`, and breaks NDJSON framing for everything the shipper parses after it.
 
-- **BotServer** (`adapter/base-server.ts`): Hono server auto-created in `boot()`, serves `GET /health`. Mount extra routes on `this.botServer.app` inside `registerEvents()` (before it starts). Default ports: discord 3200, slack 3201, telegram 3202, whatsapp 3203; override with `BOT_SERVER_PORT`. Do not start/stop it manually.
+- **BotServer** (`adapter/base-server.ts`): Hono server auto-created in `boot()`, serves `GET /health`. Mount extra routes on `this.botServer.app` inside `registerEvents()` (before it starts). Default ports: discord 3200, slack 3201, telegram 3202, whatsapp 3203, imessage 3204; override with `BOT_SERVER_PORT`. Do not start/stop it manually.
 - **Unified commands** (`bots/commands/`): defined once, exported as `allCommands`. Each `BotCommand.execute()` gets a platform-agnostic `RichMessageTarget` (`send`, `sendEphemeral`, `sendRich`, `startTyping`) and never touches a platform SDK. The `/gaia` command is special-cased in every adapter to route through `handleStreamingChat` instead of `execute`.
 - **Streaming** (`bots/utils/streaming.ts`): `handleStreamingChat` does throttled edits, cursor indicator, `<NEW_MESSAGE_BREAK>` splitting, and auth-vs-generic error classification. Per-platform behavior in `STREAMING_DEFAULTS`.
 - **Markdown**: each platform needs different syntax. Converters in `bots/utils/formatters.ts` (`convertToTelegramMarkdown`, `convertToSlackMrkdwn`, `convertToWhatsAppMarkdown`); all use `applyOutsideCodeBlocks()` to leave fenced code untouched. Discord uses native embeds via `richMessageToEmbed`.
 - **Inbound media** (`bots/utils/media.ts`): `processBotMedia`, reached via `BaseBotAdapter.resolveIncomingMedia`, makes one cross-platform decision — video/sticker → polite reply (no download); audio/voice → `gaia.transcribeAudio` (Whisper) becomes the chat message; image/document → `gaia.uploadFile` referenced via `fileIds`/`fileData`. Caps: 10 MB files, 25 MB audio (`BOT_MEDIA_LIMITS`); upload/transcribe failures map to friendly replies via `friendlyMediaError`. Each adapter supplies only the glue — detect type → build `IncomingMedia` → pass a lazy `download` thunk → act on the returned `MediaOutcome` (`reply` vs `chat`). Slack is text-only for now.
-- **Auth** (`GaiaClient`, `bots/api/index.ts`): sends `X-Bot-API-Key`, `X-Bot-Platform`, `X-Bot-Platform-User-Id`. Session tokens cached 12 min; on 401 the cache is cleared and the call retried once. Users link accounts via `/auth` → backend issues a 10-min Redis token → web confirm → `platform_links.{platform}` in MongoDB. The "link your account" prompt is one shared string (`buildAuthLinkMessage`) used by both the `/auth` command and every adapter's streaming `onAuthError` — never hardcode an auth message in an adapter.
+- **Auth** (`GaiaClient`, `bots/api/index.ts`): sends `X-Bot-API-Key`, `X-Bot-Platform`, `X-Bot-Platform-User-Id`. Session tokens cached 12 min; on 401 the cache is cleared and the call retried once. Users link accounts via `/auth` → backend issues a 10-min Redis token → web confirm → `platform_links.{platform}` in MongoDB. The "link your account" prompt is one shared string (`buildAuthLinkMessage`) used by both the `/auth` command and every adapter's streaming `onAuthError` — never hardcode an auth message in an adapter. The chat-stream endpoint refuses a turn before any work with a single SSE frame `{"error": <code>}` (`BOT_STREAM_ERROR` in `bots/api/chat-stream.ts`, mirrored by `BOT_STREAM_ERROR_*` in the API's `bot.py`): `not_authenticated` → the auth prompt above; `plan_required` (a linked user whose plan no longer allows a Pro-only platform such as iMessage) → the shared upgrade prompt `buildPlanRequiredMessage`, rendered through the streaming chokepoint like every other generic error.
 
 ## Simulation harness (`gaia-sim`)
 
@@ -54,7 +55,7 @@ Each bot's `index.ts` is three lines: `runBotProcess(new XAdapter(), allCommands
 
 Required for every bot (process throws if missing): `GAIA_API_URL`, `GAIA_BOT_API_KEY` (must equal backend `BOT_API_KEY`), `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET` (≥32 chars, HMAC key for hashing PII in logs; `openssl rand -hex 32`).
 
-Platform-specific: Discord `DISCORD_BOT_TOKEN` + `DISCORD_CLIENT_ID`; Slack `SLACK_BOT_TOKEN` + `SLACK_SIGNING_SECRET` + `SLACK_APP_TOKEN`; Telegram `TELEGRAM_BOT_TOKEN`; WhatsApp `KAPSO_API_KEY` + `KAPSO_PHONE_NUMBER_ID` + `KAPSO_WEBHOOK_SECRET`.
+Platform-specific: Discord `DISCORD_BOT_TOKEN` + `DISCORD_CLIENT_ID`; Slack `SLACK_BOT_TOKEN` + `SLACK_SIGNING_SECRET` + `SLACK_APP_TOKEN`; Telegram `TELEGRAM_BOT_TOKEN`; WhatsApp `KAPSO_API_KEY` + `KAPSO_PHONE_NUMBER_ID` + `KAPSO_WEBHOOK_SECRET`; iMessage `SPECTRUM_PROJECT_ID` + `SPECTRUM_PROJECT_SECRET` + `SPECTRUM_WEBHOOK_SECRET`.
 
 Infisical is optional in dev, fatal-if-missing in production, and only fills keys not already in `process.env`. The environment slug comes from `ENV`, falling back to `NODE_ENV === "production"` and otherwise `development`. A bare local checkout therefore resolves `development` with no setup; deployed containers can only resolve `production`, because `apps/bots/Dockerfile` pins `ENV=production` and `docker-compose.prod.yml` sets it again per service. This differs from the Python loaders, which default an absent `ENV` to `production` — deliberate, since `ENV` has never been required in `apps/bots/.env`.
 
@@ -115,6 +116,8 @@ A field named like an envelope key (`platform`, `service`, `component`, `message
 - **Discord**: 3s interaction deadline — adapter auto-defers on first `send`. The defer's ephemeral flag is set by whichever of `send`/`sendEphemeral` fires first. Slash commands need `deploy-commands` before they appear. Typing refreshes every 8s; presence rotates every 3 min; DM welcome sent once per user per process. Inbound media mapped from `message.attachments` (`extractDiscordMedia`), downloaded from the public CDN URL.
 - **Slack**: every handler `ack()`s immediately (3s rule). No embeds, no typing API (`startTyping` is a no-op). Ephemeral messages cannot be edited (`edit` is a no-op). Auth URLs sent ephemeral to avoid leaking tokens.
 - **Telegram**: `/start` maps to the `help` command. `setMyCommands()` runs inside `registerCommands` and via the standalone `set-commands` script. In group chats `sendEphemeral`/`sendRich` DM the user (with a group fallback if DMs are blocked). On a parse error the adapter retries without `parse_mode`. Username cached via `getMe()` on startup. Inbound media mapped from the grammY message (`extractTelegramMedia`), downloaded via `getFile`.
+- **iMessage**: Photon Spectrum Cloud POSTs `/webhook`; the spectrum-ts SDK verifies the `X-Spectrum-Signature` HMAC against `SPECTRUM_WEBHOOK_SECRET` and yields `[space, message]` pairs. `platform_user_id` = `sender.id` (E.164 with `+`, or an Apple ID email); `channelId` = `space.id`. Outbound sends go through `im.space.create(handle).send(...)` — no REST send endpoint exists. Shared-pool lines require the recipient registered with the Photon project first (the API's connect flow does this), and only route phone-number handles — a user whose iMessage sends from their Apple ID email gets Photon's canned bounce until they switch Settings → Messages → Send & Receive to their phone number. DMs only; group spaces are ignored. No editing (`edit` sends new), streaming off, plain-text rendering.
+- **iMessage**: Photon Spectrum Cloud POSTs `/webhook`; the spectrum-ts SDK verifies the `X-Spectrum-Signature` HMAC against `SPECTRUM_WEBHOOK_SECRET` and yields `[space, message]` pairs. `platform_user_id` = `sender.id` (E.164 with `+`, or an Apple ID email); `channelId` = `space.id`. Outbound sends go through `im.space.create(handle).send(...)` — no REST send endpoint exists. Shared-pool lines require the recipient registered with the Photon project first (the API's connect flow does this), and only route phone-number handles — a user whose iMessage sends from their Apple ID email gets Photon's canned bounce until they switch Settings → Messages → Send & Receive to their phone number. DMs only; group spaces are ignored. No editing (`edit` sends new), streaming off, plain-text rendering.
 - **WhatsApp**: Kapso (`https://api.kapso.ai/meta/whatsapp`) POSTs `/webhook`; signature verified by HMAC-SHA256 over the raw body against `KAPSO_WEBHOOK_SECRET`. `platform_user_id` = wa_id (phone, no leading `+`). Inbound media extracted from the Kapso webhook (`extractMedia`) and downloaded via the Kapso SDK, then routed through the shared `resolveIncomingMedia` pipeline (audio transcribed, images/documents uploaded, video/stickers get a polite reply). Welcome sent once per user per process.
 
 ## Conventions

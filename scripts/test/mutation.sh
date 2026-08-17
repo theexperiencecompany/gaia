@@ -159,6 +159,7 @@ replacement = (
     f'source_paths = ["{module}"]\n'
     f'also_copy = ["app", "tests", "scripts"]\n'
     f'max_stack_depth = 8\n'
+    f'debug = true\n'
     f'pytest_add_cli_args_test_selection = [{selection}]\n'
     f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
     f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout={mutant_test_timeout}\']\n'
@@ -282,6 +283,30 @@ if [ "$MUTMUT_RC" -ne 0 ]; then
     fi
     echo "REAL FAILURE: $MODULE's tests fail in the plain copy too — see" >&2
     echo "  $WORKDIR/plain-check.log (and mutmut's output above)." >&2
+    exit 1
+  fi
+  # A BadTestExecutionCommandsException is pytest exit 4 (usage/collection
+  # error) inside mutmut's IN-PROCESS stats run. That is the documented mutmut
+  # 3.7 limitation only when the identical pytest invocation, on mutmut's own
+  # instrumented tree, passes OUT of process — i.e. the tests and the mutants are
+  # fine and only mutmut's in-process tracer breaks (seen with modules that do
+  # work at import time, e.g. `settings = get_settings()`: conftest then fails
+  # to import under the tracer with FileNotFoundError '<frozen importlib._bootstrap>').
+  # The original pytest error is in mutmut's output above (debug = true).
+  if grep -q "BadTestExecutionCommandsException" "$WORKDIR/mutmut.log"; then
+    if [ -d "$WORKDIR/mutants" ] && (cd "$WORKDIR/mutants" && "$VENV_PY" -m pytest -q "${TESTFILES[@]}" \
+        --rootdir=. -p no:randomly -p no:random-order -p no:xdist \
+        -o 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300' \
+        > "$WORKDIR/mutants-tree-check.log" 2>&1); then
+      echo "SKIP: $MODULE — the same pytest run passes on mutmut's instrumented tree"
+      echo "      out of process, but fails inside mutmut's in-process stats tracer"
+      echo "      (see the pytest error in mutmut's output above). Import-time work in"
+      echo "      the module trips the tracer — a documented mutmut 3.7 limitation."
+      exit 0
+    fi
+    echo "REAL FAILURE: mutmut could not run ${TESTFILES[*]} (pytest usage/collection error)" >&2
+    echo "  and the same run also fails on the instrumented tree out of process — see" >&2
+    echo "  mutmut's output above and $WORKDIR/mutants-tree-check.log." >&2
     exit 1
   fi
   # A nonzero exit AFTER the mutants ran is usually the loguru teardown

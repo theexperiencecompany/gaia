@@ -37,7 +37,7 @@ GAIA's agent runtime is a **three-tier system**:
 └──────────────────────────────────────────────────────────────┘
 ```
 
-The whole thing is reachable from four surfaces: the **web/mobile UI**, the **voice agent** (LiveKit worker), the **bots** (Telegram / WhatsApp / Discord / Slack), and **workflows** (scheduled / triggered runs).
+The whole thing is reachable from four surfaces: the **web/mobile UI**, the **voice agent** (LiveKit worker), the **bots** (Telegram / WhatsApp / Discord / Slack / iMessage), and **workflows** (scheduled / triggered runs).
 
 ---
 
@@ -160,9 +160,9 @@ Every integration is a `CompiledStateGraph` of its own. The executor hands off t
 
 ---
 
-## 5. Bots (Telegram, WhatsApp, Discord, Slack)
+## 5. Bots (Telegram, WhatsApp, Discord, Slack, iMessage)
 
-All four bots live in `apps/bots/`, share a unified command system in `libs/shared/ts/`, and use the **adapter pattern** — each platform implements `BaseBotAdapter`.
+All five bots live in `apps/bots/`, share a unified command system in `libs/shared/ts/`, and use the **adapter pattern** — each platform implements `BaseBotAdapter`.
 
 ### Per-bot source (TypeScript, bundled with `tsup`)
 
@@ -170,6 +170,7 @@ All four bots live in `apps/bots/`, share a unified command system in `libs/shar
 - `apps/bots/discord/` — `src/index.ts`, `src/adapter.ts` (discord.js), `src/deploy-commands.ts`. Slash-command bot.
 - `apps/bots/slack/` — `src/index.ts`, `src/adapter.ts` (Slack Bolt, Socket Mode).
 - `apps/bots/whatsapp/` — `src/index.ts`, `src/adapter.ts`, `src/webhook.ts` (Kapso signature verification, media extraction), `src/webhook.types.ts`, `src/constants.ts`. Webhook-driven via Kapso.
+- `apps/bots/imessage/` — `src/index.ts`, `src/adapter.ts` (Photon Spectrum SDK), `src/constants.ts`. Webhook-driven via Photon Spectrum Cloud; SDK verifies signatures and owns outbound sends. Linking is Pro-gated (`require_platform_plan`).
 - `apps/bots/` — root `package.json`, `project.json`, `CLAUDE.md`, `Dockerfile`, `tsconfig.test.json`, `vitest.config.ts`, `__tests__/`.
 
 ### Shared bot framework

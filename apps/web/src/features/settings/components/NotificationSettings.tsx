@@ -24,7 +24,13 @@ export default function NotificationSettings() {
   >({});
   const [channelPrefs, setChannelPrefs] = useState<
     Record<NotificationPlatform, boolean>
-  >({ telegram: true, discord: true, whatsapp: true, slack: true });
+  >({
+    telegram: true,
+    discord: true,
+    whatsapp: true,
+    slack: true,
+    imessage: true,
+  });
   const [loading, setLoading] = useState(true);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
 

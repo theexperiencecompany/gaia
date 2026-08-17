@@ -29,6 +29,7 @@ from app.workers.tasks import (
     prune_inactive_sessions,
     regenerate_workflow_steps,
     run_nurture_sequence_task,
+    sweep_abandoned_imessage_registrations,
     sweep_idle_sandboxes,
 )
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
@@ -68,6 +69,7 @@ _rescan_pending_scheduled_tasks = arq_task(rescan_pending_scheduled_tasks)
 _run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
 _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
+_sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 
 WorkerSettings.functions = [
     _sweep_hil_approvals,
@@ -91,6 +93,7 @@ WorkerSettings.functions = [
     _backfill_user_memories,
     _promote_usage_badges,
     _sweep_dormant_user_workflows,
+    _sweep_abandoned_imessage_registrations,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -128,6 +131,13 @@ WorkerSettings.cron_jobs = [
     cron(
         cast(WorkerCoroutine, _sweep_idle_sandboxes),
         minute=0,  # Hourly
+        second=0,
+    ),
+    # Hourly, off the top of the hour so it does not pile onto the other sweeps.
+    # A registration abandoned mid-connect holds a shared-pool seat until this runs.
+    cron(
+        cast(WorkerCoroutine, _sweep_abandoned_imessage_registrations),
+        minute=20,
         second=0,
     ),
     cron(
