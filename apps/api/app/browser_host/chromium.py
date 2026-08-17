@@ -532,6 +532,10 @@ class ChromiumHost:
         ]
         args.extend(CHROME_DEFAULT_ARGS)
         args.extend(_HOST_EXTRA_ARGS)
+        # Cap V8 per renderer so one heavy page cannot exhaust a shared host.
+        # This bounds the JS heap only — DOM, images and raster buffers live
+        # outside V8 — so it is a ceiling on the worst case, not a saving.
+        args.append(f"--js-flags=--max-old-space-size={settings.BROWSER_HOST_JS_HEAP_MB}")
         # Size the window to the viewport so pages paint edge-to-edge instead of into
         # an 800x600 default (which leaves whitespace around the content in the view).
         args.append(f"--window-size={BROWSER_VIEWPORT_WIDTH},{BROWSER_VIEWPORT_HEIGHT}")
