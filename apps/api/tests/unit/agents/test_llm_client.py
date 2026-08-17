@@ -19,6 +19,7 @@ from langchain_openrouter import ChatOpenRouter
 from pydantic import SecretStr
 import pytest
 
+from app.agents.llm import client as client_module
 from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
     _MODEL_FIELD,
@@ -33,7 +34,6 @@ from app.agents.llm.client import (
     ainvoke_llm,
     get_default_llm,
     init_llm,
-    next_fallback_provider,
     register_llm_providers,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
@@ -143,7 +143,7 @@ class TestNextFallbackProvider:
 
     def test_the_failed_provider_is_never_returned_to(self) -> None:
         with self._available(LLMProviderName.OPENROUTER, LLMProviderName.GEMINI):
-            assert next_fallback_provider(LLMProviderName.OPENROUTER) == (
+            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) == (
                 LLMProviderName.GEMINI,
                 DEFAULT_GEMINI_MODEL_NAME,
             )
@@ -152,21 +152,21 @@ class TestNextFallbackProvider:
         with self._available(
             LLMProviderName.OPENROUTER, LLMProviderName.GEMINI, LLMProviderName.CUSTOM
         ):
-            assert next_fallback_provider(LLMProviderName.GEMINI) == (
+            assert client_module.next_fallback_provider(LLMProviderName.GEMINI) == (
                 LLMProviderName.OPENROUTER,
                 DEFAULT_MODEL_NAME,
             )
 
     def test_a_run_with_no_lane_yet_gets_the_highest_priority_provider(self) -> None:
         with self._available(LLMProviderName.OPENROUTER, LLMProviderName.GEMINI):
-            assert next_fallback_provider(None) == (
+            assert client_module.next_fallback_provider(None) == (
                 LLMProviderName.OPENROUTER,
                 DEFAULT_MODEL_NAME,
             )
 
     def test_nothing_else_configured_yields_no_fallback(self) -> None:
         with self._available(LLMProviderName.OPENROUTER):
-            assert next_fallback_provider(LLMProviderName.OPENROUTER) is None
+            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
 
     def test_an_unconfigured_provider_is_skipped_not_returned_modelless(self) -> None:
         """The custom dev endpoint's PROVIDER_MODELS entry is ``DEV_LLM_MODEL or
@@ -176,14 +176,14 @@ class TestNextFallbackProvider:
             self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
             patch.dict(PROVIDER_MODELS, {LLMProviderName.CUSTOM: ""}),
         ):
-            assert next_fallback_provider(LLMProviderName.OPENROUTER) is None
+            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
 
     def test_a_configured_custom_endpoint_is_a_real_fallback_target(self) -> None:
         with (
             self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
             patch.dict(PROVIDER_MODELS, {LLMProviderName.CUSTOM: "local/dev-model"}),
         ):
-            assert next_fallback_provider(LLMProviderName.OPENROUTER) == (
+            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) == (
                 LLMProviderName.CUSTOM,
                 "local/dev-model",
             )
