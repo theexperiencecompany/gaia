@@ -212,6 +212,37 @@ class TestUnregisterDeviceToken:
 # ---------------------------------------------------------------------------
 
 
+class TestDeviceTokenServiceInit:
+    async def test_collection_resolved_by_name_and_used_for_reads(self):
+        """The constructor must bind self.collection to the actual
+        'device_tokens' collection: dropping the assignment, calling
+        get_collection with None, or looking up the wrong literal name
+        would silently point every read/write at an empty or unrelated
+        collection object. Verified both by the lookup args and by driving
+        a real method through the resolved collection."""
+        device_tokens_collection = AsyncMock()
+        other_collection = AsyncMock()
+
+        def _get_collection(name):
+            return device_tokens_collection if name == "device_tokens" else other_collection
+
+        mock_mongodb = MagicMock()
+        mock_mongodb.database.get_collection.side_effect = _get_collection
+
+        svc = DeviceTokenService(mock_mongodb)
+
+        mock_mongodb.database.get_collection.assert_called_once_with("device_tokens")
+        assert svc.collection is device_tokens_collection
+
+        device_tokens_collection.count_documents = AsyncMock(return_value=7)
+        other_collection.count_documents = AsyncMock(return_value=999)
+
+        result = await svc.get_user_device_count("user1")
+
+        assert result == 7
+        device_tokens_collection.count_documents.assert_awaited_once_with({"user_id": "user1"})
+
+
 class TestGetDeviceTokenServiceFactory:
     def test_creates_service_on_first_call(self):
         with (

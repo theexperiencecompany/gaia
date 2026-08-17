@@ -443,6 +443,27 @@ class TestCallExecutorFailures:
         assert await fake_redis.get(LOCK_KEY) is None
         assert spawned_runs == []
 
+    async def test_a_streamless_dispatch_failure_still_frees_its_own_lock(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        spawned_runs: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """No stream id means an empty owner — the release must use that, not a
+        different string, or the conversation stays locked until the TTL."""
+
+        class ExplodingRun:
+            @staticmethod
+            def from_configurable(*args: Any, **kwargs: Any) -> None:
+                raise RuntimeError("run construction failed")
+
+        monkeypatch.setattr(executor_tool, "ExecutorRun", ExplodingRun)
+
+        response = await run_call_executor(config=config_for(None), task="x")
+
+        assert response == "Error starting task: run construction failed"
+        assert await fake_redis.get(LOCK_KEY) is None
+
     async def test_failure_in_the_queue_branch_never_frees_a_foreign_lock(
         self,
         fake_redis: fakeredis.aioredis.FakeRedis,
@@ -646,6 +667,21 @@ class TestCancelClosesHilApprovals:
         await run_cancel_executor(config=config_for(), task_ids=[])
 
         closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
+
+    async def test_approvals_are_closed_for_the_conversation_even_without_a_user_id(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        closed_approvals: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A missing user id is an empty owner, not a stand-in string."""
+        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
+        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
+
+        await run_cancel_executor(config=config_for(user_id=""), task_ids=[])
+
+        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "")
 
     async def test_sparing_the_running_task_leaves_its_approvals_alone(
         self,

@@ -103,6 +103,8 @@ class TestDeepResearch:
         )
         assert result["cached"] is True
         assert result["query"] == "test"
+        # The lookup must use the key built from this query, or every call is a miss.
+        mock_get_cache.assert_awaited_once_with("cache:key")
         _patch_stream_writer.assert_any_call({"progress": "Loaded research from cache!"})
 
     @pytest.mark.asyncio

@@ -243,6 +243,170 @@ class TestFormatWorkflowExecutionMessage:
 
         assert "..." in result
 
+    @pytest.mark.asyncio
+    async def test_tracked_todos_context_reaches_signal_matching_template(self) -> None:
+        """The tracked_todos_context value reaches the signal-matching section."""
+        selected = SelectedWorkflowData(
+            id="wf7",
+            title="Todo WF",
+            description="d",
+            steps=[{"title": "S", "category": "c", "description": "d"}],
+        )
+        trigger_ctx = {"tracked_todos_context": "DISTINCTIVE_TODO_MARKER_XYZ"}
+
+        with (
+            patch(
+                "app.helpers.message_helpers.WorkflowService.get_workflow",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            # The real SIGNAL_MATCHING_INSTRUCTIONS carries unescaped example
+            # braces, so .format() on it raises KeyError('date') — a product bug
+            # tracked separately. Substituting a minimal template keeps this test
+            # on the helper's own behavior: reading the right key and rendering it.
+            patch(
+                "app.helpers.message_helpers.SIGNAL_MATCHING_INSTRUCTIONS",
+                "TRACKED TODOS\n{tracked_todos_context}",
+            ),
+        ):
+            result = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=trigger_ctx
+            )
+
+        assert "TRACKED TODOS" in result
+        assert "DISTINCTIVE_TODO_MARKER_XYZ" in result
+
+    @pytest.mark.asyncio
+    async def test_no_tracked_todos_context_omits_signal_matching_section(self) -> None:
+        """When the key is absent, the signal-matching section is omitted entirely."""
+        selected = SelectedWorkflowData(
+            id="wf8",
+            title="No Todo WF",
+            description="d",
+            steps=[{"title": "S", "category": "c", "description": "d"}],
+        )
+        trigger_ctx = {"some_other_key": "value"}
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=trigger_ctx
+            )
+
+        assert "TRACKED TODOS" not in result
+
+    @pytest.mark.asyncio
+    async def test_email_sender_and_subject_flow_through(self) -> None:
+        """A real sender/subject on the triggering email must reach the message."""
+        selected = SelectedWorkflowData(
+            id="wf9",
+            title="Email WF2",
+            description="d",
+            steps=[{"title": "S", "category": "c", "description": "d"}],
+        )
+        trigger_ctx = {
+            "type": "gmail",
+            "email_data": {
+                "sender": "DISTINCTIVE_SENDER@example.com",
+                "subject": "DISTINCTIVE SUBJECT LINE",
+                "message_text": "body",
+            },
+            "triggered_at": "2024-06-01T00:00:00Z",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=trigger_ctx
+            )
+
+        assert "DISTINCTIVE_SENDER@example.com" in result
+        assert "DISTINCTIVE SUBJECT LINE" in result
+
+    @pytest.mark.asyncio
+    async def test_email_sender_and_subject_fall_back_when_missing(self) -> None:
+        """Missing sender/subject keys render the exact literal fallbacks."""
+        selected = SelectedWorkflowData(
+            id="wf10",
+            title="Email WF3",
+            description="d",
+            steps=[{"title": "S", "category": "c", "description": "d"}],
+        )
+        trigger_ctx = {
+            "type": "gmail",
+            "email_data": {"message_text": "body"},
+            "triggered_at": "2024-06-01T00:00:00Z",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=trigger_ctx
+            )
+
+        assert "From: Unknown" in result
+        assert "Subject: No Subject" in result
+
+    @pytest.mark.asyncio
+    async def test_trigger_timestamp_flows_through(self) -> None:
+        """A real triggered_at value must reach the rendered message."""
+        selected = SelectedWorkflowData(
+            id="wf11",
+            title="Email WF4",
+            description="d",
+            steps=[{"title": "S", "category": "c", "description": "d"}],
+        )
+        trigger_ctx = {
+            "type": "gmail",
+            "email_data": {"sender": "a@b.com", "subject": "s", "message_text": "body"},
+            "triggered_at": "DISTINCTIVE_TIMESTAMP_2024",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=trigger_ctx
+            )
+
+        assert "DISTINCTIVE_TIMESTAMP_2024" in result
+
+    @pytest.mark.asyncio
+    async def test_trigger_timestamp_falls_back_when_missing(self) -> None:
+        """A missing triggered_at key renders the exact literal fallback."""
+        selected = SelectedWorkflowData(
+            id="wf12",
+            title="Email WF5",
+            description="d",
+            steps=[{"title": "S", "category": "c", "description": "d"}],
+        )
+        trigger_ctx = {
+            "type": "gmail",
+            "email_data": {"sender": "a@b.com", "subject": "s", "message_text": "body"},
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=trigger_ctx
+            )
+
+        assert "Received: Unknown" in result
+
 
 # ---------------------------------------------------------------------------
 # format_calendar_event_context

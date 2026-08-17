@@ -521,3 +521,23 @@ async def test_the_default_configuration_matches_the_documented_contract() -> No
     assert mw.trigger == ("fraction", 0.85)
     assert mw.keep == ("messages", 15)
     assert mw.enable_archive is True
+
+
+# --- the parent's knobs survive the subclass's __init__ ----------------------- #
+
+
+def test_summary_prompt_and_trim_limit_reach_the_parent() -> None:
+    """The subclass forwards both, so a caller's values are what summarizes."""
+    mw = _middleware(summary_prompt="condense: {messages}", trim_tokens_to_summarize=123)
+
+    assert mw.summary_prompt == "condense: {messages}"
+    assert mw.trim_tokens_to_summarize == 123
+
+
+def test_extra_kwargs_reach_the_parent() -> None:
+    """**kwargs is the only path for the parent's own arguments; dropping it
+    would silently ignore them and leave the defaults in place."""
+    with pytest.warns(DeprecationWarning, match="messages_to_keep is deprecated"):
+        mw = _middleware(keep=("messages", 20), messages_to_keep=7)
+
+    assert mw.keep == ("messages", 7)

@@ -251,6 +251,32 @@ class TestExtractUsernameWithLLM:
 
     @patch("app.agents.memory.profile_extractor.settings")
     @patch("app.agents.memory.profile_extractor.ainvoke_structured", new_callable=AsyncMock)
+    async def test_email_body_and_its_mentions_reach_the_prompt(
+        self, mock_ainvoke_structured: AsyncMock, mock_settings: MagicMock
+    ) -> None:
+        """The body is read out of the email under `messageText`.
+
+        Read it under any other key and every email degrades to empty content,
+        gets dropped for being too short, and the LLM is asked to find a handle
+        in a prompt that contains no emails at all — which still returns a
+        confident-looking answer.
+        """
+        mock_settings.DEBUG_EMAIL_PROCESSING = False
+        mock_ainvoke_structured.return_value = UsernameExtraction(
+            username="octocat", confidence="high"
+        )
+
+        body = "Your pull request was merged by @octocat, nice work today."
+        await extract_username_with_llm(
+            "github", [{"messageText": body, "subject": "PR merged"}], user_id="u1"
+        )
+
+        prompt = mock_ainvoke_structured.await_args.args[1]
+        assert body in prompt
+        assert "Mentions: @octocat" in prompt
+
+    @patch("app.agents.memory.profile_extractor.settings")
+    @patch("app.agents.memory.profile_extractor.ainvoke_structured", new_callable=AsyncMock)
     async def test_llm_error_returns_not_found(
         self, mock_ainvoke_structured: AsyncMock, mock_settings: MagicMock
     ) -> None:

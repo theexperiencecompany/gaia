@@ -131,6 +131,15 @@ class TestDescribing:
         assert out.additional_kwargs["compacted"] is True
         assert MEDIA_DESCRIPTIONS_KEY in out.additional_kwargs
 
+    async def test_the_block_bytes_and_mime_type_reach_the_vision_call(self):
+        """The pixels described must be the block's own — not an empty payload."""
+        lane = patch(f"{_MOD}.model_can_view_images", AsyncMock(return_value=False))
+        vision = patch(f"{_MOD}.describe_image", AsyncMock(return_value="ok"))
+        with lane, vision as mock_vision:
+            await describe_tool_media(_tool_msg(_img("A")), CONFIG)
+
+        assert mock_vision.call_args.args == ("BASE64-A", "image/png")
+
     async def test_the_prompt_carries_the_tool_name_and_the_result_text(self):
         """Without the surrounding text the vision model has no idea what it is
         looking at or why — the old read-tool prompt named the file path."""

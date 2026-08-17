@@ -688,6 +688,10 @@ class TestCreateDraft:
         data = response.json()
         assert data["draft_id"] == "draft-001"
         assert data["status"] == "Draft created successfully"
+        # message_id must be extracted from the created draft's envelope
+        # (draft.message["id"]), not hardcoded to None or derived from an
+        # empty/None envelope.
+        assert data["message_id"] == "msg-draft-001"
 
     async def test_create_draft_missing_to_returns_422(self, client: AsyncClient):
         response = await client.post(
@@ -763,7 +767,11 @@ class TestUpdateDraft:
             },
         )
         assert response.status_code == 200
-        assert response.json()["status"] == "Draft updated successfully"
+        data = response.json()
+        assert data["status"] == "Draft updated successfully"
+        # message_id must come from the updated draft's envelope
+        # (updated_draft.message["id"]), not from a hardcoded None envelope.
+        assert data["message_id"] == "msg-updated"
 
 
 # ---------------------------------------------------------------------------

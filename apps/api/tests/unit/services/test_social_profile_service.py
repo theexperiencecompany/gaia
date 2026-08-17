@@ -270,6 +270,16 @@ class TestExtractSocialProfilesFromEmails:
         ]
         assert "Handle: john-smith-123" in llm.prompt
 
+    async def test_sender_is_read_from_the_from_field_when_absent(self, llm):
+        """Gmail payloads carry the address under "from"; a profile link that
+        only appears there must still be harvested."""
+        llm.owned_profiles = [{"platform": "twitter", "handle": "bob"}]
+        emails = [{"body": "", "subject": "", "from": "bob <https://twitter.com/bob>"}]
+
+        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
+
+        assert result == [SocialProfile(platform="twitter", url="https://twitter.com/bob")]
+
     async def test_llm_receives_the_structured_schema_and_label(self, llm):
         await extract_social_profiles_from_emails(
             [_email("https://twitter.com/bob")], "Bob", "bob@x.com"

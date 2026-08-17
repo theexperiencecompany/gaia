@@ -481,6 +481,30 @@ class TestMinimalMessageTemplate:
         assert result["id"] == "mid_1"
         assert result["from"] == "fallback@sender.com"
 
+    def test_content_text_key_used_when_content_truthy(self):
+        """When include_both_formats=True, body must read content['text'], not fall back to messageText."""
+        raw = _make_raw_email(body_text="TextBranchValueABC")
+        msg = _make_gmail_message(raw=raw, messageText="FallbackMessageTextXYZ")
+
+        result = minimal_message_template(msg, short_body=False, include_both_formats=True)
+
+        assert "TextBranchValueABC" in result["body"]
+        assert "FallbackMessageTextXYZ" not in result["body"]
+
+    def test_messageText_key_used_when_content_and_parser_text_empty(self):
+        """When there's no parsed content, body must fall back to email_data['messageText']."""
+        msg = {
+            "id": "m_fallback",
+            "threadId": "t1",
+            "labelIds": [],
+            "snippet": "",
+            "messageText": "FallbackOnlyValueDEF",
+        }
+
+        result = minimal_message_template(msg, short_body=False, include_both_formats=False)
+
+        assert result["body"] == "FallbackOnlyValueDEF"
+
 
 # ---------------------------------------------------------------------------
 # detailed_message_template
@@ -580,6 +604,17 @@ class TestDraftTemplate:
         result = draft_template(draft_data)
         assert result["id"] == "d_empty"
 
+    def test_snippet_value_flows_through_at_snippet_key(self):
+        """draft_template must read message['snippet'] and place it at output key 'snippet'."""
+        draft_data = {
+            "id": "draft_snip",
+            "message": {"snippet": "UniqueSnippetXYZ789"},
+        }
+
+        result = draft_template(draft_data)
+
+        assert result["message"]["snippet"] == "UniqueSnippetXYZ789"
+
 
 # ---------------------------------------------------------------------------
 # process_list_drafts_response
@@ -609,6 +644,23 @@ class TestProcessListDraftsResponse:
         response = {"drafts": [], "error": "Draft error"}
         result = process_list_drafts_response(response)
         assert result["error"] == "Draft error"
+
+    def test_drafts_field_contains_all_input_drafts(self):
+        """The 'drafts' output list must be built from the same list read for resultSize, not silently empty."""
+        raw1 = _make_raw_email(subject="First Draft Subject")
+        raw2 = _make_raw_email(subject="Second Draft Subject")
+        response = {
+            "drafts": [
+                {"id": "draft_alpha", "message": _make_gmail_message(raw=raw1)},
+                {"id": "draft_beta", "message": _make_gmail_message(raw=raw2)},
+            ],
+        }
+
+        result = process_list_drafts_response(response)
+
+        assert len(result["drafts"]) == 2
+        ids = {draft["id"] for draft in result["drafts"]}
+        assert ids == {"draft_alpha", "draft_beta"}
 
 
 # ---------------------------------------------------------------------------

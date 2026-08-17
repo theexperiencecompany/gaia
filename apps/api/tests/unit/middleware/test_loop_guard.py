@@ -231,6 +231,25 @@ async def test_hard_stop_blocks_the_call_after_the_identical_limit() -> None:
     assert "identical arguments" in blocked.content
 
 
+async def test_a_tool_call_without_an_id_is_blocked_with_an_empty_tool_call_id() -> None:
+    """A model can emit a tool call with no `id`. The synthetic block still has to
+    carry a string id — a placeholder there would be echoed back to the model as
+    the id of a call it never made."""
+    request = ToolCallRequest(
+        tool_call={"name": "search", "args": {"q": "x"}},
+        tool=None,
+        state={},
+        runtime=_runtime({"configurable": {"thread_id": "thread-1"}}),
+    )
+    mw = LoopGuardMiddleware(hard_stop=True)
+
+    results = [await _wrap(mw, request, _failing()) for _ in range(LOOP_GUARD_STOP_IDENTICAL + 1)]
+
+    blocked = results[-1]
+    assert blocked.additional_kwargs["loop_guard_stopped"] is True
+    assert blocked.tool_call_id == ""
+
+
 async def test_hard_stop_blocks_the_call_after_the_same_tool_limit() -> None:
     executed = 0
 

@@ -8,7 +8,10 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+from itsdangerous import BadSignature, URLSafeSerializer
+import pytest
 
+from app.config.settings import settings
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationContentView,
@@ -19,10 +22,82 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
+from app.utils.notification.unsubscribe import _SALT, _serializer, build_unsubscribe_url
 
 NOTIF_BASE = "/api/v1/notifications"
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
+
+
+# ---------------------------------------------------------------------------
+# Unsubscribe token signing (app.utils.notification.unsubscribe)
+#
+# No mirrored unit test file exists for this module (checked
+# tests/unit/utils/notification/), so its signing behaviour is covered here
+# per the fallback location.
+# ---------------------------------------------------------------------------
+
+
+class TestUnsubscribeTokenSigning:
+    def test_the_token_is_signed_with_the_real_secret_and_salt(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # `_serializer()` must sign with the configured secret and the real
+        # `_SALT` — a token that only round-trips through the module's own
+        # `_serializer()` proves nothing, since a wrong salt would still be
+        # self-consistent between dumps() and loads(). Cross-check against an
+        # independently constructed serializer using the real secret/salt.
+        monkeypatch.setattr(settings, "EMAIL_UNSUBSCRIBE_SECRET", "real-secret-abc")
+
+        url = build_unsubscribe_url("user-123")
+        token = url.split("token=")[1]
+
+        reference = URLSafeSerializer("real-secret-abc", salt=_SALT)
+        assert reference.loads(token) == "user-123"
+
+    def test_a_token_signed_under_a_different_salt_does_not_verify(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Guards against `salt=_SALT` being nulled or dropped (falling back to
+        # itsdangerous' default salt): a reference serializer using the real
+        # secret but the wrong salt must reject the real token.
+        monkeypatch.setattr(settings, "EMAIL_UNSUBSCRIBE_SECRET", "real-secret-abc")
+
+        url = build_unsubscribe_url("user-123")
+        token = url.split("token=")[1]
+
+        wrong_salt = URLSafeSerializer("real-secret-abc", salt="some-other-salt")
+        with pytest.raises(BadSignature):
+            wrong_salt.loads(token)
+
+    def test_a_token_signed_under_a_different_secret_does_not_verify(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Guards against `or` being flipped to `and`: with a truthy secret
+        # configured, `secret and ""` evaluates to "" — the token would then
+        # be signed with an empty secret instead of the real one, and a
+        # reference serializer using the real secret would reject it.
+        monkeypatch.setattr(settings, "EMAIL_UNSUBSCRIBE_SECRET", "real-secret-abc")
+
+        url = build_unsubscribe_url("user-123")
+        token = url.split("token=")[1]
+
+        wrong_secret = URLSafeSerializer("", salt=_SALT)
+        with pytest.raises(BadSignature):
+            wrong_secret.loads(token)
+
+    def test_serializer_falls_back_to_an_empty_secret_not_a_placeholder(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Guards against the `or ""` fallback literal being mangled (e.g. to
+        # "XXXX"): with no secret configured, `_serializer()` must sign with
+        # an empty string, not some other placeholder value.
+        monkeypatch.setattr(settings, "EMAIL_UNSUBSCRIBE_SECRET", None)
+
+        token = _serializer().dumps("user-456")
+
+        reference = URLSafeSerializer("", salt=_SALT)
+        assert reference.loads(token) == "user-456"
 
 
 def _make_view(notification_id: str = "n1", title: str = "Hello") -> NotificationView:

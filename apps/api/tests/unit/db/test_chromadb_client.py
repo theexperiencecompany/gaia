@@ -269,6 +269,59 @@ class TestChromaClientGetLangchainClientLoaderBody:
         mock_constructor_client.create_collection.assert_not_called()
 
 
+class TestChromaClientDefaultEmbeddingResolution:
+    """When no embedding_function is passed, get_langchain_client must
+    resolve it from the ``google_embeddings`` provider by its exact key and
+    thread that resolved instance through to the Chroma() the loader
+    constructs — not a hardcoded None or a value from the wrong key."""
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.Chroma")
+    @patch(f"{MODULE}.settings")
+    @patch(f"{MODULE}.providers")
+    async def test_resolved_default_embedding_flows_into_chroma_construction(
+        self, mock_providers: MagicMock, mock_settings: MagicMock, mock_chroma: MagicMock
+    ) -> None:
+        mock_providers.is_initialized.return_value = False
+        mock_settings.CHROMADB_HOST = "localhost"
+        mock_settings.CHROMADB_PORT = 8000
+
+        embedding_sentinel = MagicMock(name="embedding_sentinel")
+
+        async def _aget_outer(name: str) -> Any:
+            if name == "google_embeddings":
+                return embedding_sentinel
+            return MagicMock()
+
+        mock_providers.aget = AsyncMock(side_effect=_aget_outer)
+        mock_providers.register = MagicMock()
+
+        from app.db.chroma.chromadb import ChromaClient
+
+        await ChromaClient.get_langchain_client(collection_name="some_collection")
+
+        # Must be looked up by the exact literal key.
+        mock_providers.aget.assert_any_await("google_embeddings")
+
+        loader_func = mock_providers.register.call_args.kwargs["loader_func"]
+
+        mock_constructor_client = MagicMock()
+        mock_constructor_client.list_collections.return_value = []
+        mock_chroma_instance = MagicMock()
+        mock_chroma.return_value = mock_chroma_instance
+
+        async def _aget_inner(name: str) -> Any:
+            if name == "chromadb_constructor":
+                return mock_constructor_client
+            return None
+
+        mock_providers.aget = AsyncMock(side_effect=_aget_inner)
+
+        await loader_func()
+
+        assert mock_chroma.call_args.kwargs["embedding_function"] is embedding_sentinel
+
+
 class TestChromaClientGetClientWithRequest:
     """Additional ChromaClient.get_client tests with request parameter."""
 

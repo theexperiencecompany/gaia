@@ -388,6 +388,18 @@ class TestGetCalendarEvents:
             result = await get_calendar_events(USER_ID)
         assert result.selected_calendars == ["c1"]
 
+    async def test_the_caller_page_size_reaches_the_fetch(self, mock_proxy, mock_calendar_repo):
+        """A caller-supplied max_results is what each calendar is queried with."""
+        mock_proxy.return_value = {"items": [{"id": "c1", "summary": "Work"}]}
+        mock_calendar_repo.get_for_user.return_value = _prefs(["c1"])
+        with patch(
+            "app.services.calendar_service.fetch_calendar_events", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = GoogleCalendarEventsPage()
+            await get_calendar_events(USER_ID, max_results=5)
+
+        assert mock_fetch.await_args.args[-1] == 5
+
     async def test_seeds_preferences_when_missing(self, mock_proxy, mock_calendar_repo):
         mock_proxy.return_value = {"items": [{"id": "c1"}, {"id": "c2"}]}
         mock_calendar_repo.get_for_user.return_value = None

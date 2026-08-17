@@ -59,6 +59,12 @@ class TestSerializeAny:
         assert "John" in result
         assert "30" in result
 
+    def test_model_drives_the_serialization(self) -> None:
+        """The declared model is the schema the value is dumped against — an int
+        under a float model must come back as a float, not as an int."""
+        assert serialize_any(1, model=float) == "1.0"
+        assert serialize_any(1) == "1"
+
     def test_serialize_list(self) -> None:
         """Should serialize a list to JSON string."""
         data = [1, 2, 3, "hello"]
@@ -371,6 +377,16 @@ class TestRedisCacheSet:
         cache.redis.setex.assert_awaited_once()
         stored_json = cache.redis.setex.call_args[0][2]
         assert "Jane" in stored_json
+
+    async def test_set_without_a_ttl_expires_in_an_hour(self) -> None:
+        """The documented default: a cached value lives one hour, not forever."""
+        cache = RedisCache.__new__(RedisCache)
+        cache.redis = AsyncMock()
+        cache.default_ttl = 999
+
+        await cache.set("key", "value")
+
+        assert cache.redis.setex.call_args[0][1] == 3600
 
     async def test_set_uses_default_ttl_when_zero(self) -> None:
         """When ttl is 0 (falsy), should use default_ttl."""

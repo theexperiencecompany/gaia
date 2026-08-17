@@ -86,6 +86,19 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
 )
 
+# app.services.workflow and app.services.triggers import each other
+# (workflow.service -> workflow.trigger_service -> triggers -> handlers ->
+# triggers.base -> workflow.queue_service). Entering that cycle from the
+# triggers side leaves `app.services.workflow` half-initialised, so a later
+# `from app.services.workflow import WorkflowService` — app.helpers.message_helpers
+# does exactly that — dies with "cannot import name ... (unknown location)".
+# Entering from the workflow side resolves cleanly, because workflow.__init__
+# finishes .queue_service before it reaches .service. Import it here, once,
+# before any test module is collected, so the package is whole whatever subset
+# a run selects. Do not swap this for a sys.modules stub inside a test file:
+# that poisons the interpreter for every test collected after it.
+import app.services.workflow  # noqa: F401
+
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy
 #

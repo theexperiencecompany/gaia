@@ -228,6 +228,14 @@ class TestGetSheetIdByName:
         assert kwargs["query"] == {"fields": "sheets.properties"}
         assert kwargs["user_id"] == "u1"
 
+    def test_the_real_toolkit_constant_reaches_the_proxy_call(self) -> None:
+        # A dropped `toolkit=` would route the proxy call through the wrong
+        # Composio integration entirely.
+        with patch(f"{MODULE}.proxy_request_sync", return_value={}) as proxy:
+            get_sheet_id_by_name("sid", "Data", "u1")
+
+        assert proxy.call_args.kwargs["toolkit"] == "GOOGLESHEETS"
+
     def test_sheet_zero_is_returned_not_treated_as_missing(self) -> None:
         # Sheet id 0 is falsy; returning None for it would send every chart to
         # the "sheet not found" path for the default first tab.
@@ -296,6 +304,22 @@ class TestGetColumnIndexByHeader:
         kwargs = proxy.call_args.kwargs
         assert kwargs["endpoint"] == f"{SHEETS_API_BASE}/sid/values/Data!1:1"
         assert kwargs["method"] == "GET"
+
+    def test_the_real_user_id_reaches_the_proxy_call(self) -> None:
+        # A dropped `user_id=` would send the request unauthenticated as
+        # whichever user Composio proxy defaults to.
+        with patch(f"{MODULE}.proxy_request_sync", return_value={}) as proxy:
+            get_column_index_by_header("sid", "Data", "Region", "distinct-user-77")
+
+        assert proxy.call_args.kwargs["user_id"] == "distinct-user-77"
+
+    def test_the_real_toolkit_constant_reaches_the_proxy_call(self) -> None:
+        # A dropped `toolkit=` would route the proxy call through the wrong
+        # Composio integration entirely.
+        with patch(f"{MODULE}.proxy_request_sync", return_value={}) as proxy:
+            get_column_index_by_header("sid", "Data", "Region", "u1")
+
+        assert proxy.call_args.kwargs["toolkit"] == "GOOGLESHEETS"
 
     def test_first_match_wins_for_duplicate_headers(self) -> None:
         with patch(f"{MODULE}.proxy_request_sync", return_value={"values": [["A", "B", "A"]]}):

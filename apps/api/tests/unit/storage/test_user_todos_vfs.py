@@ -377,6 +377,18 @@ def test_a_todo_with_no_title_is_listed_as_untitled_rather_than_dropped(tmp_path
     assert "(untitled)" in index_items(tmp_path)[0]
 
 
+def test_the_untitled_fallback_is_rendered_exactly_with_no_extra_characters(
+    tmp_path: Path,
+) -> None:
+    # A membership check alone ("(untitled)" in line) would still pass if the
+    # fallback literal were corrupted to e.g. "XX(untitled)XX" — pin the exact
+    # rendered line so a mangled fallback constant is caught.
+    materialize_user_todos(tmp_path, [todo(ID_A, None)], GUIDE)
+
+    (item,) = index_items(tmp_path)
+    assert item == "- [OPEN] `untitled-00000001`  (untitled)  _(updated —)_"
+
+
 def test_the_index_names_the_folder_the_agent_has_to_open(tmp_path: Path) -> None:
     # A listed folder name that does not exist on disk sends the agent to a dead
     # path — the index is the only map it has.

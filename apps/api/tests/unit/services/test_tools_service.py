@@ -381,6 +381,47 @@ class TestBuildToolsResponse:
         assert names.count("shared_tool") == 1
         assert "unique_tool" in names
 
+    async def test_display_name_prefers_mcp_store_name_over_integration_name(self):
+        """The MCP store's own "name" must win over get_integration_name — the
+        code is `text_opt_bag(...) or get_integration_name(...) or ...`, so a
+        truthy store name must short-circuit and never even consult
+        get_integration_name. A mutant that swaps `or` for `and` (or reads the
+        wrong key/default) would let get_integration_name's value leak through
+        instead."""
+        global_mcp = {
+            "custom_x": {
+                "name": "Correct Store Name",
+                "icon_url": None,
+                "tools": [{"name": "a_tool"}],
+            }
+        }
+        user_records = [{"integration_id": "custom_x", "status": "connected"}]
+
+        with (
+            self._patch_deps({}, global_mcp, user_records=user_records),
+            patch(
+                "app.services.tools.tools_service.get_integration_name",
+                return_value="Wrong Fallback Name",
+            ),
+        ):
+            result = await _build_tools_response("user_123")
+
+        assert result.total_count == 1
+        assert result.tools[0].display_name == "Correct Store Name"
+
+    async def test_mcp_missing_tools_key_treated_as_empty(self):
+        """When an MCP store entry has no "tools" key at all, the read must
+        default to an empty list (not crash and not include the integration's
+        tools) — the code is `data.get("tools", [])`; a mutant default of
+        `None` would raise when the loop tries to iterate it."""
+        global_mcp = {"m1": {"name": "M1", "icon_url": None}}
+        user_records = [{"integration_id": "m1", "status": "connected"}]
+
+        with self._patch_deps({}, global_mcp, user_records=user_records):
+            result = await _build_tools_response("user_123")
+
+        assert result.total_count == 0
+
     async def test_added_but_not_connected_is_locked(self):
         """Tools for integrations in `added` but not `connected` are marked locked=True."""
         global_mcp = {

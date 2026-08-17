@@ -135,6 +135,79 @@ class TestCreateCustomIntegration:
         }
 
     @pytest.mark.asyncio
+    async def test_create_status_created(self, client: AsyncClient) -> None:
+        """ "created" must reach the response as-is — dropping it from the
+        known-status tuple would silently downgrade every fresh connection to
+        "failed"."""
+        with (
+            patch(f"{_CUSTOM}.get_mcp_client", new_callable=AsyncMock, return_value=MagicMock()),
+            patch(
+                f"{_CUSTOM}.create_and_connect_custom_integration", new_callable=AsyncMock
+            ) as mock_create,
+        ):
+            mock_create.return_value = (
+                _integration(),
+                {"status": "created", "tools_count": 0},
+            )
+            resp = await client.post(BASE, json=_create_payload())
+
+        assert resp.status_code == 200
+        assert resp.json()["connection"]["status"] == "created"
+
+    @pytest.mark.asyncio
+    async def test_create_unknown_status_falls_back_to_failed(self, client: AsyncClient) -> None:
+        """A status the service returns that isn't one of the four known values
+        must fall back to "failed" via the else branch — pins the literal
+        fallback string itself, not just which statuses are recognized."""
+        with (
+            patch(f"{_CUSTOM}.get_mcp_client", new_callable=AsyncMock, return_value=MagicMock()),
+            patch(
+                f"{_CUSTOM}.create_and_connect_custom_integration", new_callable=AsyncMock
+            ) as mock_create,
+        ):
+            mock_create.return_value = (_integration(), {"status": "pending_review"})
+            resp = await client.post(BASE, json=_create_payload())
+
+        assert resp.status_code == 200
+        assert resp.json()["connection"]["status"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_create_status_matching_failed_typo_marker_falls_back(
+        self, client: AsyncClient
+    ) -> None:
+        """The membership check must gate on the exact string "failed" — if a
+        typo'd stand-in were compared instead, a service status that happens to
+        equal that typo would wrongly pass through the cast as-is (an invalid
+        Literal value the response schema would reject with a 500)."""
+        with (
+            patch(f"{_CUSTOM}.get_mcp_client", new_callable=AsyncMock, return_value=MagicMock()),
+            patch(
+                f"{_CUSTOM}.create_and_connect_custom_integration", new_callable=AsyncMock
+            ) as mock_create,
+        ):
+            mock_create.return_value = (_integration(), {"status": "XXfailedXX"})
+            resp = await client.post(BASE, json=_create_payload())
+
+        assert resp.status_code == 200
+        assert resp.json()["connection"]["status"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_create_status_uppercase_failed_falls_back(self, client: AsyncClient) -> None:
+        """Same guard as above, exercised with the other case-mangled stand-in
+        the tuple's "failed" entry could be mutated to."""
+        with (
+            patch(f"{_CUSTOM}.get_mcp_client", new_callable=AsyncMock, return_value=MagicMock()),
+            patch(
+                f"{_CUSTOM}.create_and_connect_custom_integration", new_callable=AsyncMock
+            ) as mock_create,
+        ):
+            mock_create.return_value = (_integration(), {"status": "FAILED"})
+            resp = await client.post(BASE, json=_create_payload())
+
+        assert resp.status_code == 200
+        assert resp.json()["connection"]["status"] == "failed"
+
+    @pytest.mark.asyncio
     async def test_value_error_returns_400(self, client: AsyncClient) -> None:
         with (
             patch(f"{_CUSTOM}.get_mcp_client", new_callable=AsyncMock, return_value=MagicMock()),
@@ -299,6 +372,20 @@ class TestPublishIntegration:
         assert body["integrationId"] == "i1"
         assert body["publicUrl"] == "/marketplace/my-tool"
         mock_publish.assert_awaited_once_with("i1", FAKE_USER_ID)
+
+    @pytest.mark.asyncio
+    async def test_missing_public_url_is_returned_as_empty_string(
+        self, client: AsyncClient
+    ) -> None:
+        """``public_url`` is a plain ``str`` on the response, so a missing value
+        must fall back to "" — any other fallback would either violate the
+        schema or leak a sentinel to the client."""
+        with patch(f"{_CUSTOM}.publish_custom_integration", new_callable=AsyncMock) as mock_publish:
+            mock_publish.return_value = {"integration_id": "i1"}
+            resp = await client.post(f"{BASE}/i1/publish")
+
+        assert resp.status_code == 200
+        assert resp.json()["publicUrl"] == ""
 
     @pytest.mark.asyncio
     async def test_publish_error_not_found_returns_404(self, client: AsyncClient) -> None:

@@ -40,6 +40,15 @@ def test_clarifying_payload_parses() -> None:
     assert result.message == "Which day?"
 
 
+def test_clarifying_without_message_falls_back_to_the_raw_reply() -> None:
+    """An unvalidatable clarifying payload still asks the user the raw reply."""
+    response = '{"type": "clarifying"}'
+    result = parse_subagent_response(response)
+
+    assert result.mode == "clarifying"
+    assert result.message == response
+
+
 def test_invalid_finalized_payload_reports_parse_error() -> None:
     result = parse_subagent_response('{"type": "finalized", "title": 5}')
     assert result.mode == "parse_error"

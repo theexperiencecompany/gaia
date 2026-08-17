@@ -41,6 +41,14 @@ def registered() -> tuple[dict, CustomToolsRegistry]:
     return client.tools._custom_tools.custom_tools_registry, registry
 
 
+class TestIsInitialized:
+    def test_fresh_registry_reports_not_initialized(self) -> None:
+        """A registry that has never been initialized does not claim it was."""
+        registry = CustomToolsRegistry()
+
+        assert registry.is_initialized is False
+
+
 class TestNoToolIsAsync:
     def test_every_custom_tool_is_a_sync_function(self, registered):
         """The one that silently corrupts results.

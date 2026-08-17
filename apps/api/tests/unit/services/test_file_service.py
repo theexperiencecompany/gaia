@@ -964,6 +964,29 @@ class TestFileServiceUpdate:
 
         assert result.description == "New summary from content"
         mock_reindex.assert_awaited_once()
+        # The regenerated description is what gets reindexed, not an empty summary.
+        assert mock_reindex.await_args.kwargs["summary"] == "New summary from content"
+
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    async def test_renamed_file_is_summarized_under_its_new_name(
+        self, mock_del_cache, mock_file_repo
+    ):
+        """A rename in the same call feeds the NEW filename to the summarizer."""
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(filename="old.pdf"))
+        mock_file_repo.apply_metadata_update = AsyncMock(return_value=_file_doc(filename="new.pdf"))
+
+        with (
+            _summary("Summary") as mock_summary,
+            patch("app.services.files.service.reindex_file", new_callable=AsyncMock),
+        ):
+            await FileService.update(
+                file_id="f-1",
+                user_id="user-abc",
+                update_data={"filename": "new.pdf"},
+                file_content=b"new file bytes",
+            )
+
+        assert mock_summary.await_args.kwargs["filename"] == "new.pdf"
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_file_content_generation_fails_raises_500(self, mock_del_cache, mock_file_repo):

@@ -1521,7 +1521,10 @@ class TestCreateAndConnectCustomIntegration:
         mock_mcp_client = AsyncMock()
         mock_mcp_client.probe_connection.return_value = {
             "requires_auth": True,
-            "auth_type": "oauth",
+            # A value distinct from the "oauth" default: if the read used the
+            # wrong key (e.g. "XXauth_typeXX"/"AUTH_TYPE"), it would silently
+            # fall back to "oauth" instead of surfacing this value.
+            "auth_type": "custom_scheme",
         }
         mock_mcp_client.build_oauth_auth_url.return_value = "https://auth.example.com"
 
@@ -1536,6 +1539,53 @@ class TestCreateAndConnectCustomIntegration:
 
         assert result_status["status"] == "requires_oauth"
         assert result_status["oauth_url"] == "https://auth.example.com"
+        # server_url must flow into probe_connection unchanged.
+        mock_mcp_client.probe_connection.assert_awaited_once_with(SERVER_URL)
+        # The probed auth_type must flow through to update_integration_auth_status.
+        mock_mcp_client.update_integration_auth_status.assert_awaited_once_with(
+            "new-id", requires_auth=True, auth_type="custom_scheme"
+        )
+
+    @patch(
+        "app.services.integrations.custom_crud.create_custom_integration",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.custom_crud.fetch_favicon_from_url",
+        new_callable=AsyncMock,
+    )
+    async def test_probe_auth_requirement_defaults_auth_type_to_oauth(
+        self, mock_favicon, mock_create
+    ):
+        """When the probe result omits `auth_type` entirely, the default value
+        "oauth" must be what reaches update_integration_auth_status — catches
+        mutants that change/drop the default (None, "", "XXoauthXX", "OAUTH")."""
+        mock_favicon.return_value = None
+        integration = Integration(
+            integration_id="new-id",
+            name="Auth Probe Default",
+            description="",
+            category="custom",
+            managed_by="mcp",
+            source="custom",
+            mcp_config=MCPConfig(server_url=SERVER_URL),
+        )
+        mock_create.return_value = integration
+
+        mock_mcp_client = AsyncMock()
+        mock_mcp_client.probe_connection.return_value = {"requires_auth": True}
+        mock_mcp_client.build_oauth_auth_url.return_value = "https://auth.example.com"
+
+        request = CreateCustomIntegrationRequest(
+            name="Auth Probe Default",
+            server_url=SERVER_URL,
+        )
+
+        await create_and_connect_custom_integration(USER_ID, request, mock_mcp_client)
+
+        mock_mcp_client.update_integration_auth_status.assert_awaited_once_with(
+            "new-id", requires_auth=True, auth_type="oauth"
+        )
 
     @patch(
         "app.services.integrations.custom_crud.create_custom_integration",

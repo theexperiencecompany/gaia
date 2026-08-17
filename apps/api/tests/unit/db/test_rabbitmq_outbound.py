@@ -92,6 +92,9 @@ class TestDeclareOutboundTopology:
             "x-dead-letter-routing-key": "outbound.whatsapp.dlq",
         }
 
+        # Durable, or every queued bot message is lost on a broker restart.
+        assert wa.kwargs["durable"] is True
+
         # Every DLQ is bound to the DLX.
         assert queue_mock.bind.await_count == len(OUTBOUND_QUEUES)
 

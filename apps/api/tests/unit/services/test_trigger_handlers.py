@@ -1,34 +1,8 @@
 """Tests for Google Sheets trigger handler."""
 
-from pathlib import Path
-import sys
-import types
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-# ---------------------------------------------------------------------------
-# Break the circular import: triggers.__init__ -> handlers -> base ->
-# workflow.queue_service -> workflow.__init__ -> workflow.service ->
-# workflow.trigger_service -> triggers (not yet finished)
-#
-# Strategy: pre-seed `app.services.workflow` as a fully-loaded stub module
-# BEFORE anything in the triggers package tries to import from it.
-# ---------------------------------------------------------------------------
-
-_api_root = Path(__file__).resolve().parents[3]
-
-# Stub the workflow sub-package so triggers.base can import WorkflowQueueService
-if "app.services.workflow" not in sys.modules:
-    _wf_pkg = types.ModuleType("app.services.workflow")
-    _wf_pkg.__path__ = [str(_api_root / "app" / "services" / "workflow")]
-    _wf_pkg.__package__ = "app.services.workflow"
-    sys.modules["app.services.workflow"] = _wf_pkg
-
-if "app.services.workflow.queue_service" not in sys.modules:
-    _qs_mod = types.ModuleType("app.services.workflow.queue_service")
-    _qs_mod.WorkflowQueueService = MagicMock()  # type: ignore[attr-defined]
-    sys.modules["app.services.workflow.queue_service"] = _qs_mod
 
 from app.services.triggers.handlers.google_sheets import (
     GoogleSheetsTriggerHandler,

@@ -16,6 +16,35 @@ from app.models.payment_models import PlanType
 from app.models.usage_models import FeatureUsage, UsagePeriod
 
 
+def _keyed_get(reads: dict[str, list[str]]) -> AsyncMock:
+    """A ``redis.get`` that answers per KEY — any other key reads as missing.
+
+    The constant-returning mocks elsewhere in this file cannot tell a read of
+    the right counter from a read of the wrong one.
+    """
+
+    async def get(key: str) -> str | None:
+        queue = reads.get(key)
+        if not queue:
+            return None
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+    return AsyncMock(side_effect=get)
+
+
+def _pipe_mock() -> AsyncMock:
+    pipe = AsyncMock()
+    pipe.watch = AsyncMock()
+    pipe.unwatch = AsyncMock()
+    pipe.multi = MagicMock()
+    pipe.incr = AsyncMock()
+    pipe.expire = AsyncMock()
+    pipe.execute = AsyncMock()
+    pipe.__aenter__ = AsyncMock(return_value=pipe)
+    pipe.__aexit__ = AsyncMock(return_value=False)
+    return pipe
+
+
 def _noop_create_task(coro, **kwargs):
     import asyncio as _asyncio
 
@@ -276,6 +305,90 @@ class TestCheckAndIncrement:
             await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
 
         assert call_count == 2  # First attempt fails, second succeeds
+
+    @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
+    @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")
+    @patch(
+        "app.api.v1.middleware.tiered_rate_limiter.get_time_window_key",
+        return_value="20260320",
+    )
+    async def test_the_limit_is_checked_against_this_users_own_counter(
+        self,
+        mock_twk: MagicMock,
+        mock_limits: MagicMock,
+        mock_reset: MagicMock,
+    ) -> None:
+        """Usage is read from the period's own key — reading anything else lets
+        an exhausted user straight through."""
+        from app.config.rate_limits import RateLimitConfig
+
+        mock_limits.return_value = RateLimitConfig(day=10, month=100)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
+        day_key = self.limiter._get_redis_key("user1", "chat_messages", RateLimitPeriod.DAY)
+        self.limiter.redis.get = _keyed_get({day_key: ["10"]})
+        self.limiter.redis.redis = MagicMock(pipeline=MagicMock(return_value=_pipe_mock()))
+
+        with pytest.raises(RateLimitExceededException):
+            await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+
+    @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
+    @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")
+    @patch(
+        "app.api.v1.middleware.tiered_rate_limiter.get_time_window_key",
+        return_value="20260320",
+    )
+    async def test_the_pipeline_recheck_reads_the_same_counter(
+        self,
+        mock_twk: MagicMock,
+        mock_limits: MagicMock,
+        mock_reset: MagicMock,
+    ) -> None:
+        """The WATCH re-read must hit the key it watched, or the concurrent-race
+        guard reads an empty counter and grants the over-limit request."""
+        from app.config.rate_limits import RateLimitConfig
+
+        mock_limits.return_value = RateLimitConfig(day=10, month=0)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
+        day_key = self.limiter._get_redis_key("user1", "chat_messages", RateLimitPeriod.DAY)
+        self.limiter.redis.get = _keyed_get({day_key: ["9", "10"]})
+        self.limiter.redis.redis = MagicMock(pipeline=MagicMock(return_value=_pipe_mock()))
+
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
+            side_effect=_noop_create_task,
+        ):
+            with pytest.raises(RateLimitExceededException):
+                await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+
+    @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
+    @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")
+    @patch(
+        "app.api.v1.middleware.tiered_rate_limiter.get_time_window_key",
+        return_value="20260320",
+    )
+    async def test_the_very_first_call_against_a_limit_of_one_is_allowed(
+        self,
+        mock_twk: MagicMock,
+        mock_limits: MagicMock,
+        mock_reset: MagicMock,
+    ) -> None:
+        """An empty counter is zero calls used, so a limit of 1 still grants one."""
+        from app.config.rate_limits import RateLimitConfig
+
+        mock_limits.return_value = RateLimitConfig(day=1, month=1000)
+        mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
+        self.limiter.redis.get = _keyed_get({})
+        pipe = _pipe_mock()
+        self.limiter.redis.redis = MagicMock(pipeline=MagicMock(return_value=pipe))
+
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
+            side_effect=_noop_create_task,
+        ):
+            result = await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+
+        assert result["day"].used == 0
+        assert pipe.incr.await_count == 2
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")

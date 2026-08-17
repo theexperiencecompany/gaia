@@ -135,6 +135,33 @@ class TestUploadFile:
         "app.api.v1.endpoints.file.FileService.upload",
         new_callable=AsyncMock,
     )
+    async def test_upload_file_passes_file_user_id_and_content_length(
+        self, mock_upload: AsyncMock, client: AsyncClient
+    ):
+        """The uploaded file, authenticated user id, and content-length reach FileService.upload."""
+        mock_upload.return_value = _file_doc(
+            file_id="file-004",
+            url="https://cdn.example.com/distinctive.bin",
+            filename="distinctive.bin",
+            type="application/octet-stream",
+        )
+        file_content = BytesIO(b"distinctive payload bytes")
+        response = await client.post(
+            f"{FILE_BASE}/upload",
+            files={"file": ("distinctive.bin", file_content, "application/octet-stream")},
+        )
+        assert response.status_code == 201
+        mock_upload.assert_awaited_once()
+        call_kwargs = mock_upload.call_args.kwargs
+        assert call_kwargs["file"].filename == "distinctive.bin"
+        assert call_kwargs["user_id"] == "507f1f77bcf86cd799439011"
+        assert isinstance(call_kwargs["content_length"], int)
+        assert call_kwargs["content_length"] > 0
+
+    @patch(
+        "app.api.v1.endpoints.file.FileService.upload",
+        new_callable=AsyncMock,
+    )
     async def test_upload_file_reports_the_stored_content_type(
         self, mock_upload: AsyncMock, client: AsyncClient
     ):

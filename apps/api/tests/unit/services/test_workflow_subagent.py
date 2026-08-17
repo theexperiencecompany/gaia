@@ -9,10 +9,11 @@ must never hand ``create_workflow`` an empty string as if it were a draft.
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.context.assemble import AssembledContext
+from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
 
@@ -107,3 +108,27 @@ class TestTheLaneItInherits:
 
         config = run.stream_turn.call_args.args[2]
         assert config["recursion_limit"] == WORKFLOW_SUBAGENT_RECURSION_LIMIT
+
+
+@pytest.mark.unit
+class TestTheInitialState:
+    """``initial_state`` is the dict literal built once per call; if it's ever
+    dropped or aliased to ``None`` the very first stream turn gets nothing."""
+
+    async def test_it_carries_the_prompt_context_and_task_on_the_first_turn(self) -> None:
+        task = "every monday, summarize my inbox"
+        run = await _execute('{"title": "x"}')
+
+        state = run.stream_turn.call_args.args[1]
+        messages = state["messages"]
+
+        assert isinstance(messages[0], SystemMessage)
+        assert messages[0].content == WORKFLOW_AGENT_SYSTEM_PROMPT
+        assert messages[1].content == "ctx"  # assembled.messages() (the mocked stable section)
+        assert isinstance(messages[2], HumanMessage)
+        assert messages[2].content == f"connected: none\n\n---\n\nRequest: {task}"
+        assert isinstance(messages[3], HumanMessage)
+        assert messages[3].content.startswith("[Current UTC Time:")
+
+        assert state["intent"] == task
+        assert state["integration_usernames"] == {}

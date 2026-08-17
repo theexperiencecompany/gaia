@@ -1969,6 +1969,45 @@ class TestWorkflowScheduler:
 
         assert mock_repo.set_status.call_args.kwargs["occurrence_count"] == 5
 
+    @patch("app.services.workflow.scheduler.workflow_repository")
+    async def test_update_task_status_threads_schedule_fields(self, mock_repo):
+        """scheduled_at / repeat / next_run reach the repository as given."""
+        from app.models.scheduler_models import ScheduledTaskStatus
+
+        mock_repo.set_status = AsyncMock(return_value=True)
+        when = datetime(2026, 3, 1, 9, 0, tzinfo=UTC)
+        next_run = datetime(2026, 3, 2, 9, 0, tzinfo=UTC)
+
+        await WorkflowScheduler().update_task_status(
+            WORKFLOW_ID,
+            ScheduledTaskStatus.SCHEDULED,
+            update_data={
+                "scheduled_at": when,
+                "repeat": "daily",
+                "trigger_config.next_run": next_run,
+            },
+        )
+
+        kwargs = mock_repo.set_status.call_args.kwargs
+        assert kwargs["scheduled_at"] == when
+        assert kwargs["repeat"] == "daily"
+        assert kwargs["next_run"] == next_run
+
+    @patch("app.services.workflow.scheduler.workflow_repository")
+    async def test_update_task_status_leaves_absent_schedule_fields_unset(self, mock_repo):
+        """Absent schedule fields send UNSET, not None — None is a real clear."""
+        from app.db.repositories.workflows import UNSET
+        from app.models.scheduler_models import ScheduledTaskStatus
+
+        mock_repo.set_status = AsyncMock(return_value=True)
+
+        await WorkflowScheduler().update_task_status(WORKFLOW_ID, ScheduledTaskStatus.EXECUTING)
+
+        kwargs = mock_repo.set_status.call_args.kwargs
+        assert kwargs["scheduled_at"] is UNSET
+        assert kwargs["next_run"] is UNSET
+        assert kwargs["repeat"] is None
+
     async def test_schedule_workflow_execution_success(self):
         scheduler = WorkflowScheduler()
         scheduler.schedule_task = AsyncMock(return_value=True)

@@ -335,6 +335,41 @@ async def test_spawn_graph_scopes_the_registry_to_what_the_parent_allows():
 
 
 @pytest.mark.asyncio
+async def test_spawn_graph_compiles_with_the_checkpointer_managers_checkpointer():
+    """The spawned graph compiles with the checkpointer the manager hands out."""
+    sentinel_checkpointer = MagicMock(name="real_checkpointer")
+    compile_kwargs: dict[str, Any] = {}
+
+    def _fake_create_agent(**_kwargs: Any) -> Any:
+        def _compile(**c_kwargs: Any) -> object:
+            compile_kwargs.update(c_kwargs)
+            return object()
+
+        return SimpleNamespace(compile=_compile)
+
+    with (
+        patch("app.agents.core.subagents.spawn_agent.get_tools_store", new=AsyncMock()),
+        patch(
+            "app.agents.core.subagents.spawn_agent.get_checkpointer_manager",
+            new=AsyncMock(
+                return_value=SimpleNamespace(get_checkpointer=lambda: sentinel_checkpointer)
+            ),
+        ),
+        patch("app.agents.core.subagents.spawn_agent.create_agent", new=_fake_create_agent),
+    ):
+        await _build_spawn_graph(
+            llm=_FakeLLM(),
+            registry={"vfs_read": vfs_read},
+            excluded_tool_names={"spawn_subagent"},
+            tool_space="provider_space",
+            runtime=ToolRuntimeConfig(initial_tool_names=["vfs_read"], enable_retrieve_tools=True),
+            middleware_factory=list,
+        )
+
+    assert compile_kwargs["checkpointer"] is sentinel_checkpointer
+
+
+@pytest.mark.asyncio
 async def test_spawn_graph_disables_retrieve_when_the_parent_did():
     captured = await _spawn_graph_agent_kwargs(
         registry={"vfs_read": vfs_read},
@@ -641,3 +676,49 @@ async def test_base_subagent_direct_mode_propagates_child_direct_runtime():
     assert mw._tool_runtime_config.enable_retrieve_tools is False
     assert "normal_tool" in mw._tool_runtime_config.initial_tool_names
     assert "read" in mw._tool_runtime_config.initial_tool_names
+
+
+@pytest.mark.asyncio
+async def test_provider_subagent_compiles_with_the_checkpointer_managers_checkpointer():
+    """A provider sub-agent must share the Postgres checkpointer the manager hands
+    out. Compiling with None gives the child no persistence at all — its turns
+    vanish between resumes with nothing failing to say so."""
+    sentinel_checkpointer = MagicMock(name="real_checkpointer")
+    compile_kwargs: dict[str, Any] = {}
+    dummy_registry = _DummyRegistry([normal_tool], {"normal_tool": normal_tool})
+
+    def _fake_create_agent(**_kwargs: Any) -> Any:
+        def _compile(**c_kwargs: Any) -> object:
+            compile_kwargs.update(c_kwargs)
+            return object()
+
+        return SimpleNamespace(compile=_compile)
+
+    with (
+        patch(
+            "app.agents.core.subagents.base_subagent.get_tools_store",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.get_tool_registry",
+            new=AsyncMock(return_value=dummy_registry),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.create_agent",
+            new=_fake_create_agent,
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
+            new=AsyncMock(
+                return_value=SimpleNamespace(get_checkpointer=lambda: sentinel_checkpointer)
+            ),
+        ),
+    ):
+        await SubAgentFactory.create_provider_subagent(
+            provider="provider",
+            name="provider_agent",
+            llm=MagicMock(),
+            tool_space="provider_space",
+        )
+
+    assert compile_kwargs["checkpointer"] is sentinel_checkpointer

@@ -186,6 +186,21 @@ class TestBuildAgentConfig:
         # No stored home zone and no parent zone -> UTC.
         assert config["configurable"]["user_timezone"] == "UTC"
         assert config["recursion_limit"] == AGENT_RECURSION_LIMIT
+        # The name the agent addresses the user by.
+        assert config["configurable"]["user_name"] == "Test User"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_nameless_user_gets_a_blank_name_not_a_none(self, mock_providers):
+        """A user with no stored name must not put ``None`` into the prompt."""
+        mock_providers.get.return_value = None
+
+        config = await build_agent_config(
+            conversation_id=CONV_ID,
+            user={"user_id": USER_ID, "email": "test@example.com"},
+            agent_name="comms_agent",
+        )
+
+        assert config["configurable"]["user_name"] == ""
 
     @patch("app.helpers.agent_helpers.providers")
     async def test_uses_home_profile_timezone(self, mock_providers):
@@ -968,13 +983,18 @@ MCP_SERVER_URL = "https://mcp.example.com/mcp"
 MCP_RESOURCE_URI = "ui://get-time/app.html"
 
 
-def _mcp_tool_entry() -> dict:
+def _mcp_tool_entry(mcp_ui: dict | None = None) -> dict:
     """A `format_tool_call_entry` result for a tool that carries MCP UI metadata."""
     return {
         "tool_name": "tool_calls_data",
         "tool_category": "mcp",
         "timestamp": "2025-01-01T00:00:00+00:00",
-        "mcp_ui": {"resource_uri": MCP_RESOURCE_URI, "csp": "default-src 'self'"},
+        "mcp_ui": mcp_ui
+        or {
+            "resource_uri": MCP_RESOURCE_URI,
+            "csp": "default-src 'self'",
+            "permissions": ["clipboard-read"],
+        },
         "mcp_server_url": MCP_SERVER_URL,
         "data": {
             "tool_call_id": "tc-1",
@@ -1047,6 +1067,10 @@ class TestExecuteGraphStreamingMcpApp:
         assert data["resource_uri"] == MCP_RESOURCE_URI
         assert data["html_content"] == "<h1>12:00</h1>"
         assert data["tool_arguments"] == {"tz": "UTC"}
+        # The fetched resource carried neither, so the tool call's own UI
+        # metadata is what the iframe is sandboxed with.
+        assert data["csp"] == "default-src 'self'"
+        assert data["permissions"] == ["clipboard-read"]
 
     @patch("app.helpers.agent_helpers.fetch_mcp_ui_resource", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.stream_manager")
@@ -1080,6 +1104,62 @@ class TestExecuteGraphStreamingMcpApp:
         assert data["server_url"] == MCP_SERVER_URL
         assert data["resource_uri"] == MCP_RESOURCE_URI
         assert data["tool_result"] == "12:00"
+        assert data["csp"] == "default-src 'self'"
+        assert data["permissions"] == ["clipboard-read"]
+
+    @patch("app.helpers.agent_helpers.fetch_mcp_ui_resource", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_absent_ui_metadata_grants_no_permissions(
+        self, mock_sm, mock_format_entry, mock_fetch
+    ):
+        """Neither the resource nor the tool call declares csp/permissions: the
+        iframe gets no CSP and an empty grant, never a missing key."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+        mock_format_entry.return_value = _mcp_tool_entry({"resource_uri": MCP_RESOURCE_URI})
+        mock_fetch.return_value = {"html": "<h1>12:00</h1>"}
+
+        ai_msg = MagicMock()
+        ai_msg.tool_calls = [{"id": "tc-1", "name": "get_time", "args": {"tz": "UTC"}}]
+        tool_msg = ToolMessage(content="12:00", tool_call_id="tc-1", name="get_time")
+
+        events = [
+            ((), "updates", {"agent": {"messages": [ai_msg]}}),
+            ((), "messages", (tool_msg, {"agent_name": "comms_agent"})),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {"user_id": USER_ID}}):
+            results.append(s)
+
+        data = _mcp_app_frames(results)[0]["data"]
+        assert data["csp"] is None
+        assert data["permissions"] == []
+
+    @patch("app.helpers.agent_helpers.fetch_mcp_ui_resource", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_subagent_absent_ui_metadata_grants_no_permissions(self, mock_sm, mock_fetch):
+        """Same guarantee on the subagent ("custom" event) path."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+        mock_fetch.return_value = {"html": "<h1>12:00</h1>"}
+
+        entry = _mcp_tool_entry({"resource_uri": MCP_RESOURCE_URI})
+        events = [
+            ((), "custom", {"tool_data": entry}),
+            ((), "custom", {"tool_output": {"tool_call_id": "tc-1", "output": "12:00"}}),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {"user_id": USER_ID}}):
+            results.append(s)
+
+        data = _mcp_app_frames(results)[0]["data"]
+        assert data["csp"] is None
+        assert data["permissions"] == []
 
 
 # ---------------------------------------------------------------------------

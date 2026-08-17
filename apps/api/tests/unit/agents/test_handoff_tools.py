@@ -12,6 +12,7 @@ from app.agents.core.subagents.handoff_tools import (
     index_custom_mcp_as_subagent,
 )
 from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
+from app.constants.cache import SUBAGENT_CACHE_PREFIX
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
@@ -272,6 +273,64 @@ class TestGetSubagentById:
         assert result["id"] == "res_id"
         assert result["source"] == "user_integrations"
 
+    async def test_fallback_to_integration_resolver_carries_all_fields(self):
+        """name/mcp_config/icon_url reads land under their real keys with the doc's actual values."""
+        resolved_doc = {
+            "integration_id": "res_id",
+            "name": "Distinctive Name XYZ",
+            "mcp_config": {"server_url": "https://distinctive.example.com"},
+            "icon_url": "https://distinctive.example.com/icon.png",
+        }
+        resolved = SimpleNamespace(custom_doc=resolved_doc, source="user_integrations")
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=None,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_cache",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("app.agents.core.subagents.handoff_tools.integration_repository") as mock_repo,
+            patch("app.agents.core.subagents.handoff_tools.IntegrationResolver") as mock_resolver,
+            patch(
+                "app.agents.core.subagents.handoff_tools.set_cache",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_repo.find_by_id_prefix_or_name = AsyncMock(return_value=None)
+            mock_resolver.resolve = AsyncMock(return_value=resolved)
+            result = await _get_subagent_by_id("res_id")
+
+        assert result["name"] == "Distinctive Name XYZ"
+        assert result["mcp_config"] == {"server_url": "https://distinctive.example.com"}
+        assert result["icon_url"] == "https://distinctive.example.com/icon.png"
+        assert set(result.keys()) == {
+            "id",
+            "name",
+            "source",
+            "managed_by",
+            "mcp_config",
+            "icon_url",
+            "subagent_config",
+        }
+
+    async def test_cache_lookup_uses_real_cache_key(self):
+        """get_cache is called with the derived cache key, not None."""
+        mock_get_cache = AsyncMock(return_value={"id": "abc123", "name": "Cached"})
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=None,
+            ),
+            patch("app.agents.core.subagents.handoff_tools.get_cache", mock_get_cache),
+        ):
+            result = await _get_subagent_by_id("abc123")
+
+        mock_get_cache.assert_awaited_once_with(f"{SUBAGENT_CACHE_PREFIX}:abc123")
+        assert result == {"id": "abc123", "name": "Cached"}
+
 
 # ---------------------------------------------------------------------------
 # index_custom_mcp_as_subagent
@@ -345,6 +404,28 @@ class TestResolveSubagent:
         assert graph is mock_graph
         assert is_custom is True
         assert int_id == "abc"
+
+    async def test_resolves_custom_mcp_passes_correct_integration_and_user(self):
+        """create_subagent_for_user receives the resolved integration_id and caller's user_id, not swapped/dropped."""
+        custom_dict = {"id": "distinctive_int_id", "name": "Custom"}
+        mock_graph = MagicMock()
+        mock_create = AsyncMock(return_value=mock_graph)
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
+                new_callable=AsyncMock,
+                return_value=custom_dict,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
+                mock_create,
+            ),
+        ):
+            graph, name, int_id, is_custom = await _resolve_subagent(
+                "distinctive_int_id", "distinctive_user_id"
+            )
+        mock_create.assert_awaited_once_with("distinctive_int_id", "distinctive_user_id")
+        assert graph is mock_graph
 
     async def test_custom_mcp_no_user_id(self):
         custom_dict = {"id": "abc", "name": "Custom"}
@@ -461,6 +542,30 @@ class TestResolveSubagent:
             graph, name, int_id, is_custom = await _resolve_subagent("gcal", "user1")
         assert graph is mock_graph
         assert name == "calendar_agent"
+
+    async def test_platform_non_mcp_calls_providers_with_correct_agent_name(self):
+        """providers.aget receives the resolved agent_name, not None."""
+        subagent = _make_subagent(
+            "gcal",
+            "gcal",
+            "Google Calendar",
+            managed_by="internal",
+            agent_name="distinctive_calendar_agent",
+        )
+        mock_graph = MagicMock()
+        mock_aget = AsyncMock(return_value=mock_graph)
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
+                new_callable=AsyncMock,
+                return_value=subagent,
+            ),
+            patch("app.agents.core.subagents.handoff_tools.providers") as mock_providers,
+        ):
+            mock_providers.aget = mock_aget
+            graph, name, int_id, is_custom = await _resolve_subagent("gcal", "user1")
+        mock_aget.assert_awaited_once_with("distinctive_calendar_agent")
+        assert graph is mock_graph
 
     async def test_platform_composio_checks_connection(self):
         subagent = _make_subagent(

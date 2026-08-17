@@ -441,6 +441,18 @@ def test_a_title_that_is_missing_entirely_is_projected_rather_than_skipped(
     assert "(untitled)" in index_items(tmp_path)[0]
 
 
+def test_the_untitled_fallback_is_rendered_exactly_with_no_extra_characters(
+    tmp_path: Path,
+) -> None:
+    # A membership check alone ("(untitled)" in line) would still pass if the
+    # fallback literal were corrupted to e.g. "XX(untitled)XX" — pin the exact
+    # rendered line so a mangled fallback constant is caught.
+    materialize_gaia_tasks(tmp_path, [task(ID_A, None)], GUIDE)
+
+    (item,) = index_items(tmp_path)
+    assert item == "- [OPEN] `untitled-00000001`  (untitled)  _(updated —)_"
+
+
 # ── index.md ─────────────────────────────────────────────────────────
 
 

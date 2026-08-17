@@ -92,3 +92,16 @@ async def test_valid_frames_after_malformed_frame_are_unaffected() -> None:
     assert results[1].message.root.method == "tools/list"
     assert isinstance(results[2], SessionMessage)
     assert results[2].message.root.method == "ping"
+
+
+async def test_draining_before_connect_trips_the_guard_instead_of_the_queue() -> None:
+    """A fresh connector holds no inbox until ``connect()`` registers the
+    up-session. ``_drain_inbox``'s guard is what turns a reader started too early
+    into a loud failure; seeded with anything non-None it slips past the guard and
+    dies on the first ``get()`` instead, inside the loop's broad except."""
+    connector = DeviceConnector(device_id="dev-1", server_key="server-1")
+    read_send: MemoryObjectSendStream[SessionMessage | Exception]
+    read_send, _read_recv = anyio.create_memory_object_stream(1)
+
+    with pytest.raises(AssertionError):
+        await connector._drain_inbox(read_send)

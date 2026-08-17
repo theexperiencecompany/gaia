@@ -7,9 +7,12 @@ only HTTP status codes, response shapes, and error handling are verified.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import FastAPI
 from httpx import AsyncClient
 
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.models.user_models import UserDocument
+from app.schemas.integrations.responses import ConnectIntegrationResponse
 
 API = "/api/v1/integrations"
 
@@ -167,8 +170,6 @@ class TestDisconnectIntegration:
 
 class TestConnectIntegration:
     async def test_connect_mcp_success(self, client: AsyncClient) -> None:
-        from app.schemas.integrations.responses import ConnectIntegrationResponse
-
         resolved = _resolved(managed_by="mcp")
         mock_result = ConnectIntegrationResponse(
             status="connected",
@@ -196,8 +197,6 @@ class TestConnectIntegration:
         assert resp.json()["status"] == "connected"
 
     async def test_connect_composio_success(self, client: AsyncClient) -> None:
-        from app.schemas.integrations.responses import ConnectIntegrationResponse
-
         resolved = _resolved(managed_by="composio", provider="GITHUB")
         mock_result = ConnectIntegrationResponse(
             status="redirect",
@@ -225,8 +224,6 @@ class TestConnectIntegration:
         assert resp.json()["status"] == "redirect"
 
     async def test_connect_self_success(self, client: AsyncClient) -> None:
-        from app.schemas.integrations.responses import ConnectIntegrationResponse
-
         resolved = _resolved(managed_by="self", provider="GCAL")
         mock_result = ConnectIntegrationResponse(
             status="redirect",
@@ -251,6 +248,73 @@ class TestConnectIntegration:
                 json={"redirect_path": "/integrations"},
             )
         assert resp.status_code == 200
+
+    async def test_connect_self_passes_user_email(self, client: AsyncClient) -> None:
+        """The authenticated user's real email reaches connect_self_integration."""
+        resolved = _resolved(managed_by="self", provider="GCAL")
+        mock_result = ConnectIntegrationResponse(
+            status="redirect",
+            integration_id="gcal",
+            name="Google Calendar",
+            redirect_url="https://oauth.google.com",
+        )
+        with (
+            patch(
+                "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+                new_callable=AsyncMock,
+                return_value=resolved,
+            ),
+            patch(
+                "app.api.v1.endpoints.integrations.config.connect_self_integration",
+                new_callable=AsyncMock,
+                return_value=mock_result,
+            ) as mock_connect,
+        ):
+            resp = await client.post(
+                f"{API}/connect/gcal",
+                json={"redirect_path": "/integrations"},
+            )
+        assert resp.status_code == 200
+        assert mock_connect.call_args.kwargs["user_email"] == "test@example.com"
+
+    async def test_connect_self_falls_back_to_empty_email(
+        self, test_app: FastAPI, client: AsyncClient
+    ) -> None:
+        """A user record with no email yields "" for user_email, not None or a crash."""
+        original = test_app.dependency_overrides.get(get_current_user)
+        no_email_user = {"user_id": "507f1f77bcf86cd799439011"}
+        test_app.dependency_overrides[get_current_user] = lambda: no_email_user
+        try:
+            resolved = _resolved(managed_by="self", provider="GCAL")
+            mock_result = ConnectIntegrationResponse(
+                status="redirect",
+                integration_id="gcal",
+                name="Google Calendar",
+                redirect_url="https://oauth.google.com",
+            )
+            with (
+                patch(
+                    "app.api.v1.endpoints.integrations.config.IntegrationResolver.resolve",
+                    new_callable=AsyncMock,
+                    return_value=resolved,
+                ),
+                patch(
+                    "app.api.v1.endpoints.integrations.config.connect_self_integration",
+                    new_callable=AsyncMock,
+                    return_value=mock_result,
+                ) as mock_connect,
+            ):
+                resp = await client.post(
+                    f"{API}/connect/gcal",
+                    json={"redirect_path": "/integrations"},
+                )
+            assert resp.status_code == 200
+            assert mock_connect.call_args.kwargs["user_email"] == ""
+        finally:
+            if original is None:
+                test_app.dependency_overrides.pop(get_current_user, None)
+            else:
+                test_app.dependency_overrides[get_current_user] = original
 
     async def test_connect_not_found(self, client: AsyncClient) -> None:
         with patch(

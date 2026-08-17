@@ -106,6 +106,25 @@ class TestDrain:
         assert len(group["tool_calls"]) == 1
         assert group["tool_calls"][0]["tool_call_id"] == "tc-1"
 
+    def test_drain_backfills_only_tool_calls_data_entries(self) -> None:
+        """Outputs are merged into tool_calls_data entries ONLY.
+
+        Subagent groups carry their own outputs from the session, so widening the
+        backfill to every entry re-renders another card's output on top of them.
+        """
+        session = create_session("s1", RunKind.QUEUED)
+        session.tool_events.append(
+            {"tool_data": {"tool_name": "web_search_data", "data": {"tool_call_id": "tc-1"}}}
+        )
+        session.tool_events.append(
+            {"tool_output": {"tool_call_id": "tc-1", "output": "42 results"}}
+        )
+
+        entries = drain_executor_tool_data("s1")
+
+        assert entries[0]["tool_name"] == "web_search_data"
+        assert "output" not in entries[0]["data"]
+
     def test_drain_is_non_destructive(self) -> None:
         """Single-ownership depends on this: draining must NOT empty the source.
 

@@ -1,54 +1,28 @@
 """Tests for the Asana / Google Docs / Todoist trigger handlers."""
 
-from pathlib import Path
-import sys
-import types
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Break the circular import: triggers.__init__ -> handlers -> base ->
-# workflow.queue_service -> workflow.__init__ -> workflow.service ->
-# workflow.trigger_service -> triggers (not yet finished)
-# ---------------------------------------------------------------------------
-
-_api_root = Path(__file__).resolve().parents[3]
-
-if "app.services.workflow" not in sys.modules:
-    _wf_pkg = types.ModuleType("app.services.workflow")
-    _wf_pkg.__path__ = [str(_api_root / "app" / "services" / "workflow")]
-    _wf_pkg.__package__ = "app.services.workflow"
-    sys.modules["app.services.workflow"] = _wf_pkg
-
-if "app.services.workflow.queue_service" not in sys.modules:
-    _qs_mod = types.ModuleType("app.services.workflow.queue_service")
-    _qs_mod.WorkflowQueueService = MagicMock()
-    sys.modules["app.services.workflow.queue_service"] = _qs_mod
-
-from app.models.trigger_configs import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.models.trigger_configs import (
     AsanaTaskTriggerConfig,
     GoogleDocsNewDocumentConfig,
     TodoistNewTaskCreatedConfig,
 )
-from app.models.workflow_models import (
-    TriggerConfig,  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
-)
-from app.services.triggers.handlers.asana import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.models.workflow_models import TriggerConfig
+from app.services.triggers.handlers.asana import (
     AsanaTriggerHandler,
     asana_trigger_handler,
 )
-from app.services.triggers.handlers.google_docs import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.services.triggers.handlers.google_docs import (
     GoogleDocsTriggerHandler,
     google_docs_trigger_handler,
 )
-from app.services.triggers.handlers.todoist import (  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
+from app.services.triggers.handlers.todoist import (
     TodoistTriggerHandler,
     todoist_trigger_handler,
 )
-from app.utils.exceptions import (
-    TriggerRegistrationError,  # ratchet-allow -- circular-import break; mirrors the grandfathered sibling test_trigger_handlers.py
-)
+from app.utils.exceptions import TriggerRegistrationError
 
 TRIGGER_CONFIGS = {
     "asana": (
@@ -136,6 +110,9 @@ class TestTriggerHandlerRegister:
         assert call_kwargs["user_id"] == "u-1"
         assert call_kwargs["trigger_name"] == trigger_name
         assert call_kwargs["composio_slug"] == instance.TRIGGER_TO_COMPOSIO[trigger_name]
+        # An unfiltered trigger registers one Composio subscription with no
+        # narrowing config — a None here is not the same request.
+        assert call_kwargs["configs"] == [{}]
 
 
 @pytest.mark.parametrize(

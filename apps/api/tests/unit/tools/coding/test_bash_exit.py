@@ -16,6 +16,7 @@ import pytest
 
 from app.agents.tools.coding import bash_tool
 from app.agents.tools.coding.bash_tool import _record_bash_exit_code, _run_foreground
+from app.agents.workspace.paths import runs_log_dir
 
 
 def _sbx_with_run(run_mock: AsyncMock) -> AsyncMock:
@@ -53,6 +54,21 @@ async def test_various_nonzero_exit_codes_surface(code: int) -> None:
     )
     out = await _run_foreground(_sbx_with_run(run), "rid", "cmd", "/workspace", 60, None)
     assert f"exit_code: {code}" in out
+
+
+async def test_the_run_log_records_the_full_stdout_and_stderr() -> None:
+    # The bash docstring promises /workspace/.gaia/runs/{run_id}.log holds the
+    # untruncated output; the write is inside a suppress(), so a broken call
+    # loses the log silently.
+    run = AsyncMock(return_value=SimpleNamespace(exit_code=0, stdout="out", stderr="err"))
+    sbx = _sbx_with_run(run)
+
+    await _run_foreground(sbx, "rid", "cmd", "/workspace", 60, None)
+
+    assert sbx.files.write.await_args.args == (
+        f"{runs_log_dir()}/rid.log",
+        "out\n---STDERR---\nerr",
+    )
 
 
 async def test_command_timeout_propagates() -> None:

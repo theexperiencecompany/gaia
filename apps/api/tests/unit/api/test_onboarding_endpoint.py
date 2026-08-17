@@ -397,3 +397,113 @@ class TestGetPersonalization:
 
         assert response.status_code == 200
         assert response.json()["user_bio"] == ""
+
+    async def test_get_personalization_writing_style_prefers_user_edited_over_ai_summary(
+        self, client: AsyncClient
+    ):
+        """user_edited_summary must win over the AI-generated summary when both are
+        present: `_build_writing_style` resolves via `A or B`, so a mutant that
+        turns that into `A and B` (or drops the first `text_bag` call) would
+        surface the AI summary instead of the user's edit."""
+        user_doc = _make_user_doc(
+            onboarding={
+                "phase": "personalization_complete",
+                "writing_style": {
+                    "user_edited_summary": "Edited by the user",
+                    "summary": "AI-generated summary",
+                },
+            }
+        )
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        assert response.json()["writing_style"]["style_summary"] == "Edited by the user"
+
+    async def test_get_personalization_writing_style_falls_back_to_ai_summary(
+        self, client: AsyncClient
+    ):
+        """With no user edit, the AI summary must still surface: a mutant that
+        reads the wrong key, passes None as the bag, or short-circuits the
+        fallback to "" would either 500 or silently drop the writing style."""
+        user_doc = _make_user_doc(
+            onboarding={
+                "phase": "personalization_complete",
+                "writing_style": {"summary": "AI-generated summary"},
+            }
+        )
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        assert response.json()["writing_style"]["style_summary"] == "AI-generated summary"
+
+    async def test_get_personalization_writing_style_absent_when_no_summary(
+        self, client: AsyncClient
+    ):
+        """Neither summary field is set: the response must omit writing_style
+        entirely (None), not surface an empty or placeholder card. A mutant that
+        changes the final `or ""` fallback to a non-empty literal would make an
+        unusable writing style pass the `if not resolved_summary` guard."""
+        user_doc = _make_user_doc(
+            onboarding={
+                "phase": "personalization_complete",
+                "writing_style": {"example": {"body": ["hello"]}},
+            }
+        )
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        assert response.json()["writing_style"] is None
+
+    async def test_get_personalization_social_profiles_map_platform_and_url_by_key(
+        self, client: AsyncClient
+    ):
+        """Each profile's platform/url must come from the matching key of its own
+        dict, not be dropped, swapped, or blanked. Uses two profiles with
+        distinct values so a wrong-key or None-argument mutant on either field
+        of either item produces a detectable mismatch (or a 500, since
+        SocialProfile.platform/url are required str fields that reject None)."""
+        user_doc = _make_user_doc(
+            onboarding={
+                "phase": "personalization_complete",
+                "social_profiles": [
+                    {"platform": "twitter", "url": "https://twitter.com/example"},
+                    {"platform": "linkedin", "url": "https://linkedin.com/in/example"},
+                ],
+            }
+        )
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": False})
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        profiles = response.json()["social_profiles"]
+        assert profiles == [
+            {"platform": "twitter", "url": "https://twitter.com/example"},
+            {"platform": "linkedin", "url": "https://linkedin.com/in/example"},
+        ]

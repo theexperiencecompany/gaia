@@ -148,7 +148,7 @@ class TestNightlyJobComposition:
     async def test_the_nightly_job_runs_all_three_phases(self) -> None:
         # The cron table wires the job; this pins that the job itself still calls
         # every phase — the stale-spawn sweep has no other trigger.
-        manager = SimpleNamespace(pool=object(), get_checkpointer=lambda: object())
+        manager = SimpleNamespace(pool=object(), get_checkpointer=object)
         orphan = AsyncMock(
             return_value={
                 "threads_total": 5,

@@ -388,6 +388,22 @@ class TestTriggerHandlerBase:
         mock_queue_svc.queue_workflow_execution.assert_awaited_once()
 
     @patch("app.services.triggers.base.WorkflowQueueService")
+    async def test_process_event_passes_the_event_payload_as_trigger_data(self, mock_queue_svc):
+        """The workflow run is built from this context — the payload has to
+        arrive under the key the run reads it back from."""
+        workflow = _make_workflow()
+        handler = _ConcreteTriggerHandler()
+        handler.find_workflows = AsyncMock(return_value=[workflow])
+        mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
+
+        payload = {"message_id": "m-1", "subject": "hi"}
+        await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, payload)
+
+        assert mock_queue_svc.queue_workflow_execution.await_args.kwargs["context"] == {
+            "trigger_data": payload
+        }
+
+    @patch("app.services.triggers.base.WorkflowQueueService")
     async def test_process_event_skips_workflow_with_no_id(self, mock_queue_svc):
         workflow = _make_workflow()
         workflow.id = None
@@ -643,6 +659,26 @@ class TestGmailPollTriggerHandler:
 
         result = await handler.register(USER_ID, WORKFLOW_ID, "gmail_poll_inbox", config)
         assert result == ["poll_tid_1"]
+
+    @patch("app.services.triggers.base.get_composio_service")
+    async def test_register_config_carries_the_real_interval_key(self, mock_get_composio):
+        # The Composio trigger_config dict must carry the exact key "interval"
+        # with the real polling interval — a mangled key or a nulled config
+        # would register a trigger that never polls on the requested cadence.
+        mock_result = MagicMock()
+        mock_result.trigger_id = "poll_tid_1"
+        mock_composio = MagicMock()
+        mock_composio.composio.triggers.create = MagicMock(return_value=mock_result)
+        mock_get_composio.return_value = mock_composio
+
+        handler = GmailPollTriggerHandler()
+        data = GmailPollInboxConfig(interval=45)
+        config = _make_trigger_config("gmail_poll_inbox", trigger_data=data)
+
+        await handler.register(USER_ID, WORKFLOW_ID, "gmail_poll_inbox", config)
+
+        call_kwargs = mock_composio.composio.triggers.create.call_args.kwargs
+        assert call_kwargs["trigger_config"] == {"interval": 45}
 
     async def test_register_wrong_trigger_data_raises(self):
         handler = GmailPollTriggerHandler()
@@ -1491,6 +1527,28 @@ class TestCalendarTriggerHandler:
 
         result = await handler.register(USER_ID, WORKFLOW_ID, "calendar_event_created", config)
         assert result == ["cal_tid_1"]
+
+    @patch("app.services.triggers.base.get_composio_service")
+    async def test_register_event_created_config_carries_the_real_calendar_id_key(
+        self, mock_get_composio
+    ):
+        # The Composio trigger_config dict must carry the exact key "calendarId"
+        # with the real calendar id — a mangled key or a nulled value would still
+        # register a trigger but for the wrong (or no) calendar.
+        mock_result = MagicMock()
+        mock_result.trigger_id = "cal_tid_1"
+        mock_composio = MagicMock()
+        mock_composio.composio.triggers.create = MagicMock(return_value=mock_result)
+        mock_get_composio.return_value = mock_composio
+
+        handler = CalendarTriggerHandler()
+        data = CalendarEventCreatedConfig(calendar_ids=["distinct-calendar@example.com"])
+        config = _make_trigger_config("calendar_event_created", trigger_data=data)
+
+        await handler.register(USER_ID, WORKFLOW_ID, "calendar_event_created", config)
+
+        call_kwargs = mock_composio.composio.triggers.create.call_args.kwargs
+        assert call_kwargs["trigger_config"] == {"calendarId": "distinct-calendar@example.com"}
 
     @patch("app.services.triggers.base.get_composio_service")
     async def test_register_event_starting_soon_success(self, mock_get_composio):

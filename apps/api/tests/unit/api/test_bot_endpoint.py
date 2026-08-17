@@ -816,6 +816,39 @@ class TestBotChatRequestFiles:
 # ---------------------------------------------------------------------------
 
 
+def _chat_stream_patches(limiter: AsyncMock, history: list[dict[str, object]] | None = None):
+    """The patch stack that lets `bot_chat_stream` run end to end offline."""
+    return (
+        patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock),
+        patch(
+            "app.api.v1.endpoints.bot.BotService.enforce_rate_limit",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+            new_callable=AsyncMock,
+            return_value={"user_id": "u_bot_1", "email": "bot@gaia.local"},
+        ),
+        patch(
+            "app.api.v1.endpoints.bot.BotService.get_or_create_session",
+            new_callable=AsyncMock,
+            return_value="conv_1",
+        ),
+        patch(
+            "app.api.v1.endpoints.bot.BotService.load_conversation_history",
+            new_callable=AsyncMock,
+            return_value=list(history or []),
+        ),
+        patch("app.api.v1.endpoints.bot.stream_manager", new_callable=AsyncMock),
+        patch("app.api.v1.endpoints.bot.run_chat_stream_background", new_callable=AsyncMock),
+        patch("app.decorators.rate_limiting.tiered_limiter.check_and_increment", limiter),
+        # Only the tests that need the turn to reach the agent enter these two:
+        # a real JWT signing key and the daily cost wall are not available here.
+        patch("app.api.v1.endpoints.bot.enforce_daily_cost_budget", new_callable=AsyncMock),
+        patch("app.api.v1.endpoints.bot.create_bot_session_token", return_value="session-token"),
+    )
+
+
 class TestBotChatStreamMetering:
     """A bot turn must charge the same plan quota as a web chat turn.
 
@@ -827,38 +860,10 @@ class TestBotChatStreamMetering:
     `usage_daily` either — leaving those users off the heatmap, streak and badge.
     """
 
-    @staticmethod
-    def _patches(limiter: AsyncMock):
-        return (
-            patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock),
-            patch(
-                "app.api.v1.endpoints.bot.BotService.enforce_rate_limit",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
-                new_callable=AsyncMock,
-                return_value={"user_id": "u_bot_1", "email": "bot@gaia.local"},
-            ),
-            patch(
-                "app.api.v1.endpoints.bot.BotService.get_or_create_session",
-                new_callable=AsyncMock,
-                return_value="conv_1",
-            ),
-            patch(
-                "app.api.v1.endpoints.bot.BotService.load_conversation_history",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-            patch("app.api.v1.endpoints.bot.stream_manager", new_callable=MagicMock),
-            patch("app.api.v1.endpoints.bot.run_chat_stream_background"),
-            patch("app.decorators.rate_limiting.tiered_limiter.check_and_increment", limiter),
-        )
-
     @pytest.mark.regression
     async def test_a_bot_turn_charges_the_chat_messages_quota(self, client: AsyncClient):
         limiter = AsyncMock(return_value={})
-        p = self._patches(limiter)
+        p = _chat_stream_patches(limiter)
         with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
             await client.post(
                 f"{BOT_BASE}/chat-stream",
@@ -880,7 +885,7 @@ class TestBotChatStreamMetering:
         stream that opened and died partway instead of a clean refusal."""
         limiter = AsyncMock(return_value={})
         cost_wall = AsyncMock()
-        p = self._patches(limiter)
+        p = _chat_stream_patches(limiter)
         with (
             p[0],
             p[1],
@@ -906,7 +911,7 @@ class TestBotChatStreamMetering:
     async def test_an_unlinked_platform_user_is_not_charged(self, client: AsyncClient):
         """No GAIA account behind the platform id — there is nobody to bill."""
         limiter = AsyncMock(return_value={})
-        p = self._patches(limiter)
+        p = _chat_stream_patches(limiter)
         with (
             p[0],
             p[1],
@@ -931,3 +936,66 @@ class TestBotChatStreamMetering:
             )
 
         limiter.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# POST /bot/chat-stream — conversation history replay
+# ---------------------------------------------------------------------------
+
+
+class TestBotChatStreamHistory:
+    """The stored turns must reach the agent verbatim.
+
+    The endpoint rebuilds every stored turn into a `MessageDict` by reading
+    `role` and `content` out of the raw Mongo document. A wrong key, a dropped
+    field or a swapped argument there does not fail anything visible — the
+    stream still opens — it just hands the agent a conversation it never had.
+    """
+
+    async def test_stored_turns_and_the_new_message_reach_the_agent_verbatim(
+        self, client: AsyncClient
+    ):
+        stored = [
+            {"role": "user", "content": "what is my timezone"},
+            {"role": "assistant", "content": "Europe/Lisbon"},
+        ]
+        limiter = AsyncMock(return_value={})
+        p = _chat_stream_patches(limiter, history=stored)
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6] as background, p[7], p[8], p[9]:
+            response = await client.post(
+                f"{BOT_BASE}/chat-stream",
+                json={
+                    "message": "and my locale?",
+                    "platform": "telegram",
+                    "platform_user_id": "tg_42",
+                },
+            )
+
+        assert response.status_code == 200
+        assert background.call_args.kwargs["body"].messages == [
+            {"role": "user", "content": "what is my timezone"},
+            {"role": "assistant", "content": "Europe/Lisbon"},
+            {"role": "user", "content": "and my locale?"},
+        ]
+
+    async def test_a_stored_turn_with_a_non_string_body_degrades_to_an_empty_string(
+        self, client: AsyncClient
+    ):
+        """`text_bag` is the typed read: a malformed document becomes "", not None
+        — a None content crashes the agent's message serialisation."""
+        limiter = AsyncMock(return_value={})
+        p = _chat_stream_patches(limiter, history=[{"role": "assistant", "content": None}])
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6] as background, p[7], p[8], p[9]:
+            await client.post(
+                f"{BOT_BASE}/chat-stream",
+                json={
+                    "message": "hi",
+                    "platform": "telegram",
+                    "platform_user_id": "tg_42",
+                },
+            )
+
+        assert background.call_args.kwargs["body"].messages[0] == {
+            "role": "assistant",
+            "content": "",
+        }

@@ -460,6 +460,19 @@ class TestTrashUntrash:
         tool_names = [c[0][1] for c in mock_invoke_gmail_tool.call_args_list]
         assert all(n == "GMAIL_UNTRASH_MESSAGE" for n in tool_names)
 
+    async def test_untrash_returns_restored_envelopes_on_success(self, mock_invoke_gmail_tool):
+        """If the accumulator were initialized to ``None`` instead of ``[]``,
+        every ``results.append(...)`` would raise ``AttributeError`` — caught
+        by the per-message ``except`` — so the function would silently
+        return ``None`` instead of the list of restored envelopes."""
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {"successful": True, "id": "msg1"}
+        )
+
+        result = await untrash_messages(USER_ID, ["msg1"])
+
+        assert result == [{"successful": True, "id": "msg1"}]
+
     async def test_trash_handles_exception_per_message(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("server error")
 
@@ -855,6 +868,48 @@ class TestListDrafts:
         assert result.next_page_token == "tok"
         mock_transform.assert_called_once()
 
+    async def test_transformed_message_is_written_back_under_the_message_key(
+        self, mock_invoke_gmail_tool
+    ):
+        """Mutating the write-target key (``draft["message"]`` -> some other
+        key) would leave the original untransformed message in place while
+        writing the transformed value nowhere the caller looks — the
+        transformed value must land back on ``draft["message"]``."""
+        original_message = {"id": "m1", "subject": "Test"}
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {
+                "successful": True,
+                "drafts": [{"id": "d1", "message": original_message}],
+            }
+        )
+
+        with patch(
+            "app.services.mail.mail_service.transform_gmail_message",
+            side_effect=lambda m: {**m, "_transformed": True},
+        ):
+            result = await list_drafts(USER_ID)
+
+        draft = result.drafts[0]
+        assert draft["message"]["_transformed"] is True
+
+    async def test_transform_is_called_with_the_draft_message_not_none(
+        self, mock_invoke_gmail_tool, mock_transform
+    ):
+        """The value cast and handed to ``transform_gmail_message`` must be
+        the draft's own ``message`` dict, not ``None`` — swapping in ``None``
+        would crash or silently drop the message data on a real transform."""
+        original_message = {"id": "m1", "subject": "Test"}
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {
+                "successful": True,
+                "drafts": [{"id": "d1", "message": original_message}],
+            }
+        )
+
+        await list_drafts(USER_ID)
+
+        mock_transform.assert_called_once_with(original_message)
+
     async def test_includes_page_token_when_provided(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
             {
@@ -1052,6 +1107,10 @@ class TestListLabels:
         assert len(result.labels) == 2
         args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_LIST_LABELS"
+        # GMAIL_LIST_LABELS takes no parameters; if the empty-dict default
+        # were ever replaced with ``None`` the tool invocation would receive
+        # a non-mapping and crash (or silently drop a real filter later).
+        assert args[2] == {}
 
     async def test_returns_failure_on_tool_error(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(

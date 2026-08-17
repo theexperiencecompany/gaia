@@ -16,11 +16,14 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from composio.types import ToolExecuteParams
+import pytest
 
 from app.utils.composio_hooks.reddit_hooks import (
     process_reddit_comment,
     process_reddit_post,
     process_reddit_search_results,
+    reddit_comments_after_hook,
+    reddit_search_after_hook,
 )
 from app.utils.composio_hooks.registry import (
     ComposioHookRegistry,
@@ -1778,6 +1781,88 @@ class TestRedditAfterHooks:
         writer.assert_called_once()
         payload = writer.call_args[0][0]
         assert payload["reddit_data"]["type"] == "search"
+
+    @staticmethod
+    def _search_response(selftext: str) -> dict:
+        return _make_response(
+            {
+                "search_results": {
+                    "data": {
+                        "children": [
+                            {
+                                "kind": "t3",
+                                "data": {
+                                    "id": "p1",
+                                    "title": "Python Tips",
+                                    "selftext": selftext,
+                                },
+                            }
+                        ],
+                        "after": None,
+                        "before": None,
+                    }
+                }
+            }
+        )
+
+    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    def test_search_after_hook_streams_the_post_body(self, mock_writer: MagicMock) -> None:
+        """The card renders the post's own selftext, read from the post."""
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+
+        reddit_search_after_hook(
+            "REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", self._search_response("Short text")
+        )
+
+        assert writer.call_args[0][0]["reddit_data"]["posts"][0]["selftext"] == "Short text"
+
+    @pytest.mark.parametrize(
+        "length, expected",
+        [
+            (200, "x" * 200),  # exactly at the limit: kept whole
+            (201, "x" * 200 + "..."),  # over it: truncated with an ellipsis
+        ],
+    )
+    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    def test_search_after_hook_truncates_only_past_200_chars(
+        self, mock_writer: MagicMock, length: int, expected: str
+    ) -> None:
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+
+        reddit_search_after_hook(
+            "REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", self._search_response("x" * length)
+        )
+
+        assert writer.call_args[0][0]["reddit_data"]["posts"][0]["selftext"] == expected
+
+    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    def test_search_after_hook_streams_nothing_when_there_are_no_posts(
+        self, mock_writer: MagicMock
+    ) -> None:
+        """An empty result set must not push an empty card to the frontend."""
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"search_results": {"data": {"children": []}}})
+
+        result = reddit_search_after_hook("REDDIT_SEARCH_ACROSS_SUBREDDITS", "REDDIT", response)
+
+        assert result["result_count"] == 0
+        writer.assert_not_called()
+
+    @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
+    def test_comments_after_hook_without_a_data_key_yields_no_comments(
+        self, mock_writer: MagicMock
+    ) -> None:
+        """A response missing `data` is an empty listing, not a hook failure."""
+        mock_writer.return_value = _noop_writer()
+
+        result = reddit_comments_after_hook(
+            "REDDIT_RETRIEVE_POST_COMMENTS", "REDDIT", {"successful": True}
+        )
+
+        assert result == {"comments": [], "comment_count": 0}
 
     @patch("app.utils.composio_hooks.reddit_hooks.get_stream_writer")
     def test_search_after_hook_error_response(self, mock_writer: MagicMock) -> None:

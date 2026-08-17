@@ -45,6 +45,18 @@ def test_skips_unrequested_levels_and_empty_text() -> None:
     assert extract_headings_from_document(doc, include_levels=[1]) == []
 
 
+def test_body_without_content_yields_no_headings() -> None:
+    """A body with no ``content`` key is an empty document, not a crash."""
+    assert extract_headings_from_document({"body": {}}, include_levels=[1]) == []
+
+
+def test_paragraph_without_elements_yields_no_headings() -> None:
+    """A styled paragraph carrying no text runs contributes no heading."""
+    doc = _doc({"paragraph": {"paragraphStyle": {"namedStyleType": "HEADING_1"}}})
+
+    assert extract_headings_from_document(doc, include_levels=[1]) == []
+
+
 def test_generate_toc_text() -> None:
     headings = [
         {"level": 1, "text": "Intro", "start_index": 0},
@@ -52,6 +64,11 @@ def test_generate_toc_text() -> None:
     ]
     toc = generate_toc_text(headings, "Report")
 
-    assert toc.startswith("Report")
-    assert "Intro" in toc
-    assert "Details" in toc
+    assert toc == "Report\n======\n\n• Intro\n  ○ Details\n\n"
+
+
+def test_generate_toc_text_defaults_missing_level_to_top_level() -> None:
+    """A heading with no ``level`` renders as level 1 — unindented, bulleted."""
+    toc = generate_toc_text([{"text": "Orphan"}], "Report")
+
+    assert toc == "Report\n======\n\n• Orphan\n\n"

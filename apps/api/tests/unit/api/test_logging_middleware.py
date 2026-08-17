@@ -10,13 +10,23 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
+from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from app.api.v1.middleware.logging import LoggingMiddleware, log_function_call
+from shared.py.wide_events import log as wide_log
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _fake_request(user: dict | None) -> Request:
+    """A minimal Starlette Request carrying ``request.state.user``."""
+    scope = {"type": "http", "method": "GET", "path": "/", "headers": []}
+    request = Request(scope)
+    request.state.user = user
+    return request
 
 
 def _build_test_app(skip_paths: frozenset | None = None):
@@ -167,6 +177,41 @@ class TestLoggingMiddlewareExceptionHandling:
         assert resp.status_code == 500
         # Logger should have been called
         assert mock_logger.bind.called
+
+
+class TestAttachUserContext:
+    """LoggingMiddleware._attach_user_context merges the authenticated identity onto the wide event."""
+
+    def test_existing_user_context_wins_over_auto_derived(self) -> None:
+        """A handler-set user field survives (and merges on top of) the auto-derived id."""
+        wide_log.reset()
+        wide_log.set(user={"id": "handler-set-id", "plan": "pro"})
+        request = _fake_request({"user_id": "auto-derived-id"})
+        LoggingMiddleware._attach_user_context(request)
+        assert wide_log.get()["user"] == {"id": "handler-set-id", "plan": "pro"}
+
+    def test_no_prior_user_context_still_records_auto_derived_id(self) -> None:
+        """Empty-context arm: nothing set by a handler, only the auto-derived id lands."""
+        wide_log.reset()
+        request = _fake_request({"user_id": "auto-derived-id"})
+        LoggingMiddleware._attach_user_context(request)
+        assert wide_log.get()["user"] == {"id": "auto-derived-id"}
+
+    def test_no_authenticated_user_leaves_wide_event_unchanged(self) -> None:
+        wide_log.reset()
+        request = _fake_request(None)
+        LoggingMiddleware._attach_user_context(request)
+        assert "user" not in wide_log.get()
+
+    def test_wide_log_returning_falsy_falls_back_to_empty_dict(self) -> None:
+        """The ``or {}`` guard keeps dict_bag from blowing up when get() is falsy."""
+        request = _fake_request({"user_id": "auto-derived-id"})
+        with (
+            patch("app.api.v1.middleware.logging.wide_log.get", return_value=None),
+            patch("app.api.v1.middleware.logging.wide_log.set") as mock_set,
+        ):
+            LoggingMiddleware._attach_user_context(request)
+        mock_set.assert_called_once_with(user={"id": "auto-derived-id"})
 
 
 class TestLoggingMiddlewareRequestSize:

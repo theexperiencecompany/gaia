@@ -229,6 +229,20 @@ class TestProcessEmailContent:
         assert len(processed) == 0
         assert failed == 0  # skipped, not failed
 
+    def test_platform_sender_is_recognised_from_the_from_field(self) -> None:
+        """Gmail payloads carry the address under "from" when "sender" is absent —
+        the platform skip must read it, or platform mail lands in memory."""
+        emails = [
+            {
+                "from": "notify@twitter.com",
+                "subject": "New follower",
+                "messageText": "<p>You have a new follower</p>",
+            }
+        ]
+        processed, failed = process_email_content(emails)
+        assert processed == []
+        assert failed == 0
+
     def test_platform_emails_skipped_github(self) -> None:
         emails = [
             {
@@ -454,6 +468,19 @@ class TestStoreEmailsToMemory:
         await store_emails_to_memory("user_1", processed)
         call_kwargs = mock_memory_engine.retain.call_args.kwargs
         assert call_kwargs["source_type"] is MemorySourceType.EMAIL
+
+    async def test_missing_sender_and_subject_fall_back_to_placeholders(
+        self, mock_memory_engine: AsyncMock
+    ) -> None:
+        """Memory reads the message as prose, so a blank From/Subject must say
+        so explicitly rather than leaving the line empty."""
+        processed = [{"content": "Email text here", "metadata": {}}]
+
+        await store_emails_to_memory("user_1", processed)
+
+        content = mock_memory_engine.retain.call_args.args[1][0]["content"]
+        assert f"From: {UNKNOWN_SENDER}" in content
+        assert f"Subject: {NO_SUBJECT}" in content
 
     async def test_messages_built_correctly(self, mock_memory_engine: AsyncMock) -> None:
         processed = [

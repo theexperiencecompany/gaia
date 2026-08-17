@@ -35,23 +35,29 @@ def test_resolve_prompt_passthrough_and_none() -> None:
     assert _resolve_prompt(None, "next") is None
 
 
-def test_plan_for_noop_when_matches_target() -> None:
+def test_plan_for_noop_when_matches_target(capsys: pytest.CaptureFixture) -> None:
     plan = _plan_for(
         "wid-1",
         {"description": "same", "prompt": "same"},
-        {"description": "same", "prompt": "same"},
+        {"description": "same", "prompt": "same", "title": "Morning digest"},
     )
     assert plan is None
+    # The dry-run log is the only output of this script — it must name which
+    # workflow was skipped.
+    out = capsys.readouterr().out
+    assert "[skip] wid-1 'Morning digest'" in out
 
 
-def test_plan_for_edit_and_copy_sentinel() -> None:
+def test_plan_for_edit_and_copy_sentinel(capsys: pytest.CaptureFixture) -> None:
     before, after = _plan_for(
         "wid-1",
         {"description": "new", "prompt": COPY_DESCRIPTION},
-        {"description": "old", "prompt": "old-prompt"},
+        {"description": "old", "prompt": "old-prompt", "title": "Morning digest"},
     )
     assert before == {"description": "old", "prompt": "old-prompt"}
     assert after == {"description": "new", "prompt": "new"}
+    out = capsys.readouterr().out
+    assert "[edit] wid-1  'Morning digest'" in out
 
 
 def test_build_plans_skips_orphans_and_noops() -> None:

@@ -331,6 +331,9 @@ class TestReconstructSubagentGroups:
         assert group["completed_at"] is not None  # not "forever running"
         assert group["duration_ms"] is None  # no end event → no duration
         assert len(group["tool_calls"]) == 1
+        # No start timestamp was recorded, so the card is stamped as beginning
+        # at finalization rather than at the epoch or at nothing at all.
+        assert group["started_at"] == group["completed_at"]
 
     def test_finished_subagent_keeps_end_derived_fields(self) -> None:
         td = self._data(
@@ -345,6 +348,32 @@ class TestReconstructSubagentGroups:
         assert group["completed_at"] is not None
         assert group["duration_ms"] == 1500
         assert group["token_count"] == 42
+
+    def test_the_start_event_supplies_the_cards_display_fields(self) -> None:
+        """Everything the frontend renders a subagent card from comes off the
+        start event — a field read from the wrong key renders a blank card."""
+        td = self._data(
+            starts={
+                "sub-1": {
+                    "subagent_name": "todoist",
+                    "agent_type": "handoff",
+                    "started_at": "2026-01-01T00:00:00+00:00",
+                    "icon_url": "https://cdn.example.com/todoist.svg",
+                    "tool_category": "productivity",
+                }
+            },
+            ends={},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        group = self._group(td, "sub-1")
+        assert group["subagent_name"] == "todoist"
+        assert group["agent_type"] == "handoff"
+        assert group["started_at"] == "2026-01-01T00:00:00+00:00"
+        assert group["icon_url"] == "https://cdn.example.com/todoist.svg"
+        assert group["tool_category"] == "productivity"
 
     def test_no_subagents_is_noop(self) -> None:
         td = {"tool_data": [{"tool_name": "search_results", "data": {}}]}

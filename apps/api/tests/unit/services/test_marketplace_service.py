@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.user_models import UserDocument
+from app.services.integrations.marketplace import assemble_integration_response
 
 MODULE = "app.services.integrations.marketplace"
 
@@ -199,6 +200,49 @@ class TestGetAllIntegrations:
         # (fetch_custom_integrations returns early)
         mock_repo.list_public_custom.assert_not_called()
         assert result.total == 0
+
+
+class TestAssembleIntegrationResponse:
+    def test_custom_doc_fields_flow_into_the_assembled_response(self) -> None:
+        """With no platform integration, the response carries the custom doc's own fields."""
+        custom_doc = {
+            "integration_id": "distinctive-custom-id",
+            "name": "Distinctive Custom Name",
+            "description": "Distinctive custom description",
+            "category": "productivity",
+            "managed_by": "mcp",
+        }
+
+        result = assemble_integration_response(
+            platform_integration=None,
+            custom_doc=custom_doc,
+            stored_tools=None,
+            creator_doc=None,
+        )
+
+        assert result is not None
+        assert result.integration_id == "distinctive-custom-id"
+        assert result.name == "Distinctive Custom Name"
+        assert result.description == "Distinctive custom description"
+
+    def test_stored_tools_hydrate_both_name_and_description(self) -> None:
+        """A stored tool keeps both its name and its description on the assembled response."""
+        oauth = _make_oauth_integration("gmail", "Gmail")
+        stored_tools = [
+            {"name": "distinctive_tool_name", "description": "distinctive tool description"}
+        ]
+
+        result = assemble_integration_response(
+            platform_integration=oauth,
+            custom_doc=None,
+            stored_tools=stored_tools,
+            creator_doc=None,
+        )
+
+        assert result is not None
+        assert len(result.tools) == 1
+        assert result.tools[0].name == "distinctive_tool_name"
+        assert result.tools[0].description == "distinctive tool description"
 
 
 class TestGetIntegrationDetails:

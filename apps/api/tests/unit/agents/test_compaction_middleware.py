@@ -321,6 +321,103 @@ class TestAwrapToolCall:
         assert result is sentinel
         mock_write.assert_not_awaited()
 
+    async def test_dict_tool_call_name_and_id_flow_to_the_offloaded_message(self) -> None:
+        """Dict-shaped tool_call (the TypedDict form): the real name/id must reach the
+        spilled ToolMessage and the persisted file path, not a default fallback."""
+        mw = WorkspaceCompactionMiddleware(max_output_chars=10)
+        big = "x" * 200_000
+        request = SimpleNamespace(
+            tool_call={"name": "distinctive_tool", "id": "distinctive_call_id", "args": {}},
+            runtime=SimpleNamespace(
+                config={"configurable": {"user_id": "u1", "vfs_session_id": "conv1"}}
+            ),
+            state={"messages": []},
+        )
+
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
+            return _tool_msg(big, name="distinctive_tool")
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            return_value=WROTE,
+        ) as mock_write:
+            result = await mw.awrap_tool_call(request, handler)
+
+        assert isinstance(result, Command)
+        message = result.update["messages"][0]
+        assert message.name == "distinctive_tool"
+        assert message.tool_call_id == "distinctive_call_id"
+        rel_path = mock_write.await_args.kwargs["relative_path"]
+        assert rel_path.startswith("tool_outputs/distinctive_tool_")
+
+    async def test_dict_tool_call_missing_name_and_id_default_to_empty_string(self) -> None:
+        """No "name"/"id" key at all: the `.get(..., "")` fallbacks must land, not
+        ``None`` or a stray literal — mirrors the ToolCall shape some producers emit."""
+        mw = WorkspaceCompactionMiddleware(max_output_chars=10)
+        big = "x" * 200_000
+        request = SimpleNamespace(
+            tool_call={"args": {}},  # no "name", no "id"
+            runtime=SimpleNamespace(
+                config={"configurable": {"user_id": "u1", "vfs_session_id": "conv1"}}
+            ),
+            state={"messages": []},
+        )
+
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
+            return ToolMessage(content=big, tool_call_id="whatever", name="whatever")
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            return_value=WROTE,
+        ) as mock_write:
+            result = await mw.awrap_tool_call(request, handler)
+
+        assert isinstance(result, Command)
+        message = result.update["messages"][0]
+        assert message.name == ""
+        assert message.tool_call_id == ""
+        rel_path = mock_write.await_args.kwargs["relative_path"]
+        assert rel_path.startswith("tool_outputs/_")
+
+    async def test_object_shaped_tool_call_reads_name_and_id_via_attributes(self) -> None:
+        """Tool calls also reach middleware in attribute form (not the TypedDict) —
+        the isinstance(dict) guard's ``else`` arm must read `.name`/`.id`."""
+        mw = WorkspaceCompactionMiddleware(max_output_chars=10)
+        big = "x" * 200_000
+        tool_call_obj = SimpleNamespace(name="attr_tool", id="attr_call_id", args={})
+        request = SimpleNamespace(
+            tool_call=tool_call_obj,
+            runtime=SimpleNamespace(
+                config={"configurable": {"user_id": "u1", "vfs_session_id": "conv1"}}
+            ),
+            state={"messages": []},
+        )
+
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
+            return ToolMessage(content=big, tool_call_id="attr_call_id", name="attr_tool")
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            return_value=WROTE,
+        ) as mock_write:
+            result = await mw.awrap_tool_call(request, handler)
+
+        assert isinstance(result, Command)
+        message = result.update["messages"][0]
+        assert message.name == "attr_tool"
+        assert message.tool_call_id == "attr_call_id"
+        rel_path = mock_write.await_args.kwargs["relative_path"]
+        assert rel_path.startswith("tool_outputs/attr_tool_")
+
     async def test_missing_user_id_compacts_in_context(self) -> None:
         """No workspace identity means no spill target — compact in context,
         never hand the agent the full output back."""

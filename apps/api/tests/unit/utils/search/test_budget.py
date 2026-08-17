@@ -48,6 +48,15 @@ async def test_no_headroom_when_at_limit(monkeypatch: pytest.MonkeyPatch) -> Non
     assert await budget.has_headroom("exa") is False
 
 
+async def test_untouched_counter_has_headroom_against_a_limit_of_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An absent counter means zero calls used — the first call must be allowed."""
+    monkeypatch.setattr(budget_module, "redis_cache", _FakeRedisCache(value=None))
+    budget = FreeTierBudget({"exa": 1})
+    assert await budget.has_headroom("exa") is True
+
+
 async def test_fails_open_on_malformed_value(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(budget_module, "redis_cache", _FakeRedisCache(value="not-an-int"))
     budget = FreeTierBudget({"exa": 10})

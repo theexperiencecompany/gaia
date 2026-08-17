@@ -421,6 +421,26 @@ class TestHandleRecurringTask:
         status_call = service.mock_update_task_status.call_args
         assert status_call[0][1] == ScheduledTaskStatus.SCHEDULED
 
+    async def test_the_next_occurrence_is_persisted_and_enqueued_for_this_task(
+        self, service, recurring_task
+    ):
+        """Both writes are keyed on the task's own id and carry the new fire
+        time — a lost id reschedules nothing and strands the recurrence."""
+        next_run = datetime.now(UTC) + timedelta(days=1)
+        service.arq_pool.enqueue_job = AsyncMock(return_value=MagicMock(job_id="j"))
+
+        with (
+            patch("app.services.scheduler_service.get_next_run_time", return_value=next_run),
+            patch.object(service, "reschedule_task", new_callable=AsyncMock) as reschedule,
+        ):
+            await service.handle_recurring_task(recurring_task, 1)
+
+        task_id, status, update_data, _user = service.mock_update_task_status.call_args.args
+        assert task_id == "task_recurring"
+        assert status == ScheduledTaskStatus.SCHEDULED
+        assert update_data == {"scheduled_at": next_run, "occurrence_count": 1}
+        reschedule.assert_awaited_once_with("task_recurring", next_run)
+
     async def test_stop_after_naive_datetime(self, service, recurring_task):
         """Naive stop_after should be treated as UTC."""
         recurring_task.stop_after = datetime(2099, 12, 31)  # naive datetime

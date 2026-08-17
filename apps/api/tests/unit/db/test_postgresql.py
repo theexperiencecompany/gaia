@@ -283,6 +283,21 @@ class TestInitPostgresqlEngine:
             )
             assert result is mock_engine
 
+    async def test_unset_url_fails_loud_instead_of_dialling_a_local_socket(self) -> None:
+        """An empty conninfo is valid to libpq and silently connects to whatever
+        local Postgres exists — that must be an error, not a connection."""
+        with (
+            patch("app.db.postgresql.settings") as mock_settings,
+            patch("app.db.postgresql.create_async_engine") as mock_create,
+            patch("app.db.postgresql.log"),
+        ):
+            mock_settings.POSTGRES_URL = None
+
+            with pytest.raises(RuntimeError, match="POSTGRES_URL is not configured"):
+                await _get_original_init_fn()()
+
+        mock_create.assert_not_called()
+
     async def test_creates_tables_on_init(self) -> None:
         """Should run run_sync twice during initialization: create_all then _ensure_timestamptz_columns."""
         mock_engine = MagicMock()

@@ -12,6 +12,7 @@ the routing logic under test are real.
 
 import asyncio
 from contextlib import ExitStack
+import dataclasses
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -367,3 +368,70 @@ class TestQueueLockHandoff:
         # Lock handed off to the next run — must NOT be released or reclaimed.
         boundaries.release.assert_not_awaited()
         boundaries.reclaim.assert_not_awaited()
+
+
+class TestQueueCollectionIfUncollected:
+    """The wake payload the collection run is rebuilt from."""
+
+    @pytest.fixture
+    def enqueue(self):
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.object(
+                    er, "has_bg_subagent_results", new_callable=AsyncMock, return_value=True
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    er,
+                    "list_parked_subagents_for_conversation",
+                    new_callable=AsyncMock,
+                    return_value=[],
+                )
+            )
+            yield stack.enter_context(
+                patch.object(er, "enqueue_collection_run", new_callable=AsyncMock)
+            )
+
+    @staticmethod
+    def _run_with(user: dict[str, object]) -> ExecutorRun:
+        return dataclasses.replace(_run(RunKind.QUEUED), user=user)
+
+    async def test_wake_payload_carries_the_users_identity(self, enqueue) -> None:
+        await er._queue_collection_if_uncollected(
+            self._run_with(
+                {
+                    "user_id": "u1",
+                    "email": "a@b.co",
+                    "name": "Ada",
+                    "timezone": "Europe/London",
+                }
+            ),
+            TASK,
+        )
+
+        enqueue.assert_awaited_once_with(
+            "conv-1",
+            {
+                "user_id": "u1",
+                "email": "a@b.co",
+                "user_name": "Ada",
+                "user_timezone": "Europe/London",
+            },
+        )
+
+    async def test_missing_name_and_timezone_become_empty_strings(self, enqueue) -> None:
+        await er._queue_collection_if_uncollected(self._run_with({"user_id": "u1"}), TASK)
+
+        enqueue.assert_awaited_once_with(
+            "conv-1",
+            {"user_id": "u1", "email": "", "user_name": "", "user_timezone": ""},
+        )
+
+    async def test_nothing_parked_means_no_wake(self, enqueue) -> None:
+        with patch.object(
+            er, "has_bg_subagent_results", new_callable=AsyncMock, return_value=False
+        ):
+            await er._queue_collection_if_uncollected(self._run_with({"user_id": "u1"}), TASK)
+
+        enqueue.assert_not_awaited()

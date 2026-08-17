@@ -169,6 +169,13 @@ def test_bytes_reach_the_prometheus_counter(op: str) -> None:
     assert byte_total(op) == 64
 
 
+def test_a_one_byte_write_still_reaches_the_prometheus_counter(op: str) -> None:
+    """The guard is ``> 0`` — one byte is a real write, not a no-op."""
+    record_fs_op(op, duration_ms=1.0, bytes_written=1)
+
+    assert byte_total(op) == 1
+
+
 def test_an_op_moving_no_bytes_never_creates_the_bytes_series(op: str) -> None:
     """Absent, not zero — same wire contract as the wide event's omitted key.
 

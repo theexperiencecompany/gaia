@@ -663,6 +663,15 @@ class TestProcessOnboardingWorkflowsPhase:
         assert phase_stack["run"].await_args.args[5] is None
         assert phase_stack["run"].await_args.args[6] is None
 
+    async def test_the_stored_profession_reaches_the_workflow_generator(
+        self, phase_stack: Any
+    ) -> None:
+        """Workflow ideas are drafted for the user's profession — reading it from
+        the wrong place makes every suggestion generic."""
+        await process_onboarding_workflows_phase(USER)
+
+        assert phase_stack["run"].await_args.args[1] == "lawyer"
+
     async def test_a_retry_purges_the_previous_suggestions(self, phase_stack: Any) -> None:
         # Without this, a killed run that already created workflows doubles up.
         user = _user()

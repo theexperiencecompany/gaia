@@ -258,6 +258,7 @@ class TestBuildPutOperations:
         assert ops[0].namespace == (TRIGGERS_NAMESPACE,)
         assert ops[0].key == "new_email"
         assert ops[0].value["trigger_hash"] == "h1"
+        assert ops[0].value["category"] == "email"
 
     def test_delete_operation(self):
         ops = _build_put_operations([], ["old_slug"])
@@ -296,6 +297,15 @@ class TestExecuteBatchOperations:
         ops = [MagicMock(spec=PutOp) for _ in range(75)]
         await _execute_batch_operations(store, ops, batch_size=50)
         assert store.abatch.await_count == 2
+
+    async def test_default_batch_size_is_fifty(self):
+        store = AsyncMock()
+        ops = [MagicMock(spec=PutOp) for _ in range(51)]
+
+        await _execute_batch_operations(store, ops)
+
+        assert store.abatch.await_count == 2
+        assert len(store.abatch.await_args_list[0].args[0]) == 50
 
 
 # ---------------------------------------------------------------------------

@@ -13,13 +13,32 @@ Two independent fixes, both applied at import time:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import typing as t
 
 from composio.utils import shared
 from langchain_core.tools import base as lc_base
+import pytest
 
-# Importing the patch module triggers both monkey-patches at import time.
-import app.patches.composio_langchain_patch as patch_module  # noqa: F401  # ratchet-allow -- import for the apply() side effect
+from app.patches.composio_langchain_patch import apply
+
+
+@pytest.fixture(autouse=True)
+def reapplied_patch() -> Iterator[None]:
+    """Run ``apply()`` inside every test, restoring the module state after.
+
+    Importing the module is enough to install the patches in production, but a
+    test that only imports never executes ``apply``'s body — the assertions
+    below would then be measuring whatever the interpreter happened to install
+    at collection time. Calling it per test puts the patch's own code on the
+    path each test actually runs.
+    """
+    original_converter = shared.json_schema_to_pydantic_type
+    original_handler = lc_base._handle_validation_error
+    apply()
+    yield
+    shared.json_schema_to_pydantic_type = original_converter
+    lc_base._handle_validation_error = original_handler
 
 
 class TestAnyOfFlattening:

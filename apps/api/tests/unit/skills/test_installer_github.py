@@ -14,7 +14,23 @@ import pytest
 import respx
 
 from app.agents.skills.installer import install_from_github
+from app.agents.skills.models import SkillSource
 from app.agents.skills.utils import GITHUB_API_BASE
+
+_RICH_SKILL_MD_CONTENT = """\
+---
+name: my-skill
+description: A test skill installed from GitHub
+target: executor
+license: MIT
+compatibility: needs python 3.12
+allowed-tools: read write
+metadata:
+  author: ada
+---
+
+Do the thing when asked.
+"""
 
 _SKILL_MD_CONTENT = """\
 ---
@@ -85,6 +101,38 @@ class TestInstallFromGithubSuccess:
         assert "---" not in write_call.args[3]
         assert "Do the thing when asked." in write_call.args[3]
 
+    async def test_every_parsed_field_reaches_the_registry_record(self, storage_seams):
+        """The Mongo record is built entirely from the parsed SKILL.md and the
+        derived paths — a field dropped here is a field the skill never has."""
+        _, install_mock = storage_seams
+        with respx.mock:
+            respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill").mock(
+                return_value=httpx.Response(
+                    200,
+                    json=[_contents_entry("SKILL.md", "file", "skills/my-skill/SKILL.md")],
+                )
+            )
+            respx.get(
+                "https://raw.githubusercontent.com/org/repo/main/skills/my-skill/SKILL.md"
+            ).mock(return_value=httpx.Response(200, text=_RICH_SKILL_MD_CONTENT))
+
+            await install_from_github(user_id="u1", repo_url="org/repo/skills/my-skill")
+
+        kwargs = install_mock.await_args.kwargs
+        assert kwargs["user_id"] == "u1"
+        assert kwargs["name"] == "my-skill"
+        assert kwargs["description"] == "A test skill installed from GitHub"
+        assert kwargs["target"] == "executor"
+        assert kwargs["vfs_path"] == "/skills/u1/my-skill"
+        assert kwargs["source"] is SkillSource.GITHUB
+        assert kwargs["source_url"] == "https://github.com/org/repo/tree/main/skills/my-skill"
+        assert kwargs["body_content"] == "Do the thing when asked."
+        assert kwargs["files"] == ["SKILL.md"]
+        assert kwargs["license"] == "MIT"
+        assert kwargs["compatibility"] == "needs python 3.12"
+        assert kwargs["metadata"] == {"author": "ada"}
+        assert kwargs["allowed_tools"] == ["read", "write"]
+
     async def test_nested_subdirectory_files_are_downloaded_and_listed(self, storage_seams):
         """A skill with a resources/ subfolder must recurse into it and record
         every downloaded file, not just the top-level SKILL.md."""
@@ -125,8 +173,8 @@ class TestInstallFromGithubSuccess:
         files = install_mock.await_args.kwargs["files"]
         assert "SKILL.md" in files
         assert "resources/reference.md" in files
-        written_paths = [c.args[2] for c in write_mock.await_args_list]
-        assert "resources/reference.md" in written_paths
+        written = {c.args[2]: c.args[3] for c in write_mock.await_args_list}
+        assert written["resources/reference.md"] == "# Reference\nExtra detail."
 
 
 class TestInstallFromGithubValidation:

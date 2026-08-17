@@ -148,9 +148,7 @@ class TestCastTypeArgument:
 
         assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
 
-    def test_a_comma_typed_cast_with_a_changed_value_is_still_reported(
-        self, workdir: Path
-    ) -> None:
+    def test_a_comma_typed_cast_with_a_changed_value_is_still_reported(self, workdir: Path) -> None:
         # Balancing must stop at the argument boundary: a VALUE change after a
         # comma-holding type is a real change.
         _write_mutants(

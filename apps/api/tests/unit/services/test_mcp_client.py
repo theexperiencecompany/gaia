@@ -1144,6 +1144,19 @@ class TestMCPTokenStoreOAuthState:
             is_valid, _ = await store.verify_oauth_state(INTEGRATION_ID, "any")
             assert is_valid is False
 
+    async def test_verify_state_stored_as_json_string(self):
+        """A stored value that is a raw JSON string (not a dict) is parsed via json.loads."""
+        store = MCPTokenStore(user_id=USER_ID)
+        stored_json = json.dumps({"state": "state_xyz", "code_verifier": "verifier_distinct"})
+        with patch(
+            "app.services.mcp.mcp_token_store.get_and_delete_cache",
+            new_callable=AsyncMock,
+            return_value=stored_json,
+        ):
+            is_valid, code_verifier = await store.verify_oauth_state(INTEGRATION_ID, "state_xyz")
+        assert is_valid is True
+        assert code_verifier == "verifier_distinct"
+
     async def test_verify_legacy_string_state(self):
         store = MCPTokenStore(user_id=USER_ID)
         with patch(

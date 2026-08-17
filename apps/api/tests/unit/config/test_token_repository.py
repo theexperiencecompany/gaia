@@ -281,7 +281,10 @@ class TestStoreToken:
         assert result["access_token"] == "new_access"
         assert result["refresh_token"] == "new_refresh"
         assert result["token_type"] == "Bearer"
+        assert result["scope"] == "openid email"
         session.add.assert_called_once()
+        stored = session.add.call_args[0][0]
+        assert stored.scopes == "openid email"
         session.commit.assert_awaited_once()
 
     async def test_store_updates_existing_token(self) -> None:
@@ -303,8 +306,11 @@ class TestStoreToken:
 
         assert isinstance(result, OAuth2Token)
         assert result["access_token"] == "updated_access"
+        assert result["scope"] == "openid email profile"
         # execute called twice: once for SELECT, once for UPDATE
         assert session.execute.await_count == 2
+        update_stmt = session.execute.await_args_list[1].args[0]
+        assert update_stmt.compile().params["scopes"] == "openid email profile"
         session.commit.assert_awaited_once()
 
     async def test_store_preserves_existing_refresh_token_when_missing(self) -> None:
@@ -381,6 +387,7 @@ class TestGetToken:
         assert isinstance(result, OAuth2Token)
         assert result["access_token"] == "access_123"
         assert result["refresh_token"] == "refresh_456"
+        assert result["scope"] == "openid email"
 
     async def test_get_token_not_found_raises_401(self) -> None:
         session = _mock_db_session(scalar_one_or_none_return=None)

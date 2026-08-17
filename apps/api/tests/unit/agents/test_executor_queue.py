@@ -132,6 +132,27 @@ class TestPopNextQueuedRun:
         assert event["stream_id"] == run.stream_id
         assert event["task_id"] == "task-7"
 
+    async def test_item_without_a_user_id_starts_an_unattributed_stream(self) -> None:
+        """No user id in the queued configurable: the stream carries "" and
+        nothing is broadcast, because there is nobody to broadcast to."""
+        with (
+            patch.object(eq, "redis_cache") as redis,
+            patch.object(eq, "StreamManager") as sm,
+            patch.object(eq, "websocket_manager") as ws,
+        ):
+            redis.client.lpop = AsyncMock(
+                return_value=_queue_item(configurable={"email": "u1@x.com"})
+            )
+            redis.client.set = AsyncMock()
+            sm.start_stream = AsyncMock()
+            ws.broadcast_to_user = AsyncMock()
+
+            prepared = await pop_next_queued_run("conv-1")
+
+        assert prepared is not None
+        assert sm.start_stream.await_args.kwargs["user_id"] == ""
+        ws.broadcast_to_user.assert_not_awaited()
+
     async def test_workflow_context_survives_the_queue(self) -> None:
         item = _queue_item(
             configurable={
