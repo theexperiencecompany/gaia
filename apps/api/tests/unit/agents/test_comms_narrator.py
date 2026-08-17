@@ -63,6 +63,32 @@ class TestNarrateExecutorResult:
         config = silent.await_args.args[2]
         assert config["configurable"]["conversation_id"] == CONVERSATION_ID
 
+    async def test_the_users_onboarding_data_reaches_build_agent_config(self) -> None:
+        """``build_agent_config`` runs for real here (unmocked) — proves the
+        (preferences, writing_style) pair extracted from ``user["onboarding"]``
+        actually lands on the configurable this narration run carries, not just
+        that the extraction call doesn't crash."""
+        user_with_onboarding = {
+            **USER,
+            "onboarding": {
+                "preferences": {"profession": "engineer"},
+                "writing_style": {"summary": "terse"},
+            },
+        }
+        with (
+            _patch_graph(_fake_comms_graph()),
+            patch(
+                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", {}))
+            ) as silent,
+        ):
+            await narrate_executor_result(
+                RESULT_TEXT, "result", CONVERSATION_ID, user_with_onboarding
+            )
+
+        config = silent.await_args.args[2]
+        assert config["configurable"]["user_preferences"] == {"profession": "engineer"}
+        assert config["configurable"]["writing_style"] == {"summary": "terse"}
+
     async def test_error_type_uses_the_error_marker(self) -> None:
         with (
             _patch_graph(_fake_comms_graph()),
