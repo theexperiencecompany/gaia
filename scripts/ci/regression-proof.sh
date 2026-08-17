@@ -38,16 +38,27 @@ LOG="$(mktemp)"
 # requires the template to spell out at least three X's and errors otherwise —
 # which is exactly how this failed on the Linux runner while working locally.
 JUNIT="$(mktemp)"
-trap 'git worktree remove --force "$WT" 2>/dev/null || true; rm -rf "$WT" "$LOG" "$JUNIT"' EXIT
+BASE_COPIES="$(mktemp -d)"
+trap 'git worktree remove --force "$WT" 2>/dev/null || true; rm -rf "$WT" "$LOG" "$JUNIT" "$BASE_COPIES"' EXIT
 
 git worktree add --detach "$WT" "$BASE" >/dev/null
 
 # Only files that actually claim to pin a bug are worth running here, and
 # importing just those keeps an unrelated file's collection error from
 # aborting the run.
+#
+# Anchored on the DECORATOR, not on any mention of it. A plain substring match
+# enlists a file that merely names the marker in prose: it picked up
+# tests/unit/agents/test_llm_helper_output_cap.py, which holds no marked test
+# but whose docstring spells the decorator out while explaining this very lane
+# — the file documenting the trap tripped it. The lane then ran that file on
+# base, where the symbol under test does not exist, and reported an ERROR.
+# This stays a pre-filter; the authoritative selection is pytest's own
+# `-m regression` below, which reports "nothing collected" (exit 5) if the
+# grep were ever over-eager again.
 regression_files=()
 for f in "${changed[@]}"; do
-  if grep -q 'pytest\.mark\.regression' "$REPO_ROOT/$f"; then
+  if grep -qE '^[[:space:]]*@pytest\.mark\.regression' "$REPO_ROOT/$f"; then
     regression_files+=("$f")
   fi
 done
@@ -71,10 +82,10 @@ cp -f "$API_DIR/pytest.ini" "$WT/apps/api/pytest.ini"
 
 # Run from the worktree ROOT so the repo-root-relative test paths resolve
 # (pytest is given paths like apps/api/tests/...). PYTHONPATH points at the
-# BASE app code. Use the MAIN checkout's venv (the setup-python-test-env
-# action synced deps there; a fresh worktree has no venv and `uv run --no-sync`
-# would spawn a bare environment with no pytest — which must NOT read as
-# "tests fail on base"). Fail loud if that python is missing.
+# BASE app and shared code. Use the MAIN checkout's venv (the
+# setup-python-test-env action synced deps there; a fresh worktree has no venv
+# and `uv run --no-sync` would spawn a bare environment with no pytest — which
+# must NOT read as "tests fail on base"). Fail loud if that python is missing.
 for candidate in "$REPO_ROOT/.venv/bin/python" "$API_DIR/.venv/bin/python"; do
   if [ -x "$candidate" ]; then
     VENV_PY="$candidate"
@@ -94,17 +105,50 @@ fi
 # Those show up as errors rather than failures, and this lane counts an error as
 # "did not pass" — so the gate was reporting proof it had not actually obtained.
 cd "$WT/apps/api"
-export ENV=development PYTHONPATH="$WT/apps/api"
-# Paths are repo-root-relative from git diff; make them relative to apps/api.
-rel_regression_files=()
+# $WT/libs comes first so `shared.*` resolves to the BASE worktree too, not just
+# `app.*`. The venv is the MAIN checkout's, and gaia-shared is installed there as
+# an editable pointing at the main checkout's libs/ — so without this entry a PR
+# that fixes something in libs/shared/ runs BASE app code against its OWN fixed
+# shared code, the pinned bug is absent, and the test passes on base for a reason
+# that has nothing to do with the fix being unnecessary. This wins because the
+# editable install appends its finder to sys.meta_path, i.e. after the sys.path
+# PathFinder that PYTHONPATH feeds.
+export ENV=development PYTHONPATH="$WT/libs:$WT/apps/api"
+# Scoped to the `@pytest.mark.regression` tests this PR ADDS, not every marked
+# test in a touched file. "All changed tests must fail on base" is only true of
+# bug-fix PRs; a gap-fill or restructure branch legitimately adds tests for
+# behavior the base already gets right, and blanket-checking them is what kept
+# this lane informational. And a marked test whose fix already merged is green
+# on base by design — re-proving it here would fail every later PR that edits
+# the same file. A test claiming to pin a bug opts in by marker, and then must
+# prove it once: in the PR that introduces it. Paths are repo-root-relative from
+# git diff; node ids are made relative to apps/api for pytest.
+select_args=()
 for f in "${regression_files[@]}"; do
-  rel_regression_files+=("${f#apps/api/}")
+  base_copy="$(mktemp -p "$BASE_COPIES")"
+  if git -C "$REPO_ROOT" show "$BASE:$f" > "$base_copy" 2>/dev/null; then
+    select_args+=("$API_DIR/${f#apps/api/}" "$base_copy")
+  else
+    select_args+=("$API_DIR/${f#apps/api/}" "$base_copy.missing")
+    rm -f "$base_copy"
+  fi
 done
-# Scoped to `@pytest.mark.regression`, not every changed test. "All changed
-# tests must fail on base" is only true of bug-fix PRs; a gap-fill or
-# restructure branch legitimately adds tests for behavior the base already
-# gets right, and blanket-checking them is what kept this lane informational.
-# A test claiming to pin a bug opts in by marker, and then must prove it.
+SELECTED="$(mktemp -p "$BASE_COPIES")"
+if ! "$VENV_PY" "$SCRIPT_DIR/regression_proof_select.py" "${select_args[@]}" > "$SELECTED"; then
+  echo "ERROR: regression-proof — could not attribute this diff's regression marks to tests (see above)."
+  exit 1
+fi
+new_regression_ids=()
+while IFS= read -r node_id; do
+  [ -n "$node_id" ] && new_regression_ids+=("${node_id#"$API_DIR"/}")
+done < "$SELECTED"
+if [ "${#new_regression_ids[@]}" -eq 0 ]; then
+  echo "regression-proof: no NEW @pytest.mark.regression tests in this diff — nothing to prove"
+  exit 0
+fi
+echo "regression-proof: ${#new_regression_ids[@]} new regression test(s) to prove on base:"
+printf '  %s
+' "${new_regression_ids[@]}"
 set +e
 # -W ignore::DeprecationWarning: this lane runs the BRANCH's pytest.ini
 # (filterwarnings included) against the BASE's product code. Base code
@@ -113,7 +157,7 @@ set +e
 # measures base deprecations, not whether the pinned bug exists. The
 # warnings policy's job is policing the branch's code — that happens in the
 # main test-python run. This lane's job is assertion-level proof on base.
-"$VENV_PY" -m pytest "${rel_regression_files[@]}" -m regression -q --tb=no --no-header \
+"$VENV_PY" -m pytest "${new_regression_ids[@]}" -m regression -q --tb=no --no-header \
   -p no:cacheprovider -o addopts="--strict-markers" -W ignore::DeprecationWarning \
   --junitxml="$JUNIT" > "$LOG" 2>&1
 rc=$?

@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "email management AI",
   ],
   whyPeopleLook:
-    "Shortwave brings AI to Gmail with smart summaries, pinned threads, and fast search. It is a thoughtfully designed product but it remains an email client — its AI intelligence does not extend to your calendar, tasks, or other tools. Users who want their AI to manage more than just their inbox find that Shortwave is a stepping stone rather than a destination.",
+    "Shortwave brings AI to Gmail with smart summaries, pinned threads, and fast search. It is a thoughtfully designed product but it remains an email client. Its AI intelligence does not extend to your calendar, tasks, or other tools. Users who want their AI to manage more than just their inbox find that Shortwave is a stepping stone rather than a destination.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Email summarization and thread digests",
@@ -45,12 +45,12 @@ export const entry: AlternativeData = {
   gaiaAdvantages: [
     "Proactive cross-tool intelligence beyond what an email client can provide",
     "Tasks and calendar integrated natively alongside email",
-    "Works from any interface — web, desktop, mobile, CLI, and bots",
+    "Works from any interface: web, desktop, mobile, CLI, and bots",
     "Open-source and self-hostable for privacy-conscious users",
     "Free tier available without interface lock-in",
   ],
   migrationSteps: [
-    "Connect GAIA directly to Gmail via OAuth — use Gmail's native interface alongside",
+    "Connect GAIA directly to Gmail via OAuth, use Gmail's native interface alongside",
     "Configure GAIA's inbox monitoring for proactive email surfacing",
     "Enable email-to-task creation for action-requiring threads",
     "Link Google Calendar for complete inbox-to-calendar automation",
@@ -64,12 +64,12 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA summarize emails like Shortwave?",
       answer:
-        "Yes. GAIA can summarize email threads, generate daily inbox digests, and provide contextual summaries of important conversations — with the added ability to create tasks and calendar events from those summaries.",
+        "Yes. GAIA can summarize email threads, generate daily inbox digests, and provide contextual summaries of important conversations, with the added ability to create tasks and calendar events from those summaries.",
     },
     {
       question: "Is GAIA better for productivity than Shortwave?",
       answer:
-        "For end-to-end productivity — email plus calendar plus tasks plus automation — GAIA is more capable. Shortwave is better if you primarily want a polished email client with smart features.",
+        "For end-to-end productivity (email plus calendar plus tasks plus automation), GAIA is more capable. Shortwave is better if you primarily want a polished email client with smart features.",
     },
     {
       question: "Does GAIA have IMAP/SMTP support like an email client?",

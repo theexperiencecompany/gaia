@@ -51,6 +51,7 @@ const SUPPORTS_EDIT: Record<PlatformName, boolean> = {
   slack: true,
   telegram: true,
   whatsapp: false,
+  imessage: false,
 };
 
 /**

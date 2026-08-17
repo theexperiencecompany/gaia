@@ -7,22 +7,18 @@ shatter the implicit-cache prefix, so older ones are dropped. The legacy
 for back-compat with older persisted state.
 """
 
-from typing import Any, ClassVar, cast
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import (
     AIMessage,
-    AnyMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
 
-from app.agents.core.nodes.manage_system_prompts import (
-    _is_dynamic_context,
-    manage_system_prompts_node,
-)
+from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.override.langgraph_bigtool.utils import State
 
 
@@ -40,26 +36,6 @@ def _config() -> RunnableConfig:
 
 def _store() -> MagicMock:
     return MagicMock()
-
-
-class TestIsDynamicContext:
-    def test_dynamic_context_marker(self) -> None:
-        msg = SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True})
-        assert _is_dynamic_context(msg) is True
-
-    def test_legacy_memory_message_marker_treated_as_dynamic(self) -> None:
-        msg = SystemMessage(content="ctx", additional_kwargs={"memory_message": True})
-        assert _is_dynamic_context(msg) is True
-
-    def test_marker_in_model_extra(self) -> None:
-        class FakeMsg:
-            additional_kwargs: ClassVar[dict[str, Any]] = {}
-            model_extra: ClassVar[dict[str, Any]] = {"dynamic_context": True}
-
-        assert _is_dynamic_context(cast(AnyMessage, FakeMsg())) is True
-
-    def test_plain_system_message(self) -> None:
-        assert _is_dynamic_context(SystemMessage(content="plain")) is False
 
 
 class TestManageSystemPrompts:
@@ -148,7 +124,7 @@ class TestManageSystemPrompts:
         state = cast(State, {"messages": msgs})
         with (
             patch(
-                "app.agents.core.nodes.manage_system_prompts._is_dynamic_context",
+                "app.agents.core.nodes.manage_system_prompts.slot_of",
                 side_effect=RuntimeError("unexpected failure"),
             ),
             patch("app.agents.core.nodes.manage_system_prompts.log") as mock_log,

@@ -1,25 +1,22 @@
 #!/usr/bin/env python3
 """
-Comprehensive seed script for explore/discover workflows - FIXED VERSION with real Composio tools.
+Seed script for explore/discover workflows - outcome-first curated set.
 
-This script seeds the workflows collection with curated workflows for the
-Explore & Discover section, organized by categories:
-- Productivity
-- Engineering
-- Founders
-- Marketing
-- Knowledge Workers
-- Students
+The explore use cases behind /use-cases, curated to poke.com's bar:
+- Titles are everyday outcomes ("Assignment Tracker", not "Email to Task Converter")
+- Descriptions are one-line promises ("Never be surprised by a due date again")
+- Prompts are the real runnable instructions (shown on the detail page)
+- 1-3 steps, at most one external integration per flow; 14 of 28 need none
+- Run counts are curated display values (DISPLAY_RUN_COUNTS), not measured usage
 
-Each workflow uses REAL tools from:
-- Composio integrations (GMAIL, GITHUB, NOTION, SLACK, LINEAR, etc.)
-- Core GAIA tools (create_todo, add_memory, web_search_tool, etc.)
+Categories: Study, Email, Meetings, Home admin, Content, Focus & planning,
+Dev, Health & habits. 8 workflows are flagged `featured` (impact-first).
 
 Usage:
-  cd backend
-  python scripts/seed_explore_workflows.py
-  python scripts/seed_explore_workflows.py --dry-run
-  python scripts/seed_explore_workflows.py --force --clear-existing
+  cd apps/api
+  uv run python scripts/seed_explore_workflows.py              # seed (interactive)
+  uv run python scripts/seed_explore_workflows.py --dry-run    # report only
+  uv run python scripts/seed_explore_workflows.py --force --prune
 """
 
 import argparse
@@ -27,7 +24,6 @@ import asyncio
 from datetime import UTC, datetime
 import json
 from pathlib import Path
-import random
 import sys
 from typing import Any
 import uuid
@@ -42,24 +38,11 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
+from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
+from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
 from shared.py.utils.slugify import slugify
 
 workflows_collection = get_async_collection("workflows")
-
-
-def generate_run_count() -> tuple[int, int]:
-    """Generate realistic run counts with some variance."""
-    base_runs = random.choice(  # nosec B311
-        [
-            random.randint(800, 1200),  # nosec B311
-            random.randint(1300, 1800),  # nosec B311
-            random.randint(2100, 2800),  # nosec B311
-            random.randint(3200, 4200),  # nosec B311
-        ]
-    )
-    success_rate = random.uniform(0.88, 0.97)  # nosec B311
-    successful_runs = int(base_runs * success_rate)
-    return base_runs, successful_runs
 
 
 def create_step(
@@ -77,1125 +60,236 @@ def create_step(
     }
 
 
-def get_productivity_workflows() -> list[dict[str, Any]]:
-    """Productivity workflows for inbox management and task organization."""
-    workflows = []
-
-    total, successful = generate_run_count()
-    workflows.append(
+def get_study_workflows() -> list[dict[str, Any]]:
+    return [
         {
-            "title": "Smart Inbox Triage & Auto-Reply",
-            "description": "Automatically classify incoming emails, draft intelligent replies for routine messages, schedule follow-ups for important items, and flag high-priority emails.",
-            "categories": ["Productivity", "featured"],
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "gmail_new_message",
-                "trigger_data": {"trigger_name": "gmail_new_message"},
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch and Classify Recent Emails",
-                    "gmail",
-                    "Retrieve unread emails from the last 24 hours",
-                ),
-                create_step(
-                    2,
-                    "Draft Smart Replies",
-                    "gmail",
-                    "Generate context-aware draft replies for routine emails",
-                ),
-                create_step(
-                    3,
-                    "Create Follow-up Tasks",
-                    "todos",
-                    "Create prioritized todo items for emails requiring action",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Daily Task Overview",
-            "description": "Get a comprehensive view of all tasks due today. Shows pending todos, upcoming deadlines, and prioritized action items.",
-            "categories": ["Productivity"],
+            "title": "Assignment Tracker",
+            "description": "Never be surprised by a due date again.",
+            "icon": "Task01Icon",
+            "icon_color": "#ad8dfe",
+            "prompt": (
+                "Every Sunday at 6pm, review my calendar and todos, find "
+                "assignments due in the next two weeks, and create a todo for "
+                "each one with its due date."
+            ),
+            "categories": ["Study"],
             "trigger_config": {
                 "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 7 * * 1-5",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Today's Tasks",
-                    "todos",
-                    "Retrieve all todos and tasks due today or overdue",
-                ),
-                create_step(
-                    2,
-                    "Check Calendar Events",
-                    "googlecalendar",
-                    "Review today's calendar events",
-                ),
-                create_step(
-                    3,
-                    "Create Daily Focus Note",
-                    "memory",
-                    "Generate a structured daily focus document with top priorities",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Email Subscription Cleanup",
-            "description": "Find and archive promotional and subscription emails cluttering your inbox. Identifies newsletters and marketing emails from the past day.",
-            "categories": ["Productivity"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Search Subscription Emails",
-                    "gmail",
-                    "Find subscription and promotional emails",
-                ),
-                create_step(
-                    2,
-                    "Archive Low Priority Emails",
-                    "gmail",
-                    "Move subscription emails to archive",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Email to Task Converter",
-            "description": "Transform important unread emails into actionable tasks. Extracts key information from emails and creates structured todos.",
-            "categories": ["Productivity", "featured"],
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "gmail_new_message",
-                "trigger_data": {"trigger_name": "gmail_new_message"},
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Identify Actionable Emails",
-                    "gmail",
-                    "Find unread emails that contain action items",
-                ),
-                create_step(
-                    2,
-                    "Create Structured Tasks",
-                    "todos",
-                    "Generate detailed todos from email content",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Weekly Email Summary Digest",
-            "description": "Summarize long email threads and extract action items automatically. Cuts through lengthy conversations to surface key decisions.",
-            "categories": ["Productivity"],
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "gmail_new_message",
-                "trigger_data": {"trigger_name": "gmail_new_message"},
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Long Email Threads",
-                    "gmail",
-                    "Retrieve email threads with multiple messages",
-                ),
-                create_step(
-                    2,
-                    "Extract Action Items",
-                    "todos",
-                    "Parse email content and create todos for action items",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    return workflows
-
-
-def get_engineering_workflows() -> list[dict[str, Any]]:
-    """Engineering workflows for developers and technical teams."""
-    workflows = []
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Weekly Standup from GitHub Activity",
-            "description": "Automatically generate standup notes from your GitHub commits, PRs, and issues from the past week. Creates a formatted summary ready for team meetings.",
-            "categories": ["Engineering", "featured"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 9 * * 1",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch GitHub Commits",
-                    "github",
-                    "Retrieve all commits from the past week",
-                ),
-                create_step(
-                    2,
-                    "Get PR Activity",
-                    "github",
-                    "Fetch pull requests you've created or reviewed this week",
-                ),
-                create_step(
-                    3,
-                    "Create Notion Summary",
-                    "notion",
-                    "Generate a formatted weekly standup document with commits and PRs",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "PR Review Queue Summary",
-            "description": "Get a prioritized list of pull requests waiting for your review with AI-generated summaries of changes, risk assessment, and estimated review time.",
-            "categories": ["Engineering"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Pending PR Reviews",
-                    "github",
-                    "Get all open PRs where you're requested as a reviewer",
-                ),
-                create_step(
-                    2,
-                    "Analyze PR Files",
-                    "github",
-                    "Review changed files in each PR to assess complexity",
-                ),
-                create_step(
-                    3,
-                    "Create Review Priority List",
-                    "todos",
-                    "Generate prioritized review tasks based on PR size and age",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Bug Report to GitHub Issue",
-            "description": "Convert bug reports from Slack or email into properly formatted GitHub issues with reproduction steps and appropriate labels.",
-            "categories": ["Engineering", "featured"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Search Bug Reports",
-                    "slack",
-                    "Find recent bug reports in designated Slack channels",
-                ),
-                create_step(
-                    2,
-                    "Create GitHub Issue",
-                    "github",
-                    "Generate a structured GitHub issue with bug details",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Daily Engineering Digest",
-            "description": "Morning briefing with all open issues, pending PRs, and Linear tickets. Skip checking multiple dashboards and get a single prioritized view.",
-            "categories": ["Engineering"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 8 * * 1-5",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Open Issues",
-                    "github",
-                    "Get all open issues assigned to you",
-                ),
-                create_step(
-                    2,
-                    "Get Linear Tickets",
-                    "linear",
-                    "Retrieve your assigned Linear tickets and their status",
-                ),
-                create_step(
-                    3,
-                    "Create Morning Brief",
-                    "memory",
-                    "Generate a prioritized engineering task list for the day",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Spec to Linear Tasks",
-            "description": "Parse a requirements document and automatically create Linear tickets with acceptance criteria, story points, and proper categorization.",
-            "categories": ["Engineering"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Spec Document",
-                    "notion",
-                    "Retrieve the requirements document from Notion",
-                ),
-                create_step(
-                    2,
-                    "Create Linear Issues",
-                    "linear",
-                    "Generate Linear tickets from extracted requirements",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Hourly Review Queue Alert",
-            "description": "Check all open pull requests hourly, rank by importance and age, and send a prioritized list to Slack to prevent review bottlenecks.",
-            "categories": ["Engineering"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 * * * 1-5",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Check Open PRs",
-                    "github",
-                    "Get all open PRs sorted by age",
-                ),
-                create_step(
-                    2,
-                    "Post to Slack",
-                    "slack",
-                    "Send prioritized PR list to the engineering channel",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "PR Summary to Slack",
-            "description": "When a new PR is opened, analyze the changes, summarize what was modified, and post to Slack so reviewers can quickly understand the context.",
-            "categories": ["Engineering"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Get PR Details",
-                    "github",
-                    "Fetch the pull request details including description",
-                ),
-                create_step(
-                    2,
-                    "Analyze Changes",
-                    "github",
-                    "Review the files changed to identify scope",
-                ),
-                create_step(
-                    3,
-                    "Post Summary to Slack",
-                    "slack",
-                    "Send formatted PR summary to the team channel",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    return workflows
-
-
-def get_founders_workflows() -> list[dict[str, Any]]:
-    """Founder and executive workflows."""
-    workflows = []
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Morning Priority Map",
-            "description": "Start each day focused with an AI-generated priority list. Reviews your calendar, pending tasks, and deadlines to surface the top 3 things that matter most today.",
-            "categories": ["Founders", "featured"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 6 * * 1-5",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Review Today's Calendar",
-                    "googlecalendar",
-                    "Fetch all meetings and events scheduled for today",
-                ),
-                create_step(
-                    2,
-                    "Check Pending Tasks",
-                    "todos",
-                    "Get all todos with upcoming deadlines",
-                ),
-                create_step(
-                    3,
-                    "Generate Priority Map",
-                    "memory",
-                    "Create a focused daily priority document with top 3 objectives",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Weekly Team Sync Document",
-            "description": "Automatically collect project updates from Slack, GitHub, and Linear to generate a comprehensive weekly team brief. Standardizes communication without manual effort.",
-            "categories": ["Founders"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 9 * * 1",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Gather Slack Updates",
-                    "slack",
-                    "Search for project updates from the past week",
-                ),
-                create_step(
-                    2,
-                    "Fetch GitHub Activity",
-                    "github",
-                    "Get engineering progress from recent commits",
-                ),
-                create_step(
-                    3,
-                    "Create Team Brief",
-                    "notion",
-                    "Generate a formatted weekly team update document",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Founder Social Content Assistant",
-            "description": "Weekly analysis of your social media performance plus AI-drafted LinkedIn content. Keeps founders active on social without the manual effort.",
-            "categories": ["Founders"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 10 * * 1",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Research Industry Trends",
-                    "search",
-                    "Find trending topics and discussions in your industry",
-                ),
-                create_step(
-                    2,
-                    "Draft LinkedIn Post",
-                    "memory",
-                    "Generate thought leadership content drafts based on trends",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Applicant Pipeline Automation",
-            "description": "When new applicants are identified, automatically add them to tracking, send evaluation tasks, and set up the hiring workflow.",
-            "categories": ["Founders"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Add to Airtable",
-                    "airtable",
-                    "Create a new applicant record in the hiring pipeline",
-                ),
-                create_step(
-                    2,
-                    "Send Evaluation Email",
-                    "gmail",
-                    "Send the candidate an evaluation task email",
-                ),
-                create_step(
-                    3,
-                    "Create Interview Todo",
-                    "todos",
-                    "Set up follow-up task to review candidate submission",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Investor CRM Update",
-            "description": "Parse investor emails and automatically log communication details to Airtable. Replaces manual investor spreadsheet maintenance.",
-            "categories": ["Founders"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Search Investor Emails",
-                    "gmail",
-                    "Find recent emails from investors",
-                ),
-                create_step(
-                    2,
-                    "Update Airtable CRM",
-                    "airtable",
-                    "Log investor communications and update relationship status",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Customer Voice Daily Summary",
-            "description": "Scan customer feedback from email and social channels to compile a sentiment summary with emerging themes.",
-            "categories": ["Founders", "featured"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 8 * * 1-5",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Customer Emails",
-                    "gmail",
-                    "Search for customer feedback and support-related emails",
-                ),
-                create_step(
-                    2,
-                    "Search Social Mentions",
-                    "search",
-                    "Find social media mentions about your product",
-                ),
-                create_step(
-                    3,
-                    "Generate Sentiment Report",
-                    "memory",
-                    "Create a customer voice summary with sentiment analysis",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    return workflows
-
-
-def get_marketing_workflows() -> list[dict[str, Any]]:
-    """Marketing team workflows."""
-    workflows = []
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Weekly SEO Content Ideas",
-            "description": "Generate SEO-optimized content ideas based on trending topics and keyword research. Creates actionable content briefs with target keywords and outlines.",
-            "categories": ["Marketing", "featured"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 9 * * 1",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Research Trending Topics",
-                    "search",
-                    "Find trending topics and high-volume keywords in your industry",
-                ),
-                create_step(
-                    2,
-                    "Create Content Tasks",
-                    "todos",
-                    "Generate content brief tasks with keyword targets and outlines",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Content Calendar Builder",
-            "description": "Review social analytics and upcoming events to generate a content schedule. Aligns content with company events and removes guesswork from planning.",
-            "categories": ["Marketing"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 10 * * 1",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Check Upcoming Events",
-                    "googlecalendar",
-                    "Review company events, launches, and marketing milestones",
-                ),
-                create_step(
-                    2,
-                    "Research Content Opportunities",
-                    "search",
-                    "Find upcoming industry events and trending topics",
-                ),
-                create_step(
-                    3,
-                    "Create Content Calendar",
-                    "notion",
-                    "Generate a monthly content calendar with topics and publish dates",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Weekly Campaign Performance Pack",
-            "description": "Load marketing metrics from connected tools and generate a summary performance report. Replaces manual analytics compilation.",
-            "categories": ["Marketing"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 9 * * 5",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Campaign Data",
-                    "airtable",
-                    "Retrieve campaign metrics and performance data from tracking base",
-                ),
-                create_step(
-                    2,
-                    "Generate Performance Report",
-                    "documents",
-                    "Create a formatted weekly campaign report with KPIs and insights",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Competitor Brief Builder",
-            "description": "Monitor competitor activity across social and web channels to produce a competitive intelligence brief. Skip manual scanning and get actionable insights.",
-            "categories": ["Marketing"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Search Competitor Activity",
-                    "search",
-                    "Find recent competitor announcements, content, and social activity",
-                ),
-                create_step(
-                    2,
-                    "Create Competitor Brief",
-                    "memory",
-                    "Generate a competitive intelligence summary with key findings",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Social Mention Response Manager",
-            "description": "Classify social comments and mentions, draft appropriate responses, and log interactions for tracking. Minimizes reaction time to social engagement.",
-            "categories": ["Marketing"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Search Social Mentions",
-                    "search",
-                    "Find recent social media mentions and comments about your brand",
-                ),
-                create_step(
-                    2,
-                    "Log to Airtable",
-                    "airtable",
-                    "Record social mentions with sentiment and response status",
-                ),
-                create_step(
-                    3,
-                    "Create Response Tasks",
-                    "todos",
-                    "Generate response tasks for mentions requiring engagement",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Influencer Discovery & Outreach",
-            "description": "Scan for relevant influencers, update your outreach database, and draft personalized outreach emails. Trims hours of research time.",
-            "categories": ["Marketing"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 10 * * 3",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Research Influencers",
-                    "search",
-                    "Find relevant influencers and content creators in your industry",
-                ),
-                create_step(
-                    2,
-                    "Update Outreach Database",
-                    "airtable",
-                    "Add discovered influencers to outreach tracking",
-                ),
-                create_step(
-                    3,
-                    "Draft Outreach Emails",
-                    "gmail",
-                    "Create personalized outreach email drafts",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    return workflows
-
-
-def get_knowledge_worker_workflows() -> list[dict[str, Any]]:
-    """Knowledge worker workflows for productivity and documentation."""
-    workflows = []
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Weekly Work Report Generator",
-            "description": "Compile completed tasks from your todo lists into a formatted weekly report. Eliminates the common chore of writing weekly updates manually.",
-            "categories": ["Knowledge Workers", "featured"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 16 * * 5",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Completed Tasks",
-                    "todos",
-                    "Get all tasks completed this week across your todo lists",
-                ),
-                create_step(
-                    2,
-                    "Generate Weekly Report",
-                    "memory",
-                    "Create a formatted weekly accomplishment report with categorized achievements",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Research Link Summarizer",
-            "description": "Provide links or topics and get organized summaries saved to Notion. Reduces time spent on initial research and note-taking.",
-            "categories": ["Knowledge Workers"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Web Content",
-                    "search",
-                    "Retrieve and parse content from provided URLs or search results",
-                ),
-                create_step(
-                    2,
-                    "Save to Notion",
-                    "notion",
-                    "Create an organized Notion page with summarized research and key findings",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Daily Meeting Context Builder",
-            "description": "Before your first meeting each day, gather relevant emails, documents, and notes for each calendar event. Stop scrambling for context before calls.",
-            "categories": ["Knowledge Workers", "featured"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 7 * * 1-5",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Get Today's Meetings",
-                    "googlecalendar",
-                    "Fetch all meetings scheduled for today with attendee information",
-                ),
-                create_step(
-                    2,
-                    "Search Related Emails",
-                    "gmail",
-                    "Find recent emails from meeting attendees and about meeting topics",
-                ),
-                create_step(
-                    3,
-                    "Create Meeting Prep Notes",
-                    "memory",
-                    "Generate meeting context documents with relevant background and talking points",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Email Thread to Structured Tasks",
-            "description": "When long emails arrive, automatically summarize them and extract action items into your todo list. Cuts time reading lengthy threads.",
-            "categories": ["Knowledge Workers"],
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "gmail_new_message",
-                "trigger_data": {"trigger_name": "gmail_new_message"},
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Email Thread",
-                    "gmail",
-                    "Get the complete email thread for context",
-                ),
-                create_step(
-                    2,
-                    "Create Action Tasks",
-                    "todos",
-                    "Extract and create todos for action items found in the email thread",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Idea to Notion Page",
-            "description": "Transform rough ideas and notes into structured Notion pages with proper formatting, sections, and action items.",
-            "categories": ["Knowledge Workers"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Create Structured Page",
-                    "notion",
-                    "Convert raw ideas into a well-organized Notion page with sections and formatting",
-                ),
-                create_step(
-                    2,
-                    "Create Follow-up Tasks",
-                    "todos",
-                    "Generate action items based on the documented idea",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Document Outline Builder",
-            "description": "Research a topic and produce a clean, structured outline ready for writing. Helps you start creating content instantly.",
-            "categories": ["Knowledge Workers"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Research Topic",
-                    "search",
-                    "Gather comprehensive information about the document topic",
-                ),
-                create_step(
-                    2,
-                    "Generate Outline",
-                    "documents",
-                    "Create a detailed document outline with sections, key points, and structure",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    return workflows
-
-
-def get_student_workflows() -> list[dict[str, Any]]:
-    """Student productivity workflows."""
-    workflows = []
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Daily Study Plan Generator",
-            "description": "Check your classes, deadlines, and tasks to create a personalized study plan for the day. Stop wasting time figuring out what to study next.",
-            "categories": ["Students", "featured"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 7 * * 1-5",
-                "timezone": "UTC",
-            },
-            "steps": [
-                create_step(
-                    1,
-                    "Check Today's Classes",
-                    "googlecalendar",
-                    "Get all classes and study sessions scheduled for today",
-                ),
-                create_step(
-                    2,
-                    "Review Pending Tasks",
-                    "todos",
-                    "Fetch assignments and study tasks with upcoming deadlines",
-                ),
-                create_step(
-                    3,
-                    "Create Study Plan",
-                    "memory",
-                    "Generate a prioritized daily study plan with time allocations",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Lecture Notes Summarizer",
-            "description": "Summarize lecture notes from Notion, extract key concepts and potential exam topics. Cuts revision time significantly.",
-            "categories": ["Students"],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "steps": [
-                create_step(
-                    1,
-                    "Fetch Lecture Notes",
-                    "notion",
-                    "Retrieve lecture notes from your Notion study workspace",
-                ),
-                create_step(
-                    2,
-                    "Create Study Summary",
-                    "memory",
-                    "Generate a condensed summary with key concepts, definitions, and exam-relevant points",
-                ),
-            ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
-        {
-            "title": "Weekly Assignment Tracker",
-            "description": "Review your calendar and build a comprehensive list of upcoming assignments and deadlines. Never be surprised by a due date again.",
-            "categories": ["Students"],
-            "trigger_config": {
-                "type": "schedule",
-                "enabled": True,
                 "cron_expression": "0 18 * * 0",
                 "timezone": "UTC",
             },
             "steps": [
                 create_step(
                     1,
-                    "Check Assignment Deadlines",
+                    "Find upcoming assignments",
                     "googlecalendar",
-                    "Get all assignment deadlines for the next two weeks",
+                    "Check calendar and todos for assignments due in the next two weeks.",
                 ),
                 create_step(
                     2,
-                    "Create Assignment Tasks",
+                    "Create todos with due dates",
                     "todos",
-                    "Generate prioritized tasks for each assignment with milestone dates",
+                    "Create a todo for each assignment with its due date attached.",
                 ),
             ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
+        },
         {
-            "title": "Academic Paper Summarizer",
-            "description": "Summarize academic papers and research articles, then save organized notes to Notion for easy reference during writing.",
-            "categories": ["Students"],
-            "trigger_config": {"type": "manual", "enabled": True},
+            "title": "Study Plan Today",
+            "description": "Every morning, a plan for what to study today.",
+            "icon": "StudyLampIcon",
+            "icon_color": "#e175d9",
+            "prompt": (
+                "Every weekday at 7am, look at my class schedule and upcoming "
+                "exams, then give me a short study plan for today: what to "
+                "review, for how long, and in what order."
+            ),
+            "categories": ["Study"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 7 * * 1-5",
+                "timezone": "UTC",
+            },
             "steps": [
                 create_step(
                     1,
-                    "Fetch Paper Content",
-                    "search",
-                    "Retrieve and parse the academic paper or research article",
+                    "Check class schedule and deadlines",
+                    "googlecalendar",
+                    "Pull today's classes and any exam or assignment deadlines.",
                 ),
                 create_step(
                     2,
-                    "Save Research Notes",
-                    "notion",
-                    "Create a structured research note with summary, key findings, and citations",
+                    "Build today's study plan",
+                    "gaia",
+                    "Turn the schedule into a short, ordered study plan.",
                 ),
             ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
+        },
         {
-            "title": "Professor Email Task Extractor",
-            "description": "When emails from professors arrive, automatically extract deadlines, requirements, and create corresponding tasks.",
-            "categories": ["Students"],
+            "title": "Lecture Notes Summarizer",
+            "description": "Share your notes, get a clean summary you can actually revise from.",
+            "icon": "Book01Icon",
+            "icon_color": "#ad8dfe",
+            "prompt": (
+                "Whenever I share lecture notes, summarize them into clear, "
+                "structured notes: key concepts, definitions, and anything "
+                "likely to be on an exam."
+            ),
+            "categories": ["Study"],
+            "trigger_config": {
+                "type": "manual",
+                "enabled": True,
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Summarize the notes",
+                    "documents",
+                    "Turn raw lecture notes into structured summary notes.",
+                ),
+            ],
+        },
+        {
+            "title": "Exam Revision Pack",
+            "description": "A few weeks before each exam, get a condensed revision guide from your notes.",
+            "icon": "GraduationScrollIcon",
+            "icon_color": "#e175d9",
+            "prompt": (
+                "Every Sunday at 10am, check for exams in the next three weeks. "
+                "For each one, gather my notes on the subject and build a "
+                "revision pack: condensed summaries, key formulas or dates, "
+                "and practice questions."
+            ),
+            "categories": ["Study", "featured"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 10 * * 0",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Gather notes on the subject",
+                    "notion",
+                    "Collect notes and documents related to the exam subject.",
+                ),
+                create_step(
+                    2,
+                    "Build the revision pack",
+                    "documents",
+                    "Compile summaries, key facts, and practice questions.",
+                ),
+            ],
+        },
+    ]
+
+
+def get_email_workflows() -> list[dict[str, Any]]:
+    return [
+        {
+            "title": "Follow-up Reminders",
+            "description": "Never let an important email go unanswered.",
+            "icon": "MailSend01Icon",
+            "icon_color": "#ff726b",
+            "prompt": (
+                "Every weekday at 4pm, check my sent mail for messages that "
+                "haven't been replied to in three or more days. For each one, "
+                "show me a short list with a draft follow-up I can send with "
+                "one tap."
+            ),
+            "categories": ["Email", "featured"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 16 * * 1-5",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Find unreplied sent emails",
+                    "gmail",
+                    "Find sent emails older than three days with no reply.",
+                ),
+                create_step(
+                    2,
+                    "Draft follow-ups",
+                    "gmail",
+                    "Write a short, natural follow-up draft for each one.",
+                ),
+            ],
+        },
+        {
+            "title": "Monthly Subscription Audit",
+            "description": "See every subscription in one report, so nothing bills you silently.",
+            "icon": "ReceiptDollarIcon",
+            "icon_color": "#5fbf49",
+            "prompt": (
+                "On the 1st of every month, scan my inbox for subscription and "
+                "recurring-charge emails, then give me a report: service, "
+                "amount, renewal date, and flag anything I haven't used in a "
+                "while."
+            ),
+            "categories": ["Email", "featured"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 9 1 * *",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Scan inbox for subscriptions",
+                    "gmail",
+                    "Find subscription and recurring-charge emails.",
+                ),
+                create_step(
+                    2,
+                    "Compile the report",
+                    "gaia",
+                    "Build the service, amount, and renewal date report.",
+                ),
+            ],
+        },
+        {
+            "title": "Email to Task",
+            "description": "Flag an email and it becomes a to-do.",
+            "icon": "Mail01Icon",
+            "icon_color": "#f68001",
+            "prompt": (
+                "Whenever I ask, turn the emails I point to into todos: a "
+                "clear title, what needs doing, and the deadline if one is "
+                "mentioned. Add them to my task list."
+            ),
+            "categories": ["Email"],
+            "trigger_config": {
+                "type": "manual",
+                "enabled": True,
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Read the email",
+                    "gmail",
+                    "Read the flagged email and extract the ask.",
+                ),
+                create_step(
+                    2,
+                    "Create the todo",
+                    "todos",
+                    "Create a todo with a clear title and deadline if stated.",
+                ),
+            ],
+        },
+        {
+            "title": "Add Deadlines to Calendar",
+            "description": "Deadline emails become calendar events, so nothing slips.",
+            "icon": "CalendarAdd01Icon",
+            "icon_color": "#f68001",
+            "prompt": (
+                "Whenever a new email mentions a deadline, such as a bill due "
+                "date, an assignment, or a sign-up cutoff, create a calendar "
+                "event for it the day before so I get a heads-up in time."
+            ),
+            "categories": ["Email"],
             "trigger_config": {
                 "type": "integration",
                 "enabled": True,
@@ -1205,104 +299,771 @@ def get_student_workflows() -> list[dict[str, Any]]:
             "steps": [
                 create_step(
                     1,
-                    "Process Professor Email",
-                    "gmail",
-                    "Retrieve the email content to extract requirements and deadlines",
-                ),
-                create_step(
-                    2,
-                    "Create Class Tasks",
-                    "todos",
-                    "Generate tasks from extracted deadlines and requirements with due dates",
-                ),
-                create_step(
-                    3,
-                    "Add to Calendar",
+                    "Create the calendar event",
                     "googlecalendar",
-                    "Schedule study blocks and deadline reminders",
+                    "Create a calendar event the day before the deadline.",
                 ),
             ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
+        },
+    ]
 
-    total, successful = generate_run_count()
-    workflows.append(
+
+def get_meetings_workflows() -> list[dict[str, Any]]:
+    return [
         {
-            "title": "Group Project Board Setup",
-            "description": "Create a complete project management board with task structure for group assignments. Get organized from day one.",
-            "categories": ["Students"],
-            "trigger_config": {"type": "manual", "enabled": True},
+            "title": "Meeting Prep",
+            "description": "Before every meeting, a one-page briefing on who you're meeting and what's on the agenda.",
+            "icon": "Calendar01Icon",
+            "icon_color": "#09b7dc",
+            "prompt": (
+                "When a meeting is about to start, gather the calendar invite "
+                "and any notes I've saved, then summarize: who I'm meeting, "
+                "what they care about, and three things to cover."
+            ),
+            "categories": ["Meetings"],
+            "trigger_config": {
+                "type": "integration",
+                "enabled": True,
+                "trigger_name": "calendar_event_starting_soon",
+                "trigger_data": {
+                    "trigger_name": "calendar_event_starting_soon",
+                    "calendar_ids": ["primary"],
+                    "minutes_before_start": 10,
+                },
+            },
             "steps": [
                 create_step(
                     1,
-                    "Create Trello Board",
-                    "trello",
-                    "Set up a new Trello board with standard project columns",
+                    "Gather context",
+                    "memory",
+                    "Pull the invite details and any saved notes about the attendees.",
                 ),
                 create_step(
                     2,
-                    "Add Project Tasks",
-                    "trello",
-                    "Create task cards for project milestones and deliverables",
+                    "Build the briefing",
+                    "documents",
+                    "Write the one-page briefing with three talking points.",
                 ),
             ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
-
-    total, successful = generate_run_count()
-    workflows.append(
+        },
         {
-            "title": "Weekly Study Review & Practice",
-            "description": "Compile all notes from the week into a revision pack with generated practice questions. Makes exam prep systematic and effective.",
-            "categories": ["Students", "featured"],
+            "title": "Meeting Notes Summary",
+            "description": "Share your meeting notes, get a clean summary with decisions and action items.",
+            "icon": "Note01Icon",
+            "icon_color": "#72a3fe",
+            "prompt": (
+                "Whenever I share meeting notes, summarize them into key "
+                "decisions, open questions, and action items, each with an "
+                "owner if mentioned. Add the action items to my todos."
+            ),
+            "categories": ["Meetings"],
+            "trigger_config": {
+                "type": "manual",
+                "enabled": True,
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Summarize the notes",
+                    "documents",
+                    "Extract decisions, open questions, and action items.",
+                ),
+                create_step(
+                    2,
+                    "Add action items",
+                    "todos",
+                    "Create a todo for each action item.",
+                ),
+            ],
+        },
+        {
+            "title": "Post-meeting Follow-ups",
+            "description": "After every meeting, follow-ups drafted, so nothing falls through.",
+            "icon": "MailSend01Icon",
+            "icon_color": "#09b7dc",
+            "prompt": (
+                "Every weekday at 5pm, check my calendar for meetings that "
+                "ended today, review any notes I saved, and draft a follow-up "
+                "email for each one: the decisions made and each person's "
+                "action items, ready for me to send."
+            ),
+            "categories": ["Meetings"],
             "trigger_config": {
                 "type": "schedule",
-                "enabled": True,
-                "cron_expression": "0 15 * * 5",
+                "cron_expression": "0 17 * * 1-5",
                 "timezone": "UTC",
             },
             "steps": [
                 create_step(
                     1,
-                    "Fetch Week's Notes",
-                    "notion",
-                    "Search for all lecture notes and study materials from this week",
+                    "Find today's meetings",
+                    "googlecalendar",
+                    "Check calendar for meetings that ended today.",
                 ),
                 create_step(
                     2,
-                    "Generate Revision Pack",
+                    "Draft follow-up emails",
+                    "gmail",
+                    "Draft a follow-up with decisions and action items.",
+                ),
+            ],
+        },
+    ]
+
+
+def get_home_admin_workflows() -> list[dict[str, Any]]:
+    return [
+        {
+            "title": "Morning Briefing",
+            "description": "Wake up to your day and your priorities, all in one message.",
+            "icon": "Sun01Icon",
+            "icon_color": "#f68001",
+            "prompt": (
+                "Every morning at 7:30am, gather today's calendar events and "
+                "anything important from memory, then send me a short "
+                "briefing: what's today, what needs attention, and what I "
+                "should know."
+            ),
+            "categories": ["Home admin", "featured"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "30 7 * * *",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Gather today's events and urgent items",
+                    "googlecalendar",
+                    "Collect today's calendar events and anything time-sensitive.",
+                ),
+                create_step(
+                    2,
+                    "Compile the briefing",
+                    "gaia",
+                    "Write the short morning briefing from the gathered items.",
+                ),
+            ],
+        },
+        {
+            "title": "Rent Reminder",
+            "description": "A heads-up three days before month-end, so rent is never late.",
+            "icon": "Money01Icon",
+            "icon_color": "#5fbf49",
+            "prompt": (
+                "On the 25th of every month, remind me that rent is due at "
+                "month-end. Keep it short and friendly."
+            ),
+            "categories": ["Home admin"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 9 25 * *",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Send the reminder",
+                    "reminders",
+                    "Send a short, friendly rent reminder.",
+                ),
+            ],
+        },
+        {
+            "title": "Weekly Meal Plan",
+            "description": "Every Sunday, plan your week's dinners and get a matching grocery list.",
+            "icon": "Restaurant01Icon",
+            "icon_color": "#eebe0c",
+            "prompt": (
+                "Every Sunday at 10am, plan dinners for the week: quick, "
+                "varied, and mindful of what I already have. Then give me a "
+                "grocery list grouped by aisle."
+            ),
+            "categories": ["Home admin"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 10 * * 0",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Plan the week's dinners",
+                    "gaia",
+                    "Plan seven dinners using what I already have.",
+                ),
+                create_step(
+                    2,
+                    "Build the grocery list",
+                    "search",
+                    "Turn the plan into a grocery list grouped by aisle.",
+                ),
+            ],
+        },
+        {
+            "title": "Birthday Gift Ideas",
+            "description": "Never miss a birthday, and always have a gift idea ready.",
+            "icon": "GiftIcon",
+            "icon_color": "#fb6ca0",
+            "prompt": (
+                "Every Sunday at 11am, scan my calendar and contacts for "
+                "birthdays in the next two weeks, and for each one suggest a "
+                "gift idea based on what I know about the person."
+            ),
+            "categories": ["Home admin"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 11 * * 0",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Find upcoming birthdays",
+                    "googlecalendar",
+                    "Find birthdays in the next two weeks.",
+                ),
+                create_step(
+                    2,
+                    "Suggest gifts",
+                    "search",
+                    "Suggest a gift idea for each person.",
+                ),
+            ],
+        },
+    ]
+
+
+def get_content_workflows() -> list[dict[str, Any]]:
+    return [
+        {
+            "title": "Weekly Content Ideas",
+            "description": "Every Monday, fresh content topics for your niche.",
+            "icon": "Idea01Icon",
+            "icon_color": "#ad8dfe",
+            "prompt": (
+                "Every Monday at 9am, look at trending topics in my niche and "
+                "my past content, then give me five fresh content ideas with a "
+                "one-line angle for each."
+            ),
+            "categories": ["Content"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 9 * * 1",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Find trending topics",
+                    "search",
+                    "Find what's trending in my niche.",
+                ),
+                create_step(
+                    2,
+                    "Generate five ideas",
+                    "gaia",
+                    "Give five fresh ideas with a one-line angle each.",
+                ),
+            ],
+        },
+        {
+            "title": "Social Post Drafts",
+            "description": "Turn your ideas into posts you can publish as-is.",
+            "icon": "Megaphone01Icon",
+            "icon_color": "#e175d9",
+            "prompt": (
+                "Whenever I ask, turn my content ideas into ready-to-post "
+                "drafts: a hook, the body, and a call to action, sized for "
+                "the platform I name."
+            ),
+            "categories": ["Content"],
+            "trigger_config": {
+                "type": "manual",
+                "enabled": True,
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Write the post draft",
                     "documents",
-                    "Create a comprehensive revision document with summaries and practice questions",
+                    "Turn the idea into a ready-to-post draft.",
+                ),
+            ],
+        },
+        {
+            "title": "Research to Outline",
+            "description": "Give GAIA a topic, get a structured outline ready for writing.",
+            "icon": "ClipboardIcon",
+            "icon_color": "#72a3fe",
+            "prompt": (
+                "Whenever I give you a topic or links, research it and produce "
+                "a clean, structured outline with the key points and sources, "
+                "ready for me to write from."
+            ),
+            "categories": ["Content"],
+            "trigger_config": {
+                "type": "manual",
+                "enabled": True,
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Research the topic",
+                    "search",
+                    "Research the topic or provided links.",
+                ),
+                create_step(
+                    2,
+                    "Build the outline",
+                    "documents",
+                    "Produce a structured outline with key points and sources.",
+                ),
+            ],
+        },
+        {
+            "title": "Competitor Watch",
+            "description": "A monthly rundown of what your competitors shipped and said, so you're never blindsided.",
+            "icon": "Telescope01Icon",
+            "icon_color": "#09b7dc",
+            "prompt": (
+                "On the 1st of every month, research my competitors' recent "
+                "launches, pricing changes, and posts, then give me a short "
+                "rundown of what changed and what it means for me."
+            ),
+            "categories": ["Content", "featured"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 9 1 * *",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Research competitors",
+                    "search",
+                    "Find competitors' recent launches, pricing, and posts.",
+                ),
+                create_step(
+                    2,
+                    "Write the rundown",
+                    "gaia",
+                    "Summarize what changed and what it means.",
+                ),
+            ],
+        },
+    ]
+
+
+def get_focus_workflows() -> list[dict[str, Any]]:
+    return [
+        {
+            "title": "Morning Priority Map",
+            "description": "Every morning, your top three tasks for today, in the order to do them.",
+            "icon": "Target01Icon",
+            "icon_color": "#f68001",
+            "prompt": (
+                "Every morning at 8:30am, review my open tasks and deadlines, "
+                "pick the three that matter most today, and tell me what to do "
+                "first."
+            ),
+            "categories": ["Focus & planning"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "30 8 * * *",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Review open tasks",
+                    "todos",
+                    "Pull open tasks and deadlines.",
+                ),
+                create_step(
+                    2,
+                    "Pick the top three",
+                    "gaia",
+                    "Pick the three that matter most and order them.",
+                ),
+            ],
+        },
+        {
+            "title": "Focus Time",
+            "description": "Every morning, block out uninterrupted time for your most important work.",
+            "icon": "Timer01Icon",
+            "icon_color": "#72a3fe",
+            "prompt": (
+                "Every weekday at 9am, look at my calendar and open tasks, "
+                "then block 90 minutes of focus time today for the most "
+                "important thing I need to do."
+            ),
+            "categories": ["Focus & planning"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 9 * * 1-5",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Find the most important task",
+                    "todos",
+                    "Pick the highest-priority task for today.",
+                ),
+                create_step(
+                    2,
+                    "Block focus time",
+                    "googlecalendar",
+                    "Create a 90-minute calendar block for it.",
+                ),
+            ],
+        },
+        {
+            "title": "Nightly Review",
+            "description": "Every evening, review what got done and set up tomorrow's list.",
+            "icon": "Moon01Icon",
+            "icon_color": "#ad8dfe",
+            "prompt": (
+                "Every evening at 9pm, review what I completed today, note "
+                "anything left undone, and prepare tomorrow's task list."
+            ),
+            "categories": ["Focus & planning"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 21 * * *",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Review today",
+                    "todos",
+                    "Check what was completed and what remains.",
+                ),
+                create_step(
+                    2,
+                    "Prepare tomorrow",
+                    "todos",
+                    "Set up tomorrow's task list.",
+                ),
+            ],
+        },
+    ]
+
+
+def get_dev_workflows() -> list[dict[str, Any]]:
+    return [
+        {
+            "title": "Weekly Work Summary",
+            "description": "Every Friday, a summary of what you shipped this week, ready to paste into your team chat.",
+            "icon": "GitCommitIcon",
+            "icon_color": "#72a3fe",
+            "prompt": (
+                "Every Friday at 4pm, review my commits, merged pull requests, "
+                "and completed tasks this week, and write a short summary I "
+                "can paste into my team chat."
+            ),
+            "categories": ["Dev", "featured"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 16 * * 5",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Gather this week's work",
+                    "github",
+                    "Collect commits and merged pull requests.",
+                ),
+                create_step(
+                    2,
+                    "Check completed tasks",
+                    "todos",
+                    "Collect tasks completed this week.",
                 ),
                 create_step(
                     3,
-                    "Schedule Review Session",
-                    "googlecalendar",
-                    "Block time for reviewing the revision pack",
+                    "Write the summary",
+                    "documents",
+                    "Write a short summary ready to paste into team chat.",
                 ),
             ],
-            "total_executions": total,
-            "successful_executions": successful,
-        }
-    )
+        },
+        {
+            "title": "Code Review Reminders",
+            "description": "When a teammate asks you to review code, GAIA keeps reminding you until it's done.",
+            "icon": "GitBranchIcon",
+            "icon_color": "#ad8dfe",
+            "prompt": (
+                "Whenever I'm assigned a pull request, add it to my reminders "
+                "and keep surfacing it until I've reviewed it."
+            ),
+            "categories": ["Dev"],
+            "trigger_config": {
+                "type": "integration",
+                "enabled": True,
+                "trigger_name": "github_pr_event",
+                "trigger_data": {"trigger_name": "github_pr_event", "repos": []},
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Track assigned PRs",
+                    "github",
+                    "Track pull requests assigned to me.",
+                ),
+                create_step(
+                    2,
+                    "Keep surfacing the reminder",
+                    "reminders",
+                    "Add it to reminders and keep resurfacing until reviewed.",
+                ),
+            ],
+        },
+        {
+            "title": "Save the Bug",
+            "description": "Describe a bug once; GAIA files it as a tracked issue, so nothing gets lost.",
+            "icon": "Bug01Icon",
+            "icon_color": "#ff726b",
+            "prompt": (
+                "Whenever I describe a bug, file it as a GitHub issue with a "
+                "clear title, repro steps, and any error text I gave you."
+            ),
+            "categories": ["Dev"],
+            "trigger_config": {
+                "type": "manual",
+                "enabled": True,
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "File the issue",
+                    "github",
+                    "Create a GitHub issue with title and repro steps.",
+                ),
+            ],
+        },
+    ]
 
-    return workflows
+
+def get_health_workflows() -> list[dict[str, Any]]:
+    return [
+        {
+            "title": "Drink Water Reminder",
+            "description": "Gentle hydration nudges all day, no apps needed.",
+            "icon": "RainIcon",
+            "icon_color": "#09b7dc",
+            "prompt": (
+                "Every two hours between 8am and 10pm, send me a friendly "
+                "reminder to drink water. Keep it short and vary the wording "
+                "so it doesn't get annoying."
+            ),
+            "categories": ["Health & habits"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 8-22/2 * * *",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Send the reminder",
+                    "reminders",
+                    "Send a short, friendly hydration nudge.",
+                ),
+            ],
+        },
+        {
+            "title": "Weekly Productivity Check-in",
+            "description": "Review your wins every Friday, so the week doesn't blur past.",
+            "icon": "ChampionIcon",
+            "icon_color": "#eebe0c",
+            "prompt": (
+                "Every Friday at 5pm, review what I completed this week, "
+                "celebrate the wins, and ask me one question: what's the one "
+                "thing I want to carry into next week?"
+            ),
+            "categories": ["Health & habits"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "0 17 * * 5",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Review the week",
+                    "todos",
+                    "Collect what was completed this week.",
+                ),
+                create_step(
+                    2,
+                    "Write the check-in",
+                    "gaia",
+                    "Summarize the wins and ask the carry-over question.",
+                ),
+            ],
+        },
+        {
+            "title": "Nightly Gratitude",
+            "description": "A 9pm moment to note what went well today.",
+            "icon": "SmileIcon",
+            "icon_color": "#fb6ca0",
+            "prompt": (
+                "Every evening at 9:30pm, ask me what went well today and save "
+                "it to memory, so I can look back on the good days."
+            ),
+            "categories": ["Health & habits"],
+            "trigger_config": {
+                "type": "schedule",
+                "cron_expression": "30 21 * * *",
+                "timezone": "UTC",
+            },
+            "steps": [
+                create_step(
+                    1,
+                    "Save the note",
+                    "memory",
+                    "Ask what went well and save it to memory.",
+                ),
+            ],
+        },
+    ]
+
+
+# Presentation for the built-in cards. Everything else about them — title,
+# description, prompt, steps, trigger — is read from the system-workflow
+# definitions so the explore card can never drift from what gets provisioned.
+SYSTEM_WORKFLOW_PRESENTATION: dict[str, dict[str, Any]] = {
+    "gmail:email_intelligence": {
+        "icon": "InboxIcon",
+        "icon_color": "#ff726b",
+        "categories": ["Email", "featured"],
+    },
+    "gmail:smart_reply_drafts": {
+        "icon": "MailSend01Icon",
+        "icon_color": "#f68001",
+        "categories": ["Email"],
+    },
+    "calendar:meeting_prep": {
+        "icon": "UserGroupIcon",
+        "icon_color": "#09b7dc",
+        "categories": ["Meetings", "featured"],
+    },
+    "calendar:meeting_reminder": {
+        "icon": "AlarmClockIcon",
+        "icon_color": "#72a3fe",
+        "categories": ["Meetings"],
+    },
+}
+
+
+def get_system_workflows() -> list[dict[str, Any]]:
+    """The auto-provisioned workflows, as explore cards.
+
+    Same definitions the provisioner uses, so the card shows exactly what a user
+    gets when they connect the integration. The ``system_workflow_key`` rides
+    along to the client, which is what stops "add this" from creating a second
+    copy of one the user already has.
+    """
+    configs: list[dict[str, Any]] = []
+    for key, factory in [*GMAIL_SYSTEM_WORKFLOWS, *CALENDAR_SYSTEM_WORKFLOWS]:
+        request = factory()
+        presentation = SYSTEM_WORKFLOW_PRESENTATION[key]
+        configs.append(
+            {
+                "title": request.title,
+                "description": request.description,
+                "prompt": request.prompt,
+                "trigger_config": request.trigger_config.model_dump(mode="json"),
+                "steps": [
+                    {
+                        "id": step.id,
+                        "title": step.title,
+                        "category": step.category,
+                        "description": step.description,
+                    }
+                    for step in (request.steps or [])
+                ],
+                "is_system_workflow": True,
+                "source_integration": request.source_integration,
+                "system_workflow_key": key,
+                **presentation,
+            }
+        )
+    return configs
+
+
+# Display run counts for the seeded library. Deterministic so re-seeding is
+# stable, and scaled by how broadly each flow applies rather than uniformly.
+DISPLAY_RUN_COUNTS: dict[str, int] = {
+    # Built-ins — provisioned for everyone who connects the integration.
+    "Inbox Triage": 8420,
+    "Auto-Draft Replies": 6180,
+    "Meeting Briefing": 5740,
+    "Meeting Reminder": 7310,
+    # Broad daily habits.
+    "Morning Briefing": 7860,
+    "Morning Priority Map": 5230,
+    "Nightly Review": 4180,
+    "Focus Time": 3940,
+    "Drink Water Reminder": 6420,
+    "Nightly Gratitude": 2780,
+    "Weekly Productivity Check-in": 3120,
+    # Email.
+    "Follow-up Reminders": 5610,
+    "Monthly Subscription Audit": 4470,
+    "Add Deadlines to Calendar": 3860,
+    "Email to Task": 3290,
+    # Meetings.
+    "Post-meeting Follow-ups": 3410,
+    "Meeting Notes Summary": 2960,
+    "Meeting Prep": 2540,
+    # Home admin.
+    "Rent Reminder": 4020,
+    "Weekly Meal Plan": 2870,
+    "Birthday Gift Ideas": 2210,
+    # Content.
+    "Weekly Content Ideas": 2640,
+    "Social Post Drafts": 2380,
+    "Research to Outline": 3070,
+    "Competitor Watch": 1980,
+    # Dev.
+    "Weekly Work Summary": 2450,
+    "Code Review Reminders": 2130,
+    "Save the Bug": 1740,
+    # Study.
+    "Assignment Tracker": 3580,
+    "Study Plan Today": 2690,
+    "Lecture Notes Summarizer": 2340,
+    "Exam Revision Pack": 1860,
+}
+
+
+def apply_display_run_counts(configs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Stamp each config with its display run count (successes at ~96%)."""
+    for config in configs:
+        total = DISPLAY_RUN_COUNTS.get(config["title"], 0)
+        config["total_executions"] = total
+        config["successful_executions"] = round(total * 0.96)
+    return configs
 
 
 def get_all_workflows() -> list[dict[str, Any]]:
     """Combine all workflow categories."""
     all_workflows = []
-    all_workflows.extend(get_productivity_workflows())
-    all_workflows.extend(get_engineering_workflows())
-    all_workflows.extend(get_founders_workflows())
-    all_workflows.extend(get_marketing_workflows())
-    all_workflows.extend(get_knowledge_worker_workflows())
-    all_workflows.extend(get_student_workflows())
-    return all_workflows
+    all_workflows.extend(get_system_workflows())
+    all_workflows.extend(get_study_workflows())
+    all_workflows.extend(get_email_workflows())
+    all_workflows.extend(get_meetings_workflows())
+    all_workflows.extend(get_home_admin_workflows())
+    all_workflows.extend(get_content_workflows())
+    all_workflows.extend(get_focus_workflows())
+    all_workflows.extend(get_dev_workflows())
+    all_workflows.extend(get_health_workflows())
+    return apply_display_run_counts(all_workflows)
 
 
 def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, Any]:
@@ -1315,6 +1076,8 @@ def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, 
         enabled=config["trigger_config"].get("enabled", True),
         cron_expression=config["trigger_config"].get("cron_expression"),
         timezone=config["trigger_config"].get("timezone", "UTC"),
+        trigger_name=config["trigger_config"].get("trigger_name"),
+        trigger_data=config["trigger_config"].get("trigger_data"),
     )
 
     if trigger_config.type == TriggerType.SCHEDULE and trigger_config.cron_expression:
@@ -1333,6 +1096,15 @@ def create_workflow_document(config: dict[str, Any], user_id: str) -> dict[str, 
         "user_id": user_id,
         "title": config["title"],
         "description": config["description"],
+        "icon": config["icon"],
+        "icon_color": config["icon_color"],
+        # Set only on the built-in cards (see get_system_workflows). Carrying the
+        # key through the explore payload is what lets "add this" resolve to the
+        # workflow the user was already provisioned instead of duplicating it.
+        "is_system_workflow": config.get("is_system_workflow", False),
+        "source_integration": config.get("source_integration"),
+        "system_workflow_key": config.get("system_workflow_key"),
+        "prompt": config.get("prompt", ""),
         "slug": slugify(config["title"]),
         "steps": steps,
         "trigger_config": trigger_config.model_dump(mode="json"),
@@ -1360,20 +1132,23 @@ async def create_backup() -> str:
         async for workflow in workflows_collection.find({"is_explore": True}):
             workflow["_id"] = str(workflow["_id"])
             existing.append(workflow)
+    except Exception:
+        print("⚠️  Could not read existing explore workflows, skipping backup")
+        return ""
 
-        # to_thread: this is an async def, so a bare open() would block the loop
-        # while the backup is serialised (ASYNC230).
-        await asyncio.to_thread(
-            Path(backup_file).write_text,
-            json.dumps(existing, indent=2, default=str),
-            encoding="utf-8",
-        )
+    if not existing:
+        print("ℹ️  No existing explore workflows to back up")
+        return ""
 
-        print(f"✅ Backup created: {backup_file}")
-        return backup_file
-    except Exception as e:
-        print(f"❌ Error creating backup: {e}")
-        raise
+    await asyncio.to_thread(_write_backup_file, backup_file, existing)
+    print(f"💾 Backup created: {backup_file}")
+    return backup_file
+
+
+def _write_backup_file(backup_file: str, existing: list[dict[str, Any]]) -> None:
+    """Write the backup JSON synchronously (called from async context)."""
+    with open(backup_file, "w") as f:
+        json.dump(existing, f, indent=2, default=str)
 
 
 async def seed_explore_workflows(
@@ -1381,12 +1156,13 @@ async def seed_explore_workflows(
     force: bool = False,
     backup: bool = True,
     user_id: str = "system",
-    clear_existing: bool = False,
+    prune: bool = False,
 ) -> None:
     """Seed the workflows collection with explore workflows."""
     print("🚀 Starting explore workflows seeding...")
 
     workflow_configs = get_all_workflows()
+    curated_slugs = {slugify(config["title"]) for config in workflow_configs}
 
     existing_explore = await workflows_collection.count_documents({"is_explore": True})
     existing_total = await workflows_collection.count_documents({})
@@ -1412,60 +1188,45 @@ async def seed_explore_workflows(
         print(f"   {i:2d}. [{trigger:8s}] {config['title']}")
         print(f"       Categories: {cats}")
 
+    if prune:
+        old_docs = await workflows_collection.find(
+            {"is_explore": True, "slug": {"$nin": list(curated_slugs)}}
+        ).to_list(length=None)
+        print(f"\n🗑️  Prune would remove {len(old_docs)} explore workflows not in the curated set:")
+        for doc in old_docs:
+            print(f"   • {doc.get('slug', '?')}")
+
     if dry_run:
         print("\n🔍 DRY RUN - No changes applied.")
         return
 
     if not force:
-        response = input(f"\n❓ Seed {len(workflow_configs)} explore workflows? (y/N): ")
+        response = await asyncio.to_thread(
+            input, f"\n❓ Seed {len(workflow_configs)} explore workflows? (y/N): "
+        )
         if response.lower() != "y":
             print("❌ Cancelled.")
             return
 
-    if existing_explore > 0 and not clear_existing and not force:
-        clear_response = input(
-            f"\n❓ Found {existing_explore} existing explore workflows. Clear and re-seed them? (y/N): "
-        )
-        if clear_response.lower() == "y":
-            clear_existing = True
-
     if backup:
         await create_backup()
 
-    if clear_existing:
-        result = await workflows_collection.delete_many({"is_explore": True})
-        print(f"🗑️  Cleared {result.deleted_count} existing explore workflows")
-
-    print("\n🔄 Seeding workflows...")
-
-    to_insert = []
-    skipped = 0
+    print("\n🔄 Upserting workflows (delete + insert by slug)...")
 
     for config in workflow_configs:
-        existing = await workflows_collection.find_one(
-            {
-                "title": config["title"],
-                "is_explore": True,
-            }
+        slug = slugify(config["title"])
+        await workflows_collection.delete_many({"slug": slug, "is_explore": True})
+
+    docs = [create_workflow_document(config, user_id) for config in workflow_configs]
+    if docs:
+        result = await workflows_collection.insert_many(docs)
+        print(f"🎉 Seeded {len(result.inserted_ids)} workflows")
+
+    if prune:
+        deleted = await workflows_collection.delete_many(
+            {"is_explore": True, "slug": {"$nin": list(curated_slugs)}}
         )
-
-        if existing and not clear_existing:
-            print(f"⚠️  Skipping '{config['title']}' - already exists")
-            skipped += 1
-            continue
-
-        doc = create_workflow_document(config, user_id)
-        to_insert.append(doc)
-        print(f"✅ Prepared: {config['title']}")
-
-    if to_insert:
-        result = await workflows_collection.insert_many(to_insert)
-        print(f"\n🎉 Successfully seeded {len(result.inserted_ids)} workflows!")
-    else:
-        print("\n⚠️  No new workflows to add")
-
-    if skipped > 0:
-        print(f"⏭️  Skipped {skipped} existing workflows")
+        print(f"🗑️  Pruned {deleted.deleted_count} non-curated explore workflows")
 
     final_explore = await workflows_collection.count_documents({"is_explore": True})
     final_total = await workflows_collection.count_documents({})
@@ -1478,7 +1239,7 @@ async def seed_explore_workflows(
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Seed explore/discover workflows for GAIA (FIXED VERSION with real tools)",
+        description="Seed explore/discover workflows for GAIA (outcome-first curated set)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -1498,9 +1259,9 @@ def parse_arguments():
         help="Skip creating backup",
     )
     parser.add_argument(
-        "--clear-existing",
+        "--prune",
         action="store_true",
-        help="Clear existing explore workflows before seeding",
+        help="Delete explore workflows not in the curated set",
     )
     parser.add_argument(
         "--user-id",
@@ -1522,7 +1283,7 @@ async def main():
             force=args.force,
             backup=not args.no_backup,
             user_id=args.user_id,
-            clear_existing=args.clear_existing,
+            prune=args.prune,
         )
     except KeyboardInterrupt:
         print("\n❌ Cancelled by user.")

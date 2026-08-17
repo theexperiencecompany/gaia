@@ -40,7 +40,7 @@ rejects it at commit time.
 ```python
 # Attach context — this is 90% of what you should write:
 log.set(user={"id": user_id}, todo={"operation": "create"})   # merge top-level keys
-log.set_ns("todo", id=result_id)      # merge INTO a namespace (see trap 2)
+log.set_ns("todo", id=result_id)      # merge INTO a namespace by name (see trap 2)
 
 # Record problems — these land on the event AND emit a real-time line:
 log.warning("rate limited", provider="google", retry_in_s=30)  # -> warnings[]
@@ -73,9 +73,12 @@ live).
    only. If a fact matters for debugging later, it belongs in `log.set()`.
    Narrating steps with `log.info` instead of accumulating fields is the #1
    anti-pattern in this codebase (flagged by evlog-map as `info-noise`).
-2. **`log.set(ns={...})` replaces the whole namespace.** A second
-   `log.set(todo={...})` wipes the first one's keys. Follow-up fields go
-   through `log.set_ns("todo", key=value)`.
+2. **Namespaces accumulate — `set` and `set_ns` are the same operation.** A
+   second `log.set(todo={...})` merges into the first rather than replacing it,
+   so every layer of a request adds to one namespace. `log.set_ns("todo",
+   key=value)` is the same write with the namespace named explicitly; prefer it
+   on multi-step paths because it reads as "add to", not "assign". The merge is
+   one level deep and dict-into-dict only — a scalar still overwrites.
 3. **No boundary, no event.** Code outside an HTTP request (ARQ tasks,
    `asyncio.create_task` work, post-OAuth callbacks) has no middleware; without
    a boundary every `log.set()` is silently discarded. ARQ tasks wrap in

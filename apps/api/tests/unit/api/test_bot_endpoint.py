@@ -6,9 +6,18 @@ routing, status codes, response bodies, and auth checks.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import HTTPException
 from httpx import AsyncClient
+import pytest
+
+from app.models.payment_models import PlanType
 
 BOT_BASE = "/api/v1/bot"
+PLAN_PATCH = "app.services.platform_link_service.payment_service.get_cached_plan_type"
+
+
+def _CHAT_BODY(platform: str) -> dict[str, str]:
+    return {"message": "hello", "platform": platform, "platform_user_id": "u1"}
 
 
 def _make_request(bot_api_key_valid: bool = True, **extra_state: object) -> MagicMock:
@@ -410,6 +419,79 @@ class TestBotChatStream:
         response = await client.post(f"{BOT_BASE}/chat-stream", json={})
         assert response.status_code == 422
 
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_chat_stream_unlinked_user_gets_not_authenticated_frame(
+        self, mock_auth: AsyncMock, mock_limit: AsyncMock, client: AsyncClient
+    ):
+        with patch(
+            "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("imessage"))
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert response.text == 'data: {"error": "not_authenticated"}\n\n'
+
+    @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_chat_stream_free_user_on_premium_platform_gets_plan_required_frame(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        mock_tiered: AsyncMock,
+        client: AsyncClient,
+    ):
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE) as mock_plan,
+        ):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("imessage"))
+
+        assert response.status_code == 200
+        assert response.text == 'data: {"error": "plan_required"}\n\n'
+        mock_plan.assert_awaited_once_with("u1")
+        mock_tiered.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("platform", "plan"),
+        [("imessage", PlanType.PRO), ("telegram", PlanType.FREE)],
+    )
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_chat_stream_plan_gate_passes_through_to_quota(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        client: AsyncClient,
+        platform: str,
+        plan: PlanType,
+    ):
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=plan),
+            patch(
+                "app.api.v1.endpoints.bot.enforce_tiered_limit",
+                new_callable=AsyncMock,
+                side_effect=HTTPException(status_code=418),
+            ) as mock_tiered,
+        ):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY(platform))
+
+        assert response.status_code == 418
+        mock_tiered.assert_awaited_once_with("u1", "chat_messages")
+
 
 # ---------------------------------------------------------------------------
 # POST /bot/transcribe — voice / audio transcription for bot adapters
@@ -480,3 +562,125 @@ class TestBotChatRequestFiles:
         req = BotChatRequest(message="hi", platform="whatsapp", platform_user_id="123")
         assert req.file_ids is None
         assert req.file_data is None
+
+
+# ---------------------------------------------------------------------------
+# POST /bot/chat-stream — plan metering
+# ---------------------------------------------------------------------------
+
+
+class TestBotChatStreamMetering:
+    """A bot turn must charge the same plan quota as a web chat turn.
+
+    `bot_chat_stream` resolves its caller from a platform link inside the body,
+    so it can never be metered by `@tiered_rate_limit`. Before it called
+    `enforce_tiered_limit` explicitly it went entirely unmetered: a free user had
+    no message limit through Telegram/Discord/Slack/WhatsApp, and because
+    `record_activity` fires from the limiter, bot turns never reached
+    `usage_daily` either — leaving those users off the heatmap, streak and badge.
+    """
+
+    @staticmethod
+    def _patches(limiter: AsyncMock):
+        return (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock),
+            patch(
+                "app.api.v1.endpoints.bot.BotService.enforce_rate_limit",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": "u_bot_1", "email": "bot@gaia.local"},
+            ),
+            patch(
+                "app.api.v1.endpoints.bot.BotService.get_or_create_session",
+                new_callable=AsyncMock,
+                return_value="conv_1",
+            ),
+            patch(
+                "app.api.v1.endpoints.bot.BotService.load_conversation_history",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("app.api.v1.endpoints.bot.stream_manager", new_callable=MagicMock),
+            patch("app.api.v1.endpoints.bot.run_chat_stream_background"),
+            patch("app.decorators.rate_limiting.tiered_limiter.check_and_increment", limiter),
+        )
+
+    @pytest.mark.regression
+    async def test_a_bot_turn_charges_the_chat_messages_quota(self, client: AsyncClient):
+        limiter = AsyncMock(return_value={})
+        p = self._patches(limiter)
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
+            await client.post(
+                f"{BOT_BASE}/chat-stream",
+                json={
+                    "message": "hi from telegram",
+                    "platform": "telegram",
+                    "platform_user_id": "tg_42",
+                },
+            )
+
+        limiter.assert_awaited_once()
+        assert limiter.await_args.kwargs["feature_key"] == "chat_messages"
+        assert limiter.await_args.kwargs["user_id"] == "u_bot_1"
+
+    @pytest.mark.regression
+    async def test_a_bot_turn_checks_the_daily_cost_wall_too(self, client: AsyncClient):
+        """Web chat charges TWO walls: how many messages, and how expensive the
+        day has been. Metering only the first left a bot user over budget with a
+        stream that opened and died partway instead of a clean refusal."""
+        limiter = AsyncMock(return_value={})
+        cost_wall = AsyncMock()
+        p = self._patches(limiter)
+        with (
+            p[0],
+            p[1],
+            p[2],
+            p[3],
+            p[4],
+            p[5],
+            p[6],
+            p[7],
+            patch("app.api.v1.endpoints.bot.enforce_daily_cost_budget", cost_wall),
+        ):
+            await client.post(
+                f"{BOT_BASE}/chat-stream",
+                json={
+                    "message": "hi",
+                    "platform": "telegram",
+                    "platform_user_id": "tg_42",
+                },
+            )
+
+        cost_wall.assert_awaited_once_with("u_bot_1", feature_key="chat_messages")
+
+    async def test_an_unlinked_platform_user_is_not_charged(self, client: AsyncClient):
+        """No GAIA account behind the platform id — there is nobody to bill."""
+        limiter = AsyncMock(return_value={})
+        p = self._patches(limiter)
+        with (
+            p[0],
+            p[1],
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            p[3],
+            p[4],
+            p[5],
+            p[6],
+            p[7],
+        ):
+            await client.post(
+                f"{BOT_BASE}/chat-stream",
+                json={
+                    "message": "hi",
+                    "platform": "telegram",
+                    "platform_user_id": "tg_unlinked",
+                },
+            )
+
+        limiter.assert_not_awaited()

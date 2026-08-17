@@ -4,7 +4,12 @@
 // biome-ignore-all lint/a11y/useAriaPropsSupportedByRole: decorative element
 "use client";
 
+import { DiscordIcon, SlackIcon, TelegramIcon, WhatsappIcon } from "@icons";
+import Image from "next/image";
 import type React from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { RaisedButton } from "@/components/ui/raised-button";
+import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
 export type ChatPlatform =
@@ -25,6 +30,10 @@ export interface ChatMessageItem {
   status?: "sent" | "delivered" | "read";
   reactions?: { emoji: string; count: number }[];
   typing?: boolean;
+  /** Render the platform's "chat with the real GAIA" button inside the bubble */
+  cta?: boolean;
+  /** Centered date/time chip (WhatsApp/Telegram date pill) instead of a bubble */
+  divider?: string;
 }
 
 export interface ChatDemoProps {
@@ -36,10 +45,255 @@ export interface ChatDemoProps {
   showComposer?: boolean;
   showHeader?: boolean;
   theme?: "light" | "dark";
+  composerPlaceholder?: string;
+  /**
+   * Sequenced reveal: when set, messages stay hidden until `play` flips true,
+   * then pop in one by one with typing indicators (leave undefined to render
+   * the full thread statically).
+   */
+  play?: boolean;
   className?: string;
 }
 
 const DEFAULT_AVATAR = "/images/logos/macos.webp";
+
+/* =========================================================================
+ * Interactive demo — sending a message pops a simulated GAIA reply with a
+ * "chat with the real me" button for the platform.
+ * ========================================================================= */
+
+const DEMO_REPLY_FIRST =
+  "you've reached the demo 😄 come say that to the real me";
+const DEMO_REPLY_AGAIN = "still the demo 😄 the real me is one tap away";
+const DEMO_TYPING_ID = "demo-typing";
+const DEMO_TYPING_DELAY_MS = 250;
+const DEMO_REPLY_DELAY_MS = 1000;
+
+const DEMO_CTA: Record<
+  ChatPlatform,
+  { label: string; href: string; accent: string; darkText?: boolean }
+> = {
+  imessage: { label: "Chat with GAIA", href: "/signup", accent: "#0A84FF" },
+  whatsapp: {
+    label: "Chat on WhatsApp",
+    href: "/whatsapp",
+    accent: "#25D366",
+    darkText: true,
+  },
+  telegram: { label: "Chat on Telegram", href: "/bots", accent: "#037EE5" },
+  slack: { label: "Chat on Slack", href: "/slack-bot", accent: "#611F69" },
+  discord: {
+    label: "Chat on Discord",
+    href: "/discord-bot",
+    accent: "#5865F2",
+  },
+};
+
+function DemoCtaIcon({
+  platform,
+  color,
+}: {
+  platform: ChatPlatform;
+  color: string;
+}) {
+  const size = { width: 16, height: 16, color };
+  switch (platform) {
+    case "whatsapp":
+      return <WhatsappIcon {...size} />;
+    case "telegram":
+      return <TelegramIcon {...size} />;
+    case "slack":
+      return <SlackIcon {...size} />;
+    case "discord":
+      return <DiscordIcon {...size} />;
+    case "imessage":
+      return (
+        <Image
+          src={DEFAULT_AVATAR}
+          alt=""
+          width={16}
+          height={16}
+          className="rounded"
+        />
+      );
+    default: {
+      const _exhaustiveCheck: never = platform;
+      return null;
+    }
+  }
+}
+
+/** Rendered OUTSIDE the message bubble, like a platform inline-keyboard button. */
+function DemoCta({ platform }: { platform: ChatPlatform }) {
+  const { label, href, accent, darkText } = DEMO_CTA[platform];
+  return (
+    <Link href={href} className="chat-bubble-pop mt-1 w-fit">
+      <RaisedButton
+        color={accent}
+        size="sm"
+        className={cn("px-4 text-sm", darkText && "text-black!")}
+      >
+        <DemoCtaIcon platform={platform} color={darkText ? "#000" : "#fff"} />
+        {label}
+      </RaisedButton>
+    </Link>
+  );
+}
+
+/** Scroll a chat pane to the bottom whenever the thread changes (not on mount). */
+function useAutoScroll(messages: ChatMessageItem[]) {
+  const last = messages[messages.length - 1];
+  // The reply swap removes the typing bubble and appends in one update, so
+  // length alone doesn't change — key on the last message identity too.
+  const threadKey = `${messages.length}:${last?.id ?? ""}`;
+  const ref = useRef<HTMLDivElement>(null);
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const toBottom = () =>
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    toBottom();
+    // The bubble-pop animation grows the last message after insertion —
+    // settle to the true bottom once it finishes.
+    const settle = window.setTimeout(toBottom, 500);
+    return () => clearTimeout(settle);
+  }, [threadKey]);
+  return ref;
+}
+
+/**
+ * Reveal `base` one message at a time once `play` flips true — typing dots
+ * lead each GAIA message, and the final (payoff) message gets an extra beat.
+ * With `play` undefined the full thread renders statically.
+ */
+function useSequencedThread(
+  base: ChatMessageItem[],
+  play?: boolean,
+): ChatMessageItem[] {
+  const enabled = play !== undefined;
+  const [count, setCount] = useState(0);
+  const [showTyping, setShowTyping] = useState(false);
+
+  useEffect(() => {
+    if (!enabled || !play || count >= base.length) return;
+    const next = base[count];
+    const isLast = count === base.length - 1;
+    const lead = (next.divider ? 300 : 500) + (isLast ? 700 : 0);
+    const timers: number[] = [];
+    if (!next.divider && (next.from ?? "them") === "them") {
+      timers.push(window.setTimeout(() => setShowTyping(true), lead));
+      timers.push(
+        window.setTimeout(() => {
+          setShowTyping(false);
+          setCount((c) => c + 1);
+        }, lead + 750),
+      );
+    } else {
+      timers.push(window.setTimeout(() => setCount((c) => c + 1), lead));
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [enabled, play, count, base]);
+
+  if (!enabled) return base;
+  const visible = base.slice(0, count);
+  return showTyping
+    ? [...visible, { id: "reveal-typing", from: "them", typing: true }]
+    : visible;
+}
+
+function useDemoChat(base: ChatMessageItem[]) {
+  const [extra, setExtra] = useState<ChatMessageItem[]>([]);
+  const [draft, setDraft] = useState("");
+  const timers = useRef<number[]>([]);
+  const sendCount = useRef(0);
+
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach(clearTimeout);
+  }, []);
+
+  const send = () => {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    sendCount.current += 1;
+    const seq = sendCount.current;
+    // Slack/Discord group bubbles by author — inherit identity from the thread
+    const lastMe = base.findLast((m) => m.from === "me");
+    const lastThem = base.findLast((m) => (m.from ?? "them") === "them");
+    setExtra((prev) => [
+      ...prev,
+      {
+        id: `demo-me-${seq}`,
+        from: "me",
+        text,
+        status: "delivered",
+        author: lastMe?.author ?? "you",
+        authorColor: lastMe?.authorColor,
+        avatar: lastMe?.avatar,
+      },
+    ]);
+    timers.current.push(
+      window.setTimeout(() => {
+        setExtra((prev) => [
+          ...prev,
+          {
+            id: DEMO_TYPING_ID,
+            from: "them",
+            typing: true,
+            author: lastThem?.author ?? "GAIA",
+            authorColor: lastThem?.authorColor,
+            avatar: lastThem?.avatar ?? DEFAULT_AVATAR,
+          },
+        ]);
+      }, DEMO_TYPING_DELAY_MS),
+    );
+    timers.current.push(
+      window.setTimeout(() => {
+        setExtra((prev) => [
+          ...prev
+            .filter((m) => m.id !== DEMO_TYPING_ID)
+            .map((m) =>
+              m.id === `demo-me-${seq}` ? { ...m, status: "read" as const } : m,
+            ),
+          {
+            id: `demo-reply-${seq}`,
+            from: "them",
+            text: seq === 1 ? DEMO_REPLY_FIRST : DEMO_REPLY_AGAIN,
+            cta: seq === 1,
+            author: lastThem?.author ?? "GAIA",
+            authorColor: lastThem?.authorColor,
+            avatar: lastThem?.avatar ?? DEFAULT_AVATAR,
+          },
+        ]);
+      }, DEMO_REPLY_DELAY_MS),
+    );
+  };
+
+  return { messages: [...base, ...extra], draft, setDraft, send };
+}
+
+interface DemoComposerProps {
+  composerValue: string;
+  onComposerChange: (value: string) => void;
+  onComposerSend: () => void;
+}
+
+function composerKeyHandler(
+  send: () => void,
+): React.KeyboardEventHandler<HTMLElement> {
+  return (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  };
+}
 
 const SF_STACK =
   '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -50,15 +304,24 @@ const DISCORD_STACK =
 
 export function ChatDemo({
   platform,
-  messages,
+  messages: baseMessages,
   title,
   subtitle,
   headerAvatar,
   showComposer = true,
   showHeader = true,
   theme,
+  composerPlaceholder,
+  play,
   className,
 }: ChatDemoProps) {
+  const revealed = useSequencedThread(baseMessages, play);
+  const { messages, draft, setDraft, send } = useDemoChat(revealed);
+  const composer: DemoComposerProps = {
+    composerValue: draft,
+    onComposerChange: setDraft,
+    onComposerSend: send,
+  };
   switch (platform) {
     case "imessage":
       return (
@@ -70,6 +333,7 @@ export function ChatDemo({
           showComposer={showComposer}
           showHeader={showHeader}
           className={className}
+          {...composer}
         />
       );
     case "whatsapp":
@@ -81,7 +345,9 @@ export function ChatDemo({
           headerAvatar={headerAvatar ?? DEFAULT_AVATAR}
           showComposer={showComposer}
           showHeader={showHeader}
+          composerPlaceholder={composerPlaceholder}
           className={className}
+          {...composer}
         />
       );
     case "slack":
@@ -94,6 +360,7 @@ export function ChatDemo({
           showHeader={showHeader}
           theme={theme ?? "light"}
           className={className}
+          {...composer}
         />
       );
     case "discord":
@@ -105,6 +372,7 @@ export function ChatDemo({
           showComposer={showComposer}
           showHeader={showHeader}
           className={className}
+          {...composer}
         />
       );
     case "telegram":
@@ -116,7 +384,9 @@ export function ChatDemo({
           headerAvatar={headerAvatar ?? DEFAULT_AVATAR}
           showComposer={showComposer}
           showHeader={showHeader}
+          composerPlaceholder={composerPlaceholder}
           className={className}
+          {...composer}
         />
       );
     default: {
@@ -218,6 +488,8 @@ function CurvedBubble({
 }
 
 type CurvedThread = {
+  /** Set for date/time chip entries — items is empty for these */
+  divider?: string;
   from: "me" | "them";
   items: ChatMessageItem[];
 };
@@ -225,12 +497,45 @@ type CurvedThread = {
 function curvedThread(messages: ChatMessageItem[]): CurvedThread[] {
   const out: CurvedThread[] = [];
   for (const m of messages) {
+    if (m.divider) {
+      out.push({ divider: m.divider, from: "them", items: [] });
+      continue;
+    }
     const from = m.from ?? "them";
     const last = out[out.length - 1];
-    if (last && last.from === from) last.items.push(m);
+    if (last && !last.divider && last.from === from) last.items.push(m);
     else out.push({ from, items: [m] });
   }
   return out;
+}
+
+/** Centered date/time pill between message groups (WhatsApp/Telegram chrome). */
+function DividerChip({
+  label,
+  background,
+  color,
+}: {
+  label: string;
+  background: string;
+  color: string;
+}) {
+  return (
+    <div
+      className="chat-bubble-pop self-center"
+      style={{
+        background,
+        color,
+        borderRadius: 8,
+        padding: "4px 11px",
+        fontSize: 12.5,
+        fontWeight: 500,
+        letterSpacing: "-0.01em",
+        boxShadow: "0 1px 1px rgba(0,0,0,0.06)",
+      }}
+    >
+      {label}
+    </div>
+  );
 }
 
 /* =========================================================================
@@ -249,6 +554,9 @@ function IMessageDemo({
   showComposer,
   showHeader,
   className,
+  composerValue,
+  onComposerChange,
+  onComposerSend,
 }: {
   messages: ChatMessageItem[];
   title?: string;
@@ -257,8 +565,9 @@ function IMessageDemo({
   showComposer: boolean;
   showHeader: boolean;
   className?: string;
-}) {
+} & DemoComposerProps) {
   const grouped = curvedThread(messages);
+  const scrollRef = useAutoScroll(messages);
   return (
     <div
       className={cn("flex h-full flex-col", className)}
@@ -315,10 +624,28 @@ function IMessageDemo({
         </div>
       )}
       <div
+        ref={scrollRef}
         className="flex flex-1 flex-col overflow-y-auto px-3 pb-3"
         style={{ scrollbarWidth: "none", gap: 8 }}
       >
         {grouped.map((group, gi) => {
+          if (group.divider) {
+            return (
+              <div
+                key={`div-${gi}`}
+                className="chat-bubble-pop self-center text-center"
+                style={{
+                  fontSize: 11,
+                  color: "rgba(60,60,67,0.6)",
+                  fontWeight: 500,
+                  letterSpacing: "-0.01em",
+                  marginTop: gi === 0 ? 4 : 6,
+                }}
+              >
+                {group.divider}
+              </div>
+            );
+          }
           const groupTime = group.items[0].time;
           return (
             <div key={gi} className="flex flex-col" style={{ gap: 8 }}>
@@ -347,25 +674,27 @@ function IMessageDemo({
                   const isLast = i === group.items.length - 1;
                   const isMe = group.from === "me";
                   return (
-                    <CurvedBubble
-                      key={m.id ?? `${gi}-${i}`}
-                      className="chat-bubble-pop"
-                      from={group.from}
-                      tail={isLast}
-                      background={isMe ? IMESSAGE_GRADIENT : IMESSAGE_THEM_BG}
-                      tailColor={
-                        isMe ? IMESSAGE_TAIL_ME_COLOR : IMESSAGE_THEM_BG
-                      }
-                      color={isMe ? "#fff" : "#000"}
-                    >
-                      {m.typing ? (
-                        <TypingDots
-                          color={isMe ? "rgba(255,255,255,0.9)" : "#8e8e93"}
-                        />
-                      ) : (
-                        m.text
-                      )}
-                    </CurvedBubble>
+                    <Fragment key={m.id ?? `${gi}-${i}`}>
+                      <CurvedBubble
+                        className="chat-bubble-pop"
+                        from={group.from}
+                        tail={isLast}
+                        background={isMe ? IMESSAGE_GRADIENT : IMESSAGE_THEM_BG}
+                        tailColor={
+                          isMe ? IMESSAGE_TAIL_ME_COLOR : IMESSAGE_THEM_BG
+                        }
+                        color={isMe ? "#fff" : "#000"}
+                      >
+                        {m.typing ? (
+                          <TypingDots
+                            color={isMe ? "rgba(255,255,255,0.9)" : "#8e8e93"}
+                          />
+                        ) : (
+                          m.text
+                        )}
+                      </CurvedBubble>
+                      {m.cta && <DemoCta platform="imessage" />}
+                    </Fragment>
                   );
                 })}
               </div>
@@ -411,6 +740,9 @@ function IMessageDemo({
             <input
               type="text"
               placeholder="iMessage"
+              value={composerValue}
+              onChange={(e) => onComposerChange(e.target.value)}
+              onKeyDown={composerKeyHandler(onComposerSend)}
               className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[rgba(60,60,67,0.5)]"
               style={{
                 fontSize: 15,
@@ -451,7 +783,11 @@ function WhatsAppDemo({
   headerAvatar,
   showComposer,
   showHeader,
+  composerPlaceholder = "Message",
   className,
+  composerValue,
+  onComposerChange,
+  onComposerSend,
 }: {
   messages: ChatMessageItem[];
   title?: string;
@@ -459,8 +795,10 @@ function WhatsAppDemo({
   headerAvatar?: string;
   showComposer: boolean;
   showHeader: boolean;
+  composerPlaceholder?: string;
   className?: string;
-}) {
+} & DemoComposerProps) {
+  const scrollRef = useAutoScroll(messages);
   // Palette extracted from WhatsApp Chat.svg
   const bg = "#EFEFF4";
   const chromeBg = "#F6F6F6";
@@ -570,6 +908,7 @@ function WhatsAppDemo({
 
       {/* Chat area — light gray with the WhatsApp doodle pattern */}
       <div
+        ref={scrollRef}
         className="flex flex-1 flex-col overflow-y-auto px-3 pb-3"
         style={{
           scrollbarWidth: "none",
@@ -582,6 +921,16 @@ function WhatsAppDemo({
         }}
       >
         {grouped.map((group, gi) => {
+          if (group.divider) {
+            return (
+              <DividerChip
+                key={`div-${gi}`}
+                label={group.divider}
+                background="#FFFFFF"
+                color="#54656F"
+              />
+            );
+          }
           const isMe = group.from === "me";
           return (
             <div
@@ -596,34 +945,36 @@ function WhatsAppDemo({
                 const isLast = i === group.items.length - 1;
                 const showMeta = !m.typing && (m.time || (isMe && m.status));
                 return (
-                  <CurvedBubble
-                    key={m.id ?? `${gi}-${i}`}
-                    className="chat-bubble-pop"
-                    from={group.from}
-                    tail={isLast}
-                    background={isMe ? myBubble : theirBubble}
-                    tailColor={isMe ? myBubble : theirBubble}
-                    color={textColor}
-                    meta={
-                      showMeta ? (
-                        <span
-                          style={{
-                            color: metaColor,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 3,
-                          }}
-                        >
-                          {m.time ?? ""}
-                          {isMe && m.status && (
-                            <WhatsAppTicks status={m.status} />
-                          )}
-                        </span>
-                      ) : undefined
-                    }
-                  >
-                    {m.typing ? <TypingDots color={metaColor} /> : m.text}
-                  </CurvedBubble>
+                  <Fragment key={m.id ?? `${gi}-${i}`}>
+                    <CurvedBubble
+                      className="chat-bubble-pop"
+                      from={group.from}
+                      tail={isLast}
+                      background={isMe ? myBubble : theirBubble}
+                      tailColor={isMe ? myBubble : theirBubble}
+                      color={textColor}
+                      meta={
+                        showMeta ? (
+                          <span
+                            style={{
+                              color: metaColor,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 3,
+                            }}
+                          >
+                            {m.time ?? ""}
+                            {isMe && m.status && (
+                              <WhatsAppTicks status={m.status} />
+                            )}
+                          </span>
+                        ) : undefined
+                      }
+                    >
+                      {m.typing ? <TypingDots color={metaColor} /> : m.text}
+                    </CurvedBubble>
+                    {m.cta && <DemoCta platform="whatsapp" />}
+                  </Fragment>
                 );
               })}
             </div>
@@ -657,7 +1008,10 @@ function WhatsAppDemo({
           >
             <input
               type="text"
-              placeholder="Message"
+              placeholder={composerPlaceholder}
+              value={composerValue}
+              onChange={(e) => onComposerChange(e.target.value)}
+              onKeyDown={composerKeyHandler(onComposerSend)}
               className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[#8E8E93]"
               style={{
                 fontSize: 15,
@@ -792,7 +1146,11 @@ function TelegramDemo({
   headerAvatar,
   showComposer,
   showHeader,
+  composerPlaceholder = "Message",
   className,
+  composerValue,
+  onComposerChange,
+  onComposerSend,
 }: {
   messages: ChatMessageItem[];
   title?: string;
@@ -800,8 +1158,10 @@ function TelegramDemo({
   headerAvatar?: string;
   showComposer: boolean;
   showHeader: boolean;
+  composerPlaceholder?: string;
   className?: string;
-}) {
+} & DemoComposerProps) {
+  const scrollRef = useAutoScroll(messages);
   // Palette extracted from Telegram Chat.svg
   const chromeBg = "#F6F6F6";
   const blueOverlay = "#2B78CD"; // 50% over the doodle pattern
@@ -901,6 +1261,7 @@ function TelegramDemo({
 
       {/* Chat area: blue overlay + Telegram doodle pattern */}
       <div
+        ref={scrollRef}
         className="flex flex-1 flex-col overflow-y-auto px-3 pb-3"
         style={{
           scrollbarWidth: "none",
@@ -914,6 +1275,16 @@ function TelegramDemo({
         }}
       >
         {grouped.map((group, gi) => {
+          if (group.divider) {
+            return (
+              <DividerChip
+                key={`div-${gi}`}
+                label={group.divider}
+                background="rgba(0,0,0,0.18)"
+                color="#FFFFFF"
+              />
+            );
+          }
           const isMe = group.from === "me";
           return (
             <div
@@ -925,18 +1296,20 @@ function TelegramDemo({
               style={{ gap: 2 }}
             >
               {group.items.map((m, i) => (
-                <TelegramBubble
-                  key={m.id ?? `${gi}-${i}`}
-                  m={m}
-                  from={group.from}
-                  isMe={isMe}
-                  isLast={i === group.items.length - 1}
-                  myBubble={myBubble}
-                  theirBubble={theirBubble}
-                  textColor={textColor}
-                  metaColor={metaColor}
-                  myMeta={myMeta}
-                />
+                <Fragment key={m.id ?? `${gi}-${i}`}>
+                  <TelegramBubble
+                    m={m}
+                    from={group.from}
+                    isMe={isMe}
+                    isLast={i === group.items.length - 1}
+                    myBubble={myBubble}
+                    theirBubble={theirBubble}
+                    textColor={textColor}
+                    metaColor={metaColor}
+                    myMeta={myMeta}
+                  />
+                  {m.cta && <DemoCta platform="telegram" />}
+                </Fragment>
               ))}
             </div>
           );
@@ -969,7 +1342,10 @@ function TelegramDemo({
           >
             <input
               type="text"
-              placeholder="Message"
+              placeholder={composerPlaceholder}
+              value={composerValue}
+              onChange={(e) => onComposerChange(e.target.value)}
+              onKeyDown={composerKeyHandler(onComposerSend)}
               className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[#858E99]"
               style={{
                 fontSize: 15,
@@ -1053,6 +1429,9 @@ function SlackDemo({
   showHeader,
   theme,
   className,
+  composerValue,
+  onComposerChange,
+  onComposerSend,
 }: {
   messages: ChatMessageItem[];
   title?: string;
@@ -1061,7 +1440,8 @@ function SlackDemo({
   showHeader: boolean;
   theme: "light" | "dark";
   className?: string;
-}) {
+} & DemoComposerProps) {
+  const scrollRef = useAutoScroll(messages);
   const isDark = theme === "dark";
   const bg = isDark ? "#1A1D21" : "#FFFFFF";
   const fg = isDark ? "#D1D2D3" : "#1D1C1D";
@@ -1150,6 +1530,7 @@ function SlackDemo({
         </div>
       )}
       <div
+        ref={scrollRef}
         className="flex flex-1 flex-col overflow-y-auto py-3"
         style={{ scrollbarWidth: "none", gap: 12 }}
       >
@@ -1193,22 +1574,24 @@ function SlackDemo({
               </div>
               <div className="flex flex-col" style={{ gap: 2 }}>
                 {g.items.map((m, i) => (
-                  <div
-                    key={m.id ?? `${gi}-${i}`}
-                    style={{
-                      fontSize: 15,
-                      lineHeight: "22px",
-                      color: fg,
-                      wordBreak: "break-word",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {m.typing ? (
-                      <TypingDots color={muted} />
-                    ) : (
-                      renderSlackText(m.text ?? "", isDark)
-                    )}
-                  </div>
+                  <Fragment key={m.id ?? `${gi}-${i}`}>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        lineHeight: "22px",
+                        color: fg,
+                        wordBreak: "break-word",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {m.typing ? (
+                        <TypingDots color={muted} />
+                      ) : (
+                        renderSlackText(m.text ?? "", isDark)
+                      )}
+                    </div>
+                    {m.cta && <DemoCta platform="slack" />}
+                  </Fragment>
                 ))}
               </div>
               {g.items.some((m) => m.reactions?.length) && (
@@ -1346,6 +1729,9 @@ function SlackDemo({
             <textarea
               rows={1}
               placeholder={`Message #${title ?? "general"}`}
+              value={composerValue}
+              onChange={(e) => onComposerChange(e.target.value)}
+              onKeyDown={composerKeyHandler(onComposerSend)}
               className={cn(
                 "chat-demo-input resize-none border-0 bg-transparent outline-none",
                 isDark
@@ -1418,6 +1804,7 @@ function SlackDemo({
                 <button
                   type="button"
                   aria-label="Send"
+                  onClick={onComposerSend}
                   className="flex cursor-pointer items-center justify-center transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
                   style={{ width: 24, height: 22, color: muted }}
                 >
@@ -1557,6 +1944,9 @@ function DiscordDemo({
   showComposer,
   showHeader,
   className,
+  composerValue,
+  onComposerChange,
+  onComposerSend,
 }: {
   messages: ChatMessageItem[];
   title?: string;
@@ -1564,7 +1954,8 @@ function DiscordDemo({
   showComposer: boolean;
   showHeader: boolean;
   className?: string;
-}) {
+} & DemoComposerProps) {
+  const scrollRef = useAutoScroll(messages);
   const bg = "#1E1F22";
   const fg = "#DBDEE1";
   const muted = "#949BA4";
@@ -1669,6 +2060,7 @@ function DiscordDemo({
         </div>
       )}
       <div
+        ref={scrollRef}
         className="flex flex-1 flex-col overflow-y-auto py-3"
         style={{ scrollbarWidth: "none", gap: 18 }}
       >
@@ -1714,22 +2106,24 @@ function DiscordDemo({
               </div>
               <div className="flex flex-col" style={{ gap: 4 }}>
                 {g.items.map((m, i) => (
-                  <div
-                    key={m.id ?? `${gi}-${i}`}
-                    style={{
-                      fontSize: 15,
-                      lineHeight: "1.375",
-                      color: fg,
-                      wordBreak: "break-word",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {m.typing ? (
-                      <TypingDots color={muted} />
-                    ) : (
-                      renderDiscordText(m.text ?? "")
-                    )}
-                  </div>
+                  <Fragment key={m.id ?? `${gi}-${i}`}>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        lineHeight: "1.375",
+                        color: fg,
+                        wordBreak: "break-word",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {m.typing ? (
+                        <TypingDots color={muted} />
+                      ) : (
+                        renderDiscordText(m.text ?? "")
+                      )}
+                    </div>
+                    {m.cta && <DemoCta platform="discord" />}
+                  </Fragment>
                 ))}
               </div>
               {g.items.some((m) => m.reactions?.length) && (
@@ -1799,6 +2193,9 @@ function DiscordDemo({
             <input
               type="text"
               placeholder="Message"
+              value={composerValue}
+              onChange={(e) => onComposerChange(e.target.value)}
+              onKeyDown={composerKeyHandler(onComposerSend)}
               className="chat-demo-input min-w-0 flex-1 border-0 bg-transparent p-0 outline-none placeholder:text-[#949BA4]"
               style={{
                 fontSize: 15,
@@ -2094,6 +2491,7 @@ type AuthorGroup = {
 function groupByAuthor(messages: ChatMessageItem[]): AuthorGroup[] {
   const out: AuthorGroup[] = [];
   for (const m of messages) {
+    if (m.divider) continue; // date chips are a bubble-platform concept
     const last = out[out.length - 1];
     if (last && last.author?.name === m.author) {
       last.items.push(m);

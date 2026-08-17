@@ -392,6 +392,7 @@ _INDEX_CREATORS = [
     "create_bot_session_indexes",
     "create_e2b_sandbox_indexes",
     "create_hil_approvals_indexes",
+    "create_pending_platform_registration_indexes",
 ]
 
 

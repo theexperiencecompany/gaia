@@ -9,7 +9,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     tagline: "Conversations that take real action, not just give answers",
     headline: "Ask anything. Watch it happen.",
     subheadline:
-      "GAIA understands natural language and takes real action across every tool you've connected — in a single streaming conversation.",
+      "GAIA understands natural language and takes real action across every tool you've connected, in a single streaming conversation.",
     benefits: [
       {
         icon: "FlashIcon",
@@ -31,7 +31,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
       {
         number: "01",
         title: "Type your request",
-        description: "Ask anything in natural language — no special syntax.",
+        description: "Ask anything in natural language. No special syntax.",
       },
       {
         number: "02",
@@ -50,17 +50,17 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
       {
         question: "Can GAIA take actions or just answer questions?",
         answer:
-          "GAIA takes real actions — sending emails, creating calendar events, running code, managing todos, and more. It does not just describe what to do.",
+          "GAIA takes real actions: sending emails, creating calendar events, running code, managing todos, and more. It does not just describe what to do.",
       },
       {
         question: "Does it remember context from earlier in a conversation?",
         answer:
-          "Yes — full conversation history is maintained within a session. GAIA also pulls from long-term memory for preferences and facts learned in past conversations.",
+          "Yes. Full conversation history is maintained within a session. GAIA also pulls from long-term memory for preferences and facts learned in past conversations.",
       },
       {
         question: "What happens if GAIA misunderstands a request?",
         answer:
-          "Correct it in plain language — 'that's not what I meant' followed by a clarification. GAIA will re-plan and retry. No need to start over.",
+          "Correct it in plain language: 'that's not what I meant' followed by a clarification. GAIA will re-plan and retry. No need to start over.",
       },
       {
         question: "Can I use it without connecting any integrations?",
@@ -77,7 +77,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
       {
         title: "Research synthesis for a meeting",
         description:
-          "Ask GAIA to pull the last three months of Slack messages about a project and summarize the key decisions — delivered as a structured timeline card.",
+          "Ask GAIA to pull the last three months of Slack messages about a project and summarize the key decisions, delivered as a structured timeline card.",
       },
       {
         title: "Multi-step task from a single prompt",
@@ -96,7 +96,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     tagline: "Multi-source research synthesized in seconds",
     headline: "Research three angles at once, automatically.",
     subheadline:
-      "GAIA decomposes your question, searches in parallel, reads the content, and returns a ranked synthesis with citations — not just a list of links.",
+      "GAIA decomposes your question, searches in parallel, reads the content, and returns a ranked synthesis with citations, not just a list of links.",
     benefits: [
       {
         icon: "BranchIcon",
@@ -145,13 +145,13 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
       {
         question: "Does it search the open web or just a fixed index?",
         answer:
-          "It searches the live web — Google, Bing, and direct URL fetching. Results reflect current content, not a static snapshot.",
+          "It searches the live web: Google, Bing, and direct URL fetching. Results reflect current content, not a static snapshot.",
       },
       {
         question:
           "Can I ask it to focus on specific domains or exclude others?",
         answer:
-          "Yes — include instructions like 'only use academic sources' or 'exclude Reddit' and GAIA applies those constraints to its search queries.",
+          "Yes. Include instructions like 'only use academic sources' or 'exclude Reddit' and GAIA applies those constraints to its search queries.",
       },
       {
         question: "Are citations included in the output?",
@@ -168,7 +168,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
       {
         title: "Technical due diligence on a new library",
         description:
-          "Before adopting a new npm package, ask GAIA to research known issues, bundle size, maintenance status, and community sentiment — all in one report.",
+          "Before adopting a new npm package, ask GAIA to research known issues, bundle size, maintenance status, and community sentiment, all in one report.",
       },
       {
         title: "Pre-call research on a prospect",
@@ -184,10 +184,10 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     category: "AI Intelligence",
     icon: "BrainIcon",
     title: "Memory",
-    tagline: "Builds a knowledge graph of you — remembers everything",
+    tagline: "Builds a knowledge graph of you and remembers everything",
     headline: "Knows your team. Your tools. Your preferences.",
     subheadline:
-      "GAIA builds a persistent knowledge graph of who you are, who you work with, and how you prefer to work — updating automatically with every conversation.",
+      "GAIA builds a persistent knowledge graph of who you are, who you work with, and how you prefer to work, updating automatically with every conversation.",
     benefits: [
       {
         icon: "BookmarkAdd01Icon",
@@ -218,7 +218,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
         number: "02",
         title: "Facts are stored as linked graph nodes",
         description:
-          "Each memory is a typed node connected to related people, projects, and preferences — not a flat list.",
+          "Each memory is a typed node connected to related people, projects, and preferences, not a flat list.",
       },
       {
         number: "03",
@@ -277,7 +277,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     tagline: "Briefings and actions delivered before you even ask",
     headline: "Your 9am briefing, written before you open your laptop.",
     subheadline:
-      "Schedule a morning briefing, set up weekly digests, or trigger alerts — and GAIA delivers them on time, pulling from every tool you've connected.",
+      "Schedule a morning briefing, set up weekly digests, or trigger alerts, and GAIA delivers them on time, pulling from every tool you've connected.",
     benefits: [
       {
         icon: "Calendar01Icon",
@@ -303,7 +303,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
         number: "01",
         title: "Configure your briefing schedule",
         description:
-          "Set a time, frequency, and which sources to pull from — inbox, calendar, Slack, GitHub, or all of them.",
+          "Set a time, frequency, and which sources to pull from: inbox, calendar, Slack, GitHub, or all of them.",
       },
       {
         number: "02",
@@ -369,7 +369,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     tagline: "Create images from natural language, inline in chat",
     headline: "Describe it. See it in seconds.",
     subheadline:
-      "Ask GAIA to create an image and it appears inline in the conversation — no tab switching, no separate tool, no prompting needed.",
+      "Ask GAIA to create an image and it appears inline in the conversation. No tab switching, no separate tool, no prompting needed.",
     benefits: [
       {
         icon: "MagicWand01Icon",
@@ -387,7 +387,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
         icon: "PaintBoardIcon",
         title: "Any style",
         description:
-          "Photorealistic, illustration, flat design, abstract — describe the style and GAIA matches it.",
+          "Photorealistic, illustration, flat design, abstract: describe the style and GAIA matches it.",
       },
     ],
     howItWorks: [
@@ -395,7 +395,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
         number: "01",
         title: "Describe what to generate in chat",
         description:
-          "Write a plain description — subject, style, mood, format — in the same chat window.",
+          "Write a plain description (subject, style, mood, format) in the same chat window.",
       },
       {
         number: "02",
@@ -460,13 +460,13 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     tagline: "Run code in a secure sandbox and see results instantly",
     headline: "Write code. Run it. See the output.",
     subheadline:
-      "GAIA executes Python, JavaScript, R, and more in an isolated E2B sandbox — with real output, error messages, and automatic chart detection.",
+      "GAIA executes Python, JavaScript, R, and more in an isolated E2B sandbox, with real output, error messages, and automatic chart detection.",
     benefits: [
       {
         icon: "CodeIcon",
         title: "Six languages",
         description:
-          "Python, JavaScript, TypeScript, R, Java, Bash — all supported.",
+          "Python, JavaScript, TypeScript, R, Java, and Bash are all supported.",
       },
       {
         icon: "BarChart01Icon",
@@ -551,7 +551,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
     tagline: "Charts, tables, timelines, and 30+ interactive components inline",
     headline: "AI answers that look like dashboards.",
     subheadline:
-      "GAIA generates 36 types of interactive components inline — bar charts, timelines, comparison tables, file trees, status cards, and more — directly in the conversation.",
+      "GAIA generates 36 types of interactive components inline (bar charts, timelines, comparison tables, file trees, status cards, and more) directly in the conversation.",
     benefits: [
       {
         icon: "GridViewIcon",
@@ -589,14 +589,14 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
         number: "03",
         title: "Renders it outside the chat bubble",
         description:
-          "Interactive component appears inline — you interact directly.",
+          "Interactive component appears inline. You interact directly.",
       },
     ],
     faqs: [
       {
         question: "Can I interact with charts and tables directly?",
         answer:
-          "Yes. Bar charts, pie charts, and timelines are interactive — hover for tooltips, click to filter. Tables support sorting by column.",
+          "Yes. Bar charts, pie charts, and timelines are interactive: hover for tooltips, click to filter. Tables support sorting by column.",
       },
       {
         question: "What triggers a rich component instead of plain text?",

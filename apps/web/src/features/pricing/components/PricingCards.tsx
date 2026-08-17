@@ -38,11 +38,15 @@ const ENTERPRISE_CONTACT_HREF =
 interface PricingCardsProps {
   durationIsMonth?: boolean;
   initialPlans?: Plan[];
+  /** Hide the Enterprise bar: the landing section and the upgrade modal both
+   * sell the priced tiers, and Enterprise lives on the pricing page. */
+  hideEnterprise?: boolean;
 }
 
 export function PricingCards({
   durationIsMonth = false,
   initialPlans = [],
+  hideEnterprise = false,
 }: PricingCardsProps) {
   const { plans, isLoading, error, subscriptionStatus } =
     usePricing(initialPlans);
@@ -96,7 +100,7 @@ export function PricingCards({
     plan.name.toLowerCase().includes("enterprise");
 
   // Enterprise is shown as a full-width bar below the grid, not as a card.
-  const enterprisePlan = plans.find(isEnterprise);
+  const enterprisePlan = hideEnterprise ? undefined : plans.find(isEnterprise);
 
   // Priced tiers in the grid (Free + the paid plans for the chosen billing period).
   const cardPlans = plans.filter((plan: Plan) => {
@@ -190,7 +194,7 @@ export function PricingCards({
         })}
       </div>
 
-      {enterprisePlan && (
+      {enterprisePlan && !hideEnterprise && (
         <EnterpriseBar
           plan={enterprisePlan}
           ctaHref={ENTERPRISE_CONTACT_HREF}

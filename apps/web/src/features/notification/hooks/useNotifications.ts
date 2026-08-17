@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NOTIFICATION_PAGE_SIZE } from "@/features/notification/constants";
 import { toast } from "@/lib/toast";
 
 import { NotificationsAPI } from "@/services/api/notifications";
@@ -16,17 +17,20 @@ interface UseNotificationsReturn {
   refetch: () => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   archiveNotification: (id: string) => Promise<void>;
-  snoozeNotification: (id: string, until: Date) => Promise<void>;
   bulkMarkAsRead: (ids: string[]) => Promise<void>;
   bulkArchive: (ids: string[]) => Promise<void>;
-  bulkDelete: (ids: string[]) => Promise<void>;
   unreadCount: number;
   addNotification: (notification: NotificationRecord) => void;
   updateNotification: (notification: NotificationRecord) => void;
 }
 
+// `offset` is deliberately not accepted: the store is a single unkeyed entry
+// shared by every mount, so it cannot represent a page other than the first.
+// Excluding it makes that a compile error instead of a silent wrong page.
+type UseNotificationsHookOptions = Omit<UseNotificationsOptions, "offset">;
+
 export function useNotifications(
-  options: UseNotificationsOptions = {},
+  options: UseNotificationsHookOptions = {},
 ): UseNotificationsReturn {
   const {
     notifications: allNotifications,
@@ -39,11 +43,14 @@ export function useNotifications(
   const [loading, setLoading] = useState(!isLoaded);
   const [error, setError] = useState<string | null>(null);
 
-  const { limit, offset, channel_type } = options;
+  const { limit, channel_type } = options;
   // setFetching accessed via store.getState() inside fetchNotifications
 
-  // Always fetch without status filter so the store has the full dataset.
-  // Status filtering is applied client-side via the memoized `notifications` below.
+  // One canonical request for the whole app: the first unfiltered page, at the
+  // API's maximum size. Caller options never reach the wire — status, channel
+  // and limit are view-level and applied client-side in the memo below. Sending
+  // a caller's `limit` here would both fetch a page that doesn't match what the
+  // other mounts expect and 422 for any value above the API's ceiling.
   const fetchNotifications = useCallback(
     async (force = false) => {
       const state = useNotificationStore.getState();
@@ -56,11 +63,9 @@ export function useNotifications(
         setLoading(true);
         setError(null);
         const response = await NotificationsAPI.getNotifications({
-          limit: Math.max(limit ?? 0, 100),
-          offset,
-          channel_type,
+          limit: NOTIFICATION_PAGE_SIZE,
         });
-        setNotifications(response.notifications);
+        setNotifications(response.notifications ?? []);
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to fetch notifications";
@@ -71,17 +76,25 @@ export function useNotifications(
         setLoading(false);
       }
     },
-    [limit, offset, channel_type, setNotifications],
+    [setNotifications],
+  );
+
+  const refetch = useCallback(
+    () => fetchNotifications(true),
+    [fetchNotifications],
   );
 
   const markAsRead = useCallback(
     async (id: string) => {
+      const existing = (allNotifications ?? []).find((n) => n.id === id);
       try {
-        updateNotification({
-          ...allNotifications.find((n) => n.id === id)!,
-          status: NotificationStatus.READ,
-          read_at: new Date().toISOString(),
-        });
+        if (existing) {
+          updateNotification({
+            ...existing,
+            status: NotificationStatus.READ,
+            read_at: new Date().toISOString(),
+          });
+        }
 
         await NotificationsAPI.markAsRead(id);
         await fetchNotifications(true);
@@ -104,20 +117,6 @@ export function useNotifications(
       } catch (error) {
         toast.error("Failed to archive notification");
         console.error("Error archiving notification:", error);
-      }
-    },
-    [fetchNotifications],
-  );
-
-  const snoozeNotification = useCallback(
-    async (id: string, until: Date) => {
-      try {
-        await NotificationsAPI.snoozeNotification(id, until);
-        await fetchNotifications(true);
-        toast.success("Notification snoozed");
-      } catch (error) {
-        toast.error("Failed to snooze notification");
-        console.error("Error snoozing notification:", error);
       }
     },
     [fetchNotifications],
@@ -158,37 +157,29 @@ export function useNotifications(
     [fetchNotifications],
   );
 
-  const bulkDelete = useCallback(
-    async (ids: string[]) => {
-      try {
-        await NotificationsAPI.bulkDelete(ids);
-        await fetchNotifications(true);
-        toast.success(`${ids.length} notifications deleted`);
-      } catch (error) {
-        toast.error("Failed to delete notifications");
-        console.error("Error bulk deleting notifications:", error);
-      }
-    },
-    [fetchNotifications],
-  );
-
-  // Apply client-side status filtering; the store holds all statuses
+  // Narrow the shared store down to this caller's view. `?? []` is the last
+  // line of defence — the API layer already rejects a malformed payload.
   const notifications = useMemo(() => {
-    let result = allNotifications;
+    let result = allNotifications ?? [];
     if (options.status) {
       result = result.filter((n) => n.status === options.status);
+    }
+    if (channel_type) {
+      result = result.filter((n) =>
+        n.channels?.some((c) => c.channel_type === channel_type),
+      );
     }
     if (limit) {
       result = result.slice(0, limit);
     }
     return result;
-  }, [allNotifications, options.status, limit]);
+  }, [allNotifications, options.status, channel_type, limit]);
 
   // Count unread from the full fetched set, not the status/limit-sliced view, so
   // the badge reflects every loaded unread notification (not just the first page).
   const unreadCount = useMemo(
     () =>
-      allNotifications.filter(
+      (allNotifications ?? []).filter(
         (notification) => notification.status === NotificationStatus.DELIVERED,
       ).length,
     [allNotifications],
@@ -203,13 +194,11 @@ export function useNotifications(
     notifications,
     loading,
     error,
-    refetch: () => fetchNotifications(true),
+    refetch,
     markAsRead,
     archiveNotification,
-    snoozeNotification,
     bulkMarkAsRead,
     bulkArchive,
-    bulkDelete,
     unreadCount,
     addNotification,
     updateNotification,

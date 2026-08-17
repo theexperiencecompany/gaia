@@ -11,7 +11,7 @@ export default function OneOnOnePrepCard() {
           showBackground: false,
         })}
         <span className="text-sm font-medium text-zinc-100">
-          1:1 Prep — Alex M.
+          1:1 Prep: Alex M.
         </span>
       </div>
       <p className="mb-1 text-[11px] text-zinc-500">Today, 2:00 PM</p>
@@ -40,7 +40,7 @@ export default function OneOnOnePrepCard() {
           </p>
           <p className="flex items-start gap-1 text-xs text-amber-400">
             <Alert01Icon width={12} height={12} className="shrink-0 mt-0.5" />
-            PR #214 (feat/auth-refactor) waiting 4 days for review — blocker
+            PR #214 (feat/auth-refactor) waiting 4 days for review: blocker
           </p>
         </div>
 
@@ -79,10 +79,10 @@ export default function OneOnOnePrepCard() {
         </p>
         <div className="rounded-lg bg-zinc-900 p-2.5 space-y-1">
           <p className="text-xs text-zinc-400">
-            • Action: you&apos;d get clarity on Q2 roadmap — not yet shared
+            • Action: you&apos;d get clarity on Q2 roadmap, not yet shared
           </p>
           <p className="flex items-center gap-1 text-xs text-zinc-400">
-            • Action: she&apos;d ramp on Rust — 2 merged PRs using it{" "}
+            • Action: she&apos;d ramp on Rust, 2 merged PRs using it{" "}
             <CheckmarkCircle02Icon
               width={12}
               height={12}
@@ -94,7 +94,7 @@ export default function OneOnOnePrepCard() {
 
       <div className="mt-2 pt-2 border-t border-zinc-800">
         <p className="text-[11px] text-amber-400">
-          Open questions: 1 (ENG-407 API schema — needs your decision)
+          Open questions: 1 (ENG-407 API schema, needs your decision)
         </p>
       </div>
     </div>

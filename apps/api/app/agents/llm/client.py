@@ -1,5 +1,4 @@
 import asyncio
-from collections.abc import Callable
 from functools import cache
 from typing import Any, TypeVar, cast
 
@@ -12,28 +11,37 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openrouter import ChatOpenRouter
+from openrouter.utils import BackoffStrategy, RetryConfig
 from pydantic import BaseModel, SecretStr
-from typing_extensions import TypedDict
 
 from app.agents.llm.exceptions import (
     LLM_FALLBACK_EXCEPTIONS,
     LLM_RETRYABLE_EXCEPTIONS,
     LLMNotConfiguredError,
 )
+from app.agents.llm.types import (
+    LLMFallback,
+    LLMProvider,
+    LLMProviderKey,
+    LLMProviderName,
+    ProviderLLM,
+)
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
-    DEFAULT_LLM_PROVIDER,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     DEV_LLM_MAX_OUTPUT_TOKENS,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
+    MODEL_FIELD_ID,
+    MODEL_KWARGS_FIELD_ID,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
+    REASONING_FIELD_ID,
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
@@ -41,17 +49,27 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.models.agent_models import AgentConfigurable
 from app.services.llm_metering import record_llm_call
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 _ResultT = TypeVar("_ResultT")
 
-# A fallback may be passed as a ready runnable or as a zero-arg factory, so
-# expensive preparation (e.g. re-binding the full tool list) only happens in
-# the rare case the primary actually fails.
-LLMFallback = Runnable | Callable[[], Runnable | None] | None
+
+def without_sdk_retry(llm: ChatOpenRouter) -> ChatOpenRouter:
+    """Leave retrying to :func:`with_llm_retry`; the SDK's own loop nests under
+    ours and turned 3 attempts into 40 requests. ``max_retries=0`` does NOT
+    disable it — the SDK then applies a one-hour default; only this does."""
+    llm.client.sdk_configuration.retry_config = RetryConfig(
+        # Any strategy but "backoff" skips the retry path, so the (required)
+        # backoff values below are never read.
+        strategy="none",
+        backoff=BackoffStrategy(
+            initial_interval=0, max_interval=0, exponent=1.0, max_elapsed_time=0
+        ),
+        retry_connection_errors=False,
+    )
+    return llm
 
 
 def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTEMPTS) -> Runnable:
@@ -67,32 +85,18 @@ def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTE
     )
 
 
-def is_default_model_config(configurable: AgentConfigurable) -> bool:
-    """True when the run config already selects the default model — callers use
-    this to skip preparing a fallback to the very same model."""
-    return bool(
-        configurable.get("provider") == DEFAULT_LLM_PROVIDER
-        and configurable.get("model_name") == DEFAULT_MODEL_NAME
-    )
-
-
-PROVIDER_MODELS = {
-    "gemini": DEFAULT_GEMINI_MODEL_NAME,
-    "openrouter": DEFAULT_MODEL_NAME,
+PROVIDER_MODELS: dict[LLMProviderName, str] = {
+    LLMProviderName.GEMINI: DEFAULT_GEMINI_MODEL_NAME,
+    LLMProviderName.OPENROUTER: DEFAULT_MODEL_NAME,
     # The env-defined custom dev endpoint; empty when unset — the provider is
     # only registered in development with all DEV_LLM_* settings present.
-    "custom": settings.DEV_LLM_MODEL or "",
+    LLMProviderName.CUSTOM: settings.DEV_LLM_MODEL or "",
 }
-PROVIDER_PRIORITY = {
-    1: "openrouter",
-    2: "gemini",
-    3: "custom",
+PROVIDER_PRIORITY: dict[int, LLMProviderName] = {
+    1: LLMProviderName.OPENROUTER,
+    2: LLMProviderName.GEMINI,
+    3: LLMProviderName.CUSTOM,
 }
-
-
-class LLMProvider(TypedDict):
-    name: str
-    instance: BaseChatModel
 
 
 @cache
@@ -101,13 +105,15 @@ def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     client pointed at the local scripted stub (tools/llm-stub). Deliberately
     exposes no configurable fields — provider/model pinning is meaningless when
     every request lands on the stub, so pinned config is silently ignored."""
-    llm = ChatOpenRouter(
-        model=SIM_STUB_MODEL_NAME,
-        temperature=temperature,
-        streaming=True,
-        stream_usage=True,
-        api_key=SecretStr(settings.OPENROUTER_API_KEY or SIM_STUB_API_KEY),
-        base_url=settings.OPENROUTER_BASE_URL or SIM_STUB_BASE_URL,
+    llm = without_sdk_retry(
+        ChatOpenRouter(
+            model=SIM_STUB_MODEL_NAME,
+            temperature=temperature,
+            streaming=True,
+            stream_usage=True,
+            api_key=SecretStr(settings.OPENROUTER_API_KEY or SIM_STUB_API_KEY),
+            base_url=settings.OPENROUTER_BASE_URL or SIM_STUB_BASE_URL,
+        )
     )
     # Same reason as _build_default_llm: fractional-window middleware needs a
     # context-window profile at graph-build time.
@@ -115,7 +121,12 @@ def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     return llm
 
 
-_MODEL_FIELD = ConfigurableField(id="model_name", name="Model", description="Which model to use")
+# Gemini's own attribute is ``model``; OpenRouter's is ``model_name`` (see
+# _openrouter_wire_configurables). The two used to be exposed under SWAPPED
+# configurable ids in one flat namespace (prefix_keys=False), so a bag naming
+# only one of them silently resolved a different model on the other lane — which
+# is why every writer had to set both keys. One id, one meaning.
+_MODEL_FIELD = ConfigurableField(id=MODEL_FIELD_ID, name="Model", description="Which model to use")
 
 
 def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
@@ -124,14 +135,14 @@ def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
     ids form one namespace across provider alternatives (``prefix_keys=False``),
     so every compatible client must expose identical ids."""
     return llm.configurable_fields(
-        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
+        model_name=_MODEL_FIELD,
         reasoning=ConfigurableField(
-            id="reasoning",
+            id=REASONING_FIELD_ID,
             name="Reasoning",
             description="Reasoning effort (per-agent thinking budget)",
         ),
         model_kwargs=ConfigurableField(
-            id="model_kwargs",
+            id=MODEL_KWARGS_FIELD_ID,
             name="Model kwargs",
             description="Extra request params (e.g. provider routing pin)",
         ),
@@ -139,7 +150,7 @@ def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
 
 
 @lazy_provider(
-    name="gemini_llm",
+    name=LLMProviderKey.GEMINI,
     required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.GOOGLE_API_KEY],
     strategy=MissingKeyStrategy.WARN,
     warning_message="Google API key not configured. Models provided by Google Gemini will not work.",
@@ -149,7 +160,7 @@ def init_gemini_llm() -> LanguageModelLike:
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
     llm = ChatGoogleGenerativeAI(
-        model=PROVIDER_MODELS["gemini"],
+        model=PROVIDER_MODELS[LLMProviderName.GEMINI],
         temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
     ).configurable_fields(model=_MODEL_FIELD)
@@ -157,7 +168,7 @@ def init_gemini_llm() -> LanguageModelLike:
 
 
 @lazy_provider(
-    name="openrouter_llm",
+    name=LLMProviderKey.OPENROUTER,
     required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.OPENROUTER_API_KEY],
     strategy=MissingKeyStrategy.WARN,
     warning_message="OpenRouter API key not configured. Models provided via OpenRouter (Grok, etc.) will not work.",
@@ -178,28 +189,30 @@ def init_openrouter_llm() -> LanguageModelLike:
     # OPENROUTER_API_BASE env default_factory. Redirecting to the stub is sim
     # mode's job (_sim_llm); this construction is identical to pre-sim behavior.
     return _openrouter_wire_configurables(
-        ChatOpenRouter(
-            model=PROVIDER_MODELS["openrouter"],
-            temperature=DEFAULT_LLM_TEMPERATURE,
-            streaming=True,
-            stream_usage=True,
-            # Output cap; must stay well under the model's shared input+output context
-            # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
-            max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-            api_key=settings.OPENROUTER_API_KEY,
-            # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
-            # these as dedicated params (NOT `default_headers`, which it forwards to
-            # send_async and crashes on). https://openrouter.ai/docs/app-attribution
-            app_url=settings.FRONTEND_URL,
-            app_title=OPENROUTER_APP_TITLE,
-            app_categories=OPENROUTER_APP_CATEGORIES,
-            reasoning=OPENROUTER_REASONING,
+        without_sdk_retry(
+            ChatOpenRouter(
+                model=PROVIDER_MODELS[LLMProviderName.OPENROUTER],
+                temperature=DEFAULT_LLM_TEMPERATURE,
+                streaming=True,
+                stream_usage=True,
+                # Output cap; must stay well under the model's shared input+output context
+                # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
+                max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+                api_key=settings.OPENROUTER_API_KEY,
+                # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
+                # these as dedicated params (NOT `default_headers`, which it forwards to
+                # send_async and crashes on). https://openrouter.ai/docs/app-attribution
+                app_url=settings.FRONTEND_URL,
+                app_title=OPENROUTER_APP_TITLE,
+                app_categories=OPENROUTER_APP_CATEGORIES,
+                reasoning=OPENROUTER_REASONING,
+            )
         )
     )
 
 
 @lazy_provider(
-    name="custom_llm",
+    name=LLMProviderKey.CUSTOM,
     required_keys=[SIM_STUB_API_KEY]
     if settings.GAIA_SIM_MODE
     else [settings.DEV_LLM_BASE_URL, settings.DEV_LLM_API_KEY, settings.DEV_LLM_MODEL],
@@ -217,14 +230,16 @@ def init_custom_llm() -> LanguageModelLike:
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
     return _openrouter_wire_configurables(
-        ChatOpenRouter(
-            model=PROVIDER_MODELS["custom"],
-            temperature=DEFAULT_LLM_TEMPERATURE,
-            streaming=True,
-            stream_usage=True,
-            max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
-            api_key=settings.DEV_LLM_API_KEY,
-            base_url=settings.DEV_LLM_BASE_URL,
+        without_sdk_retry(
+            ChatOpenRouter(
+                model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
+                temperature=DEFAULT_LLM_TEMPERATURE,
+                streaming=True,
+                stream_usage=True,
+                max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+                api_key=settings.DEV_LLM_API_KEY,
+                base_url=settings.DEV_LLM_BASE_URL,
+            )
         )
     )
 
@@ -238,13 +253,15 @@ def init_llm(
     Without a preferred_provider, uses the default priority order. Raises
     ValueError on an unknown provider, RuntimeError if none are configured.
     """
-    # Validate preferred provider if specified
+    # preferred_provider is untrusted input (a request configurable), so it stays
+    # a plain str on the signature and is narrowed to the enum once validated.
     if preferred_provider and preferred_provider not in PROVIDER_MODELS:
         valid_providers = list(PROVIDER_MODELS.keys())
         raise ValueError(
             f"Invalid preferred_provider '{preferred_provider}'. "
             f"Valid providers are: {valid_providers}"
         )
+    preferred = LLMProviderName(preferred_provider) if preferred_provider else None
 
     # Get available provider instances from global providers registry
     available_providers = _get_available_providers()
@@ -253,9 +270,7 @@ def init_llm(
         raise RuntimeError("No LLM providers are properly configured.")
 
     # Determine provider order based on preferred provider or default priority
-    ordered_providers = _get_ordered_providers(
-        available_providers, preferred_provider, fallback_enabled
-    )
+    ordered_providers = _get_ordered_providers(available_providers, preferred, fallback_enabled)
 
     if not ordered_providers:
         raise RuntimeError(
@@ -277,33 +292,57 @@ def init_llm(
     return _create_configurable_llm(primary_provider, alternative_providers)
 
 
-def _get_available_providers() -> dict[str, Any]:
+def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
     """Retrieve available LLM provider instances from the global registry,
     mapped by provider name."""
-    # Mapping of provider names to their instance keys in the providers registry
-    provider_instance_mapping = {
-        "gemini": "gemini_llm",
-        "openrouter": "openrouter_llm",
-        "custom": "custom_llm",
+    provider_instance_mapping: dict[LLMProviderName, LLMProviderKey] = {
+        LLMProviderName.GEMINI: LLMProviderKey.GEMINI,
+        LLMProviderName.OPENROUTER: LLMProviderKey.OPENROUTER,
+        LLMProviderName.CUSTOM: LLMProviderKey.CUSTOM,
     }
 
-    available = {}
+    available: dict[LLMProviderName, ProviderLLM] = {}
     for provider_name, instance_key in provider_instance_mapping.items():
-        instance = providers.get(instance_key)
+        # custom_llm is only registered in development; providers.get() raises
+        # KeyError on an unregistered name, which took every agent graph down.
+        if not providers.is_available(instance_key):
+            continue
+        instance = cast(ProviderLLM | None, providers.get(instance_key))
         if instance is not None:
             available[provider_name] = instance
 
     return available
 
 
+def next_fallback_provider(current: str | None) -> tuple[LLMProviderName, str] | None:
+    """The highest-priority configured provider other than ``current``, and the
+    model to run on it. ``None`` when nothing else is usable.
+
+    The agent graph selects its lane by ``configurable["provider"]`` and never
+    fails over on its own, so this is what a caller that caught a provider
+    failure retries onto. A provider with no model configured is skipped rather
+    than returned with an empty model: the custom dev endpoint's
+    ``PROVIDER_MODELS`` entry is ``settings.DEV_LLM_MODEL or ""``, and pinning
+    ``""`` would trade one dead provider for a guaranteed bad request.
+    """
+    available = _get_available_providers()
+    for priority in sorted(PROVIDER_PRIORITY):
+        name = PROVIDER_PRIORITY[priority]
+        if name == current or name not in available:
+            continue
+        if model := PROVIDER_MODELS.get(name):
+            return name, model
+    return None
+
+
 def _get_ordered_providers(
-    available_providers: dict[str, Any],
-    preferred_provider: str | None,
+    available_providers: dict[LLMProviderName, ProviderLLM],
+    preferred_provider: LLMProviderName | None,
     fallback_enabled: bool,
 ) -> list[LLMProvider]:
     """Order providers by preference and availability, returning LLMProvider
     objects in priority order."""
-    ordered = []
+    ordered: list[LLMProvider] = []
     remaining_providers = available_providers.copy()
 
     # If a preferred provider is specified and available, prioritize it
@@ -337,8 +376,8 @@ def _create_configurable_llm(
         # Return primary instance directly if no alternatives
         return primary["instance"]
 
-    # Create configurable alternatives mapping
-    alternatives_mapping = {alt["name"]: alt["instance"] for alt in alternatives}
+    # Keyword-expanded below, so the keys must be plain str, not enum members.
+    alternatives_mapping = {str(alt["name"]): alt["instance"] for alt in alternatives}
 
     primary_instance = primary["instance"]
 
@@ -362,14 +401,14 @@ def register_llm_providers() -> None:
 
 
 def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
-    """The single factory for the default model (direct Gemini, ``gemini-3.1-flash-lite``)
-    used by EVERY auxiliary LLM task — follow-ups, research, memory extraction,
-    integration inference, profile/holo cards, vision helpers, workflow generation,
-    context summarization, onboarding, one-shot helpers. The pro model is reserved
-    for the main chat agent (see ``plan_model``); auxiliary tasks never use it.
+    """The single factory for the default model (``DEFAULT_MODEL_NAME``, served over
+    OpenRouter) used by EVERY auxiliary LLM task — follow-ups, research, memory
+    extraction, integration inference, profile/holo cards, vision helpers, workflow
+    generation, context summarization, onboarding, one-shot helpers. The pro model is
+    reserved for the main chat agent (see ``lane``); auxiliary tasks never use it.
     ``temperature`` lets creative tasks opt into more variation. Instances are
     cached per temperature so hot paths reuse one HTTP client instead of
-    rebuilding it per call. Raises ``LLMNotConfiguredError`` if Google is not
+    rebuilding it per call. Raises ``LLMNotConfiguredError`` if OpenRouter is not
     configured."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
@@ -380,18 +419,20 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
 
 @cache
 def _build_default_llm(temperature: float) -> BaseChatModel:
-    llm = ChatOpenRouter(
-        model=DEFAULT_MODEL_NAME,
-        temperature=temperature,
-        # ChatOpenRouter defaults streaming to False, and stream_usage only
-        # attaches usage metadata to a stream — set alone it is inert. Both are
-        # set so this matches init_openrouter_llm, and so the model fallback
-        # (create_agent resolves it from here) streams like the primary it
-        # replaces instead of arriving as one lump.
-        streaming=True,
-        stream_usage=True,
-        max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-        api_key=settings.OPENROUTER_API_KEY,
+    llm = without_sdk_retry(
+        ChatOpenRouter(
+            model=DEFAULT_MODEL_NAME,
+            temperature=temperature,
+            # ChatOpenRouter defaults streaming to False, and stream_usage only
+            # attaches usage metadata to a stream — set alone it is inert. Both are
+            # set so this matches init_openrouter_llm, and so the model fallback
+            # (create_agent resolves it from here) streams like the primary it
+            # replaces instead of arriving as one lump.
+            streaming=True,
+            stream_usage=True,
+            max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+            api_key=settings.OPENROUTER_API_KEY,
+        )
     )
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).
@@ -461,6 +502,7 @@ async def ainvoke_llm(
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
+    fallback_config: RunnableConfig | None = None,
 ) -> Any:
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
@@ -506,9 +548,14 @@ async def ainvoke_llm(
                     messages, config=_with_usage_handler(config, usage_handler)
                 )
             except LLM_FALLBACK_EXCEPTIONS as primary_error:
+                # The fallback runs under ``fallback_config`` when given. Reusing
+                # ``config`` here is what made provider failover a no-op: LangChain
+                # merges a passed config OVER a ``with_config`` one, so the run's
+                # own configurable put the just-failed provider straight back.
                 return _stamp_fallback(
                     await _resolve_fallback(fallback, label, primary_error).ainvoke(
-                        messages, config=_with_usage_handler(config, usage_handler)
+                        messages,
+                        config=_with_usage_handler(fallback_config or config, usage_handler),
                     )
                 )
     finally:
@@ -525,13 +572,16 @@ def invoke_llm(
     config: RunnableConfig | None = None,
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+    fallback_config: RunnableConfig | None = None,
 ) -> Any:
     """Sync counterpart of :func:`ainvoke_llm`."""
     try:
         return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
         return _stamp_fallback(
-            _resolve_fallback(fallback, label, primary_error).invoke(messages, config=config)
+            _resolve_fallback(fallback, label, primary_error).invoke(
+                messages, config=fallback_config or config
+            )
         )
 
 

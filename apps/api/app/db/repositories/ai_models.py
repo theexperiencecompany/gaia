@@ -21,12 +21,5 @@ class AiModelsRepository(MongoRepository[ModelConfig, AiModelUpdate]):
     async def get_by_model_id(self, model_id: str) -> ModelConfig | None:
         return await self._find_one({"model_id": model_id})
 
-    async def get_default(self) -> ModelConfig | None:
-        """The default active model, falling back to any active model."""
-        default = await self._find_one({"is_default": True, "is_active": True})
-        if default is not None:
-            return default
-        return await self._find_one({"is_active": True})
-
 
 ai_model_repository = AiModelsRepository()

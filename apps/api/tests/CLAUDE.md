@@ -46,11 +46,12 @@ belongs in `test:real`, not in the default run.
 
 - **AAA**: arrange, act, assert — one behavior per test, in one paragraph.
 - **Naming**: mirror the module under test; bug regressions carry the issue number.
-- **Bug regressions carry `@pytest.mark.regression`.** CI re-runs exactly those
-  tests against the base revision and fails if any of them PASSES there — a test
-  that is green without its fix does not pin the bug it claims to. Mark only the
-  tests that go red without the fix, not the whole file; the gap-fill tests
-  alongside them legitimately pass on base.
+- **Bug regressions carry `@pytest.mark.regression`.** CI re-runs the marked
+  tests a PR *adds* against the base revision and fails if any of them PASSES
+  there — a test that is green without its fix does not pin the bug it claims
+  to. Mark only the tests that go red without the fix, not the whole file; the
+  gap-fill tests alongside them legitimately pass on base. Once merged, a marked
+  test stays marked and is not re-proven by later PRs that touch the file.
 - **Hermetic paths**: never hardcode `~` or absolute paths — the `_hermetic_environment` fence owns env (it blanks real credentials at session start); any env a test needs is provisioned by fixtures, not read from the developer's machine.
 - **Fixtures catalog** — search before you build:
   - `tests/conftest.py` — env fence, `client` / `unauthed_client` (ASGITransport), `fake_user` / `fake_user_2`

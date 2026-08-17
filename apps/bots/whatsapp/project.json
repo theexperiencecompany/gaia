@@ -61,7 +61,13 @@
         "cwd": "."
       },
       "cache": true,
-      "inputs": ["production", "^production"]
+      "inputs": ["production", "^production"],
+      "metadata": {
+        "technologies": ["docker"]
+      }
+    },
+    "nx-release-publish": {
+      "executor": "@nx/docker:release-publish"
     }
   }
 }

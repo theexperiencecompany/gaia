@@ -22,6 +22,7 @@ from langgraph.errors import GraphBubbleUp
 from langgraph.store.base import BaseStore, PutOp
 from langgraph.types import Command
 
+from app.agents.context.tiers import AgentTier
 from app.agents.core.background.bg_results import try_claim_bg_dispatch
 from app.agents.core.background.session import (
     claim_bg_integration,
@@ -476,7 +477,7 @@ async def prepare_subagent_execution(
         "name": configurable.get("user_name"),
     }
 
-    subagent_config = build_agent_config(
+    subagent_config = await build_agent_config(
         conversation_id=thread_id,
         user=user,
         thread_id=subagent_thread_id,
@@ -508,6 +509,7 @@ async def prepare_subagent_execution(
 
     messages = await build_initial_messages(
         system_message=system_message,
+        tier=AgentTier.PROVIDER_SUBAGENT,
         agent_name=agent_name,
         configurable=new_configurable,
         task=sanitized_task,
@@ -517,9 +519,6 @@ async def prepare_subagent_execution(
         # back to agent_name ("gmail_agent"), which never matches the stored
         # integration id ("gmail"), so the user's instructions are dropped.
         integration_id=integration_id,
-        # Only forward metadata we actually fetched — None keeps the context
-        # builder's own fetch-or-skip decision intact.
-        provider_metadata=provider_meta if provider_name else None,
     )
 
     ctx = SubagentExecutionContext(
@@ -662,7 +661,7 @@ async def resume_parked_subagent(
         "email": configurable.get("email"),
         "name": configurable.get("user_name"),
     }
-    subagent_config = build_agent_config(
+    subagent_config = await build_agent_config(
         conversation_id=record.conversation_id,
         user=user,
         thread_id=record.subagent_thread_id,

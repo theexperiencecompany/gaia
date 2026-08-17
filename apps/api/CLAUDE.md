@@ -85,7 +85,7 @@ Pre-model hooks in `app/agents/core/nodes/`:
 - No inline imports — all imports at the top of the file.
 - Use `ruff` for linting and formatting (not black/flake8/isort).
 - Raise `AppError` (from `app/utils/errors.py`) for domain errors — it serializes to a structured JSON response automatically.
-- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields to the request's wide event. `log.info(...)` emits a real-time line only and **never reaches the wide event**; `log.error(...)` / `log.warning(...)` emit a line *and* append to the event's `errors[]`/`warnings[]` — always with structured kwargs (`error_type=`, ids), not data interpolated into the message. `log.set(ns={...})` replaces the whole namespace dict — use `log.set_ns("ns", key=value)` for follow-up fields. Sensitive operations (auth, payments, PII writes) also call `log.audit(...)`. ARQ worker tasks do NOT open their own boundary — `arq_task` (`app/workers/task_envelope.py`), applied once per task in `app/worker.py`, wraps every registered task in a `wide_task()` carrying the propagated `trace_id` plus ARQ's `job_id`/`job_try`, so a task body just calls `log.set(...)`; enqueue through `enqueue_worker_job` (`app/workers/queue.py`), never `pool.enqueue_job` directly, or the job loses the caller's trace. Fire-and-forget background work is spawned with `spawn_logged_task("operation", coro(...))`, which gives it a `log_context()` boundary carrying the request's `trace_id`; without a boundary every `log.set()` inside that task is silently discarded. Write new fire-and-forget work that way, and move any `asyncio.create_task` call you touch over to it — `app/` still has ~42 bare `asyncio.create_task` call sites (plus several ad-hoc task sets keeping references alive) predating the helper, and they are being migrated incrementally rather than in one sweep. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
+- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields to the request's wide event. `log.info(...)` emits a real-time line only and **never reaches the wide event**; `log.error(...)` / `log.warning(...)` emit a line *and* append to the event's `errors[]`/`warnings[]` — always with structured kwargs (`error_type=`, ids), not data interpolated into the message. `log.set(ns={...})` merges into the namespace rather than replacing it, so every layer of a request accumulates onto one namespace; `log.set_ns("ns", key=value)` is the same write with the namespace named explicitly and reads better for follow-up fields. Sensitive operations (auth, payments, PII writes) also call `log.audit(...)`. ARQ worker tasks do NOT open their own boundary — `arq_task` (`app/workers/task_envelope.py`), applied once per task in `app/worker.py`, wraps every registered task in a `wide_task()` carrying the propagated `trace_id` plus ARQ's `job_id`/`job_try`, so a task body just calls `log.set(...)`; enqueue through `enqueue_worker_job` (`app/workers/queue.py`), never `pool.enqueue_job` directly, or the job loses the caller's trace. Fire-and-forget background work is spawned with `spawn_logged_task("operation", coro(...))`, which gives it a `log_context()` boundary carrying the request's `trace_id`; without a boundary every `log.set()` inside that task is silently discarded. Write new fire-and-forget work that way, and move any `asyncio.create_task` call you touch over to it — `app/` still has ~42 bare `asyncio.create_task` call sites (plus several ad-hoc task sets keeping references alive) predating the helper, and they are being migrated incrementally rather than in one sweep. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
 
 ### Docstrings & Comments
 
@@ -143,7 +143,7 @@ async def create_todo(
 ) -> TodoResponse:
     log.set(user={"id": user["user_id"]}, todo={"operation": "create"})
     result = await create_todo_service(payload, user)
-    log.set_ns("todo", id=result["_id"])  # set_ns: set(todo={...}) would clobber step 1
+    log.set_ns("todo", id=result["_id"])  # merges into the namespace stamped in step 1
     return JSONResponse(content=result)
 
 ```
@@ -412,6 +412,63 @@ Stop before forcing full type safety through:
 
 A narrower type that's provably correct beats a "complete" one that required guessing.
 
+### 15. Tighten the types in every file you touch — never widen them
+
+Type safety is a ratchet: each file you edit leaves stricter than you found it, and never looser. This is not a licence to rewrite the file. Scope the tightening to the code you are already changing plus the signatures it flows through — the same bar as any other diff (Surgical Changes), so the change stays reviewable.
+
+While you are in a function, fix what is in front of you: a `dict[str, Any]` return, an unparametrized `list`/`dict`/`Callable`, an untyped empty collection (`items = []`), a bare `str` holding a fixed value set, a magic literal that wants to be a constant or enum.
+
+The one hard rule is the ratchet direction. Never *introduce* an `Any`, a bare generic, or an untyped empty collection into a file that did not already have one — including in a hurry, including "just for now." Adding a hole is never in scope; closing one nearly always is.
+
+### 16. An existing annotation is a claim, not evidence — verify the runtime type before you trust it
+
+`dict[str, Any]` does not merely lose precision. It launders wrong types downstream: `Any` is compatible with everything, so a false declaration on the receiving end is never challenged.
+
+Real case from this codebase: `LLMProvider.instance` was declared `BaseChatModel` for months. The registry actually holds `RunnableConfigurableFields` (what `configurable_fields()` returns) — a `RunnableSerializable`, **not** a `BaseChatModel`. The `dict[str, Any]` feeding it is the only reason the lie survived; the code then called `configurable_alternatives()`, a method the declared type does not even have.
+
+So when tightening, do not derive the "real" type from the neighbouring annotation, or from a factory's declared return. Construct the value and look:
+
+```python
+inst = providers.get("gemini_llm")
+print(type(inst).__name__, isinstance(inst, BaseChatModel))  # RunnableConfigurableFields False
+```
+
+Then annotate what it *is*, and pick the type that actually declares the methods you call — `configurable_alternatives` lives on `RunnableSerializable`, not on bare `Runnable`/`LanguageModelLike`.
+
+### 17. Prove the tightened annotation can fail
+
+mypy passing before *and* after a "tightening" proves nothing changed — a decorative annotation is as green as a load-bearing one. Same rule as tests: if it cannot fail, it is not doing work.
+
+Write a throwaway probe, run mypy on it, confirm it errors, delete it:
+
+```python
+# _typeprobe.py — delete after running
+bad: LLMProvider = {"name": "x", "instance": "not-a-model"}   # expect: error
+_get_ordered_providers({"gemini": "not-a-model"}, None, True)  # expect: error
+reveal_type(_get_available_providers())                        # expect: the real type, not Any
+```
+
+`reveal_type` is the fastest way to confirm you closed the hole rather than moved it: if it still reveals `Any`, the annotation is cosmetic.
+
+### 18. A literal repeated at a definition site and a lookup site is an enum (see item 5)
+
+Item 5 covers a fixed set of *values*. This is the sharper case: the same literal written in two places that must agree. Registry keys, event names, queue names, config keys, cache-key prefixes. Nothing enforces the match, so drift is silent and reaches production.
+
+That is exactly how the `comms_agent` outage happened — `"gemini_llm"` lived in both `@lazy_provider(name="gemini_llm")` and the lookup mapping, and only one side was environment-gated. One enum, referenced from both sides, makes the drift impossible:
+
+```python
+class LLMProviderKey(StrEnum):
+    GEMINI = "gemini_llm"
+```
+
+Prefer `StrEnum` over `(str, Enum)`. Both hash equal to their string value, so members stay usable as dict keys and in plain-string lookups — but `(str, Enum)` renders as `LLMProviderKey.GEMINI` in f-strings and log messages, while `StrEnum` renders `gemini_llm`. When the value is interpolated into a log line or an error message, `(str, Enum)` silently degrades it. Verify both properties before swapping a hot string for an enum member:
+
+```python
+d = {LLMProviderKey.GEMINI: 1}
+assert d.get("gemini_llm") == 1          # dict-key compatible
+assert f"{LLMProviderKey.GEMINI}" == "gemini_llm"   # renders as the value
+```
+
 ## Anti-Patterns
 
 - No sync DB/HTTP calls in async endpoints — all I/O must be `async`.
@@ -571,4 +628,5 @@ nx run-many -t lint --projects=web,desktop
 - **Background memory storage**: memory ingestion (`memory_node.py`) is fire-and-forget on the end-of-graph hook. Spawn it — and all fire-and-forget work — via `spawn_background_task()` (`app/utils/background_tasks.py`) so the task isn't garbage-collected mid-flight (see Anti-Patterns).
 - **`UJSONResponse`** is the default response class (faster JSON serialization). Custom error handlers in `app_factory.py` return plain `JSONResponse` to avoid double-serialization issues.
 - **`ENABLE_LAZY_LOADING=true`** (default) means startup blocks until services initialize. Setting it to `false` makes the server start immediately and warm up in the background — safe for requests because `LazyLoader` uses per-provider locks.
+- **Context-assembly sections are the one deliberate exception to "fail loud" (root `CLAUDE.md`).** Every fetcher in `app/agents/context/fetchers.py` catches broadly and returns `""` instead of raising — a context section is enrichment, and failing a user's whole turn because a memory recall or a knowledge-base lookup timed out trades a degraded answer for no answer. The exception is narrow and enforced: only these fetchers and `assemble_context`'s outer catch swallow; every swallow still calls `log.warning`/`log.error` so the failure is visible in the wide event, and a persistent failure degrades to a byte-stable empty block rather than a different one every call (which would itself invalidate the prompt cache). Do not generalize this pattern to other services — see `app/agents/context/fetchers.py`'s module docstring for the full reasoning.
 - **Sandbox user has no `sudo`.** The `gaia-coder` template strips the sandbox user from the `sudo` and `wheel` groups (see `apps/api/scripts/build_e2b_template.py`). Drive root-needing operations (mount.sh, accesslog tail) through e2b's `sbx.commands.run(..., user="root")` parameter — never prefix shell commands with `sudo` in API code, the call will fail. JuiceFS itself runs under `/etc/gaia/jfs_launcher.py` which marks the daemon non-dumpable (`PR_SET_DUMPABLE=0`) so its `/proc/<pid>/{environ,cmdline}` are unreadable to the unprivileged user. `/proc` is mounted `hidepid=invisible` so even PID enumeration is denied. Verify after template rebuilds with `apps/api/scripts/verify_sandbox_hardening.sh`.

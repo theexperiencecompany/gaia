@@ -185,7 +185,13 @@ cat > "$root/.env.worktree" <<EOF
 # Deterministic per-worktree ports (offset $offset derived from the worktree path).
 # mise loads this automatically via [env]._.file; delete it to fall back to defaults.
 API_PORT=$api_port
+# Host publish port for the dockered API (\`mise dev:vm\`). Same value as API_PORT
+# so the URLs below hold whichever way this worktree boots the API.
+API_HOST_PORT=$api_port
 WEB_PORT=$web_port
+# The API redirects here after login/OAuth and builds notification links from it,
+# so it must point at THIS worktree's web server, not the default :3000.
+FRONTEND_URL=http://localhost:$web_port
 NEXT_PUBLIC_API_BASE_URL=http://localhost:$api_port/api/v1/
 # Every backend client resolves the API from this, so \`gaia-sim\` and the bots
 # target THIS worktree's API instead of whatever owns port 8000.
@@ -331,7 +337,7 @@ run = "nx run docker:docker:up && nx run-many -t dev --projects=api,mobile --par
 
 [tasks."dev:bots"]
 description = "Run ALL bots (Discord, Telegram, Slack, WhatsApp) in parallel"
-run = "nx run-many -t dev --projects=bot-discord,bot-telegram,bot-slack,bot-whatsapp --parallel=4"
+run = "nx run-many -t dev --projects=bot-discord,bot-telegram,bot-slack,bot-whatsapp,bot-imessage --parallel=5"
 
 [tasks."dev:arq"]
 description = "Run API + web + arq worker"
@@ -340,7 +346,7 @@ run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web -
 
 [tasks."dev:full"]
 description = "Run API + web + arq worker + voice agent + all bots in parallel"
-run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent,bot-discord,bot-telegram,bot-slack,bot-whatsapp --parallel=8"
+run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent,bot-discord,bot-telegram,bot-slack,bot-whatsapp,bot-imessage --parallel=9"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILD COMMANDS
@@ -549,6 +555,10 @@ run = "dagger call -s docker-build --app bot-telegram"
 [tasks."ci:docker:bot-whatsapp"]
 description = "Build WhatsApp bot Docker image via Dagger"
 run = "dagger call -s docker-build --app bot-whatsapp"
+
+[tasks."ci:docker:bot-imessage"]
+description = "Build iMessage bot Docker image via Dagger"
+run = "dagger call -s docker-build --app bot-imessage"
 
 # ── GitHub Actions simulation (via act) ──
 

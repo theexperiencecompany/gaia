@@ -35,7 +35,8 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
-from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
+from app.agents.llm.lane import ModelLane
+from app.constants.llm import AGENT_RECURSION_LIMIT, LANE_FIELD_ID, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
 from app.models.agent_models import agent_configurable
 from app.models.payment_models import PlanType
@@ -253,8 +254,20 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         config = _current_config()
         configurable = agent_configurable(config)
         thread_id = self._thread_id(config)
-        model_name = configurable.get("model_name") or configurable.get("model") or "unknown"
-        provider = configurable.get("provider", "unknown")
+        lane = ModelLane.from_configurable(configurable.get(LANE_FIELD_ID))
+        model_name = (lane.model if lane else None) or "unknown"
+        provider = lane.provider if lane else "unknown"
+        if lane is None:
+            # Priced as "unknown", which cannot match a real pricing entry, so the
+            # call undercharges the budget. Loud rather than silent, matching
+            # cost_budget's fail-open-but-visible convention — and reachable for a
+            # deploy window by any bag written before lanes existed.
+            log.warning(
+                f"{LogTag.AGENT} No lane on the configurable — the call is priced as "
+                "'unknown' and undercharges the budget (pre-lane queue item or HIL resume?)",
+                agent_name=self.agent_name,
+                thread_id=thread_id,
+            )
         user_id = configurable.get("user_id")
 
         # Price the call (full input_tokens + cached_tokens, so the cached subset

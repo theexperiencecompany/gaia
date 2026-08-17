@@ -17,6 +17,8 @@
 
 import {
   BaseBotAdapter,
+  BODY_READ_TIMEOUT,
+  BODY_TOO_LARGE,
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
@@ -26,22 +28,25 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
+  MEDIA_READ_TIMEOUT_MS,
   type OutboundAttachment,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
+  readBodyBounded,
+  readResponseBytesCapped,
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   unsupportedMediaMessage,
+  WEBHOOK_MAX_BODY_BYTES,
   wideLog,
   withWideEvent,
 } from "@gaia/shared";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
-  MAX_WEBHOOK_BODY_BYTES,
   NOTIFICATION_TEMPLATE_LANGUAGE,
   NOTIFICATION_TEMPLATE_NAME,
   NOTIFICATION_TEMPLATE_PARAM_NAME,
@@ -49,11 +54,6 @@ import {
   TEMPLATE_BODY_MAX_LENGTH,
   TYPING_REFRESH_MS,
 } from "./constants";
-import {
-  BODY_READ_TIMEOUT,
-  BODY_TOO_LARGE,
-  readBodyBounded,
-} from "./request-body";
 import {
   extractMedia,
   extractTextBody,
@@ -183,11 +183,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           const contentLength = Number(c.req.header("content-length"));
           if (
             Number.isFinite(contentLength) &&
-            contentLength > MAX_WEBHOOK_BODY_BYTES
+            contentLength > WEBHOOK_MAX_BODY_BYTES
           ) {
             this.adapterLogger.warn("webhook_body_too_large", {
               content_length: contentLength,
-              max_bytes: MAX_WEBHOOK_BODY_BYTES,
+              max_bytes: WEBHOOK_MAX_BODY_BYTES,
             });
             wideLog.set({ http_status: 413 });
             return c.text("Payload Too Large", 413);
@@ -195,11 +195,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
           const rawBody = await readBodyBounded(
             c.req.raw,
-            MAX_WEBHOOK_BODY_BYTES,
+            WEBHOOK_MAX_BODY_BYTES,
           );
           if (rawBody === BODY_TOO_LARGE) {
             this.adapterLogger.warn("webhook_body_too_large", {
-              max_bytes: MAX_WEBHOOK_BODY_BYTES,
+              max_bytes: WEBHOOK_MAX_BODY_BYTES,
             });
             wideLog.set({ http_status: 413 });
             return c.text("Payload Too Large", 413);
@@ -770,10 +770,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         mimeType: media.mimeType,
         filename: media.filename,
         caption: media.caption,
+        sizeBytes: media.sizeBytes,
       };
       const outcome = await this.resolveIncomingMedia(
         incoming,
-        () => this.downloadMediaBytes(media),
+        (maxBytes) => this.downloadMediaBytes(media, maxBytes),
         waId,
         waId,
       );
@@ -810,13 +811,28 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
   }
 
-  /** Downloads the raw bytes for a media message via the Kapso SDK. */
-  private async downloadMediaBytes(media: ExtractedMedia): Promise<Uint8Array> {
-    const arrayBuf = (await this.whatsAppClient.media.download({
+  /**
+   * Downloads the raw bytes for a media message via the Kapso SDK, reading at
+   * most `maxBytes`. The SDK's `as: "response"` mode hands back the unconsumed
+   * Response, so an oversize attachment is truncated and its stream cancelled
+   * instead of being buffered whole — and a non-2xx CDN reply raises instead of
+   * being mistaken for the file's bytes.
+   */
+  private async downloadMediaBytes(
+    media: ExtractedMedia,
+    maxBytes: number,
+  ): Promise<Uint8Array> {
+    const response = (await this.whatsAppClient.media.download({
       mediaId: media.mediaId,
       phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
-    })) as ArrayBuffer;
-    return new Uint8Array(arrayBuf);
+      as: "response",
+    })) as Response;
+    return readResponseBytesCapped(
+      response,
+      maxBytes,
+      "WhatsApp media",
+      MEDIA_READ_TIMEOUT_MS,
+    );
   }
 
   // ---------------------------------------------------------------------------

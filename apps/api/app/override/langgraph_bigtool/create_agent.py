@@ -33,6 +33,7 @@ from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import LanguageModelLike
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
@@ -53,16 +54,11 @@ from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
-from app.agents.llm.client import (
-    ainvoke_llm,
-    get_default_llm,
-    invoke_llm,
-    is_default_model_config,
-)
-from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.agents.llm.client import ainvoke_llm, invoke_llm
+from app.agents.llm.lane import ModelLane
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
-from app.constants.llm import RECURSION_WRAPUP_THRESHOLD_STEPS
+from app.constants.llm import LANE_FIELD_ID, RECURSION_WRAPUP_THRESHOLD_STEPS
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     DynamicToolNode,
@@ -90,19 +86,37 @@ from shared.py.wide_events import log
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
 
+def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfig:
+    """``config`` rebound onto ``lane`` — the config the fallback attempt runs under."""
+    return cast(
+        RunnableConfig,
+        {**config, "configurable": lane.rebind(config.get("configurable") or {})},
+    )
+
+
 def _prepare_fallback(
-    fallback_llm: Runnable | None,
+    llm: LanguageModelLike,
     tools_to_bind: list[BaseTool],
     model_configurations: AgentConfigurable,
-) -> Callable[[], Runnable] | None:
-    """Factory that binds the default fallback model with the same tools as the
-    primary. Returned as a zero-arg callable so the (per-turn, tool-list-sized)
-    binding only happens if the primary actually fails. None when no fallback is
-    configured or the selected model already is the default model (no point
-    falling back to itself)."""
-    if fallback_llm is None or is_default_model_config(model_configurations):
+) -> tuple[Callable[[], Runnable], "ModelLane"] | None:
+    """Factory that re-binds this run on the NEXT configured provider, with the
+    same tools. Zero-arg so the (per-turn, tool-list-sized) binding only happens
+    if the primary actually fails. ``None`` when no other provider is configured.
+
+    The fallback target is a different PROVIDER, not a different model on the
+    same one. Falling back to ``get_default_llm()`` was inert in production: it
+    was skipped whenever the run already selected the default model, and since
+    every tier resolves to that model the graph had no fallback at all — one 402
+    or 401 from OpenRouter killed the whole turn on every execution path.
+    """
+    lane = ModelLane.from_configurable(model_configurations.get(LANE_FIELD_ID))
+    fallback_lane = lane.fallback() if lane else None
+    if fallback_lane is None:
         return None
-    return lambda: fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+    # cast rather than an attr-defined suppression: the registry genuinely holds a
+    # tool-binding chat model, LanguageModelLike just doesn't declare bind_tools.
+    bindable = cast(BaseChatModel, llm)
+    return (lambda: bindable.bind_tools(tools_to_bind), fallback_lane)
 
 
 def create_agent(
@@ -209,13 +223,6 @@ def create_agent(
         tools_to_bind.extend(selected_tools)
         return dedupe_tool_bindings(tools_to_bind)
 
-    # Default model used as the last-resort fallback when the selected model
-    # keeps failing; None when Google isn't configured (fallback then skipped).
-    try:
-        fallback_llm: Runnable | None = get_default_llm()
-    except LLMNotConfiguredError:
-        fallback_llm = None
-
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         state = sync_execute_hooks(pre_model_hooks, state, config, store)
         tombstones = pop_pruned_tombstones(state)
@@ -232,14 +239,15 @@ def create_agent(
         model_configurations = agent_configurable(config)
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-        fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
+        prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state)
         response = invoke_llm(
             llm_with_tools,
             state["messages"],
-            fallback=fallback,
+            fallback=prepared[0] if prepared else None,
             config=config,
             label=agent_name,
+            fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
         )
 
         if not response.tool_calls and not response.content:
@@ -287,9 +295,14 @@ def create_agent(
 
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-        fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
+        prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         invoke_fn = functools.partial(
-            ainvoke_llm, llm_with_tools, fallback=fallback, config=config, label=agent_name
+            ainvoke_llm,
+            llm_with_tools,
+            fallback=prepared[0] if prepared else None,
+            config=config,
+            label=agent_name,
+            fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
         )
 
         try:

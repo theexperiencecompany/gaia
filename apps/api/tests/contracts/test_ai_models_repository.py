@@ -36,22 +36,6 @@ class TestAiModelsRepository:
         assert got is not None and got.model_id == "gpt-x"
         assert await repo.get_by_model_id("missing") is None
 
-    async def test_get_default_prefers_default(self, repo):
-        await repo.create(_model(model_id="a", is_default=False, is_active=True))
-        await repo.create(_model(model_id="b", is_default=True, is_active=True))
-        default = await repo.get_default()
-        assert default is not None and default.model_id == "b"
-
-    async def test_get_default_falls_back_to_any_active(self, repo):
-        await repo.create(_model(model_id="only", is_default=False, is_active=True))
-        await repo.create(_model(model_id="off", is_default=False, is_active=False))
-        default = await repo.get_default()
-        assert default is not None and default.model_id == "only"
-
-    async def test_get_default_none_when_no_active(self, repo):
-        await repo.create(_model(model_id="off", is_active=False))
-        assert await repo.get_default() is None
-
     async def test_count(self, repo):
         await repo.create(_model(model_id="x"))
         await repo.create(_model(model_id="y"))
