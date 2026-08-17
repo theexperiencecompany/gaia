@@ -109,9 +109,7 @@ class TestUnregister:
 
         assert await _StubHandler().unregister("user-1", ["ti_410abc"]) is False
 
-    async def test_other_api_status_error_reports_failure(
-        self, composio_delete: MagicMock
-    ) -> None:
+    async def test_other_api_status_error_reports_failure(self, composio_delete: MagicMock) -> None:
         composio_delete.side_effect = _api_status_error(
             403, '{"error":{"message":"Forbidden"}}', PermissionDeniedError
         )

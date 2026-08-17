@@ -179,3 +179,8 @@ evlog.map.json
 
 # Redis snapshot — created if a local redis-server is started from the repo root.
 dump.rdb
+
+# Per-invocation mutation workdirs (scripts/test/mutation.sh, .mutation-$$) —
+# a full app/tests/scripts copy plus mutmut's mutants/ tree, ~3.5k files. Left
+# behind only on a crash or MUTMUT_KEEP_WORKDIR=1, and swept into a commit once.
+.mutation-*/

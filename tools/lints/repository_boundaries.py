@@ -91,7 +91,6 @@ CACHE_CALL_ALLOWLIST: frozenset[str] = frozenset(
         # agents/ + helpers/ + utils/ — subagent/handoff display metadata (name/icon)
         "agents/core/subagents/handoff_tools.py",
         "helpers/agent_helpers.py",
-        "helpers/message_helpers.py",
         "utils/agent_utils.py",
         # external-data / derived caches (web, weather, favicon, research)
         "agents/tools/research_tool.py",

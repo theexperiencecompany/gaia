@@ -61,10 +61,31 @@ fi
 # 4. Run one mutation check per module with bounded parallelism. A plain
 #    read loop (not xargs) so a module with an empty changed-lines JSON
 #    (`[]`) can never shift the fields between invocations.
+#
+#    Two dials, and they multiply: this loop runs MODULES_IN_FLIGHT modules at
+#    once, and each one's mutmut spawns its own worker pool — defaulting to
+#    os.cpu_count() (mutmut.__main__: `max_children = os.cpu_count() or 4`).
+#    So the process count is MODULES_IN_FLIGHT × children, and raising the
+#    first alone multiplies memory: every worker imports the whole app via
+#    tests/conftest, so oversubscribing trades a timeout for an OOM.
+#
+#    Widened here by rebalancing rather than by adding load — more modules in
+#    flight, proportionally fewer children each, so the product stays where it
+#    already ran clean. That is a real speedup because a module's wall time is
+#    dominated by mutmut's SERIAL phases (generating mutants, the stats run,
+#    the clean-test run) during which its workers are idle; overlapping more
+#    modules fills those gaps instead of contending for cores.
+MODULES_IN_FLIGHT=8
+CORES="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
+# Floor of 1: on a 1-2 core runner the division would otherwise disable mutmut's
+# pool entirely (0 children) rather than merely making it serial.
+export MUTMUT_MAX_CHILDREN="${MUTMUT_MAX_CHILDREN:-$(( CORES / 2 > 0 ? CORES / 2 : 1 ))}"
+echo "parallelism: $MODULES_IN_FLIGHT module(s) in flight × $MUTMUT_MAX_CHILDREN mutmut child(ren) on $CORES core(s)"
+
 FAILED=0
 while read -r module testfiles ranges; do
   bash scripts/test/mutation.sh "$module" "$testfiles" "${ranges:-[]}" &
-  if [ "$(jobs -r -p | wc -l)" -ge 4 ]; then
+  if [ "$(jobs -r -p | wc -l)" -ge "$MODULES_IN_FLIGHT" ]; then
     wait -n || FAILED=1
   fi
 done < /tmp/mutation-modules.txt

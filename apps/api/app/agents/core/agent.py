@@ -22,7 +22,7 @@ from app.agents.core.background.executor_capture import (
 )
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.messages import construct_langchain_messages
-from app.agents.llm.plan_model import apply_dev_model_override, apply_plan_model
+from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -40,8 +40,8 @@ from app.models.agent_models import (
     agent_configurable,
 )
 from app.models.message_models import MessageRequestWithHistory
-from app.models.models_models import ModelConfig
 from app.models.user_models import AuthenticatedUser
+from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
 
 
@@ -49,7 +49,6 @@ async def _core_agent_logic(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: AuthenticatedUser,
-    user_model_config: ModelConfig | None = None,
     trigger_context: dict[str, Any] | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     source: str | None = None,
@@ -65,7 +64,6 @@ async def _core_agent_logic(
         request: Message request with conversation history and file data
         conversation_id: Unique identifier for the conversation thread
         user: User information dictionary with ID, email, name, and home timezone
-        user_model_config: Optional model configuration for inference
         trigger_context: Optional context data from workflow triggers
         langfuse_trace_id: Seed for the Langfuse trace; forwarded into the
             config metadata + configurable so child agents inherit it.
@@ -117,11 +115,27 @@ async def _core_agent_logic(
         request, user_id or "", conversation_id, history, trigger_context
     )
 
-    # Build config with optional tokens
-    config = build_agent_config(
+    # DEV-ONLY: the chat-header model selector picks a model per role. It wins over
+    # plan routing inside resolve_lane. Never reached in production.
+    dev_option = (
+        dev_option_for(request.comms_model, request.use_default_models)
+        if settings.ENV == "development"
+        else None
+    )
+
+    # Established here (comms already has the full user document) so the
+    # executor and every subagent it hands off to inherit it — the worker
+    # tiers' context sections read it off configurable, not off a user doc
+    # they never have.
+    user_preferences, writing_style = onboarding_preferences(user.get("onboarding"))
+
+    # This is the top-level run, so build_agent_config resolves the comms lane
+    # here; the executor and every subagent inherit it whole.
+    config = await build_agent_config(
         conversation_id=conversation_id,
         user=user,
-        user_model_config=user_model_config,
+        role=AgentRole.COMMS,
+        dev_option=dev_option,
         usage_metadata_callback=usage_metadata_callback,
         agent_name="comms_agent",
         selected_tool=request.selectedTool,
@@ -130,6 +144,8 @@ async def _core_agent_logic(
         execution_mode=execution_mode,
         source=source,
         user_messages=recent_user_messages(request.messages, request.message),
+        user_preferences=user_preferences,
+        writing_style=writing_style,
         langfuse_trace_id=langfuse_trace_id,
         langfuse_tags=langfuse_tags,
     )
@@ -139,19 +155,13 @@ async def _core_agent_logic(
     # whose empty-dict fallback would swallow the writes.
     configurable = cast(AgentConfigurable, config["configurable"])
 
-    # Route the model by subscription plan (Free -> Gemini, Pro -> MiniMax).
-    # Hardcoded policy; the executor and subagents inherit it via the configurable.
-    await apply_plan_model(configurable, user_id)
-
-    # DEV-ONLY: the chat-header model selector overrides comms/executor models per
-    # request, winning over the plan model above. Stripped to a no-op in production.
-    if settings.ENV == "development":
-        apply_dev_model_override(
-            configurable,
-            comms_model=request.comms_model,
-            executor_model=request.executor_model,
-            use_defaults=request.use_default_models,
-        )
+    # DEV-ONLY: the executor builds its own configurable and would otherwise
+    # inherit comms's lane, so the executor's own dev choice rides down here and
+    # prepare_executor_execution resolves it into that run's lane.
+    if settings.ENV == "development" and (
+        executor_dev := dev_model_id(request.executor_model, request.use_default_models)
+    ):
+        configurable["dev_executor_model"] = executor_dev
 
     # Workflow runs carry their id/title so the background executor's delivery
     # path can route the final result to the workflow-completion notification
@@ -165,7 +175,7 @@ async def _core_agent_logic(
 
     log.set(
         agent=dict(
-            model=configurable.get("model_name"),
+            model=configurable.get("model"),
             has_workflow=bool(request.selectedWorkflow),
             has_trigger_context=bool(trigger_context),
             has_calendar_event=bool(request.selectedCalendarEvent),
@@ -181,7 +191,6 @@ async def call_agent(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: AuthenticatedUser,
-    user_model_config: ModelConfig | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     stream_id: str | None = None,
     user_message_id: str | None = None,
@@ -209,7 +218,6 @@ async def call_agent(
             request,
             conversation_id,
             user,
-            user_model_config,
             usage_metadata_callback=usage_metadata_callback,
             source=source,
             langfuse_trace_id=langfuse_trace_id,
@@ -252,7 +260,6 @@ async def call_agent_silent(
     conversation_id: str,
     user: AuthenticatedUser,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
-    user_model_config: ModelConfig | None = None,
     trigger_context: dict[str, Any] | None = None,
     source: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
@@ -273,7 +280,6 @@ async def call_agent_silent(
             request,
             conversation_id,
             user,
-            user_model_config,
             trigger_context,
             usage_metadata_callback=usage_metadata_callback,
             source=source,
@@ -306,7 +312,7 @@ async def call_agent_silent(
                 v.get("output_tokens", 0) for v in usage.values() if isinstance(v, dict)
             )
             log.set(
-                agent={"model": agent_configurable(config).get("model_name")},
+                agent={"model": agent_configurable(config).get("model")},
                 token_input=total_input,
                 token_output=total_output,
                 token_total=total_input + total_output,

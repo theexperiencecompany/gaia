@@ -15,6 +15,7 @@ from app.agents.core.background.session import claim_tool_output
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
+from app.agents.llm.lane import AgentRole, ModelLane, resolve_lane
 from app.config.langfuse import build_langfuse_callback
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
@@ -23,9 +24,6 @@ from app.constants.cache import (
 from app.constants.hil import HIL_JUDGE_MAX_TURN_CHARS, HIL_JUDGE_MAX_USER_TURNS
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
-    DEFAULT_LLM_PROVIDER,
-    DEFAULT_MAX_TOKENS,
-    DEFAULT_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
@@ -41,7 +39,8 @@ from app.models.agent_models import (
 )
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.message_models import MessageDict, MessageRequestWithHistory
-from app.models.models_models import ModelConfig
+from app.models.models_models import DevModelOption
+from app.models.payment_models import PlanType
 from app.models.stream_events import ModelFallbackFrame, ToolOutputPayload
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
@@ -151,40 +150,26 @@ def _build_agent_callbacks(
     return callbacks
 
 
-def _resolve_model_config(
-    user_model_config: ModelConfig | None,
-) -> tuple[str, str, int]:
-    """Pick the model triple (name, provider, max_tokens) from user choice or defaults."""
-    if user_model_config:
-        log.set(model_config_source="user_selected")
-        return (
-            user_model_config.provider_model_name,
-            user_model_config.inference_provider.value,
-            user_model_config.max_tokens,
-        )
-    log.set(model_config_source="default")
-    return DEFAULT_MODEL_NAME, DEFAULT_LLM_PROVIDER, DEFAULT_MAX_TOKENS
-
-
 def _inherit_from_parent_configurable(
     base_configurable: AgentConfigurable | None,
     current: AgentConfigurable,
 ) -> AgentConfigurable:
     """Merge `current` with optional inheritance from a parent agent's configurable.
 
-    - Model fields (provider/max_tokens/model_name): parent overrides child.
     - Fallback fields (tool / subagent / vfs / todo / mode / source): child wins; parent
       only fills in blanks.
     - Pass-through (stream_id): always comes from parent.
+
+    The model is NOT merged here. A child inherits its parent's lane whole (see
+    ``build_agent_config``) — one rule for one value, replacing a per-key table in
+    which provider/model_name were parent-overrides, ``model_kwargs`` was
+    conditional and ``reasoning`` was deliberately not inherited at all.
     """
     merged: AgentConfigurable = {**current, "stream_id": None}
 
     if not base_configurable:
         return merged
 
-    merged["provider"] = base_configurable.get("provider", merged["provider"])
-    merged["max_tokens"] = base_configurable.get("max_tokens", merged["max_tokens"])
-    merged["model_name"] = base_configurable.get("model_name", merged["model_name"])
     # Parent overrides: the TRUE conversation id is established once by comms and
     # must survive child agents passing their own wrapped thread ids down as the
     # ``conversation_id`` argument (``executor_<conv>`` → ``<integ>_executor_<conv>``).
@@ -197,15 +182,12 @@ def _inherit_from_parent_configurable(
     # judge checks the tool call against what the *user* actually asked, not against the
     # agent's restatement of it.
     merged["user_messages"] = base_configurable.get("user_messages") or merged["user_messages"]
-    # Inherit the OpenRouter provider-routing pin (model_kwargs) from the parent.
-    # Without it a subagent drops the first-party provider pin and falls back to the
-    # client default, so the request load-balances onto throttled resellers (e.g.
-    # Parasail) and can 400 / rate-limit. `reasoning` is intentionally NOT inherited:
-    # the executor and provider subagents keep the client default effort, while comms
-    # sets its own lower effort.
-    if "model_kwargs" in base_configurable:
-        merged["model_kwargs"] = base_configurable["model_kwargs"]
-
+    # Same rule, same reason: established once wherever the root call site had the
+    # full user document in hand, and a child never has its own copy to prefer.
+    merged["user_preferences"] = (
+        base_configurable.get("user_preferences") or merged["user_preferences"]
+    )
+    merged["writing_style"] = base_configurable.get("writing_style") or merged["writing_style"]
     # Child wins; the parent only fills a blank. Written out per key rather than
     # driven by a table so each one is a checked TypedDict access.
     merged["selected_tool"] = merged.get("selected_tool") or base_configurable.get("selected_tool")
@@ -249,15 +231,18 @@ def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
     return [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
 
 
-# NOSONAR python:S107 — these parameters form one cohesive LangGraph execution
-# config surface (user context, model, auth, tracing, execution params). Grouping
-# them into a dataclass would not reduce the surface, only move it, and every
-# caller already passes them as explicit keyword args.
-def build_agent_config(  # NOSONAR python:S107
+# These parameters form one cohesive LangGraph execution config surface (user
+# context, model, auth, tracing, execution params). Grouping them into a dataclass
+# would not reduce the surface, only move it. Keyword-only instead: every caller
+# already passed them by name, and a 19-argument positional signature is a
+# mis-ordering waiting to happen.
+async def build_agent_config(
+    *,
     conversation_id: str,
     user: AgentUserContext,
     agent_name: str,
-    user_model_config: ModelConfig | None = None,
+    role: AgentRole = AgentRole.SUBAGENT,
+    dev_option: DevModelOption | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     thread_id: str | None = None,
     base_configurable: AgentConfigurable | None = None,
@@ -269,6 +254,8 @@ def build_agent_config(  # NOSONAR python:S107
     execution_mode: ExecutionMode | None = None,
     source: str | None = None,
     user_messages: list[str] | None = None,
+    user_preferences: dict[str, Any] | None = None,
+    writing_style: dict[str, Any] | None = None,
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
     recursion_limit: int = AGENT_RECURSION_LIMIT,
@@ -284,19 +271,36 @@ def build_agent_config(  # NOSONAR python:S107
             (parent-overrides) by the executor and every subagent, whose own tasks are
             agent-authored paraphrases. The HIL intent judge checks gated tool calls
             against these, so they must be the user's words — not a restatement.
+        user_preferences / writing_style: Onboarding data, same inheritance rule as
+            ``user_messages`` — pass it at whichever root call site already has the
+            full user document in hand (comms, background narration, the dev
+            direct-invoke entrypoint); every child agent inherits it unchanged.
         langfuse_trace_id / langfuse_tags: Bind spans to a Langfuse trace; inherit from
             base_configurable when omitted so the executor lands on the comms trace.
         recursion_limit: Max LangGraph steps before GraphRecursionError. Defaults to the
             comms/subagent cap; the executor passes EXECUTOR_RECURSION_LIMIT for its
             longer tool loops.
+        role / dev_option: Only consulted for a TOP-LEVEL run (no base_configurable),
+            which is the one that resolves a lane; a child inherits its parent's lane
+            whole and ignores both.
     """
     callbacks = _build_agent_callbacks(conversation_id, user, agent_name, usage_metadata_callback)
-    model_name, provider_name, max_tokens = _resolve_model_config(user_model_config)
+
+    # The one seam every execution path crosses. A run with a parent inherits its
+    # lane whole; a top-level run (chat, background narration, a direct dev
+    # invocation) resolves one here. Doing it here rather than at the callers is
+    # what makes it structurally impossible for a new entry point to be born on
+    # the wrong lane — the same self-sufficiency the budget wall already has.
+    # Precedence: an explicit dev choice (the switcher's whole purpose) beats
+    # inheritance, which beats resolving fresh.
+    inherited_lane = ModelLane.from_configurable((base_configurable or {}).get("lane"))
+    resolved_plan: PlanType | None = None
+    if dev_option is None and inherited_lane is not None:
+        lane = inherited_lane
+    else:
+        lane, resolved_plan = await resolve_lane(user.get("user_id"), role, dev_option)
 
     current: AgentConfigurable = {
-        "provider": provider_name,
-        "max_tokens": max_tokens,
-        "model_name": model_name,
         "conversation_id": conversation_id,
         "selected_tool": selected_tool,
         "tool_category": tool_category,
@@ -305,6 +309,8 @@ def build_agent_config(  # NOSONAR python:S107
         "active_todo_id": active_todo_id,
         "conversation_source": source,
         "user_messages": user_messages,
+        "user_preferences": user_preferences,
+        "writing_style": writing_style,
     }
     if execution_mode:
         current["execution_mode"] = execution_mode
@@ -355,15 +361,17 @@ def build_agent_config(  # NOSONAR python:S107
         # The user's own verbatim turns (see build_agent_config). The HIL intent judge
         # reads these; child agents inherit them unchanged.
         "user_messages": resolved["user_messages"],
+        "user_preferences": resolved["user_preferences"],
+        "writing_style": resolved["writing_style"],
         "user_id": user.get("user_id"),
         "email": user.get("email"),
         "user_name": user.get("name", ""),
         "user_timezone": home_timezone,
         "root_request_id": root_request_id,
-        "provider": resolved["provider"],
-        "max_tokens": resolved["max_tokens"],
-        "model_name": resolved["model_name"],
-        "model": resolved["model_name"],
+        # The decision, and its expansion into LangChain's binding keys. Only
+        # ``lane`` is inherited by children; the binding keys are always
+        # re-derived from it, so the two can never drift apart.
+        "lane": lane.to_configurable(),
         "selected_tool": resolved["selected_tool"],
         "tool_category": resolved["tool_category"],
         "subagent_id": resolved["subagent_id"],
@@ -375,10 +383,15 @@ def build_agent_config(  # NOSONAR python:S107
         "source_category": source_category,
     }
 
-    # plan_type is stamped by apply_plan_model on the top-level configurable and
-    # propagated to children the same way root_request_id is.
-    if inherited.get("plan_type"):
-        configurable["plan_type"] = inherited["plan_type"]
+    # LangChain's binding keys, always re-derived from the lane so the two can
+    # never drift apart.
+    configurable.update(lane.binding_keys())
+
+    # The budget wall reads plan_type to avoid a Redis lookup on the hot path.
+    # Stamped from the same resolve_lane call that chose the model, and inherited
+    # by children the way root_request_id is.
+    if plan := (inherited.get("plan_type") or (resolved_plan.value if resolved_plan else None)):
+        configurable["plan_type"] = plan
 
     # Stash in configurable so child agents (spawned via asyncio.create_task)
     # re-emit the same trace_id from their own build_agent_config call.
@@ -386,14 +399,6 @@ def build_agent_config(  # NOSONAR python:S107
         configurable["langfuse_trace_id"] = effective_trace_id
     if effective_tags:
         configurable["langfuse_tags"] = effective_tags
-
-    # Propagate the OpenRouter provider pin inherited from the parent (see
-    # _inherit_from_parent_configurable) so spawned subagents stay on the
-    # first-party lane. Conditional so an absent pin leaves the model's
-    # model_kwargs ConfigurableField default intact instead of clobbering it
-    # with None.
-    if resolved.get("model_kwargs"):
-        configurable["model_kwargs"] = resolved["model_kwargs"]
 
     metadata: dict[str, Any] = {
         "user_id": user.get("user_id"),
