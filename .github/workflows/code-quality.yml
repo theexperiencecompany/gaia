@@ -1091,12 +1091,20 @@ jobs:
                 j=$((j+5))
                 {
                   echo "=== setsid +${j}s $(date -u) ==="
-                  ps auxww 2>/dev/null | head -25
-                  echo "--- dmesg tail ---"
-                  sudo dmesg 2>/dev/null | tail -15
-                  echo "--- shard.log ---"
-                  ls -la shard.log 2>/dev/null
-                  tail -c 8000 shard.log 2>/dev/null
+                  # RSS-sorted, not pid-sorted: head-25 of a pid sort is 25
+                  # kernel threads and zero information.
+                  ps auxww --sort=-rss 2>/dev/null | head -14
+                  echo "--- every python/bash/tee of the runner user ---"
+                  ps -o pid,ppid,pgid,sess,stat,etime,args -u runner 2>/dev/null | grep -E 'python|bash|tee|timeout' | grep -v grep | head -20
+                  echo "--- py-spy (who is stuck where) ---"
+                  for pid in $(pgrep -u runner python 2>/dev/null); do
+                    echo "## pid $pid"
+                    timeout 15 sudo env "PATH=$PATH:/home/runner/.local/bin" py-spy dump --pid "$pid" 2>&1 | head -40
+                  done
+                  echo "--- logs ---"
+                  ls -la shard.log apps/api/.mutation-*/mutmut.log 2>/dev/null
+                  echo "--- dmesg kills? ---"
+                  sudo dmesg 2>/dev/null | grep -iE 'kill|oom|segfault' | tail -6
                 } > diag-setsid.txt 2>&1
                 BLOB=$(git hash-object -w diag-setsid.txt) &&
                 TREE=$(printf "100644 blob %s\tsetsid-plus-%ss.txt\n" "$BLOB" "$j" | git mktree) &&
