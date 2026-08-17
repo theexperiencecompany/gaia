@@ -573,7 +573,7 @@ def comms_delegating_script(task: str = "explain the executor") -> list[Any]:
 
 def executor_handoff_script() -> list[Any]:
     # Three entries for two visible turns: one handoff is below
-    # COMPLETION_MIN_TOOL_CALLS, so the executor's completion guard spends its
+    # the real-work gate, so the executor's completion guard spends its
     # one nudge before letting the plain-text stop through. The script cycles,
     # so without the repeat the post-nudge turn replays the handoff and the
     # subagent runs twice.

@@ -2,7 +2,7 @@
 
 ``work_looks_unfinished`` is the prematurity check the executor's graph loop
 runs before honouring a plain-text stop. True on a concrete "too shallow"
-signal: a tracked todo still pending, fewer than ``COMPLETION_MIN_TOOL_CALLS``
+signal: a tracked todo still pending, fewer than ``COMPLETION_NON_WORK_TOOLS``
 tools executed on a delegated task, or a final reply that PROMISES future work
 ("hang tight", "still digging") — nothing runs after the reply ends, so a
 promise-to-continue is never a valid ending. Kept here so the graph builder
@@ -21,7 +21,7 @@ from __future__ import annotations
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
 from app.constants.llm import (
-    COMPLETION_MIN_TOOL_CALLS,
+    COMPLETION_NON_WORK_TOOLS,
     COMPLETION_NUDGE_MESSAGE,
     COMPLETION_PROMISE_MARKERS,
 )
@@ -78,5 +78,13 @@ def work_looks_unfinished(state: State) -> bool:
         return True
     if reply_promises_future_work(state):
         return True
-    tool_calls = sum(1 for m in current_delegation(state) if isinstance(m, ToolMessage))
-    return tool_calls < COMPLETION_MIN_TOOL_CALLS
+    # Nudge only when NOTHING real ran: discovery and errored calls prove no
+    # work happened, but one successful real call ("send the email") must not
+    # be second-guessed — the nudge's "do it now" can goad a duplicate send.
+    completed_work = any(
+        isinstance(m, ToolMessage)
+        and m.status != "error"
+        and m.name not in COMPLETION_NON_WORK_TOOLS
+        for m in current_delegation(state)
+    )
+    return not completed_work
