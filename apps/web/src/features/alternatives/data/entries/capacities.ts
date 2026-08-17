@@ -9,9 +9,9 @@ export const entry: AlternativeData = {
   painPoints: [
     "Object-based approach requires learning a new mental model for note-taking",
     "Pro plan at $11.99/month for AI assistant and unlimited media uploads",
-    "AI features are reactive — you query them, they do not proactively surface information",
+    "AI features are reactive: you query them, they do not proactively surface information",
     "No email or calendar integration for automatic knowledge capture",
-    "Still requires manual input for all knowledge — nothing is captured automatically",
+    "Still requires manual input for all knowledge: nothing is captured automatically",
   ],
   metaTitle: "Best Capacities Alternative in 2026",
   metaDescription:
@@ -31,7 +31,7 @@ export const entry: AlternativeData = {
     "capacities alternative 2026",
   ],
   whyPeopleLook:
-    "Capacities introduces a fresh take on personal knowledge management with its object-based approach — instead of hierarchical notes, everything is a typed object (person, book, project) with semantic relationships. The built-in AI chat helps you query your knowledge base. But Capacities still requires you to manually create and maintain every object and note. It has no email integration, no calendar awareness, and no ability to automatically build your knowledge graph from what is already happening in your digital life. Users who want a PKM that learns passively from their activity seek alternatives.",
+    "Capacities introduces a fresh take on personal knowledge management with its object-based approach: instead of hierarchical notes, everything is a typed object (person, book, project) with semantic relationships. The built-in AI chat helps you query your knowledge base. But Capacities still requires you to manually create and maintain every object and note. It has no email integration, no calendar awareness, and no ability to automatically build your knowledge graph from what is already happening in your digital life. Users who want a PKM that learns passively from their activity seek alternatives.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Automatic knowledge graph construction from email and calendar data",
@@ -41,7 +41,7 @@ export const entry: AlternativeData = {
     "Semantic knowledge retrieval across all connected tools",
   ],
   gaiaAdvantages: [
-    "Knowledge built automatically from email and calendar — zero manual input",
+    "Knowledge built automatically from email and calendar, with zero manual input",
     "Proactive surfacing: relevant knowledge appears when you need it",
     "Graph-based memory models relationships between entities automatically",
     "Open-source and self-hostable; Capacities is closed-source SaaS",
@@ -68,7 +68,7 @@ export const entry: AlternativeData = {
       question:
         "Does GAIA have an AI chat for knowledge queries like Capacities?",
       answer:
-        "Yes. GAIA's conversational interface can query your knowledge base, summarize past discussions, and surface relevant context from memory — similar to Capacities' AI chat but drawing from a richer data source including email and calendar.",
+        "Yes. GAIA's conversational interface can query your knowledge base, summarize past discussions, and surface relevant context from memory, similar to Capacities' AI chat but drawing from a richer data source including email and calendar.",
     },
     {
       question: "Is GAIA open-source where Capacities is not?",

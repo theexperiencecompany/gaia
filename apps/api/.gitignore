@@ -8,3 +8,5 @@ scripts/evals/data/gaia/
 # into git history the moment a run points at a real account.
 scripts/evals/reports/
 models_backup_*.json
+# Written by every `seed_explore_workflows.py` run unless --no-backup is passed.
+explore_workflows_backup_*.json

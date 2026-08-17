@@ -39,6 +39,18 @@ No magic strings or numbers anywhere in the codebase.
 - Group constants by domain in dedicated files (`constants/cache.py`, `constants/llm.py`, `src/config/`, `src/features/{feature}/constants.ts`)
 - Constants are the single source of truth — if the same value appears in two places, one of them should import from the other
 
+## Type Safety Ratchet
+
+Every file you touch leaves stricter than you found it, and never looser. Scope the tightening to the code you are already changing — a ratchet, not a licence to rewrite the file.
+
+- Close what is in front of you: `Any`, unparametrized generics (`dict`, `list`, `Callable`), untyped empty collections, a bare `str` holding a fixed set of values.
+- **Never introduce** a new `Any` or bare generic into a file that did not have one. Adding a hole is never in scope; closing one nearly always is.
+- A literal repeated at both a definition site and a lookup site (registry keys, event names, queue names, config keys) is an enum. Nothing else enforces that the two stay in sync, and the drift is silent until production.
+- An existing annotation is a claim, not evidence. `Any` launders wrong types downstream, so confirm the real runtime type before trusting a neighbouring declaration.
+- Prove the tightening bites. A checker that was green before *and* after proves nothing changed — a decorative annotation is exactly as green as a load-bearing one.
+
+The full canon — including the `StrEnum` vs `(str, Enum)` trade-off and the `reveal_type` probe — is in `apps/api/CLAUDE.md` (Type Safety); frontend rules are in `apps/web/CLAUDE.md`.
+
 ## Feature-Based Organization
 
 Organize code by domain/feature, not by technical type.

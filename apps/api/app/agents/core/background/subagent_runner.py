@@ -153,7 +153,7 @@ async def _wake_if_executor_rested(conversation_id: str, configurable: AgentConf
     try:
         if not await is_executor_busy(conversation_id):
             await enqueue_collection_run(conversation_id, configurable)
-    except Exception as e:  # noqa: BLE001 — create_task coroutine must not raise
+    except Exception as e:  # create_task coroutine must not raise
         log.error(
             f"{LogTag.AGENT} Could not queue collection wake-up",
             conversation_id=conversation_id,
@@ -198,7 +198,7 @@ async def _append_error_result(conversation_id: str, agent_name: str, error: Exc
         await append_bg_subagent_result(
             conversation_id, agent_name, f"Error from {agent_name}: {error!s}"
         )
-    except Exception as redis_error:  # noqa: BLE001 — create_task coroutine must not raise
+    except Exception as redis_error:  # create_task coroutine must not raise
         log.error(
             f"{LogTag.AGENT} Could not store bg subagent error result",
             agent_name=agent_name,

@@ -29,6 +29,7 @@ from app.workers.tasks import (
     prune_inactive_sessions,
     regenerate_workflow_steps,
     run_nurture_sequence_task,
+    sweep_abandoned_imessage_registrations,
     sweep_idle_sandboxes,
 )
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
@@ -38,6 +39,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
     safety_net_check_orphaned_todos,
 )
+from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
 # Wrap every task in the standard envelope (wide event + Prometheus histogram)
 # so arq-worker.json can show real p50/p95/p99 latency per task name and every
@@ -66,6 +68,8 @@ _maintenance_sweep_tracked_todos = arq_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = arq_task(rescan_pending_scheduled_tasks)
 _run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
 _promote_usage_badges = arq_task(promote_usage_badges)
+_sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
+_sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 
 WorkerSettings.functions = [
     _sweep_hil_approvals,
@@ -88,6 +92,8 @@ WorkerSettings.functions = [
     _backfill_active_users,
     _backfill_user_memories,
     _promote_usage_badges,
+    _sweep_dormant_user_workflows,
+    _sweep_abandoned_imessage_registrations,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -127,6 +133,13 @@ WorkerSettings.cron_jobs = [
         minute=0,  # Hourly
         second=0,
     ),
+    # Hourly, off the top of the hour so it does not pile onto the other sweeps.
+    # A registration abandoned mid-connect holds a shared-pool seat until this runs.
+    cron(
+        cast(WorkerCoroutine, _sweep_abandoned_imessage_registrations),
+        minute=20,
+        second=0,
+    ),
     cron(
         cast(WorkerCoroutine, _prune_inactive_sessions),
         hour=3,  # Daily at 03:00 UTC
@@ -162,6 +175,14 @@ WorkerSettings.cron_jobs = [
     cron(
         cast(WorkerCoroutine, _promote_usage_badges),
         hour=5,  # Daily at 05:00 UTC
+        minute=0,
+        second=0,
+    ),
+    # Pause workflows owned by users who stopped using GAIA — they otherwise fire
+    # (and bill) forever. Undone on the user's next login, not by this sweep.
+    cron(
+        cast(WorkerCoroutine, _sweep_dormant_user_workflows),
+        hour=6,  # Daily at 06:00 UTC
         minute=0,
         second=0,
     ),

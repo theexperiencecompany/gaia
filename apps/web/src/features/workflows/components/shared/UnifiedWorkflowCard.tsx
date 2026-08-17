@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import { PlayIcon, ZapIcon } from "@icons";
+import { PlayIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
@@ -16,11 +16,14 @@ import type {
   CommunityWorkflow,
   IntegrationRef,
   PublicWorkflowStep,
+  TriggerConfig,
   Workflow,
 } from "@/types/features/workflowTypes";
+import type { ContentCreator } from "@/types/shared/contentTypes";
 import { formatRunCount } from "@/utils/formatters";
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "../../triggers/utils";
+import { isSystemCreator } from "../../utils/creator";
 import {
   ActivationStatus,
   CreatorAvatar,
@@ -42,6 +45,16 @@ interface UnifiedWorkflowCardProps {
   title?: string;
   description?: string;
   steps?: PublicWorkflowStep[];
+  /** User-chosen icon slug (gaia-icons component name) */
+  icon?: string | null;
+  /** Hex color for the user-chosen icon */
+  iconColor?: string | null;
+  /** Built-in workflow key — keeps "add" idempotent with the provisioner */
+  systemWorkflowKey?: string | null;
+  /** The trigger this card advertises, reproduced on add */
+  triggerConfig?: TriggerConfig;
+  /** Author, for cards built from flat props rather than a workflow object */
+  creator?: ContentCreator;
   totalExecutions?: number;
   slug?: string;
   prompt?: string;
@@ -106,6 +119,10 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
     title,
     displayDescription,
     steps,
+    customIcon,
+    customIconColor,
+    systemWorkflowKey,
+    sourceTriggerConfig,
     totalExecutions,
     creator,
     shouldShowTrigger,
@@ -162,10 +179,12 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
         description:
           communityWorkflow?.description || propDescription || undefined,
         prompt: communityWorkflow?.prompt || displayDescription || title,
-        trigger_config: {
+        // Reproduce the trigger the card advertises; manual only as a fallback.
+        trigger_config: sourceTriggerConfig ?? {
           type: "manual" as const,
           enabled: true,
         },
+        system_workflow_key: systemWorkflowKey,
         // Pass formatted steps if available to avoid regeneration
         ...(formattedSteps &&
           formattedSteps.length > 0 && {
@@ -254,7 +273,13 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
 
   // Render tool icons using the shared component
   const renderToolIcons = () => (
-    <WorkflowIcons steps={steps} iconSize={25} maxIcons={3} />
+    <WorkflowIcons
+      steps={steps}
+      icon={customIcon}
+      iconColor={customIconColor}
+      iconSize={25}
+      maxIcons={3}
+    />
   );
 
   const cardContent = (
@@ -299,7 +324,11 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
 
       <div className="mt-auto">
         <div className="mt-1 flex items-center justify-between gap-2">
-          <div className="space-y-1">
+          <div className="min-w-0 space-y-1">
+            {shouldShowCreator && creator && (
+              <CreatorAvatar creator={creator} showName />
+            )}
+
             {shouldShowTrigger && triggerDisplay && (
               <TriggerDisplay
                 triggerType={workflow?.trigger_config.type || "manual"}
@@ -332,9 +361,6 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
 
           <div className="flex items-center gap-3">
             {workflow?.is_system_workflow && <SystemWorkflowChip />}
-            {shouldShowCreator && creator && (
-              <CreatorAvatar creator={creator} />
-            )}
 
             {resolvedAction !== "none" && (
               <span className="relative z-[2]">
@@ -380,6 +406,11 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     title: propTitle,
     description: propDescription,
     steps: propSteps,
+    icon: propIcon,
+    iconColor: propIconColor,
+    systemWorkflowKey: propSystemWorkflowKey,
+    triggerConfig: propTriggerConfig,
+    creator: propCreator,
     totalExecutions: propTotalExecutions,
     variant = "explore",
     showTrigger,
@@ -398,16 +429,23 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
     communityWorkflow?.description ||
     "";
   const steps = propSteps || workflow?.steps || communityWorkflow?.steps || [];
+  const customIcon = propIcon ?? workflow?.icon ?? communityWorkflow?.icon;
+  const customIconColor =
+    propIconColor ?? workflow?.icon_color ?? communityWorkflow?.icon_color;
   const totalExecutions =
     propTotalExecutions ??
     workflow?.total_executions ??
     communityWorkflow?.total_executions ??
     0;
-  const creator = communityWorkflow?.creator || workflow?.creator;
+  const creator =
+    propCreator || communityWorkflow?.creator || workflow?.creator;
 
   const shouldShowTrigger = showTrigger ?? (variant === "user" && !!workflow);
+  // A byline credits a community author; our own workflows don't need one.
   const shouldShowCreator =
-    showCreator ?? (variant === "community" && !!creator);
+    (showCreator ?? variant === "community") &&
+    !!creator &&
+    !isSystemCreator(creator);
   const shouldShowActivation =
     showActivationStatus ?? (variant === "user" && !!workflow);
 
@@ -415,11 +453,21 @@ function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
   const resolvedMissingIntegrations =
     propMissingIntegrations ?? workflow?.missing_integrations;
   const isClickable = !!href || onCardClick || resolvedAction !== "none";
+  const systemWorkflowKey =
+    propSystemWorkflowKey ??
+    communityWorkflow?.system_workflow_key ??
+    undefined;
+  const sourceTriggerConfig =
+    propTriggerConfig ?? communityWorkflow?.trigger_config;
 
   return {
     title,
     displayDescription,
     steps,
+    customIcon,
+    customIconColor,
+    systemWorkflowKey,
+    sourceTriggerConfig,
     totalExecutions,
     creator,
     shouldShowTrigger,
@@ -492,7 +540,6 @@ function WorkflowActionButton({
   size = "sm",
 }: WorkflowActionButtonProps) {
   const buttonVariant = variant === "flat" ? "flat" : "solid";
-  const showIcon = label !== "Run Workflow";
 
   return (
     <Button
@@ -502,7 +549,6 @@ function WorkflowActionButton({
       className={`font-medium rounded-xl ${variant === "flat" ? "text-primary" : ""}`}
       isLoading={isLoading}
       onPress={(e) => onPress(e as unknown as React.MouseEvent)}
-      endContent={showIcon ? <ZapIcon width={16} height={16} /> : undefined}
     >
       {label}
     </Button>

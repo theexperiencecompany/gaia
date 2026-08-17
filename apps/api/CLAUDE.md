@@ -85,14 +85,14 @@ Pre-model hooks in `app/agents/core/nodes/`:
 - No inline imports — all imports at the top of the file.
 - Use `ruff` for linting and formatting (not black/flake8/isort).
 - Raise `AppError` (from `app/utils/errors.py`) for domain errors — it serializes to a structured JSON response automatically.
-- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields to the request's wide event. `log.info(...)` emits a real-time line only and **never reaches the wide event**; `log.error(...)` / `log.warning(...)` emit a line *and* append to the event's `errors[]`/`warnings[]` — always with structured kwargs (`error_type=`, ids), not data interpolated into the message. `log.set(ns={...})` replaces the whole namespace dict — use `log.set_ns("ns", key=value)` for follow-up fields. Sensitive operations (auth, payments, PII writes) also call `log.audit(...)`. ARQ worker tasks do NOT open their own boundary — `arq_task` (`app/workers/task_envelope.py`), applied once per task in `app/worker.py`, wraps every registered task in a `wide_task()` carrying the propagated `trace_id` plus ARQ's `job_id`/`job_try`, so a task body just calls `log.set(...)`; enqueue through `enqueue_worker_job` (`app/workers/queue.py`), never `pool.enqueue_job` directly, or the job loses the caller's trace. Fire-and-forget background work is spawned with `spawn_logged_task("operation", coro(...))`, which gives it a `log_context()` boundary carrying the request's `trace_id`; without a boundary every `log.set()` inside that task is silently discarded. Write new fire-and-forget work that way, and move any `asyncio.create_task` call you touch over to it — `app/` still has ~42 bare `asyncio.create_task` call sites (plus several ad-hoc task sets keeping references alive) predating the helper, and they are being migrated incrementally rather than in one sweep. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
+- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields to the request's wide event. `log.info(...)` emits a real-time line only and **never reaches the wide event**; `log.error(...)` / `log.warning(...)` emit a line *and* append to the event's `errors[]`/`warnings[]` — always with structured kwargs (`error_type=`, ids), not data interpolated into the message. `log.set(ns={...})` merges into the namespace rather than replacing it, so every layer of a request accumulates onto one namespace; `log.set_ns("ns", key=value)` is the same write with the namespace named explicitly and reads better for follow-up fields. Sensitive operations (auth, payments, PII writes) also call `log.audit(...)`. ARQ worker tasks do NOT open their own boundary — `arq_task` (`app/workers/task_envelope.py`), applied once per task in `app/worker.py`, wraps every registered task in a `wide_task()` carrying the propagated `trace_id` plus ARQ's `job_id`/`job_try`, so a task body just calls `log.set(...)`; enqueue through `enqueue_worker_job` (`app/workers/queue.py`), never `pool.enqueue_job` directly, or the job loses the caller's trace. Fire-and-forget background work is spawned with `spawn_logged_task("operation", coro(...))`, which gives it a `log_context()` boundary carrying the request's `trace_id`; without a boundary every `log.set()` inside that task is silently discarded. Write new fire-and-forget work that way, and move any `asyncio.create_task` call you touch over to it — `app/` still has ~42 bare `asyncio.create_task` call sites (plus several ad-hoc task sets keeping references alive) predating the helper, and they are being migrated incrementally rather than in one sweep. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
 
 ### Docstrings & Comments
 
 Default to **less**. The code is the documentation — docstrings and comments exist only where the code cannot speak for itself. AI-generated over-documentation (restating the signature in prose, narrating every line, "textbook" docstrings on trivial helpers) is a defect, not thoroughness. Strip it.
 
 - **Docstrings** belong on public API surface — exported services, route handlers, shared utilities, and functions whose behavior is genuinely non-obvious. Skip them on private/internal helpers, obvious wrappers, and anything whose name + signature already says everything.
-- **One line** is the default. A summary sentence is enough. Add an `Args:`/`Returns:`/`Raises:` body only when a parameter, return value, or failure mode is non-obvious — never to mechanically mirror the signature. Document *why* and the non-obvious *what*, never the obvious what.
+- **One line** is the default — and for helpers/internal functions it is a HARD CAP of two lines. A multi-paragraph docstring is reserved for genuinely complex public API; anywhere else it is a review comment waiting to happen. Add an `Args:`/`Returns:`/`Raises:` body only when a parameter, return value, or failure mode is non-obvious — never to mechanically mirror the signature. Document *why* and the non-obvious *what*, never the obvious what.
 - **Never** document params/returns/raises that don't exist or no longer match the signature. A stale or hallucinated docstring is worse than none.
 - **Comments** explain non-obvious decisions — a tricky invariant, a workaround and its cause, a "why this and not the obvious thing." A comment that restates what the line plainly does is noise; delete it. Never leave commented-out code — git already has it. `ERA001` is *not* currently enforced (213 findings in `app/`, concentrated in `models/calendar_models.py`, `agents/tools/webpage_tool.py` and the deliberately-parked `utils/calendar_utils.py`), so this one is on you rather than the linter until that backlog is cleared.
 - When editing AI-generated code, treat trimming its redundant docstrings/comments as part of the change, not a separate cleanup.
@@ -111,6 +111,8 @@ Python 3.11+: use modern syntax (`X | Y` unions, `match` statements).
 ## File & Structural Organization
 
 One domain per file. Never let a file span multiple domains.
+
+**New code goes in the module that owns the concept, never in the caller's file by convenience.** Before adding a function, ask where a reader would look for it — put it there and import it. Adding to an already-large file because "that's where it's used" is how monoliths grow.
 
 - `app/models/` — SQLAlchemy / MongoDB document models, one file per domain (`todo_models.py`).
 - `app/schemas/` — Pydantic request/response schemas, one file per domain. Separate `CreateRequest`, `UpdateRequest`, `Response`.
@@ -141,7 +143,7 @@ async def create_todo(
 ) -> TodoResponse:
     log.set(user={"id": user["user_id"]}, todo={"operation": "create"})
     result = await create_todo_service(payload, user)
-    log.set_ns("todo", id=result["_id"])  # set_ns: set(todo={...}) would clobber step 1
+    log.set_ns("todo", id=result["_id"])  # merges into the namespace stamped in step 1
     return JSONResponse(content=result)
 
 ```
@@ -393,6 +395,8 @@ If a parameter is unused by one implementation but required by a framework's cal
 
 Prefer `cast(RealType, value)` over `isinstance(value, RealType)` when you already know the value is correct by construction (a lazy-provider registry lookup, a well-known dict's `.get()` result, a value a framework's own contract guarantees). `cast()` only changes what the type checker believes; `isinstance()` changes what the code actually *does* at runtime, and can reject a structurally-compatible object — a mock, a duck-typed wrapper, a different concrete implementation of a `Protocol` — that was working fine before.
 
+Never cast through `Any` (or an `Any`-parametrized container) to bypass a declared type — that re-introduces `Any` through the back door. Cast to the honest narrow type and validate/narrow what you pull out.
+
 ### 13. Never change behavior to satisfy a type checker
 
 Confirmed real regressions from exactly this mistake: deleting an `isinstance(x, dict)` guard because a checker called the branch "unreachable" (it wasn't — real callers passed non-dict values); deleting a framework-injected parameter because it "looked unused" (the framework called it positionally); changing a function's actual return *values*, not just its annotation, to satisfy a stricter type (broke a downstream consumer needing the original shape). Fixing a type error changes how something is *described*; it must never change what the code *does*.
@@ -407,6 +411,63 @@ Stop before forcing full type safety through:
 - Anything whose correctness can't be confirmed by running the real test suite — "mypy is happy" is not proof; "the tests still pass and I can explain why" is.
 
 A narrower type that's provably correct beats a "complete" one that required guessing.
+
+### 15. Tighten the types in every file you touch — never widen them
+
+Type safety is a ratchet: each file you edit leaves stricter than you found it, and never looser. This is not a licence to rewrite the file. Scope the tightening to the code you are already changing plus the signatures it flows through — the same bar as any other diff (Surgical Changes), so the change stays reviewable.
+
+While you are in a function, fix what is in front of you: a `dict[str, Any]` return, an unparametrized `list`/`dict`/`Callable`, an untyped empty collection (`items = []`), a bare `str` holding a fixed value set, a magic literal that wants to be a constant or enum.
+
+The one hard rule is the ratchet direction. Never *introduce* an `Any`, a bare generic, or an untyped empty collection into a file that did not already have one — including in a hurry, including "just for now." Adding a hole is never in scope; closing one nearly always is.
+
+### 16. An existing annotation is a claim, not evidence — verify the runtime type before you trust it
+
+`dict[str, Any]` does not merely lose precision. It launders wrong types downstream: `Any` is compatible with everything, so a false declaration on the receiving end is never challenged.
+
+Real case from this codebase: `LLMProvider.instance` was declared `BaseChatModel` for months. The registry actually holds `RunnableConfigurableFields` (what `configurable_fields()` returns) — a `RunnableSerializable`, **not** a `BaseChatModel`. The `dict[str, Any]` feeding it is the only reason the lie survived; the code then called `configurable_alternatives()`, a method the declared type does not even have.
+
+So when tightening, do not derive the "real" type from the neighbouring annotation, or from a factory's declared return. Construct the value and look:
+
+```python
+inst = providers.get("gemini_llm")
+print(type(inst).__name__, isinstance(inst, BaseChatModel))  # RunnableConfigurableFields False
+```
+
+Then annotate what it *is*, and pick the type that actually declares the methods you call — `configurable_alternatives` lives on `RunnableSerializable`, not on bare `Runnable`/`LanguageModelLike`.
+
+### 17. Prove the tightened annotation can fail
+
+mypy passing before *and* after a "tightening" proves nothing changed — a decorative annotation is as green as a load-bearing one. Same rule as tests: if it cannot fail, it is not doing work.
+
+Write a throwaway probe, run mypy on it, confirm it errors, delete it:
+
+```python
+# _typeprobe.py — delete after running
+bad: LLMProvider = {"name": "x", "instance": "not-a-model"}   # expect: error
+_get_ordered_providers({"gemini": "not-a-model"}, None, True)  # expect: error
+reveal_type(_get_available_providers())                        # expect: the real type, not Any
+```
+
+`reveal_type` is the fastest way to confirm you closed the hole rather than moved it: if it still reveals `Any`, the annotation is cosmetic.
+
+### 18. A literal repeated at a definition site and a lookup site is an enum (see item 5)
+
+Item 5 covers a fixed set of *values*. This is the sharper case: the same literal written in two places that must agree. Registry keys, event names, queue names, config keys, cache-key prefixes. Nothing enforces the match, so drift is silent and reaches production.
+
+That is exactly how the `comms_agent` outage happened — `"gemini_llm"` lived in both `@lazy_provider(name="gemini_llm")` and the lookup mapping, and only one side was environment-gated. One enum, referenced from both sides, makes the drift impossible:
+
+```python
+class LLMProviderKey(StrEnum):
+    GEMINI = "gemini_llm"
+```
+
+Prefer `StrEnum` over `(str, Enum)`. Both hash equal to their string value, so members stay usable as dict keys and in plain-string lookups — but `(str, Enum)` renders as `LLMProviderKey.GEMINI` in f-strings and log messages, while `StrEnum` renders `gemini_llm`. When the value is interpolated into a log line or an error message, `(str, Enum)` silently degrades it. Verify both properties before swapping a hot string for an enum member:
+
+```python
+d = {LLMProviderKey.GEMINI: 1}
+assert d.get("gemini_llm") == 1          # dict-key compatible
+assert f"{LLMProviderKey.GEMINI}" == "gemini_llm"   # renders as the value
+```
 
 ## Anti-Patterns
 

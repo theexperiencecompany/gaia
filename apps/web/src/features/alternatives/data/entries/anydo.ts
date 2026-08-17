@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "tasks from email AI",
   ],
   whyPeopleLook:
-    "Any.do has been ahead of competitors in adding an AI planning layer to task management, but the implementation remains surface-level. The daily planning assistant prompts you to review your day each morning, but it does not read your email, does not know about meeting changes, and cannot take actions automatically. Users who want an AI that genuinely manages their day — not just asks them to review a list — look beyond Any.do.",
+    "Any.do has been ahead of competitors in adding an AI planning layer to task management, but the implementation remains surface-level. The daily planning assistant prompts you to review your day each morning, but it does not read your email, does not know about meeting changes, and cannot take actions automatically. Users who want an AI that genuinely manages their day, not just asks them to review a list, look beyond Any.do.",
   gaiaFitScore: 5,
   gaiaReplaces: [
     "Truly proactive daily planning based on real email and calendar data",
@@ -42,7 +42,7 @@ export const entry: AlternativeData = {
     "Cross-tool intelligence connecting tasks, email, and calendar",
   ],
   gaiaAdvantages: [
-    "Proactive by design — surfaces tasks and alerts without a daily prompt",
+    "Proactive by design: surfaces tasks and alerts without a daily prompt",
     "Email-native task creation requires zero manual task entry",
     "Persistent memory connects context across sessions and tools",
     "Open-source and self-hostable for data privacy",
@@ -64,7 +64,7 @@ export const entry: AlternativeData = {
       question:
         "Does GAIA have a daily planning session like Any.do's Morning feature?",
       answer:
-        "GAIA provides a proactive daily briefing that summarizes your email, upcoming calendar events, and priority tasks — similar in concept to Any.do's Morning review but driven by live data rather than a manual prompt.",
+        "GAIA provides a proactive daily briefing that summarizes your email, upcoming calendar events, and priority tasks, similar in concept to Any.do's Morning review but driven by live data rather than a manual prompt.",
     },
     {
       question: "Can GAIA sync across all platforms like Any.do?",

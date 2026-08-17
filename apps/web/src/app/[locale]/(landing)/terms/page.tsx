@@ -46,7 +46,7 @@ const TermsOfService = () => {
           <h1 className="mb-4 text-3xl font-bold">
             Terms of Service Agreement
           </h1>
-          <p className="mb-4 text-sm">Effective Date: August 7, 2026</p>
+          <p className="mb-4 text-sm">Effective Date: August 14, 2026</p>
           <p className="mb-4">
             This Terms of Service Agreement (this "Agreement") is entered into
             by and between The Experience Company, Inc., a Delaware corporation
@@ -338,9 +338,11 @@ const TermsOfService = () => {
               </li>
               <li>
                 <strong>Self-hosted deployments:</strong> Your use of the GAIA
-                source code is governed solely by the PolyForm Strict License
-                1.0.0 accompanying that code, which permits noncommercial
-                purposes only and does not permit distribution or modification.
+                source code is governed solely by the PolyForm Noncommercial
+                License 1.0.0 accompanying that code, which permits
+                noncommercial purposes only, including distributing the source
+                code and making changes or new works based on it for those
+                purposes, subject to the notice requirements of that license.
                 This Agreement does not grant any additional rights in the
                 source code, and the PolyForm license does not grant any right
                 to use the hosted Service.

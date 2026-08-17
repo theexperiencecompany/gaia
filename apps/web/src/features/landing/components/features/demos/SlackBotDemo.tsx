@@ -20,7 +20,7 @@ export default function SlackBotDemo() {
       </p>
       <div className="rounded-2xl bg-zinc-800 p-4">
         <p className="mb-3 text-sm font-semibold text-zinc-100">
-          Weekly Metrics — Mar 17–23
+          Weekly Metrics: Mar 17–23
         </p>
         <div className="space-y-2">
           <div className="flex items-center justify-between rounded-xl bg-zinc-900 p-3">

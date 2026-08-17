@@ -45,13 +45,13 @@ function DraftReplyCard() {
         <div className="flex items-baseline gap-2">
           <span className="text-xs text-zinc-500 w-14 shrink-0">Subject</span>
           <span className="text-sm text-zinc-200">
-            Re: Series A — scheduling next week
+            Re: Series A, scheduling next week
           </span>
         </div>
         <div className="border-t border-zinc-800 pt-2">
           <p className="text-xs text-zinc-400 leading-relaxed">
             Hi Sarah, thanks for reaching out. I'd love to connect next week.
-            Tuesday or Wednesday afternoon works best for me — happy to do 30
+            Tuesday or Wednesday afternoon works best for me. Happy to do 30
             minutes to discuss the round. I'll send a calendar invite once you
             confirm.
           </p>
@@ -74,7 +74,7 @@ const EMAIL_SUMMARIES = [
   {
     id: "es-2",
     sender: "David Kim (CTO)",
-    subject: "Prod outage — needs decision",
+    subject: "Prod outage: needs decision",
     preview: "Deployment blocker requires your approval before EOD",
     urgency: "urgent",
   },
@@ -155,7 +155,7 @@ const EMAIL_MESSAGES: ChatMessage[] = [
     id: "em6",
     role: "assistant",
     content:
-      "The most urgent is from Sequoia — they want to schedule a Series A call next week. I've drafted a reply for you.",
+      "The most urgent is from Sequoia: they want to schedule a Series A call next week. I've drafted a reply for you.",
     delay: 700,
   },
   {

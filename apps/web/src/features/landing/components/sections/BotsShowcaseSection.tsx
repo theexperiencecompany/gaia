@@ -86,31 +86,25 @@ const PLATFORMS: Platform[] = [
       title: "GAIA",
       messages: [
         {
-          from: "me",
-          text: "what's on my plate today?",
-          time: "9:14",
-          status: "read",
-        },
-        {
           from: "them",
-          text: "4 meetings back to back from 9.30, plus that investor draft you flagged yesterday",
-          time: "9:14",
+          text: "morning ☀️ you've got 4 back to back from 9.30, plus that investor draft you flagged yesterday",
+          time: "9:02",
         },
         {
           from: "them",
           text: "want me to push standup to 11 so you have a coffee window?",
-          time: "9:14",
+          time: "9:02",
         },
         {
           from: "me",
           text: "yes pls. also remind me to call mom at 8 🙏",
-          time: "9:15",
+          time: "9:04",
           status: "read",
         },
         {
           from: "them",
           text: "done & done 🫡",
-          time: "9:15",
+          time: "9:04",
         },
       ],
     },
@@ -130,31 +124,25 @@ const PLATFORMS: Platform[] = [
       subtitle: "bot",
       messages: [
         {
-          from: "me",
-          text: "summarise my inbox",
+          from: "them",
+          text: "heads up: 12 unread since last night. only 3 actually need you, the rest is noise",
           time: "14:02",
-          status: "read",
         },
         {
           from: "them",
-          text: "you've got 12 unread. 3 actually need you, the rest is noise",
-          time: "14:03",
-        },
-        {
-          from: "them",
-          text: "drafting replies to the linear founder + the recruiter rn",
-          time: "14:03",
+          text: "already drafted replies to the linear founder + the recruiter, they're waiting on your ok",
+          time: "14:02",
         },
         {
           from: "me",
-          text: "also book me to NYC next thursday",
+          text: "perfect. also book me to NYC next thursday",
           time: "14:04",
           status: "read",
         },
         {
           from: "them",
-          text: "looking… delta has $189 out at 8am, lands 11ish. lock it in?",
-          time: "14:04",
+          text: "delta has $189 out at 8am, lands 11ish. holding the fare, say the word and I'll book it ✈️",
+          time: "14:05",
         },
       ],
     },
@@ -173,14 +161,8 @@ const PLATFORMS: Platform[] = [
       subtitle: "42 members",
       messages: [
         {
-          author: "Aryan",
-          avatar: AVATAR_ARYAN,
-          text: "@GAIA standup post for design? pull from yesterday's threads",
-          time: "10:24 AM",
-        },
-        {
           author: "GAIA",
-          text: "pulled this from 4 open PRs and 6 figma comments since yesterday 🧵",
+          text: "standup draft for design is ready, pulled from 4 open PRs and 6 figma comments overnight 🧵",
           time: "10:24 AM",
           reactions: [
             { emoji: "🎉", count: 4 },
@@ -195,7 +177,7 @@ const PLATFORMS: Platform[] = [
         },
         {
           author: "GAIA",
-          text: "on it. DMing you the draft in 30s",
+          text: "posted. PM reply drafted, DMing it to you in 30s",
           time: "10:26 AM",
         },
       ],
@@ -215,18 +197,11 @@ const PLATFORMS: Platform[] = [
       title: "general",
       messages: [
         {
-          author: "Aryan",
-          avatar: AVATAR_ARYAN,
-          authorColor: "#F47FFF",
-          text: "@GAIA ship digest for the week?",
-          time: "9:14 PM",
-          reactions: [{ emoji: "👍", count: 3 }],
-        },
-        {
           author: "GAIA",
           authorColor: "#9CC3FF",
-          text: "12 PRs merged, 4 features shipped, 2 incidents resolved 🚀",
+          text: "weekly ship digest is in: 12 PRs merged, 4 features shipped, 2 incidents resolved 🚀",
           time: "9:14 PM",
+          reactions: [{ emoji: "👍", count: 3 }],
         },
         {
           author: "Aryan",
@@ -255,18 +230,12 @@ const PLATFORMS: Platform[] = [
       title: "GAIA",
       messages: [
         {
-          from: "me",
-          text: "reschedule my 3pm to tomorrow same time",
-          time: "2:58 PM",
-          status: "read",
-        },
-        {
           from: "them",
-          text: "done. rescheduled and invite updated",
+          text: "your 3pm clashes with the dentist. moved it to tomorrow, same time, invite updated",
         },
         {
           from: "me",
-          text: "also add a note to call sarah before it",
+          text: "lifesaver. add a note to call sarah before it",
           time: "3:04 PM",
           status: "read",
         },

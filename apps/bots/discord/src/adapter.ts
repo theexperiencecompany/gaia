@@ -635,7 +635,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     try {
       return await this.resolveIncomingMedia(
         media,
-        () => downloadDiscordAttachment(extracted.url),
+        (maxBytes) => downloadDiscordAttachment(extracted.url, maxBytes),
         userId,
         message.channelId,
       );

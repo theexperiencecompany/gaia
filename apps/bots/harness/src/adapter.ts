@@ -249,7 +249,7 @@ export class HarnessAdapter extends BaseBotAdapter {
     };
 
     const onGenericError = (formattedError: string): Promise<void> => {
-      writeCurrent(this.emulation.render(formattedError), true);
+      writeCurrent(formattedError, true);
       return Promise.resolve();
     };
 

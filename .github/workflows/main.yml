@@ -1,10 +1,9 @@
 name: Quality Checks
 
-# Primary CI gate: validates code quality and enforces branch promotion policy.
+# Primary CI gate: validates code quality on every PR to master.
 on:
   pull_request:
     branches:
-      - develop
       - master
   push:
     branches:
@@ -26,44 +25,26 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # nx-set-shas queries the Actions API for the last successful master
+      # run; without this it silently falls back to HEAD~1 on every push —
+      # correct today only because the ruleset forces merge commits.
+      actions: read
     outputs:
       has_python: ${{ steps.affected.outputs.has_python }}
       has_typescript: ${{ steps.affected.outputs.has_typescript }}
       python_projects: ${{ steps.affected.outputs.python_projects }}
       typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           # Jobs below run PR-controlled code; none of them push/fetch after
           # checkout, so never leave the token in git config (zizmor artipacked).
           persist-credentials: false
 
-      - name: Enforce master promotion policy
-        if: github.event_name == 'pull_request' && github.base_ref == 'master'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            // hotfix/* is the escape hatch for production defects that cannot
-            // wait for the develop backlog to be release-ready. It still gets
-            // the full quality gate — it only skips the promotion ordering.
-            // Every hotfix must be landed on develop too, or the next
-            // develop -> master merge ships a regression.
-            const isAllowed = (ref) =>
-              ref === "develop" ||
-              ref.startsWith("release-please--") ||
-              ref.startsWith("hotfix/");
-            const pr = context.payload.pull_request;
-            if (pr.base.ref === "master" && !isAllowed(pr.head.ref)) {
-              core.setFailed(
-                `PRs to master must come from develop, release-please, or hotfix/*. Got '${pr.head.ref}'.`
-              );
-            }
-
       - uses: nrwl/nx-set-shas@v4
         with:
-          main-branch-name: develop
+          main-branch-name: master
 
       - uses: ./.github/actions/setup-node-pnpm
 
@@ -106,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
@@ -135,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -184,7 +165,7 @@ jobs:
         run: uv run --no-project ../../scripts/ci/junit_failures.py test-results/pytest.xml || true
       - name: Upload pytest artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-results
           path: apps/api/test-results/
@@ -193,7 +174,7 @@ jobs:
         if: github.event_name == 'pull_request'
         working-directory: apps/api
         run: |
-          uv tool run diff-cover coverage.xml --compare-branch=origin/develop --fail-under=90
+          uv tool run diff-cover coverage.xml --compare-branch=origin/master --fail-under=90
           echo "diff-cover: OK"
       - name: Run gaia-shared tests
         working-directory: apps/api
@@ -218,13 +199,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "0.8.17"
           enable-cache: true
+          prune-cache: true
       - name: Sync Python dependencies
         shell: bash
         run: uv sync --frozen --package gaia --group backend --group dev
@@ -246,7 +228,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
@@ -271,7 +253,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
@@ -291,8 +273,8 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22.15.1"
       - name: Regenerate changelog sub-pages
@@ -345,7 +327,7 @@ jobs:
     timeout-minutes: 10
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: aquasecurity/trivy-action@0.35.0
@@ -356,7 +338,7 @@ jobs:
           scan-ref: "."
 
   # --- Regression-proof: changed tests must FAIL on base -------------------
-  # FastAPI's lesson: run the PR's changed test files against origin/develop
+  # FastAPI's lesson: run the PR's changed test files against origin/master
   # and report any that PASS there (the fix may no longer be needed).
   # ENFORCED. It was informational because it checked EVERY changed test file,
   # and gap-fill/restructure branches legitimately add tests for behavior the
@@ -370,23 +352,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-python-test-env
       - name: Changed test files must fail on base
         working-directory: apps/api
-        run: bash ../../scripts/ci/regression-proof.sh origin/develop
+        run: bash ../../scripts/ci/regression-proof.sh origin/master
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
+    name: quality-gate
     if: always()
     needs:
       - detect
       - build
       - test-python
       - test-typescript
+      - test-fast
       - test-harness-tools
       - regression-proof
       # static checks + dead-code live in code-quality.yml (its own gate)
@@ -404,6 +388,7 @@ jobs:
           echo "  build:              ${{ needs.build.result }}"
           echo "  test-python:        ${{ needs.test-python.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
+          echo "  test-fast:          ${{ needs.test-fast.result }}"
           echo "  test-harness-tools: ${{ needs.test-harness-tools.result }}"
           echo "  regression-proof:   ${{ needs.regression-proof.result }}"
 
@@ -412,6 +397,7 @@ jobs:
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.test-typescript.result }}" \
+            "${{ needs.test-fast.result }}" \
             "${{ needs.test-harness-tools.result }}" \
             "${{ needs.regression-proof.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then

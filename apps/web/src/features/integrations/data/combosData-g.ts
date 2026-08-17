@@ -20,7 +20,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       "gaia discord slack",
     ],
     intro:
-      "Many teams run their public community on Discord while internal collaboration happens in Slack. Without a bridge, community managers must manually relay feedback, bug reports, and feature requests to engineering and product teams, adding delay and losing context.\n\nGAIA connects Discord and Slack so important community signals flow to the right Slack channels automatically. Announcements posted in Slack can be mirrored to Discord in seconds, and flagged Discord messages can surface directly in Slack threads — keeping both audiences informed without duplicate effort.",
+      "Many teams run their public community on Discord while internal collaboration happens in Slack. Without a bridge, community managers must manually relay feedback, bug reports, and feature requests to engineering and product teams, adding delay and losing context.\n\nGAIA connects Discord and Slack so important community signals flow to the right Slack channels automatically. Announcements posted in Slack can be mirrored to Discord in seconds, and flagged Discord messages can surface directly in Slack threads, keeping both audiences informed without duplicate effort.",
     useCases: [
       {
         title: "Mirror Discord announcements to Slack",
@@ -52,7 +52,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       {
         step: "Configure routing rules",
         description:
-          "Define which Discord events — announcements, flagged messages, keywords — should post to which Slack channels. Set formatting preferences so messages appear naturally in each platform.",
+          "Define which Discord events (announcements, flagged messages, keywords) should post to which Slack channels. Set formatting preferences so messages appear naturally in each platform.",
       },
       {
         step: "GAIA bridges your platforms automatically",
@@ -65,7 +65,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA sync messages in both directions between Discord and Slack?",
         answer:
-          "Yes. GAIA supports bidirectional routing — Discord to Slack and Slack to Discord. You configure which channels and event types trigger each direction independently.",
+          "Yes. GAIA supports bidirectional routing: Discord to Slack and Slack to Discord. You configure which channels and event types trigger each direction independently.",
       },
       {
         question:
@@ -99,7 +99,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       "gaia discord google calendar",
     ],
     intro:
-      "Communities on Discord plan events — game nights, study sessions, AMAs — but coordinating across time zones and ensuring members actually show up is a persistent challenge. Google Calendar is the universal scheduling tool, yet Discord and Calendar never talk to each other natively.\n\nGAIA connects Discord and Google Calendar so events scheduled in Discord are automatically added to participants' calendars, and upcoming events trigger timely reminders back in Discord. Your community stays on the same schedule without manual back-and-forth.",
+      "Communities on Discord plan events (game nights, study sessions, AMAs), but coordinating across time zones and ensuring members actually show up is a persistent challenge. Google Calendar is the universal scheduling tool, yet Discord and Calendar never talk to each other natively.\n\nGAIA connects Discord and Google Calendar so events scheduled in Discord are automatically added to participants' calendars, and upcoming events trigger timely reminders back in Discord. Your community stays on the same schedule without manual back-and-forth.",
     useCases: [
       {
         title: "Auto-create calendar events from Discord event posts",
@@ -109,7 +109,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       {
         title: "Post Discord reminders before scheduled events",
         description:
-          "GAIA sends countdown reminders to the Discord channel at configurable intervals — 24 hours and 1 hour before each event. Members get a nudge without anyone having to remember to post manually.",
+          "GAIA sends countdown reminders to the Discord channel at configurable intervals: 24 hours and 1 hour before each event. Members get a nudge without anyone having to remember to post manually.",
       },
       {
         title: "Announce new calendar events in Discord",
@@ -178,7 +178,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       "gaia discord todoist",
     ],
     intro:
-      "Action items surface constantly in Discord conversations — a feature request in the feedback channel, a bug flagged in support, a task someone volunteers for in a thread. Without a way to capture these, they get buried under new messages and forgotten.\n\nGAIA lets anyone on your Discord server create a Todoist task with a simple command or reaction. Tasks are added to the right project with assignee and due date already set, so nothing falls through the cracks and Todoist stays the single source of truth for what needs to get done.",
+      "Action items surface constantly in Discord conversations: a feature request in the feedback channel, a bug flagged in support, a task someone volunteers for in a thread. Without a way to capture these, they get buried under new messages and forgotten.\n\nGAIA lets anyone on your Discord server create a Todoist task with a simple command or reaction. Tasks are added to the right project with assignee and due date already set, so nothing falls through the cracks and Todoist stays the single source of truth for what needs to get done.",
     useCases: [
       {
         title: "Capture action items from Discord with a reaction",
@@ -342,7 +342,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       {
         title: "Post Jira issue status changes to Discord",
         description:
-          "When a Jira issue transitions — from 'In Progress' to 'In Review', for example — GAIA posts an update to the linked Discord channel. Engineers see real-time sprint progress without checking Jira constantly.",
+          "When a Jira issue transitions (from 'In Progress' to 'In Review', for example), GAIA posts an update to the linked Discord channel. Engineers see real-time sprint progress without checking Jira constantly.",
       },
       {
         title: "Create Jira issues from Discord messages",
@@ -369,7 +369,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       {
         step: "Configure notification and creation rules",
         description:
-          "Select which Jira events — status changes, priority escalations, new assignments — trigger Discord posts. Define which Discord channels can create Jira issues.",
+          "Select which Jira events (status changes, priority escalations, new assignments) trigger Discord posts. Define which Discord channels can create Jira issues.",
       },
       {
         step: "GAIA keeps Discord and Jira synchronized",
@@ -393,7 +393,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       {
         question: "Will GAIA spam Discord with every minor Jira comment?",
         answer:
-          "No. You control which Jira event types trigger Discord notifications. By default, GAIA only posts status transitions and priority changes — not every comment — to keep signal high.",
+          "No. You control which Jira event types trigger Discord notifications. By default, GAIA only posts status transitions and priority changes, not every comment, to keep signal high.",
       },
     ],
   },
@@ -416,7 +416,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       "gaia zoom asana",
     ],
     intro:
-      "Zoom meetings generate action items, but those action items are only as useful as the system that captures them. Without an automatic bridge, someone must manually review the recording or notes and create tasks in Asana — a step that gets skipped when everyone is busy.\n\nGAIA listens to Zoom meeting summaries and transcripts, identifies action items, and creates Asana tasks with the right assignees and due dates before the call is even over. Your team leaves every meeting with a clear, tracked to-do list.",
+      "Zoom meetings generate action items, but those action items are only as useful as the system that captures them. Without an automatic bridge, someone must manually review the recording or notes and create tasks in Asana, a step that gets skipped when everyone is busy.\n\nGAIA listens to Zoom meeting summaries and transcripts, identifies action items, and creates Asana tasks with the right assignees and due dates before the call is even over. Your team leaves every meeting with a clear, tracked to-do list.",
     useCases: [
       {
         title: "Auto-create Asana tasks from meeting action items",
@@ -431,7 +431,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       {
         title: "Post meeting summary to Asana project updates",
         description:
-          "GAIA posts a formatted meeting summary — attendees, decisions, action items — as an Asana project status update so stakeholders who weren't on the call are immediately informed.",
+          "GAIA posts a formatted meeting summary (attendees, decisions, action items) as an Asana project status update so stakeholders who weren't on the call are immediately informed.",
       },
       {
         title: "Create recurring tasks from recurring Zoom standups",
@@ -527,7 +527,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       {
         step: "Define what gets created or updated in Linear",
         description:
-          "Choose whether GAIA creates new issues, updates existing ones, or posts cycle comments based on meeting type — standup, planning, or retro.",
+          "Choose whether GAIA creates new issues, updates existing ones, or posts cycle comments based on meeting type: standup, planning, or retro.",
       },
       {
         step: "GAIA updates Linear after every sprint meeting",
@@ -576,7 +576,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       "gaia zoom jira",
     ],
     intro:
-      "Sprint ceremonies in Zoom generate commitments, decisions, and blockers that should live in Jira — but when the meeting ends, the notes often stay in someone's notebook or a shared doc that nobody reads. Jira issues go un-updated and sprint boards drift from what was actually discussed.\n\nGAIA closes this gap by processing Zoom meeting summaries and logging outcomes directly to the corresponding Jira sprint. Action items become Jira issues, blockers get flagged, and sprint updates are posted before the team has even closed their laptops.",
+      "Sprint ceremonies in Zoom generate commitments, decisions, and blockers that should live in Jira, but when the meeting ends, the notes often stay in someone's notebook or a shared doc that nobody reads. Jira issues go un-updated and sprint boards drift from what was actually discussed.\n\nGAIA closes this gap by processing Zoom meeting summaries and logging outcomes directly to the corresponding Jira sprint. Action items become Jira issues, blockers get flagged, and sprint updates are posted before the team has even closed their laptops.",
     useCases: [
       {
         title: "Create Jira issues from Zoom meeting action items",
@@ -687,7 +687,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       {
         step: "Configure notification and summary preferences",
         description:
-          "Choose which Zoom events — meeting end, recording ready, action items — trigger posts to Teams and set the format and channel for each notification type.",
+          "Choose which Zoom events (meeting end, recording ready, action items) trigger posts to Teams and set the format and channel for each notification type.",
       },
       {
         step: "GAIA keeps both platforms synchronized",
@@ -700,7 +700,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA also notify Zoom participants about Teams messages?",
         answer:
-          "Yes. GAIA can bridge in both directions — important Teams channel messages can trigger a Zoom chat notification or email digest for participants who primarily use Zoom for communication.",
+          "Yes. GAIA can bridge in both directions: important Teams channel messages can trigger a Zoom chat notification or email digest for participants who primarily use Zoom for communication.",
       },
       {
         question: "Does this work for organizations that use Zoom Rooms?",
@@ -767,7 +767,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       {
         step: "Set folder organization rules",
         description:
-          "Configure how GAIA names and organizes folders — by meeting title, date, host, or a combination. GAIA creates subfolders automatically as new meeting series appear.",
+          "Configure how GAIA names and organizes folders: by meeting title, date, host, or a combination. GAIA creates subfolders automatically as new meeting series appear.",
       },
       {
         step: "GAIA archives every recording automatically",
@@ -815,7 +815,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       "gaia zoom figma",
     ],
     intro:
-      "Design reviews happen in Zoom, but the designs live in Figma — and the feedback captured in the meeting rarely makes it back to the Figma file in a timely way. Designers end up reconciling handwritten notes with verbal comments from a recording they have to scrub through.\n\nGAIA connects Zoom and Figma so design review meetings are scheduled automatically when Figma milestones are reached, and feedback from the call is posted as Figma comments before the designer's next work session. Design and review stay tightly coupled.",
+      "Design reviews happen in Zoom, but the designs live in Figma, and the feedback captured in the meeting rarely makes it back to the Figma file in a timely way. Designers end up reconciling handwritten notes with verbal comments from a recording they have to scrub through.\n\nGAIA connects Zoom and Figma so design review meetings are scheduled automatically when Figma milestones are reached, and feedback from the call is posted as Figma comments before the designer's next work session. Design and review stay tightly coupled.",
     useCases: [
       {
         title: "Schedule Zoom reviews when Figma milestones are reached",
@@ -894,7 +894,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       "gaia zoom hubspot",
     ],
     intro:
-      "Sales and customer success teams live in HubSpot, but their customer conversations happen in Zoom. Without an automatic bridge, call notes go un-logged, follow-up tasks get missed, and HubSpot deal timelines miss critical touchpoints that inform pipeline forecasting.\n\nGAIA logs every Zoom customer call to the right HubSpot contact and deal automatically. Meeting summaries become CRM notes, action items become tasks, and deal stages update based on what was discussed — so your CRM reflects reality without manual data entry after every call.",
+      "Sales and customer success teams live in HubSpot, but their customer conversations happen in Zoom. Without an automatic bridge, call notes go un-logged, follow-up tasks get missed, and HubSpot deal timelines miss critical touchpoints that inform pipeline forecasting.\n\nGAIA logs every Zoom customer call to the right HubSpot contact and deal automatically. Meeting summaries become CRM notes, action items become tasks, and deal stages update based on what was discussed, so your CRM reflects reality without manual data entry after every call.",
     useCases: [
       {
         title: "Auto-log Zoom call summaries to HubSpot deals",
@@ -973,7 +973,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       "gaia zoom clickup",
     ],
     intro:
-      "Zoom meetings produce action items, but those commitments only move work forward if they're captured in the project management tool your team actually uses. For teams on ClickUp, that means someone has to manually translate meeting notes into tasks — a step that often gets deprioritized.\n\nGAIA eliminates that step by parsing Zoom meeting summaries and creating ClickUp tasks automatically. Each action item gets the right assignee, due date, and list placement so your ClickUp workspace reflects every commitment made on the call.",
+      "Zoom meetings produce action items, but those commitments only move work forward if they're captured in the project management tool your team actually uses. For teams on ClickUp, that means someone has to manually translate meeting notes into tasks, a step that often gets deprioritized.\n\nGAIA eliminates that step by parsing Zoom meeting summaries and creating ClickUp tasks automatically. Each action item gets the right assignee, due date, and list placement so your ClickUp workspace reflects every commitment made on the call.",
     useCases: [
       {
         title: "Create ClickUp tasks from Zoom meeting action items",

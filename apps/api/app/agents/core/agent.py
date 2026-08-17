@@ -314,12 +314,5 @@ async def call_agent_silent(
 
         return complete_message, tool_data
 
-    except Exception as exc:
-        log.error(
-            f"{LogTag.AGENT} Error when calling silent agent",
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        return f"Error when calling silent agent: {exc!s}", {}
     finally:
         teardown_executor_capture(stream_id)

@@ -296,7 +296,7 @@ async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | Non
     or the user has no connected MCP that exposes it.
     """
     from app.services.mcp.mcp_client import (
-        get_mcp_client,  # noqa: PLC0415  (lazy: avoid import cycle)
+        get_mcp_client,
     )
 
     try:
@@ -317,7 +317,7 @@ async def _resolve_mcp_ui_metadata(
     tool_name: str, user_id: str
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
-    from app.services.mcp.mcp_client import get_mcp_client  # noqa: PLC0415
+    from app.services.mcp.mcp_client import get_mcp_client
 
     try:
         mcp_client = await get_mcp_client(user_id)
@@ -341,11 +341,11 @@ async def _resolve_mcp_ui_metadata(
 
 async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str | None]:
     """Fetch (icon_url, integration_name) for an integration via Redis-cached Mongo."""
-    from app.constants.cache import (  # noqa: PLC0415
+    from app.constants.cache import (
         CUSTOM_INT_METADATA_CACHE_PREFIX,
         CUSTOM_INT_METADATA_TTL,
     )
-    from app.db.redis import get_cache, set_cache  # noqa: PLC0415
+    from app.db.redis import get_cache, set_cache
 
     cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
     cached = await get_cache(cache_key)

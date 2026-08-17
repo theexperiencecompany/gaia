@@ -30,7 +30,7 @@ if "app.services.workflow.queue_service" not in sys.modules:
     _qs_mod.WorkflowQueueService = MagicMock()  # type: ignore[attr-defined]
     sys.modules["app.services.workflow.queue_service"] = _qs_mod
 
-from app.services.triggers.handlers.google_sheets import (  # noqa: E402
+from app.services.triggers.handlers.google_sheets import (
     GoogleSheetsTriggerHandler,
     google_sheets_trigger_handler,
 )

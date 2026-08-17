@@ -9,12 +9,13 @@ assert the exit code + stdout + stderr are surfaced normally.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from e2b import CommandExitException, TimeoutException
 import pytest
 
-from app.agents.tools.coding.bash_tool import _run_foreground
+from app.agents.tools.coding import bash_tool
+from app.agents.tools.coding.bash_tool import _record_bash_exit_code, _run_foreground
 
 
 def _sbx_with_run(run_mock: AsyncMock) -> AsyncMock:
@@ -60,3 +61,21 @@ async def test_command_timeout_propagates() -> None:
     run = AsyncMock(side_effect=TimeoutException("exceeding 'timeout'"))
     with pytest.raises(TimeoutException):
         await _run_foreground(_sbx_with_run(run), "rid", "sleep 999", "/workspace", 1, None)
+
+
+def test_metrics_failure_does_not_break_exit_code_recording(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The Prometheus counter is a side channel — if incrementing it blows up
+    # (e.g. a bad label value, registry corruption), that must never surface
+    # as a failure of the command that just finished executing.
+    broken_counter = MagicMock()
+    broken_counter.labels.side_effect = ValueError("boom: bad label")
+    monkeypatch.setattr(bash_tool, "_BASH_EXIT_CODE_TOTAL", broken_counter)
+    warning_mock = MagicMock()
+    monkeypatch.setattr(bash_tool.log, "warning", warning_mock)
+
+    _record_bash_exit_code(0, timed_out=False)  # must not raise
+
+    warning_mock.assert_called_once()
+    assert warning_mock.call_args.kwargs["error_type"] == "ValueError"

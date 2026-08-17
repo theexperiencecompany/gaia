@@ -218,6 +218,41 @@ without failing. Running `--update` as part of the cleanup closes that window.
 
 ---
 
+## suppression-baseline
+
+Not an AST rule — a checked-in baseline, so it runs as its own script/hook rather
+than through `run.py`:
+
+```bash
+python3 tools/lints/check_suppressions.py           # check
+python3 tools/lints/check_suppressions.py --update  # regenerate the baseline
+```
+
+**Rule:** inline lint-suppression comments (`# noqa`, `# type: ignore` in `*.py`;
+`// biome-ignore` in ts/tsx/js/jsx/mjs/cjs) may not grow beyond what
+`config/suppressions-baseline.json` records, per `(file, kind)`. The baseline is
+line-number-free (reordering lines within a file is always free) and tracks a
+content hash per file so a pure rename — byte-identical content moved to a new
+path — is free too, without ever consulting git history.
+
+**Why:** replaces a git-archaeology ratchet (`scripts/ci/check-suppression-ratchet.sh`,
+deleted) that diffed merge-base vs HEAD and had four verified bugs: pure renames
+false-failed, a force-push crashed it (`github.event.before` unfetched on that
+event), a same-file swap between suppression kinds netted to zero and stayed
+invisible, and failures printed counts instead of exact lines. This scans the
+current working tree instead — no fetch-depth, no base ref, no merge-base — so
+it is reproducible with the exact command CI runs, locally, every time.
+
+**Fix:** delete the suppression, or add it to the baseline in the same PR with
+`--update` — the baseline diff is the review surface, so justify it there. A
+baseline entry whose count exceeds the tree's is stale and must be shrunk the
+same way; the baseline may only ever match or shrink.
+
+**Not the same as `ignore-ratchet` below** — this guards inline comments in
+source files; `ignore-ratchet` guards the escape-hatch *lists* in `pyproject.toml`.
+
+---
+
 ## no-silent-fallback
 
 **Rule:** a broad `except` (`Exception` / `BaseException` / bare) may not both stay

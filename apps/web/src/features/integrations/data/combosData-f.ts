@@ -20,7 +20,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "task sync Asana ClickUp",
     ],
     intro:
-      "Many growing organizations run Asana and ClickUp simultaneously — one team adopted Asana early, another migrated to ClickUp, and now both coexist without talking to each other. The result is duplicated task entry, mismatched statuses, and project leads who spend hours reconciling two separate sources of truth.\n\nGAIA eliminates the manual overhead of managing projects across both platforms. When a task is created or updated in Asana, GAIA mirrors the change in ClickUp and vice versa, keeping assignees, due dates, and completion statuses consistent. Teams can continue using their preferred tool while leadership gets a consolidated view of project health.\n\nThis integration is especially valuable during platform migrations, when departments have different tool preferences, or when client-facing projects need to live in one system while internal execution happens in another.",
+      "Many growing organizations run Asana and ClickUp simultaneously. One team adopted Asana early, another migrated to ClickUp, and now both coexist without talking to each other. The result is duplicated task entry, mismatched statuses, and project leads who spend hours reconciling two separate sources of truth.\n\nGAIA eliminates the manual overhead of managing projects across both platforms. When a task is created or updated in Asana, GAIA mirrors the change in ClickUp and vice versa, keeping assignees, due dates, and completion statuses consistent. Teams can continue using their preferred tool while leadership gets a consolidated view of project health.\n\nThis integration is especially valuable during platform migrations, when departments have different tool preferences, or when client-facing projects need to live in one system while internal execution happens in another.",
     useCases: [
       {
         title: "Mirror task creation across platforms",
@@ -57,7 +57,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Define sync rules and field mappings",
         description:
-          "Tell GAIA which Asana projects should sync with which ClickUp lists, and configure how fields map between them — assignees, priorities, due dates, and custom fields.",
+          "Tell GAIA which Asana projects should sync with which ClickUp lists, and configure how fields map between them: assignees, priorities, due dates, and custom fields.",
       },
       {
         step: "GAIA keeps both platforms current",
@@ -105,7 +105,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "task management sync",
     ],
     intro:
-      "Asana and Trello approach project management differently — Asana with structured task hierarchies and timelines, Trello with visual Kanban boards — but many teams rely on both. Client-facing work might live in Trello for its simplicity while internal project tracking uses Asana's more powerful features. Without automation, teams must update both tools manually, creating delays and inconsistencies.\n\nGAIA connects Asana and Trello so tasks flow between them automatically. New Asana tasks can become Trello cards, Trello card movements can update Asana task statuses, and deadlines stay consistent across both platforms. Teams can collaborate in their preferred interface while the underlying data stays unified.\n\nThis integration is ideal for agencies managing client boards in Trello while tracking internal project timelines in Asana, and for teams transitioning between the two tools who need a reliable migration path.",
+      "Asana and Trello approach project management differently (Asana with structured task hierarchies and timelines, Trello with visual Kanban boards), but many teams rely on both. Client-facing work might live in Trello for its simplicity while internal project tracking uses Asana's more powerful features. Without automation, teams must update both tools manually, creating delays and inconsistencies.\n\nGAIA connects Asana and Trello so tasks flow between them automatically. New Asana tasks can become Trello cards, Trello card movements can update Asana task statuses, and deadlines stay consistent across both platforms. Teams can collaborate in their preferred interface while the underlying data stays unified.\n\nThis integration is ideal for agencies managing client boards in Trello while tracking internal project timelines in Asana, and for teams transitioning between the two tools who need a reliable migration path.",
     useCases: [
       {
         title: "Create Trello cards from new Asana tasks",
@@ -142,7 +142,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Set sync direction and field mappings",
         description:
-          "Choose whether to sync one-way or bidirectionally. Configure which fields carry over — title, description, due date, assignee, labels — between the two platforms.",
+          "Choose whether to sync one-way or bidirectionally. Configure which fields carry over (title, description, due date, assignee, labels) between the two platforms.",
       },
       {
         step: "GAIA automates the rest",
@@ -190,7 +190,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "project management engineering sync",
     ],
     intro:
-      "Product teams often live in Asana for its project planning capabilities while engineering teams prefer Linear for its speed and developer-centric workflow. The gap between the two creates a constant synchronization problem — product managers manually copy specs into Linear issues, engineers close Linear issues but Asana still shows tasks as open, and leadership lacks a unified view of what is shipped versus what is planned.\n\nGAIA bridges Asana and Linear so product decisions automatically flow into engineering backlogs and engineering progress automatically surfaces in product timelines. When a product manager marks an Asana task as ready for engineering, GAIA creates the corresponding Linear issue with full context. When engineers close a Linear issue, GAIA updates the Asana task status so the product roadmap stays accurate.\n\nThis integration is built for product-engineering teams who want to keep their preferred tools while eliminating the coordination overhead that comes from running two disconnected systems.",
+      "Product teams often live in Asana for its project planning capabilities while engineering teams prefer Linear for its speed and developer-centric workflow. The gap between the two creates a constant synchronization problem: product managers manually copy specs into Linear issues, engineers close Linear issues but Asana still shows tasks as open, and leadership lacks a unified view of what is shipped versus what is planned.\n\nGAIA bridges Asana and Linear so product decisions automatically flow into engineering backlogs and engineering progress automatically surfaces in product timelines. When a product manager marks an Asana task as ready for engineering, GAIA creates the corresponding Linear issue with full context. When engineers close a Linear issue, GAIA updates the Asana task status so the product roadmap stays accurate.\n\nThis integration is built for product-engineering teams who want to keep their preferred tools while eliminating the coordination overhead that comes from running two disconnected systems.",
     useCases: [
       {
         title: "Create Linear issues from Asana tasks",
@@ -227,7 +227,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Define trigger conditions and field mappings",
         description:
-          "Set the conditions that trigger syncs — such as an Asana task reaching a specific section or a Linear issue changing state — and map fields like priority, assignee, and description between platforms.",
+          "Set the conditions that trigger syncs (such as an Asana task reaching a specific section or a Linear issue changing state) and map fields like priority, assignee, and description between platforms.",
       },
       {
         step: "GAIA keeps product and engineering aligned",
@@ -295,7 +295,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Trigger design tasks from Asana milestones",
         description:
-          "When an Asana milestone is reached — such as a feature spec being approved — GAIA creates the corresponding design task in Asana and initializes a Figma file, ensuring design work begins at the right moment.",
+          "When an Asana milestone is reached (such as a feature spec being approved), GAIA creates the corresponding design task in Asana and initializes a Figma file, ensuring design work begins at the right moment.",
       },
       {
         title: "Design handoff to development",
@@ -312,7 +312,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Map design stages to Asana task sections",
         description:
-          "Define how Figma file statuses — In Progress, Ready for Review, Approved — map to Asana task sections or custom fields so status changes flow automatically.",
+          "Define how Figma file statuses (In Progress, Ready for Review, Approved) map to Asana task sections or custom fields so status changes flow automatically.",
       },
       {
         step: "GAIA links design and project work",
@@ -398,7 +398,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Choose which events trigger Discord messages",
         description:
-          "Select the Asana events — task creation, assignment, completion, overdue, milestone — that should generate Discord notifications, and specify the target channel or user for each event type.",
+          "Select the Asana events (task creation, assignment, completion, overdue, milestone) that should generate Discord notifications, and specify the target channel or user for each event type.",
       },
       {
         step: "GAIA delivers real-time project updates",
@@ -447,7 +447,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "Asana Drive workflow",
     ],
     intro:
-      "Project tasks in Asana rarely exist in isolation — they reference briefs, specs, reports, and deliverables stored in Google Drive. Without automation, team members spend time hunting through Drive folders for the right document, or they attach stale file versions to Asana tasks because the link was shared months ago and the file has since moved.\n\nGAIA connects Asana and Google Drive so documents are always where you expect them. When a new Asana project launches, GAIA creates a corresponding Drive folder with the right structure. As tasks progress, GAIA attaches the relevant Drive documents automatically. When a deliverable is updated in Drive, GAIA notifies the Asana task assignee so reviews happen promptly.\n\nThis integration is essential for content teams, marketing agencies, and operations departments that rely on Google Drive as their document store and Asana as their project management layer.",
+      "Project tasks in Asana rarely exist in isolation. They reference briefs, specs, reports, and deliverables stored in Google Drive. Without automation, team members spend time hunting through Drive folders for the right document, or they attach stale file versions to Asana tasks because the link was shared months ago and the file has since moved.\n\nGAIA connects Asana and Google Drive so documents are always where you expect them. When a new Asana project launches, GAIA creates a corresponding Drive folder with the right structure. As tasks progress, GAIA attaches the relevant Drive documents automatically. When a deliverable is updated in Drive, GAIA notifies the Asana task assignee so reviews happen promptly.\n\nThis integration is essential for content teams, marketing agencies, and operations departments that rely on Google Drive as their document store and Asana as their project management layer.",
     useCases: [
       {
         title: "Create Drive project folders from Asana projects",
@@ -484,7 +484,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure folder structure and attachment rules",
         description:
-          "Define the Drive folder template for new projects and the rules GAIA uses to match Drive files to Asana tasks — by file name pattern, subfolder, or task custom field.",
+          "Define the Drive folder template for new projects and the rules GAIA uses to match Drive files to Asana tasks: by file name pattern, subfolder, or task custom field.",
       },
       {
         step: "GAIA manages document organization automatically",
@@ -534,7 +534,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "project kickoff scheduling",
     ],
     intro:
-      "Project milestones in Asana often trigger the need for a team meeting — a kickoff call when a project launches, a review meeting when a phase completes, or a retrospective when a milestone is missed. Scheduling these meetings manually, then manually copying action items from the Zoom call back into Asana, creates friction and delays that compound across every project.\n\nGAIA connects Asana and Zoom so project events automatically trigger the right meetings and meeting outcomes automatically flow back into project tasks. When an Asana milestone is reached, GAIA schedules the appropriate Zoom call and invites the right participants. When the call ends, GAIA posts the meeting summary and extracts action items as new Asana tasks, keeping your project moving without manual follow-up.\n\nThis integration is valuable for project managers who run recurring milestone reviews and for teams that rely on Zoom for collaboration but need meeting outcomes to live inside Asana where work actually gets tracked.",
+      "Project milestones in Asana often trigger the need for a team meeting: a kickoff call when a project launches, a review meeting when a phase completes, or a retrospective when a milestone is missed. Scheduling these meetings manually, then manually copying action items from the Zoom call back into Asana, creates friction and delays that compound across every project.\n\nGAIA connects Asana and Zoom so project events automatically trigger the right meetings and meeting outcomes automatically flow back into project tasks. When an Asana milestone is reached, GAIA schedules the appropriate Zoom call and invites the right participants. When the call ends, GAIA posts the meeting summary and extracts action items as new Asana tasks, keeping your project moving without manual follow-up.\n\nThis integration is valuable for project managers who run recurring milestone reviews and for teams that rely on Zoom for collaboration but need meeting outcomes to live inside Asana where work actually gets tracked.",
     useCases: [
       {
         title: "Auto-schedule kickoff calls from project creation",
@@ -641,7 +641,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Log delivery milestones as Salesforce activities",
         description:
-          "Key Asana project events — phase completions, go-live milestones, issue resolutions — are automatically logged as Salesforce activity records, building a complete client history without manual data entry.",
+          "Key Asana project events (phase completions, go-live milestones, issue resolutions) are automatically logged as Salesforce activity records, building a complete client history without manual data entry.",
       },
       {
         title: "Upsell triggers from project completion",
@@ -709,7 +709,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "project management knowledge base",
     ],
     intro:
-      "Trello and Notion serve complementary purposes — Trello for visual task management and Notion for documentation, wikis, and project knowledge bases. But when teams run both, Trello cards and Notion pages diverge quickly. A Trello card gets completed but the Notion project page still shows it as in progress. A Notion database entry is created but no Trello card exists to track the actual work.\n\nGAIA connects Trello and Notion so task management and documentation stay aligned. Trello card updates flow into Notion database entries, Notion project pages pull live Trello board status, and new Notion items trigger Trello card creation. Teams get the visual workflow benefits of Trello with the rich documentation capabilities of Notion, connected rather than siloed.\n\nThis integration is ideal for teams that use Notion as their company wiki while managing day-to-day tasks in Trello, and for project managers who need project documentation and task status to live in the same place.",
+      "Trello and Notion serve complementary purposes: Trello for visual task management and Notion for documentation, wikis, and project knowledge bases. But when teams run both, Trello cards and Notion pages diverge quickly. A Trello card gets completed but the Notion project page still shows it as in progress. A Notion database entry is created but no Trello card exists to track the actual work.\n\nGAIA connects Trello and Notion so task management and documentation stay aligned. Trello card updates flow into Notion database entries, Notion project pages pull live Trello board status, and new Notion items trigger Trello card creation. Teams get the visual workflow benefits of Trello with the rich documentation capabilities of Notion, connected rather than siloed.\n\nThis integration is ideal for teams that use Notion as their company wiki while managing day-to-day tasks in Trello, and for project managers who need project documentation and task status to live in the same place.",
     useCases: [
       {
         title: "Sync Trello cards to a Notion database",
@@ -719,7 +719,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Update Notion entries when Trello cards move",
         description:
-          "When a Trello card moves between lists — from Backlog to In Progress to Done — GAIA updates the status field on the linked Notion database entry, keeping the Notion project database accurate.",
+          "When a Trello card moves between lists (from Backlog to In Progress to Done), GAIA updates the status field on the linked Notion database entry, keeping the Notion project database accurate.",
       },
       {
         title: "Create Trello cards from Notion database entries",
@@ -746,7 +746,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Set sync direction and trigger events",
         description:
-          "Choose whether to sync from Trello to Notion, Notion to Trello, or both. Configure which card events — creation, list movement, due date change, completion — trigger Notion updates.",
+          "Choose whether to sync from Trello to Notion, Notion to Trello, or both. Configure which card events (creation, list movement, due date change, completion) trigger Notion updates.",
       },
       {
         step: "GAIA keeps boards and databases aligned",
@@ -832,7 +832,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure which events post to Slack",
         description:
-          "Choose the Trello events that trigger Slack messages — card creation, movement between lists, due date arrival, completion, or assignment — and set the target channel for each event type.",
+          "Choose the Trello events that trigger Slack messages (card creation, movement between lists, due date arrival, completion, or assignment) and set the target channel for each event type.",
       },
       {
         step: "GAIA bridges boards and chat in real time",
@@ -856,7 +856,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
         question:
           "Can I create a Trello card from a Slack message without a bot command?",
         answer:
-          "Yes. GAIA supports emoji-based card creation — react to any Slack message with a designated emoji and GAIA will create a Trello card from that message automatically.",
+          "Yes. GAIA supports emoji-based card creation: react to any Slack message with a designated emoji and GAIA will create a Trello card from that message automatically.",
       },
     ],
   },
@@ -882,7 +882,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "developer project management",
     ],
     intro:
-      "Software teams using Trello for project management and GitHub for code often face a visibility gap — Trello cards sit in In Progress long after the code has merged, and GitHub issues get filed without corresponding Trello cards for the product team to track. The disconnect means project status in Trello rarely reflects the actual state of development in GitHub.\n\nGAIA connects Trello and GitHub so code events automatically update project boards and project cards trigger appropriate GitHub actions. When a pull request is merged, GAIA moves the linked Trello card to Done. When a GitHub issue is opened, GAIA can create the corresponding Trello card. The result is a Trello board that stays accurate without requiring engineers to manually update cards after every commit.\n\nThis integration is essential for small-to-medium development teams that use Trello for product planning and GitHub for all code activity, and for teams that need non-technical stakeholders to have accurate project visibility without access to GitHub.",
+      "Software teams using Trello for project management and GitHub for code often face a visibility gap: Trello cards sit in In Progress long after the code has merged, and GitHub issues get filed without corresponding Trello cards for the product team to track. The disconnect means project status in Trello rarely reflects the actual state of development in GitHub.\n\nGAIA connects Trello and GitHub so code events automatically update project boards and project cards trigger appropriate GitHub actions. When a pull request is merged, GAIA moves the linked Trello card to Done. When a GitHub issue is opened, GAIA can create the corresponding Trello card. The result is a Trello board that stays accurate without requiring engineers to manually update cards after every commit.\n\nThis integration is essential for small-to-medium development teams that use Trello for product planning and GitHub for all code activity, and for teams that need non-technical stakeholders to have accurate project visibility without access to GitHub.",
     useCases: [
       {
         title: "Move Trello cards when pull requests merge",
@@ -924,7 +924,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "GAIA keeps boards and code in sync",
         description:
-          "As GitHub events fire — issues opened, PRs submitted, PRs merged, issues closed — GAIA propagates the corresponding Trello card movements and updates automatically.",
+          "As GitHub events fire (issues opened, PRs submitted, PRs merged, issues closed), GAIA propagates the corresponding Trello card movements and updates automatically.",
       },
     ],
     faqs: [
@@ -985,7 +985,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Multi-stage deadline reminders",
         description:
-          "GAIA creates multi-stage Google Calendar reminders for Trello cards — a one-week warning, a two-day alert, and a same-day notification — so teams have sufficient lead time to complete work before deadlines.",
+          "GAIA creates multi-stage Google Calendar reminders for Trello cards (a one-week warning, a two-day alert, and a same-day notification) so teams have sufficient lead time to complete work before deadlines.",
       },
       {
         title: "Sprint calendar from Trello board",
@@ -1007,7 +1007,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure deadline-to-event mapping",
         description:
-          "Define how Trello card metadata maps to calendar event fields — title format, calendar selection, reminder timing, and what happens when a Trello due date changes.",
+          "Define how Trello card metadata maps to calendar event fields: title format, calendar selection, reminder timing, and what happens when a Trello due date changes.",
       },
       {
         step: "GAIA keeps deadlines visible across both tools",
@@ -1057,7 +1057,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "project asset organization",
     ],
     intro:
-      "Trello cards represent work, but the actual work product — briefs, drafts, designs, reports — lives in Google Drive. Without a connection between the two, team members spend time searching Drive for files mentioned in Trello cards, or they attach outdated file links to cards when the document has since been updated or moved.\n\nGAIA connects Trello and Google Drive so documents are organized around cards automatically. When a new Trello board is created, GAIA sets up the corresponding Drive folder structure. As cards progress through lists, GAIA attaches relevant files and notifies team members when documents are updated. The result is a Trello board where every card has immediate access to all related documents without manual file hunting.\n\nThis integration is especially useful for marketing teams managing campaigns in Trello, content teams tracking article production, and project managers who need all deliverables organized and accessible from a single card view.",
+      "Trello cards represent work, but the actual work product (briefs, drafts, designs, reports) lives in Google Drive. Without a connection between the two, team members spend time searching Drive for files mentioned in Trello cards, or they attach outdated file links to cards when the document has since been updated or moved.\n\nGAIA connects Trello and Google Drive so documents are organized around cards automatically. When a new Trello board is created, GAIA sets up the corresponding Drive folder structure. As cards progress through lists, GAIA attaches relevant files and notifies team members when documents are updated. The result is a Trello board where every card has immediate access to all related documents without manual file hunting.\n\nThis integration is especially useful for marketing teams managing campaigns in Trello, content teams tracking article production, and project managers who need all deliverables organized and accessible from a single card view.",
     useCases: [
       {
         title: "Create Drive folders for new Trello boards",
@@ -1094,7 +1094,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure folder structure and attachment rules",
         description:
-          "Define the Drive folder template for new boards and the rules GAIA uses to match Drive files to Trello cards — by file name pattern, subfolder, or card label.",
+          "Define the Drive folder template for new boards and the rules GAIA uses to match Drive files to Trello cards: by file name pattern, subfolder, or card label.",
       },
       {
         step: "GAIA organizes documents around your cards",
@@ -1231,7 +1231,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "community project management",
     ],
     intro:
-      "Communities and teams that organize in Discord need project updates to surface in the platform where they already spend their time. When Trello board activity — card completions, new assignments, milestone achievements — stays locked inside Trello, Discord-first teams are left in the dark unless they actively check the board.\n\nGAIA connects Trello and Discord so board activity flows automatically into the right Discord channels. Card completions get posted to team channels, new cards notify assignees in DMs, and board summaries keep the broader community informed of project progress. Teams working on open-source projects, game development, or community initiatives can share project updates with their Discord audience without any manual copy-pasting.\n\nThis integration is particularly suited for open-source communities, gaming studios, creator collectives, and any team that runs its community on Discord while tracking project work in Trello.",
+      "Communities and teams that organize in Discord need project updates to surface in the platform where they already spend their time. When Trello board activity (card completions, new assignments, milestone achievements) stays locked inside Trello, Discord-first teams are left in the dark unless they actively check the board.\n\nGAIA connects Trello and Discord so board activity flows automatically into the right Discord channels. Card completions get posted to team channels, new cards notify assignees in DMs, and board summaries keep the broader community informed of project progress. Teams working on open-source projects, game development, or community initiatives can share project updates with their Discord audience without any manual copy-pasting.\n\nThis integration is particularly suited for open-source communities, gaming studios, creator collectives, and any team that runs its community on Discord while tracking project work in Trello.",
     useCases: [
       {
         title: "Post card completions to Discord channels",
@@ -1268,7 +1268,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Select events and notification format",
         description:
-          "Choose which Trello events trigger Discord messages — card creation, movement, completion, assignment, or overdue — and customize the message format to match your community's style.",
+          "Choose which Trello events trigger Discord messages (card creation, movement, completion, assignment, or overdue) and customize the message format to match your community's style.",
       },
       {
         step: "GAIA keeps your community updated",
@@ -1319,7 +1319,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "project meeting workflow",
     ],
     intro:
-      "Trello sprint boards drive the rhythm of project work, but much of that work is coordinated in Zoom meetings — sprint planning calls, card review sessions, retrospectives. Without automation, teams manually schedule meetings that should be triggered by board events, and the action items discussed on those calls never find their way back into Trello cards without someone taking detailed notes and manually creating cards afterward.\n\nGAIA connects Trello and Zoom so meetings are scheduled automatically at the right board stage and meeting outcomes flow back into the board immediately after each call. When a Trello sprint list is fully populated and ready to start, GAIA schedules the sprint kickoff call. When the call ends, GAIA posts the meeting summary to the board and creates Trello cards from action items extracted from the transcript.\n\nThis integration is built for agile teams, project managers, and any group that runs structured board reviews on Zoom and needs meeting outcomes to live inside Trello where the actual work is tracked.",
+      "Trello sprint boards drive the rhythm of project work, but much of that work is coordinated in Zoom meetings: sprint planning calls, card review sessions, retrospectives. Without automation, teams manually schedule meetings that should be triggered by board events, and the action items discussed on those calls never find their way back into Trello cards without someone taking detailed notes and manually creating cards afterward.\n\nGAIA connects Trello and Zoom so meetings are scheduled automatically at the right board stage and meeting outcomes flow back into the board immediately after each call. When a Trello sprint list is fully populated and ready to start, GAIA schedules the sprint kickoff call. When the call ends, GAIA posts the meeting summary to the board and creates Trello cards from action items extracted from the transcript.\n\nThis integration is built for agile teams, project managers, and any group that runs structured board reviews on Zoom and needs meeting outcomes to live inside Trello where the actual work is tracked.",
     useCases: [
       {
         title: "Schedule sprint kickoff calls from board stage changes",
@@ -1417,7 +1417,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Sync HubSpot contact data to Notion databases",
         description:
-          "GAIA keeps a Notion database of HubSpot contacts synchronized with CRM data — company, title, deal stage, last activity — so team members can research accounts from Notion without switching to HubSpot.",
+          "GAIA keeps a Notion database of HubSpot contacts synchronized with CRM data (company, title, deal stage, last activity) so team members can research accounts from Notion without switching to HubSpot.",
       },
       {
         title: "Document deal stage changes automatically",
@@ -1493,7 +1493,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "onboarding automation HubSpot Asana",
     ],
     intro:
-      "Every closed deal in HubSpot represents a handoff that needs to happen — from sales to customer success, implementation, or delivery. Without automation, that handoff relies on a salesperson remembering to notify the right team, and the delivery team manually creating Asana tasks that should have been generated from the deal data already sitting in HubSpot.\n\nGAIA automates the sales-to-delivery handoff so nothing falls through the cracks. When a HubSpot deal closes, GAIA creates a structured Asana project or task list for the relevant delivery team, pre-populated with customer details from the CRM. As the onboarding progresses, GAIA can log Asana milestone completions back to HubSpot so account managers stay informed without interrupting the delivery team.\n\nThis integration is built for SaaS companies, professional services firms, and agencies where closing a deal immediately generates structured delivery work that needs to be tracked in Asana.",
+      "Every closed deal in HubSpot represents a handoff that needs to happen: from sales to customer success, implementation, or delivery. Without automation, that handoff relies on a salesperson remembering to notify the right team, and the delivery team manually creating Asana tasks that should have been generated from the deal data already sitting in HubSpot.\n\nGAIA automates the sales-to-delivery handoff so nothing falls through the cracks. When a HubSpot deal closes, GAIA creates a structured Asana project or task list for the relevant delivery team, pre-populated with customer details from the CRM. As the onboarding progresses, GAIA can log Asana milestone completions back to HubSpot so account managers stay informed without interrupting the delivery team.\n\nThis integration is built for SaaS companies, professional services firms, and agencies where closing a deal immediately generates structured delivery work that needs to be tracked in Asana.",
     useCases: [
       {
         title: "Auto-create onboarding projects from closed deals",
@@ -1503,7 +1503,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Sync deal data to Asana project fields",
         description:
-          "GAIA maps HubSpot deal fields — company name, contract value, product purchased, primary contact — to Asana project custom fields so the delivery team has full context without accessing HubSpot.",
+          "GAIA maps HubSpot deal fields (company name, contract value, product purchased, primary contact) to Asana project custom fields so the delivery team has full context without accessing HubSpot.",
       },
       {
         title: "Log Asana milestone completions in HubSpot",
@@ -1618,7 +1618,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Define request capture and linking rules",
         description:
-          "Set the HubSpot deal or contact properties that GAIA monitors for feature requests, and configure how GAIA deduplicates requests — creating a new Linear issue or linking to an existing one.",
+          "Set the HubSpot deal or contact properties that GAIA monitors for feature requests, and configure how GAIA deduplicates requests: creating a new Linear issue or linking to an existing one.",
       },
       {
         step: "GAIA closes the loop between customers and engineering",
@@ -1705,7 +1705,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure logging rules and follow-up templates",
         description:
-          "Define which calendar events should be logged to HubSpot — by calendar, attendee domain, or event keyword — and set the follow-up task template that GAIA creates after each meeting.",
+          "Define which calendar events should be logged to HubSpot (by calendar, attendee domain, or event keyword) and set the follow-up task template that GAIA creates after each meeting.",
       },
       {
         step: "GAIA keeps your CRM timeline complete",
@@ -1755,7 +1755,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "deal document management",
     ],
     intro:
-      "Sales deals generate significant documentation — proposals, contracts, SOWs, case studies, presentations — that typically lives in Google Drive while the deal itself lives in HubSpot. Without a connection, reps waste time searching Drive for the right version of a proposal, or they share the wrong file because the Drive folder structure does not map to HubSpot deal records.\n\nGAIA connects HubSpot and Google Drive so the right documents are always attached to the right deal. When a new deal is created, GAIA creates a structured Drive folder for the account. As deal documents are created or updated in Drive, GAIA attaches them to the HubSpot deal record. When a contract is signed and moved to a signed folder, GAIA updates the HubSpot deal and creates the next-stage task automatically.\n\nThis integration is essential for sales teams that generate custom proposals, account executives managing complex deal cycles with multiple documents, and revenue operations teams that need document management to be automatic and auditable.",
+      "Sales deals generate significant documentation (proposals, contracts, SOWs, case studies, presentations) that typically lives in Google Drive while the deal itself lives in HubSpot. Without a connection, reps waste time searching Drive for the right version of a proposal, or they share the wrong file because the Drive folder structure does not map to HubSpot deal records.\n\nGAIA connects HubSpot and Google Drive so the right documents are always attached to the right deal. When a new deal is created, GAIA creates a structured Drive folder for the account. As deal documents are created or updated in Drive, GAIA attaches them to the HubSpot deal record. When a contract is signed and moved to a signed folder, GAIA updates the HubSpot deal and creates the next-stage task automatically.\n\nThis integration is essential for sales teams that generate custom proposals, account executives managing complex deal cycles with multiple documents, and revenue operations teams that need document management to be automatic and auditable.",
     useCases: [
       {
         title: "Create Drive folders for new HubSpot deals",
@@ -1792,7 +1792,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure folder templates and attachment rules",
         description:
-          "Define the Drive folder structure for new deals and the rules GAIA uses to attach files to HubSpot records — by file name, subfolder, or document type.",
+          "Define the Drive folder structure for new deals and the rules GAIA uses to attach files to HubSpot records: by file name, subfolder, or document type.",
       },
       {
         step: "GAIA keeps deal documents organized and linked",
@@ -1805,12 +1805,12 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA generate proposals from HubSpot deal data and save them to Drive?",
         answer:
-          "Yes. GAIA can use a Drive document template and populate it with HubSpot deal fields — company name, contact, product, pricing — to generate a proposal draft, saving it to the deal's Drive folder automatically.",
+          "Yes. GAIA can use a Drive document template and populate it with HubSpot deal fields (company name, contact, product, pricing) to generate a proposal draft, saving it to the deal's Drive folder automatically.",
       },
       {
         question: "Does GAIA support multiple document types per deal?",
         answer:
-          "Yes. GAIA can manage multiple document types — proposals, NDAs, contracts, SOWs — each attached to the appropriate HubSpot deal section and organized in the correct Drive subfolder.",
+          "Yes. GAIA can manage multiple document types (proposals, NDAs, contracts, SOWs), each attached to the appropriate HubSpot deal section and organized in the correct Drive subfolder.",
       },
       {
         question:
@@ -1857,17 +1857,17 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Create follow-up tasks from action items",
         description:
-          "GAIA analyzes Zoom call transcripts for commitments and action items — send a proposal, schedule a demo, loop in a technical contact — and creates corresponding HubSpot tasks with due dates for the responsible rep.",
+          "GAIA analyzes Zoom call transcripts for commitments and action items (send a proposal, schedule a demo, loop in a technical contact) and creates corresponding HubSpot tasks with due dates for the responsible rep.",
       },
       {
         title: "Advance deal stage from call outcomes",
         description:
-          "When a Zoom call summary indicates a specific outcome — verbal agreement, request for contract, demo completed — GAIA can advance the HubSpot deal to the next pipeline stage automatically.",
+          "When a Zoom call summary indicates a specific outcome (verbal agreement, request for contract, demo completed), GAIA can advance the HubSpot deal to the next pipeline stage automatically.",
       },
       {
         title: "Manager call coaching alerts",
         description:
-          "GAIA monitors Zoom call summaries for coaching signals — long monologues, no next steps agreed, competitor mentions — and creates a HubSpot task for the sales manager to review the recording and provide feedback.",
+          "GAIA monitors Zoom call summaries for coaching signals (long monologues, no next steps agreed, competitor mentions) and creates a HubSpot task for the sales manager to review the recording and provide feedback.",
       },
     ],
     howItWorks: [
@@ -1879,7 +1879,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure logging rules and follow-up templates",
         description:
-          "Define which Zoom meetings should be logged to HubSpot — by attendee domain, meeting type, or calendar invitation — and set the task templates GAIA creates from call action items.",
+          "Define which Zoom meetings should be logged to HubSpot (by attendee domain, meeting type, or calendar invitation) and set the task templates GAIA creates from call action items.",
       },
       {
         step: "GAIA logs every call and drives follow-through",
@@ -1891,7 +1891,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         question: "Does GAIA require Zoom cloud recording for call logging?",
         answer:
-          "Basic call logging — duration, attendees, date — works without recording. Generating call summaries and extracting action items requires Zoom transcription or cloud recording to be enabled on the meeting.",
+          "Basic call logging (duration, attendees, date) works without recording. Generating call summaries and extracting action items requires Zoom transcription or cloud recording to be enabled on the meeting.",
       },
       {
         question:
@@ -1903,7 +1903,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
         question:
           "Can managers access Zoom call summaries for their reps from HubSpot?",
         answer:
-          "Yes. Call summaries are logged as HubSpot note activities on the deal or contact record, so anyone with CRM access — including managers and account team members — can read the summary without accessing Zoom.",
+          "Yes. Call summaries are logged as HubSpot note activities on the deal or contact record, so anyone with CRM access (including managers and account team members) can read the summary without accessing Zoom.",
       },
     ],
   },
@@ -1943,7 +1943,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Update Salesforce fields from Slack",
         description:
-          "Reps can message GAIA in Slack to update Salesforce deal fields — close date, stage, next step, amount — without opening Salesforce, reducing CRM friction for field reps and fast-moving deal cycles.",
+          "Reps can message GAIA in Slack to update Salesforce deal fields (close date, stage, next step, amount) without opening Salesforce, reducing CRM friction for field reps and fast-moving deal cycles.",
       },
       {
         title: "Weekly pipeline digest in Slack",
@@ -1965,7 +1965,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure alert rules and channel mappings",
         description:
-          "Define which Salesforce events — stage changes, deal wins, overdue dates, new leads — trigger Slack messages, and specify the target channel or user for each alert type.",
+          "Define which Salesforce events (stage changes, deal wins, overdue dates, new leads) trigger Slack messages, and specify the target channel or user for each alert type.",
       },
       {
         step: "GAIA keeps your revenue team informed in real time",
@@ -1978,12 +1978,12 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA post Salesforce alerts to different Slack channels for different deal sizes?",
         answer:
-          "Yes. You can configure GAIA to route alerts based on deal value — enterprise deals to a dedicated channel, SMB deals to another — so the right audience sees each notification.",
+          "Yes. You can configure GAIA to route alerts based on deal value (enterprise deals to a dedicated channel, SMB deals to another) so the right audience sees each notification.",
       },
       {
         question: "What Salesforce fields can be updated from Slack?",
         answer:
-          "GAIA supports updating standard Salesforce fields — stage, close date, amount, next step, description — and custom fields via natural language commands in Slack. The update is reflected in Salesforce immediately.",
+          "GAIA supports updating standard Salesforce fields (stage, close date, amount, next step, description) and custom fields via natural language commands in Slack. The update is reflected in Salesforce immediately.",
       },
       {
         question:
@@ -2040,7 +2040,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Draft Salesforce-informed email responses",
         description:
-          "When a client email arrives, ask GAIA to draft a reply using CRM context — deal stage, last meeting notes, open tasks — so the response is personalized and accurate without the rep switching to Salesforce to look up details.",
+          "When a client email arrives, ask GAIA to draft a reply using CRM context (deal stage, last meeting notes, open tasks) so the response is personalized and accurate without the rep switching to Salesforce to look up details.",
       },
     ],
     howItWorks: [
@@ -2052,7 +2052,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure logging rules and lead creation criteria",
         description:
-          "Define which Gmail emails to log — by contact domain, label, or thread — and set the criteria for when an unknown email address should create a new Salesforce lead versus be ignored.",
+          "Define which Gmail emails to log (by contact domain, label, or thread) and set the criteria for when an unknown email address should create a new Salesforce lead versus be ignored.",
       },
       {
         step: "GAIA keeps every client email in your CRM",
@@ -2103,7 +2103,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "account strategy workspace",
     ],
     intro:
-      "Enterprise sales teams manage complex deals that require rich documentation — account strategies, stakeholder maps, competitive positioning, executive briefings — that cannot live inside Salesforce's structured fields. Notion is where this content gets written, but it stays disconnected from the live deal data in Salesforce. Account documents go stale, pipeline dashboards in Notion require manual updates, and new team members cannot find the strategic context built up during the deal cycle.\n\nGAIA connects Salesforce and Notion so deal intelligence flows between CRM and knowledge base automatically. When a Salesforce opportunity is created, GAIA creates a Notion deal page from an account strategy template pre-populated with CRM data. As the deal progresses, GAIA updates the Notion page with stage changes and key metrics. When account strategies or meeting notes are added to Notion, GAIA can log key outcomes back to Salesforce.\n\nThis integration is designed for enterprise sales teams, strategic account managers, and revenue operations teams that manage complex, multi-stakeholder deals requiring both structured CRM tracking and rich collaborative documentation.",
+      "Enterprise sales teams manage complex deals that require rich documentation (account strategies, stakeholder maps, competitive positioning, executive briefings) that cannot live inside Salesforce's structured fields. Notion is where this content gets written, but it stays disconnected from the live deal data in Salesforce. Account documents go stale, pipeline dashboards in Notion require manual updates, and new team members cannot find the strategic context built up during the deal cycle.\n\nGAIA connects Salesforce and Notion so deal intelligence flows between CRM and knowledge base automatically. When a Salesforce opportunity is created, GAIA creates a Notion deal page from an account strategy template pre-populated with CRM data. As the deal progresses, GAIA updates the Notion page with stage changes and key metrics. When account strategies or meeting notes are added to Notion, GAIA can log key outcomes back to Salesforce.\n\nThis integration is designed for enterprise sales teams, strategic account managers, and revenue operations teams that manage complex, multi-stakeholder deals requiring both structured CRM tracking and rich collaborative documentation.",
     useCases: [
       {
         title: "Create Notion deal pages from Salesforce opportunities",
@@ -2160,13 +2160,13 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
         question:
           "How often does GAIA sync Salesforce data to the Notion pipeline database?",
         answer:
-          "GAIA syncs on configurable intervals — real-time on stage changes, or on a scheduled basis for field updates. You can also trigger a manual sync on demand for a specific opportunity.",
+          "GAIA syncs on configurable intervals: real-time on stage changes, or on a scheduled basis for field updates. You can also trigger a manual sync on demand for a specific opportunity.",
       },
       {
         question:
           "Can multiple team members collaborate on a Notion deal page while GAIA syncs CRM data?",
         answer:
-          "Yes. GAIA writes to specific structured sections of the Notion deal page — CRM-synced fields, activity logs — while leaving collaborative sections free for the account team to edit without conflict.",
+          "Yes. GAIA writes to specific structured sections of the Notion deal page (CRM-synced fields, activity logs) while leaving collaborative sections free for the account team to edit without conflict.",
       },
     ],
   },
@@ -2192,7 +2192,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "CRM project management bridge",
     ],
     intro:
-      "Closing a deal in Salesforce is only the beginning — the delivery team then needs to execute on the commitments made during the sale. Without automation, the handoff from Salesforce to Asana is manual: someone copies deal details into a new project, assigns tasks by hand, and sets deadlines without referencing the contract dates in Salesforce. The delivery team starts every engagement with incomplete information.\n\nGAIA automates the Salesforce-to-Asana handoff so delivery begins the moment a deal closes. When a Salesforce opportunity reaches Closed Won, GAIA creates a structured Asana project pre-populated with all relevant deal data — company name, scope, contract dates, assigned delivery lead — and assigns tasks based on your delivery playbook. As the project progresses, GAIA reports milestones back to Salesforce so the account team always knows where delivery stands.\n\nThis integration is critical for professional services teams, SaaS implementation teams, and any organization where closing a deal immediately creates structured project work that must be tracked in Asana.",
+      "Closing a deal in Salesforce is only the beginning. The delivery team then needs to execute on the commitments made during the sale. Without automation, the handoff from Salesforce to Asana is manual: someone copies deal details into a new project, assigns tasks by hand, and sets deadlines without referencing the contract dates in Salesforce. The delivery team starts every engagement with incomplete information.\n\nGAIA automates the Salesforce-to-Asana handoff so delivery begins the moment a deal closes. When a Salesforce opportunity reaches Closed Won, GAIA creates a structured Asana project pre-populated with all relevant deal data (company name, scope, contract dates, assigned delivery lead) and assigns tasks based on your delivery playbook. As the project progresses, GAIA reports milestones back to Salesforce so the account team always knows where delivery stands.\n\nThis integration is critical for professional services teams, SaaS implementation teams, and any organization where closing a deal immediately creates structured project work that must be tracked in Asana.",
     useCases: [
       {
         title: "Auto-create Asana projects from Salesforce Closed Won deals",
@@ -2202,7 +2202,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Sync Salesforce contract data to Asana project fields",
         description:
-          "GAIA maps Salesforce deal fields — product, contract value, implementation timeline, primary contact — to Asana custom project fields so the delivery team has the sales context they need without CRM access.",
+          "GAIA maps Salesforce deal fields (product, contract value, implementation timeline, primary contact) to Asana custom project fields so the delivery team has the sales context they need without CRM access.",
       },
       {
         title: "Report Asana delivery milestones to Salesforce",
@@ -2248,7 +2248,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
         question:
           "What happens if a Salesforce deal is reopened after the Asana project has started?",
         answer:
-          "GAIA can detect deal stage reversals and notify the Asana project manager. The Asana project is not automatically deleted — a human decision is needed to pause, cancel, or continue delivery work.",
+          "GAIA can detect deal stage reversals and notify the Asana project manager. The Asana project is not automatically deleted: a human decision is needed to pause, cancel, or continue delivery work.",
       },
       {
         question:
@@ -2280,7 +2280,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "activity logging Salesforce",
     ],
     intro:
-      "Account executives and sales reps schedule and attend client meetings in Google Calendar every day, but those meetings only help the team if they are captured in Salesforce. Manual CRM logging is time-consuming and inconsistently done — reps log some meetings, forget others, and rarely capture enough detail for the next person who inherits the account to understand the relationship history.\n\nGAIA connects Salesforce and Google Calendar so every client meeting is automatically recorded in the CRM with zero manual effort from the rep. When a Google Calendar event involves a Salesforce contact, GAIA creates the activity record, attaches meeting notes, and after the meeting generates follow-up tasks based on what was agreed. The Salesforce timeline becomes a complete, accurate record of all client touchpoints without relying on rep discipline.\n\nThis integration is essential for enterprise sales teams managing complex deal cycles, customer success managers with large books of business, and revenue operations teams that need accurate activity data for pipeline analysis and forecasting.",
+      "Account executives and sales reps schedule and attend client meetings in Google Calendar every day, but those meetings only help the team if they are captured in Salesforce. Manual CRM logging is time-consuming and inconsistently done: reps log some meetings, forget others, and rarely capture enough detail for the next person who inherits the account to understand the relationship history.\n\nGAIA connects Salesforce and Google Calendar so every client meeting is automatically recorded in the CRM with zero manual effort from the rep. When a Google Calendar event involves a Salesforce contact, GAIA creates the activity record, attaches meeting notes, and after the meeting generates follow-up tasks based on what was agreed. The Salesforce timeline becomes a complete, accurate record of all client touchpoints without relying on rep discipline.\n\nThis integration is essential for enterprise sales teams managing complex deal cycles, customer success managers with large books of business, and revenue operations teams that need accurate activity data for pipeline analysis and forecasting.",
     useCases: [
       {
         title: "Log Google Calendar meetings as Salesforce activities",
@@ -2295,7 +2295,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Attach pre-meeting research to Salesforce records",
         description:
-          "Before a scheduled meeting with a Salesforce contact, GAIA compiles a meeting brief from CRM data — deal stage, last activities, open tasks — and attaches it to the calendar event so the rep arrives prepared.",
+          "Before a scheduled meeting with a Salesforce contact, GAIA compiles a meeting brief from CRM data (deal stage, last activities, open tasks) and attaches it to the calendar event so the rep arrives prepared.",
       },
       {
         title: "Identify deal engagement gaps",
@@ -2317,7 +2317,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure logging rules and follow-up automation",
         description:
-          "Define which calendar events trigger Salesforce activity creation — by attendee domain, calendar, or event type — and set the follow-up task template that GAIA creates after each meeting.",
+          "Define which calendar events trigger Salesforce activity creation (by attendee domain, calendar, or event type) and set the follow-up task template that GAIA creates after each meeting.",
       },
       {
         step: "GAIA keeps your CRM timeline complete",
@@ -2368,7 +2368,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       "sales document workflow",
     ],
     intro:
-      "Enterprise sales deals generate extensive documentation — proposals, NDAs, statements of work, contracts, legal amendments — that lives in Google Drive while the deal record lives in Salesforce. Without automation, reps spend time searching for the latest version of a proposal, and document links on Salesforce records go stale when files are moved or renamed in Drive.\n\nGAIA connects Salesforce and Google Drive so deal documentation is always organized and accessible from the CRM. When a Salesforce opportunity is created, GAIA creates a structured Drive folder for the account. As documents are created or signed in Drive, GAIA attaches them to the Salesforce deal record with the correct document type and version. When a contract is executed, GAIA advances the Salesforce deal stage automatically.\n\nThis integration is essential for enterprise sales teams managing complex documentation cycles, legal and procurement teams who need audit trails of contract versions, and revenue operations teams who need document accessibility to be automatic rather than reliant on individual rep habits.",
+      "Enterprise sales deals generate extensive documentation (proposals, NDAs, statements of work, contracts, legal amendments) that lives in Google Drive while the deal record lives in Salesforce. Without automation, reps spend time searching for the latest version of a proposal, and document links on Salesforce records go stale when files are moved or renamed in Drive.\n\nGAIA connects Salesforce and Google Drive so deal documentation is always organized and accessible from the CRM. When a Salesforce opportunity is created, GAIA creates a structured Drive folder for the account. As documents are created or signed in Drive, GAIA attaches them to the Salesforce deal record with the correct document type and version. When a contract is executed, GAIA advances the Salesforce deal stage automatically.\n\nThis integration is essential for enterprise sales teams managing complex documentation cycles, legal and procurement teams who need audit trails of contract versions, and revenue operations teams who need document accessibility to be automatic rather than reliant on individual rep habits.",
     useCases: [
       {
         title: "Create Drive account folders from Salesforce opportunities",
@@ -2393,7 +2393,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         title: "Generate proposals from Salesforce data",
         description:
-          "When a Salesforce opportunity reaches the proposal stage, GAIA creates a Drive proposal document from a template pre-filled with opportunity data — company name, products, pricing, key contacts — saving the rep manual document setup time.",
+          "When a Salesforce opportunity reaches the proposal stage, GAIA creates a Drive proposal document from a template pre-filled with opportunity data (company name, products, pricing, key contacts), saving the rep manual document setup time.",
       },
     ],
     howItWorks: [
@@ -2405,7 +2405,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
       {
         step: "Configure folder templates and document rules",
         description:
-          "Define the Drive folder structure for new opportunities and the rules GAIA uses to attach files to Salesforce records — by document type, subfolder location, or file naming convention.",
+          "Define the Drive folder structure for new opportunities and the rules GAIA uses to attach files to Salesforce records: by document type, subfolder location, or file naming convention.",
       },
       {
         step: "GAIA keeps deal documents organized and CRM-linked",
@@ -2430,7 +2430,7 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA enforce document naming conventions when creating Drive files?",
         answer:
-          "Yes. You can define file naming templates that GAIA applies when creating Drive documents from Salesforce data — for example, using opportunity name, account, and date in the file name for consistent organization.",
+          "Yes. You can define file naming templates that GAIA applies when creating Drive documents from Salesforce data: for example, using opportunity name, account, and date in the file name for consistent organization.",
       },
     ],
   },

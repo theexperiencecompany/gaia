@@ -80,7 +80,7 @@ function SocialContentCard() {
       charCount: 98,
       charLimit: 3000,
       hashtags: ["#AI", "#FutureOfWork", "#Automation"],
-      text: "AI assistants that actually do the work — 40% of tasks now completed autonomously. Here's what changed.",
+      text: "AI assistants that actually do the work: 40% of tasks now completed autonomously. Here's what changed.",
     },
   ];
 
@@ -154,7 +154,7 @@ function SocialContentCard() {
 function StudyTasksCard() {
   const tasks = [
     {
-      label: "Review Chapter 7 — Data Structures",
+      label: "Review Chapter 7: Data Structures",
       due: "Mon",
       priority: "high" as const,
     },
@@ -233,7 +233,7 @@ function MorningBriefingCard() {
       calendar: "Work",
     },
     {
-      title: "Board call — Q4 review",
+      title: "Board call: Q4 review",
       time: "3:00 PM",
       color: "#f97316",
       calendar: "Work",
@@ -247,9 +247,9 @@ function MorningBriefingCard() {
   ];
 
   const emails = [
-    { from: "Alex Chen", subject: "Re: Series A term sheet — action needed" },
+    { from: "Alex Chen", subject: "Re: Series A term sheet, action needed" },
     { from: "Sarah (Sequoia)", subject: "Prep materials for today's call" },
-    { from: "Board <board@>", subject: "Q4 metrics deck — please review" },
+    { from: "Board <board@>", subject: "Q4 metrics deck: please review" },
   ];
 
   return (

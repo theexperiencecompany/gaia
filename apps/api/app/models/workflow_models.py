@@ -39,6 +39,14 @@ class TriggerType(str, Enum):
     INTEGRATION = "integration"
 
 
+class DeactivationReason(str, Enum):
+    """Why a workflow was deactivated by the system, so an automatic resume can tell
+    its own pauses apart from a workflow the user deliberately switched off. A
+    user-initiated deactivation records no reason at all."""
+
+    USER_DORMANT = "user_dormant"
+
+
 class IntegrationRef(BaseModel):
     """Lightweight integration reference for workflow responses."""
 
@@ -185,6 +193,16 @@ class Workflow(BaseScheduledTask):
         default="",
         description="Detailed execution instructions for AI. Falls back to description if not set.",
     )
+    icon: str | None = Field(
+        default=None,
+        max_length=64,
+        description="User-chosen icon slug (gaia-icons component name) shown when the workflow has no integration icons.",
+    )
+    icon_color: str | None = Field(
+        default=None,
+        pattern=r"^#[0-9a-fA-F]{6}$",
+        description="Hex color for the user-chosen icon.",
+    )
     steps: list[WorkflowStep] = Field(
         description="List of workflow steps to execute", max_length=10
     )
@@ -196,6 +214,13 @@ class Workflow(BaseScheduledTask):
     activated: bool = Field(
         default=True,
         description="Whether the workflow is activated and can be executed",
+    )
+    deactivated_reason: DeactivationReason | None = Field(
+        default=None,
+        description=(
+            "Why the workflow is not activated. None means the user turned it off "
+            "themselves — only system-paused workflows may be resumed automatically."
+        ),
     )
     notify_on_completion: bool = Field(
         default=True,
@@ -371,6 +396,14 @@ class CreateWorkflowRequest(BaseModel):
         description="Short optional display description (1-2 sentences)",
     )
     prompt: str = Field(min_length=1, description="Detailed execution instructions for the AI")
+    icon: str | None = Field(
+        default=None, max_length=64, description="User-chosen icon slug (gaia-icons component name)"
+    )
+    icon_color: str | None = Field(
+        default=None,
+        pattern=r"^#[0-9a-fA-F]{6}$",
+        description="Hex color for the user-chosen icon",
+    )
     trigger_config: TriggerConfig = Field(description="Trigger configuration")
     steps: list[WorkflowStep] | None = Field(
         default=None,
@@ -443,6 +476,8 @@ class UpdateWorkflowRequest(BaseModel):
     title: str | None = Field(default=None)
     description: str | None = Field(default=None)
     prompt: str | None = Field(default=None)
+    icon: str | None = Field(default=None, max_length=64)
+    icon_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     steps: list[WorkflowStep] | None = Field(default=None)
     trigger_config: TriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
@@ -466,7 +501,7 @@ class UpdateWorkflowRequest(BaseModel):
         if v is None:
             return None
         stripped = v.strip()
-        return stripped if stripped else None
+        return stripped or None
 
 
 class WorkflowResponse(BaseModel):
@@ -735,6 +770,8 @@ class WorkflowUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     prompt: str | None = None
+    icon: str | None = None
+    icon_color: str | None = None
     steps: list[WorkflowStep] | None = None
     trigger_config: TriggerConfig | None = None
     activated: bool | None = None

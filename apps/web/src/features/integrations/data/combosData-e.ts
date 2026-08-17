@@ -64,7 +64,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         step: "Let GAIA keep both tools current",
         description:
-          "GAIA monitors both platforms for changes and propagates updates in real time. Engineers keep working in Linear and stakeholders keep working in Asana — GAIA ensures both sides always reflect the same ground truth.",
+          "GAIA monitors both platforms for changes and propagates updates in real time. Engineers keep working in Linear and stakeholders keep working in Asana. GAIA ensures both sides always reflect the same ground truth.",
       },
     ],
     faqs: [
@@ -110,7 +110,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     canonicalSlug: "notion-linear",
     intro:
-      "Linear tracks the what and when of engineering work. Notion holds the why — the specs, retros, architecture decisions, and sprint notes that give issues their context. But when the two live completely separately, engineers waste time hunting for the spec behind an issue, and PMs lose visibility into whether the work described in a Notion doc is actually reflected in Linear.\n\nGAIA connects Linear and Notion so documentation and issue tracking reinforce each other. When a new Linear issue is created from a Notion spec, the link goes both ways. When a sprint completes, GAIA populates the Notion retrospective template with data pulled directly from Linear. Engineers get context without leaving Linear; stakeholders get traceability without leaving Notion.\n\nThis integration is particularly valuable for product teams who write detailed specs in Notion before creating Linear issues, and for engineering teams that want their sprint ceremonies — planning, review, retro — to be automatically populated with data rather than filled in manually.",
+      "Linear tracks the what and when of engineering work. Notion holds the why: the specs, retros, architecture decisions, and sprint notes that give issues their context. But when the two live completely separately, engineers waste time hunting for the spec behind an issue, and PMs lose visibility into whether the work described in a Notion doc is actually reflected in Linear.\n\nGAIA connects Linear and Notion so documentation and issue tracking reinforce each other. When a new Linear issue is created from a Notion spec, the link goes both ways. When a sprint completes, GAIA populates the Notion retrospective template with data pulled directly from Linear. Engineers get context without leaving Linear; stakeholders get traceability without leaving Notion.\n\nThis integration is particularly valuable for product teams who write detailed specs in Notion before creating Linear issues, and for engineering teams that want their sprint ceremonies (planning, review, retro) to be automatically populated with data rather than filled in manually.",
     useCases: [
       {
         title: "Create Linear issues from Notion spec pages",
@@ -120,7 +120,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Auto-populate sprint retrospective templates",
         description:
-          "At the end of each Linear cycle, GAIA fills the team's Notion retrospective template with cycle metrics — issues completed, carry-over, cycle time, and blockers — so the retro meeting focuses on discussion rather than data entry.",
+          "At the end of each Linear cycle, GAIA fills the team's Notion retrospective template with cycle metrics (issues completed, carry-over, cycle time, and blockers) so the retro meeting focuses on discussion rather than data entry.",
       },
       {
         title: "Embed live issue status in Notion docs",
@@ -218,12 +218,12 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Alert engineers to ClickUp scope changes",
         description:
-          "When a ClickUp task that has linked Linear issues is edited — priority changed, deadline shifted, requirements updated — GAIA posts a comment on the Linear issue summarizing what changed so engineers are never surprised.",
+          "When a ClickUp task that has linked Linear issues is edited (priority changed, deadline shifted, requirements updated), GAIA posts a comment on the Linear issue summarizing what changed so engineers are never surprised.",
       },
       {
         title: "Roll up engineering metrics into ClickUp dashboards",
         description:
-          "GAIA periodically syncs Linear cycle metrics — velocity, completion rate, lead time — into custom fields on the corresponding ClickUp project so leadership can track engineering health alongside other project KPIs.",
+          "GAIA periodically syncs Linear cycle metrics (velocity, completion rate, lead time) into custom fields on the corresponding ClickUp project so leadership can track engineering health alongside other project KPIs.",
       },
     ],
     howItWorks: [
@@ -248,7 +248,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
         question:
           "Can GAIA handle the different status models between Linear and ClickUp?",
         answer:
-          "Yes. During setup you provide a status mapping table — for example, Linear's In Progress maps to ClickUp's In Development, and Linear's Done maps to ClickUp's Completed. GAIA applies this mapping consistently so statuses are always semantically equivalent.",
+          "Yes. During setup you provide a status mapping table, for example Linear's In Progress maps to ClickUp's In Development, and Linear's Done maps to ClickUp's Completed. GAIA applies this mapping consistently so statuses are always semantically equivalent.",
       },
       {
         question:
@@ -286,7 +286,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "engineer personal productivity",
     ],
     intro:
-      "Most engineers manage their work in at least two places: the team issue tracker and their personal task manager. Linear drives the sprint; Todoist (or a notebook, or a whiteboard) drives the individual. Keeping both aligned manually is friction that adds up — copying issue titles, tracking due dates in two places, remembering to mark things done in both systems.\n\nGAIA eliminates that duplication by watching Linear for assignments and automatically creating corresponding tasks in your Todoist. When an issue is assigned to you in Linear, it appears in Todoist with the right project, priority, and due date. When you complete it in either tool, GAIA marks it done in the other. Your personal task list reflects your real engineering workload without any manual copying.\n\nThis integration is ideal for engineers who use Todoist as their single place for all tasks — personal errands, recurring work, and engineering tickets — and want Linear to feed into that system automatically rather than competing with it.",
+      "Most engineers manage their work in at least two places: the team issue tracker and their personal task manager. Linear drives the sprint; Todoist (or a notebook, or a whiteboard) drives the individual. Keeping both aligned manually is friction that adds up: copying issue titles, tracking due dates in two places, remembering to mark things done in both systems.\n\nGAIA eliminates that duplication by watching Linear for assignments and automatically creating corresponding tasks in your Todoist. When an issue is assigned to you in Linear, it appears in Todoist with the right project, priority, and due date. When you complete it in either tool, GAIA marks it done in the other. Your personal task list reflects your real engineering workload without any manual copying.\n\nThis integration is ideal for engineers who use Todoist as their single place for all tasks (personal errands, recurring work, and engineering tickets) and want Linear to feed into that system automatically rather than competing with it.",
     useCases: [
       {
         title: "Auto-create Todoist tasks from Linear assignments",
@@ -374,7 +374,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "Trello card Linear issue link",
     ],
     intro:
-      "Product teams that plan roadmaps in Trello and engineering teams that execute in Linear often struggle to keep both views in sync. A Trello card representing a roadmap feature may spawn ten Linear issues, but the Trello card has no idea when those issues are completed. Product managers watch the Trello board and have no signal that engineering has shipped the underlying work.\n\nGAIA creates and maintains the link between Trello cards and Linear issues so product and engineering always share the same reality. When a Trello card moves to In Development, GAIA creates the corresponding Linear issues. As those issues progress and complete, GAIA updates the Trello card automatically. When the last issue ships, the Trello card moves to Done.\n\nThis integration suits companies that want to keep using Trello for high-level roadmap planning — its visual simplicity and broad accessibility make it popular with non-technical stakeholders — while giving engineering the power of Linear for day-to-day sprint work.",
+      "Product teams that plan roadmaps in Trello and engineering teams that execute in Linear often struggle to keep both views in sync. A Trello card representing a roadmap feature may spawn ten Linear issues, but the Trello card has no idea when those issues are completed. Product managers watch the Trello board and have no signal that engineering has shipped the underlying work.\n\nGAIA creates and maintains the link between Trello cards and Linear issues so product and engineering always share the same reality. When a Trello card moves to In Development, GAIA creates the corresponding Linear issues. As those issues progress and complete, GAIA updates the Trello card automatically. When the last issue ships, the Trello card moves to Done.\n\nThis integration suits companies that want to keep using Trello for high-level roadmap planning (its visual simplicity and broad accessibility make it popular with non-technical stakeholders) while giving engineering the power of Linear for day-to-day sprint work.",
     useCases: [
       {
         title: "Create Linear issues from Trello cards",
@@ -509,7 +509,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
         question:
           "How does GAIA match Figma frames to Linear issues automatically?",
         answer:
-          "GAIA uses configurable matching rules — by default it looks for Figma frames whose names match the Linear issue title or ID. You can also link them explicitly by pasting a Figma URL into a Linear issue, which GAIA registers as the canonical design reference.",
+          "GAIA uses configurable matching rules: by default it looks for Figma frames whose names match the Linear issue title or ID. You can also link them explicitly by pasting a Figma URL into a Linear issue, which GAIA registers as the canonical design reference.",
       },
       {
         question: "Can GAIA embed Figma previews directly in Linear?",
@@ -633,7 +633,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "spec doc Linear automation",
     ],
     intro:
-      "Engineering issues rarely exist in isolation. Behind most Linear issues is a Google Drive folder full of context: the product spec, the design doc, the API contract, the meeting notes from the scoping session. But that context lives in Drive while the issue lives in Linear, and the link between them is usually an afterthought — a URL pasted into a comment that gets buried, or nothing at all.\n\nGAIA builds and maintains the connection between Drive documents and Linear issues automatically. When a new feature issue is created in Linear, GAIA searches the configured Drive folder for matching spec documents and attaches them. When a new spec doc is created in Drive and follows your team's naming convention, GAIA creates the corresponding Linear issue and links back to the doc.\n\nThis integration eliminates the document hunt that slows down engineers at the start of every task and ensures that the historical context behind an issue is always one click away.",
+      "Engineering issues rarely exist in isolation. Behind most Linear issues is a Google Drive folder full of context: the product spec, the design doc, the API contract, the meeting notes from the scoping session. But that context lives in Drive while the issue lives in Linear, and the link between them is usually an afterthought: a URL pasted into a comment that gets buried, or nothing at all.\n\nGAIA builds and maintains the connection between Drive documents and Linear issues automatically. When a new feature issue is created in Linear, GAIA searches the configured Drive folder for matching spec documents and attaches them. When a new spec doc is created in Drive and follows your team's naming convention, GAIA creates the corresponding Linear issue and links back to the doc.\n\nThis integration eliminates the document hunt that slows down engineers at the start of every task and ensures that the historical context behind an issue is always one click away.",
     useCases: [
       {
         title: "Auto-attach Drive spec docs to Linear issues",
@@ -722,7 +722,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "CRM engineering issue link",
     ],
     intro:
-      "Customer-facing teams log feature requests and bug reports in HubSpot every day. Engineering tracks their work in Linear. But the path from a HubSpot contact's request to a Linear issue on the sprint board is almost always a manual one — someone reads CRM notes, decides it is worth building, creates a Linear issue, and then forgets to update HubSpot when the feature ships.\n\nGAIA closes the loop between customer feedback and engineering delivery. When a HubSpot deal or ticket contains a feature request that meets your threshold for engineering consideration, GAIA creates the Linear issue with full customer context attached. When engineering ships the feature in Linear, GAIA updates HubSpot and notifies the account owner so they can follow up with the customer.\n\nThis integration is most impactful for B2B SaaS teams where engineering prioritization is influenced by customer revenue potential and where sales and customer success teams need visibility into when requested features ship.",
+      "Customer-facing teams log feature requests and bug reports in HubSpot every day. Engineering tracks their work in Linear. But the path from a HubSpot contact's request to a Linear issue on the sprint board is almost always a manual one: someone reads CRM notes, decides it is worth building, creates a Linear issue, and then forgets to update HubSpot when the feature ships.\n\nGAIA closes the loop between customer feedback and engineering delivery. When a HubSpot deal or ticket contains a feature request that meets your threshold for engineering consideration, GAIA creates the Linear issue with full customer context attached. When engineering ships the feature in Linear, GAIA updates HubSpot and notifies the account owner so they can follow up with the customer.\n\nThis integration is most impactful for B2B SaaS teams where engineering prioritization is influenced by customer revenue potential and where sales and customer success teams need visibility into when requested features ship.",
     useCases: [
       {
         title: "Create Linear issues from HubSpot feature request tickets",
@@ -747,7 +747,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Update HubSpot deal stage when engineering milestones are hit",
         description:
-          "When a Linear project associated with a HubSpot opportunity reaches a configurable completion percentage, GAIA moves the deal to the relevant pipeline stage — such as Feature In Beta — so sales stays in sync with engineering progress.",
+          "When a Linear project associated with a HubSpot opportunity reaches a configurable completion percentage, GAIA moves the deal to the relevant pipeline stage (such as Feature In Beta) so sales stays in sync with engineering progress.",
       },
     ],
     howItWorks: [
@@ -759,7 +759,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         step: "Configure customer context mapping",
         description:
-          "Map HubSpot deal properties — company name, ARR, contact owner — to Linear issue fields or labels so engineering always sees the business context behind a feature request.",
+          "Map HubSpot deal properties (company name, ARR, contact owner) to Linear issue fields or labels so engineering always sees the business context behind a feature request.",
       },
       {
         step: "Close the loop between customers and engineering",
@@ -811,7 +811,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "Linear Zoom workflow",
     ],
     intro:
-      "Engineering sprint ceremonies — planning, standup, review, retrospective — happen in Zoom. The action items, decisions, and issue updates from those meetings should live in Linear. But capturing that context from a Zoom call and getting it back into Linear requires someone to take notes, identify action items, and manually create or update Linear issues after every meeting. That process is rarely done consistently.\n\nGAIA automates the connection between Zoom meetings and Linear by scheduling ceremonies automatically from cycle dates, transcribing and summarizing meetings, and extracting action items as new Linear issues. The team gets a meeting record attached to the right sprint without anyone spending time on post-meeting admin.\n\nThis integration is ideal for remote engineering teams that run all their ceremonies over Zoom and want the insights from those meetings captured in Linear automatically rather than lost in meeting notes that nobody reads.",
+      "Engineering sprint ceremonies (planning, standup, review, retrospective) happen in Zoom. The action items, decisions, and issue updates from those meetings should live in Linear. But capturing that context from a Zoom call and getting it back into Linear requires someone to take notes, identify action items, and manually create or update Linear issues after every meeting. That process is rarely done consistently.\n\nGAIA automates the connection between Zoom meetings and Linear by scheduling ceremonies automatically from cycle dates, transcribing and summarizing meetings, and extracting action items as new Linear issues. The team gets a meeting record attached to the right sprint without anyone spending time on post-meeting admin.\n\nThis integration is ideal for remote engineering teams that run all their ceremonies over Zoom and want the insights from those meetings captured in Linear automatically rather than lost in meeting notes that nobody reads.",
     useCases: [
       {
         title: "Auto-schedule sprint ceremonies from Linear cycles",
@@ -826,7 +826,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Create Linear issues from Zoom action items",
         description:
-          "GAIA identifies action items in Zoom meeting transcripts — commitments, follow-up tasks, blockers raised — and creates corresponding Linear issues assigned to the relevant team member with the meeting context as the issue description.",
+          "GAIA identifies action items in Zoom meeting transcripts (commitments, follow-up tasks, blockers raised) and creates corresponding Linear issues assigned to the relevant team member with the meeting context as the issue description.",
       },
       {
         title: "Add Zoom recording links to Linear issues",
@@ -899,7 +899,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "sprint metrics automation",
     ],
     intro:
-      "Linear is purpose-built for engineering teams. Airtable is purpose-built for structured data that non-technical stakeholders can query, filter, and build views on. The two serve different audiences, but the data that lives in Linear — issue counts, cycle velocity, lead times, label breakdowns — is exactly what operations, finance, and product leadership want to analyze in Airtable.\n\nGAIA syncs Linear data to Airtable automatically so dashboards stay current without anyone manually exporting CSVs. Engineering metrics flow into Airtable bases where stakeholders can build the views, formulas, and reports they need without accessing Linear. When an issue is created, updated, or completed in Linear, Airtable reflects the change in real time.\n\nThis integration is particularly useful for ops teams that track engineering KPIs alongside other business metrics in Airtable, and for companies that use Airtable as their source of truth for cross-functional reporting.",
+      "Linear is purpose-built for engineering teams. Airtable is purpose-built for structured data that non-technical stakeholders can query, filter, and build views on. The two serve different audiences, but the data that lives in Linear (issue counts, cycle velocity, lead times, label breakdowns) is exactly what operations, finance, and product leadership want to analyze in Airtable.\n\nGAIA syncs Linear data to Airtable automatically so dashboards stay current without anyone manually exporting CSVs. Engineering metrics flow into Airtable bases where stakeholders can build the views, formulas, and reports they need without accessing Linear. When an issue is created, updated, or completed in Linear, Airtable reflects the change in real time.\n\nThis integration is particularly useful for ops teams that track engineering KPIs alongside other business metrics in Airtable, and for companies that use Airtable as their source of truth for cross-functional reporting.",
     useCases: [
       {
         title: "Mirror Linear issues to an Airtable issues base",
@@ -955,7 +955,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
         question:
           "Can Airtable team members update rows and have those changes reflected back in Linear?",
         answer:
-          "Bidirectional sync is supported for a limited set of fields — primarily status and assignee. For most teams, Linear is treated as the authoritative source and Airtable is read-optimized, but you can enable write-back for specific columns during setup.",
+          "Bidirectional sync is supported for a limited set of fields: primarily status and assignee. For most teams, Linear is treated as the authoritative source and Airtable is read-optimized, but you can enable write-back for specific columns during setup.",
       },
       {
         question: "How does GAIA handle Linear issues that are deleted?",
@@ -1037,13 +1037,13 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
         question:
           "Does GAIA include customer PII from Stripe in Linear issues?",
         answer:
-          "No. GAIA is configured to exclude personally identifiable information by default. Linear issues receive aggregate statistics — affected customer count, total revenue at risk, error code distribution — without individual customer names, emails, or payment details.",
+          "No. GAIA is configured to exclude personally identifiable information by default. Linear issues receive aggregate statistics (affected customer count, total revenue at risk, error code distribution) without individual customer names, emails, or payment details.",
       },
       {
         question:
           "Can GAIA distinguish between transient Stripe errors and persistent bugs?",
         answer:
-          "Yes. GAIA applies a configurable time-window filter so single transient errors do not create Linear issues. A Linear issue is created only when error rates persist above your threshold across a defined window — for example, a 5% failure rate sustained for 10 minutes.",
+          "Yes. GAIA applies a configurable time-window filter so single transient errors do not create Linear issues. A Linear issue is created only when error rates persist above your threshold across a defined window, for example a 5% failure rate sustained for 10 minutes.",
       },
       {
         question:
@@ -1085,7 +1085,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Auto-populate sprint retrospective templates",
         description:
-          "At the end of each Jira sprint, GAIA fills the team's Notion retro template with sprint metrics — stories completed, velocity, carry-over, and bugs closed — so the retrospective meeting can focus on insights rather than data gathering.",
+          "At the end of each Jira sprint, GAIA fills the team's Notion retro template with sprint metrics (stories completed, velocity, carry-over, and bugs closed) so the retrospective meeting can focus on insights rather than data gathering.",
       },
       {
         title: "Embed live Jira story status in Notion specs",
@@ -1164,7 +1164,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "engineer productivity Jira",
     ],
     intro:
-      "Engineers who use Todoist as their personal task hub face a daily friction: Jira is where assignments live, Todoist is where they plan their day, and keeping both aligned requires constant manual effort. An issue assigned in Jira needs to be manually added to Todoist. A task completed in Todoist needs to be manually marked done in Jira. Over time, the two fall out of sync and engineers either abandon Todoist or lose trust in Jira.\n\nGAIA eliminates this friction by bridging Jira and Todoist automatically. When a Jira issue is assigned to you, GAIA creates the corresponding Todoist task with the right project, priority, and due date. When you complete it in Todoist, GAIA transitions the Jira issue to Done. You manage your day in Todoist and your team sees accurate status in Jira.\n\nThis integration is ideal for engineers who value a personal task management system that gives them a unified view of all their work — code reviews, meetings, errands, and Jira tickets — in one place.",
+      "Engineers who use Todoist as their personal task hub face a daily friction: Jira is where assignments live, Todoist is where they plan their day, and keeping both aligned requires constant manual effort. An issue assigned in Jira needs to be manually added to Todoist. A task completed in Todoist needs to be manually marked done in Jira. Over time, the two fall out of sync and engineers either abandon Todoist or lose trust in Jira.\n\nGAIA eliminates this friction by bridging Jira and Todoist automatically. When a Jira issue is assigned to you, GAIA creates the corresponding Todoist task with the right project, priority, and due date. When you complete it in Todoist, GAIA transitions the Jira issue to Done. You manage your day in Todoist and your team sees accurate status in Jira.\n\nThis integration is ideal for engineers who value a personal task management system that gives them a unified view of all their work (code reviews, meetings, errands, and Jira tickets) in one place.",
     useCases: [
       {
         title: "Auto-create Todoist tasks from Jira assignments",
@@ -1189,7 +1189,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Daily Jira queue review task in Todoist",
         description:
-          "Each morning GAIA creates a Todoist task with a summary of your Jira queue — issues in progress, upcoming due dates, and new assignments — so you start the day with a prioritized view of your Jira workload.",
+          "Each morning GAIA creates a Todoist task with a summary of your Jira queue (issues in progress, upcoming due dates, and new assignments) so you start the day with a prioritized view of your Jira workload.",
       },
     ],
     howItWorks: [
@@ -1253,7 +1253,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "product engineering workflow",
     ],
     intro:
-      "Product teams that plan and track delivery in ClickUp often run into a wall when engineering uses Jira for day-to-day development. Each team has legitimate reasons for their tool preference, but the boundary between them creates a coordination overhead that neither team should have to manage manually. Status updates made in Jira do not appear in ClickUp. Requirements changed in ClickUp do not reach engineers in Jira.\n\nGAIA bridges Jira and ClickUp by syncing the relevant data in both directions automatically. Engineering progress in Jira flows to the ClickUp delivery board. Product requirement changes in ClickUp propagate to the corresponding Jira stories. Both teams work in their preferred tool and trust that the other side stays current.\n\nThis integration is particularly valuable for organizations that have standardized on ClickUp for company-wide project management but allow engineering to use Jira for its superior development tooling — Agile boards, sprint planning, and deep Atlassian ecosystem integrations.",
+      "Product teams that plan and track delivery in ClickUp often run into a wall when engineering uses Jira for day-to-day development. Each team has legitimate reasons for their tool preference, but the boundary between them creates a coordination overhead that neither team should have to manage manually. Status updates made in Jira do not appear in ClickUp. Requirements changed in ClickUp do not reach engineers in Jira.\n\nGAIA bridges Jira and ClickUp by syncing the relevant data in both directions automatically. Engineering progress in Jira flows to the ClickUp delivery board. Product requirement changes in ClickUp propagate to the corresponding Jira stories. Both teams work in their preferred tool and trust that the other side stays current.\n\nThis integration is particularly valuable for organizations that have standardized on ClickUp for company-wide project management but allow engineering to use Jira for its superior development tooling: Agile boards, sprint planning, and deep Atlassian ecosystem integrations.",
     useCases: [
       {
         title: "Sync Jira story status to ClickUp tasks",
@@ -1268,7 +1268,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Propagate ClickUp priority changes to Jira",
         description:
-          "When a product manager changes a ClickUp task priority — for example, upgrading a feature from Medium to Critical — GAIA updates the priority of the linked Jira story and notifies the assigned engineer so they can adjust their sprint queue.",
+          "When a product manager changes a ClickUp task priority (for example, upgrading a feature from Medium to Critical), GAIA updates the priority of the linked Jira story and notifies the assigned engineer so they can adjust their sprint queue.",
       },
       {
         title: "Sync Jira sprint dates to ClickUp milestones",
@@ -1308,13 +1308,13 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         question: "Can GAIA sync Jira custom fields to ClickUp custom fields?",
         answer:
-          "Yes. During setup you map Jira custom fields to corresponding ClickUp custom fields. GAIA handles type conversion — for example, mapping a Jira number field to a ClickUp numeric field — and logs any fields that cannot be mapped cleanly.",
+          "Yes. During setup you map Jira custom fields to corresponding ClickUp custom fields. GAIA handles type conversion (for example, mapping a Jira number field to a ClickUp numeric field) and logs any fields that cannot be mapped cleanly.",
       },
       {
         question:
           "What happens to ClickUp tasks that have no corresponding Jira story?",
         answer:
-          "GAIA only syncs tasks that match your configured rules — typically tasks that have been explicitly linked or that match a trigger like being moved to a Ready for Development list. Unlinked ClickUp tasks are left untouched.",
+          "GAIA only syncs tasks that match your configured rules: typically tasks that have been explicitly linked or that match a trigger like being moved to a Ready for Development list. Unlinked ClickUp tasks are left untouched.",
       },
     ],
   },
@@ -1339,7 +1339,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "bug board Trello Jira",
     ],
     intro:
-      "Engineering teams track bugs in Jira because of its tight integration with sprint boards and version management. But non-technical stakeholders — support managers, product owners, customer success leads — often prefer Trello for its visual clarity and accessibility. When bug information lives only in Jira, the stakeholders who need to see it are locked out unless someone manually maintains a parallel Trello board.\n\nGAIA syncs Jira bugs to Trello automatically so stakeholders get the visual bug tracker they prefer while engineering continues working in Jira. New bugs in Jira appear as Trello cards. Status transitions in Jira move Trello cards across lists. When a bug is resolved, the Trello card updates automatically. Nobody has to maintain both boards.\n\nThis integration is most valuable for support and customer success teams that need visibility into bug resolution timelines without needing Jira access, and for organizations that want a lightweight external bug visibility board without investing in Jira dashboard configuration.",
+      "Engineering teams track bugs in Jira because of its tight integration with sprint boards and version management. But non-technical stakeholders (support managers, product owners, customer success leads) often prefer Trello for its visual clarity and accessibility. When bug information lives only in Jira, the stakeholders who need to see it are locked out unless someone manually maintains a parallel Trello board.\n\nGAIA syncs Jira bugs to Trello automatically so stakeholders get the visual bug tracker they prefer while engineering continues working in Jira. New bugs in Jira appear as Trello cards. Status transitions in Jira move Trello cards across lists. When a bug is resolved, the Trello card updates automatically. Nobody has to maintain both boards.\n\nThis integration is most valuable for support and customer success teams that need visibility into bug resolution timelines without needing Jira access, and for organizations that want a lightweight external bug visibility board without investing in Jira dashboard configuration.",
     useCases: [
       {
         title: "Mirror Jira bugs to a Trello bug tracker board",
@@ -1349,7 +1349,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Move Trello cards when Jira bug status changes",
         description:
-          "As a Jira bug moves through the workflow — from Open to In Progress to In Review to Resolved — GAIA moves the corresponding Trello card across the matching lists so the Trello board always reflects Jira status in real time.",
+          "As a Jira bug moves through the workflow (from Open to In Progress to In Review to Resolved), GAIA moves the corresponding Trello card across the matching lists so the Trello board always reflects Jira status in real time.",
       },
       {
         title: "Add Jira fix version to Trello card labels",
@@ -1799,7 +1799,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Post Jira status updates back to HubSpot tickets",
         description:
-          "As a Jira bug moves through the workflow — to In Progress, In Review, and Resolved — GAIA posts corresponding status updates to the linked HubSpot support ticket so the support team can answer customer inquiries about fix timing without checking Jira.",
+          "As a Jira bug moves through the workflow (to In Progress, In Review, and Resolved), GAIA posts corresponding status updates to the linked HubSpot support ticket so the support team can answer customer inquiries about fix timing without checking Jira.",
       },
       {
         title: "Escalate HubSpot VIP bug reports to urgent Jira priority",
@@ -1835,11 +1835,11 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
         question:
           "Does GAIA include customer PII from HubSpot in Jira tickets?",
         answer:
-          "By default GAIA includes only the company name, account tier, and deal ARR in Jira tickets — not individual contact names or email addresses. You can configure how much customer context to include based on your data handling policies.",
+          "By default GAIA includes only the company name, account tier, and deal ARR in Jira tickets, not individual contact names or email addresses. You can configure how much customer context to include based on your data handling policies.",
       },
       {
         question:
-          "Can GAIA handle the reverse flow — engineering bugs that should proactively notify affected HubSpot accounts?",
+          "Can GAIA handle the reverse flow: engineering bugs that should proactively notify affected HubSpot accounts?",
         answer:
           "Yes. You can configure GAIA to search HubSpot for accounts likely affected by a newly filed Jira bug based on product usage data or account properties. GAIA then creates HubSpot tasks for the relevant account owners to proactively notify their customers.",
       },
@@ -1928,7 +1928,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
         question:
           "Does GAIA sync comments and attachments between Linear and Jira?",
         answer:
-          "GAIA can sync comments and file attachments between the two tools. This is configurable — some teams prefer to sync only status and assignee changes to avoid comment noise.",
+          "GAIA can sync comments and file attachments between the two tools. This is configurable: some teams prefer to sync only status and assignee changes to avoid comment noise.",
       },
       {
         question: "Is this useful during a Jira-to-Linear migration?",
@@ -1958,7 +1958,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "product delivery Salesforce",
     ],
     intro:
-      "Enterprise sales teams rely on Salesforce to manage opportunities and customer cases, while engineering teams build and ship in Linear. When a customer-blocking bug or a deal-winning feature lives in Linear, Salesforce has no visibility into its progress — and account executives are left manually chasing engineering updates before customer calls.\n\nGAIA connects Linear and Salesforce so customer-facing teams always have accurate engineering status. Salesforce cases linked to known bugs receive automatic progress updates from Linear. Feature requests attached to high-value opportunities are tracked as Linear issues with revenue context baked in. When engineering ships, Salesforce records update automatically.\n\nFor enterprise software companies with dedicated sales engineering and customer success teams, this integration eliminates an entire category of internal coordination work that currently consumes hours every week.",
+      "Enterprise sales teams rely on Salesforce to manage opportunities and customer cases, while engineering teams build and ship in Linear. When a customer-blocking bug or a deal-winning feature lives in Linear, Salesforce has no visibility into its progress, and account executives are left manually chasing engineering updates before customer calls.\n\nGAIA connects Linear and Salesforce so customer-facing teams always have accurate engineering status. Salesforce cases linked to known bugs receive automatic progress updates from Linear. Feature requests attached to high-value opportunities are tracked as Linear issues with revenue context baked in. When engineering ships, Salesforce records update automatically.\n\nFor enterprise software companies with dedicated sales engineering and customer success teams, this integration eliminates an entire category of internal coordination work that currently consumes hours every week.",
     useCases: [
       {
         title: "Opportunity-linked feature tracking",
@@ -2050,7 +2050,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "dev team Microsoft Teams workflow",
     ],
     intro:
-      "Organizations that standardized on Microsoft Teams for communication often have engineering teams using Linear for issue tracking. Without integration, engineering updates live exclusively in Linear while the rest of the organization communicates in Teams — creating a visibility gap that forces stakeholders to request manual status updates constantly.\n\nGAIA bridges Linear and Microsoft Teams so engineering progress is visible to the entire organization in the communication tool they already use. Issue assignments, sprint updates, PR merges, and escalations appear in the relevant Teams channels as formatted notifications. Non-engineers can ask GAIA in Teams for the status of any Linear project without needing a Linear account.\n\nFor enterprise teams running on Microsoft 365, this integration fits naturally into an existing Teams-centric workflow and eliminates the need for separate project status meetings.",
+      "Organizations that standardized on Microsoft Teams for communication often have engineering teams using Linear for issue tracking. Without integration, engineering updates live exclusively in Linear while the rest of the organization communicates in Teams, creating a visibility gap that forces stakeholders to request manual status updates constantly.\n\nGAIA bridges Linear and Microsoft Teams so engineering progress is visible to the entire organization in the communication tool they already use. Issue assignments, sprint updates, PR merges, and escalations appear in the relevant Teams channels as formatted notifications. Non-engineers can ask GAIA in Teams for the status of any Linear project without needing a Linear account.\n\nFor enterprise teams running on Microsoft 365, this integration fits naturally into an existing Teams-centric workflow and eliminates the need for separate project status meetings.",
     useCases: [
       {
         title: "Sprint progress channel updates",
@@ -2075,7 +2075,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Linear queries from Teams",
         description:
-          "Team members can ask GAIA directly in Teams — 'What's in the current sprint?' or 'Who owns the login bug?' — and receive an accurate answer pulled live from Linear.",
+          "Team members can ask GAIA directly in Teams ('What's in the current sprint?' or 'Who owns the login bug?') and receive an accurate answer pulled live from Linear.",
       },
     ],
     howItWorks: [
@@ -2087,7 +2087,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         step: "Configure notification preferences",
         description:
-          "Define which Linear events generate Teams notifications — sprint events, issue assignments, priority changes, PR links — and map each event type to the appropriate Teams channel.",
+          "Define which Linear events generate Teams notifications (sprint events, issue assignments, priority changes, PR links) and map each event type to the appropriate Teams channel.",
       },
       {
         step: "GAIA delivers updates and answers queries",
@@ -2143,7 +2143,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "video engineering workflow",
     ],
     intro:
-      "Text descriptions in Linear issues often fall short for complex bugs or nuanced feature feedback. A ten-second Loom recording of a UI bug conveys more than three paragraphs of written description — but attaching that recording to the right Linear issue requires remembering the issue number, opening Linear, and manually pasting the Loom link.\n\nGAIA makes Loom and Linear work together seamlessly. When a Loom recording is created with a specific tag or title convention, GAIA identifies the relevant Linear issue and attaches the video automatically. Bug recordings made in Loom generate new Linear issues with the video embedded. Sprint update Looms are posted as comments on all issues completed that week.\n\nFor remote and async-first dev teams, this integration enables a richer asynchronous communication layer on top of Linear's structured workflow — combining the precision of issue tracking with the clarity of video communication.",
+      "Text descriptions in Linear issues often fall short for complex bugs or nuanced feature feedback. A ten-second Loom recording of a UI bug conveys more than three paragraphs of written description, but attaching that recording to the right Linear issue requires remembering the issue number, opening Linear, and manually pasting the Loom link.\n\nGAIA makes Loom and Linear work together seamlessly. When a Loom recording is created with a specific tag or title convention, GAIA identifies the relevant Linear issue and attaches the video automatically. Bug recordings made in Loom generate new Linear issues with the video embedded. Sprint update Looms are posted as comments on all issues completed that week.\n\nFor remote and async-first dev teams, this integration enables a richer asynchronous communication layer on top of Linear's structured workflow, combining the precision of issue tracking with the clarity of video communication.",
     useCases: [
       {
         title: "Bug recording to Linear issue",
@@ -2180,7 +2180,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         step: "Define video-to-issue linking rules",
         description:
-          "Tell GAIA how to identify which Loom videos relate to which Linear issues — by title convention (e.g., including the issue ID), by folder, or by transcript content analysis.",
+          "Tell GAIA how to identify which Loom videos relate to which Linear issues: by title convention (e.g., including the issue ID), by folder, or by transcript content analysis.",
       },
       {
         step: "GAIA links videos to issues automatically",
@@ -2237,7 +2237,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "project management integration",
     ],
     intro:
-      "Product teams track work in Asana while engineering teams work in Jira. The gap between them is where projects slow down — product managers create Asana tasks that need corresponding Jira tickets, status updates must be manually mirrored across both tools, and neither side has full visibility into the other.\n\nGAIA synchronizes Jira and Asana so the right information is in both places without double entry. Asana tasks create Jira tickets. Jira status changes update Asana. Product managers see engineering progress in Asana. Engineers see product context in Jira. Both teams work in their preferred tool while GAIA keeps them aligned.\n\nFor enterprise product organizations running structured program management in Asana alongside Jira-based engineering sprints, this integration is the connective tissue that removes weekly sync meetings and manual spreadsheet updates from the delivery process.",
+      "Product teams track work in Asana while engineering teams work in Jira. The gap between them is where projects slow down: product managers create Asana tasks that need corresponding Jira tickets, status updates must be manually mirrored across both tools, and neither side has full visibility into the other.\n\nGAIA synchronizes Jira and Asana so the right information is in both places without double entry. Asana tasks create Jira tickets. Jira status changes update Asana. Product managers see engineering progress in Asana. Engineers see product context in Jira. Both teams work in their preferred tool while GAIA keeps them aligned.\n\nFor enterprise product organizations running structured program management in Asana alongside Jira-based engineering sprints, this integration is the connective tissue that removes weekly sync meetings and manual spreadsheet updates from the delivery process.",
     useCases: [
       {
         title: "Feature task to Jira ticket",
@@ -2327,7 +2327,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "customer bug Jira Salesforce",
     ],
     intro:
-      "Enterprise software companies run their customer relationships in Salesforce and their engineering operations in Jira. When a customer reports a critical bug or requests a feature, the information must travel from Salesforce to Jira for engineering action — and back to Salesforce when the fix ships. Without automation, that journey is manual, slow, and unreliable.\n\nGAIA connects Jira and Salesforce so customer-facing teams always know the status of the engineering work that affects their accounts. Salesforce cases escalated as bugs auto-generate Jira tickets. Jira ticket resolutions update Salesforce case statuses. High-value opportunities with engineering dependencies surface their Jira ticket status directly on the Salesforce record.\n\nFor enterprise B2B SaaS companies where customer trust depends on reliable communication about engineering timelines, this integration ensures every customer-affecting issue is tracked end-to-end across both systems.",
+      "Enterprise software companies run their customer relationships in Salesforce and their engineering operations in Jira. When a customer reports a critical bug or requests a feature, the information must travel from Salesforce to Jira for engineering action, and back to Salesforce when the fix ships. Without automation, that journey is manual, slow, and unreliable.\n\nGAIA connects Jira and Salesforce so customer-facing teams always know the status of the engineering work that affects their accounts. Salesforce cases escalated as bugs auto-generate Jira tickets. Jira ticket resolutions update Salesforce case statuses. High-value opportunities with engineering dependencies surface their Jira ticket status directly on the Salesforce record.\n\nFor enterprise B2B SaaS companies where customer trust depends on reliable communication about engineering timelines, this integration ensures every customer-affecting issue is tracked end-to-end across both systems.",
     useCases: [
       {
         title: "Salesforce case to Jira bug ticket",
@@ -2389,7 +2389,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
         question:
           "How does GAIA handle Salesforce cases that don't require engineering action?",
         answer:
-          "GAIA only creates Jira tickets for cases that match your configured criteria — specific case categories, escalation flags, or custom field values. Non-engineering cases are ignored.",
+          "GAIA only creates Jira tickets for cases that match your configured criteria: specific case categories, escalation flags, or custom field values. Non-engineering cases are ignored.",
       },
       {
         question:
@@ -2419,7 +2419,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "enterprise standup Jira workflow",
     ],
     intro:
-      "Enterprise engineering teams run their sprint ceremonies — planning, refinement, standups, retrospectives — over Zoom. Every meeting generates action items, decisions, and issue updates that need to land in Jira. Without automation, a dedicated note-taker manually transcribes outcomes into tickets after every call, a process that's slow, incomplete, and unsustainable at scale.\n\nGAIA connects Zoom and Jira so meeting outcomes become Jira artifacts automatically. Sprint planning calls generate new Jira tickets for committed items. Standups with flagged blockers create or update Jira impediments. Retrospective action items land in the team's backlog with the appropriate labels. Meeting summaries are attached to relevant Jira tickets for traceability.\n\nFor distributed enterprise teams where most cross-team coordination happens over video, this integration ensures every decision made in a Zoom call is captured and tracked in Jira.",
+      "Enterprise engineering teams run their sprint ceremonies (planning, refinement, standups, retrospectives) over Zoom. Every meeting generates action items, decisions, and issue updates that need to land in Jira. Without automation, a dedicated note-taker manually transcribes outcomes into tickets after every call, a process that's slow, incomplete, and unsustainable at scale.\n\nGAIA connects Zoom and Jira so meeting outcomes become Jira artifacts automatically. Sprint planning calls generate new Jira tickets for committed items. Standups with flagged blockers create or update Jira impediments. Retrospective action items land in the team's backlog with the appropriate labels. Meeting summaries are attached to relevant Jira tickets for traceability.\n\nFor distributed enterprise teams where most cross-team coordination happens over video, this integration ensures every decision made in a Zoom call is captured and tracked in Jira.",
     useCases: [
       {
         title: "Sprint planning to Jira sprint",
@@ -2511,7 +2511,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "dev team Microsoft Teams workflow",
     ],
     intro:
-      "Microsoft Teams is the enterprise communication standard for organizations running on Microsoft 365, and Jira is the enterprise issue tracker of choice for software teams. Despite how often they're used together, keeping Teams informed of Jira progress requires either manual posting or a limited built-in connector that lacks contextual formatting and intelligent routing.\n\nGAIA provides a richer Jira-Teams integration. Sprint summaries, blocker alerts, release notifications, and high-priority issue escalations are posted to the right Teams channels with structured, readable formatting. Non-technical stakeholders can query GAIA in Teams for Jira project status without needing a Jira license. Engineering managers receive personalized digests of their team's sprint progress.\n\nFor large enterprises where Teams is the operational hub, this integration ensures Jira data reaches the right people in the right channels with the right context — automatically.",
+      "Microsoft Teams is the enterprise communication standard for organizations running on Microsoft 365, and Jira is the enterprise issue tracker of choice for software teams. Despite how often they're used together, keeping Teams informed of Jira progress requires either manual posting or a limited built-in connector that lacks contextual formatting and intelligent routing.\n\nGAIA provides a richer Jira-Teams integration. Sprint summaries, blocker alerts, release notifications, and high-priority issue escalations are posted to the right Teams channels with structured, readable formatting. Non-technical stakeholders can query GAIA in Teams for Jira project status without needing a Jira license. Engineering managers receive personalized digests of their team's sprint progress.\n\nFor large enterprises where Teams is the operational hub, this integration ensures Jira data reaches the right people in the right channels with the right context, automatically.",
     useCases: [
       {
         title: "Daily sprint status digest",
@@ -2531,7 +2531,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Jira queries answered in Teams",
         description:
-          "Stakeholders can ask GAIA in Teams — 'What's the status of the payments project?' or 'Is the login bug fixed yet?' — and receive an accurate, real-time answer sourced from Jira.",
+          "Stakeholders can ask GAIA in Teams ('What's the status of the payments project?' or 'Is the login bug fixed yet?') and receive an accurate, real-time answer sourced from Jira.",
       },
       {
         title: "New issue assignment notifications",
@@ -2548,7 +2548,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         step: "Configure notification and alert rules",
         description:
-          "Define which Jira events generate Teams notifications — issue assignments, priority escalations, sprint events, deployments — and configure the format and routing for each event type.",
+          "Define which Jira events generate Teams notifications (issue assignments, priority escalations, sprint events, deployments) and configure the format and routing for each event type.",
       },
       {
         step: "GAIA notifies Teams and responds to queries",
@@ -2696,7 +2696,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "sprint demo recording Jira",
     ],
     intro:
-      "Jira tickets that describe complex bugs or nuanced requirements in text alone often lead to back-and-forth clarification threads that slow down resolution. A brief Loom recording demonstrating a bug or walking through a feature requirement communicates in seconds what paragraphs of text struggle to convey — but connecting that recording to the right Jira ticket requires manual effort.\n\nGAIA automates the link between Loom and Jira. Bug recordings created in Loom generate Jira tickets with the video embedded. Loom recordings referencing a Jira issue ID are automatically attached to that ticket as a comment. Sprint demo recordings are attached to the completed Jira issues they cover, creating a permanent video audit trail of delivered features.\n\nFor enterprise teams managing complex Jira backlogs where issue clarity directly affects resolution speed, Loom video context reduces the clarification cycle dramatically and keeps async collaboration productive.",
+      "Jira tickets that describe complex bugs or nuanced requirements in text alone often lead to back-and-forth clarification threads that slow down resolution. A brief Loom recording demonstrating a bug or walking through a feature requirement communicates in seconds what paragraphs of text struggle to convey, but connecting that recording to the right Jira ticket requires manual effort.\n\nGAIA automates the link between Loom and Jira. Bug recordings created in Loom generate Jira tickets with the video embedded. Loom recordings referencing a Jira issue ID are automatically attached to that ticket as a comment. Sprint demo recordings are attached to the completed Jira issues they cover, creating a permanent video audit trail of delivered features.\n\nFor enterprise teams managing complex Jira backlogs where issue clarity directly affects resolution speed, Loom video context reduces the clarification cycle dramatically and keeps async collaboration productive.",
     useCases: [
       {
         title: "Bug recording to Jira ticket",
@@ -2733,7 +2733,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         step: "Define video-to-ticket linking conventions",
         description:
-          "Tell GAIA how to match Loom recordings to Jira tickets — by Jira issue ID in the video title, by Loom folder, or by transcript content analysis. Set trigger phrases for auto-creating new tickets.",
+          "Tell GAIA how to match Loom recordings to Jira tickets: by Jira issue ID in the video title, by Loom folder, or by transcript content analysis. Set trigger phrases for auto-creating new tickets.",
       },
       {
         step: "GAIA attaches videos and creates tickets automatically",
@@ -2786,7 +2786,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       "enterprise billing Jira workflow",
     ],
     intro:
-      "For enterprise SaaS companies, Stripe is the revenue engine and Jira is the engineering command center. When Stripe reports payment failures, webhook errors, or subscription anomalies, those events require immediate engineering investigation — but the path from a Stripe dashboard alert to a properly filed, prioritized Jira ticket is rarely automated.\n\nGAIA connects Stripe and Jira so revenue-critical events automatically generate engineering tickets with the context needed for fast resolution. Payment failure spikes create urgent Jira bugs with error codes and affected plan data. Webhook delivery failures become Jira tasks with replay instructions. API deprecation notices create Jira tickets with deadlines and code references. Engineers prioritize billing work with full revenue impact data visible in the Jira issue.\n\nFor companies where billing reliability is a board-level metric, this integration ensures that Stripe anomalies never wait in someone's inbox before reaching the engineering team.",
+      "For enterprise SaaS companies, Stripe is the revenue engine and Jira is the engineering command center. When Stripe reports payment failures, webhook errors, or subscription anomalies, those events require immediate engineering investigation, but the path from a Stripe dashboard alert to a properly filed, prioritized Jira ticket is rarely automated.\n\nGAIA connects Stripe and Jira so revenue-critical events automatically generate engineering tickets with the context needed for fast resolution. Payment failure spikes create urgent Jira bugs with error codes and affected plan data. Webhook delivery failures become Jira tasks with replay instructions. API deprecation notices create Jira tickets with deadlines and code references. Engineers prioritize billing work with full revenue impact data visible in the Jira issue.\n\nFor companies where billing reliability is a board-level metric, this integration ensures that Stripe anomalies never wait in someone's inbox before reaching the engineering team.",
     useCases: [
       {
         title: "Payment failure spike to Jira incident ticket",
@@ -2796,7 +2796,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         title: "Revenue impact annotation on billing tickets",
         description:
-          "GAIA enriches Jira tickets related to Stripe issues with live revenue data — MRR at risk, number of affected subscriptions, and churn probability — so engineering can prioritize by financial impact.",
+          "GAIA enriches Jira tickets related to Stripe issues with live revenue data (MRR at risk, number of affected subscriptions, and churn probability) so engineering can prioritize by financial impact.",
       },
       {
         title: "Webhook failure tracking",
@@ -2823,7 +2823,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
       {
         step: "Define revenue thresholds and Jira routing",
         description:
-          "Set the Stripe event conditions that warrant Jira tickets — failure rates, MRR thresholds, specific error codes — and map them to Jira projects, issue types, and priority levels.",
+          "Set the Stripe event conditions that warrant Jira tickets (failure rates, MRR thresholds, specific error codes) and map them to Jira projects, issue types, and priority levels.",
       },
       {
         step: "GAIA monitors Stripe and manages Jira automatically",

@@ -7,7 +7,12 @@
  *
  * @module
  */
-import { type IncomingMedia, mediaKindFromMime } from "@gaia/shared";
+import {
+  fetchBytesCapped,
+  type IncomingMedia,
+  MEDIA_READ_TIMEOUT_MS,
+  mediaKindFromMime,
+} from "@gaia/shared";
 import { type Message, MessageFlags } from "discord.js";
 
 /** A Discord attachment/sticker normalised for the shared media pipeline. */
@@ -37,6 +42,7 @@ export function extractDiscordMedia(
         isVoiceNote: message.flags?.has(MessageFlags.IsVoiceMessage) ?? false,
         mimeType,
         filename: kind === "document" ? attachment.name : undefined,
+        sizeBytes: attachment.size,
       },
     };
   }
@@ -49,21 +55,19 @@ export function extractDiscordMedia(
   return null;
 }
 
-/** How long to wait for a Discord CDN download before aborting. */
-const ATTACHMENT_DOWNLOAD_TIMEOUT_MS = 30_000;
-
-/** Downloads a Discord attachment from its public CDN URL. */
-export async function downloadDiscordAttachment(
+/**
+ * Downloads a Discord attachment from its public CDN URL, reading at most
+ * `maxBytes` so an oversize attachment is rejected without ever being buffered
+ * whole.
+ */
+export function downloadDiscordAttachment(
   url: string,
+  maxBytes: number,
 ): Promise<Uint8Array> {
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(ATTACHMENT_DOWNLOAD_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    throw Object.assign(
-      new Error(`Discord attachment download failed (${res.status})`),
-      { status: res.status },
-    );
-  }
-  return new Uint8Array(await res.arrayBuffer());
+  return fetchBytesCapped(
+    url,
+    maxBytes,
+    "Discord attachment",
+    MEDIA_READ_TIMEOUT_MS,
+  );
 }

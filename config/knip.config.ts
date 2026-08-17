@@ -369,6 +369,7 @@ const config: KnipConfig = {
       project: ["**/*.ts", "!**/__tests__/**", "!**/*.test.ts"],
       ignoreDependencies: [
         "@gaia/bot-discord",
+        "@gaia/bot-imessage",
         "@gaia/bot-slack",
         "@gaia/bot-telegram",
         "@gaia/bot-whatsapp",

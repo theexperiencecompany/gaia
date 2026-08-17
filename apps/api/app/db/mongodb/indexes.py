@@ -60,6 +60,7 @@ async def create_all_indexes() -> None:
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
             create_hil_approvals_indexes(),
+            create_pending_platform_registration_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -91,6 +92,7 @@ async def create_all_indexes() -> None:
             "bot_sessions",
             "e2b_sandboxes",
             "hil_approvals",
+            "pending_platform_registrations",
         ]
 
         index_results = {}
@@ -629,6 +631,32 @@ async def create_processed_webhook_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating processed webhook indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_pending_platform_registration_indexes() -> None:
+    """
+    Create indexes for the pending_platform_registrations collection.
+
+    - Unique on (platform, platform_user_id): one account per handle
+    - (user_id, platform): the per-user lookup on connect, link and unlink
+    - created_at: the range scan the abandoned-registration sweep runs
+    """
+    pending_registrations_collection = get_async_collection("pending_platform_registrations")
+    try:
+        await asyncio.gather(
+            pending_registrations_collection.create_index(
+                [("platform", 1), ("platform_user_id", 1)], unique=True
+            ),
+            pending_registrations_collection.create_index([("user_id", 1), ("platform", 1)]),
+            pending_registrations_collection.create_index("created_at"),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating pending platform registration indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

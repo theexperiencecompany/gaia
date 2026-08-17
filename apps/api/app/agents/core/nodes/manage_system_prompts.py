@@ -34,7 +34,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
 from app.constants.log_tags import LogTag
-from app.override.langgraph_bigtool.utils import State
+from app.override.langgraph_bigtool.utils import PRUNED_MESSAGE_IDS_KEY, State
 from shared.py.wide_events import log
 
 
@@ -194,6 +194,9 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         # clock line differs turn-to-turn.
         dropped_system = 0
         dropped_time = 0
+        # Relayed via PRUNED_MESSAGE_IDS_KEY so the model node tombstones the
+        # stale copies out of the checkpoint, not just the per-call view.
+        pruned_ids: list[str] = []
         static_msg: AnyMessage | None = None
         dynamic_msg: AnyMessage | None = None
         todo_msg: AnyMessage | None = None
@@ -218,11 +221,15 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                     memory_recall_msg = msg
                 else:
                     dropped_system += 1
+                    if msg.id:
+                        pruned_ids.append(msg.id)
             elif _is_time_context(msg):
                 if idx == latest_time_idx:
                     time_msg = msg
                 else:
                     dropped_time += 1
+                    if msg.id:
+                        pruned_ids.append(msg.id)
             else:
                 non_system.append(msg)
 
@@ -265,8 +272,9 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         # for that single LLM call without going through LangGraph's
         # ``add_messages`` reducer. So returning the filtered/reordered list
         # here is what controls the per-call shape that the provider sees,
-        # which is what implicit caching keys on.
-        return cast(State, {**state, "messages": filtered})
+        # which is what implicit caching keys on. The pruned ids ride along so
+        # the model node can tombstone the stale copies out of the checkpoint.
+        return cast(State, {**state, "messages": filtered, PRUNED_MESSAGE_IDS_KEY: pruned_ids})
 
     except Exception as e:
         log.error(
