@@ -188,3 +188,40 @@ class TestCastTypeArgument:
         result = _classify(workdir)
 
         assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
+class TestLookupDefaultEquivalence:
+    # The default machinery re-reads the REAL module for its consumer
+    # analysis, so the probe body must exist there too, at the same lines.
+    _BODY = '    x = d.pop("k", {})\n    if not x:\n        return None\n    return 1'
+
+    def _write_real_module(self, workdir: Path) -> None:
+        (workdir / MODULE_REL).write_text(f"def probe(d):\n{self._BODY}\n")
+
+    def test_a_pop_default_only_seen_by_a_truthiness_test_is_equivalent(
+        self, workdir: Path
+    ) -> None:
+        # pop(k, d) hands back d only on a miss, same as get — and {} vs None
+        # are one branch under `if not x`. This kept a whole module red.
+        self._write_real_module(workdir)
+        _write_mutants(
+            workdir,
+            self._BODY,
+            '    x = d.pop("k", None)\n    if not x:\n        return None\n    return 1',
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_pop_key_change_is_still_reported(self, workdir: Path) -> None:
+        self._write_real_module(workdir)
+        _write_mutants(
+            workdir,
+            self._BODY,
+            '    x = d.pop("XXkXX", {})\n    if not x:\n        return None\n    return 1',
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr

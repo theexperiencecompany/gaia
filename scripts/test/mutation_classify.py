@@ -234,6 +234,10 @@ def _boolean_consumer(node) -> bool:
     if isinstance(parent, ast.BoolOp) and isinstance(parent.op, ast.Or):
         # `x or y` evaluates to y for EVERY falsy x, so which falsy x it was is lost.
         return parent.values[-1] is not node
+    if isinstance(parent, ast.UnaryOp) and isinstance(parent.op, ast.Not):
+        # `not x` is True for every falsy x — the distinction dies here no
+        # matter where the result then flows.
+        return True
     return isinstance(parent, ast.If | ast.IfExp) and parent.test is node
 
 
@@ -285,15 +289,16 @@ def _only_boolean_uses(call) -> bool:
 
 
 def _lookup_with_default(node) -> bool:
-    """True for ``x.get(k, d)`` or ``getattr(o, n, d)`` — a lookup with a fallback.
+    """True for ``x.get(k, d)``, ``x.pop(k, d)`` or ``getattr(o, n, d)``.
 
-    Both hand back ``d`` only when the lookup misses, so the same reasoning about
-    which falsy fallback was written applies to either spelling.
+    Each hands back ``d`` only when the lookup misses, so the same reasoning
+    about which falsy fallback was written applies to every spelling — pop's
+    removal side effect happens either way.
     """
     if not isinstance(node, ast.Call):
         return False
     func = node.func
-    if isinstance(func, ast.Attribute) and func.attr == "get" and len(node.args) == 2:
+    if isinstance(func, ast.Attribute) and func.attr in ("get", "pop") and len(node.args) == 2:
         return True
     return isinstance(func, ast.Name) and func.id == "getattr" and len(node.args) == 3
 
