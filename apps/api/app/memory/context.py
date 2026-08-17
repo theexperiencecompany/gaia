@@ -20,12 +20,18 @@ from app.memory import pg_store
 from app.memory.retrieval import invalidate_recall_cache
 from app.models.memory_db_models import MemoryEpisode
 
+# Public because get_core_context joins the sections into one string and
+# message_helpers has to find the boundaries again to split the volatile
+# agenda/journal out of the cacheable documents. One definition, so a copy
+# edit here cannot silently stop that split from matching.
+AGENDA_HEADING = "## Current agenda"
+RECENT_ACTIVITY_HEADING = "## Recent activity"
+
 _DOC_SECTIONS: list[tuple[MemoryDocType, str]] = [
     (MemoryDocType.USER_MD, "## About the user"),
     (MemoryDocType.MEMORY_MD, "## Assistant conventions"),
-    (MemoryDocType.AGENDA_MD, "## Current agenda"),
+    (MemoryDocType.AGENDA_MD, AGENDA_HEADING),
 ]
-_RECENT_ACTIVITY_HEADING = "## Recent activity"
 
 
 def _strip_leading_h1(content: str) -> str:
@@ -69,7 +75,7 @@ async def get_core_context(user_id: str) -> str:
 
     recent_activity = _format_recent_activity(episodes, today)
     if recent_activity:
-        sections.append(f"{_RECENT_ACTIVITY_HEADING}\n{recent_activity}")
+        sections.append(f"{RECENT_ACTIVITY_HEADING}\n{recent_activity}")
 
     context = "\n\n".join(sections)
     await set_cache(cache_key, context, ttl=CORE_CONTEXT_CACHE_TTL)

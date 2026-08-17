@@ -8,9 +8,7 @@ from langchain_core.messages import SystemMessage
 import pytest
 
 from app.helpers.message_helpers import (
-    _AGENDA_HEADING,
     _CORE_MEMORY_HEADING,
-    _RECENT_ACTIVITY_HEADING,
     MEMORY_RECALL_MAX_CHARS,
     _get_gaia_knowledge_section,
     _get_user_memories_section,
@@ -22,6 +20,7 @@ from app.helpers.message_helpers import (
     format_tool_selection_message,
     format_workflow_execution_message,
 )
+from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -553,8 +552,8 @@ class TestDynamicContextVolatilitySplit:
     async def test_agenda_and_recent_activity_leave_the_stable_core(self) -> None:
         core = (
             "Loves espresso."
-            f"\n\n{_AGENDA_HEADING}\n- ship the cache work"
-            f"\n\n{_RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+            f"\n\n{AGENDA_HEADING}\n- ship the cache work"
+            f"\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
         )
         with _dynamic_context_seams(core):
             result = await build_dynamic_context_messages(user_id="u1", query=None)
@@ -562,9 +561,57 @@ class TestDynamicContextVolatilitySplit:
         assert result.memory_recall is not None
         assert result.memory_recall.content == f"{_CORE_MEMORY_HEADING}:\nLoves espresso."
         assert result.volatile_tail is not None
-        assert _AGENDA_HEADING in result.volatile_tail.content
+        assert AGENDA_HEADING in result.volatile_tail.content
         assert "- ship the cache work" in result.volatile_tail.content
-        assert _RECENT_ACTIVITY_HEADING in result.volatile_tail.content
+        assert RECENT_ACTIVITY_HEADING in result.volatile_tail.content
+        assert "- reviewed a PR" in result.volatile_tail.content
+
+    @pytest.mark.asyncio
+    async def test_the_agenda_cap_does_not_swallow_the_journal(self) -> None:
+        """The agenda cap must bound the agenda ALONE.
+
+        get_core_context emits the agenda before the journal, so splitting on
+        the agenda marker first hands back the journal too. Capping that
+        combined blob discarded the agenda's commitments and relabelled the
+        journal's tail as the agenda — invisible unless the journal is long
+        enough to blow the cap, which is why the shorter fixture above passed
+        straight through the bug.
+        """
+        journal = "\n".join(f"- did thing {i}" for i in range(200))  # well over the cap
+        core = (
+            "Loves espresso."
+            f"\n\n{AGENDA_HEADING}\n- ship the cache work"
+            f"\n\n{RECENT_ACTIVITY_HEADING}\n{journal}"
+        )
+        with _dynamic_context_seams(core):
+            result = await build_dynamic_context_messages(user_id="u1", query=None)
+
+        assert result.volatile_tail is not None
+        content = result.volatile_tail.content
+        agenda_block = content.split(RECENT_ACTIVITY_HEADING)[0]
+        # The agenda survives in full under its own heading...
+        assert "- ship the cache work" in agenda_block
+        # ...and the journal is a separate section, not swallowed into it.
+        assert content.count(RECENT_ACTIVITY_HEADING) == 1
+        assert RECENT_ACTIVITY_HEADING not in agenda_block
+        # The journal keeps its newest entries under its own separate cap.
+        assert "- did thing 199" in content
+
+    @pytest.mark.asyncio
+    async def test_a_user_with_no_core_memory_keeps_recall_empty(self) -> None:
+        """Recall holds the stable core or nothing.
+
+        The slot used to be filled from variable_parts[0], but that list omits
+        every empty section — so a user with no core-memory document had their
+        first CHURNING section filed as stable and placed inside the cached
+        prefix, breaking the prefix every turn for exactly those users.
+        """
+        core = f"{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        with _dynamic_context_seams(core):
+            result = await build_dynamic_context_messages(user_id="u1", query=None)
+
+        assert result.memory_recall is None
+        assert result.volatile_tail is not None
         assert "- reviewed a PR" in result.volatile_tail.content
 
     @pytest.mark.asyncio
@@ -584,7 +631,7 @@ class TestDynamicContextVolatilitySplit:
     @pytest.mark.asyncio
     async def test_volatile_tail_is_capped_head_and_tail(self) -> None:
         banner = "ACTIVE TODO BANNER. " * 500 + "BANNER-END"  # ~10k chars
-        core = f"Loves espresso.\n\n{_RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+        core = f"Loves espresso.\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
         with _dynamic_context_seams(core, active_todo_banner=banner):
             result = await build_dynamic_context_messages(
                 user_id="u1", query=None, active_todo_id="t1"
@@ -595,6 +642,6 @@ class TestDynamicContextVolatilitySplit:
         assert len(content) <= MEMORY_RECALL_MAX_CHARS + 64
         # Head (recent activity) and tail (the run-binding directive) survive;
         # the middle is dropped.
-        assert content.startswith(_RECENT_ACTIVITY_HEADING)
+        assert content.startswith(RECENT_ACTIVITY_HEADING)
         assert content.endswith("BANNER-END")
         assert "recall truncated to keep the prompt cache warm" in content

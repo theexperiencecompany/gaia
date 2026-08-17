@@ -27,6 +27,7 @@ from app.db.redis import get_cache, set_cache
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
+from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.message_models import (
@@ -199,8 +200,23 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
 
 
 _CORE_MEMORY_HEADING = "What you remember about this user (memory core)"
-_AGENDA_HEADING = "## Current agenda"
-_RECENT_ACTIVITY_HEADING = "## Recent activity"
+
+
+def _split_off_section(context: str, heading: str) -> tuple[str, str]:
+    """Split a heading's section off the end of the memory core.
+
+    Returns ``(everything before the heading, the section body)``. Matching a
+    heading only when preceded by a blank line would miss the section that
+    opens the core — which is what a user with no stable documents has, and
+    their churning section would then ride the cached prefix as stable.
+    """
+    if context.startswith(heading):
+        return "", context[len(heading) :]
+    marker = f"\n\n{heading}"
+    if marker in context:
+        before, body = context.split(marker, 1)
+        return before, body
+    return context, ""
 
 
 async def _get_core_memory_parts(user_id: str) -> tuple[str, str]:
@@ -230,26 +246,33 @@ async def _get_core_memory_parts(user_id: str) -> tuple[str, str]:
     if not core_context:
         return "", ""
 
+    # Split from the BACK. get_core_context emits the agenda BEFORE the
+    # journal, so splitting on the agenda first hands back everything to its
+    # right — the journal included — as "the agenda", and the agenda cap then
+    # crushes both into one 300-char block under the agenda heading while the
+    # journal's own split finds nothing left to match.
+    core_context, activity = _split_off_section(core_context, RECENT_ACTIVITY_HEADING)
+    core_context, agenda = _split_off_section(core_context, AGENDA_HEADING)
+
+    # Each section is capped HERE, against its own budget. Capping the joined
+    # tail instead drops whichever section sorts first — the agenda, whose
+    # commitments and deadlines are the part a user actually gets asked about.
+    # The static headings stay outside the caps (so a truncated body is still
+    # labelled) and the markers are byte-stable across turns.
     volatile_parts: list[str] = []
     # The agenda document churns every turn (reminders fire, deadlines move,
     # owed items resolve) — measured as a per-turn byte-divergence inside the
     # cached prefix; it belongs in the volatile tail.
-    agenda_marker = f"\n\n{_AGENDA_HEADING}"
-    if agenda_marker in core_context:
-        stable, agenda = core_context.split(agenda_marker, 1)
-        core_context = stable
-        # Cap the agenda document so the volatile tail stays bounded. The
-        # static heading stays outside the cap (readable even when the body
-        # is truncated); the marker is byte-stable across turns.
+    if agenda:
         volatile_parts.append(
-            f"{_AGENDA_HEADING}{_cap_section(agenda, AGENDA_CAP_CHARS, AGENDA_TRUNC_MARKER)}"
+            f"{AGENDA_HEADING}{_cap_section(agenda, AGENDA_CAP_CHARS, AGENDA_TRUNC_MARKER)}"
         )
     # The recent-activity journal grows/churns every turn (new entries land).
-    activity_marker = f"\n\n{_RECENT_ACTIVITY_HEADING}"
-    if activity_marker in core_context:
-        stable, activity = core_context.split(activity_marker, 1)
-        core_context = stable
-        volatile_parts.append(f"{_RECENT_ACTIVITY_HEADING}{activity}")
+    if activity:
+        volatile_parts.append(
+            f"{RECENT_ACTIVITY_HEADING}"
+            f"{_cap_section(activity, RECENT_ACTIVITY_CAP_CHARS, RECENT_ACTIVITY_TRUNC_MARKER)}"
+        )
 
     stable_core = f"{_CORE_MEMORY_HEADING}:\n{core_context}" if core_context else ""
     return stable_core, "\n\n".join(volatile_parts)
@@ -597,16 +620,16 @@ async def build_dynamic_context_messages(
             memories_section = memories_text
             gaia_knowledge_section = ""
             if user_id:
-                (core_stable, recent_activity), gaia_knowledge_section = await asyncio.gather(
+                (core_stable, core_volatile), gaia_knowledge_section = await asyncio.gather(
                     _core_memory_parts(user_id),
                     _get_gaia_knowledge_section(query) if query else _empty_section(),
                 )
                 core_memory_section = core_stable
             else:
-                core_memory_section, recent_activity = "", ""
+                core_memory_section, core_volatile = "", ""
         elif user_id and query:
             (
-                (core_stable, recent_activity),
+                (core_stable, core_volatile),
                 memories_section,
                 gaia_knowledge_section,
             ) = await asyncio.gather(
@@ -616,23 +639,15 @@ async def build_dynamic_context_messages(
             )
             core_memory_section = core_stable
         else:
-            core_stable, recent_activity = (
-                await _core_memory_parts(user_id) if user_id else ("", "")
-            )
+            core_stable, core_volatile = await _core_memory_parts(user_id) if user_id else ("", "")
             core_memory_section = core_stable
             memories_section = ""
             gaia_knowledge_section = ""
 
-        if core_memory_section:
-            variable_parts.append(core_memory_section)
-        if recent_activity:
-            variable_parts.append(
-                _cap_section(
-                    recent_activity.lstrip("\n"),
-                    RECENT_ACTIVITY_CAP_CHARS,
-                    RECENT_ACTIVITY_TRUNC_MARKER,
-                )
-            )
+        # Already capped per section by _get_core_memory_parts; re-capping the
+        # joined tail here is what used to discard the agenda.
+        if core_volatile:
+            variable_parts.append(core_volatile.lstrip("\n"))
         if memories_section:
             variable_parts.append(
                 _cap_section(
@@ -676,18 +691,16 @@ async def build_dynamic_context_messages(
             variable_parts.append(active_todo_banner)
 
         stable_content = "\n".join(user_stable_parts)
-        # The FIRST variable part is the byte-stable core memory documents
-        # (appended above as ``core_memory_section``); EVERYTHING after it
-        # churns turn-to-turn (recent activity, per-query recall, GAIA
-        # knowledge, skills, todos, banners) and must live in the volatile
-        # tail — after the time message — where its churn never shifts the
-        # cached prefix. The memory_recall slot keeps ONLY the stable core.
-        core_stable_parts: list[str] = []
-        volatile_parts: list[str] = []
-        for i, part in enumerate(variable_parts):
-            (core_stable_parts if i == 0 else volatile_parts).append(part)
-        recall_content = "\n\n".join(core_stable_parts)
-        volatile_content = "\n\n".join(volatile_parts)
+        # The memory_recall slot keeps ONLY the byte-stable core-memory
+        # documents, taken from their own variable rather than from a position
+        # in variable_parts: that list omits every empty section, so a user
+        # with no core memory would otherwise have their first CHURNING
+        # section (per-query recall, journal) filed as stable and land inside
+        # the cached prefix — re-breaking the prefix for exactly those users.
+        # Everything else churns turn-to-turn and lives in the volatile tail,
+        # after the time message, where its churn cannot shift the prefix.
+        recall_content = core_memory_section
+        volatile_content = "\n\n".join(variable_parts)
         # Cache note: the volatile tail is rebuilt every turn and every
         # changed byte writes NEW blocks to the provider's bounded prompt
         # cache. It sits after the time message so it can't break the prefix,

@@ -59,6 +59,7 @@ from app.agents.llm.client import (
     has_sticky_fallback,
     invoke_llm,
     is_default_model_config,
+    materialize_fallback,
 )
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.completion import (
@@ -112,6 +113,16 @@ def _prepare_fallback(
     if fallback_llm is None or is_default_model_config(model_configurations):
         return None
     return lambda: fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+
+
+def _bind_session_id(llm_with_tools: Runnable, model_configurations: AgentConfigurable) -> Runnable:
+    """Bind the OpenRouter sticky-routing session id onto ``llm_with_tools``, if configured."""
+    # Must run AFTER bind_tools (which rebuilds the runnable and drops outer bindings), so the
+    # call pins to the conversation's provider and its prompt cache chains across turns.
+    session_id = model_configurations.get("session_id")
+    if session_id:
+        return llm_with_tools.bind(session_id=session_id)
+    return llm_with_tools
 
 
 def create_agent(
@@ -242,12 +253,7 @@ def create_agent(
         model_configurations = agent_configurable(config)
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-        # OpenRouter sticky-routing key: bound AFTER bind_tools (which rebuilds
-        # the runnable and drops outer bindings). Pins the call to the
-        # conversation's provider so its prompt cache chains across turns.
-        session_id = model_configurations.get("session_id")
-        if session_id:
-            llm_with_tools = llm_with_tools.bind(session_id=session_id)
+        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations)
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state)
         response = invoke_llm(
@@ -303,12 +309,7 @@ def create_agent(
 
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-        # OpenRouter sticky-routing key: bound AFTER bind_tools (which rebuilds
-        # the runnable and drops outer bindings). Pins the call to the
-        # conversation's provider so its prompt cache chains across turns.
-        session_id = model_configurations.get("session_id")
-        if session_id:
-            llm_with_tools = llm_with_tools.bind(session_id=session_id)
+        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations)
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
         # Sticky fallback: once this run has fallen back, the primary is broken
         # for the whole run — keep using the fallback so the request's model
@@ -318,12 +319,8 @@ def create_agent(
         fell_back = has_sticky_fallback(config)
         if fell_back:
             # The fallback may be a lazy factory; resolve it now (the same
-            # callable handling _resolve_fallback applies).
-            primary_for_call = (
-                fallback()
-                if callable(fallback) and not isinstance(fallback, Runnable)
-                else fallback
-            )
+            # resolution ``_resolve_fallback`` applies).
+            primary_for_call = materialize_fallback(fallback)
             fallback_for_call = None
         else:
             primary_for_call = llm_with_tools

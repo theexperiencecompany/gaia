@@ -555,6 +555,13 @@ def _stamp_fallback(result: _ResultT) -> _ResultT:
     return result
 
 
+def materialize_fallback(fallback: LLMFallback) -> Runnable | None:
+    """Resolve a fallback to a concrete runnable, calling it if it was passed as
+    a zero-arg factory. The single copy — both this module and the bigtool
+    ``create_agent`` override need it."""
+    return fallback() if callable(fallback) and not isinstance(fallback, Runnable) else fallback
+
+
 def _resolve_fallback(
     fallback: LLMFallback,
     label: str,
@@ -562,15 +569,13 @@ def _resolve_fallback(
     *,
     session_id: str | None = None,
 ) -> Runnable:
-    """Materialize the fallback (calling a factory if one was passed), log the
-    downgrade, and return the retry-wrapped runnable. Re-raises ``primary_error``
-    when no fallback is available.
-
-    ``session_id`` (OpenRouter sticky-routing key) is bound on the resolved
-    runnable so the fallback's requests stay on the conversation's provider —
-    the config-based value is dropped before the wire, while a bind survives
-    bind_tools and reaches the request params."""
-    resolved = fallback() if callable(fallback) and not isinstance(fallback, Runnable) else fallback
+    """Materialize the fallback, log the downgrade, and return the retry-wrapped
+    runnable. Re-raises ``primary_error`` when no fallback is available."""
+    # ``session_id`` (OpenRouter sticky-routing key) is bound on the resolved
+    # runnable so the fallback's requests stay on the conversation's provider —
+    # the config-based value is dropped before the wire, while a bind survives
+    # bind_tools and reaches the request params.
+    resolved = materialize_fallback(fallback)
     if resolved is None:
         raise primary_error
     log.warning(
@@ -589,15 +594,12 @@ async def _meter_discarded_replay(
     label: str,
     usage_handler: UsageMetadataCallbackHandler | None,
 ) -> None:
-    """Meter the first invocation the sticky-flip replay threw away.
-
-    The provider billed both invocations, but only ONE of them is ever seen by
-    an accounting seam: the auxiliary lane sums every call onto ``usage_handler``
-    (so it is already covered and this is a no-op), while the graph lane meters
-    from the AIMessage that lands in state — which is the replay's. Without this
-    the discarded call's tokens miss the daily budget, the per-request ceiling
-    and COGS entirely.
-    """
+    """Meter the first invocation the sticky-flip replay threw away — otherwise
+    its tokens miss the daily budget, the per-request ceiling and COGS entirely."""
+    # The provider billed both invocations, but only ONE of them is ever seen by
+    # an accounting seam: the auxiliary lane sums every call onto ``usage_handler``
+    # (so it is already covered and this is a no-op), while the graph lane meters
+    # from the AIMessage that lands in state — which is the replay's.
     if usage_handler is not None or not isinstance(discarded, AIMessage):
         return
     configurable = agent_configurable(config)
@@ -704,7 +706,7 @@ async def ainvoke_llm(
                         fallback,
                         label,
                         primary_error,
-                        session_id=(config or {}).get("configurable", {}).get("session_id"),
+                        session_id=agent_configurable(config).get("session_id"),
                     ).ainvoke(messages, config=_with_usage_handler(config, usage_handler))
                 )
     finally:
@@ -877,7 +879,7 @@ def _aux_structured_runnable(
     # routing is per session, and sharing the conversation's session_id made
     # the aux requests re-pin the conversation's provider (measured: the
     # comms' rotation dips).
-    session_id = (config or {}).get("configurable", {}).get("session_id")
+    session_id = agent_configurable(config).get("session_id")
     if session_id:
         structured = structured.bind(session_id=f"{session_id}-aux")
     return structured

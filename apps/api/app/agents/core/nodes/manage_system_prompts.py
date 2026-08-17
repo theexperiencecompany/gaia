@@ -33,6 +33,7 @@ from langchain_core.messages import AnyMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
+from app.agents.llm.types import LLMProviderName
 from app.constants.log_tags import LogTag
 from app.helpers.message_helpers import (
     DYNAMIC_CONTEXT_MARKER,
@@ -57,7 +58,9 @@ from shared.py.wide_events import log
 # 83% with the leading-block layout (scripts/measure_llm_cache.py). With the
 # volatile slots between the stable block and the conversation, the entire
 # conversation re-sends uncached on every turn.
-TAIL_VOLATILE_PROVIDERS: frozenset[str] = frozenset({"openrouter", "custom"})
+TAIL_VOLATILE_PROVIDERS: frozenset[LLMProviderName] = frozenset(
+    {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
+)
 
 
 def _has_marker(msg: AnyMessage, name: str) -> bool:
