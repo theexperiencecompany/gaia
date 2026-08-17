@@ -494,7 +494,7 @@ class UpdateWorkflowRequest(BaseModel):  # type: ignore[explicit-any]
         if v is None:
             return None
         stripped = v.strip()
-        return stripped if stripped else None
+        return stripped or None
 
 
 class WorkflowResponse(BaseModel):  # type: ignore[explicit-any]

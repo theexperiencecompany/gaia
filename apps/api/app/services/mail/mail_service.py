@@ -91,6 +91,7 @@ def _process_attachments(attachments: list[UploadFile]) -> list[GmailAttachmentP
 
 
 async def send_email(
+    *,
     user_id: str,
     to: str,
     subject: str,

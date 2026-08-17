@@ -35,6 +35,7 @@ _SKILLS_INVALIDATION_PATTERNS = [
 
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
 async def install_skill(
+    *,
     user_id: str,
     name: str,
     description: str,

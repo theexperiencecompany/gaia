@@ -64,7 +64,7 @@ def lookup_user_by_username(user_id: str, username: str) -> dict[str, object] | 
             },
         )
         raw_user = dict_bag(data or {}, "data")
-        user: dict[str, object] | None = raw_user if raw_user else None
+        user: dict[str, object] | None = raw_user or None
         return user
     except Exception as e:
         log.error(

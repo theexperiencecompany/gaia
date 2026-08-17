@@ -103,6 +103,7 @@ def absolutize_artifact_urls(message: str, conversation_id: str) -> str:
 
 
 async def save_conversation_async(
+    *,
     body: MessageRequestWithHistory,
     user: AuthenticatedUser,
     conversation_id: str,

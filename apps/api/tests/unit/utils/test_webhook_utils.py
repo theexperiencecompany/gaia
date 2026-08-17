@@ -42,22 +42,18 @@ async def test_a_valid_signature_passes() -> None:
 async def test_a_missing_secret_fails_loud_not_open() -> None:
     """An empty HMAC key is one anyone can compute: with the secret unset,
     a forged empty-key signature must NOT authenticate."""
-    with (
-        patch("app.utils.webhook_utils.settings") as settings,
-        pytest.raises(HTTPException) as excinfo,
-    ):
+    with patch("app.utils.webhook_utils.settings") as settings:
         settings.COMPOSIO_WEBHOOK_SECRET = None
-        await verify_composio_webhook_signature(_request(b"{}", secret=None))
+        with pytest.raises(HTTPException) as excinfo:
+            await verify_composio_webhook_signature(_request(b"{}", secret=None))
 
     assert excinfo.value.status_code == 500
 
 
 async def test_a_wrong_signature_is_rejected() -> None:
-    with (
-        patch("app.utils.webhook_utils.settings") as settings,
-        pytest.raises(HTTPException) as excinfo,
-    ):
+    with patch("app.utils.webhook_utils.settings") as settings:
         settings.COMPOSIO_WEBHOOK_SECRET = "a-different-secret"
-        await verify_composio_webhook_signature(_request(b"{}"))
+        with pytest.raises(HTTPException) as excinfo:
+            await verify_composio_webhook_signature(_request(b"{}"))
 
     assert excinfo.value.status_code == 401

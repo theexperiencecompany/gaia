@@ -235,7 +235,7 @@ def _proxy_call(
             method=method,
             body=omit if binary_body is not None else (body if body is not None else omit),
             connected_account_id=connected_account_id,
-            parameters=parameters if parameters else omit,
+            parameters=parameters or omit,
             binary_body=cast(BinaryBody, binary_body) if binary_body is not None else omit,
         )
     except AppError:

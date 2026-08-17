@@ -35,6 +35,7 @@ from shared.py.wide_events import log
 @with_doc(CREATE_REMINDER)
 async def create_reminder_tool(
     config: RunnableConfig,
+    *,
     payload: Annotated[
         StaticReminderPayload,
         "Static reminder data with title and body",

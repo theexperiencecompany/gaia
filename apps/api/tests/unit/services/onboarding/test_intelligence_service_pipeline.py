@@ -251,7 +251,15 @@ class TestSocialThenHolo:
             patch(f"{MODULE}._run_holo_card", AsyncMock()) as holo,
         ):
             await _social_then_holo(
-                USER, "Ann", "ann@x.com", {"_id": USER}, "focus", None, None, [], True
+                user_id=USER,
+                name="Ann",
+                user_email="ann@x.com",
+                user={"_id": USER},
+                focus="focus",
+                triage=None,
+                writing_style=None,
+                clarify_answers=[],
+                has_gmail=True,
             )
 
         assert social.await_args.args == (USER, "Ann", "ann@x.com")
@@ -264,7 +272,15 @@ class TestSocialThenHolo:
             patch(f"{MODULE}._run_holo_card", AsyncMock()) as holo,
         ):
             await _social_then_holo(
-                USER, "Ann", "ann@x.com", {"_id": USER}, "focus", None, None, [], False
+                user_id=USER,
+                name="Ann",
+                user_email="ann@x.com",
+                user={"_id": USER},
+                focus="focus",
+                triage=None,
+                writing_style=None,
+                clarify_answers=[],
+                has_gmail=False,
             )
 
         assert social.await_count == 0
@@ -547,7 +563,7 @@ class TestProcessOnboardingIntelligence:
 
         assert pipeline_stack["style"].await_args.args == (USER, False, "lawyer")
         assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer", "close Q3")
-        assert pipeline_stack["workflows"].await_args.args[8] == ["slack"]
+        assert pipeline_stack["workflows"].await_args.kwargs["selected_integrations"] == ["slack"]
 
     async def test_a_nameless_user_gets_a_friendly_default(self, pipeline_stack: Any) -> None:
         user = _user(name=None)
@@ -566,7 +582,7 @@ class TestProcessOnboardingIntelligence:
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["workflows"].await_args.args[4] == "UTC"
+        assert pipeline_stack["workflows"].await_args.kwargs["user_timezone"] == "UTC"
 
     async def test_a_stored_timezone_is_used(self, pipeline_stack: Any) -> None:
         user = _user(timezone="Europe/London")
@@ -574,7 +590,7 @@ class TestProcessOnboardingIntelligence:
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["workflows"].await_args.args[4] == "Europe/London"
+        assert pipeline_stack["workflows"].await_args.kwargs["user_timezone"] == "Europe/London"
 
     async def test_a_missing_onboarding_subdoc_does_not_crash_the_pipeline(
         self, pipeline_stack: Any
@@ -652,16 +668,16 @@ class TestProcessOnboardingWorkflowsPhase:
 
         await process_onboarding_workflows_phase(USER)
 
-        triage = phase_stack["run"].await_args.args[5]
-        style = phase_stack["run"].await_args.args[6]
+        triage = phase_stack["run"].await_args.kwargs["triage"]
+        style = phase_stack["run"].await_args.kwargs["writing_style"]
         assert triage is not None and triage.total_scanned == 5
         assert style is not None and style.summary == "Terse"
 
     async def test_absent_learnings_degrade_to_none(self, phase_stack: Any) -> None:
         await process_onboarding_workflows_phase(USER)
 
-        assert phase_stack["run"].await_args.args[5] is None
-        assert phase_stack["run"].await_args.args[6] is None
+        assert phase_stack["run"].await_args.kwargs["triage"] is None
+        assert phase_stack["run"].await_args.kwargs["writing_style"] is None
 
     async def test_the_stored_profession_reaches_the_workflow_generator(
         self, phase_stack: Any
@@ -670,7 +686,7 @@ class TestProcessOnboardingWorkflowsPhase:
         the wrong place makes every suggestion generic."""
         await process_onboarding_workflows_phase(USER)
 
-        assert phase_stack["run"].await_args.args[1] == "lawyer"
+        assert phase_stack["run"].await_args.kwargs["profession"] == "lawyer"
 
     async def test_a_retry_purges_the_previous_suggestions(self, phase_stack: Any) -> None:
         # Without this, a killed run that already created workflows doubles up.
@@ -715,7 +731,7 @@ class TestProcessOnboardingWorkflowsPhase:
         # The user may have connected or revoked Gmail while picking integrations.
         await process_onboarding_workflows_phase(USER)
 
-        assert phase_stack["run"].await_args.args[2] is True
+        assert phase_stack["run"].await_args.kwargs["has_gmail"] is True
         assert phase_stack["finalize"].await_args.kwargs["has_gmail"] is True
 
     @pytest.mark.parametrize("stored", [None, "", "   "])
@@ -727,7 +743,7 @@ class TestProcessOnboardingWorkflowsPhase:
 
         await process_onboarding_workflows_phase(USER)
 
-        assert phase_stack["run"].await_args.args[4] == "UTC"
+        assert phase_stack["run"].await_args.kwargs["user_timezone"] == "UTC"
 
     async def test_no_provision_task_is_handed_to_the_tail(self, phase_stack: Any) -> None:
         # Provisioning belongs to the first job; this one has nothing to keep alive.

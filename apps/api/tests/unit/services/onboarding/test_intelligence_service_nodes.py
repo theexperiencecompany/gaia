@@ -837,7 +837,15 @@ class TestRunWorkflows:
             patch(f"{MODULE}.user_repository") as repo,
         ):
             repo.set_suggested_workflows = AsyncMock()
-            result = await _run_workflows(USER, "dev", True, "", "UTC", None, None)
+            result = await _run_workflows(
+                user_id=USER,
+                profession="dev",
+                has_gmail=True,
+                focus="",
+                user_timezone="UTC",
+                triage=None,
+                writing_style=None,
+            )
 
         assert result == created
         assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["workflows"] == [
@@ -851,7 +859,15 @@ class TestRunWorkflows:
             patch(f"{MODULE}.user_repository") as repo,
         ):
             repo.set_suggested_workflows = AsyncMock()
-            await _run_workflows(USER, "dev", True, "", "UTC", None, None)
+            await _run_workflows(
+                user_id=USER,
+                profession="dev",
+                has_gmail=True,
+                focus="",
+                user_timezone="UTC",
+                triage=None,
+                writing_style=None,
+            )
 
         assert repo.set_suggested_workflows.await_args.args == (USER, ["w1", "w2"])
 
@@ -864,7 +880,15 @@ class TestRunWorkflows:
             patch(f"{MODULE}.user_repository") as repo,
         ):
             repo.set_suggested_workflows = AsyncMock()
-            await _run_workflows(USER, "dev", True, "", "UTC", None, None)
+            await _run_workflows(
+                user_id=USER,
+                profession="dev",
+                has_gmail=True,
+                focus="",
+                user_timezone="UTC",
+                triage=None,
+                writing_style=None,
+            )
 
         assert repo.set_suggested_workflows.await_count == 0
 
@@ -876,13 +900,29 @@ class TestRunWorkflows:
             patch(f"{MODULE}.user_repository") as repo,
         ):
             repo.set_suggested_workflows = AsyncMock(side_effect=RuntimeError("mongo"))
-            assert await _run_workflows(USER, "dev", True, "", "UTC", None, None) == created
+            assert await _run_workflows(
+                user_id=USER,
+                profession="dev",
+                has_gmail=True,
+                focus="",
+                user_timezone="UTC",
+                triage=None,
+                writing_style=None,
+            ) == created
 
     async def test_a_creation_failure_degrades_to_an_empty_list(self, stages: Any) -> None:
         with patch(
             f"{MODULE}._create_onboarding_workflows", AsyncMock(side_effect=RuntimeError("llm"))
         ):
-            assert await _run_workflows(USER, "dev", True, "", "UTC", None, None) == []
+            assert await _run_workflows(
+                user_id=USER,
+                profession="dev",
+                has_gmail=True,
+                focus="",
+                user_timezone="UTC",
+                triage=None,
+                writing_style=None,
+            ) == []
 
         assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["workflows"] == []
 
@@ -893,28 +933,28 @@ class TestRunWorkflows:
             patch(f"{MODULE}.user_repository"),
         ):
             await _run_workflows(
-                USER,
-                "dev",
-                True,
-                "ship v2",
-                "Europe/London",
-                triage,
-                style,
-                [{"kind": "scope", "value": "a"}],
-                ["slack"],
+                user_id=USER,
+                profession="dev",
+                has_gmail=True,
+                focus="ship v2",
+                user_timezone="Europe/London",
+                triage=triage,
+                writing_style=style,
+                clarify_answers=[{"kind": "scope", "value": "a"}],
+                selected_integrations=["slack"],
             )
 
-        assert create.await_args.args == (
-            USER,
-            "dev",
-            True,
-            "ship v2",
-            "Europe/London",
-            triage,
-            style,
-            [{"kind": "scope", "value": "a"}],
-            ["slack"],
-        )
+        assert create.await_args.kwargs == {
+            "user_id": USER,
+            "profession": "dev",
+            "has_gmail": True,
+            "focus": "ship v2",
+            "user_timezone": "Europe/London",
+            "triage": triage,
+            "writing_style": style,
+            "clarify_answers": [{"kind": "scope", "value": "a"}],
+            "selected_integrations": ["slack"],
+        }
 
     @pytest.mark.parametrize(
         ("count", "expected"),
@@ -926,7 +966,15 @@ class TestRunWorkflows:
             patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=created)),
             patch(f"{MODULE}.user_repository"),
         ):
-            await _run_workflows(USER, "dev", True, "", "UTC", None, None)
+            await _run_workflows(
+                user_id=USER,
+                profession="dev",
+                has_gmail=True,
+                focus="",
+                user_timezone="UTC",
+                triage=None,
+                writing_style=None,
+            )
 
         assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["status_text"] == expected
 

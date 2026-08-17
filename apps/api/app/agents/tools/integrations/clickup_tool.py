@@ -42,7 +42,7 @@ def register_clickup_custom_tools(composio: Composio[Any, Any]) -> list[str]:  #
             if isinstance(t, dict)
             if t.get("due_date")
             and int(t["due_date"]) < today_ms
-            and text_opt_bag(dict_bag(t, "status"), "type") not in ("closed",)
+            and text_opt_bag(dict_bag(t, "status"), "type") != "closed"
         ]
         return {"tasks": tasks, "overdue_tasks": overdue}
 

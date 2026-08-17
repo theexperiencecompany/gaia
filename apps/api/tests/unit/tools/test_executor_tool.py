@@ -514,7 +514,7 @@ class TestCancelExecutor:
         monkeypatch.setattr(
             StreamManager,
             "cancel_stream",
-            AsyncMock(side_effect=lambda sid: cancelled_streams.append(sid)),
+            AsyncMock(side_effect=cancelled_streams.append),
         )
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
         await fake_redis.rpush(QUEUE_KEY, json.dumps({"task_id": "q1"}))

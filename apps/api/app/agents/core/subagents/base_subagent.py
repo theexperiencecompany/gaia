@@ -141,6 +141,7 @@ class SubAgentFactory:
 
     @staticmethod
     async def create_provider_subagent(
+        *,
         provider: str,
         name: str,
         llm: LanguageModelLike,

@@ -37,6 +37,7 @@ def default_first_message(name: str) -> str:
 
 
 async def generate_first_message(
+    *,
     user_id: str,
     name: str,
     profession: str,

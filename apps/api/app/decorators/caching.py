@@ -124,6 +124,7 @@ class Cacheable:
 
     def __init__(
         self,
+        *,
         key_pattern: str | None = None,
         key_generator: _KeyGenerator | None = None,
         key: str | None = None,

@@ -91,6 +91,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, None, object]):
 
     def __init__(
         self,
+        *,
         llm: LanguageModelLike | None = None,
         available_tools: list[BaseTool] | None = None,
         tool_registry: Mapping[str, BaseTool] | None = None,

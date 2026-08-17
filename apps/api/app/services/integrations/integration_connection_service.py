@@ -177,6 +177,7 @@ async def _handle_connect_failure(
 
 
 async def connect_mcp_integration(
+    *,
     user_id: str,
     integration_id: str,
     integration_name: str,

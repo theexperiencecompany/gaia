@@ -388,6 +388,7 @@ async def _finish_early_phase(
 
 
 async def _social_then_holo(
+    *,
     user_id: str,
     name: str,
     user_email: str | None,
@@ -522,15 +523,15 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         async def _workflows_when_ready() -> list[OnboardingWorkflowSummary]:
             triage_res, style_res = await asyncio.gather(triage_future, writing_style_future)
             return await _run_workflows(
-                user_id,
-                profession,
-                has_gmail,
-                focus,
-                user_timezone,
-                triage_res,
-                style_res,
-                clarify_answers,
-                selected_integrations,
+                user_id=user_id,
+                profession=profession,
+                has_gmail=has_gmail,
+                focus=focus,
+                user_timezone=user_timezone,
+                triage=triage_res,
+                writing_style=style_res,
+                clarify_answers=clarify_answers,
+                selected_integrations=selected_integrations,
             )
 
         workflows_future = asyncio.create_task(_workflows_when_ready())
@@ -1011,6 +1012,7 @@ async def _run_todos(
 
 
 async def _run_workflows(
+    *,
     user_id: str,
     profession: str,
     has_gmail: bool,
@@ -1030,15 +1032,15 @@ async def _run_workflows(
     t0 = time.monotonic()
     try:
         workflows = await _create_onboarding_workflows(
-            user_id,
-            profession,
-            has_gmail,
-            focus,
-            user_timezone,
-            triage,
-            writing_style,
-            clarify_answers,
-            selected_integrations,
+            user_id=user_id,
+            profession=profession,
+            has_gmail=has_gmail,
+            focus=focus,
+            user_timezone=user_timezone,
+            triage=triage,
+            writing_style=writing_style,
+            clarify_answers=clarify_answers,
+            selected_integrations=selected_integrations,
         )
     except Exception as e:
         log.error(
@@ -1384,15 +1386,15 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
         )
 
     workflows = await _run_workflows(
-        user_id,
-        profession,
-        has_gmail,
-        focus,
-        user_timezone,
-        triage,
-        writing_style,
-        clarify_answers,
-        selected_integrations,
+        user_id=user_id,
+        profession=profession,
+        has_gmail=has_gmail,
+        focus=focus,
+        user_timezone=user_timezone,
+        triage=triage,
+        writing_style=writing_style,
+        clarify_answers=clarify_answers,
+        selected_integrations=selected_integrations,
     )
 
     todos = await _fetch_onboarding_todos(user_id)
@@ -1830,6 +1832,7 @@ async def _build_one_workflow(
 
 
 async def _create_onboarding_workflows(
+    *,
     user_id: str,
     profession: str,
     has_gmail: bool,

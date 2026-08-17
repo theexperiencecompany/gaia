@@ -159,7 +159,7 @@ async def fetch_provider_user_info(user_id: str, integration_id: str) -> dict[st
                     integration_id=integration_id,
                 )
 
-    return metadata if metadata else None
+    return metadata or None
 
 
 @CacheInvalidator(key_patterns=["provider_metadata:{user_id}:{provider}"])
