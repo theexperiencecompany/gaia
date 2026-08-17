@@ -26,7 +26,7 @@ from typing import cast
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
 from app.models.stream_events import TodoProgressFrame
-from app.utils.json_helpers import dict_bag, text_bag
+from app.utils.json_helpers import dict_bag
 from app.utils.stream_publishers import (
     accumulate_todo_progress,
     publish_other_data,
@@ -112,26 +112,19 @@ async def _forward_subagent_lifecycle(
     """
     forwarded = False
     if "subagent_start" in chunk_json:
-        start = chunk_json["subagent_start"]
-        if isinstance(start, dict):
-            starts = tool_data.get("subagent_starts")
-            if not isinstance(starts, dict):
-                starts = {}
-                tool_data["subagent_starts"] = starts
-            starts[text_bag(start, "subagent_id")] = start
+        # The lifecycle emitter writes {"subagent_id": str, ...}.
+        start = cast(dict[str, object], chunk_json["subagent_start"])
+        starts = cast(dict[str, object], tool_data.setdefault("subagent_starts", {}))
+        starts[cast(str, start["subagent_id"])] = start
         await stream_manager.publish_chunk(
             stream_id,
             f"data: {json.dumps({'subagent_start': start})}\n\n",
         )
         forwarded = True
     if "subagent_end" in chunk_json:
-        end = chunk_json["subagent_end"]
-        if isinstance(end, dict):
-            ends = tool_data.get("subagent_ends")
-            if not isinstance(ends, dict):
-                ends = {}
-                tool_data["subagent_ends"] = ends
-            ends[text_bag(end, "subagent_id")] = end
+        end = cast(dict[str, object], chunk_json["subagent_end"])
+        ends = cast(dict[str, object], tool_data.setdefault("subagent_ends", {}))
+        ends[cast(str, end["subagent_id"])] = end
         await stream_manager.publish_chunk(
             stream_id,
             f"data: {json.dumps({'subagent_end': end})}\n\n",
@@ -233,12 +226,10 @@ def extract_tool_data(json_str: str) -> dict[str, object]:
     tool_data_entries: list[ToolDataEntry] = []
     if "tool_data" in normalized:
         td = normalized["tool_data"]
-        if isinstance(td, list):
-            # The wire payload was validated as JSON dicts; ToolDataEntry is the
-            # declared shape of those dicts (checked, then bridged).
-            tool_data_entries = [cast(ToolDataEntry, t) for t in td if isinstance(t, dict)]
-        elif isinstance(td, dict):
-            tool_data_entries = [cast(ToolDataEntry, td)]
+        # normalize_custom_event puts a ToolDataEntry (or a list of them) here.
+        tool_data_entries = (
+            cast(list[ToolDataEntry], td) if isinstance(td, list) else [cast(ToolDataEntry, td)]
+        )
 
     result: dict[str, object] = {}
     if tool_data_entries:

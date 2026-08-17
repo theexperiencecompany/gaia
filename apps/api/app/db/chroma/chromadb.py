@@ -168,13 +168,10 @@ async def init_chromadb_client() -> AsyncClientAPI:
     Returns:
         AsyncClientAPI: The ChromaDB async client
     """
-    # Fail loud on missing config: chromadb accepts ""/0 (and None) and only
-    # fails later with an opaque httpx URL error or an int(None) TypeError —
-    # name the misconfiguration here instead.
-    host = settings.CHROMADB_HOST
-    port = settings.CHROMADB_PORT
-    if not host or not port:
-        raise ValueError("CHROMADB_HOST and CHROMADB_PORT must be configured to use ChromaDB")
+    # Guaranteed present: the provider's ``required_keys`` gate the initializer
+    # on both settings, so it never runs with either missing.
+    host = cast(str, settings.CHROMADB_HOST)
+    port = cast(int, settings.CHROMADB_PORT)
 
     # Route telemetry to a no-op client (see NoopProductTelemetry): the bundled
     # posthog telemetry is incompatible with the installed posthog and errors on
@@ -237,13 +234,10 @@ def init_chromadb_constructor() -> ClientAPI:
     """
     log.debug(f"{LogTag.CHROMA} Initializing ChromaDB constructor client")
 
-    # Fail loud on missing config: chromadb accepts ""/0 (and None) and only
-    # fails later with an opaque httpx URL error or an int(None) TypeError —
-    # name the misconfiguration here instead.
-    host = settings.CHROMADB_HOST
-    port = settings.CHROMADB_PORT
-    if not host or not port:
-        raise ValueError("CHROMADB_HOST and CHROMADB_PORT must be configured to use ChromaDB")
+    # Guaranteed present: the provider's ``required_keys`` gate the initializer
+    # on both settings, so it never runs with either missing.
+    host = cast(str, settings.CHROMADB_HOST)
+    port = cast(int, settings.CHROMADB_PORT)
 
     # HttpClient, NOT Client: only HttpClient sets chroma_api_impl to the FastAPI
     # backend. chromadb.Client() keeps the default RustBindingsAPI with

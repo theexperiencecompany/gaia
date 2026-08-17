@@ -306,8 +306,7 @@ async def get_onboarding_system_prompt_if_applicable(
         # renders a dict repr into the prompt. (A legacy plain-string shape
         # cannot reach this line — UserDocument validation coerces the
         # subdoc, and rows that fail it degrade in the caller's except.)
-        raw_triage = onboarding.get("triage_summary")
-        triage_summary = text_bag(raw_triage, "summary") if isinstance(raw_triage, dict) else ""
+        triage_summary = text_bag(dict_bag(onboarding, "triage_summary"), "summary")
 
         onboarding_context = (
             f"Profession: {profession}" if profession else "Profession: not specified"

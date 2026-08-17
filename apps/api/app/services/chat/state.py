@@ -95,11 +95,13 @@ def _entry_list(tool_data: dict[str, object]) -> list[ToolDataEntry]:
 
     Callers mutate the returned list and expect the result to be persisted, so
     it must be the list the envelope holds — never a throwaway copy.
+
+    ``cast``, not ``isinstance`` (API CLAUDE.md item 12): the envelope is the
+    orchestrator's own accumulator (``services/chat/stream``), whose
+    ``tool_data`` slot starts as ``[]`` and is only ever appended to with
+    ``ToolDataEntry``.
     """
-    entries = tool_data.setdefault("tool_data", [])
-    if not isinstance(entries, list):
-        raise TypeError(f"tool_data envelope holds {type(entries).__name__}, not a list")
-    return cast(list[ToolDataEntry], entries)
+    return cast(list[ToolDataEntry], tool_data.setdefault("tool_data", []))
 
 
 def merge_tool_outputs(

@@ -5,11 +5,13 @@ These hooks implement response processing for raw Reddit API data,
 minimizing token usage by extracting only critical information.
 """
 
+from typing import cast
+
 from composio.types import ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
-from app.utils.json_helpers import dict_bag, list_bag
+from app.utils.json_helpers import dict_bag, list_bag, text_bag
 from shared.py.wide_events import log
 
 from .registry import register_after_hook, register_before_hook
@@ -70,12 +72,12 @@ def process_reddit_search_results(response_data: dict[str, object]) -> dict[str,
     try:
         search_results = dict_bag(response_data, "search_results")
         data = dict_bag(search_results, "data")
-        children = list_bag(data, "children")
+        children = cast(list[dict[str, object]], list_bag(data, "children"))
 
         # Process each post
         processed_posts = []
         for child in children:
-            if isinstance(child, dict) and child.get("kind") == "t3":  # t3 is a link/post
+            if child.get("kind") == "t3":  # t3 is a link/post
                 processed_post = process_reddit_post(child)
                 if processed_post:
                     processed_posts.append(processed_post)
@@ -237,13 +239,12 @@ def reddit_search_after_hook(
         # Process the raw search response
         processed_response = process_reddit_search_results(response["data"])
 
-        posts = processed_response.get("posts")
-        if writer is not None and isinstance(posts, list):
+        posts = cast(list[dict[str, object]], processed_response.get("posts"))
+        if writer is not None and posts:
             # Send search results to frontend
             reddit_search_data = []
             for post in posts:
-                if not isinstance(post, dict):
-                    continue
+                selftext = text_bag(post, "selftext")
                 reddit_search_data.append(
                     {
                         "id": post.get("id", ""),
@@ -255,9 +256,7 @@ def reddit_search_after_hook(
                         "created_utc": post.get("created_utc", 0),
                         "permalink": post.get("permalink", ""),
                         "url": post.get("url", ""),
-                        "selftext": post.get("selftext", "")[:200] + "..."
-                        if len(post.get("selftext", "")) > 200
-                        else post.get("selftext", ""),
+                        "selftext": selftext[:200] + "..." if len(selftext) > 200 else selftext,
                     }
                 )
 

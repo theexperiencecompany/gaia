@@ -21,9 +21,8 @@ def apply() -> None:
             # have no "anyOf" to flatten — delegate straight to the original,
             # which already handles them (isinstance(json_schema, bool) branch).
             if isinstance(json_schema, dict) and "anyOf" in json_schema:
-                options = json_schema["anyOf"]
-                if not isinstance(options, list):
-                    return original_json_schema_to_pydantic_type(json_schema)
+                # JSON Schema defines "anyOf" as an array of schemas.
+                options = t.cast("list[dict[str, object] | bool]", json_schema["anyOf"])
                 pydantic_types = [patched_json_schema_to_pydantic_type(o) for o in options]
                 valid_types = [pt for pt in pydantic_types if pt is not None and pt is not dict]
                 if len(valid_types) == 1:

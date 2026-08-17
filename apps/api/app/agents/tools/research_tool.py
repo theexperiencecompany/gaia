@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Annotated, TypedDict
+from typing import Annotated, TypedDict, cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -99,10 +99,8 @@ async def deep_research(
 
     # ── Phase 0: Full-result cache check ────────────────────────────────────
     cache_key = build_research_cache_key(query, scope, focus_areas, depth)
-    cached_value = await get_cache(cache_key)
-    cached_result: dict[str, object] | None = (
-        cached_value if isinstance(cached_value, dict) else None
-    )
+    # Only this tool writes this key, and it writes a ResearchResult.
+    cached_result = cast("dict[str, object] | None", await get_cache(cache_key))
     if cached_result:
         writer({"progress": "Loaded research from cache!"})
         writer({"research_data": cached_result})
@@ -180,9 +178,9 @@ async def deep_research(
 
         # ── Phase 4: Batch crawl4ai fetch + bounded fallback fetches ─────────
         writer({"progress": "Fetching sources..."})
-        urls_to_fetch = [u["url"] for u in ranked_urls]
+        urls_to_fetch = [cast(str, u["url"]) for u in ranked_urls]
         crawl4ai_contents, crawl4ai_errors = await batch_fetch_with_crawl4ai(
-            [u for u in urls_to_fetch if isinstance(u, str)],
+            urls_to_fetch,
             page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
             total_timeout_seconds=DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
             semaphore_count=DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT,

@@ -103,9 +103,7 @@ def _approval_id_of(entry: ToolDataEntry) -> str | None:
     data = entry.get("data")
     if not isinstance(data, dict):
         return None
-    approval_id = data.get("approval_id")
-    if not isinstance(approval_id, str):
-        return None
+    approval_id = cast(str | None, data.get("approval_id"))
     return approval_id
 
 
@@ -140,35 +138,23 @@ def absorb_collector_event(
             cast(ToolDataEntry, evt["tool_data"]),
         )
     if "tool_output" in evt:
-        out = evt["tool_output"]
-        if isinstance(out, dict):
-            tid = text_opt_bag(out, "tool_call_id")
-            val = text_opt_bag(out, "output")
-            if tid and val:
-                tool_outputs[tid] = val
+        out = cast(dict[str, str], evt["tool_output"])
+        tid, val = out.get("tool_call_id"), out.get("output")
+        if tid and val:
+            tool_outputs[tid] = val
     if "reasoning" in evt:
-        reasoning = evt["reasoning"]
-        acc_td = accumulated["tool_data"]
-        if isinstance(reasoning, dict) and isinstance(acc_td, list):
-            _absorb_reasoning(reasoning, cast(list[ToolDataEntry], acc_td))
+        _absorb_reasoning(
+            cast(dict[str, object], evt["reasoning"]),
+            cast(list[ToolDataEntry], accumulated["tool_data"]),
+        )
     if "subagent_start" in evt:
-        start = evt["subagent_start"]
-        if isinstance(start, dict):
-            sid = text_bag(start, "subagent_id")
-            starts = accumulated.get("subagent_starts")
-            if not isinstance(starts, dict):
-                starts = {}
-                accumulated["subagent_starts"] = starts
-            starts[sid] = start
+        start = cast(dict[str, object], evt["subagent_start"])
+        starts = cast(SubagentEvents, accumulated.setdefault("subagent_starts", {}))
+        starts[cast(str, start["subagent_id"])] = start
     if "subagent_end" in evt:
-        end = evt["subagent_end"]
-        if isinstance(end, dict):
-            sid = text_bag(end, "subagent_id")
-            ends = accumulated.get("subagent_ends")
-            if not isinstance(ends, dict):
-                ends = {}
-                accumulated["subagent_ends"] = ends
-            ends[sid] = end
+        end = cast(dict[str, object], evt["subagent_end"])
+        ends = cast(SubagentEvents, accumulated.setdefault("subagent_ends", {}))
+        ends[cast(str, end["subagent_id"])] = end
 
 
 def _absorb_reasoning(reasoning: dict[str, object], tool_data: list[ToolDataEntry]) -> None:
@@ -180,8 +166,8 @@ def _absorb_reasoning(reasoning: dict[str, object], tool_data: list[ToolDataEntr
     Consecutive deltas for the same scope merge into one block that breaks at each
     tool call (so thinking shows per-step, not as hundreds of fragments).
     """
-    content = reasoning.get("content")
-    if not isinstance(content, str) or not content:
+    content = cast(str | None, reasoning.get("content"))
+    if not content:
         return
     subagent_id = text_opt_bag(reasoning, "subagent_id")
     # `data` is a SINGLE step dict (not a list): reconstruct_subagent_groups appends
@@ -197,8 +183,7 @@ def _absorb_reasoning(reasoning: dict[str, object], tool_data: list[ToolDataEntr
         and isinstance(last_data, dict)
         and last_data.get("reasoning") is not None
     ):
-        raw_reasoning = last_data.get("reasoning")
-        last_data["reasoning"] = (raw_reasoning if isinstance(raw_reasoning, str) else "") + content
+        last_data["reasoning"] = cast(str, last_data["reasoning"]) + content
         return
     entry: ToolDataEntry = {
         "tool_name": "tool_calls_data",
@@ -233,8 +218,8 @@ def apply_outputs_to_tool_data(
         data = entry.get("data", {})
         if not isinstance(data, dict):
             continue
-        tc_id = data.get("tool_call_id")
-        if isinstance(tc_id, str) and tc_id in tool_outputs:
+        tc_id = cast(str | None, data.get("tool_call_id"))
+        if tc_id and tc_id in tool_outputs:
             data["output"] = tool_outputs[tc_id]
 
 

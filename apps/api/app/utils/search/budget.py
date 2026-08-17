@@ -7,6 +7,7 @@ self-hosted floor (SearXNG/DuckDuckGo) carries everything past that point.
 """
 
 from datetime import UTC, datetime
+from typing import cast
 
 from app.db.redis import redis_cache
 from shared.py.wide_events import log
@@ -30,7 +31,8 @@ class FreeTierBudget:
             return True
         try:
             used_raw = await redis_cache.get(self._key(provider))
-            used = int(used_raw) if isinstance(used_raw, (int, float, str)) else 0
+            # Written by redis INCR, so the counter is a string or an int.
+            used = int(cast("str | int", used_raw)) if used_raw else 0
         except Exception:
             # Fail open: a Redis hiccup or a malformed counter must not disable search.
             return True

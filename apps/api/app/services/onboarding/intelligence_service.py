@@ -22,7 +22,7 @@ from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 import time
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -361,7 +361,7 @@ async def _finalize_onboarding(
     await user_repository.set_first_message(user_id, first_message)
 
     seed_result, *_ = await asyncio.gather(_seed_conversation(user_id), *concurrent_tasks)
-    conversation_id: str | None = seed_result if isinstance(seed_result, str) else None
+    conversation_id = cast("str | None", seed_result)
 
     # Unconditional end-of-pipeline transition: guarantees the user advances even
     # if the holo leg (which also writes this) failed.

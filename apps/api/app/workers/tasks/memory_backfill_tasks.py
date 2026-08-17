@@ -15,6 +15,7 @@ run sees it as eligible and backfills it.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 from app.constants.memory import (
     MEMORY_BACKFILL_ACTIVE_DAYS,
@@ -152,11 +153,9 @@ def _conversation_to_messages(doc: dict[str, object]) -> list[dict[str, str]]:
     """Map a stored conversation's embedded messages to extraction format."""
     role_map = {"user": "user", "bot": "assistant"}
     messages: list[dict[str, str]] = []
-    for msg in list_bag(doc, "messages"):
-        if not isinstance(msg, dict):
-            continue
+    for msg in cast(list[dict[str, object]], list_bag(doc, "messages")):
         role = role_map.get(text_bag(msg, "type"))
-        content = (msg.get("response") or "").strip()
+        content = text_bag(msg, "response").strip()
         if role and content:
             messages.append({"role": role, "content": content})
     return messages

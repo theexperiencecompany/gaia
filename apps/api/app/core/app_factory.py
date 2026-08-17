@@ -73,16 +73,13 @@ def create_app() -> FastAPI:
         app, latency_lowr_buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10)
     )
     if settings.METRICS_TOKEN:
+        metrics_token = settings.METRICS_TOKEN
         _bearer = HTTPBearer(auto_error=True)
 
         def _verify_metrics_token(
             credentials: HTTPAuthorizationCredentials = Depends(_bearer),
         ) -> None:
-            # Unset token denies (matching the old TypeError-deny); a set token
-            # must match exactly.
-            if not settings.METRICS_TOKEN or not secrets.compare_digest(
-                credentials.credentials, settings.METRICS_TOKEN
-            ):
+            if not secrets.compare_digest(credentials.credentials, metrics_token):
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
         instrumentator.expose(

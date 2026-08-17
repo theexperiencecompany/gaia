@@ -152,10 +152,9 @@ class StreamManager:
         """
         # Update progress to complete
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        raw_progress = await redis_cache.get(key)
+        progress_data = cast("dict[str, object] | None", await redis_cache.get(key))
 
-        if isinstance(raw_progress, dict):
-            progress_data: dict[str, object] = raw_progress
+        if progress_data:
             progress_data["is_complete"] = True
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
             await cls._clear_active_index(progress_data)
@@ -174,8 +173,11 @@ class StreamManager:
         log is intentionally KEPT until its TTL — a client that reloads right at
         completion can still re-attach and replay the finished turn.
         """
-        progress_data = await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
-        if isinstance(progress_data, dict):
+        progress_data = cast(
+            "dict[str, object] | None",
+            await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}"),
+        )
+        if progress_data:
             await cls._clear_active_index(progress_data)
         await redis_cache.delete(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
         await redis_cache.delete(f"{STREAM_SIGNAL_PREFIX}{stream_id}")
@@ -393,8 +395,8 @@ class StreamManager:
 
         # Update progress
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
-        if isinstance(progress_data, dict):
+        progress_data = cast("dict[str, object] | None", await redis_cache.get(key))
+        if progress_data:
             progress_data["is_cancelled"] = True
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
             await cls._clear_active_index(progress_data)
@@ -437,9 +439,9 @@ class StreamManager:
             tool_data: Tool data to merge with existing
         """
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data = cast("dict[str, object] | None", await redis_cache.get(key))
 
-        if not isinstance(progress_data, dict):
+        if not progress_data:
             return
 
         if message_chunk:
@@ -487,9 +489,9 @@ class StreamManager:
             error: Error message
         """
         key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
-        progress_data = await redis_cache.get(key)
+        progress_data = cast("dict[str, object] | None", await redis_cache.get(key))
 
-        if isinstance(progress_data, dict):
+        if progress_data:
             progress_data["error"] = error
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
 

@@ -4,7 +4,7 @@ Base scheduler service for managing scheduled tasks.
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Protocol, cast
 
 from arq import ArqRedis, create_pool
 from arq.connections import RedisSettings
@@ -254,9 +254,7 @@ class BaseSchedulerService(ABC):
         """Persist the next occurrence and re-enqueue the recurring task."""
         # A task being rescheduled was loaded from the DB, so its id is set; the
         # model keeps it Optional for not-yet-persisted docs.
-        task_id = task.id
-        if task_id is None:
-            raise RuntimeError(f"cannot reschedule recurring task without an id: {task!r}")
+        task_id = cast(str, task.id)
         # Store scheduled_at as a native datetime so the `$lte` scan can match it.
         update_fields: dict[str, object] = {
             "scheduled_at": next_run,

@@ -1,6 +1,7 @@
 """Marketplace integration functions - get_all_integrations, get_integration_details."""
 
 import asyncio
+from typing import cast
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
@@ -53,7 +54,7 @@ async def get_all_integrations(
         # Hydrate tools from global store (SSoT format: {"tools": [...], "name": ..., "icon_url": ...})
         stored_data = all_mcp_tools.get(oauth_int.id, {})
         stored_tools = (
-            [t for t in list_bag(stored_data, "tools") if isinstance(t, dict)]
+            cast(list[dict[str, object]], list_bag(stored_data, "tools"))
             if isinstance(stored_data, dict)
             else stored_data
         )
@@ -63,7 +64,6 @@ async def get_all_integrations(
                     name=text_bag(t, "name"), description=text_opt_bag(t, "description")
                 )
                 for t in stored_tools
-                if isinstance(t, dict)
             ]
 
         platform_integrations.append(response)
@@ -112,7 +112,6 @@ def assemble_integration_response(
         response.tools = [
             IntegrationTool(name=text_bag(t, "name"), description=text_opt_bag(t, "description"))
             for t in stored_tools
-            if isinstance(t, dict)
         ]
 
     if creator_doc:

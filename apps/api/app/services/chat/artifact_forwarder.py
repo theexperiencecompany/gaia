@@ -25,7 +25,7 @@ import contextlib
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from redis.asyncio.client import PubSub
 
@@ -400,13 +400,10 @@ def _parse_artifact_message(
     if message.get("type") != "message":
         return None
     try:
-        payload = json.loads(text_bag(message, "data"))
+        # Every publisher on this channel is app.services.artifact_events, which
+        # only ever dumps an event object — bridged at the boundary, not assumed.
+        payload = cast(dict[str, object], json.loads(text_bag(message, "data")))
     except (ValueError, TypeError):
-        return None
-    # Valid JSON that is not an object is still not an artifact event. This runs
-    # outside _consume's per-event guard, so letting one through would take the
-    # whole forwarder down rather than dropping a single message.
-    if not isinstance(payload, dict):
         return None
     if payload.get("session_id") != conversation_id:
         return None

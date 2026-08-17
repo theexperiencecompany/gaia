@@ -7,7 +7,7 @@ for customizing tool descriptions and defaults.
 """
 
 from collections.abc import Sequence
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
@@ -370,13 +370,11 @@ def gmail_thread_after_hook(
         # Process the raw thread response
         processed_response = process_get_thread_response(response["data"])
 
-        messages = processed_response.get("messages")
-        if writer is not None and isinstance(messages, list):
+        if writer is not None and processed_response.get("messages"):
             # Transform to EmailThreadData format for frontend
             thread_messages = []
-            for msg in messages:
-                if not isinstance(msg, dict):
-                    continue
+            # thread_template builds "messages" from minimal_message_template.
+            for msg in cast("list[dict[str, object]]", processed_response["messages"]):
                 thread_messages.append(
                     {
                         "id": msg.get("id", ""),

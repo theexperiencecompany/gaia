@@ -6,6 +6,7 @@ even when the upstream call fails.
 """
 
 import asyncio
+from typing import cast
 
 import httpx
 
@@ -30,7 +31,7 @@ from app.decorators.caching import Cacheable
 from app.models.voice_models import ElevenLabsAccountVoice, ElevenLabsSharedVoice
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.utils.errors import AppError
-from app.utils.json_helpers import dict_bag, list_bag, text_bag, text_opt_bag
+from app.utils.json_helpers import dict_bag, text_bag, text_opt_bag
 from app.utils.voice_utils import (
     _language_names,
     _map_account_voice,
@@ -60,9 +61,7 @@ async def _fetch_elevenlabs_voices() -> list[ElevenLabsAccountVoice]:
         payload: dict[str, object] = resp.json()
 
     # The provider's own voice objects — untyped until trimmed into our shape here.
-    raw_voices: list[dict[str, object]] = [
-        v for v in list_bag(payload, "voices") if isinstance(v, dict)
-    ]
+    raw_voices = cast("list[dict[str, object]]", payload.get("voices", []))
     return [
         ElevenLabsAccountVoice(
             voice_id=text_bag(voice, "voice_id"),
@@ -115,9 +114,7 @@ async def _fetch_shared_voices() -> list[ElevenLabsSharedVoice]:
         resp.raise_for_status()
         payload: dict[str, object] = resp.json()
 
-    raw_voices: list[dict[str, object]] = [
-        v for v in list_bag(payload, "voices") if isinstance(v, dict)
-    ]
+    raw_voices = cast("list[dict[str, object]]", payload.get("voices", []))
     return [
         ElevenLabsSharedVoice(
             voice_id=text_bag(voice, "voice_id"),

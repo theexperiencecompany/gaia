@@ -9,6 +9,8 @@ under `tools:user:{user_id}:*`, which the integration mutators bust via
 `USER_INTEGRATION_CACHE_PATTERNS`.
 """
 
+from typing import cast
+
 from app.agents.tools.core.registry import (
     DESKTOP_TOOL_CATEGORY,
     get_tool_registry,
@@ -22,7 +24,7 @@ from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListRe
 from app.schemas.integrations.responses import IntegrationTool
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integration_tools
-from app.utils.json_helpers import list_bag, text_bag, text_opt_bag
+from app.utils.json_helpers import text_bag, text_opt_bag
 from app.utils.request_coalescing import coalesce_request
 from shared.py.wide_events import log
 
@@ -146,9 +148,8 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
         )
         icon_url = text_opt_bag(data, "icon_url")
         locked = iid not in connected
-        for tool_dict in list_bag(data, "tools"):
-            if not isinstance(tool_dict, dict):
-                continue
+        # get_all_mcp_tools builds "tools" itself, one dict per tool.
+        for tool_dict in cast(list[dict[str, object]], data.get("tools", [])):
             tool_name = text_bag(tool_dict, "name")
             if not tool_name:
                 log.warning(

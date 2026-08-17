@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Callable, Coroutine
 import functools
 import time
-from typing import ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar, cast
 
 from app.workers.metrics import TASK_DURATION_SECONDS, TASK_TOTAL
 from app.workers.queue import TRACE_ID_KWARG
@@ -39,14 +39,11 @@ def arq_task(
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         # ARQ invokes tasks as ``task(ctx, *args, **kwargs)``, so the context is
         # the first positional argument; it is always a dict at runtime.
-        ctx = args[0]
-        if not isinstance(ctx, dict):
-            raise TypeError(f"ARQ task '{task_name}' context must be a dict")
+        ctx = cast(dict[str, object], args[0])
         # Absent only when a caller (a test) invokes the task with a bare ctx;
         # omitting the keys beats emitting nulls the dashboards would have to skip.
         job_context = {key: ctx[key] for key in ("job_id", "job_try") if key in ctx}
-        trace_id_value = kwargs.pop(TRACE_ID_KWARG, None)
-        trace_id = trace_id_value if isinstance(trace_id_value, str) else None
+        trace_id = cast("str | None", kwargs.pop(TRACE_ID_KWARG, None))
         start = time.perf_counter()
         status = "success"
         try:

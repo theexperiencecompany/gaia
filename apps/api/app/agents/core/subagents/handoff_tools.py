@@ -89,7 +89,7 @@ def _extract_service_username(metadata: Mapping[str, object] | None) -> str | No
         return None
     for key in ("username", "login", "handle"):
         value = metadata.get(key)
-        if isinstance(value, str) and value:
+        if value:
             return str(value)
     return None
 
@@ -179,8 +179,8 @@ async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, object] 
 
     # Check Redis cache for custom integrations
     cache_key = f"{SUBAGENT_CACHE_PREFIX}:{search_id}"
-    cached_value = await get_cache(cache_key)
-    cached: dict[str, object] | None = cached_value if isinstance(cached_value, dict) else None
+    # Written a few lines below as the `result` dict (or {} for the negative cache).
+    cached = cast(dict[str, object] | None, await get_cache(cache_key))
     if cached is not None:
         # Return cached result (could be empty dict for negative cache)
         return cached or None
@@ -608,9 +608,8 @@ async def _run_blocking_handoff(
     # replay — recovery fast-forwards to the latest park, so an earlier gate's already
     # -applied decision must not be replayed onto it (matched out by approval_id).
     while outcome.paused:
-        if outcome.interrupt is None:
-            raise RuntimeError("paused subagent run without an interrupt payload")
-        decision = resume_for_gate(outcome.interrupt)
+        # `paused` IS `interrupt is not None`; mypy cannot narrow through the property.
+        decision = resume_for_gate(cast(dict[str, object], outcome.interrupt))
         outcome = await execute_subagent_stream(
             ctx=ctx,
             stream_writer=writer,

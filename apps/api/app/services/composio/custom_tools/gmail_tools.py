@@ -11,7 +11,7 @@ import datetime
 import json
 import math
 import re
-from typing import Any
+from typing import Any, cast
 import uuid
 
 from composio import Composio
@@ -78,9 +78,9 @@ from shared.py.wide_events import log
 
 def _user_id(auth_credentials: dict[str, object]) -> str:
     user_id = auth_credentials.get("user_id")
-    if not isinstance(user_id, str) or not user_id:
+    if not user_id:
         raise ValueError("Missing user_id in auth_credentials")
-    return user_id
+    return cast(str, user_id)
 
 
 def _gmail_proxy(
@@ -764,8 +764,7 @@ def _summarize_threads(user_id: str, request: FetchThreadInput) -> dict[str, obj
             "message_count": thread["message_count"],
             "messages": [
                 project_message_view(view, request.fields)
-                for view in list_bag(thread, "messages")
-                if isinstance(view, dict)
+                for view in cast(list[dict[str, object]], list_bag(thread, "messages"))
             ],
         }
         for thread in threads

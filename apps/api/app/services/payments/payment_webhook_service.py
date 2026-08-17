@@ -4,6 +4,7 @@ Handles webhook events and updates database state accordingly.
 """
 
 from datetime import UTC, datetime
+from typing import cast
 
 from standardwebhooks.webhooks import Webhook
 
@@ -148,9 +149,7 @@ class PaymentWebhookService:
         try:
             event_type_raw = webhook_data.get("type", "unknown")
             # Extract financial fields from the nested payload (Dodo wraps data under "data")
-            payload_data = webhook_data.get("data")
-            if not isinstance(payload_data, dict):
-                payload_data = webhook_data
+            payload_data = cast(dict[str, object], webhook_data.get("data", webhook_data))
             customer_field = payload_data.get("customer")
             customer_id = (
                 customer_field.get("customer_id")
@@ -220,11 +219,9 @@ class PaymentWebhookService:
     async def _get_user_email_from_metadata(self, metadata: dict[str, object]) -> str | None:
         """Get user email from metadata or database lookup."""
         user_id = metadata.get("user_id")
-        if user_id is not None:
-            # Coerce, don't silently skip: we set this field as str(user_id) at
-            # checkout, so a provider-side type mangle (JSON number echo) is
-            # recovered by str() — and a malformed value just yields no match.
-            user = await user_repository.get(str(user_id))
+        if user_id:
+            # Always a str: we set this field as str(user_id) at checkout.
+            user = await user_repository.get(cast(str, user_id))
             if user:
                 return user.email
         return None
@@ -360,12 +357,8 @@ class PaymentWebhookService:
                 )
             user_id = str(user.id)
         else:
-            # Coerce rather than fall back to email: the metadata id IS the
-            # identity source for this subscription. We set it as str(user_id)
-            # at checkout, so a provider-side type mangle (JSON number echo)
-            # is recovered by str() — silently re-binding the subscription to
-            # whoever owns the customer email would be a worse failure mode.
-            user_id = str(user_id)
+            # Always a str: we set this metadata field as str(user_id) at checkout.
+            user_id = cast(str, user_id)
 
         # Create subscription record
         subscription_doc = {

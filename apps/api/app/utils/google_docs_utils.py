@@ -1,6 +1,8 @@
 """Utility functions for Google Docs operations."""
 
-from app.utils.json_helpers import dict_bag, int_bag, list_bag, text_bag
+from typing import cast
+
+from app.utils.json_helpers import dict_bag, int_bag, text_bag
 
 # Mapping of Google Docs heading styles to levels
 HEADING_STYLE_MAP = {
@@ -20,20 +22,23 @@ def extract_headings_from_document(
     headings = []
 
     body = dict_bag(doc_content, "body")
-    content = [e for e in list_bag(body, "content") if isinstance(e, dict)]
+    # The Docs API owns this schema: body.content is a list of structural elements,
+    # each paragraph a nested object — bridged at the boundary, not re-checked.
+    content = cast(list[dict[str, object]], body.get("content", []))
 
     for element in content:
-        if not isinstance(element, dict) or "paragraph" not in element:
+        if "paragraph" not in element:
             continue
 
-        paragraph = element["paragraph"]
-        paragraph_style = paragraph.get("paragraphStyle", {})
+        paragraph = cast(dict[str, object], element["paragraph"])
+        paragraph_style = dict_bag(paragraph, "paragraphStyle")
         named_style = text_bag(paragraph_style, "namedStyleType")
         # Extract text content first
         text_parts = []
-        for text_element in paragraph.get("elements", []):
+        for text_element in cast(list[dict[str, object]], paragraph.get("elements", [])):
             if "textRun" in text_element:
-                text_parts.append(text_element["textRun"]["content"])
+                text_run = cast(dict[str, object], text_element["textRun"])
+                text_parts.append(text_bag(text_run, "content"))
         full_text = "".join(text_parts).strip()
 
         # Check if it's a heading (Native Style OR Markdown)

@@ -653,11 +653,7 @@ def _with_usage_handler(
     elif isinstance(existing, list):
         merged["callbacks"] = [*existing, handler]
     else:
-        if not isinstance(existing, BaseCallbackManager):
-            raise TypeError(
-                f"Unexpected 'callbacks' value in run config: {type(existing).__name__}"
-            )
-        manager = existing.copy()
+        manager = cast(BaseCallbackManager, existing).copy()
         manager.add_handler(handler, inherit=True)
         merged["callbacks"] = manager
     return cast(RunnableConfig, merged)

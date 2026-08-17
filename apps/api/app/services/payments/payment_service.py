@@ -4,7 +4,7 @@ Clean, simple, and maintainable.
 """
 
 import asyncio
-from typing import Literal
+from typing import Literal, cast
 
 from dodopayments import DodoPayments
 from dodopayments.types.checkout_session_create_params import CheckoutSessionCreateParams
@@ -71,13 +71,14 @@ class DodoPaymentService:
         cache_key = ACTIVE_PLANS_CACHE_KEY if active_only else ALL_PLANS_CACHE_KEY
 
         # Try cache first
-        cached = await redis_cache.get(cache_key)
+        # The cache slot is written below as a list of `PlanResponse` dumps.
+        cached = cast("list[dict[str, object]] | None", await redis_cache.get(cache_key))
         # An empty list is a miss, not a hit: `list_plans()` returning [] means
         # the catalog had no active plans AT THAT MOMENT, and the only
         # invalidation paths (subscription webhooks) cannot fire while it is
         # empty — so caching the emptiness would keep a newly-added plan
         # invisible for the full TTL. Only a non-empty list may short-circuit.
-        if isinstance(cached, list) and cached:
+        if cached:
             try:
                 # Try to create PlanResponse objects from cached data
                 plan_responses = []
@@ -85,7 +86,7 @@ class DodoPaymentService:
                     # Ensure dodo_product_id exists in cached data
                     if "dodo_product_id" not in plan_data:
                         plan_data["dodo_product_id"] = ""
-                    plan_responses.append(PlanResponse(**plan_data))
+                    plan_responses.append(PlanResponse.model_validate(plan_data))
                 return plan_responses
             except Exception:
                 # If cached data is incompatible, clear cache and fetch fresh
@@ -130,10 +131,6 @@ class DodoPaymentService:
         user = await user_repository.get(user_id)
         if not user:
             raise HTTPException(404, "User not found")
-        if user.email is None:
-            # Checkout creates a customer from this email; a record without one
-            # cannot complete a payment.
-            raise HTTPException(400, "User has no email address")
 
         # Check for existing active subscription
         existing = await subscription_repository.get_active_for_user(user_id)
@@ -150,7 +147,9 @@ class DodoPaymentService:
                     }
                 ],
                 "customer": {
-                    "email": user.email,
+                    # Every account is provisioned from a WorkOS profile, which
+                    # always carries an email; the model's `| None` is looseness.
+                    "email": cast(str, user.email),
                     "name": user.first_name or user.name or "User",
                 },
                 "feature_flags": {

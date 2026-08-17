@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Mapping
 import json
+from typing import cast
 
 from fastapi import UploadFile
 from langchain_core.tools import StructuredTool
@@ -595,9 +596,10 @@ async def list_drafts(
             # Transform draft messages if needed
             detailed_drafts = []
             for draft in result.drafts or []:
-                raw_message = draft.get("message")
-                if isinstance(raw_message, dict):
-                    draft["message"] = transform_gmail_message(raw_message)
+                if "message" in draft:
+                    draft["message"] = transform_gmail_message(
+                        cast(dict[str, object], draft["message"])
+                    )
                 detailed_drafts.append(draft)
 
             return GmailDraftsResponse(

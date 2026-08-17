@@ -139,19 +139,18 @@ def get_sheet_id_by_name(spreadsheet_id: str, sheet_name: str, user_id: str) -> 
     found", so swallowing them would report a missing tab for an expired token.
     """
     log.set(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
-    data = proxy_request_sync(
-        user_id=user_id,
-        toolkit=SHEETS_TOOLKIT,
-        endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}",
-        method="GET",
-        query={"fields": "sheets.properties"},
+    data = cast(
+        "dict[str, object] | None",
+        proxy_request_sync(
+            user_id=user_id,
+            toolkit=SHEETS_TOOLKIT,
+            endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}",
+            method="GET",
+            query={"fields": "sheets.properties"},
+        ),
     )
-    if not isinstance(data, dict):
-        return None
-    for sheet in list_bag(data, "sheets"):
-        if not isinstance(sheet, dict):
-            continue
-        properties = dict_bag(sheet, "properties")
+    for sheet in list_bag(data or {}, "sheets"):
+        properties = dict_bag(cast("dict[str, object]", sheet), "properties")
         if properties.get("title") == sheet_name:
             return cast(int, properties["sheetId"])
     return None
@@ -169,20 +168,18 @@ def get_column_index_by_header(
     `get_sheet_id_by_name`: `None` means "no such column", not "lookup failed".
     """
     log.set(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name, column_name=column_name)
-    data = proxy_request_sync(
-        user_id=user_id,
-        toolkit=SHEETS_TOOLKIT,
-        endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
-        method="GET",
+    data = cast(
+        "dict[str, object] | None",
+        proxy_request_sync(
+            user_id=user_id,
+            toolkit=SHEETS_TOOLKIT,
+            endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
+            method="GET",
+        ),
     )
-    if not isinstance(data, dict):
-        return None
     # An empty sheet comes back with no `values` at all, not an empty first row.
-    rows = list_bag(data, "values") or [[]]
-    first_row = rows[0]
-    if not isinstance(first_row, list):
-        return None
-    for idx, header in enumerate(first_row):
+    rows = list_bag(data or {}, "values") or [[]]
+    for idx, header in enumerate(cast("list[object]", rows[0])):
         if str(header).lower() == column_name.lower():
             return idx
     return None

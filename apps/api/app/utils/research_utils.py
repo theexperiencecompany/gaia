@@ -107,9 +107,9 @@ def rank_and_deduplicate_urls(
     url_map: dict[str, dict[str, object]] = {}
 
     for result in search_results:
-        if isinstance(result, Exception) or not isinstance(result, dict):
+        if isinstance(result, Exception) or not result:
             continue
-        for item in list_bag(result, "results"):
+        for item in list_bag(cast(dict[str, object], result), "results"):
             if not isinstance(item, dict):
                 continue
             url = text_bag(item, "url").strip()

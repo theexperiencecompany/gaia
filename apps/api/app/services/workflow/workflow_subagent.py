@@ -327,15 +327,13 @@ class WorkflowSubagentRunner:
                 if len(event) != 2:
                     continue
                 # A list `stream_mode` makes astream yield (mode, payload) tuples,
-                # which langgraph's own overload return type does not express.
-                stream_mode, payload = cast(
-                    tuple[str, dict[str, object] | tuple[BaseMessage, dict[str, object]]], event
-                )
+                # which langgraph's own overload return type does not express. The
+                # mode also discriminates the payload's shape, so each branch below
+                # bridges its own.
+                stream_mode, payload = cast(tuple[str, object], event)
 
                 if stream_mode == "updates":
-                    if not isinstance(payload, dict):
-                        continue
-                    for _node_name, state_update in payload.items():
+                    for _node_name, state_update in cast(dict[str, object], payload).items():
                         from app.utils.stream_utils import extract_tool_entries_from_update
 
                         entries = await extract_tool_entries_from_update(
@@ -348,9 +346,7 @@ class WorkflowSubagentRunner:
                     continue
 
                 if stream_mode == "messages":
-                    if not isinstance(payload, tuple):
-                        continue
-                    chunk, metadata = payload
+                    chunk, metadata = cast(tuple[BaseMessage, dict[str, object]], payload)
                     if metadata.get("silent"):
                         continue
                     if chunk and isinstance(chunk, AIMessageChunk):
@@ -370,9 +366,7 @@ class WorkflowSubagentRunner:
                     continue
 
                 if stream_mode == "custom" and stream_writer:
-                    if not isinstance(payload, dict):
-                        continue
-                    stream_writer(payload)
+                    stream_writer(cast(dict[str, object], payload))
         except GraphRecursionError:
             return complete_message, True
 

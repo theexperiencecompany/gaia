@@ -401,10 +401,9 @@ async def execute_subagent_stream(
         if len(event) != 2:
             continue
         # A list `stream_mode` makes astream yield (mode, payload) tuples, which
-        # langgraph's own overload return type does not express.
-        stream_mode, payload = cast(
-            tuple[str, dict[str, object] | tuple[BaseMessage, dict[str, object]]], event
-        )
+        # langgraph's own overload return type does not express. The payload's shape
+        # is fixed by the mode, so each branch below casts it to what that mode emits.
+        stream_mode, payload = cast(tuple[str, object], event)
 
         if stream_mode == "updates":
             # The run paused. Record the approval and KEEP DRAINING — never break.
@@ -415,16 +414,15 @@ async def execute_subagent_stream(
             # tasks re-run on resume. That is how an ungated tool call beside a gated
             # one used to execute twice. Verified in isolation — break + "exit" is the
             # only combination that loses them; either alone is fine.
-            if not isinstance(payload, dict):
-                continue
-            if LANGGRAPH_INTERRUPT_KEY in payload:
+            update_payload = cast(dict[str, object], payload)
+            if LANGGRAPH_INTERRUPT_KEY in update_payload:
                 # ONE event per paused task, so two gated calls in a message arrive as
                 # two events. Accumulate: the caller stamps re-dispatch context onto
                 # every id here, and an approval left out of that can never be applied.
-                pending_approvals.extend(interrupt_values(payload[LANGGRAPH_INTERRUPT_KEY]))
+                pending_approvals.extend(interrupt_values(update_payload[LANGGRAPH_INTERRUPT_KEY]))
                 log.info(f"{LogTag.HIL} Subagent paused on approval", agent=ctx.agent_name)
                 continue
-            for node_name, state_update in payload.items():
+            for node_name, state_update in update_payload.items():
                 # Only emit tool_data from the LLM ("agent") node.
                 # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
                 # etc.) produce "updates" events containing historical AIMessages
@@ -450,20 +448,17 @@ async def execute_subagent_stream(
             continue
 
         if stream_mode == "messages":
-            if not isinstance(payload, tuple):
-                continue
+            message_payload = cast(tuple[BaseMessage, dict[str, object]], payload)
             complete_message = _process_messages_payload(
-                payload, complete_message, stream_writer, subagent_id, ctx.stream_id or ""
+                message_payload, complete_message, stream_writer, subagent_id, ctx.stream_id or ""
             )
-            if isinstance(payload[0], ToolMessage):
+            if isinstance(message_payload[0], ToolMessage):
                 tool_ran = True
             continue
 
         if stream_mode == "custom":
-            if not isinstance(payload, dict):
-                continue
             if stream_writer:
-                stream_writer(normalize_custom_event(payload))
+                stream_writer(normalize_custom_event(cast(dict[str, object], payload)))
 
     # A pause is not a result: the narration-only heuristic below would misread a
     # half-finished run as "planning text" and tell the parent to re-issue it.

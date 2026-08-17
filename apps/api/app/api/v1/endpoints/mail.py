@@ -1,3 +1,5 @@
+from typing import cast
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.agents.llm.client import ainvoke_structured, metered_config
@@ -82,15 +84,12 @@ router = APIRouter()
 
 
 def _gmail_envelope_id(data: dict[str, object] | None) -> str | None:
-    """Read the Gmail envelope's ``id`` at the Composio boundary.
+    """The Gmail envelope's ``id``: the message id, or None when absent.
 
-    Gmail owns the schema of the envelope ``data``, so the value is checked
-    (``isinstance``), not assumed — a non-string id is treated as absent.
+    Gmail's schema declares ``id`` a string, so this is a typing bridge over the
+    open ``dict[str, object]`` envelope, not a runtime check.
     """
-    if data is None:
-        return None
-    raw_id = data.get("id")
-    return raw_id if isinstance(raw_id, str) else None
+    return cast(str | None, (data or {}).get("id"))
 
 
 @router.get("/gmail/labels", summary="List Gmail Labels")

@@ -53,7 +53,6 @@ from app.services.platform_link_service import (
     platform_requires_upgrade,
 )
 from app.utils.background_tasks import spawn_background_task
-from app.utils.errors import AppError
 from app.utils.json_helpers import text_bag, text_opt_bag
 from shared.py.wide_events import get_trace_id, log, log_context
 
@@ -302,9 +301,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     raw_history = await BotService.load_conversation_history(conversation_id, user_id)
     raw_history.append({"role": "user", "content": body.message})
     history: list[MessageDict] = [
-        MessageDict(role=text_bag(m, "role"), content=text_bag(m, "content"))
-        for m in raw_history
-        if isinstance(m, dict)
+        MessageDict(role=text_bag(m, "role"), content=text_bag(m, "content")) for m in raw_history
     ]
 
     message_request = MessageRequestWithHistory(
@@ -618,19 +615,8 @@ async def get_settings(
     user_name = text_opt_bag(user, "name") or text_opt_bag(user, "username")
     profile_image_url = text_opt_bag(user, "profile_image_url") or text_opt_bag(user, "avatar_url")
     # ``user`` comes from ``user_to_legacy_dict``, so ``created_at`` is the
-    # validated ``UserDocument`` field: a datetime, or absent. Anything else
-    # means the shape changed — say so instead of reporting a blank join date.
-    created_at = user.get("created_at")
-    if created_at is not None and not isinstance(created_at, datetime):
-        raise AppError(
-            message="User record has an unexpected created_at type",
-            why=(
-                f"user created_at is {type(created_at).__name__}, not a datetime — "
-                "user_to_legacy_dict returns the validated UserDocument field, so the "
-                "shape changed upstream"
-            ),
-            fix="Check UserDocument.created_at and the user_to_legacy_dict projection",
-        )
+    # validated ``UserDocument`` field: a datetime, or absent.
+    created_at = cast(datetime | None, user.get("created_at"))
     account_created_at = created_at.isoformat() if created_at else None
 
     log.set(outcome="success")
