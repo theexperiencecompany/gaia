@@ -198,10 +198,13 @@ class CommonSettings(BaseAppSettings):
     BROWSER_USE_LLM_PROVIDER: str = "google"
     BROWSER_USE_LLM_MODEL: str = "gemini-3.1-flash-lite"
     BROWSER_USE_LLM_API_KEY: str | None = None
-    # Browser-Use "flash mode" strips the planner/thinking fields from every step's
-    # output schema — smaller, faster generations and no internal todo.md planning
-    # step. Big latency win; trades some multi-step reasoning for speed.
-    BROWSER_USE_FLASH_MODE: bool = True
+    # Browser-Use "flash mode" strips the planner/thinking/next_goal fields from every
+    # step's output schema. Benchmarked as a negligible speed win on typical tasks (the
+    # bottleneck is page loads + per-step LLM latency, not output tokens) while it costs
+    # the model's per-step reasoning — and the recap loses meaningful step captions
+    # ("Search for X" becomes "Clicking"). Off by default; better captions + reasoning
+    # for ~no time cost.
+    BROWSER_USE_FLASH_MODE: bool = False
     # Cloudflare R2 (S3-compatible, free tier) — the fast edge store for browser step
     # screenshots. Cloudinary stays the durable store for arbitrary user files. The S3
     # endpoint is derived from the account id; the public base URL is the bucket's

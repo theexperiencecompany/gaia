@@ -103,9 +103,10 @@ export function SavedLogins() {
     <section>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-zinc-200">Saved logins</h3>
+          <h3 className="text-sm font-semibold text-zinc-200">Saved sites</h3>
           <p className="mt-0.5 text-xs text-zinc-500">
-            Encrypted session data for the sites GAIA visits.
+            Encrypted session data GAIA keeps for sites it visits, so it stays
+            signed in where you've logged in.
           </p>
         </div>
         {logins.length > 0 && (

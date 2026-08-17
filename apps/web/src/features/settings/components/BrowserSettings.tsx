@@ -35,7 +35,7 @@ export default function BrowserSettings() {
         <h2 className="text-lg font-medium text-white">Browser</h2>
         <p className="mt-1 text-sm leading-relaxed text-zinc-400">
           GAIA can browse the web on your behalf. Review what it has done and
-          manage the sites it has saved sign-in details for.
+          manage the sites it's kept session data for.
         </p>
       </div>
 
