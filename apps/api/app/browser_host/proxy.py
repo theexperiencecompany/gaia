@@ -9,7 +9,11 @@ illusion of a private browser:
   * cross-context ``attachedToTarget`` / ``targetCreated`` / ``targetInfoChanged``
     events are dropped so browser-use can never attach to another user's page,
   * ``Target.createTarget`` requests are pinned to this context so new tabs
-    stay inside it.
+    stay inside it,
+  * navigations are allowlisted to http/https, so a prompt-injected page cannot
+    steer the browser at ``file://`` or ``chrome://``,
+  * ``setDownloadBehavior`` is refused, so the deny the host set at context
+    creation cannot be undone from this socket.
 
 Everything else passes through untouched, and any traffic bumps the session's
 activity clock so the idle reaper leaves an in-use session alone.
@@ -19,6 +23,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 import websockets
 
@@ -41,6 +46,61 @@ _CONTEXT_SCOPED_EVENTS = frozenset(
 )
 
 
+# The agent follows attacker-influenced links, so navigation is allowlisted to the
+# schemes a web task legitimately needs. This has to happen here rather than in
+# Chromium: `Network.setBlockedURLs` filters subresources only and does not stop a
+# top-level navigation, so `file:///etc/passwd` and `chrome://` are refused before
+# Chromium ever sees the command.
+_ALLOWED_NAVIGATION_SCHEMES = frozenset({"http", "https"})
+_NAVIGATION_METHODS = frozenset({"Page.navigate", "Target.createTarget"})
+# Chromium's inert blank page — the one non-web URL the host itself opens.
+_BLANK_URL = "about:blank"
+# CDP's implementation-defined server-error code, used for a refused command.
+_CDP_REFUSED_CODE = -32000
+
+# Downloads are denied per browser context at creation (see chromium.py), and that
+# deny is only as strong as this socket: browser-use's DownloadsWatchdog sends
+# ``Browser.setDownloadBehavior`` with ``behavior: "allow"`` on every run, and a
+# client that passed its own ``browserContextId`` would re-enable downloads for
+# its session. Refused outright — browser-use's call site already swallows the
+# failure with a warning, so nothing legitimate breaks.
+_REFUSED_METHODS = frozenset({"Browser.setDownloadBehavior", "Page.setDownloadBehavior"})
+
+
+def _refused_navigation_url(message: dict[str, Any]) -> str | None:
+    """The URL to refuse when this command navigates outside http(s), else ``None``."""
+    if message.get("method") not in _NAVIGATION_METHODS:
+        return None
+    params = message.get("params")
+    if not isinstance(params, dict):
+        return None
+    url = params.get("url")
+    if not isinstance(url, str) or not url or url == _BLANK_URL:
+        return None
+    scheme = urlsplit(url).scheme.lower()
+    # An empty scheme is a relative/implicit URL, which Chromium resolves against
+    # the current http(s) document — only an explicit foreign scheme is a refusal.
+    if scheme and scheme not in _ALLOWED_NAVIGATION_SCHEMES:
+        return url
+    return None
+
+
+def _refusal_reason(message: dict[str, Any]) -> str | None:
+    """Why this client command must not reach Chromium, or ``None`` to forward it."""
+    method = message.get("method")
+    if method in _REFUSED_METHODS:
+        return f"{method} refused: downloads are denied for this session"
+    url = _refused_navigation_url(message)
+    if url is not None:
+        return f"navigation to {url} refused: only http and https are allowed"
+    return None
+
+
+def _refusal_reply(message_id: int | None, reason: str) -> str:
+    """A CDP error reply, so a refused command fails the caller instead of hanging it."""
+    return json.dumps({"id": message_id, "error": {"code": _CDP_REFUSED_CODE, "message": reason}})
+
+
 def _event_context_id(params: dict[str, Any]) -> str | None:
     target_info = params.get("targetInfo")
     if isinstance(target_info, dict):
@@ -49,9 +109,8 @@ def _event_context_id(params: dict[str, Any]) -> str | None:
     return None
 
 
-def _rewrite_upstream(raw: str, context_id: str, gettargets_ids: set[int]) -> str:
+def _rewrite_upstream(message: dict[str, Any], context_id: str, gettargets_ids: set[int]) -> str:
     """Client -> Chromium: pin ``createTarget`` to this context; track getTargets ids."""
-    message = json.loads(raw)
     method = message.get("method")
     if method == "Target.getTargets":
         message_id = message.get("id")
@@ -61,8 +120,7 @@ def _rewrite_upstream(raw: str, context_id: str, gettargets_ids: set[int]) -> st
         params = message.setdefault("params", {})
         if isinstance(params, dict) and not params.get("browserContextId"):
             params["browserContextId"] = context_id
-            return json.dumps(message)
-    return raw
+    return json.dumps(message)
 
 
 def _filter_downstream(raw: str, context_id: str, gettargets_ids: set[int]) -> str | None:
@@ -99,7 +157,22 @@ async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: Web
             while True:
                 raw = await client_ws.receive_text()
                 host.touch(session.session_id)
-                await chromium_ws.send(_rewrite_upstream(raw, session.context_id, gettargets_ids))
+                message = json.loads(raw)
+                reason = _refusal_reason(message)
+                if reason is not None:
+                    log.warning(
+                        f"{LogTag.BROWSER} browser cdp command refused",
+                        error_type="RefusedCdpCommand",
+                        browser={"session_id": session.session_id, "reason": reason},
+                    )
+                    refused_id = message.get("id")
+                    await client_ws.send_text(
+                        _refusal_reply(refused_id if isinstance(refused_id, int) else None, reason)
+                    )
+                    continue
+                await chromium_ws.send(
+                    _rewrite_upstream(message, session.context_id, gettargets_ids)
+                )
 
         async def chromium_to_client() -> None:
             async for raw in chromium_ws:

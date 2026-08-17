@@ -135,6 +135,8 @@ services:
       gaia-prod-shared:
         aliases:
           - gaia-backend
+      # Reaches browser-host:8930 on its isolated island (session API + CDP/live WS).
+      gaia-browser-net: {}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
@@ -209,6 +211,8 @@ services:
       gaia-prod-shared:
         aliases:
           - arq_worker
+      # The worker also drives browser tasks, so it needs the browser island too.
+      gaia-browser-net: {}
     healthcheck:
       # Reads arq's own liveness key (arq:health — refreshed from the poll loop
       # with a ~31s TTL, so it's gone within ~31s if the loop wedges). This is
@@ -1198,10 +1202,18 @@ services:
   # through the API, never exposed directly). The API + worker reach it on the
   # internal overlay at http://browser-host:8930; the port is never published.
   #
-  # SECURITY — DEPLOY REQUIREMENT: this container MUST sit behind an egress
-  # firewall that blocks RFC1918 (10/8, 172.16/12, 192.168/16) and the
-  # cloud-metadata range 169.254.0.0/16, so a prompt-injected page cannot make
-  # the browser reach internal services or the instance metadata endpoint (SSRF).
+  # SECURITY. The agent renders attacker-influenced pages, so treat this container
+  # as hostile and keep it off the data plane:
+  #   * network: it joins ONLY gaia-browser-net, never gaia-prod-shared, so Mongo/
+  #     Redis/Postgres/RabbitMQ do not resolve here at all (see networks block).
+  #   * downloads: denied per browser context at creation time
+  #     (Browser.setDownloadBehavior), so a drive-by download cannot write to disk.
+  #   * navigation: the CDP proxy allows only http/https, so file:// and chrome://
+  #     are refused before they reach Chromium.
+  # STILL A DEPLOY REQUIREMENT: an egress firewall blocking the cloud-metadata
+  # address 169.254.169.254 (and IMDSv6 fd00:ec2::254). Network isolation stops
+  # container-DNS SSRF, but only a firewall stops a raw-IP literal to metadata —
+  # Chromium's --host-resolver-rules does not (it is hostname-only).
   # Runs unprivileged (the gaia image's non-root appuser) with no published ports.
   browser-host:
     image: ghcr.io/theexperiencecompany/gaia:${GAIA_IMAGE_TAG:-latest}
@@ -1223,7 +1235,9 @@ services:
       - gaia_infisical_project_id
     shm_size: "2gb"
     networks:
-      gaia-prod-shared:
+      # Deliberately NOT on gaia-prod-shared — see the gaia-browser-net comment
+      # at the bottom of this file. The datastores must not be resolvable here.
+      gaia-browser-net:
         aliases:
           - browser-host
     healthcheck:
@@ -1311,3 +1325,12 @@ networks:
   gaia-prod-shared:
     external: true
     name: gaia-prod-shared
+  # Browser egress island. The browser renders hostile, prompt-injectable content,
+  # so it must never share an overlay with the data plane: on gaia-prod-shared a
+  # page could simply fetch http://mongo:27017 / redis:6379 / postgres:5432 by
+  # container DNS name and reach them from inside the trust boundary (SSRF). Only
+  # gaia-backend and the worker join this island, so they still resolve
+  # `browser-host:8930` while the browser resolves no datastore at all.
+  gaia-browser-net:
+    driver: overlay
+    attachable: false

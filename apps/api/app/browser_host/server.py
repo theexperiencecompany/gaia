@@ -4,7 +4,7 @@ Endpoints (all internal; the port is never published):
   * ``POST   /sessions``            create an isolated context (429 at capacity)
   * ``DELETE /sessions/{id}``       dispose it, returning its storage_state
   * ``GET    /sessions/{id}``       liveness + current page url/title
-  * ``GET    /healthz``             process liveness
+  * ``GET    /healthz``             CDP responsiveness (503 when wedged)
   * ``WS     /cdp/{id}``            the per-session CDP filtering proxy
   * ``WS     /live/{id}``           the screencast + input live view
 
@@ -16,10 +16,10 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, HTTPException, Response, WebSocket
 from fastapi.responses import JSONResponse
+from playwright.sync_api import StorageState
 from pydantic import BaseModel
 
 from app.browser_host.chromium import AtCapacityError, ChromiumHost, SessionNotFoundError
@@ -34,7 +34,7 @@ _WS_SESSION_GONE = 4404
 
 
 class CreateSessionRequest(BaseModel):
-    storage_state: dict[str, Any] | None = None
+    storage_state: StorageState | None = None
 
 
 class CreateSessionResponse(BaseModel):
@@ -45,7 +45,7 @@ class CreateSessionResponse(BaseModel):
 
 
 class DeleteSessionResponse(BaseModel):
-    storage_state: dict[str, Any]
+    storage_state: StorageState
 
 
 class SessionInfoResponse(BaseModel):
@@ -60,6 +60,7 @@ class HealthResponse(BaseModel):
     ok: bool
     sessions: int
     chromium_up: bool
+    cdp_responsive: bool
 
 
 _host = ChromiumHost()
@@ -120,8 +121,12 @@ async def get_session(session_id: str) -> SessionInfoResponse:
 
 
 @app.get("/healthz")
-async def healthz() -> HealthResponse:
-    return HealthResponse.model_validate(_host.healthz())
+async def healthz(response: Response) -> HealthResponse:
+    """Report 503 when CDP is unresponsive so the orchestrator restarts the host."""
+    health = HealthResponse.model_validate(await _host.healthz())
+    if not health.ok:
+        response.status_code = 503
+    return health
 
 
 @app.websocket("/cdp/{session_id}")

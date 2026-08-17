@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from cdp_use.client import CDPClient
 
+from app.browser_host.chromium import cdp_call
 from app.browser_host.pumps import pump_until_first_close
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -73,21 +74,23 @@ class _PageMeta:
 
 async def run_live_view(host: ChromiumHost, session: HostSession, client_ws: WebSocket) -> None:
     """Stream the session's focused page to a live-view client and apply its input."""
-    # add_viewer MUST be inside the try: it protects the session from the idle
-    # reaper (which skips viewer_count > 0), so if setup below fails before the
-    # finally, an un-removed viewer would strand the session forever — a permanent
-    # capacity leak that only a host restart clears.
+    # add_viewer sits immediately before the try so entering the block guarantees
+    # the finally: the viewer protects the session from the idle reaper (which
+    # skips viewer_count > 0), so an un-removed viewer would strand the session
+    # forever — a permanent capacity leak that only a host restart clears. Every
+    # CDP call below is bounded for the same reason: an unbounded await never
+    # reaches the finally at all.
     background: set[asyncio.Task[Any]] = set()
     cdp = CDPClient(host.root_ws_url)
     host.add_viewer(session.session_id)
     try:
         await cdp.start()
         target_id = await host.focused_target_id(session.session_id)
-        attached = await cdp.send_raw(
-            "Target.attachToTarget", {"targetId": target_id, "flatten": True}
+        attached = await cdp_call(
+            cdp, "Target.attachToTarget", {"targetId": target_id, "flatten": True}
         )
         page_session: str = attached["sessionId"]
-        await cdp.send_raw("Page.enable", {}, session_id=page_session)
+        await cdp_call(cdp, "Page.enable", {}, session_id=page_session)
 
         meta = _PageMeta()
         await _refresh_meta(cdp, target_id, meta)
@@ -125,7 +128,8 @@ def _register_frame_handler(
 ) -> None:
     def on_frame(params: dict[str, Any], _session_id: str | None) -> None:
         ack = asyncio.ensure_future(
-            cdp.send_raw(
+            cdp_call(
+                cdp,
                 "Page.screencastFrameAck",
                 {"sessionId": params["sessionId"]},
                 session_id=page_session,
@@ -158,7 +162,7 @@ def _register_nav_handler(
 
 
 async def _refresh_meta(cdp: CDPClient, target_id: str, meta: _PageMeta) -> None:
-    info = await cdp.send_raw("Target.getTargetInfo", {"targetId": target_id})
+    info = await cdp_call(cdp, "Target.getTargetInfo", {"targetId": target_id})
     target_info = info.get("targetInfo", {})
     meta.url = target_info.get("url")
     meta.title = target_info.get("title")
@@ -174,7 +178,7 @@ async def _start_screencast(
     }
     if _SCREENCAST_FORMAT == "jpeg":
         params["quality"] = _SCREENCAST_QUALITY
-    await cdp.send_raw("Page.startScreencast", params, session_id=page_session)
+    await cdp_call(cdp, "Page.startScreencast", params, session_id=page_session)
 
 
 async def _send_frames(client_ws: WebSocket, frames: asyncio.Queue[str], meta: _PageMeta) -> None:
@@ -205,13 +209,15 @@ async def _apply_input(
         host.touch(session.session_id)
         kind = message.get("type")
         if kind == "mouse":
-            await cdp.send_raw(
+            await cdp_call(
+                cdp,
                 "Input.dispatchMouseEvent",
                 _mouse_params(message),
                 session_id=page_session,
             )
         elif kind == "key":
-            await cdp.send_raw(
+            await cdp_call(
+                cdp,
                 "Input.dispatchKeyEvent",
                 _key_params(message),
                 session_id=page_session,

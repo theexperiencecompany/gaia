@@ -139,6 +139,8 @@ services:
         condition: service_healthy
     networks:
       - gaia_network
+      # Reaches browser-host:8930 on its isolated island.
+      - gaia_browser_net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
@@ -354,6 +356,8 @@ services:
         condition: service_healthy
     networks:
       - gaia_network
+      # The worker also drives browser tasks, so it needs the browser island too.
+      - gaia_browser_net
 
   # Embedding + reranking sidecar. Loads the fastembed models ONCE so the
   # backend and worker share a single ~1.8GB copy instead of each loading their
@@ -734,10 +738,14 @@ services:
   # worker reach it over the internal network at http://browser-host:8930; its
   # port is never published to the host.
   #
-  # SECURITY — DEPLOY REQUIREMENT: in production this container MUST sit behind an
-  # egress firewall that blocks RFC1918 (10/8, 172.16/12, 192.168/16) and the
-  # cloud-metadata range 169.254.0.0/16, so a prompt-injected page cannot make the
-  # browser reach internal services or the instance metadata endpoint (SSRF).
+  # SECURITY. The agent renders attacker-influenced pages, so this container is
+  # treated as hostile and kept off the data plane: it joins ONLY gaia_browser_net,
+  # never gaia_network, so mongo/redis/postgres do not resolve here at all.
+  # Downloads are denied per browser context and navigation is allowlisted to
+  # http(s) in the CDP proxy (see app/browser_host/).
+  # STILL A DEPLOY REQUIREMENT in production: an egress firewall blocking the
+  # cloud-metadata address 169.254.169.254 (and IMDSv6 fd00:ec2::254). Network
+  # isolation stops container-DNS SSRF; only a firewall stops a raw-IP literal.
   # ---------------------------------------------------------------------------
   browser-host:
     container_name: browser-host
@@ -753,9 +761,10 @@ services:
       # Chromium is installed in the gaia image at this path (see apps/api/Dockerfile).
       PLAYWRIGHT_BROWSERS_PATH: /opt/browsers
       BROWSER_HOST_PORT: "8930"
-    # No published ports — internal overlay network only.
+    # No published ports — internal network only. Deliberately NOT on gaia_network:
+    # the datastores must not be resolvable from the browser (see SECURITY above).
     networks:
-      - gaia_network
+      - gaia_browser_net
     # Chromium needs shared memory well beyond the 64MB docker default.
     shm_size: "2gb"
     restart: on-failure
@@ -784,4 +793,9 @@ volumes:
 
 networks:
   gaia_network:
+    driver: bridge
+  # Browser egress island — keeps the hostile-content browser off the data plane.
+  # Only the API and worker join it, so they still reach browser-host:8930 while
+  # the browser can resolve no datastore. See the browser-host SECURITY note.
+  gaia_browser_net:
     driver: bridge

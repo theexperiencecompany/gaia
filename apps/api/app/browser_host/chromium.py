@@ -28,15 +28,28 @@ import uuid
 from browser_use.browser.profile import CHROME_DEFAULT_ARGS
 from cdp_use.client import CDPClient
 import httpx
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import StorageState, StorageStateCookie, sync_playwright
 
 from app.config.settings import settings
 from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 from app.constants.log_tags import LogTag
+from app.services.browser.storage_state_types import OriginState
 from shared.py.wide_events import log
 
 # Extra flags on top of browser-use's CHROME_DEFAULT_ARGS: never phone home for
 # component updates, and the two flags a containerized Chromium needs to run.
+#
+# --no-sandbox is a KNOWN, DELIBERATE gap, not an oversight. Chromium's renderer
+# sandbox needs unprivileged user namespaces, which the container does not get:
+# measured against chromedp/headless-shell, running as root refuses outright
+# ("Running as root without --no-sandbox is not supported") and running as a
+# non-root uid under Docker's default seccomp fails with "No usable sandbox!".
+# Enabling it means relaxing seccomp/AppArmor or granting SYS_ADMIN — trading a
+# renderer-escape risk for a container-escape one — so the real fix is an
+# isolation boundary per session (container/microVM), not a flag flip. Until that
+# lands, the compensating controls are: no data-plane network (compose puts this
+# on a browser-only island), downloads denied per context, and an http(s)-only
+# navigation allowlist in the CDP proxy.
 _HOST_EXTRA_ARGS: tuple[str, ...] = (
     "--disable-component-update",
     "--no-sandbox",
@@ -45,6 +58,16 @@ _HOST_EXTRA_ARGS: tuple[str, ...] = (
 # Poll budget for Chromium to publish its DevTools endpoint after launch.
 _CDP_READY_TIMEOUT_SECONDS = 30.0
 _CDP_READY_POLL_SECONDS = 0.2
+# Every root-CDP round-trip is bounded. ``cdp_use.CDPClient.send_raw`` awaits its
+# response future with no timeout of its own, so a wedged renderer (a blocking
+# dialog, a hung GPU process) would otherwise freeze whoever awaits it — the
+# session lock and the reaper included — while the process stays alive and looks
+# healthy. Bounded calls turn "the host is gone for everyone" into "one request
+# failed".
+_CDP_CALL_TIMEOUT_SECONDS = 20.0
+# The health probe backs a container healthcheck, so it must give up well inside
+# the orchestrator's own timeout rather than share the generous call budget.
+_CDP_HEALTH_TIMEOUT_SECONDS = 5.0
 # How often the idle reaper wakes to sweep for dead/idle contexts.
 _REAPER_INTERVAL_SECONDS = 15.0
 
@@ -70,6 +93,36 @@ class SessionNotFoundError(KeyError):
     """Raised when a session id is not (or no longer) live on the host."""
 
 
+class CDPTimeoutError(RuntimeError):
+    """Raised when a root-CDP call outruns its budget — Chromium is wedged, not busy."""
+
+
+async def cdp_call(
+    cdp: CDPClient,
+    method: str,
+    params: dict[str, Any] | None = None,
+    *,
+    session_id: str | None = None,
+    timeout: float = _CDP_CALL_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """One CDP round-trip, bounded by ``timeout``.
+
+    The single place the host talks to Chromium, so a wedged browser always
+    raises :class:`CDPTimeoutError` instead of suspending its caller forever.
+    """
+    try:
+        return await asyncio.wait_for(
+            cdp.send_raw(method, params, session_id=session_id), timeout=timeout
+        )
+    except TimeoutError as exc:
+        log.error(
+            f"{LogTag.BROWSER} browser host CDP call timed out",
+            error_type="CDPTimeoutError",
+            browser={"cdp_method": method, "timeout_seconds": timeout},
+        )
+        raise CDPTimeoutError(method) from exc
+
+
 def _resolve_chromium_path() -> str:
     """The Chromium binary: the configured override, else Playwright's bundled one.
 
@@ -84,9 +137,9 @@ def _resolve_chromium_path() -> str:
         return p.chromium.executable_path
 
 
-def _cdp_cookie_to_storage_state(cookie: dict[str, Any]) -> dict[str, Any]:
+def _cdp_cookie_to_storage_state(cookie: dict[str, Any]) -> StorageStateCookie:
     """CDP ``Network.Cookie`` -> Playwright ``storage_state`` cookie shape."""
-    out: dict[str, Any] = {
+    out: StorageStateCookie = {
         "name": cookie["name"],
         "value": cookie["value"],
         "domain": cookie["domain"],
@@ -101,7 +154,7 @@ def _cdp_cookie_to_storage_state(cookie: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _storage_state_cookie_to_cdp(cookie: dict[str, Any]) -> dict[str, Any]:
+def _storage_state_cookie_to_cdp(cookie: StorageStateCookie) -> dict[str, Any]:
     """Playwright ``storage_state`` cookie -> CDP ``Storage.setCookies`` param."""
     out: dict[str, Any] = {
         "name": cookie["name"],
@@ -130,6 +183,9 @@ class ChromiumHost:
         self._chromium_path: str | None = None
         self._user_data_dir: str | None = None
         self._sessions: dict[str, HostSession] = {}
+        # Slots claimed by a create that has not finished its CDP work yet, so the
+        # capacity check stays correct while that work happens outside the lock.
+        self._pending_slots = 0
         self._lock = asyncio.Lock()
         self._reaper_task: asyncio.Task[None] | None = None
 
@@ -166,20 +222,27 @@ class ChromiumHost:
 
     # --- session registry ---
 
-    async def create_context(self, storage_state: dict[str, Any] | None) -> HostSession:
+    async def create_context(self, storage_state: StorageState | None) -> HostSession:
         """Create an isolated context (+ one blank page), optionally seeding cookies.
 
         Fails fast with :class:`AtCapacityError` once ``BROWSER_HOST_MAX_SESSIONS``
         contexts are live, so a caller gets a clean 429 instead of a Chromium that
         slowly runs out of memory.
         """
-        async with self._lock:
-            if len(self._sessions) >= settings.BROWSER_HOST_MAX_SESSIONS:
-                raise AtCapacityError
-            cdp = self._require_cdp()
-            ctx = await cdp.send_raw("Target.createBrowserContext", {"disposeOnDetach": False})
-            context_id: str = ctx["browserContextId"]
-            target = await cdp.send_raw(
+        await self._reserve_slot()
+        context_id: str | None = None
+        try:
+            ctx = await self._cdp_call("Target.createBrowserContext", {"disposeOnDetach": False})
+            context_id = str(ctx["browserContextId"])
+            # Refuse downloads before the context can navigate anywhere: the agent
+            # renders attacker-influenced pages, and a drive-by download is the
+            # cheapest way to get a file onto the host's disk. Scoped to this
+            # context so it can never race another session's setting.
+            await self._cdp_call(
+                "Browser.setDownloadBehavior",
+                {"behavior": "deny", "browserContextId": context_id},
+            )
+            target = await self._cdp_call(
                 "Target.createTarget",
                 {"url": "about:blank", "browserContextId": context_id},
             )
@@ -197,26 +260,52 @@ class ChromiumHost:
                 created_at=now,
                 last_activity_at=now,
             )
-            self._sessions[session_id] = session
+            async with self._lock:
+                # Hand the reservation over to the session in ONE critical section.
+                # Releasing it separately would leave a window where the create is
+                # counted twice, and a concurrent caller would get a spurious 429
+                # while a slot was actually free.
+                self._sessions[session_id] = session
+                self._pending_slots -= 1
+        except BaseException:
+            async with self._lock:
+                self._pending_slots -= 1
+            # A context that was created before the failure has no session to
+            # carry it, so the idle reaper would never find it — drop it here.
+            if context_id is not None:
+                await self._dispose_context_id(context_id)
+            raise
 
         log.set(browser={"session_id": session_id, "operation": "create"})
         log.info(f"{LogTag.BROWSER} browser context created")
         return session
 
-    async def dispose_context(self, session_id: str) -> dict[str, Any]:
+    async def dispose_context(self, session_id: str) -> StorageState:
         """Dump the context's ``storage_state``, then dispose it. Returns the dump."""
         session = self._get(session_id)
-        storage_state = await self._dump_storage_state(session)
-        async with self._lock:
-            self._sessions.pop(session_id, None)
-        if self.chromium_up:
-            cdp = self._require_cdp()
-            await cdp.send_raw(
-                "Target.disposeBrowserContext", {"browserContextId": session.context_id}
-            )
-        log.set(browser={"session_id": session_id, "operation": "dispose"})
-        log.info(f"{LogTag.BROWSER} browser context disposed")
-        return storage_state
+        dumped = False
+        try:
+            state = await self._dump_storage_state(session)
+            dumped = True
+            return state
+        finally:
+            # Release the slot and the Chromium context even when the dump fails
+            # or times out. A dump that hangs used to leave the session in the
+            # registry forever, burning one of the few slots while the caller had
+            # already timed out and moved on.
+            async with self._lock:
+                self._sessions.pop(session_id, None)
+            await self._dispose_context_id(session.context_id)
+            log.set(browser={"session_id": session_id, "operation": "dispose"})
+            if dumped:
+                log.info(f"{LogTag.BROWSER} browser context disposed")
+            else:
+                # The context is gone either way, but the user's saved login went
+                # with it — that must not read as a clean disposal.
+                log.error(
+                    f"{LogTag.BROWSER} browser context disposed without saving its storage state",
+                    error_type="StorageDumpFailed",
+                )
 
     def get(self, session_id: str) -> HostSession | None:
         """The live session, or ``None`` if unknown/disposed."""
@@ -254,19 +343,35 @@ class ChromiumHost:
             "title": title,
         }
 
-    def healthz(self) -> dict[str, Any]:
-        """Liveness snapshot for the ``/healthz`` endpoint."""
+    async def healthz(self) -> dict[str, Any]:
+        """Readiness for ``/healthz``: a bounded CDP round-trip, not just liveness.
+
+        A wedged-but-alive Chromium reports ``returncode is None`` forever, so
+        answering on process state alone keeps the healthcheck green through
+        exactly the outage it exists to catch. Probing the pipe is what lets the
+        orchestrator restart the host.
+        """
+        responsive = False
+        if self.chromium_up:
+            try:
+                await self._cdp_call("Target.getTargets", {}, timeout=_CDP_HEALTH_TIMEOUT_SECONDS)
+                responsive = True
+            except Exception as exc:
+                log.error(
+                    f"{LogTag.BROWSER} browser host CDP is unresponsive",
+                    error_type=type(exc).__name__,
+                )
         return {
-            "ok": self.chromium_up,
+            "ok": responsive,
             "sessions": len(self._sessions),
             "chromium_up": self.chromium_up,
+            "cdp_responsive": responsive,
         }
 
     async def focused_target_id(self, session_id: str) -> str:
         """The target id of the context's focused page (for the screencast attach)."""
         session = self._get(session_id)
-        cdp = self._require_cdp()
-        targets = await cdp.send_raw("Target.getTargets", {})
+        targets = await self._cdp_call("Target.getTargets", {})
         pages = [
             ti
             for ti in targets["targetInfos"]
@@ -293,12 +398,47 @@ class ChromiumHost:
             raise SessionNotFoundError(session_id)
         return session
 
-    async def _seed_cookies(self, context_id: str, storage_state: dict[str, Any]) -> None:
-        cookies = storage_state.get("cookies") or []
+    async def _cdp_call(
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        *,
+        session_id: str | None = None,
+        timeout: float = _CDP_CALL_TIMEOUT_SECONDS,
+    ) -> dict[str, Any]:
+        """A bounded round-trip on the root CDP connection."""
+        return await cdp_call(
+            self._require_cdp(), method, params, session_id=session_id, timeout=timeout
+        )
+
+    async def _reserve_slot(self) -> None:
+        """Claim one of ``BROWSER_HOST_MAX_SESSIONS`` slots before any CDP work.
+
+        The lock guards the registry only — never the CDP round-trips — so one
+        slow or wedged create cannot block every other user's.
+        """
+        async with self._lock:
+            if len(self._sessions) + self._pending_slots >= settings.BROWSER_HOST_MAX_SESSIONS:
+                raise AtCapacityError
+            self._pending_slots += 1
+
+    async def _dispose_context_id(self, context_id: str) -> None:
+        """Best-effort Chromium-side teardown; never raises into a caller's ``finally``."""
+        if not self.chromium_up:
+            return
+        try:
+            await self._cdp_call("Target.disposeBrowserContext", {"browserContextId": context_id})
+        except Exception as exc:  # teardown must not mask the caller's own failure
+            log.warning(
+                f"{LogTag.BROWSER} browser host context dispose failed",
+                error_type=type(exc).__name__,
+            )
+
+    async def _seed_cookies(self, context_id: str, storage_state: StorageState) -> None:
+        cookies: list[StorageStateCookie] = storage_state.get("cookies") or []
         if not cookies:
             return
-        cdp = self._require_cdp()
-        await cdp.send_raw(
+        await self._cdp_call(
             "Storage.setCookies",
             {
                 "browserContextId": context_id,
@@ -306,32 +446,30 @@ class ChromiumHost:
             },
         )
 
-    async def _dump_storage_state(self, session: HostSession) -> dict[str, Any]:
+    async def _dump_storage_state(self, session: HostSession) -> StorageState:
         """Cookies (whole context) + localStorage (per open page) as storage_state."""
         if not self.chromium_up:
             return {"cookies": [], "origins": []}
-        cdp = self._require_cdp()
-        raw = await cdp.send_raw("Storage.getCookies", {"browserContextId": session.context_id})
+        raw = await self._cdp_call("Storage.getCookies", {"browserContextId": session.context_id})
         cookies = [_cdp_cookie_to_storage_state(c) for c in raw["cookies"]]
         origins = await self._dump_origins(session)
         return {"cookies": cookies, "origins": origins}
 
-    async def _dump_origins(self, session: HostSession) -> list[dict[str, Any]]:
-        cdp = self._require_cdp()
-        targets = await cdp.send_raw("Target.getTargets", {})
+    async def _dump_origins(self, session: HostSession) -> list[OriginState]:
+        targets = await self._cdp_call("Target.getTargets", {})
         page_ids = [
             ti["targetId"]
             for ti in targets["targetInfos"]
             if ti["type"] == "page" and ti.get("browserContextId") == session.context_id
         ]
-        origins: list[dict[str, Any]] = []
+        origins: list[OriginState] = []
         for target_id in page_ids:
-            attached = await cdp.send_raw(
+            attached = await self._cdp_call(
                 "Target.attachToTarget", {"targetId": target_id, "flatten": True}
             )
             page_session = attached["sessionId"]
             try:
-                result = await cdp.send_raw(
+                result = await self._cdp_call(
                     "Runtime.evaluate",
                     {
                         "expression": _LOCAL_STORAGE_DUMP_JS,
@@ -340,7 +478,7 @@ class ChromiumHost:
                     session_id=page_session,
                 )
             finally:
-                await cdp.send_raw("Target.detachFromTarget", {"sessionId": page_session})
+                await self._cdp_call("Target.detachFromTarget", {"sessionId": page_session})
             value = result.get("result", {}).get("value")
             if value and value.get("origin") and value.get("localStorage"):
                 origins.append({"origin": value["origin"], "localStorage": value["localStorage"]})
@@ -349,8 +487,7 @@ class ChromiumHost:
     async def _focused_page_meta(self, session: HostSession) -> tuple[str | None, str | None]:
         if not self.chromium_up:
             return None, None
-        cdp = self._require_cdp()
-        targets = await cdp.send_raw("Target.getTargets", {})
+        targets = await self._cdp_call("Target.getTargets", {})
         for ti in targets["targetInfos"]:
             if ti["type"] == "page" and ti.get("browserContextId") == session.context_id:
                 return ti.get("url"), ti.get("title")
@@ -456,17 +593,7 @@ class ChromiumHost:
                 continue
             async with self._lock:
                 self._sessions.pop(session_id, None)
-            try:
-                cdp = self._require_cdp()
-                await cdp.send_raw(
-                    "Target.disposeBrowserContext", {"browserContextId": session.context_id}
-                )
-            except Exception as exc:
-                log.warning(
-                    f"{LogTag.BROWSER} browser host idle dispose failed",
-                    error_type=type(exc).__name__,
-                    browser={"session_id": session_id, "operation": "idle_reap"},
-                )
+            await self._dispose_context_id(session.context_id)
             log.set(browser={"session_id": session_id, "operation": "idle_reap"})
             log.info(f"{LogTag.BROWSER} browser context reaped (idle)")
 
