@@ -4,6 +4,7 @@ import pytest
 
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.services.browser import handoff as handoff_mod
+from app.services.browser.exceptions import BrowserHandoffNotOwned
 
 
 class _FakeRedisCache:
@@ -54,17 +55,19 @@ async def test_unknown_returns_none(fake_redis):
 
 async def test_ownership_enforced(fake_redis):
     await handoff_mod.create_pending_handoff("h4", "owner", "conv-h4")
-    with pytest.raises(PermissionError):
+    with pytest.raises(BrowserHandoffNotOwned):
         await handoff_mod.resolve_handoff("h4", HandoffDecision.CONTINUE, "intruder")
 
 
 async def test_await_returns_when_resolved(fake_redis):
     await handoff_mod.create_pending_handoff("h5", "user-1", "conv-h5")
     await handoff_mod.resolve_handoff("h5", HandoffDecision.CONTINUE, "user-1")
-    assert await handoff_mod.await_handoff("h5", timeout_seconds=5) == HandoffStatus.COMPLETED
+    outcome = await handoff_mod.await_handoff("h5", timeout_seconds=5)
+    assert outcome.status == HandoffStatus.COMPLETED
 
 
 async def test_await_times_out(fake_redis, monkeypatch):
     monkeypatch.setattr(handoff_mod, "HANDOFF_POLL_INTERVAL_SECONDS", 0.001)
     await handoff_mod.create_pending_handoff("h6", "user-1", "conv-h6")
-    assert await handoff_mod.await_handoff("h6", timeout_seconds=0) == HandoffStatus.TIMEOUT
+    outcome = await handoff_mod.await_handoff("h6", timeout_seconds=0)
+    assert outcome.status == HandoffStatus.TIMEOUT

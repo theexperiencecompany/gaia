@@ -66,7 +66,10 @@ async def test_happy_path_runs_and_returns_summary(monkeypatch):
         ),
     )
     out = await browser_task.ainvoke({"task": "book a table"}, config=UI_CONFIG)
-    assert out == "Booked the table."
+    # The tool returns the runner's summary wrapped in outcome-specific guidance,
+    # so the assistant confirms a real result instead of narrating the mechanics.
+    assert "Booked the table." in out
+    assert "COMPLETED" in out
     runner.run.assert_awaited_once()
 
 

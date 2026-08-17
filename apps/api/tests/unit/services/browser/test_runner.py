@@ -16,6 +16,7 @@ import browser_use
 import pytest
 
 from app.constants.browser import BrowserEventKind, BrowserSessionStatus, HandoffStatus
+from app.schemas.browser import HandoffOutcome
 from app.services.browser import runner as runner_mod
 from app.services.browser.runner import BrowserTaskRunner
 from app.services.browser.session import BrowserHostSession
@@ -110,7 +111,8 @@ def _make_runner(*, emit, request_handoff=None, is_cancelled=None, task_timeout=
         conversation_id="c1",
         llm=object(),
         emit=emit,
-        request_handoff=request_handoff or AsyncMock(return_value=HandoffStatus.COMPLETED),
+        request_handoff=request_handoff
+        or AsyncMock(return_value=HandoffOutcome(status=HandoffStatus.COMPLETED)),
         is_cancelled=is_cancelled or AsyncMock(return_value=False),
         max_steps=10,
         max_actions_per_step=5,
@@ -137,7 +139,8 @@ def _collector():
 async def test_takeover_completed_lets_agent_continue():
     _, emit = _collector()
     runner = _make_runner(
-        emit=emit, request_handoff=AsyncMock(return_value=HandoffStatus.COMPLETED)
+        emit=emit,
+        request_handoff=AsyncMock(return_value=HandoffOutcome(status=HandoffStatus.COMPLETED)),
     )
     out = await runner._handle_takeover("Enter your card", "payment")
     assert "verify" in out.lower() or "continue" in out.lower()
@@ -150,7 +153,8 @@ async def test_takeover_cancelled_stops_run():
 
     _, emit = _collector()
     runner = _make_runner(
-        emit=emit, request_handoff=AsyncMock(return_value=HandoffStatus.CANCELLED)
+        emit=emit,
+        request_handoff=AsyncMock(return_value=HandoffOutcome(status=HandoffStatus.CANCELLED)),
     )
     with pytest.raises(BrowserHandoffCancelled):
         await runner._handle_takeover("Enter your card", "payment")
@@ -164,7 +168,8 @@ async def test_takeover_bounded_by_max_handoffs():
 
     _, emit = _collector()
     runner = _make_runner(
-        emit=emit, request_handoff=AsyncMock(return_value=HandoffStatus.COMPLETED)
+        emit=emit,
+        request_handoff=AsyncMock(return_value=HandoffOutcome(status=HandoffStatus.COMPLETED)),
     )
     for _ in range(MAX_HANDOFFS_PER_TASK):
         await runner._handle_takeover("step", "none")
