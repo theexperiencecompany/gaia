@@ -332,7 +332,13 @@ class TestGetSettings:
     ):
         """``account_created_at`` is either a real join date or the not-set
         sentinel. Reporting an empty string for a shape we do not understand
-        renders a blank join date in the bot's settings card."""
+        renders a blank join date in the bot's settings card.
+
+        Asserting the explained payload, not just the 500: the base revision
+        also answered 500 here — incidentally, from an AttributeError on
+        ``str.isoformat`` swallowed by the handler's catch-all — so a status-only
+        assertion was green before the fix and proved nothing.
+        """
         mock_get_user.return_value = {
             "user_id": "uid1",
             "_id": "uid1",
@@ -341,6 +347,11 @@ class TestGetSettings:
         mock_integrations.return_value = []
         response = await client.get(f"{BOT_BASE}/settings/discord/u1")
         assert response.status_code == 500
+        body = response.json()
+        assert "created_at" in body["message"]
+        # Names the type it actually got, so the operator can see the shape drift.
+        assert "str" in body["why"]
+        assert body["fix"]
 
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",

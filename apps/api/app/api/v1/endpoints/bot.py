@@ -53,6 +53,7 @@ from app.services.platform_link_service import (
     platform_requires_upgrade,
 )
 from app.utils.background_tasks import spawn_background_task
+from app.utils.errors import AppError
 from app.utils.json_helpers import text_bag, text_opt_bag
 from shared.py.wide_events import get_trace_id, log, log_context
 
@@ -621,7 +622,16 @@ async def get_settings(
     # means the shape changed — say so instead of reporting a blank join date.
     created_at = user.get("created_at")
     if created_at is not None and not isinstance(created_at, datetime):
-        raise TypeError(f"user created_at is {type(created_at).__name__}, not a datetime")
+        raise AppError(
+            message="User record has an unexpected created_at type",
+            why=(
+                f"user created_at is {type(created_at).__name__}, not a datetime — "
+                "user_to_legacy_dict returns the validated UserDocument field, so the "
+                "shape changed upstream"
+            ),
+            fix="Check UserDocument.created_at and the user_to_legacy_dict projection",
+            status_code=500,
+        )
     account_created_at = created_at.isoformat() if created_at else None
 
     log.set(outcome="success")
