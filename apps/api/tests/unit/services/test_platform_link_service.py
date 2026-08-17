@@ -350,6 +350,8 @@ class TestUnlinkAccount:
             "+15551234567",
             "+15559999999",
         ]
+        # Scoped to this user and platform, not a bare collection scan.
+        mock_pending_repo.get_for_user.assert_awaited_once_with(sample_user_id, "imessage")
         mock_pending_repo.delete_for_user.assert_awaited_once_with(sample_user_id, "imessage")
 
     async def test_a_number_photon_would_not_release_stays_tracked_for_the_sweep(
@@ -363,17 +365,29 @@ class TestUnlinkAccount:
         )
         mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
 
-        with patch(
-            "app.services.platform_link_service.unregister_shared_user",
-            new_callable=AsyncMock,
-            side_effect=_photon_down(),
+        with (
+            patch(
+                "app.services.platform_link_service.unregister_shared_user",
+                new_callable=AsyncMock,
+                side_effect=_photon_down(),
+            ),
+            patch("app.services.platform_link_service.log") as mock_log,
         ):
             result = await PlatformLinkService.unlink_account(sample_user_id, "imessage")
 
         assert result.status == "disconnected"
         mock_pending_repo.delete_for_user.assert_not_awaited()
         mock_pending_repo.record.assert_awaited_once()
-        assert mock_pending_repo.record.await_args.kwargs["platform_user_id"] == "+15551234567"
+        recorded = mock_pending_repo.record.await_args.kwargs
+        assert recorded["user_id"] == sample_user_id
+        assert recorded["platform"] == "imessage"
+        assert recorded["platform_user_id"] == "+15551234567"
+        # Timezone-aware, or the sweep's TTL comparison silently drifts by the
+        # host's offset.
+        assert recorded["created_at"].tzinfo is UTC
+        # One stranded number fits on the record, so nothing is unrecoverable
+        # and the error must stay quiet.
+        mock_log.error.assert_not_called()
 
     async def test_a_pending_record_for_the_linked_number_is_released_once(
         self, mock_repo, mock_pending_repo, sample_user_id
@@ -420,10 +434,19 @@ class TestUnlinkAccount:
         # The pending record keeps the first, so the sweep can retry it.
         assert mock_pending_repo.record.await_args.kwargs["platform_user_id"] == "+15559999999"
         mock_pending_repo.delete_for_user.assert_not_awaited()
-        # The second is unrecoverable and must not vanish quietly — and the
-        # count is what tells an operator how many to chase.
+        # The second is unrecoverable and must not vanish quietly. Every field
+        # is asserted: an operator chasing these by hand has only this line.
         assert mock_log.error.call_count == 1
-        assert mock_log.error.call_args.kwargs["stranded"] == 1
+        assert (
+            mock_log.error.call_args.args[0]
+            == "imessage seats left registered with nothing tracking them"
+        )
+        assert mock_log.error.call_args.kwargs == {
+            "user": {"id": sample_user_id},
+            "provider": "imessage",
+            "stranded": 1,
+            "fix": "release these numbers on Photon by hand; the sweep cannot see them",
+        }
 
     async def test_a_user_with_neither_a_link_nor_a_pending_record_calls_photon_never(
         self, mock_repo, mock_pending_repo, sample_user_id
@@ -453,6 +476,32 @@ class TestUnlinkAccount:
 
         mock_pending_repo.delete_for_user.assert_awaited_once_with(sample_user_id, "discord")
         mock_pending_repo.record.assert_not_awaited()
+
+    async def test_each_release_is_attributed_to_the_user_unlinking(
+        self, mock_repo, mock_pending_repo, sample_user_id
+    ):
+        """The release helper is handed the user id, not just the number.
+
+        It is what the audit line and the failure warning are keyed on — a
+        release that cannot say whose seat it freed is unauditable.
+        """
+        mock_repo.get.return_value = _user(
+            id=sample_user_id, platform_links={"imessage": {"id": "+15551234567"}}
+        )
+        mock_repo.unlink_platform.return_value = _user(id=sample_user_id)
+        mock_pending_repo.get_for_user.return_value = _pending(sample_user_id, "+15559999999")
+
+        with patch(
+            "app.services.platform_link_service._release_imessage_number",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_release:
+            await PlatformLinkService.unlink_account(sample_user_id, "imessage")
+
+        assert sorted(call.args for call in mock_release.await_args_list) == [
+            (sample_user_id, "+15551234567"),
+            (sample_user_id, "+15559999999"),
+        ]
 
     async def test_unlink_deletes_any_pending_registration(
         self, mock_repo, mock_pending_repo, sample_user_id
