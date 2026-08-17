@@ -9,11 +9,18 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from langgraph.types import Interrupt
 import pytest
 
 from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
+from app.agents.core.background.session import (
+    RunKind,
+    create_session,
+    note_tool_output_owner,
+    teardown_session,
+)
 from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -22,6 +29,7 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
 )
 from app.agents.llm.lane import AgentRole
+from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
@@ -287,6 +295,97 @@ class TestExecuteSubagentStream:
 
         assert not result.paused
         assert result.text == "Hello world"
+
+    @pytest.mark.asyncio
+    async def test_every_pending_approval_reaches_the_caller(self):
+        """Both gated calls in one step park together; an approval dropped here
+        can never be applied — approving it raises ApprovalNotResumable."""
+
+        async def _fake_astream(*args, **kwargs):
+            yield (
+                "updates",
+                {LANGGRAPH_INTERRUPT_KEY: (Interrupt(value={"approval_id": "a-1"}),)},
+            )
+            yield (
+                "updates",
+                {LANGGRAPH_INTERRUPT_KEY: (Interrupt(value={"approval_id": "a-2"}),)},
+            )
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            result = await execute_subagent_stream(ctx)
+
+        assert result.paused
+        assert result.interrupt["approval_ids"] == ["a-1", "a-2"]
+
+    @pytest.mark.asyncio
+    async def test_a_tool_result_announced_by_another_run_is_not_re_emitted(self):
+        """The claim is scoped to THIS stream — checking a different one finds no
+        owner, fails open, and the client renders the card twice."""
+        tool_msg = ToolMessage(content="result", tool_call_id="tc-owned")
+        stream_writer = MagicMock()
+        create_session("s-claim", RunKind.LIVE)
+        note_tool_output_owner("s-claim", "tc-owned", "another_subagent")
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (tool_msg, {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph, stream_id="s-claim")
+
+        try:
+            with patch("app.agents.core.subagents.subagent_runner.log"):
+                await execute_subagent_stream(ctx, stream_writer=stream_writer, subagent_id="mine")
+        finally:
+            teardown_session("s-claim")
+
+        stream_writer.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_streamless_run_claims_under_the_empty_stream_id(self):
+        """No stream id means the empty-string session, not some other key."""
+        tool_msg = ToolMessage(content="result", tool_call_id="tc-owned")
+        stream_writer = MagicMock()
+        create_session("", RunKind.LIVE)
+        note_tool_output_owner("", "tc-owned", "another_subagent")
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (tool_msg, {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph, stream_id=None)
+
+        try:
+            with patch("app.agents.core.subagents.subagent_runner.log"):
+                await execute_subagent_stream(ctx, stream_writer=stream_writer, subagent_id="mine")
+        finally:
+            teardown_session("")
+
+        stream_writer.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_wide_event_records_how_much_context_the_subagent_ran_on(self):
+        """``subagent.messages_count`` is the field that shows a run's context size."""
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (AIMessageChunk(content="done"), {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(
+            subagent_graph=mock_graph,
+            initial_state={"messages": [HumanMessage(content="a"), HumanMessage(content="b")]},
+        )
+
+        with patch("app.agents.core.subagents.subagent_runner.log") as mock_log:
+            await execute_subagent_stream(ctx)
+
+        assert mock_log.set.call_args.kwargs["subagent"]["messages_count"] == 2
 
     @pytest.mark.asyncio
     async def test_silent_messages_skipped(self):
@@ -624,6 +723,17 @@ class TestPrepareExecutorExecution:
             "vfs_session_id": "t1",
             "recursion_limit": EXECUTOR_RECURSION_LIMIT,
         }
+
+    @pytest.mark.asyncio
+    async def test_a_run_without_a_user_id_carries_an_empty_one_not_a_placeholder(self):
+        """An anonymous run must reach build_agent_config with an empty user id —
+        any stand-in string would be indexed as a real user's memory namespace."""
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context:
+            await prepare_executor_execution(task="run tests", configurable={"thread_id": "t1"})
+
+        assert build_config.call_args.kwargs["user"]["user_id"] == ""
 
     @pytest.mark.asyncio
     async def test_the_dev_executor_model_comms_stashed_becomes_this_runs_dev_option(self):

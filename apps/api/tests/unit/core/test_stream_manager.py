@@ -235,6 +235,17 @@ class TestCleanup:
         calls = [c[0][0] for c in self.mock_delete.call_args_list]
         assert EVENTS_KEY not in calls
 
+    async def test_the_active_index_is_cleared_from_this_streams_own_progress(self) -> None:
+        """The progress read is keyed by THIS stream — a lookup by anything else
+        finds nothing and leaves the conversation pinned to a dead stream."""
+        self.mock_get.side_effect = lambda key: (
+            _progress_dict() if key == f"{STREAM_PROGRESS_PREFIX}s1" else None
+        )
+
+        await StreamManager.cleanup("s1")
+
+        assert ACTIVE_KEY in [c[0][0] for c in self.mock_delete.call_args_list]
+
     async def test_skips_active_index_when_progress_missing(self) -> None:
         self.mock_get.return_value = None
         await StreamManager.cleanup("s1")
@@ -712,6 +723,17 @@ class TestSetError:
             maxlen=STREAM_EVENTS_MAXLEN,
             approximate=True,
         )
+
+    async def test_the_error_lands_on_this_streams_own_progress(self) -> None:
+        """Keyed by THIS stream — reading any other key finds no progress and the
+        error is never persisted for the client to read back."""
+        self.mock_get.side_effect = lambda key: (
+            self.progress if key == f"{STREAM_PROGRESS_PREFIX}s1" else None
+        )
+
+        await StreamManager.set_error("s1", "kaboom")
+
+        assert self.mock_set.call_args[0][1]["error"] == "kaboom"
 
     async def test_appends_error_even_when_progress_missing(self) -> None:
         self.mock_get.return_value = None
