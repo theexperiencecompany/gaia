@@ -240,6 +240,7 @@ async def _narrate_and_deliver(
         if follow_up_actions:
             bot_message.follow_up_actions = follow_up_actions
 
+    fresh_append = not is_hil_resume
     if is_hil_resume:
         merged_tool_data = await _merge_resumed_result(run, bot_message, tool_data)
         if merged_tool_data is not None:
@@ -255,8 +256,8 @@ async def _narrate_and_deliver(
                 original_message_id=bot_message.message_id,
             )
             bot_message.message_id = str(uuid4())
-            is_hil_resume = False
-    if not is_hil_resume:
+            fresh_append = True
+    if fresh_append:
         try:
             await update_messages(
                 UpdateMessagesRequest(

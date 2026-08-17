@@ -289,8 +289,8 @@ class TestUnknownToolNames:
             run = await run_graph(graph, "do something impossible")
 
         assert run.results_from(SELECT_NODE) == [
-            "Not found, nothing bound: no_such_tool_xyz. Do not retry these names; "
-            "run retrieve_tools(query=...) to find what actually exists."
+            ("Not found, nothing bound: no_such_tool_xyz. Do not retry these names; "
+            "run retrieve_tools(query=...) to find what actually exists.")
         ]
 
     async def test_a_valid_name_alongside_an_unknown_one_still_binds(self):

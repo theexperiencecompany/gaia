@@ -434,17 +434,25 @@ class TestDeliverResultHilResume:
             patch.object(
                 rd.conversation_repository, "get_message", new_callable=AsyncMock, return_value=None
             ),
+            patch.object(rd, "log") as mock_log,
         ):
             text, message_id = await rd.deliver_result(run, "raw", "final")
 
         assert text == "voiced"
         save.assert_awaited_once()
         saved = save.await_args.args[0].messages[0]
-        # A fresh id, NOT the dead original and NOT the task id — nothing on
-        # the client reconciles against either for this fallback message.
+        # A fresh REAL id, NOT the dead original and NOT the task id — nothing
+        # on the client reconciles against either for this fallback message.
         assert saved.message_id == message_id
         assert saved.message_id != "orig-msg-1"
+        UUID(saved.message_id)
         ws.assert_awaited_once()
+        # The fallback is loud, and names the message it could not merge onto.
+        warning = next(
+            c for c in mock_log.warning.call_args_list if "appending a fresh one" in c.args[0]
+        )
+        assert warning.kwargs["original_message_id"] == "orig-msg-1"
+        assert warning.kwargs["conversation_id"] == run.conversation_id
 
 
 def _approval_card(approval_id: str, status: str, **extra) -> dict:
@@ -846,7 +854,7 @@ class TestApprovalOutcomesNoteContent:
                 rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
             ) as get_msg,
             patch.object(
-                rd, "get_approval", new=AsyncMock(side_effect=lambda aid: records.get(aid))
+                rd, "get_approval", new=AsyncMock(side_effect=records.get)
             ),
         ):
             note = await rd._approval_outcomes_note(

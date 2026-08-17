@@ -237,7 +237,7 @@ async def _run_provider_subagent_factory(
         ),
         patch(
             "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
-            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: object())),
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=object)),
         ),
     ):
         await SubAgentFactory.create_provider_subagent(
@@ -313,7 +313,7 @@ async def _spawn_graph_agent_kwargs(
         patch("app.agents.core.subagents.spawn_agent.get_tools_store", new=AsyncMock()),
         patch(
             "app.agents.core.subagents.spawn_agent.get_checkpointer_manager",
-            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: MagicMock())),
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=MagicMock)),
         ),
         patch("app.agents.core.subagents.spawn_agent.create_agent", new=_fake_create_agent),
     ):
@@ -604,7 +604,7 @@ async def test_base_subagent_wiring_uses_shared_tool_runtime_helpers():
         ),
         patch(
             "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
-            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: object())),
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=object)),
         ),
     ):
         await SubAgentFactory.create_provider_subagent(
