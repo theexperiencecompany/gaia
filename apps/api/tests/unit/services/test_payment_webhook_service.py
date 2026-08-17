@@ -142,3 +142,118 @@ class TestHandleSubscriptionActive:
 
         assert result.status == "processed"
         assert mock_create.await_args.args[0].user_id == USER_ID
+
+
+class TestProcessWebhook:
+    """The webhook envelope reads: event type echoed back, payload unwrapped.
+
+    ``process_webhook`` had no test at all, so every read the strictness pass
+    rewrote here — the ``type`` echo on both early-return paths and the nested
+    ``data`` unwrap with its non-mapping fallback — ran unasserted.
+    """
+
+    @staticmethod
+    def _service() -> PaymentWebhookService:
+        return PaymentWebhookService()
+
+    async def test_an_already_processed_webhook_echoes_its_event_type(self) -> None:
+        """The idempotent return carries the real type, not a placeholder."""
+        service = self._service()
+        payload: dict[str, object] = {"type": "subscription.active", "data": {}}
+
+        with patch.object(service, "_is_webhook_processed", AsyncMock(return_value=True)):
+            result = await service.process_webhook(payload, "wh_1")
+
+        assert result.status == "ignored"
+        assert result.event_type == "subscription.active"
+
+    async def test_an_already_processed_webhook_without_a_type_reports_unknown(self) -> None:
+        """Absent type falls back to the sentinel rather than an empty string."""
+        service = self._service()
+
+        with patch.object(service, "_is_webhook_processed", AsyncMock(return_value=True)):
+            result = await service.process_webhook({"data": {}}, "wh_2")
+
+        assert result.event_type == "unknown"
+
+    async def test_a_non_string_type_reports_unknown(self) -> None:
+        """A provider-side type mangle must not propagate a non-string through."""
+        service = self._service()
+
+        with patch.object(service, "_is_webhook_processed", AsyncMock(return_value=True)):
+            result = await service.process_webhook({"type": 42, "data": {}}, "wh_3")
+
+        assert result.event_type == "unknown"
+
+    async def test_a_processing_failure_still_echoes_the_event_type(self) -> None:
+        """The failure path reports which event failed — the other text_bag read."""
+        service = self._service()
+        payload: dict[str, object] = {"type": "subscription.active", "data": {}}
+
+        with patch.object(
+            service, "_is_webhook_processed", AsyncMock(side_effect=RuntimeError("db down"))
+        ):
+            result = await service.process_webhook(payload, "wh_4")
+
+        assert result.status == "failed"
+        assert result.event_type == "subscription.active"
+        assert "db down" in result.message
+
+    async def test_financial_fields_are_read_from_the_nested_data_envelope(self) -> None:
+        """Dodo wraps the payload under ``data``; the customer id comes from there."""
+        service = self._service()
+        payload: dict[str, object] = {
+            "type": "subscription.active",
+            "data": {"customer": {"customer_id": "cus_nested"}, "currency": "eur"},
+        }
+        captured: dict[str, object] = {}
+
+        with (
+            patch.object(service, "_is_webhook_processed", AsyncMock(return_value=True)),
+            patch(
+                "app.services.payments.payment_webhook_service.log.set",
+                side_effect=lambda **kw: captured.update(kw),
+            ),
+        ):
+            await service.process_webhook(payload, "wh_5")
+
+        assert captured["payment"]["customer_id"] == "cus_nested"
+        assert captured["payment"]["currency"] == "eur"
+
+    async def test_a_payload_with_no_data_envelope_is_read_flat(self) -> None:
+        """Without a ``data`` object the top level IS the payload — not an empty one."""
+        service = self._service()
+        payload: dict[str, object] = {"type": "subscription.active", "customer_id": "cus_flat"}
+        captured: dict[str, object] = {}
+
+        with (
+            patch.object(service, "_is_webhook_processed", AsyncMock(return_value=True)),
+            patch(
+                "app.services.payments.payment_webhook_service.log.set",
+                side_effect=lambda **kw: captured.update(kw),
+            ),
+        ):
+            await service.process_webhook(payload, "wh_6")
+
+        assert captured["payment"]["customer_id"] == "cus_flat"
+
+    async def test_a_non_mapping_data_envelope_falls_back_to_the_top_level(self) -> None:
+        """``data`` present but not an object must not be indexed as one."""
+        service = self._service()
+        payload: dict[str, object] = {
+            "type": "subscription.active",
+            "data": "not-an-object",
+            "customer_id": "cus_fallback",
+        }
+        captured: dict[str, object] = {}
+
+        with (
+            patch.object(service, "_is_webhook_processed", AsyncMock(return_value=True)),
+            patch(
+                "app.services.payments.payment_webhook_service.log.set",
+                side_effect=lambda **kw: captured.update(kw),
+            ),
+        ):
+            await service.process_webhook(payload, "wh_7")
+
+        assert captured["payment"]["customer_id"] == "cus_fallback"
