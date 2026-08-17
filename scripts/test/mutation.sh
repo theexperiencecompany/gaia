@@ -154,8 +154,7 @@ replacement = (
     # import chain passes through one. -1 skips the walk, so those modules
     # reach a real verdict instead of the exit-0 skip below (hits are recorded
     # at any depth; verdicts are unchanged, only the covered set is wider).
-    f'debug = true
-'
+    f'debug = true\n'
     f'pytest_add_cli_args_test_selection = [{selection}]\n'
     f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
     f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300\']\n'
