@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { ScrollShadow } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
 import { Delete02Icon, GlobalIcon } from "@icons";
 import Image from "next/image";
@@ -147,16 +148,18 @@ export function SavedLogins() {
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          {logins.map((login) => (
-            <LoginRow
-              key={login.domain}
-              login={login}
-              onForget={forgetLogin}
-              isForgetting={forgettingDomain === login.domain}
-            />
-          ))}
-        </div>
+        <ScrollShadow className="max-h-[540px]">
+          <div className="flex flex-col gap-2 pr-1">
+            {logins.map((login) => (
+              <LoginRow
+                key={login.domain}
+                login={login}
+                onForget={forgetLogin}
+                isForgetting={forgettingDomain === login.domain}
+              />
+            ))}
+          </div>
+        </ScrollShadow>
       )}
 
       <ConfirmationDialog {...confirmationProps} />

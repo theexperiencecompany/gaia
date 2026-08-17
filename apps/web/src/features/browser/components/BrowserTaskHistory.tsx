@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Modal, ModalContent } from "@heroui/modal";
+import { ScrollShadow } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
 import { AiWebBrowsingIcon, PlayIcon } from "@icons";
 import Image from "next/image";
@@ -100,6 +101,7 @@ function TaskRow({ task }: { task: BrowserTask }) {
           <ModalContent>
             <RecapSlideshow
               title={task.task}
+              enableKeyboard
               shots={task.frames.map((f, i) => ({
                 index: i + 1,
                 url: f.url,
@@ -145,11 +147,13 @@ export function BrowserTaskHistory() {
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          {tasks.map((task) => (
-            <TaskRow key={task.id} task={task} />
-          ))}
-        </div>
+        <ScrollShadow className="max-h-[540px]">
+          <div className="flex flex-col gap-2 pr-1">
+            {tasks.map((task) => (
+              <TaskRow key={task.id} task={task} />
+            ))}
+          </div>
+        </ScrollShadow>
       )}
     </section>
   );

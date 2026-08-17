@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { FullScreenIcon } from "@icons";
 import Image from "next/image";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "@/components/shared/icons";
 import { useImageDialog } from "@/stores/uiStore";
 
@@ -22,9 +22,12 @@ export interface RecapShot {
 export function RecapSlideshow({
   shots,
   title,
+  enableKeyboard = false,
 }: {
   shots: RecapShot[];
   title?: string;
+  /** When true (e.g. the full-screen modal), left/right arrow keys navigate. */
+  enableKeyboard?: boolean;
 }) {
   const { openDialog } = useImageDialog();
   const [idx, setIdx] = useState(0);
@@ -33,6 +36,21 @@ export function RecapSlideshow({
     (i: number) => setIdx(Math.max(0, Math.min(count - 1, i))),
     [count],
   );
+
+  useEffect(() => {
+    if (!enableKeyboard) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") {
+        setIdx((i) => Math.min(count - 1, i + 1));
+        e.preventDefault();
+      } else if (e.key === "ArrowLeft") {
+        setIdx((i) => Math.max(0, i - 1));
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [enableKeyboard, count]);
 
   if (count === 0) return null;
   const safeIdx = Math.min(idx, count - 1);
