@@ -33,7 +33,7 @@ from app.models.usage_models import (
     UsagePeriod,
     UserUsageSnapshot,
 )
-from app.services.limit_upsell import schedule_limit_upsell
+from app.services.limit_upsell import LimitHitOrigin, schedule_limit_upsell
 from app.services.usage_activity import counts_as_activity, record_activity
 from app.services.usage_service import UsageService
 from app.utils.background_tasks import spawn_background_task
@@ -124,6 +124,7 @@ class TieredRateLimiter:
         user_id: str,
         feature_key: str,
         user_plan: PlanType,
+        origin: LimitHitOrigin = LimitHitOrigin.INTERACTIVE,
     ) -> dict[str, UsageInfo]:
         """Enforce all limits for a feature, then atomically count this use.
 
@@ -131,7 +132,9 @@ class TieredRateLimiter:
         the user's plan has no access to the feature at all. Every exceed for
         a FREE user also fires the upsell side effects (analytics event +
         weekly-deduped email) — one seam covering all decorated endpoints and
-        agent tools.
+        agent tools. ``origin`` selects the email: interactive surfaces get the
+        upsell, background runs (worker-executed workflows) get the
+        workflows-paused note.
         """
         # Checked here rather than inside `_check_and_increment` so the bypass
         # also skips the upsell side effects: a dev run must not fire analytics
@@ -141,7 +144,7 @@ class TieredRateLimiter:
         try:
             return await self._check_and_increment(user_id, feature_key, user_plan)
         except RateLimitExceededException:
-            schedule_limit_upsell(user_id, feature_key, user_plan)
+            schedule_limit_upsell(user_id, feature_key, user_plan, origin)
             raise
 
     async def _check_and_increment(

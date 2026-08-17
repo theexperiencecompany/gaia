@@ -28,7 +28,7 @@ from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.models.user_models import AuthenticatedUser
 from app.services.cost_budget import get_cost, is_daily_budget_exhausted
-from app.services.limit_upsell import schedule_limit_upsell
+from app.services.limit_upsell import LimitHitOrigin, schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -249,7 +249,9 @@ def with_rate_limiting(
     return rate_limit_decorator
 
 
-async def enforce_tiered_limit(user_id: str, feature_key: str) -> None:
+async def enforce_tiered_limit(
+    user_id: str, feature_key: str, *, origin: LimitHitOrigin = LimitHitOrigin.INTERACTIVE
+) -> None:
     """Charge ``feature_key`` against ``user_id``'s plan quota.
 
     The imperative half of :func:`tiered_rate_limit`, extracted so an entry point
@@ -264,11 +266,14 @@ async def enforce_tiered_limit(user_id: str, feature_key: str) -> None:
         user_id=user_id,
         feature_key=feature_key,
         user_plan=subscription.plan_type or PlanType.FREE,
+        origin=origin,
     )
 
 
 def tiered_rate_limit(
     feature_key: str,
+    *,
+    origin: LimitHitOrigin = LimitHitOrigin.INTERACTIVE,
 ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Rate limiting decorator for API endpoints."""
 
@@ -299,7 +304,7 @@ def tiered_rate_limit(
                 raise HTTPException(status_code=401, detail="User ID not found")
 
             # Check rate limits before executing function
-            await enforce_tiered_limit(user_id, feature_key)
+            await enforce_tiered_limit(user_id, feature_key, origin=origin)
 
             # Execute the original function
             result = await func(*args, **kwargs)
@@ -348,7 +353,9 @@ async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageI
     )
 
 
-async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
+async def enforce_daily_cost_budget(
+    user_id: str, feature_key: str, *, origin: LimitHitOrigin = LimitHitOrigin.INTERACTIVE
+) -> None:
     """Block when the user's rolling daily USD cost budget is exhausted.
 
     The message-count limiter caps HOW MANY requests a user makes; this caps
@@ -373,7 +380,7 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
             spent_usd=round(spent, 6),
             feature_key=feature_key,
         )
-        schedule_limit_upsell(user_id, feature_key, plan_type)
+        schedule_limit_upsell(user_id, feature_key, plan_type, origin)
         raise CostBudgetExceededException(
             feature=feature_key,
             plan_required=PlanType.PRO.value if plan_type == PlanType.FREE else None,
