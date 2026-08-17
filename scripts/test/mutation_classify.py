@@ -27,28 +27,22 @@ mutant_file = f"{workdir}/mutants/{module.replace('.', '/')}.py"
 src = Path(mutant_file).read_text()
 # The mutants dict is per function, named without the mutant id:
 # mutants_<base>__mutmut['_mutmut_orig'] = <base>__mutmut_orig
-#
-# For a METHOD the value is qualified by its class —
-# ``= ArtifactWatcher.xǁArtifactWatcherǁstart__mutmut_orig`` — so the capture
-# has to span the dot. A bare ``\w+`` stops at it and grabs the class name
-# alone, which then resolves to no function and exits with an empty verdict:
-# every surviving mutant inside a class method read as CLASSIFIER FAILED.
 base = re.sub(r"__mutmut_\d+$", "", mutant_name)
 dict_name = f"mutants_{base}__mutmut"
+# `[\w.]+`, not `\w+`: a METHOD's original is referenced through its class —
+# `mutants_xǁCǁm__mutmut['_mutmut_orig'] = C.xǁCǁm__mutmut_orig`. Stopping at
+# the dot captured just the class name, which then resolved to no function and
+# failed the lane closed on every class-method survivor.
 orig_match = re.search(
     rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*([\w.]+)", src, re.MULTILINE
 )
 if not orig_match:
     sys.exit(1)
-# Keep only the final segment: the capture spans the class prefix so it is not
-# truncated at the dot, but every lookup below wants the bare mutmut function
-# name (`xǁArtifactWatcherǁstart__mutmut_orig`), which already encodes the
-# class between its ǁ separators.
 orig_name = orig_match.group(1).rsplit(".", 1)[-1]
-# Indent-tolerant: a METHOD's variants sit inside their class, so anchoring at
-# column 0 found none of them and `_body` returned [] for both the original and
-# the mutant — comparing equal and reporting every class-method survivor as
-# EQUIV, which is the silence-read-as-success this gate exists to stop.
+# Leading indentation matters: a method's `def` is indented, so anchoring the
+# split at column 0 never split them out. `_body` then returned [] for BOTH
+# sides of every method comparison, they compared equal, and the mutant was
+# reported EQUIV — a real survivor silently passing the gate.
 blocks = re.split(r"^[ \t]*(?:async )?def ", src, flags=re.MULTILINE)
 
 

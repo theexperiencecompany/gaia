@@ -182,3 +182,83 @@ def _patched_unload(modules: dict) -> None:
 
 
 _code_coverage._unload_modules_not_in = _patched_unload
+
+
+# mutmut's stack walk resolves every caller frame with
+# `Path(filename).resolve(strict=True)` to decide whether the frame is user
+# code. CPython synthesises frames whose `co_filename` is a bracketed
+# pseudo-path — `<frozen importlib._bootstrap>` for the import machinery,
+# `<string>` for exec'd code — and strict resolution raises FileNotFoundError
+# on those. A module that calls one of its own mutated functions at IMPORT
+# time is entered from exactly such a frame: `app/decorators/rate_limiting.py`
+# is imported by `bash_tool.py`, which applies `@with_rate_limiting(...)` at
+# module level. The stats phase then dies before a single test runs and the
+# whole module goes unmeasured.
+#
+# A pseudo-frame is by definition not user code, and user-code frames are the
+# only thing the walk counts — so skipping it is the semantics mutmut already
+# wants, minus the crash. The body below mirrors mutmut 3.7.0's
+# `record_trampoline_hit` exactly (pinned in uv.lock) with only that guard
+# added; `trampoline.py` binds the name at import, so both bindings are
+# rebound.
+import inspect as _inspect
+from pathlib import Path as _Path
+
+import mutmut as _mutmut
+from mutmut import __main__ as _mutmut_main
+from mutmut.configuration import Config as _Config
+from mutmut.mutation import trampoline as _trampoline_mod
+from mutmut.state import state as _state
+
+# filename -> "is this frame inside a mutated source path". Keyed on the raw
+# co_filename, so it also short-circuits the resolve() itself.
+_USER_CODE_CACHE: dict[str, bool] = {}
+
+
+def _patched_record_trampoline_hit(name: str, caller: str | None = None) -> None:
+    assert not name.startswith("src."), (
+        "Failed trampoline hit. Module name starts with `src.`, which is invalid"
+    )
+
+    mutated_source_paths = _Config.get().resolved_mutated_source_paths
+
+    if _Config.get().max_stack_depth != -1:
+        f = _inspect.currentframe()
+        c = _Config.get().max_stack_depth
+        while c and f:
+            filename = f.f_code.co_filename
+            f = f.f_back
+            if "pytest" in filename or "hammett" in filename or "unittest" in filename:
+                break
+            # --- patched guard: synthetic frames are not user code ---
+            if filename.startswith("<") and filename.endswith(">"):
+                continue
+            # --- patched: memoise the answer per filename ---
+            # Upstream calls Path(filename).resolve(strict=True) here, which is
+            # a SYSCALL, and this runs for every stack frame of every
+            # trampolined call — millions of times in a test that exercises a
+            # mutated function in a loop. The set of filenames is tiny and
+            # mutated_source_paths is fixed for the run, so the whole question
+            # is answerable once per file. On a laptop with a warm page cache
+            # the difference hides; on a CI runner it is the difference between
+            # app/decorators/rate_limiting.py taking 18 seconds and being
+            # killed at a 35-minute cap.
+            is_user_code = _USER_CODE_CACHE.get(filename)
+            if is_user_code is None:
+                file_path = _Path(filename).resolve(strict=True)
+                is_user_code = any(path in file_path.parents for path in mutated_source_paths)
+                _USER_CODE_CACHE[filename] = is_user_code
+            if is_user_code:
+                # only include stack frames of user-code; exclude mutmut and 3rd library stack frames
+                c -= 1
+
+        if not c:
+            return
+
+    _mutmut._stats.add(name)
+    if caller is not None and _Config.get().track_dependencies:
+        _state().function_dependencies[name].add(caller)
+
+
+_mutmut_main.record_trampoline_hit = _patched_record_trampoline_hit
+_trampoline_mod.record_trampoline_hit = _patched_record_trampoline_hit

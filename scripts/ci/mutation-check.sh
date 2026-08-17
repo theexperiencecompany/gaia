@@ -5,8 +5,11 @@
 # anywhere, zero mutants (tests do not cover the changed lines), any
 # surviving mutant, or the lane budget being exceeded.
 #
-# Used by the test-mutation lane (code-quality.yml) — the workflow step is
-# just `bash scripts/ci/mutation-check.sh`; all logic lives here.
+# LOCAL entry point: runs the whole changed-module set in one process, which
+# is what you want on a laptop. CI does not use this — it shards the same
+# matrix one module per runner (scripts/ci/mutation-plan.sh + the test-mutation
+# job in code-quality.yml), because in a single process the slowest modules
+# hold every worker and the rest never start.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -61,6 +64,15 @@ fi
 # 4. Run one mutation check per module with bounded parallelism. A plain
 #    read loop (not xargs) so a module with an empty changed-lines JSON
 #    (`[]`) can never shift the fields between invocations.
+#
+#    Four workers. This was briefly two, because on the 2-core runner four
+#    starved each other badly enough that covering tests stretched past
+#    mutmut's per-mutant timeout (⏰) and modules failed as "incomplete". That
+#    was the slow tiers in the per-mutant loop — an e2e file re-run once per
+#    mutant — and with the selection scoped to unit tests (mutation-matrix.py,
+#    with_unit_mirror) each worker is fast again. Halving the workers to treat
+#    that symptom only moved the cost to wall clock: the lane then ran out of
+#    its 60-minute budget partway through a wide diff.
 FAILED=0
 while read -r module testfiles ranges; do
   bash scripts/test/mutation.sh "$module" "$testfiles" "${ranges:-[]}" &

@@ -122,7 +122,38 @@ fi
 # "cannot load module more than once per process" when the same file is
 # imported under two paths (observed in CI for app.db.chroma).
 WORKDIR="$(pwd)/.mutation-$$"
-trap '[ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"' EXIT
+
+# Phase tracking.
+#
+# The lane bounds this script with `timeout` (see the test-mutation step in
+# code-quality.yml) rather than an in-script watchdog: bash does not run a trap
+# while it is waiting on a foreground child, so a signal sent to this script
+# would queue behind whatever is stuck. What this side owes is a breadcrumb —
+# a killed run's last printed phase is what turns "it hung" into "it hung in
+# <phase>".
+PHASE_FILE="$(mktemp)"
+START_EPOCH="$(date +%s)"
+_phase() {
+  printf '%s' "$1" > "$PHASE_FILE"
+  echo "[phase +$(( $(date +%s) - START_EPOCH ))s] $1" >&2
+}
+# pkill -P first: killing the subshell alone orphans its `sleep`, which keeps
+# the inherited stdout/stderr open and hangs any pipeline reading this script
+# long after it has finished.
+# Retire the watchdog by removing its sentinel and waiting for it to notice —
+# no signals, so bash never prints a "Terminated: sleep" notice into the lane
+# log, and nothing can outlive this script holding its stdout open.
+_cleanup() {
+  rm -f "$PHASE_FILE"
+  [ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"
+}
+trap _cleanup EXIT
+# EXIT alone does not run on a signal, so a killed run would leave its scratch
+# copy of app/ + tests/ on disk. `exit` re-enters the EXIT trap, so cleanup
+# happens exactly once either way. (A SIGKILL from `timeout` skips both, which
+# is what .mutation-*/ in apps/api/.gitignore covers.)
+trap 'exit 143' TERM INT
+_phase "copy workdir"
 mkdir -p "$WORKDIR"
 cp -r app "$WORKDIR/app"
 cp -r tests "$WORKDIR/tests"
@@ -132,13 +163,25 @@ cd "$WORKDIR"
 
 # mutmut 3.x scopes mutation and test selection only via config — point both
 # at the module + its test file(s) for this run (the workdir copy is disposable).
-python3 - "$MODULE" "${TESTFILES[@]}" << 'EOF'
+# Per-mutant test timeout. NOT the suite's 300s: a mutant that induces an
+# infinite loop or a deadlock costs this much wall-clock EACH, and enough of
+# them exhaust the per-module budget below and take the whole module down with
+# them as "not checked" — which fails the lane for a reason that is not a test
+# weakness (measured: app/agents/tools/core/retrieval.py reached 186 of 348
+# mutants in CI with 33 timeouts, and completes in 76s with zero on a
+# developer machine). The whole hermetic suite runs in under 300s with xdist,
+# so a single test in a per-mutant selection needs seconds; 45 leaves ~45x
+# headroom while capping a hang at a fifteenth of what it used to cost.
+# A mutant that times out proves nothing either way and is already excluded
+# from the verdict — this only stops it consuming the module's budget too.
+MUTANT_TEST_TIMEOUT=45
+python3 - "$MODULE" "$MUTANT_TEST_TIMEOUT" "${TESTFILES[@]}" << 'EOF'
 import json
 import pathlib
 import re
 import sys
 
-module, testfiles = sys.argv[1], sys.argv[2:]
+module, mutant_test_timeout, testfiles = sys.argv[1], sys.argv[2], sys.argv[3:]
 path = pathlib.Path("pyproject.toml")
 text = path.read_text()
 selection = ", ".join(json.dumps(testfile) for testfile in testfiles)
@@ -146,23 +189,24 @@ replacement = (
     f'[tool.mutmut]\n'
     f'source_paths = ["{module}"]\n'
     f'also_copy = ["app", "tests", "scripts"]\n'
-    f'max_stack_depth = -1\n'
-    # -1, not 8: mutmut 3.7's record_trampoline_hit walks the stack and calls
-    # Path(filename).resolve(strict=True) on every frame — a frozen stdlib
-    # frame (co_filename == '<frozen importlib._bootstrap>') makes resolve
-    # raise FileNotFoundError, killing the stats phase for any test whose
-    # import chain passes through one. -1 skips the walk, so those modules
-    # reach a real verdict instead of the exit-0 skip below (hits are recorded
-    # at any depth; verdicts are unchanged, only the covered set is wider).
+    f'max_stack_depth = 8\n'
+    # The pragma stamping below appends `# pragma: no mutate` to every
+    # unchanged line. mutmut's AST visitor only honors that comment on
+    # simple statement lines, so interior lines of multi-line statements
+    # would still be mutated; the pattern matcher keys on line CONTENT and
+    # catches every stamped line — this is what makes the diff-driven
+    # scoping actually work.
+    f'do_not_mutate_patterns = ["# pragma: no mutate"]\n'
     f'debug = true\n'
     f'pytest_add_cli_args_test_selection = [{selection}]\n'
     f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
-    f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300\']\n'
+    f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout={mutant_test_timeout}\']\n'
 )
 text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", replacement, text)
 path.write_text(text)
 EOF
 
+_phase "mutmut run"
 echo "mutating $MODULE (tests: ${TESTFILES[*]}) ..."
 
 # Diff-driven scoping: mutmut has no "mutate only these lines" config, but
@@ -216,6 +260,14 @@ import subprocess
 import sys
 
 env = dict(os.environ)
+# The Dagger CI container exports USE_REAL_SERVICES=1; under the lane's
+# 4-way parallelism that makes every mutant's covering tests dial real
+# Postgres/Mongo/Redis on a 2-core runner — runs that take seconds
+# hermetically stretch past mutmut's per-mutant timeout and read as ⏰
+# timeouts. The mutation lane is a unit-test instrument: the conftest
+# hermetic fence (blanked creds, mocked DBs) is the intended environment,
+# and real-service integration is covered by test-python.
+env.pop('USE_REAL_SERVICES', None)
 patch_dir = sys.argv[1]
 env['PYTHONPATH'] = patch_dir + os.pathsep + env.get('PYTHONPATH', '')
 max_children = os.environ.get('MUTMUT_MAX_CHILDREN', '')
@@ -237,15 +289,36 @@ proc = subprocess.Popen(
     start_new_session=True,
 )
 try:
-    # 3600s, not 900: modules whose covering tests hit real services (redis
-    # connect timeouts in the sandbox) take 15s+ per mutant; a 50-mutant module
-    # then needs 15+ minutes. The diff-scoped gates keep normal PRs far below;
-    # the job-level ceiling (150m, 4-wide) is the real bound.
-    proc.communicate(timeout=3600)
+    # 12 minutes per module. This was 45, sized for when a module paid ~30s of
+    # fresh-process startup per mutant; with the selection scoped to unit tests
+    # the SLOWEST real module measured on CI is 1.2 minutes, so 12 is ~10x the
+    # worst honest case and anything beyond it is a hang, not slow work.
+    #
+    # The cap length is load-bearing for the whole lane, not just one module:
+    # the orchestrator runs N modules concurrently, so N hung modules occupy
+    # every worker and NOTHING else starts. That is what happened — four
+    # modules hung, four workers, and the lane was cancelled at its 90-minute
+    # budget having never started 13 of the 54 modules. A hang must surface as
+    # a fast, named failure rather than eating the whole budget silently.
+    proc.communicate(timeout=720)
 except subprocess.TimeoutExpired:
     os.killpg(proc.pid, signal.SIGKILL)
     proc.wait()
     sys.exit(124)
+finally:
+    # Reap the detached session on EVERY path, not just timeout. mutmut runs
+    # in its own session (start_new_session above) so killpg can take the
+    # mutant brood down as one unit — but that same detachment hides any
+    # straggler from a CI runner's step-abort, which signals the step's
+    # process group and walks its tree. A leaked child in the detached
+    # session survived the in-script watchdog, timeout(1) --signal=KILL, AND
+    # GitHub's own step timeout, holding the rate_limiting shard open to the
+    # job cap six runs in a row — and a job cancelled at its cap keeps no
+    # logs, which is why there was never any evidence.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
 sys.exit(proc.returncode)
 " "$MUTMUT_PATCH_DIR" 2>&1 | tee "$WORKDIR/mutmut.log" >&2 || MUTMUT_RC=$?
 if [ "$MUTMUT_RC" -ne 0 ]; then
@@ -349,6 +422,7 @@ fi
 # swallowed: an unreadable read used to be indistinguishable from a clean
 # run, which is the same silence-read-as-success bug the no-verdict guard
 # below exists to stop.
+_phase "collect results"
 if ! RESULTS="$("$VENV_PY" -m mutmut results --all True 2>"$WORKDIR/results-err.log")"; then
   echo "MUTATION RESULTS UNREADABLE — 'mutmut results' failed for $MODULE:" >&2
   cat "$WORKDIR/results-err.log" >&2
@@ -366,17 +440,6 @@ NO_TESTS_LIST="$(printf '%s\n' "$RESULTS" | grep ": no tests$" || true)"
 NO_TESTS="$(printf '%s\n' "$NO_TESTS_LIST" | grep -c . || true)"
 NOT_CHECKED="$(printf '%s\n' "$RESULTS" | grep -c ": not checked$" || true)"
 if [ "${NOT_CHECKED:-0}" -gt 0 ]; then
-  if [[ "${MUTATION_RETRY:-0}" -eq 0 ]]; then
-    # Interrupted runs are usually the known loguru teardown crash (forked
-    # children + the loop-bound redis client write to a closed stream at
-    # interpreter shutdown) killing mutmut mid-run. A fresh process almost
-    # always completes — retry once before failing the lane.
-    echo "MUTATION RUN INCOMPLETE ($NOT_CHECKED unchecked) — retrying once" >&2
-    # Absolute path: at this point cwd is apps/api, so a relative $0 would
-    # resolve to apps/api/scripts/... and the retry would silently never run.
-    MUTATION_RETRY=1 bash "$REPO_ROOT/scripts/test/mutation.sh" "$MODULE" "$TESTFILE_ARG" "$CHANGED_RANGES"
-    exit $?
-  fi
   echo "MUTATION RUN INCOMPLETE — $NOT_CHECKED mutant(s) were never checked;" >&2
   echo "the run was interrupted. See mutmut's output above." >&2
   exit 1
@@ -415,6 +478,7 @@ REAL_SURVIVORS=""
 EQUIVALENT=""
 UNCHANGED=""
 LOGGING=""
+_phase "classify survivors"
 if [ -n "$SURVIVORS" ]; then
   while IFS= read -r line; do
     [ -z "$line" ] && continue
