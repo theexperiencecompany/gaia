@@ -10,8 +10,11 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
+from app.api.v1.endpoints.bot import bot_chat_stream
+from app.models.bot_models import BotChatRequest
 from app.models.payment_models import PlanType
 from app.services.analytics_service import AnalyticsEvents
+from shared.py.wide_events import log, log_context
 
 BOT_BASE = "/api/v1/bot"
 PLAN_PATCH = "app.services.platform_link_service.payment_service.get_cached_plan_type"
@@ -724,6 +727,55 @@ class TestBotChatStream:
 
         assert response.status_code == 418
         mock_tiered.assert_awaited_once_with("u1", "chat_messages")
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task")
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.create_bot_session_token", return_value="tok")
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_a_served_turn_stamps_the_wide_event_with_who_where_and_outcome(
+        self,
+        mock_auth: AsyncMock,
+        mock_capture: MagicMock,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+        mock_token: MagicMock,
+        mock_background: AsyncMock,
+        mock_spawn: MagicMock,
+    ):
+        """The wide event is the only record of a bot turn that survives the request.
+
+        ``user.id`` is what joins a bot turn to the same human's web traffic in
+        Loki — the same stable GAIA id PostHog is given — and ``outcome`` is what
+        separates a served turn from the gated ones. Emitted unattributed, or
+        with the refusal vocabulary, the line is still there and still parses;
+        it just answers the wrong question.
+        """
+        mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+
+        body = BotChatRequest(message="hello", platform="discord", platform_user_id="u1")
+        request = MagicMock()
+        request.state = _make_request()
+
+        async with log_context("bot_chat_stream_test"):
+            response = await bot_chat_stream(request, body)
+            event = dict(log.get())
+
+        assert response.status_code == 200
+        assert event["user"] == {"id": "uid1"}
+        assert event["platform"] == "discord"
+        assert event["outcome"] == "success"
 
 
 # ---------------------------------------------------------------------------
