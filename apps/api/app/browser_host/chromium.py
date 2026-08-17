@@ -55,6 +55,9 @@ _HOST_EXTRA_ARGS: tuple[str, ...] = (
     "--no-sandbox",
     "--disable-dev-shm-usage",
 )
+# Playwright names the shell binary per platform: `headless_shell` on Linux (what
+# production runs), `chrome-headless-shell` on macOS, `.exe` on Windows.
+_HEADLESS_SHELL_BINARIES = ("headless_shell", "chrome-headless-shell", "headless_shell.exe")
 # Poll budget for Chromium to publish its DevTools endpoint after launch.
 _CDP_READY_TIMEOUT_SECONDS = 30.0
 _CDP_READY_POLL_SECONDS = 0.2
@@ -123,8 +126,32 @@ async def cdp_call(
         raise CDPTimeoutError(method) from exc
 
 
+def _headless_shell_beside(chromium: Path) -> Path | None:
+    """Playwright's headless-shell build for the same revision, if it is installed."""
+    for parent in chromium.parents:
+        if not parent.name.startswith("chromium-"):
+            continue
+        shell_root = parent.with_name(
+            parent.name.replace("chromium-", "chromium_headless_shell-", 1)
+        )
+        if not shell_root.is_dir():
+            return None
+        for name in _HEADLESS_SHELL_BINARIES:
+            found = next((p for p in shell_root.rglob(name) if p.is_file()), None)
+            if found is not None:
+                return found
+        return None
+    return None
+
+
 def _resolve_chromium_path() -> str:
-    """The Chromium binary: the configured override, else Playwright's bundled one.
+    """The browser binary: the configured override, else Playwright's headless shell.
+
+    Playwright installs ``chromium_headless_shell-<rev>`` beside the full browser,
+    and that is the right binary for this host: it never shows a window, and the
+    shell build drops the whole browser-UI layer. Measured at the same Chrome
+    revision, three contexts open: 702 MB versus 1419 MB, and 340 MB versus
+    756 MB idle. Falls back to the full browser when the shell is absent.
 
     Playwright's resolver uses its sync API, which refuses to run inside a
     running event loop — callers must invoke this in a worker thread.
@@ -134,7 +161,9 @@ def _resolve_chromium_path() -> str:
         return str(override)
 
     with sync_playwright() as p:
-        return p.chromium.executable_path
+        full = Path(p.chromium.executable_path)
+    shell = _headless_shell_beside(full)
+    return str(shell or full)
 
 
 def _cdp_cookie_to_storage_state(cookie: dict[str, Any]) -> StorageStateCookie:
@@ -507,7 +536,10 @@ class ChromiumHost:
         # an 800x600 default (which leaves whitespace around the content in the view).
         args.append(f"--window-size={BROWSER_VIEWPORT_WIDTH},{BROWSER_VIEWPORT_HEIGHT}")
         if not settings.BROWSER_HOST_HEADED:
-            args.append("--headless=new")
+            # The shell build is headless by construction and only understands the
+            # bare flag; `--headless=new` selects a mode that binary does not have.
+            is_shell = Path(self._chromium_path).name in _HEADLESS_SHELL_BINARIES
+            args.append("--headless" if is_shell else "--headless=new")
         self._proc = await asyncio.create_subprocess_exec(
             *args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
