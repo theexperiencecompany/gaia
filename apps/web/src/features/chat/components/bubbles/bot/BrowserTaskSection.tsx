@@ -377,7 +377,11 @@ function RecapViewer({ steps }: { steps: BrowserStepSnapshot[] }) {
     () =>
       steps
         .filter((s) => Boolean(s.screenshot))
-        .map((s) => ({ index: s.index, url: s.screenshot as string })),
+        .map((s) => ({
+          index: s.index,
+          url: s.screenshot as string,
+          caption: s.goal,
+        })),
     [steps],
   );
   return <RecapSlideshow shots={shots} />;

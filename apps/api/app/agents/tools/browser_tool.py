@@ -112,8 +112,13 @@ async def browser_task(
                 stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
             )
 
+    # Captions for the recap ("what's going on" per step), keyed by step index.
+    step_goals: dict[int, str] = {}
+
     async def emit(snapshot: BrowserCardSnapshot) -> None:
         writer({BROWSER_TASK_EVENT: snapshot.model_dump(mode="json")})
+        if isinstance(snapshot, BrowserStepSnapshot) and snapshot.goal:
+            step_goals[snapshot.index] = snapshot.goal
         if bot_delivery is None:
             return
         if isinstance(snapshot, BrowserStepSnapshot):
@@ -200,6 +205,7 @@ async def browser_task(
                         task=task,
                         session_id=session.session_id,
                         result=result,
+                        step_goals=[step_goals.get(i, "") for i in range(1, result.steps + 1)],
                     ),
                     name="record_browser_task",
                 )

@@ -139,6 +139,13 @@ class LiveViewTokenResponse(BaseModel):
     expires_in: int = Field(description="Seconds until the token expires.")
 
 
+class BrowserTaskFrame(BaseModel):
+    """One recap frame: a step screenshot plus what the agent was doing."""
+
+    url: str
+    caption: str | None = None
+
+
 class BrowserTaskResponse(BaseModel):
     """One row in the user's browser task history (settings)."""
 
@@ -149,8 +156,8 @@ class BrowserTaskResponse(BaseModel):
     steps: int
     created_at: datetime | None
     conversation_id: str
-    screenshots: list[str] = Field(
-        default_factory=list, description="Recap step screenshot URLs, in order."
+    frames: list[BrowserTaskFrame] = Field(
+        default_factory=list, description="Recap frames (screenshot + caption), in order."
     )
 
 

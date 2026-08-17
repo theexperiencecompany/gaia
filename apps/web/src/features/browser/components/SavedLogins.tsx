@@ -26,16 +26,16 @@ function LoginRow({
     <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/40 p-2.5">
       <div className="flex min-w-0 items-center gap-3">
         {faviconFailed ? (
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-zinc-900 ring-1 ring-white/5">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-zinc-800 ring-1 ring-white/10">
             <GlobalIcon className="size-4 text-zinc-500" />
           </div>
         ) : (
           <Image
-            src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(login.domain)}&sz=64`}
+            src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(login.domain)}&sz=128`}
             alt=""
-            width={36}
-            height={36}
-            className="size-9 shrink-0 rounded-lg bg-zinc-900 object-contain p-1.5 ring-1 ring-white/5"
+            width={64}
+            height={64}
+            className="size-9 shrink-0 rounded-full bg-white object-cover ring-1 ring-white/10"
             unoptimized
             onError={() => setFaviconFailed(true)}
           />

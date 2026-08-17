@@ -10,14 +10,22 @@ import { useImageDialog } from "@/stores/uiStore";
 export interface RecapShot {
   index: number;
   url: string;
+  /** What the agent was doing at this step ("Searching for …"). */
+  caption?: string | null;
 }
 
 /**
- * Navigable slideshow of a browser task's step screenshots — main frame with
- * edge arrows, a centered counter, and a filmstrip. Shared by the chat task
- * card (live steps) and the settings history (rebuilt from R2 URLs).
+ * Navigable slideshow of a browser task's steps — the task prompt as a header,
+ * the step screenshot with edge arrows, the current step's caption, a counter,
+ * and a filmstrip. Shared by the chat task card and the settings history.
  */
-export function RecapSlideshow({ shots }: { shots: RecapShot[] }) {
+export function RecapSlideshow({
+  shots,
+  title,
+}: {
+  shots: RecapShot[];
+  title?: string;
+}) {
   const { openDialog } = useImageDialog();
   const [idx, setIdx] = useState(0);
   const count = shots.length;
@@ -29,11 +37,22 @@ export function RecapSlideshow({ shots }: { shots: RecapShot[] }) {
   if (count === 0) return null;
   const safeIdx = Math.min(idx, count - 1);
   const current = shots[safeIdx];
+  const caption = current.caption?.trim();
   const atStart = safeIdx <= 0;
   const atEnd = safeIdx >= count - 1;
 
   return (
     <div className="overflow-hidden rounded-2xl bg-zinc-900">
+      {title && (
+        <div className="border-b border-white/5 px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            Task
+          </p>
+          <p className="mt-0.5 line-clamp-2 text-sm leading-snug text-zinc-200">
+            {title}
+          </p>
+        </div>
+      )}
       <div className="group relative bg-zinc-950">
         <button
           type="button"
@@ -79,14 +98,17 @@ export function RecapSlideshow({ shots }: { shots: RecapShot[] }) {
         )}
       </div>
 
-      <div className="flex items-center justify-center gap-2 py-2.5">
-        <span className="text-xs font-medium text-zinc-400">
-          Step {current.index}
-        </span>
-        <span className="size-1 rounded-full bg-zinc-600" />
-        <span className="text-xs tabular-nums text-zinc-500">
-          <span className="text-zinc-200">{safeIdx + 1}</span> / {count}
-        </span>
+      <div className="px-4 py-3 text-center">
+        {caption && (
+          <p className="truncate text-sm font-medium text-zinc-100">
+            {caption}
+          </p>
+        )}
+        <p
+          className={`text-xs tabular-nums text-zinc-500 ${caption ? "mt-0.5" : ""}`}
+        >
+          Step {safeIdx + 1} / {count}
+        </p>
       </div>
 
       {count > 1 && (

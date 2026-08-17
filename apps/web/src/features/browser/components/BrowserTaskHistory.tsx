@@ -5,10 +5,8 @@ import { Modal, ModalContent } from "@heroui/modal";
 import { Skeleton } from "@heroui/skeleton";
 import { AiWebBrowsingIcon, PlayIcon } from "@icons";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { RecapSlideshow } from "@/components/browser/RecapSlideshow";
-import { ChevronRight } from "@/components/shared/icons";
 import { useBrowserTasks } from "../hooks/useBrowserTasks";
 import type { BrowserTask, BrowserTaskStatus } from "../types";
 import { formatRelativeDate } from "../utils";
@@ -19,11 +17,7 @@ const STATUS_META: Record<
 > = {
   completed: { label: "Done", dot: "bg-emerald-500", text: "text-emerald-400" },
   cancelled: { label: "Stopped", dot: "bg-zinc-500", text: "text-zinc-400" },
-  failed: {
-    label: "Couldn't finish",
-    dot: "bg-red-500",
-    text: "text-red-400",
-  },
+  failed: { label: "Couldn't finish", dot: "bg-red-500", text: "text-red-400" },
   running: { label: "Working", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
   paused: { label: "Working", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
 };
@@ -33,41 +27,28 @@ function MetaDot() {
 }
 
 function TaskRow({ task }: { task: BrowserTask }) {
-  const router = useRouter();
   const [recapOpen, setRecapOpen] = useState(false);
-  const hasRecap = task.screenshots.length > 0;
-  const clickable = task.conversation_id.length > 0;
+  const hasRecap = task.frames.length > 0;
   const meta = STATUS_META[task.status];
-  const thumb = task.screenshots[0];
-
-  const openConversation = () => router.push(`/c/${task.conversation_id}`);
+  const thumb = task.frames[0]?.url;
 
   return (
     <>
       <div
-        className={`group flex items-center gap-3 rounded-2xl bg-zinc-800/40 p-2.5 transition-colors hover:bg-zinc-800/80 ${clickable ? "cursor-pointer" : ""}`}
-        onClick={clickable ? openConversation : undefined}
+        className={`group flex items-center gap-3 rounded-2xl bg-zinc-800/40 p-2.5 transition-colors ${hasRecap ? "cursor-pointer hover:bg-zinc-800/80" : ""}`}
+        onClick={hasRecap ? () => setRecapOpen(true) : undefined}
         onKeyDown={
-          clickable
+          hasRecap
             ? (e) => {
-                if (e.key === "Enter") openConversation();
+                if (e.key === "Enter") setRecapOpen(true);
               }
             : undefined
         }
-        role={clickable ? "button" : undefined}
-        tabIndex={clickable ? 0 : undefined}
+        role={hasRecap ? "button" : undefined}
+        tabIndex={hasRecap ? 0 : undefined}
       >
-        {/* The thumbnail is the recap preview — click it to play the slideshow. */}
-        <button
-          type="button"
-          disabled={!hasRecap}
-          onClick={(e) => {
-            e.stopPropagation();
-            setRecapOpen(true);
-          }}
-          className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-white/5 disabled:cursor-default"
-          aria-label={hasRecap ? "Watch recap" : undefined}
-        >
+        {/* The first frame previews the recap; the whole row plays it. */}
+        <div className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-white/5">
           {thumb ? (
             <Image
               src={thumb}
@@ -87,7 +68,7 @@ function TaskRow({ task }: { task: BrowserTask }) {
               <PlayIcon className="size-4 text-white" />
             </span>
           )}
-        </button>
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-zinc-100">
@@ -112,17 +93,18 @@ function TaskRow({ task }: { task: BrowserTask }) {
             )}
           </div>
         </div>
-
-        {clickable && (
-          <ChevronRight className="size-4 shrink-0 text-zinc-600 transition group-hover:text-zinc-400" />
-        )}
       </div>
 
       {hasRecap && (
         <Modal size="2xl" isOpen={recapOpen} onOpenChange={setRecapOpen}>
           <ModalContent>
             <RecapSlideshow
-              shots={task.screenshots.map((url, i) => ({ index: i + 1, url }))}
+              title={task.task}
+              shots={task.frames.map((f, i) => ({
+                index: i + 1,
+                url: f.url,
+                caption: f.caption,
+              }))}
             />
           </ModalContent>
         </Modal>

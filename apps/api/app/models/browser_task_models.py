@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.browser import BrowserSessionStatus
 from app.db.repositories.base import UserScopedDocument
@@ -12,6 +12,7 @@ class BrowserTaskDocument(UserScopedDocument):
     """One finished browser task: what was asked, how it ended, and enough to
     rebuild its recap. ``session_id`` + ``steps`` locate the step screenshots in
     R2, so the history can replay a task long after the live session is gone.
+    ``step_goals`` captions each frame ("what's going on"), aligned to steps 1..N.
     """
 
     conversation_id: str
@@ -20,6 +21,7 @@ class BrowserTaskDocument(UserScopedDocument):
     success: bool
     session_id: str
     steps: int = 0
+    step_goals: list[str] = Field(default_factory=list)
     replay_url: str | None = None
     created_at: datetime | None = None
 
