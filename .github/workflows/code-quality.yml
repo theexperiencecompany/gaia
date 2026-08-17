@@ -1030,9 +1030,15 @@ jobs:
             _push_diag diag-start.txt "start-marker.txt"
             pip install -q py-spy 2>/dev/null || pipx install py-spy 2>/dev/null || true
             (
+              # Alive-marker before the loop: the +240s snapshots never landed
+              # on a runner where a synchronous push at +0s did, so either the
+              # subshell dies inside 4 minutes or the whole VM freezes first.
+              # This plus a 60s cadence brackets the moment of death.
+              echo "sidecar alive pid=$$ $(date -u)" > diag-alive.txt
+              _push_diag diag-alive.txt "sidecar-alive.txt"
               i=0
-              while sleep 240; do
-                i=$((i+240))
+              while sleep 60; do
+                i=$((i+60))
                 # ps FIRST and pushed FIRST: py-spy ptrace-attaches, and
                 # attaching to the very D-state/unkillable process being
                 # hunted can hang — the cheap evidence must never queue
@@ -1053,6 +1059,7 @@ jobs:
           rc=0
           timeout --signal=KILL 1500             bash scripts/test/mutation.sh "$MODULE" "$TESTFILES" "$RANGES"             > shard.log 2>&1 || rc=$?
           [ -n "${DIAG_PID:-}" ] && kill "$DIAG_PID" 2>/dev/null || true
+          [ -f sidecar.log ] && { echo "--- sidecar.log ---"; cat sidecar.log; } || true
           # Scorched earth before reading the log: anything mutmut-shaped that
           # survived (detached-session stragglers escape tree- and group-based
           # kills) dies by NAME here, so nothing can outlive this step.
