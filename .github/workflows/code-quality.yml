@@ -889,36 +889,64 @@ jobs:
   # anywhere, zero mutants (tests do not cover the changed lines), any
   # surviving mutant, or the lane budget being exceeded.
   #
-  # Sharded across runners, but each shard still computes the whole module
-  # list itself and keeps its own slice. The module list is deliberately NOT
-  # passed between jobs: an earlier version fed it through a job output into
-  # a matrix (`include: ${{ fromJSON(needs.X.outputs.matrix) }}`) and the
-  # matrix job never materialized, because output values containing quotes
-  # corrupt the expression context (verified with a minimal probe workflow:
-  # hardcoded include works, literal fromJSON works, fromJSON of a job output
-  # does not). A literal shard list has no such surface. Recomputing the
-  # matrix per shard costs seconds and is deterministic — every shard diffs
-  # the same two commits — so the slices cannot disagree.
-  #
-  # mutation.sh is parallel-safe (per-invocation workdir), so neither the
-  # in-job parallelism nor the concurrent shards race on shared state.
-  test-mutation:
+  # Self-contained by design: an earlier version fed the module list through
+  # a job output into a matrix (`include: ${{ fromJSON(needs.X.outputs.matrix) }}`)
+  # — the matrix job never materialized because output values containing
+  # quotes corrupt the expression context (verified with a minimal probe
+  # workflow: hardcoded include works, literal fromJSON works, fromJSON of a
+  # job output does not). One job that computes the list and runs the
+  # modules itself (xargs -P for bounded parallelism on the runner) has no
+  # such surface to break. mutation.sh is parallel-safe (per-invocation
+  # workdir), so concurrent runs never race on shared state.
+  # Which modules to mutate. Cheap (git diff + an AST scan, no toolchain), and
+  # separate so the shards below can fan out. It is ALSO the job that fails
+  # loudly when changed app code has no test file anywhere — which is why the
+  # quality gate requires it by name: a failed plan skips the matrix, and a
+  # skipped lane counts as a pass.
+  test-mutation-plan:
+    name: Mutation plan (one shard per changed module)
     needs: [changes]
     if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Compute the mutation matrix
+        id: plan
+        run: bash scripts/ci/mutation-plan.sh
+
+  # One runner per changed module. mutmut re-runs a module's whole test
+  # selection once per mutant, so a heavy module costs tens of minutes; in a
+  # single job those costs add up AND the slowest few hold every worker while
+  # the rest never start (observed: 37 of 54 done, 13 never begun, lane
+  # cancelled at its cap having proven nothing). Sharded, the lane costs the
+  # slowest module rather than their sum, and a module that hangs takes down
+  # only its own shard.
+  test-mutation:
+    # Named explicitly: the default appends EVERY matrix value, so each of the
+    # 50+ checks would carry its full test-file JSON and the module — the only
+    # part a reader needs — would be truncated away in the checks list.
+    name: Mutation ${{ matrix.module }}
+    needs: [changes, test-mutation-plan]
+    if: needs.changes.outputs.has_python == 'true' && needs.test-mutation-plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    # Per MODULE, not per lane. The slowest shard measured end to end (setup
+    # included) is ~3 minutes; the margin covers a genuinely large module.
+    timeout-minutes: 25
     strategy:
-      # Every shard reports: one shard's survivor must not hide the rest of
-      # the diff's, or the next push fixes one module and uncovers another.
+      # Every module reports. Stopping at the first failure would hide the
+      # rest, and this gate's whole value is the complete list.
       fail-fast: false
+      # Wide instrumentation PRs touch 50+ modules; cap the fan-out so one
+      # PR cannot monopolise the runner pool. Excess shards queue.
+      max-parallel: 12
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
-    # A shard runs its modules one at a time (see mutation-check.sh: mutmut's
-    # stats and clean-test phases are single-process, so concurrent modules
-    # only starve each other), which trades some overlap for each module
-    # actually finishing. 45 rather than 30 covers that trade on the largest
-    # diff measured — 52 modules, ~7 per shard — without the lane being
-    # cancelled mid-verdict, which reports as a test failure it is not.
-    timeout-minutes: 45
+        include: ${{ fromJson(needs.test-mutation-plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -930,11 +958,53 @@ jobs:
           prune-cache: true
       - name: Sync Python dependencies
         run: uv sync --frozen --package gaia --group backend --group dev
-      - name: Mutation check (zero survivors required, per changed module)
-        run: bash scripts/ci/mutation-check.sh
+      - name: Mutation check (zero survivors required)
+        # STEP-level timeout so a stuck shard fails as a step (job continues,
+        # the shard-log artifact uploads, logs survive) instead of the job
+        # being cancelled at its cap — a cancelled job retains nothing.
+        timeout-minutes: 20
+        # Through env, not inline expansion: the values are generated, but an
+        # inline ${{ }} in a run block is a shell-injection seam regardless.
         env:
-          MUTATION_SHARD: ${{ matrix.shard }}
-          MUTATION_SHARDS: 8
+          MODULE: ${{ matrix.module }}
+          TESTFILES: ${{ matrix.testfiles }}
+          RANGES: ${{ matrix.ranges }}
+        # Output goes to shard.log and only the TAIL is echoed to the step:
+        # the runner's live-log pipe stops draining somewhere around 13MB and
+        # blocks the writer forever — mutmut's debug output crosses that on
+        # busy modules, and the frozen write is unkillable mid-syscall, so the
+        # job died at its cap with its logs destroyed (ten rounds of evidence
+        # behind that sentence; the full story is in this file's git history).
+        # The full log ships as the artifact below. timeout(1) bounds a
+        # genuine mutmut hang from outside, since bash defers traps while
+        # waiting on a foreground child.
+        run: |
+          rc=0
+          timeout --signal=KILL 1500             bash scripts/test/mutation.sh "$MODULE" "$TESTFILES" "$RANGES"             > shard.log 2>&1 || rc=$?
+          # tail, NEVER cat: with mutmut's debug on, a busy module writes a
+          # 13MB shard.log, and feeding that through the runner's live-log
+          # pipe is where this step actually froze — mutation.sh had finished
+          # (its EXIT trap had already removed the workdir) and the job then
+          # sat at the cat for 35 minutes until the cap cancelled it, which
+          # also destroyed the logs that proved all of this. The full file
+          # ships as the artifact below.
+          echo "--- shard.log (last 200KB; full file in the artifact) ---"
+          tail -c 200000 shard.log
+          if [ "$rc" = "137" ] || [ "$rc" = "124" ]; then
+            echo "::error::mutation shard for $MODULE exceeded 25 minutes and was killed by timeout(1) — see the log above for the last phase reached"
+          fi
+          exit "$rc"
+      - name: Upload shard log
+        # Belt and braces for the diagnosis path: runs even when the step
+        # above fails or the job is cancelled, so the evidence survives the
+        # one scenario that has destroyed it five times.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-log-${{ strategy.job-index }}
+          path: shard.log
+          retention-days: 3
+          if-no-files-found: ignore
 
   quality-gate:
     name: Quality gate (required)
@@ -962,6 +1032,7 @@ jobs:
       - suppression-ratchet
       - gitleaks
       - semgrep
+      - test-mutation-plan
       - test-mutation
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -992,6 +1063,7 @@ jobs:
           SUPPRESSION_RATCHET: ${{ needs.suppression-ratchet.result }}
           GITLEAKS: ${{ needs.gitleaks.result }}
           SEMGREP: ${{ needs.semgrep.result }}
+          MUTATION_PLAN: ${{ needs.test-mutation-plan.result }}
           MUTATION: ${{ needs.test-mutation.result }}
         run: |
           # Lane skips are only trustworthy if change detection succeeded.
@@ -1022,13 +1094,15 @@ jobs:
             [suppression-ratchet]="$SUPPRESSION_RATCHET"
             [gitleaks]="$GITLEAKS"
             [semgrep]="$SEMGREP"
+            [test-mutation-plan]="$MUTATION_PLAN"
             [test-mutation]="$MUTATION"
           )
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
                  observability wide-event-conformance \
-                 dead-code alert-rules suppression-ratchet gitleaks semgrep test-mutation)
+                 dead-code alert-rules suppression-ratchet gitleaks semgrep \
+                 test-mutation-plan test-mutation)
 
           echo "::group::Per-lane results"
           for lane in "${LANES[@]}"; do

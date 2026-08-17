@@ -64,6 +64,25 @@ def _set_decoded_content(
         target.set_content(body_data)
 
 
+def _decode_part_payload(part: email.message.Message) -> bytes | str | None:
+    """Decode a MIME part's raw payload, or None if the part is malformed.
+
+    ``get_payload(decode=True)`` can raise on a malformed part (the stdlib's
+    unbound-bpayload path) — callers should skip the part, not the whole message.
+    """
+    try:
+        # decode=True only ever yields the leaf's decoded bytes (or the raw str
+        # payload when no Content-Transfer-Encoding header is set) — the stdlib's
+        # broader Message[str, str] return type is for the decode=False overload.
+        return cast("bytes | str | None", part.get_payload(decode=True))
+    except Exception as e:
+        log.warning(
+            "Skipping malformed MIME part during content extraction",
+            error_type=type(e).__name__,
+        )
+        return None
+
+
 class GmailMessageParser:
     """Parse Gmail messages via Python's email library, exposing clean
     content-extraction methods over raw Gmail API data."""
@@ -230,16 +249,10 @@ class GmailMessageParser:
                     # A text/* part's content manager always yields str.
                     return cast(str, part.get_content())
                 except Exception:
-                    # get_payload itself can raise on a malformed part (the
-                    # stdlib's unbound-bpayload path) — skip the part, never
-                    # the whole message.
-                    try:
-                        payload = part.get_payload(decode=True)
-                    except Exception as e:
-                        log.warning(
-                            "Skipping malformed MIME part during content extraction",
-                            error_type=type(e).__name__,
-                        )
+                    # get_payload itself can raise on a malformed part — skip
+                    # the part, never the whole message.
+                    payload = _decode_part_payload(part)
+                    if payload is None:
                         continue
                     if isinstance(payload, bytes):
                         return payload.decode("utf-8", errors="ignore")
@@ -272,13 +285,8 @@ class GmailMessageParser:
                 try:
                     return cast(str, part.get_content())
                 except Exception:
-                    try:
-                        payload = part.get_payload(decode=True)
-                    except Exception as e:
-                        log.warning(
-                            "Skipping malformed MIME part during content extraction",
-                            error_type=type(e).__name__,
-                        )
+                    payload = _decode_part_payload(part)
+                    if payload is None:
                         continue
                     if isinstance(payload, bytes):
                         return payload.decode("utf-8", errors="ignore")

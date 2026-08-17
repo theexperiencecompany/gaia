@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import {
   integrationKeys,
@@ -23,6 +23,9 @@ export function useOAuthSuccessToast() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  // Typed route segment rather than a hand-rolled pathname split: the route
+  // shape is the mechanism that already guarantees this id.
+  const { id: conversationId } = useParams<{ id?: string }>();
   const queryClient = useQueryClient();
   const sendMessage = useSendMessage();
   // Use ref to hold stable reference to sendMessage
@@ -80,14 +83,11 @@ export function useOAuthSuccessToast() {
       const isChatRoute = pathname === "/c" || pathname.startsWith("/c/");
       if (isChatRoute) {
         // OAuth is a full-page redirect, so the store has not been populated
-        // from the route yet when this fires. The URL is the reliable source:
+        // from the route yet when this fires. The route is the reliable source:
         // without it the send falls back to a null active id and the message
         // lands in a brand new conversation instead of the one being worked in.
-        const conversationId = pathname.startsWith("/c/")
-          ? (pathname.split("/")[2] ?? null)
-          : null;
         sendMessageRef.current(`Hey I just connected ${displayName}`, {
-          conversationId,
+          conversationId: conversationId ?? null,
         });
       }
     }
@@ -112,5 +112,5 @@ export function useOAuthSuccessToast() {
           `Authentication failed: ${oauthError}. Please try again.`,
       );
     }
-  }, [searchParams, router, pathname, queryClient]);
+  }, [searchParams, router, pathname, conversationId, queryClient]);
 }

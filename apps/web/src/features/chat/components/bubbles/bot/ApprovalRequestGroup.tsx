@@ -9,10 +9,9 @@ import type {
 } from "@shared/chat";
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
+import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
 import { toast } from "@/lib/toast";
-import ApprovalRequestSection, {
-  markApprovalDecided,
-} from "./ApprovalRequestSection";
+import ApprovalRequestSection from "./ApprovalRequestSection";
 import { useApprovalResolver } from "./ApprovalResolveContext";
 
 interface ApprovalRequestGroupProps {
@@ -39,6 +38,7 @@ export default function ApprovalRequestGroup({
   const resolveApproval = useApprovalResolver();
   const [batchSubmitting, setBatchSubmitting] =
     useState<ApprovalDecision | null>(null);
+  const markApprovalDecided = useMarkApprovalDecided();
 
   const pending = items.filter((item) => item.status === "pending");
 

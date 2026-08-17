@@ -29,11 +29,21 @@ src = Path(mutant_file).read_text()
 # mutants_<base>__mutmut['_mutmut_orig'] = <base>__mutmut_orig
 base = re.sub(r"__mutmut_\d+$", "", mutant_name)
 dict_name = f"mutants_{base}__mutmut"
-orig_match = re.search(rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*(\w+)", src, re.MULTILINE)
+# `[\w.]+`, not `\w+`: a METHOD's original is referenced through its class —
+# `mutants_xǁCǁm__mutmut['_mutmut_orig'] = C.xǁCǁm__mutmut_orig`. Stopping at
+# the dot captured just the class name, which then resolved to no function and
+# failed the lane closed on every class-method survivor.
+orig_match = re.search(
+    rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*([\w.]+)", src, re.MULTILINE
+)
 if not orig_match:
     sys.exit(1)
-orig_name = orig_match.group(1)
-blocks = re.split(r"^(?:async )?def ", src, flags=re.MULTILINE)
+orig_name = orig_match.group(1).rsplit(".", 1)[-1]
+# Leading indentation matters: a method's `def` is indented, so anchoring the
+# split at column 0 never split them out. `_body` then returned [] for BOTH
+# sides of every method comparison, they compared equal, and the mutant was
+# reported EQUIV — a real survivor silently passing the gate.
+blocks = re.split(r"^[ \t]*(?:async )?def ", src, flags=re.MULTILINE)
 
 
 def _def_lines(path: str) -> dict[str, int]:

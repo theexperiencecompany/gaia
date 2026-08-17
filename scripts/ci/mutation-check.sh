@@ -5,30 +5,19 @@
 # anywhere, zero mutants (tests do not cover the changed lines), any
 # surviving mutant, or the lane budget being exceeded.
 #
-# Used by the test-mutation lane (code-quality.yml) — the workflow step is
-# just `bash scripts/ci/mutation-check.sh`; all logic lives here.
-#
-# The lane is a matrix: MUTATION_SHARD / MUTATION_SHARDS pick this job's slice
-# of the changed-module list. A runner has 4 cores and mutmut is CPU-bound, so
-# in-job parallelism caps out at 4 and the only way to go faster is more
-# runners. Without them a large PR does not fit the lane's timeout at all: a
-# 52-module diff got through 11 modules in 30 minutes. Both vars unset means
-# one shard with every module, which is what a local run wants.
+# LOCAL entry point: runs the whole changed-module set in one process, which
+# is what you want on a laptop. CI does not use this — it shards the same
+# matrix one module per runner (scripts/ci/mutation-plan.sh + the test-mutation
+# job in code-quality.yml), because in a single process the slowest modules
+# hold every worker and the rest never start.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-# Scratch space for the module list. Per-invocation rather than fixed paths
-# under /tmp: two runs on one machine (a local check next to a sweep, two
-# tests under xdist) would otherwise read each other's list and mutate the
-# wrong modules.
-WORKDIR="$(mktemp -d)"
-trap 'rm -rf "$WORKDIR"' EXIT
-
 # 1. Changed app modules + their test files, as JSON. The matrix script
 #    fails loudly (exit 1) when a changed module has no test file.
-bash scripts/ci/mutation-matrix.sh > "$WORKDIR/matrix.json"
+bash scripts/ci/mutation-matrix.sh > /tmp/mutation-matrix.json
 
 # 2. Flatten to "module testfiles changed-ranges" lines (one per line — the
 #    newline matters: xargs-style grouping across concatenated lines glues
@@ -45,29 +34,12 @@ bash scripts/ci/mutation-matrix.sh > "$WORKDIR/matrix.json"
 #    independently: "testfiles" is the list the matrix emits now, "testfile"
 #    the single path it emitted before. Neither present is a hard error, never
 #    a quietly skipped module.
-#
-#    Sharded: the lane runs as a matrix of MUTATION_SHARDS jobs, and this one
-#    keeps every MUTATION_SHARDS-th module. Round-robin rather than contiguous
-#    blocks because the matrix comes out grouped by directory, and modules in
-#    one directory share test files and therefore cost — chunking would put
-#    every expensive module on one shard. Unset means "one shard, all modules",
-#    which is what a local run wants.
-python3 - "$WORKDIR" << 'EOF'
+python3 - << 'EOF'
 import json
-import os
-import sys
 
-workdir = sys.argv[1]
-
-shards = int(os.environ.get("MUTATION_SHARDS", "1"))
-shard = int(os.environ.get("MUTATION_SHARD", "1"))
-if shards < 1 or not 1 <= shard <= shards:
-    raise SystemExit(f"::error::mutation gate: MUTATION_SHARD={shard} is not in 1..{shards}")
-
-modules = json.load(open(f"{workdir}/matrix.json"))
-selected = [m for i, m in enumerate(modules) if i % shards == shard - 1]
-with open(f"{workdir}/modules.txt", "w") as f:
-    for m in selected:
+modules = json.load(open("/tmp/mutation-matrix.json"))
+with open("/tmp/mutation-modules.txt", "w") as f:
+    for m in modules:
         if "testfiles" in m:
             testfiles = m["testfiles"]
         elif "testfile" in m:
@@ -80,12 +52,12 @@ with open(f"{workdir}/modules.txt", "w") as f:
         compact = json.dumps(testfiles, separators=(",", ":"))
         ranges = json.dumps(m["changed_lines"], separators=(",", ":"))
         f.write(f"{m['module']} {compact} {ranges}\n")
-print(f"shard {shard}/{shards}: {len(selected)} of {len(modules)} changed module(s) to mutate")
+print(f"{len(modules)} module(s) to mutate")
 EOF
 
-# 3. Nothing landed on this shard (or the PR changed no app modules at all).
-if [ ! -s "$WORKDIR/modules.txt" ]; then
-  echo "no modules on this shard — nothing to mutate"
+# 3. No changed app modules — nothing to prove.
+if [ ! -s /tmp/mutation-modules.txt ]; then
+  echo "no changed app modules — nothing to mutate"
   exit 0
 fi
 
@@ -93,38 +65,20 @@ fi
 #    read loop (not xargs) so a module with an empty changed-lines JSON
 #    (`[]`) can never shift the fields between invocations.
 #
-#    Every spawned job is reaped by exactly one `wait -n`, counted rather than
-#    drained with a bare `wait`: bash's `wait` with no operands is DOCUMENTED to
-#    return zero regardless of how its children exited, so the trailing batch's
-#    failures used to be swallowed and the lane reported green on a survivor it
-#    had already found. Counting also beats `wait "$oldest"` — a slow module
-#    would hold the head of the line while its slot sat idle.
-#
-#    ONE module at a time, and mutmut's own child count left at its default.
-#    Its stats and clean-test phases each run the module's whole test selection
-#    in a SINGLE process, so four concurrent modules put four uncooperative
-#    single-threaded phases on a 4-vCPU runner and every one of them crawls:
-#    app/agents/core/graph_builder/build_graph.py reached 2 of its 64 mutants
-#    in 900s with ZERO timeouts, and finishes all 64 in 45s when it has the
-#    machine to itself. Sequential here, parallel inside mutmut (its mutant
-#    phase forks cpu_count children), and parallel across shards — each layer
-#    where parallelism actually helps, and none where it does not.
-#    Capping mutmut's children instead was tried and rejected: it moved which
-#    modules failed rather than how many.
-PARALLELISM=1
+#    Four workers. This was briefly two, because on the 2-core runner four
+#    starved each other badly enough that covering tests stretched past
+#    mutmut's per-mutant timeout (⏰) and modules failed as "incomplete". That
+#    was the slow tiers in the per-mutant loop — an e2e file re-run once per
+#    mutant — and with the selection scoped to unit tests (mutation-matrix.py,
+#    with_unit_mirror) each worker is fast again. Halving the workers to treat
+#    that symptom only moved the cost to wall clock: the lane then ran out of
+#    its 60-minute budget partway through a wide diff.
 FAILED=0
-SPAWNED=0
-REAPED=0
 while read -r module testfiles ranges; do
   bash scripts/test/mutation.sh "$module" "$testfiles" "${ranges:-[]}" &
-  SPAWNED=$((SPAWNED + 1))
-  if [ $((SPAWNED - REAPED)) -ge "$PARALLELISM" ]; then
+  if [ "$(jobs -r -p | wc -l)" -ge 4 ]; then
     wait -n || FAILED=1
-    REAPED=$((REAPED + 1))
   fi
-done < "$WORKDIR/modules.txt"
-while [ "$REAPED" -lt "$SPAWNED" ]; do
-  wait -n || FAILED=1
-  REAPED=$((REAPED + 1))
-done
+done < /tmp/mutation-modules.txt
+wait || FAILED=1
 exit "$FAILED"

@@ -16,27 +16,9 @@ import type {
 import { useState } from "react";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
+import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { toast } from "@/lib/toast";
-import { useStreamStore } from "@/stores/streamStore";
-
-/** Swap "Waiting for your approval" for a resuming state the moment the user
- *  decides — the resolved frame arrives on the resumed run's stream, which can
- *  take seconds; the indicator must not keep asking for an answer it has. */
-export function markApprovalDecided(): void {
-  const store = useStreamStore.getState();
-  for (const [key, session] of Object.entries(store.sessions)) {
-    if (session.awaitingApproval) {
-      // toolInfo must clear with the text: it prefixes the label with the
-      // gated tool's integration ("Posthog: Resuming"), and that tool is done.
-      store.updateSession(key, {
-        awaitingApproval: false,
-        loadingText: "Resuming",
-        toolInfo: undefined,
-      });
-    }
-  }
-}
 
 interface ApprovalRequestSectionProps {
   data: ApprovalRequestData;
@@ -76,6 +58,7 @@ export default function ApprovalRequestSection({
   const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
   const [feedback, setFeedback] = useState("");
   const locked = submitting !== null || disabled;
+  const markApprovalDecided = useMarkApprovalDecided();
 
   const decide = async (
     decision: ApprovalDecision,
