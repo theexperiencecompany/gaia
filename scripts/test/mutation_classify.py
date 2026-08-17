@@ -102,11 +102,41 @@ def _normalized(lines: list[str]) -> list[str]:
     still maps a differing line back to the real file.
     """
 
-    def _blank(match: re.Match[str]) -> str:
-        return "cast(" + "\n" * match.group(1).count("\n") + "_,"
-
-    joined = re.sub(r"cast\((\s*[^,()]+),", _blank, "\n".join(lines))
-    return joined.split("\n")
+    joined = "\n".join(lines)
+    out: list[str] = []
+    pos = 0
+    while (start := joined.find("cast(", pos)) != -1:
+        # Scan the FIRST argument with bracket/quote balancing: a type arg
+        # like ``dict[str, object] | None`` (or a quoted forward ref) holds
+        # commas a regex stops at, and a half-blanked cast then reads as a
+        # real change.
+        i = start + len("cast(")
+        depth = 0
+        quote: str | None = None
+        while i < len(joined):
+            ch = joined[i]
+            if quote:
+                if ch == quote and joined[i - 1] != "\\":
+                    quote = None
+            elif ch in "\"'":
+                quote = ch
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                if depth == 0:
+                    break  # cast with one argument — not ours to touch
+                depth -= 1
+            elif ch == "," and depth == 0:
+                break
+            i += 1
+        if i < len(joined) and joined[i] == ",":
+            arg = joined[start + len("cast(") : i]
+            out.append(joined[pos:start] + "cast(" + "\n" * arg.count("\n") + "_")
+        else:
+            out.append(joined[pos : i])
+        pos = i
+    out.append(joined[pos:])
+    return "".join(out).split("\n")
 
 
 orig_raw = _body(orig_name)
@@ -254,6 +284,37 @@ def _only_boolean_uses(call) -> bool:
     return True
 
 
+def _lookup_with_default(node) -> bool:
+    """True for ``x.get(k, d)`` or ``getattr(o, n, d)`` — a lookup with a fallback.
+
+    Both hand back ``d`` only when the lookup misses, so the same reasoning about
+    which falsy fallback was written applies to either spelling.
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Attribute) and func.attr == "get" and len(node.args) == 2:
+        return True
+    return isinstance(func, ast.Name) and func.id == "getattr" and len(node.args) == 3
+
+
+def _outermost_lookup(node):
+    """Follow a fallback that is itself another lookup's fallback, to the last one.
+
+    ``a.get(k, b.get(j, 0))`` delivers that 0 through the OUTER call, so the outer
+    call's consumers are the ones that decide whether the literal is observable.
+    Checking the inner call alone answered "its value is an argument, so it might
+    be", and reported an unkillable mutant on every nested-fallback read.
+    """
+    current = node
+    while True:
+        parent = getattr(current, "parent", None)
+        if _lookup_with_default(parent) and parent.args[-1] is current:
+            current = parent
+            continue
+        return current
+
+
 def _unobservable_get_default(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
@@ -283,14 +344,9 @@ def _unobservable_get_default(
         for child in ast.iter_child_nodes(node):
             child.parent = node
     for node in ast.walk(tree):
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "get"
-            and len(node.args) == 2
-        ):
+        if not _lookup_with_default(node):
             continue
-        default = node.args[1]
+        default = node.args[-1]
         if not _falsy_literal(default):
             continue
         span = (
@@ -303,7 +359,7 @@ def _unobservable_get_default(
             continue
         return _falsy_replacement(
             _mutated_token(span, line_no, orig_line, mut_line)
-        ) and _only_boolean_uses(node)
+        ) and _only_boolean_uses(_outermost_lookup(node))
     return False
 
 

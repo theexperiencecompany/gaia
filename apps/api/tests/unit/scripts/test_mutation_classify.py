@@ -95,6 +95,75 @@ class TestCastTypeArgument:
 
         assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
 
+    def test_a_wrapped_cast_keeping_the_value_on_the_type_line_is_equivalent(
+        self, workdir: Path
+    ) -> None:
+        # The formatter wraps after `cast(` but often leaves the VALUE beside
+        # the type. Anchoring the blanking at end-of-line missed exactly this
+        # shape, and reported an unkillable mutant on it.
+        _write_mutants(
+            workdir,
+            "    return cast(\n        RealType, make(a, b),\n    )",
+            "    return cast(\n        XXMutatedTypeXX, make(a, b),\n    )",
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_value_change_beside_the_type_is_still_reported(self, workdir: Path) -> None:
+        _write_mutants(
+            workdir,
+            "    return cast(\n        RealType, make(a, b),\n    )",
+            "    return cast(\n        RealType, make(a, c),\n    )",
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+    def test_a_type_argument_with_commas_is_equivalent(self, workdir: Path) -> None:
+        # `dict[str, object] | None` holds a comma; a first-comma matcher
+        # half-blanks it and reports a runtime no-op as a real survivor
+        # (26% of one PR's failing set).
+        _write_mutants(
+            workdir,
+            '    return cast("dict[str, object] | None", value)',
+            "    return cast(None, value)",
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+        assert result.returncode == 0
+
+    def test_a_subscripted_type_argument_with_commas_is_equivalent(self, workdir: Path) -> None:
+        _write_mutants(
+            workdir,
+            "    return cast(list[dict[str, object]], value)",
+            "    return cast(list[None], value)",
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_comma_typed_cast_with_a_changed_value_is_still_reported(
+        self, workdir: Path
+    ) -> None:
+        # Balancing must stop at the argument boundary: a VALUE change after a
+        # comma-holding type is a real change.
+        _write_mutants(
+            workdir,
+            "    return cast(tuple[str, object], value + 1)",
+            "    return cast(tuple[str, object], value - 1)",
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+        assert result.returncode == 1
+
     def test_a_real_change_below_a_wrapped_cast_is_still_reported(self, workdir: Path) -> None:
         # The blanking must reach the type argument and stop. A mutation to the
         # VALUE changes what the function returns.
