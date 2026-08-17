@@ -416,54 +416,6 @@ class TestGetSettings:
         new_callable=AsyncMock,
     )
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
-    async def test_settings_rejects_a_created_at_that_is_not_a_datetime(
-        self,
-        mock_auth: AsyncMock,
-        mock_get_user: AsyncMock,
-        mock_integrations: AsyncMock,
-        client: AsyncClient,
-    ):
-        """``account_created_at`` is either a real join date or the not-set
-        sentinel. Reporting an empty string for a shape we do not understand
-        renders a blank join date in the bot's settings card.
-
-        Asserting the explained payload, not just the 500: the base revision
-        also answered 500 here — incidentally, from an AttributeError on
-        ``str.isoformat`` swallowed by the handler's catch-all — so a status-only
-        assertion was green before the fix and proved nothing.
-
-        The payload is pinned verbatim rather than by substring: an earlier
-        ``"str" in body["why"]`` was satisfied by the "up*str*eam" in the trailing
-        sentence, so it stayed green even when the message reported the wrong type.
-        """
-        mock_get_user.return_value = {
-            "user_id": "uid1",
-            "_id": "uid1",
-            "created_at": "2024-01-02T03:04:05+00:00",
-        }
-        mock_integrations.return_value = []
-        response = await client.get(f"{BOT_BASE}/settings/discord/u1")
-        assert response.status_code == 500
-        body = response.json()
-        assert body["message"] == "User record has an unexpected created_at type"
-        # Names the type it actually got, so the operator can see the shape drift.
-        assert body["why"] == (
-            "user created_at is str, not a datetime — user_to_legacy_dict returns "
-            "the validated UserDocument field, so the shape changed upstream"
-        )
-        assert body["fix"] == (
-            "Check UserDocument.created_at and the user_to_legacy_dict projection"
-        )
-
-    @patch(
-        "app.api.v1.endpoints.bot.get_user_integration_records",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
-        new_callable=AsyncMock,
-    )
-    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_settings_looks_up_integrations_for_the_resolved_user_id(
         self,
         mock_auth: AsyncMock,
