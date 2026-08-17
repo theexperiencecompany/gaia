@@ -21,7 +21,6 @@ Runs as a LangChain :class:`AgentMiddleware` via `create_agent(middleware=...)`.
 """
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 import time
 from typing import Any
 
@@ -44,6 +43,7 @@ from app.config.rate_limits import (
 )
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
+from app.decorators.rate_limiting import build_rate_limit_card
 from app.models.agent_models import agent_configurable
 from app.models.payment_models import PlanType
 from app.services.cost_budget import (
@@ -174,27 +174,20 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
 
     def _emit_budget_stop_card(self, stop_reason: str, plan_type: PlanType) -> None:
         """Stream a ``rate_limit_data`` frame so the frontend renders RateLimitCard
-        instead of the bare stop text. Same pattern as ``with_rate_limiting`` in
+        instead of the bare stop text. Same helper ``with_rate_limiting`` uses in
         ``app.decorators.rate_limiting``; a missing stream writer (workflows, bots)
         is normal and logged at debug, never raised.
         """
         try:
             writer = get_stream_writer()
             writer(
-                {
-                    "tool_data": {
-                        "tool_name": "rate_limit_data",
-                        "tool_category": "system",
-                        "data": {
-                            "feature": PRIMARY_METERED_FEATURE,
-                            "plan_required": "pro" if plan_type == PlanType.FREE else None,
-                            "reset_time": get_reset_time(RateLimitPeriod.DAY).isoformat(),
-                            "current_plan": plan_type.value,
-                            "message": stop_reason,
-                        },
-                        "timestamp": datetime.now(UTC).isoformat(),
-                    }
-                }
+                build_rate_limit_card(
+                    feature=PRIMARY_METERED_FEATURE,
+                    plan_required="pro" if plan_type == PlanType.FREE else None,
+                    reset_time=get_reset_time(RateLimitPeriod.DAY).isoformat(),
+                    current_plan=plan_type.value,
+                    message=stop_reason,
+                )
             )
         except Exception as e:
             log.debug(

@@ -31,7 +31,7 @@ Document ``content`` is capped at MEMORY_TOOL_DOCUMENT_MAX_CHARS. ``doc_type``
 is a ``MemoryDocType`` value (``user_md`` ... ``insights_md``).
 """
 
-from datetime import UTC, date as date_type, datetime
+from datetime import date as date_type
 from typing import Annotated, Any, Literal, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
@@ -49,6 +49,7 @@ from app.constants.memory import (
     ReconcileOutcome,
 )
 from app.decorators import with_doc
+from app.decorators.rate_limiting import build_rate_limit_card
 from app.memory.engine import memory_engine
 from app.memory.ingestion import MemoryLimitReachedError
 from app.memory.retrieval import EpisodeHit
@@ -195,10 +196,10 @@ def _stream_memory_data(payload: MemoryDataPayload) -> None:
 def _stream_memory_limit_card() -> None:
     """Emit the in-chat rate-limit card for the free memory cap.
 
-    Same ``rate_limit_data`` payload the @with_rate_limiting decorator emits
-    (see app/decorators/rate_limiting.py), so the frontend RateLimitCard with
-    its upgrade CTA renders with zero new frontend work. The explicit
-    ``message`` matters: memory is NOT plan-gated (free includes a capped
+    Same ``rate_limit_data`` payload :func:`build_rate_limit_card` builds for
+    ``@with_rate_limiting`` (see app/decorators/rate_limiting.py), so the frontend
+    RateLimitCard with its upgrade CTA renders with zero new frontend work. The
+    explicit ``message`` matters: memory is NOT plan-gated (free includes a capped
     amount), so the card must say the cap is full rather than the generic
     "not included in your plan" copy.
     """
@@ -207,25 +208,18 @@ def _stream_memory_limit_card() -> None:
     except RuntimeError:
         return
     writer(
-        {
-            "tool_data": {
-                "tool_name": "rate_limit_data",
-                "tool_category": "system",
-                "data": {
-                    "feature": "memory",
-                    "plan_required": PlanType.PRO.value,
-                    "reset_time": None,
-                    "current_plan": PlanType.FREE.value,
-                    "message": (
-                        f"Your free plan stores up to {FREE_MEMORY_FACT_LIMIT} "
-                        "memories and they are all used. Everything already "
-                        "saved keeps working. Upgrade to Pro for unlimited "
-                        "memories."
-                    ),
-                },
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        }
+        build_rate_limit_card(
+            feature="memory",
+            plan_required=PlanType.PRO.value,
+            reset_time=None,
+            current_plan=PlanType.FREE.value,
+            message=(
+                f"Your free plan stores up to {FREE_MEMORY_FACT_LIMIT} "
+                "memories and they are all used. Everything already "
+                "saved keeps working. Upgrade to Pro for unlimited "
+                "memories."
+            ),
+        )
     )
 
 
