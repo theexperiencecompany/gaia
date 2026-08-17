@@ -501,12 +501,15 @@ class TestBotChatStream:
         response = await client.post(f"{BOT_BASE}/chat-stream", json={})
         assert response.status_code == 422
 
-    @patch("app.api.v1.endpoints.bot.spawn_background_task")
+    # The four the body never touches are patched with `new=`, which injects no
+    # parameter — the signature would otherwise cross ruff's positional-argument
+    # limit purely with mocks nothing asserts on.
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
     @patch(
-        "app.api.v1.endpoints.bot.run_chat_stream_background",
-        new_callable=AsyncMock,
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
     )
-    @patch("app.api.v1.endpoints.bot.create_bot_session_token", return_value="tok")
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
         new_callable=AsyncMock,
@@ -514,17 +517,13 @@ class TestBotChatStream:
     @patch("app.api.v1.endpoints.bot.stream_manager")
     @patch("app.api.v1.endpoints.bot.BotService")
     @patch("app.api.v1.endpoints.bot.capture_event")
-    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
     async def test_chat_stream_captures_message_submitted(
         self,
-        mock_auth: AsyncMock,
         mock_capture: MagicMock,
         mock_bot_svc: MagicMock,
         mock_sm: MagicMock,
         mock_get_user: AsyncMock,
-        mock_token: MagicMock,
-        mock_background: AsyncMock,
-        mock_spawn: MagicMock,
         client: AsyncClient,
     ):
         """A bot chat message is attributed to the linked user via capture_event
@@ -558,12 +557,15 @@ class TestBotChatStream:
             {"platform": "discord", "has_files": False},
         )
 
-    @patch("app.api.v1.endpoints.bot.spawn_background_task")
+    # The four the body never touches are patched with `new=`, which injects no
+    # parameter — the signature would otherwise cross ruff's positional-argument
+    # limit purely with mocks nothing asserts on.
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
     @patch(
-        "app.api.v1.endpoints.bot.run_chat_stream_background",
-        new_callable=AsyncMock,
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
     )
-    @patch("app.api.v1.endpoints.bot.create_bot_session_token", return_value="tok")
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
         new_callable=AsyncMock,
@@ -571,17 +573,13 @@ class TestBotChatStream:
     @patch("app.api.v1.endpoints.bot.stream_manager")
     @patch("app.api.v1.endpoints.bot.BotService")
     @patch("app.api.v1.endpoints.bot.capture_event")
-    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
     async def test_chat_stream_captures_has_files(
         self,
-        mock_auth: AsyncMock,
         mock_capture: MagicMock,
         mock_bot_svc: MagicMock,
         mock_sm: MagicMock,
         mock_get_user: AsyncMock,
-        mock_token: MagicMock,
-        mock_background: AsyncMock,
-        mock_spawn: MagicMock,
         client: AsyncClient,
     ):
         """A message carrying attachments reports has_files=True."""
@@ -728,9 +726,12 @@ class TestBotChatStream:
         assert response.status_code == 418
         mock_tiered.assert_awaited_once_with("u1", "chat_messages")
 
-    @patch("app.api.v1.endpoints.bot.spawn_background_task")
-    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new_callable=AsyncMock)
-    @patch("app.api.v1.endpoints.bot.create_bot_session_token", return_value="tok")
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
         new_callable=AsyncMock,
@@ -738,17 +739,13 @@ class TestBotChatStream:
     @patch("app.api.v1.endpoints.bot.stream_manager")
     @patch("app.api.v1.endpoints.bot.BotService")
     @patch("app.api.v1.endpoints.bot.capture_event")
-    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
     async def test_a_served_turn_stamps_the_wide_event_with_who_where_and_outcome(
         self,
-        mock_auth: AsyncMock,
         mock_capture: MagicMock,
         mock_bot_svc: MagicMock,
         mock_sm: MagicMock,
         mock_get_user: AsyncMock,
-        mock_token: MagicMock,
-        mock_background: AsyncMock,
-        mock_spawn: MagicMock,
     ):
         """The wide event is the only record of a bot turn that survives the request.
 
