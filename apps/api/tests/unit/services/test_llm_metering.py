@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage
 
 from app.constants.llm import UNKNOWN_MODEL_NAME
-from app.models.agent_models import AgentConfigurable
 from app.services.llm_metering import (
     extract_message_model,
     extract_message_usage,

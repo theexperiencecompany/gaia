@@ -931,7 +931,7 @@ jobs:
     # Named explicitly: the default appends EVERY matrix value, so each of the
     # 50+ checks would carry its full test-file JSON and the module — the only
     # part a reader needs — would be truncated away in the checks list.
-    name: Mutation ${{ matrix.module }}
+    name: Mutation ${{ matrix.label }}
     needs: [changes, test-mutation-plan]
     if: needs.changes.outputs.has_python == 'true' && needs.test-mutation-plan.outputs.count != '0'
     runs-on: ubuntu-latest
@@ -963,37 +963,11 @@ jobs:
         # the shard-log artifact uploads, logs survive) instead of the job
         # being cancelled at its cap — a cancelled job retains nothing.
         timeout-minutes: 20
-        # Through env, not inline expansion: the values are generated, but an
+        # Through env, not inline expansion: the value is generated, but an
         # inline ${{ }} in a run block is a shell-injection seam regardless.
         env:
-          MODULE: ${{ matrix.module }}
-          TESTFILES: ${{ matrix.testfiles }}
-          RANGES: ${{ matrix.ranges }}
-        # Output goes to shard.log and only the TAIL is echoed to the step:
-        # the runner's live-log pipe stops draining somewhere around 13MB and
-        # blocks the writer forever — mutmut's debug output crosses that on
-        # busy modules, and the frozen write is unkillable mid-syscall, so the
-        # job died at its cap with its logs destroyed (ten rounds of evidence
-        # behind that sentence; the full story is in this file's git history).
-        # The full log ships as the artifact below. timeout(1) bounds a
-        # genuine mutmut hang from outside, since bash defers traps while
-        # waiting on a foreground child.
-        run: |
-          rc=0
-          timeout --signal=KILL 1500             bash scripts/test/mutation.sh "$MODULE" "$TESTFILES" "$RANGES"             > shard.log 2>&1 || rc=$?
-          # tail, NEVER cat: with mutmut's debug on, a busy module writes a
-          # 13MB shard.log, and feeding that through the runner's live-log
-          # pipe is where this step actually froze — mutation.sh had finished
-          # (its EXIT trap had already removed the workdir) and the job then
-          # sat at the cat for 35 minutes until the cap cancelled it, which
-          # also destroyed the logs that proved all of this. The full file
-          # ships as the artifact below.
-          echo "--- shard.log (last 200KB; full file in the artifact) ---"
-          tail -c 200000 shard.log
-          if [ "$rc" = "137" ] || [ "$rc" = "124" ]; then
-            echo "::error::mutation shard for $MODULE exceeded 25 minutes and was killed by timeout(1) — see the log above for the last phase reached"
-          fi
-          exit "$rc"
+          GROUP: ${{ matrix.group }}
+        run: bash scripts/ci/mutation-shard.sh
       - name: Upload shard log
         # Belt and braces for the diagnosis path: runs even when the step
         # above fails or the job is cancelled, so the evidence survives the
