@@ -61,7 +61,13 @@ class TestStickyFlipReplayAccounting:
         result = await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            config={"configurable": {"user_id": "u1", "model_name": "m", "root_request_id": "r1"}},
+            config={
+                "configurable": {
+                    "user_id": "u1",
+                    "provider": "openrouter",
+                    "root_request_id": "r1",
+                }
+            },
             label="comms_agent",
             meter_auxiliary=False,
         )
@@ -94,14 +100,72 @@ class TestStickyFlipReplayAccounting:
         mock_record.assert_not_awaited()
 
     @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
-    async def test_auxiliary_lane_is_left_to_its_usage_handler(
-        self, mock_record: AsyncMock
-    ) -> None:
-        """``UsageMetadataCallbackHandler`` sums BOTH invocations, so metering
-        the discarded one here too would double-bill auxiliary COGS."""
+    async def test_auxiliary_lane_never_replays(self, mock_record: AsyncMock) -> None:
+        """A one-shot helper call has no prior chain — cold IS its steady
+        state, so a replay is pure double billing."""
         primary = self._flipping_primary()
 
         await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=True)
 
-        assert primary.ainvoke.await_count == 2
+        assert primary.ainvoke.await_count == 1
         mock_record.assert_not_awaited()
+
+    @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
+    async def test_gemini_lane_never_replays(self, mock_record: AsyncMock) -> None:
+        """No sticky routing on Gemini: a replay there is a second full-price
+        call with no possible upside."""
+        primary = self._flipping_primary()
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config={"configurable": {"provider": "gemini"}},
+            meter_auxiliary=False,
+        )
+
+        assert primary.ainvoke.await_count == 1
+        mock_record.assert_not_awaited()
+
+    @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
+    async def test_replay_is_silenced_so_it_never_streams_to_the_user(
+        self, mock_record: AsyncMock
+    ) -> None:
+        """Graph providers stream; without the silent stamp both invocations'
+        tokens land in one SSE stream and the user sees two answers."""
+        mock_record.return_value = 0.0
+        primary = self._flipping_primary()
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config={"configurable": {"provider": "openrouter"}},
+            meter_auxiliary=False,
+        )
+
+        first_cfg = primary.ainvoke.await_args_list[0].kwargs["config"]
+        replay_cfg = primary.ainvoke.await_args_list[1].kwargs["config"]
+        assert not (first_cfg.get("metadata") or {}).get("silent")
+        assert replay_cfg["metadata"]["silent"] is True
+
+    @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
+    async def test_a_failed_replay_keeps_the_first_response(self, mock_record: AsyncMock) -> None:
+        """The first answer is complete and in hand — a 429 on the re-send
+        must never cost the turn (or trigger a third, fallback call)."""
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(
+            side_effect=[
+                _usage_message("cold", prompt=10_000, cached=0),
+                RuntimeError("429 on the re-send"),
+            ]
+        )
+
+        result = await ainvoke_llm(
+            runnable,
+            [HumanMessage(content="hi")],
+            config={"configurable": {"provider": "openrouter"}},
+            meter_auxiliary=False,
+        )
+
+        assert result.content == "cold"
+        mock_record.assert_not_awaited()  # nothing was discarded

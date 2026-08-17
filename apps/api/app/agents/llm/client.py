@@ -51,6 +51,7 @@ from app.constants.llm import (
     SIM_STUB_MODEL_NAME,
     STICKY_FLIP_RETRY_MIN_HIT,
     STICKY_FLIP_RETRY_MIN_INPUT,
+    STICKY_ROUTING_PROVIDERS,
     VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
@@ -697,13 +698,33 @@ async def ainvoke_llm(
                 cached = details.get("cache_read") or 0
                 prompt = usage.get("input_tokens") or 0
                 if (
-                    prompt >= STICKY_FLIP_RETRY_MIN_INPUT
+                    # Graph lane on a sticky-routing provider only: auxiliary
+                    # one-shots have no prior chain (cold IS their steady
+                    # state), and Gemini has no stickiness to re-hit — for
+                    # both, a replay is pure double billing.
+                    not meter_auxiliary
+                    and agent_configurable(config).get("provider") in STICKY_ROUTING_PROVIDERS
+                    and prompt >= STICKY_FLIP_RETRY_MIN_INPUT
                     and cached < prompt * STICKY_FLIP_RETRY_MIN_HIT
                 ):
                     discarded = result
-                    result = await with_llm_retry(primary, max_attempts=1).ainvoke(
-                        messages, config=_with_usage_handler(config, usage_handler)
-                    )
+                    try:
+                        # silent: graph providers stream, and without it both
+                        # invocations' tokens land in the same SSE stream —
+                        # the user watches a second answer append to the first.
+                        result = await with_llm_retry(primary, max_attempts=1).ainvoke(
+                            messages,
+                            config=_silenced(_with_usage_handler(config, usage_handler)),
+                        )
+                    except Exception as replay_error:
+                        # The first answer is complete and in hand; a failed
+                        # re-send (429, deadline) must never cost the turn.
+                        log.warning(
+                            f"{LogTag.AGENT} sticky-flip replay failed; keeping the first response",
+                            agent_name=label,
+                            error=str(replay_error),
+                        )
+                        return discarded
                     await _meter_discarded_replay(discarded, config, label, usage_handler)
                 return result
             except LLM_FALLBACK_EXCEPTIONS as primary_error:
@@ -786,6 +807,14 @@ def silent_metered_config(user_id: str) -> RunnableConfig:
         RunnableConfig,
         {**SILENT_LLM_CONFIG, **metered_config(user_id)},
     )
+
+
+def _silenced(config: RunnableConfig) -> RunnableConfig:
+    """Copy of ``config`` whose metadata carries ``silent`` — the SSE consumer
+    skips message chunks stamped with it (agent_helpers, stream_mode="messages")."""
+    merged = dict(config)
+    merged["metadata"] = {**(config.get("metadata") or {}), "silent": True}
+    return cast(RunnableConfig, merged)
 
 
 def _with_usage_handler(

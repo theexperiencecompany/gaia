@@ -140,6 +140,10 @@ LLM_RETRY_MAX_ATTEMPTS = 3
 # the extra input bills at the cached-read rate.
 STICKY_FLIP_RETRY_MIN_HIT = 0.92
 STICKY_FLIP_RETRY_MIN_INPUT = 8_000
+# The replay's premise — sticky routing that re-reads the chain the first
+# attempt wrote — is OpenRouter-wire behaviour. Gemini has no sticky routing,
+# so a replay there is a second full-price call with no possible upside.
+STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM})
 
 # Total wall-clock ceiling for one ainvoke_llm call — retries, backoff sleeps and the
 # fallback attempt included. A backstop against a provider that accepts the connection
