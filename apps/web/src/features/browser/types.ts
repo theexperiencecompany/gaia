@@ -19,6 +19,8 @@ export interface BrowserTask {
   steps: number;
   created_at: string | null;
   conversation_id: string;
+  /** Where the task started: "web", "telegram", "whatsapp", … (may be empty). */
+  source: string;
   /** Ordered recap frames (screenshot + caption) that rebuild the slideshow. */
   frames: BrowserTaskFrame[];
 }

@@ -22,6 +22,8 @@ class BrowserTaskDocument(UserScopedDocument):
     session_id: str
     steps: int = 0
     step_goals: list[str] = Field(default_factory=list)
+    # Where the task was started from ("web", "telegram", "whatsapp", …).
+    source: str = ""
     replay_url: str | None = None
     created_at: datetime | None = None
 

@@ -93,6 +93,8 @@ async def browser_task(
     root_request_id: str | None = configurable.get("root_request_id")
     source_category = configurable.get("source_category")
     is_bot = source_category == SourceCategory.BOT.value
+    _conv_source = ConversationSource.coerce(configurable.get("conversation_source"))
+    task_source = _conv_source.value if _conv_source else ""
 
     log.set(browser={"operation": "task", "source_category": source_category})
 
@@ -206,6 +208,7 @@ async def browser_task(
                         session_id=session.session_id,
                         result=result,
                         step_goals=[step_goals.get(i, "") for i in range(1, result.steps + 1)],
+                        source=task_source,
                     ),
                     name="record_browser_task",
                 )

@@ -19,6 +19,7 @@ async def record_browser_task(
     session_id: str,
     result: BrowserResultSnapshot,
     step_goals: list[str] | None = None,
+    source: str = "",
 ) -> None:
     """Persist a finished browser task (any outcome) so it appears in the user's history."""
     await browser_task_repository.create(
@@ -31,9 +32,15 @@ async def record_browser_task(
             session_id=session_id,
             steps=result.steps,
             step_goals=step_goals or [],
+            source=source,
             replay_url=result.replay_url,
         )
     )
+
+
+async def delete_browser_task(user_id: str, task_id: str) -> bool:
+    """Delete one of the user's browser-task history records."""
+    return await browser_task_repository.delete(task_id, user_id=user_id)
 
 
 def _frames(session_id: str, steps: int, step_goals: list[str]) -> list[BrowserTaskFrame]:
@@ -63,6 +70,7 @@ async def list_browser_tasks(user_id: str, *, limit: int = 20) -> list[BrowserTa
             steps=doc.steps,
             created_at=doc.created_at,
             conversation_id=doc.conversation_id,
+            source=doc.source,
             frames=_frames(doc.session_id, doc.steps, doc.step_goals),
         )
         for doc in docs

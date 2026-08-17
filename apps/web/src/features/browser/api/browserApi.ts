@@ -5,6 +5,12 @@ export const browserApi = {
   listTasks: () =>
     apiService.get<BrowserTask[]>("/browser/tasks?limit=50", { silent: true }),
 
+  deleteTask: (id: string) =>
+    apiService.delete(`/browser/tasks/${id}`, {
+      successMessage: "Task removed",
+      errorMessage: "Could not remove this task",
+    }),
+
   listLogins: () =>
     apiService.get<SavedBrowserLogin[]>("/browser/logins", { silent: true }),
 

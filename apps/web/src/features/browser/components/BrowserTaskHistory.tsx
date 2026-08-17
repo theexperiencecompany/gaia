@@ -4,8 +4,14 @@ import { Button } from "@heroui/button";
 import { Modal, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
-import { AiWebBrowsingIcon, PlayIcon } from "@icons";
+import {
+  AiWebBrowsingIcon,
+  Comment01Icon,
+  Delete02Icon,
+  PlayIcon,
+} from "@icons";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { RecapSlideshow } from "@/components/browser/RecapSlideshow";
 import { useBrowserTasks } from "../hooks/useBrowserTasks";
@@ -23,15 +29,40 @@ const STATUS_META: Record<
   paused: { label: "Working", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
 };
 
+const SOURCE_LABEL: Record<string, string> = {
+  web: "Web",
+  mobile: "Mobile",
+  desktop: "Desktop",
+  telegram: "Telegram",
+  discord: "Discord",
+  slack: "Slack",
+  whatsapp: "WhatsApp",
+  imessage: "iMessage",
+};
+// Sources whose conversation lives in this app, so we can deep-link to it.
+const IN_APP_SOURCES = new Set(["web", "mobile", "desktop"]);
+
 function MetaDot() {
   return <span className="size-[3px] rounded-full bg-zinc-600" />;
 }
 
-function TaskRow({ task }: { task: BrowserTask }) {
+function TaskRow({
+  task,
+  onDelete,
+  isDeleting,
+}: {
+  task: BrowserTask;
+  onDelete: (id: string) => void;
+  isDeleting: boolean;
+}) {
+  const router = useRouter();
   const [recapOpen, setRecapOpen] = useState(false);
   const hasRecap = task.frames.length > 0;
   const meta = STATUS_META[task.status];
   const thumb = task.frames[0]?.url;
+  const sourceLabel = SOURCE_LABEL[task.source];
+  const canOpenChat =
+    IN_APP_SOURCES.has(task.source) && task.conversation_id.length > 0;
 
   return (
     <>
@@ -48,7 +79,6 @@ function TaskRow({ task }: { task: BrowserTask }) {
         role={hasRecap ? "button" : undefined}
         tabIndex={hasRecap ? 0 : undefined}
       >
-        {/* The first frame previews the recap; the whole row plays it. */}
         <div className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-white/5">
           {thumb ? (
             <Image
@@ -92,7 +122,41 @@ function TaskRow({ task }: { task: BrowserTask }) {
                 </span>
               </>
             )}
+            {sourceLabel && (
+              <>
+                <MetaDot />
+                <span>{sourceLabel}</span>
+              </>
+            )}
           </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          {canOpenChat && (
+            <Button
+              isIconOnly
+              size="sm"
+              variant="light"
+              radius="full"
+              className="text-zinc-400"
+              aria-label="Open conversation"
+              onPress={() => router.push(`/c/${task.conversation_id}`)}
+            >
+              <Comment01Icon className="size-4" />
+            </Button>
+          )}
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            color="danger"
+            radius="full"
+            aria-label="Delete task"
+            isLoading={isDeleting}
+            onPress={() => onDelete(task.id)}
+          >
+            {!isDeleting && <Delete02Icon className="size-4" />}
+          </Button>
         </div>
       </div>
 
@@ -116,7 +180,8 @@ function TaskRow({ task }: { task: BrowserTask }) {
 }
 
 export function BrowserTaskHistory() {
-  const { tasks, isLoading, error, refetch } = useBrowserTasks();
+  const { tasks, isLoading, error, refetch, deleteTask, deletingId } =
+    useBrowserTasks();
 
   return (
     <section>
@@ -150,7 +215,12 @@ export function BrowserTaskHistory() {
         <ScrollShadow className="max-h-[540px]">
           <div className="flex flex-col gap-2 pr-1">
             {tasks.map((task) => (
-              <TaskRow key={task.id} task={task} />
+              <TaskRow
+                key={task.id}
+                task={task}
+                onDelete={deleteTask}
+                isDeleting={deletingId === task.id}
+              />
             ))}
           </div>
         </ScrollShadow>

@@ -34,7 +34,7 @@ from app.services.browser.takeover_token import (
     create_takeover_token,
     takeover_token_ttl_seconds,
 )
-from app.services.browser.tasks import list_browser_tasks
+from app.services.browser.tasks import delete_browser_task, list_browser_tasks
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/browser", tags=["Browser"])
@@ -122,6 +122,16 @@ async def list_browser_tasks_endpoint(
     tasks = await list_browser_tasks(user_id, limit=limit)
     log.set(browser={"result_count": len(tasks)})
     return tasks
+
+
+@router.delete("/tasks/{task_id}", status_code=204)
+async def delete_browser_task_endpoint(
+    task_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> None:
+    """Remove one task from the user's browser history."""
+    log.set(user={"id": user_id}, browser={"operation": "delete_task", "task_id": task_id})
+    await delete_browser_task(user_id, task_id)
 
 
 @router.get("/logins", response_model=list[BrowserLoginResponse])

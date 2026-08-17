@@ -24,7 +24,7 @@ function LoginRow({
   const [faviconFailed, setFaviconFailed] = useState(false);
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/40 p-3">
+    <div className="group flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/40 p-3">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           {faviconFailed ? (
@@ -54,7 +54,7 @@ function LoginRow({
         size="sm"
         variant="light"
         color="danger"
-        className="h-8"
+        className={`h-8 shrink-0 transition-opacity ${isForgetting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
         isLoading={isForgetting}
         startContent={!isForgetting && <Delete02Icon className="size-4" />}
         onPress={() => onForget(login.domain)}

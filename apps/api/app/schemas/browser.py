@@ -156,6 +156,7 @@ class BrowserTaskResponse(BaseModel):
     steps: int
     created_at: datetime | None
     conversation_id: str
+    source: str
     frames: list[BrowserTaskFrame] = Field(
         default_factory=list, description="Recap frames (screenshot + caption), in order."
     )
