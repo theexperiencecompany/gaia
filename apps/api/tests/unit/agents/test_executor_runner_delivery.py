@@ -446,8 +446,13 @@ class TestDeliverResultHilResume:
         UUID(saved.message_id)
         ws.assert_awaited_once()
         # The fallback is loud, and names the message it could not merge onto.
+        # Exact tail, not a substring — a mangled message still CONTAINS the
+        # substring, so only equality can catch it.
         warning = next(
-            c for c in mock_log.warning.call_args_list if "appending a fresh one" in c.args[0]
+            c for c in mock_log.warning.call_args_list if "original_message_id" in c.kwargs
+        )
+        assert warning.args[0].endswith(
+            "original message unavailable, appending a fresh one instead"
         )
         assert warning.kwargs["original_message_id"] == "orig-msg-1"
         assert warning.kwargs["conversation_id"] == run.conversation_id
