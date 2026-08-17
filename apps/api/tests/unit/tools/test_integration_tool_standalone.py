@@ -33,6 +33,16 @@ def _writer() -> MagicMock:
     return MagicMock()
 
 
+def _emitter_writer(writer: MagicMock):
+    """Point the shared connect-card emitter at the same writer as the tool.
+
+    ``emit_integration_connection_required`` resolves its own writer from the
+    ambient LangGraph config, so patching only the tool module's
+    ``get_stream_writer`` leaves the card emission running against no graph.
+    """
+    return patch("app.utils.integration_checker.get_stream_writer", return_value=writer)
+
+
 def _make_integration(
     id: str = "gmail",
     name: str = "Gmail",
@@ -215,9 +225,10 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
-            config=_cfg(), integration_ids=["gmail"]
-        )
+        with _emitter_writer(w):
+            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+                config=_cfg(), integration_ids=["gmail"]
+            )
         assert "needs to be connected" in result
         # Writer should be called with integration_connection_required
         integration_calls = [
@@ -239,11 +250,13 @@ class TestConnectIntegration:
         self, mock_check: AsyncMock, mock_gsw: MagicMock
     ) -> None:
         """On a bot platform the agent reply must carry the connect URL inline."""
-        mock_gsw.return_value = _writer()
+        w = _writer()
+        mock_gsw.return_value = w
 
         from app.agents.tools.integration_tool import connect_integration
 
         with (
+            _emitter_writer(w),
             patch(
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "bot"}},
@@ -274,13 +287,17 @@ class TestConnectIntegration:
         self, mock_check: AsyncMock, mock_gsw: MagicMock
     ) -> None:
         """On UI the reply points at the rendered card, never a raw URL."""
-        mock_gsw.return_value = _writer()
+        w = _writer()
+        mock_gsw.return_value = w
 
         from app.agents.tools.integration_tool import connect_integration
 
-        with patch(
-            "app.utils.integration_checker.get_config",
-            return_value={"configurable": {"source_category": "ui"}},
+        with (
+            _emitter_writer(w),
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "ui"}},
+            ),
         ):
             result = await connect_integration.coroutine(  # type: ignore[attr-defined]
                 config=_cfg(), integration_ids=["gmail"]

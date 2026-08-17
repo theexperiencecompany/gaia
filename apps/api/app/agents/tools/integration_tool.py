@@ -37,7 +37,10 @@ from app.templates.docstrings.integration_tool_docs import (
     CONNECT_INTEGRATION,
     LIST_INTEGRATIONS,
 )
-from app.utils.integration_checker import build_integration_connection_message
+from app.utils.integration_checker import (
+    build_integration_connection_message,
+    emit_integration_connection_required,
+)
 from shared.py.wide_events import log
 
 
@@ -296,12 +299,7 @@ async def connect_integration(
         for integration in connections_to_initiate:
             writer({"progress": f"Initiating {integration.name} connection..."})
 
-            integration_data = {
-                "integration_id": integration.id,
-                "message": f"To use {integration.name} features, please connect your account.",
-            }
-
-            writer({"integration_connection_required": integration_data})
+            emit_integration_connection_required(integration.id, integration.name)
 
             connect_url = await build_connect_link_url(str(user_id), integration.id)
             results.append(build_integration_connection_message(integration.name, connect_url))

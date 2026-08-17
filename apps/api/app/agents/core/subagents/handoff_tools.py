@@ -75,7 +75,10 @@ from app.utils.agent_utils import (
     parse_subagent_id,
 )
 from app.utils.background_tasks import spawn_background_task
-from app.utils.integration_checker import build_integration_connection_message
+from app.utils.integration_checker import (
+    build_integration_connection_message,
+    emit_integration_connection_required,
+)
 from shared.py.wide_events import log
 
 SUBAGENTS_NAMESPACE = ("subagents",)
@@ -135,12 +138,7 @@ async def check_integration_connection(
         writer = get_stream_writer()
         writer({"progress": f"Checking {subagent.name} connection..."})
 
-        integration_data = {
-            "integration_id": subagent.id,
-            "message": f"To use {subagent.name} features, please connect your account first.",
-        }
-
-        writer({"integration_connection_required": integration_data})
+        emit_integration_connection_required(subagent.id, subagent.name)
 
         connect_url = await build_connect_link_url(user_id, subagent.id)
         return build_integration_connection_message(subagent.name, connect_url)

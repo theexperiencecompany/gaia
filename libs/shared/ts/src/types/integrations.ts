@@ -20,7 +20,17 @@ export type IntegrationCategory =
   | "capabilities"
   | "other";
 
-export type IntegrationStatusValue = "connected" | "not_connected" | "created";
+/**
+ * Connection state of one integration for one user. `expired` means it was
+ * connected and the upstream grant died — the UI must offer Reconnect, not a
+ * first-time Connect. Synced with the backend `UserIntegrationStatus` plus the
+ * derived `not_connected` (no record at all).
+ */
+export type IntegrationStatusValue =
+  | "connected"
+  | "not_connected"
+  | "created"
+  | "expired";
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";
 
@@ -63,13 +73,13 @@ export interface Integration {
 
 /**
  * Represents the connection status record for a user's integration.
- * Note: status is restricted to "created" | "connected" because this represents
- * the database record state. The broader Integration.status ("not_connected" | "error")
- * is derived at the API layer based on whether a UserIntegration record exists.
+ * Note: status excludes "not_connected" because this represents the database
+ * record state. That value is derived at the API layer based on whether a
+ * UserIntegration record exists.
  */
 export interface UserIntegration {
   integrationId: string;
-  status: "created" | "connected";
+  status: "created" | "connected" | "expired";
   createdAt: string;
   connectedAt?: string;
   integration: MarketplaceIntegration;
@@ -140,7 +150,7 @@ export interface MyIntegrationItem {
   category: string;
   source: "platform" | "custom";
   managedBy: IntegrationManagedBy;
-  status: "connected" | "created" | "not_connected";
+  status: IntegrationStatusValue;
   requiresAuth: boolean;
   authType?: IntegrationAuthType | null;
   isFeatured: boolean;

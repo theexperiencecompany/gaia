@@ -8,8 +8,8 @@ Covers:
   connect_composio_integration, connect_self_integration, disconnect_integration,
   _invalidate_caches)
 - user_integrations.py (get_user_integrations, get_user_integration_records,
-  add_user_integration, remove_user_integration, check_user_has_integration,
-  get_user_integration_capabilities)
+  add_user_integration, remove_user_integration, check_user_has_integration)
+- integration_capabilities.py (get_user_integration_capabilities)
 - user_integration_status.py (update_user_integration_status)
 - custom_crud.py (create_custom_integration, update_custom_integration,
   delete_custom_integration, create_and_connect_custom_integration)
@@ -21,6 +21,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.core.integration_capabilities import (
+    get_user_integration_capabilities,
+)
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
@@ -67,7 +70,6 @@ from app.services.integrations.user_integration_status import (
 from app.services.integrations.user_integrations import (
     add_user_integration,
     check_user_has_integration,
-    get_user_integration_capabilities,
     get_user_integration_records,
     get_user_integrations,
     remove_user_integration,
@@ -620,7 +622,9 @@ class TestUpdateUserIntegrationStatus:
         )
 
         assert result is True
-        mock_repo.set_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, status="connected")
+        mock_repo.set_status.assert_awaited_once_with(
+            USER_ID, INTEGRATION_ID, status="connected", expired_reason=None
+        )
         mock_sched.assert_called_once_with(USER_ID)
 
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
@@ -633,7 +637,26 @@ class TestUpdateUserIntegrationStatus:
         )
 
         assert result is True
-        mock_repo.set_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, status="created")
+        mock_repo.set_status.assert_awaited_once_with(
+            USER_ID, INTEGRATION_ID, status="created", expired_reason=None
+        )
+        mock_sched.assert_not_called()
+
+    @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
+    @patch("app.services.integrations.user_integration_status.user_integration_repository")
+    async def test_update_status_expired_passes_the_reason_through(self, mock_repo, mock_sched):
+        # The expiry transition owns the VFS resync itself, so this chokepoint
+        # must keep scheduling it only on connect.
+        mock_repo.set_status = AsyncMock(return_value=True)
+
+        result = await update_user_integration_status.__wrapped__(
+            USER_ID, INTEGRATION_ID, "expired", expired_reason="refresh_token_revoked"
+        )
+
+        assert result is True
+        mock_repo.set_status.assert_awaited_once_with(
+            USER_ID, INTEGRATION_ID, status="expired", expired_reason="refresh_token_revoked"
+        )
         mock_sched.assert_not_called()
 
 
@@ -871,15 +894,15 @@ class TestCheckUserHasIntegration:
 
 class TestGetUserIntegrationCapabilities:
     @patch(
-        "app.services.integrations.user_integrations.get_integration_details",
+        "app.agents.core.integration_capabilities.get_integration_details",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_connected_integration_ids",
+        "app.agents.core.integration_capabilities.get_connected_integration_ids",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_tool_registry",
+        "app.agents.core.integration_capabilities.get_tool_registry",
         new_callable=AsyncMock,
     )
     async def test_includes_core_tools_and_integrations(
@@ -917,15 +940,15 @@ class TestGetUserIntegrationCapabilities:
         assert "github" in result["capabilities"]
 
     @patch(
-        "app.services.integrations.user_integrations.get_integration_details",
+        "app.agents.core.integration_capabilities.get_integration_details",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_connected_integration_ids",
+        "app.agents.core.integration_capabilities.get_connected_integration_ids",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_tool_registry",
+        "app.agents.core.integration_capabilities.get_tool_registry",
         new_callable=AsyncMock,
     )
     async def test_skips_integrations_with_no_details(
@@ -944,15 +967,15 @@ class TestGetUserIntegrationCapabilities:
         assert result["capabilities"] == {}
 
     @patch(
-        "app.services.integrations.user_integrations.get_integration_details",
+        "app.agents.core.integration_capabilities.get_integration_details",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_connected_integration_ids",
+        "app.agents.core.integration_capabilities.get_connected_integration_ids",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.user_integrations.get_tool_registry",
+        "app.agents.core.integration_capabilities.get_tool_registry",
         new_callable=AsyncMock,
     )
     async def test_no_connected_integrations(self, mock_registry, mock_connected, mock_details):

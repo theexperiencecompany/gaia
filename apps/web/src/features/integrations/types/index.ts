@@ -41,7 +41,7 @@ export interface Integration {
   name: string;
   description: string;
   category: IntegrationCategoryValue;
-  status: "connected" | "not_connected" | "created" | "error";
+  status: "connected" | "not_connected" | "created" | "expired" | "error";
   displayPriority?: number;
   isFeatured?: boolean;
   managedBy?: "self" | "composio" | "mcp" | "internal";

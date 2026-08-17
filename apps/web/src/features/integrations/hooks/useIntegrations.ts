@@ -1,9 +1,12 @@
+import {
+  INTEGRATION_STATE_ORDER,
+  integrationConnectionState,
+} from "@shared/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
-
 import { integrationsApi } from "../api/integrationsApi";
 import { integrationKeys, toolKeys } from "../api/queryKeys";
 import type {
@@ -64,7 +67,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   });
 
   // Map the personalized catalog into the Integration shape the app consumes,
-  // sorted by status (created → connected → not_connected) then name.
+  // sorted by state (expired → created → connected → not_connected) then name.
   const integrations = useMemo((): Integration[] => {
     const items = myIntegrationsData?.integrations ?? [];
 
@@ -89,15 +92,11 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       slug: item.slug ?? "",
     }));
 
-    const statusPriority: Record<string, number> = {
-      created: 0,
-      connected: 1,
-      not_connected: 2,
-    };
-
     return mapped.toSorted((a, b) => {
-      const priorityA = statusPriority[a.status] ?? 3;
-      const priorityB = statusPriority[b.status] ?? 3;
+      const priorityA =
+        INTEGRATION_STATE_ORDER[integrationConnectionState(a.status)];
+      const priorityB =
+        INTEGRATION_STATE_ORDER[integrationConnectionState(b.status)];
 
       if (priorityA !== priorityB) {
         return priorityA - priorityB;

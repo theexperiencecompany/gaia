@@ -111,12 +111,20 @@ class TestCheckIntegrationConnection:
                 "app.agents.core.subagents.handoff_tools.get_stream_writer",
                 return_value=mock_writer,
             ),
+            # The connect card is emitted by the shared emitter, which resolves
+            # its own writer from the ambient LangGraph config.
+            patch(
+                "app.utils.integration_checker.get_stream_writer",
+                return_value=mock_writer,
+            ),
         ):
             result = await check_integration_connection("gmail", "user1")
 
         assert result is not None
         assert "needs to be connected" in result
         assert mock_writer.call_count == 2  # progress + connection_required
+        card = mock_writer.call_args_list[1].args[0]["integration_connection_required"]
+        assert card["integration_id"] == "gmail"
 
     async def test_returns_none_on_exception(self):
         with patch(

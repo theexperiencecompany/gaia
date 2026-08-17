@@ -18,9 +18,10 @@ MAX_INTEGRATION_TOOLS_FOR_LLM = 40
 # number of custom integrations can truncate at all.
 MAX_MY_INTEGRATIONS_RESULTS = 100
 
-# Integration connection status values. `Final` keeps the literal type so this
-# still satisfies update_user_integration_status's Literal["created", "connected"].
+# Integration connection status values. `Final` keeps the literal type so these
+# still satisfy update_user_integration_status's UserIntegrationStatus.
 INTEGRATION_STATUS_CONNECTED: Final = "connected"
+INTEGRATION_STATUS_EXPIRED: Final = "expired"
 
 # Integration managed_by provider identifiers
 MANAGED_BY_MCP = "mcp"

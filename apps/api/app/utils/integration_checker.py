@@ -1,13 +1,14 @@
-"""Agent-facing copy for getting an integration connected.
+"""Getting an integration connected: the connect card and the agent-facing copy.
 
-The wording depends on the client: UI clients render a connect card, so the
-agent text must stay URL-free; text-only clients (bots, background runs) need
-the link inline because there is no card to click.
+Both halves of one contract, so they live together. The wording depends on the
+client: UI clients render the connect card, so the agent text must stay URL-free;
+text-only clients (bots, background runs) need the link inline because there is
+no card to click.
 """
 
 from typing import cast
 
-from langgraph.config import get_config
+from langgraph.config import get_config, get_stream_writer
 
 from app.config.settings import settings
 from app.models.agent_models import agent_configurable
@@ -25,6 +26,26 @@ def _current_source_category() -> str | None:
     except RuntimeError:
         return None
     return cast(str | None, agent_configurable(config).get("source_category"))
+
+
+def emit_integration_connection_required(integration_id: str, integration_name: str) -> None:
+    """Stream the connect-card event for an integration the user has to (re)connect.
+
+    The single emitter of ``integration_connection_required`` — the payload is the
+    contract for ``IntegrationConnectionPrompt.tsx`` and the mobile renderer, so it
+    is built in exactly one place.
+    """
+    writer = get_stream_writer()
+    writer(
+        {
+            "integration_connection_required": {
+                "integration_id": integration_id,
+                "message": (
+                    f"To use {integration_name} features, please connect your account first."
+                ),
+            }
+        }
+    )
 
 
 def build_integration_connection_message(

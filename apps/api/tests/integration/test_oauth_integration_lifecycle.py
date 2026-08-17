@@ -24,7 +24,7 @@ Mocking boundaries:
 
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -34,7 +34,11 @@ from app.config.oauth_config import (
     get_integration_by_id,
     get_integration_scopes,
 )
-from app.models.integration_models import Integration, UserIntegrationDocument
+from app.models.integration_models import (
+    Integration,
+    UserIntegrationDocument,
+    UserIntegrationStatus,
+)
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
 from app.services.integrations.integration_connection_service import (
@@ -106,9 +110,11 @@ class _FakeUserIntegrationRepo:
 
     Preserves the upsert/delete semantics the service layer relies on — one
     record per ``(user_id, integration_id)``, ``connected_at`` stamped on the
-    connected transition — so the lifecycle/idempotence/isolation assertions hold
-    at the repository seam. The repository's Mongo+Redis behaviour itself is
-    covered by ``tests/contracts/test_user_integrations_repository.py``.
+    connected transition and ``expired_at``/``expired_reason`` on the expired one
+    (cleared again on reconnect) — so the lifecycle/idempotence/isolation
+    assertions hold at the repository seam. The repository's Mongo+Redis
+    behaviour itself is covered by
+    ``tests/contracts/test_user_integrations_repository.py``.
     """
 
     def __init__(self) -> None:
@@ -119,7 +125,8 @@ class _FakeUserIntegrationRepo:
         user_id: str,
         integration_id: str,
         *,
-        status: Literal["created", "connected"],
+        status: UserIntegrationStatus,
+        expired_reason: str | None = None,
     ) -> bool:
         key = (user_id, integration_id)
         existing = self.docs.get(key)
@@ -132,10 +139,23 @@ class _FakeUserIntegrationRepo:
         }
         if existing is not None and existing.connected_at is not None:
             fields["connected_at"] = existing.connected_at
+        if existing is not None and status != "connected":
+            fields["expired_at"] = existing.expired_at
+            fields["expired_reason"] = existing.expired_reason
         if status == "connected":
             fields["connected_at"] = now
+            fields["expired_at"] = None
+            fields["expired_reason"] = None
+        elif status == "expired":
+            fields["expired_at"] = now
+            fields["expired_reason"] = expired_reason
         self.docs[key] = UserIntegrationDocument.model_validate(fields)
         return True
+
+    async def get_for_user(
+        self, user_id: str, integration_id: str
+    ) -> UserIntegrationDocument | None:
+        return self.docs.get((user_id, integration_id))
 
     async def delete_for_user(self, user_id: str, integration_id: str) -> bool:
         return self.docs.pop((user_id, integration_id), None) is not None
@@ -787,6 +807,33 @@ class TestReconnectionFlow:
             assert doc.status == "connected"
             assert doc.user_id == USER_ID
             assert doc.integration_id == "gmail"
+
+    @pytest.mark.regression
+    async def test_reconnect_after_expiry_clears_the_expiry_stamps(self) -> None:
+        """A reconnected integration must not read as connected-but-broken.
+
+        Stale ``expired_at``/``expired_reason`` on a live record would make the
+        integration look dead to anything that reads them.
+        """
+        repo = _FakeUserIntegrationRepo()
+
+        with _patched_repo(repo):
+            await update_user_integration_status(USER_ID, "gmail", "connected")
+            await update_user_integration_status(
+                USER_ID, "gmail", "expired", expired_reason="refresh_token_revoked"
+            )
+
+            expired = repo.stored[0]
+            assert expired.status == "expired"
+            assert expired.expired_at is not None
+            assert expired.expired_reason == "refresh_token_revoked"
+
+            await update_user_integration_status(USER_ID, "gmail", "connected")
+
+            reconnected = repo.stored[0]
+            assert reconnected.status == "connected"
+            assert reconnected.expired_at is None
+            assert reconnected.expired_reason is None
 
 
 # ---------------------------------------------------------------------------

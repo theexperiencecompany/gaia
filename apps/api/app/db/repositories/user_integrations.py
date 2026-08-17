@@ -6,11 +6,11 @@ integrations a user has added and whether they are connected.
 """
 
 from datetime import UTC, datetime
-from typing import Literal
 
 from app.db.repositories.base import UserScopedRepository
 from app.models.integration_models import (
     UserIntegrationDocument,
+    UserIntegrationStatus,
     UserIntegrationUpdate,
 )
 
@@ -44,10 +44,17 @@ class UserIntegrationsRepository(
         return doc is not None and doc.status == "connected"
 
     async def set_status(
-        self, user_id: str, integration_id: str, *, status: Literal["created", "connected"]
+        self,
+        user_id: str,
+        integration_id: str,
+        *,
+        status: UserIntegrationStatus,
+        expired_reason: str | None = None,
     ) -> bool:
         """Upsert the user's connection status. ``connected_at`` is stamped on the
-        connected transition; ``created_at`` only on insert. Always succeeds (the
+        connected transition and ``expired_at``/``expired_reason`` on the expired one;
+        ``created_at`` only on insert. Reconnecting clears the expiry stamps so an
+        `expired` record never reads as connected-but-broken. Always succeeds (the
         upsert matches or inserts), matching the old modified/upserted/matched check."""
         set_fields: dict[str, object] = {
             "status": status,
@@ -56,6 +63,11 @@ class UserIntegrationsRepository(
         }
         if status == "connected":
             set_fields["connected_at"] = datetime.now(UTC)
+            set_fields["expired_at"] = None
+            set_fields["expired_reason"] = None
+        elif status == "expired":
+            set_fields["expired_at"] = datetime.now(UTC)
+            set_fields["expired_reason"] = expired_reason
         doc = await self._apply_raw_update(
             {"user_id": user_id, "integration_id": integration_id},
             {"$set": set_fields, "$setOnInsert": {"created_at": datetime.now(UTC)}},
