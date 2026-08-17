@@ -6,10 +6,18 @@ routing, status codes, response bodies, and auth checks.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
+from app.models.payment_models import PlanType
+
 BOT_BASE = "/api/v1/bot"
+PLAN_PATCH = "app.services.platform_link_service.payment_service.get_cached_plan_type"
+
+
+def _CHAT_BODY(platform: str) -> dict[str, str]:
+    return {"message": "hello", "platform": platform, "platform_user_id": "u1"}
 
 
 def _make_request(bot_api_key_valid: bool = True, **extra_state: object) -> MagicMock:
@@ -410,6 +418,79 @@ class TestBotChatStream:
     async def test_chat_stream_validation_error(self, mock_auth: AsyncMock, client: AsyncClient):
         response = await client.post(f"{BOT_BASE}/chat-stream", json={})
         assert response.status_code == 422
+
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_chat_stream_unlinked_user_gets_not_authenticated_frame(
+        self, mock_auth: AsyncMock, mock_limit: AsyncMock, client: AsyncClient
+    ):
+        with patch(
+            "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("imessage"))
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert response.text == 'data: {"error": "not_authenticated"}\n\n'
+
+    @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_chat_stream_free_user_on_premium_platform_gets_plan_required_frame(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        mock_tiered: AsyncMock,
+        client: AsyncClient,
+    ):
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE) as mock_plan,
+        ):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("imessage"))
+
+        assert response.status_code == 200
+        assert response.text == 'data: {"error": "plan_required"}\n\n'
+        mock_plan.assert_awaited_once_with("u1")
+        mock_tiered.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("platform", "plan"),
+        [("imessage", PlanType.PRO), ("telegram", PlanType.FREE)],
+    )
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_chat_stream_plan_gate_passes_through_to_quota(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        client: AsyncClient,
+        platform: str,
+        plan: PlanType,
+    ):
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=plan),
+            patch(
+                "app.api.v1.endpoints.bot.enforce_tiered_limit",
+                new_callable=AsyncMock,
+                side_effect=HTTPException(status_code=418),
+            ) as mock_tiered,
+        ):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY(platform))
+
+        assert response.status_code == 418
+        mock_tiered.assert_awaited_once_with("u1", "chat_messages")
 
 
 # ---------------------------------------------------------------------------

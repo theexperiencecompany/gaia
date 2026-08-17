@@ -139,6 +139,7 @@ class ConversationSource(str, Enum):
     DISCORD = "discord"
     SLACK = "slack"
     WHATSAPP = "whatsapp"
+    IMESSAGE = "imessage"
     WORKFLOW_SYSTEM = "workflow_system"
     BACKGROUND = "background"
 
@@ -197,6 +198,7 @@ BOT_CONVERSATION_SOURCES: frozenset[ConversationSource] = frozenset(
         ConversationSource.TELEGRAM,
         ConversationSource.DISCORD,
         ConversationSource.SLACK,
+        ConversationSource.IMESSAGE,
     }
 )
 

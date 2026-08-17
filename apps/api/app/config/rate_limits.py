@@ -338,6 +338,15 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="Clone community integrations to your workspace",
         ),
     ),
+    "imessage_registration": TieredRateLimits(
+        # Abuse guard: each connect burns a seat in Photon's shared pool. Free is zeroed (Pro-only).
+        free=RateLimitConfig(day=0, month=0),
+        pro=RateLimitConfig(day=10, month=100),
+        info=FeatureInfo(
+            title="iMessage Registration",
+            description="Register a phone number on the GAIA iMessage pool",
+        ),
+    ),
 }
 
 

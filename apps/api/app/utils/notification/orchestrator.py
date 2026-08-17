@@ -37,6 +37,7 @@ from app.utils.notification.channel_preferences import fetch_channel_preferences
 from app.utils.notification.channels import (
     ChannelAdapter,
     DiscordChannelAdapter,
+    ImessageChannelAdapter,
     InAppChannelAdapter,
     SlackChannelAdapter,
     TContent,
@@ -73,6 +74,7 @@ class NotificationOrchestrator:
         self.register_channel_adapter(DiscordChannelAdapter())
         self.register_channel_adapter(WhatsAppChannelAdapter())
         self.register_channel_adapter(SlackChannelAdapter())
+        self.register_channel_adapter(ImessageChannelAdapter())
 
         # Action handlers
         self.register_action_handler(ApiCallActionHandler())

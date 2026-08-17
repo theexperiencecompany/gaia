@@ -599,7 +599,7 @@ export abstract class BaseBotAdapter {
    */
   protected resolveIncomingMedia(
     media: IncomingMedia,
-    download: () => Promise<Uint8Array>,
+    download: (maxBytes: number) => Promise<Uint8Array>,
     userId: string,
     channelId?: string,
   ): Promise<MediaOutcome> {

@@ -7,6 +7,8 @@
  * a barrel <-> module import cycle.
  */
 
+import type { PlatformName } from "../types";
+
 /**
  * Parses whitespace-separated text into a subcommand and remaining args.
  * Used by Slack and Telegram command handlers where input is plain text.
@@ -51,11 +53,12 @@ export function extractSubcommandArgs(
  * that — we cap at 3000 (not the 4000 block limit) for readable bubbles, the
  * same headroom the per-channel Slack sender used before delivery moved here.
  */
-export const PLATFORM_LIMITS: Record<string, number> = {
+export const PLATFORM_LIMITS: Record<PlatformName, number> = {
   discord: 2000,
   slack: 3000,
   telegram: 4096,
   whatsapp: 4096,
+  imessage: 4096,
 };
 
 /**
@@ -63,13 +66,13 @@ export const PLATFORM_LIMITS: Record<string, number> = {
  * Truncates at word boundaries and optionally appends a web app link.
  *
  * @param text - The message text to truncate.
- * @param platform - The target platform (discord, slack, telegram, whatsapp).
+ * @param platform - The target platform.
  * @param conversationUrl - Optional URL to the full conversation on the web app.
  * @returns The truncated message.
  */
 export function truncateResponse(
   text: string,
-  platform: "discord" | "slack" | "telegram" | "whatsapp",
+  platform: PlatformName,
   conversationUrl?: string,
 ): string {
   const limit = PLATFORM_LIMITS[platform];
@@ -460,7 +463,7 @@ const MAX_RENDER_SHRINK_ITERS = 6;
  * the 4096-char API limit and the send is rejected.
  *
  * @param text - The full message text.
- * @param platform - The target platform (discord, slack, telegram, whatsapp).
+ * @param platform - The target platform.
  * @param render - Optional platform renderer; when given, chunk sizes are
  *   measured against the rendered output rather than the raw markdown.
  * @returns An array of chunks (raw markdown, in order); each is ≤ the platform
@@ -468,7 +471,7 @@ const MAX_RENDER_SHRINK_ITERS = 6;
  */
 export function chunkResponse(
   text: string,
-  platform: "discord" | "slack" | "telegram" | "whatsapp",
+  platform: PlatformName,
   render?: (chunk: string) => string,
 ): string[] {
   const limit = PLATFORM_LIMITS[platform];

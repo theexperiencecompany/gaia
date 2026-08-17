@@ -26,8 +26,13 @@ import {
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
 } from "../../utils/messageBreakUtils";
 import type { GaiaClient } from "../api";
-import type { ChatRequest } from "../types";
-import { formatBotError, PLATFORM_MARKDOWN } from "./formatters";
+import { BOT_STREAM_ERROR } from "../api/chat-stream";
+import type { ChatRequest, PlatformName } from "../types";
+import {
+  buildPlanRequiredMessage,
+  formatBotError,
+  PLATFORM_MARKDOWN,
+} from "./formatters";
 
 import {
   createBotLogger,
@@ -60,16 +65,13 @@ function formatApprovalPrompt(data: ApprovalRequestData): string {
 export interface StreamingOptions {
   editIntervalMs: number;
   streaming: boolean;
-  platform: "discord" | "slack" | "telegram" | "whatsapp";
+  platform: PlatformName;
 }
 
 export type MessageEditor = (text: string) => Promise<void>;
 export type NewMessageSender = (text: string) => Promise<MessageEditor>;
 
-export const STREAMING_DEFAULTS: Record<
-  "discord" | "slack" | "telegram" | "whatsapp",
-  StreamingOptions
-> = {
+export const STREAMING_DEFAULTS: Record<PlatformName, StreamingOptions> = {
   discord: {
     editIntervalMs: 1200,
     streaming: false,
@@ -89,6 +91,11 @@ export const STREAMING_DEFAULTS: Record<
     editIntervalMs: 2000,
     streaming: false,
     platform: "whatsapp",
+  },
+  imessage: {
+    editIntervalMs: 2000,
+    streaming: false,
+    platform: "imessage",
   },
 };
 
@@ -115,6 +122,7 @@ async function _handleStream(
   // platform converter HERE, at the single chokepoint, so adapters receive
   // already-converted text and never call convertTo<Platform>Markdown inline.
   const render = PLATFORM_MARKDOWN[platform];
+  const emitGenericError = (text: string) => onGenericError(render(text));
   const wrappedEditMessage: MessageEditor = (text) => editMessage(render(text));
   const wrappedSendNewMessage: NewMessageSender | null = sendNewMessage
     ? async (text) => {
@@ -314,7 +322,10 @@ async function _handleStream(
           clearTimeout(editTimer);
           editTimer = null;
         }
-        if (error.message === "not_authenticated" && onAuthError) {
+        if (
+          error.message === BOT_STREAM_ERROR.notAuthenticated &&
+          onAuthError
+        ) {
           try {
             const { authUrl } = await gaia.createLinkToken(
               request.platform,
@@ -322,17 +333,21 @@ async function _handleStream(
             );
             await onAuthError(authUrl);
           } catch {
-            await onGenericError(
+            await emitGenericError(
               "Failed to generate auth link. Please try /auth again.",
             );
           }
+        } else if (error.message === BOT_STREAM_ERROR.planRequired) {
+          await emitGenericError(
+            buildPlanRequiredMessage(gaia.getPricingUrl()),
+          );
         } else {
-          await onGenericError(formatBotError(error));
+          await emitGenericError(formatBotError(error));
         }
       },
     );
   } catch (error) {
-    await onGenericError(formatBotError(error));
+    await emitGenericError(formatBotError(error));
   }
 }
 

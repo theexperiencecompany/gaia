@@ -37,7 +37,7 @@ export interface ChatRequest {
   /** The message content to send. */
   message: string;
   /** The platform the message originated from. */
-  platform: "discord" | "slack" | "telegram" | "whatsapp";
+  platform: PlatformName;
   /** The user ID of the sender on the platform. */
   platformUserId: string;
   /** Optional channel ID where the conversation is happening. */
@@ -157,7 +157,7 @@ export interface BotConversationListResponse {
 }
 
 export interface BotUserContext {
-  platform: "discord" | "slack" | "telegram" | "whatsapp";
+  platform: PlatformName;
   platformUserId: string;
 }
 
@@ -206,7 +206,12 @@ export type SettingsResponse =
 // ---------------------------------------------------------------------------
 
 /** Supported platform names for bot integrations. */
-export type PlatformName = "discord" | "slack" | "telegram" | "whatsapp";
+export type PlatformName =
+  | "discord"
+  | "slack"
+  | "telegram"
+  | "whatsapp"
+  | "imessage";
 
 /**
  * A message that has been sent to a platform channel.

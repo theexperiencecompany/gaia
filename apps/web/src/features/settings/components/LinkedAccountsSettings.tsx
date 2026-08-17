@@ -1,14 +1,28 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
+import { Input } from "@heroui/input";
+import {
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from "@heroui/modal";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { BOT_PLATFORM_ICONS, BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
+import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
+import { usePricingModalStore } from "@/stores/pricingModalStore";
 import type { PlatformLink } from "@/types/platform";
+
+const E164_PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
 
 interface PlatformConfig {
   id: string;
@@ -17,40 +31,52 @@ interface PlatformConfig {
   color: string;
   description: string;
   connectedDescription: string;
+  premium?: boolean;
+  requiresPhone?: boolean;
 }
 
 const PLATFORMS: PlatformConfig[] = [
   {
-    id: "discord",
-    name: "Discord",
-    image: "/images/icons/macos/discord.webp",
-    color: "#5865F2",
-    description: "Use GAIA directly from Discord servers and DMs",
-    connectedDescription: "Use /gaia in Discord to chat with GAIA",
-  },
-  {
-    id: "slack",
-    name: "Slack",
-    image: "/images/icons/macos/slack.webp",
-    color: "#4A154B",
-    description: "Bring GAIA into your Slack workspace",
-    connectedDescription: "Use /gaia in Slack to chat with GAIA",
-  },
-  {
     id: "telegram",
-    name: "Telegram",
+    name: BOT_PLATFORM_LABELS.telegram,
     description: "Chat with GAIA on Telegram",
-    image: "/images/icons/macos/telegram.webp",
+    image: BOT_PLATFORM_ICONS.telegram,
     color: "#0088cc",
     connectedDescription: "Message your bot on Telegram to chat with GAIA",
   },
   {
     id: "whatsapp",
-    name: "WhatsApp",
-    image: "/images/icons/macos/whatsapp.webp",
+    name: BOT_PLATFORM_LABELS.whatsapp,
+    image: BOT_PLATFORM_ICONS.whatsapp,
     color: "#25D366",
     description: "Connect GAIA to WhatsApp (Beta)",
     connectedDescription: "Message GAIA on WhatsApp",
+  },
+  {
+    id: "imessage",
+    name: BOT_PLATFORM_LABELS.imessage,
+    image: BOT_PLATFORM_ICONS.imessage,
+    color: "#34C759",
+    description: "Text GAIA over iMessage (Pro)",
+    connectedDescription: "Message GAIA from your iPhone or Mac",
+    premium: true,
+    requiresPhone: true,
+  },
+  {
+    id: "slack",
+    name: BOT_PLATFORM_LABELS.slack,
+    image: BOT_PLATFORM_ICONS.slack,
+    color: "#4A154B",
+    description: "Bring GAIA into your Slack workspace",
+    connectedDescription: "Use /gaia in Slack to chat with GAIA",
+  },
+  {
+    id: "discord",
+    name: BOT_PLATFORM_LABELS.discord,
+    image: BOT_PLATFORM_ICONS.discord,
+    color: "#5865F2",
+    description: "Use GAIA directly from Discord servers and DMs",
+    connectedDescription: "Use /gaia in Discord to chat with GAIA",
   },
 ];
 
@@ -62,7 +88,13 @@ export default function LinkedAccountsSettings() {
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
     null,
   );
+  const [phoneModalPlatform, setPhoneModalPlatform] = useState<string | null>(
+    null,
+  );
+  const [phone, setPhone] = useState("");
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const openPricingModal = usePricingModalStore((s) => s.openModal);
 
   const clearPollTimer = () => {
     if (pollTimerRef.current) {
@@ -92,16 +124,33 @@ export default function LinkedAccountsSettings() {
     }
   };
 
-  const handleConnect = async (platformId: string) => {
+  const startConnect = (platform: PlatformConfig) => {
+    if (platform.premium && !subscriptionStatus?.is_subscribed) {
+      openPricingModal();
+      return;
+    }
+    if (platform.requiresPhone) {
+      setPhone("");
+      setPhoneModalPlatform(platform.id);
+      return;
+    }
+    handleConnect(platform.id);
+  };
+
+  const handleConnect = async (platformId: string, phoneNumber?: string) => {
     try {
       setConnectingPlatform(platformId);
 
-      const data = await apiService.get<{
+      const data = await apiService.post<{
         auth_url?: string;
         instructions?: string;
         action_link?: string;
         auth_type: string;
-      }>(`/platform-links/${platformId}/connect`, { silent: true });
+      }>(
+        `/platform-links/${platformId}/connect`,
+        phoneNumber ? { phone: phoneNumber } : {},
+        { silent: true },
+      );
 
       if (data.auth_url) {
         const width = 600;
@@ -203,6 +252,11 @@ export default function LinkedAccountsSettings() {
               }
             >
               <div className="flex items-center gap-3">
+                {platform.premium && !subscriptionStatus?.is_subscribed && (
+                  <Chip size="sm" variant="flat" color="warning">
+                    Pro
+                  </Chip>
+                )}
                 {isConnected && (
                   <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -216,7 +270,7 @@ export default function LinkedAccountsSettings() {
                   onPress={() =>
                     isConnected
                       ? handleDisconnect(platform.id)
-                      : handleConnect(platform.id)
+                      : startConnect(platform)
                   }
                   isLoading={connectingPlatform === platform.id}
                   isDisabled={isLoading || connectingPlatform != null}
@@ -243,7 +297,8 @@ export default function LinkedAccountsSettings() {
               <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
                 /gaia
               </code>{" "}
-              in Discord or Slack, or just message the Telegram or WhatsApp bot
+              in Discord or Slack, or just message the Telegram, WhatsApp, or
+              iMessage bot
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 text-zinc-600">•</span>
@@ -256,6 +311,52 @@ export default function LinkedAccountsSettings() {
           </ul>
         </div>
       </SettingsSection>
+
+      <Modal
+        isOpen={phoneModalPlatform != null}
+        onClose={() => setPhoneModalPlatform(null)}
+        size="sm"
+      >
+        <ModalContent>
+          <ModalHeader>Your phone number</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-zinc-400">
+              iMessage delivers to registered numbers only, so GAIA needs the
+              number you text from.
+            </p>
+            <Input
+              autoFocus
+              type="tel"
+              placeholder="+15551234567"
+              value={phone}
+              onValueChange={setPhone}
+              isInvalid={phone.length > 0 && !E164_PHONE_PATTERN.test(phone)}
+              errorMessage="Use E.164 format, e.g. +15551234567"
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="flat"
+              size="sm"
+              onPress={() => setPhoneModalPlatform(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="primary"
+              size="sm"
+              isDisabled={!E164_PHONE_PATTERN.test(phone)}
+              onPress={() => {
+                const platformId = phoneModalPlatform;
+                setPhoneModalPlatform(null);
+                if (platformId) handleConnect(platformId, phone);
+              }}
+            >
+              Continue
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </SettingsPage>
   );
 }

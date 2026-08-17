@@ -23,3 +23,15 @@ def test_worker_settings_has_cron_jobs() -> None:
     from app.worker import WorkerSettings
 
     assert len(WorkerSettings.cron_jobs) >= 1
+
+
+def test_worker_settings_schedules_the_abandoned_registration_sweep() -> None:
+    """Registered but unscheduled would leak Photon pool seats in silence."""
+    from app.worker import WorkerSettings
+
+    assert "sweep_abandoned_imessage_registrations" in {
+        fn.__name__ for fn in WorkerSettings.functions
+    }
+    assert "cron:sweep_abandoned_imessage_registrations" in {
+        job.name for job in WorkerSettings.cron_jobs
+    }
