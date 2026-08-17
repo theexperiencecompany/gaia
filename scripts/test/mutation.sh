@@ -163,13 +163,25 @@ cd "$WORKDIR"
 
 # mutmut 3.x scopes mutation and test selection only via config — point both
 # at the module + its test file(s) for this run (the workdir copy is disposable).
-python3 - "$MODULE" "${TESTFILES[@]}" << 'EOF'
+# Per-mutant test timeout. NOT the suite's 300s: a mutant that induces an
+# infinite loop or a deadlock costs this much wall-clock EACH, and enough of
+# them exhaust the per-module budget below and take the whole module down with
+# them as "not checked" — which fails the lane for a reason that is not a test
+# weakness (measured: app/agents/tools/core/retrieval.py reached 186 of 348
+# mutants in CI with 33 timeouts, and completes in 76s with zero on a
+# developer machine). The whole hermetic suite runs in under 300s with xdist,
+# so a single test in a per-mutant selection needs seconds; 45 leaves ~45x
+# headroom while capping a hang at a fifteenth of what it used to cost.
+# A mutant that times out proves nothing either way and is already excluded
+# from the verdict — this only stops it consuming the module's budget too.
+MUTANT_TEST_TIMEOUT=45
+python3 - "$MODULE" "$MUTANT_TEST_TIMEOUT" "${TESTFILES[@]}" << 'EOF'
 import json
 import pathlib
 import re
 import sys
 
-module, testfiles = sys.argv[1], sys.argv[2:]
+module, mutant_test_timeout, testfiles = sys.argv[1], sys.argv[2], sys.argv[3:]
 path = pathlib.Path("pyproject.toml")
 text = path.read_text()
 selection = ", ".join(json.dumps(testfile) for testfile in testfiles)
@@ -188,7 +200,7 @@ replacement = (
     f'debug = true\n'
     f'pytest_add_cli_args_test_selection = [{selection}]\n'
     f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
-    f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300\']\n'
+    f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout={mutant_test_timeout}\']\n'
 )
 text = re.sub(r"(?ms)^\[tool\.mutmut\].*?(?=^\[|\Z)", replacement, text)
 path.write_text(text)
