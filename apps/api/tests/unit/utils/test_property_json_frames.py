@@ -17,6 +17,7 @@ from datetime import datetime
 import json
 
 from hypothesis import given, settings, strategies as st
+import pytest
 
 from app.models.chat_models import tool_fields
 from app.utils.agent_utils import format_sse_data, format_sse_response
@@ -63,6 +64,15 @@ JSON_VALUE = st.recursive(
 
 
 class TestConvertLegacyToolData:
+    @pytest.mark.regression
+    def test_an_explicit_empty_tool_data_survives_as_an_empty_list(self) -> None:
+        """A message that already carries ``tool_data: []`` must keep it.
+        Dropping the key makes consumers that index ``message["tool_data"]``
+        raise, and the client sees ``undefined`` where it expects an array."""
+        output = convert_legacy_tool_data({"type": "bot", "response": "hi", "tool_data": []})
+
+        assert output["tool_data"] == []
+
     @settings(max_examples=150, deadline=None)
     @given(
         message=st.dictionaries(

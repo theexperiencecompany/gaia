@@ -519,6 +519,23 @@ class TestProcessOnboardingIntelligence:
 
         assert pipeline_stack["finalize"].await_count == 1
 
+    async def test_a_legacy_profession_no_longer_accepted_at_write_still_runs(
+        self, pipeline_stack: Any
+    ) -> None:
+        # `UserDocument.onboarding` carries SkipValidation precisely because legacy
+        # rows cannot satisfy today's constraints. A read site that re-imposes them
+        # (profession is capped at 50 chars for NEW submissions) turns one such row
+        # into a pipeline that never runs: no todos, no writing style, no first
+        # message — for a user whose only sin is having onboarded early.
+        user = _user()
+        user.onboarding = {**user.onboarding, "preferences": {"profession": "a" * 80}}
+        pipeline_stack["repo"].get = AsyncMock(return_value=user)
+
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["finalize"].await_count == 1
+        assert pipeline_stack["style"].await_args.args == (USER, False, "a" * 80)
+
     async def test_full_mode_hands_its_side_work_to_the_tail(self, pipeline_stack: Any) -> None:
         await process_onboarding_intelligence(USER)
 

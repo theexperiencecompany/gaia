@@ -50,6 +50,7 @@ from app.utils.json_helpers import (
     bool_bag,
     dict_bag,
     float_bag,
+    float_opt_bag,
     list_bag,
     text_bag,
     text_opt_bag,
@@ -323,11 +324,15 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
             "id": text_bag(issue, "id"),
             "identifier": text_bag(issue, "identifier"),
             "title": text_bag(issue, "title"),
-            "description": text_bag(issue, "description"),
+            # description and estimate are nullable on the wire, so they read through the
+            # _opt_ accessors: a zero/empty default would report an issue nobody has
+            # estimated or described as estimated at zero points with an empty
+            # description — the int_bag priority bug of 3765daa40 again.
+            "description": text_opt_bag(issue, "description"),
             "priority": priority_to_str(float_bag(issue, "priority")),
             "state": text_opt_bag(dict_bag(issue, "state"), "name"),
             "dueDate": text_opt_bag(issue, "dueDate"),
-            "estimate": float_bag(issue, "estimate"),
+            "estimate": float_opt_bag(issue, "estimate"),
             "team": text_opt_bag(dict_bag(issue, "team"), "name"),
             "project": text_opt_bag(dict_bag(issue, "project"), "name"),
             "cycle": text_opt_bag(dict_bag(issue, "cycle"), "name"),
@@ -781,11 +786,11 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
         if request.priority is not None:
             input_data["priority"] = request.priority
         if request.assignee_id is not None:
-            input_data["assigneeId"] = request.assignee_id if request.assignee_id else None
+            input_data["assigneeId"] = request.assignee_id or None
         if request.cycle_id is not None:
-            input_data["cycleId"] = request.cycle_id if request.cycle_id else None
+            input_data["cycleId"] = request.cycle_id or None
         if request.project_id is not None:
-            input_data["projectId"] = request.project_id if request.project_id else None
+            input_data["projectId"] = request.project_id or None
         if request.labels_to_add:
             input_data["labelIds"] = request.labels_to_add
 

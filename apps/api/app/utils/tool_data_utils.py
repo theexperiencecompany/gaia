@@ -27,13 +27,15 @@ def convert_legacy_tool_data(message: dict[str, object]) -> dict[str, object]:
     timestamp = datetime.now(UTC).isoformat()
 
     # Check if message already has unified tool_data - preserve it
-    existing_tool_data = converted_message.get("tool_data", [])
-    if isinstance(existing_tool_data, list):
+    existing_tool_data = converted_message.get("tool_data")
+    # An explicit empty list is left in place: consumers index ``tool_data``
+    # and the client expects an array, not a missing key.
+    if isinstance(existing_tool_data, list) and existing_tool_data:
         tool_data_entries.extend(
             cast(ToolDataEntry, e) for e in existing_tool_data if isinstance(e, dict)
         )
         # Remove from message to avoid double processing
-        converted_message.pop("tool_data", None)
+        del converted_message["tool_data"]
 
     # Convert legacy fields to unified format using the dynamic tool_fields list
     # Exclude 'tool_data' itself since it's the unified format, not a legacy field

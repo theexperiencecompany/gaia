@@ -919,6 +919,82 @@ class TestLinearGetIssueFullContext:
         )
         assert result["issue"]["identifier"] == "ENG-123"
 
+    @patch(f"{LINEAR_MODULE}.graphql_request")
+    def test_an_unestimated_issue_is_reported_as_unestimated_not_as_zero(
+        self, mock_gql: MagicMock
+    ) -> None:
+        # Linear types Issue.estimate and Issue.description as nullable. Reading them
+        # with a zero/empty default tells the LLM the team estimated this issue at zero
+        # points and wrote no description — two claims the API never made.
+        mock_gql.return_value = {
+            "issue": {
+                "id": "i1",
+                "identifier": "ENG-9",
+                "title": "Untriaged",
+                "description": None,
+                "priority": 0,
+                "state": {"name": "Backlog"},
+                "dueDate": None,
+                "estimate": None,
+                "team": {"name": "Eng"},
+                "project": None,
+                "cycle": None,
+                "assignee": None,
+                "creator": {"name": "Bob"},
+                "parent": None,
+                "children": {"nodes": []},
+                "relations": {"nodes": []},
+                "comments": {"nodes": []},
+                "history": {"nodes": []},
+                "attachments": {"nodes": []},
+            },
+        }
+
+        from app.agents.tools.integrations.linear_tool import (
+            register_linear_custom_tools,
+        )
+
+        tools = _capture_tools(register_linear_custom_tools)
+        fn = tools["CUSTOM_GET_ISSUE_FULL_CONTEXT"]
+
+        issue = fn(GetIssueFullContextInput(issue_id="i1"), EXECUTE_REQUEST, AUTH_CREDS)["issue"]
+
+        assert issue["estimate"] is None
+        assert issue["description"] is None
+
+    @patch(f"{LINEAR_MODULE}.graphql_request")
+    def test_a_real_estimate_of_zero_still_reads_as_zero(self, mock_gql: MagicMock) -> None:
+        # The other half of the distinction: 0 points is a value Linear can genuinely
+        # return, and it must not be laundered into "unknown" by the fix above.
+        mock_gql.return_value = {
+            "issue": {
+                "id": "i1",
+                "identifier": "ENG-9",
+                "title": "Trivial",
+                "description": "",
+                "priority": 0,
+                "state": {"name": "Backlog"},
+                "estimate": 0,
+                "children": {"nodes": []},
+                "relations": {"nodes": []},
+                "comments": {"nodes": []},
+                "history": {"nodes": []},
+                "attachments": {"nodes": []},
+            },
+        }
+
+        from app.agents.tools.integrations.linear_tool import (
+            register_linear_custom_tools,
+        )
+
+        tools = _capture_tools(register_linear_custom_tools)
+        fn = tools["CUSTOM_GET_ISSUE_FULL_CONTEXT"]
+
+        issue = fn(GetIssueFullContextInput(issue_id="i1"), EXECUTE_REQUEST, AUTH_CREDS)["issue"]
+
+        assert issue["estimate"] == 0
+        assert issue["description"] == ""
+
     def test_get_issue_no_id_or_identifier(self) -> None:
         from app.agents.tools.integrations.linear_tool import (
             register_linear_custom_tools,

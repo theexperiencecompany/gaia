@@ -16,7 +16,7 @@ from app.constants.artifacts import ARTIFACT_ELEMENT_FIELDS
 from app.constants.cache import CONV_ARTIFACTS_CACHE_PATTERN, ONE_DAY_TTL
 from app.db.repositories.conversations import conversation_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
-from app.utils.json_helpers import float_bag, int_bag, text_bag, text_opt_bag
+from app.utils.json_helpers import float_opt_bag, int_opt_bag, text_bag, text_opt_bag
 
 
 class ArtifactRegistryEntry(TypedDict):
@@ -65,8 +65,11 @@ async def upsert_conversation_artifact(
     path = text_bag(payload, "path")
 
     fields: ArtifactRegistryPatch = {
-        "size_bytes": int_bag(payload, "size_bytes"),
-        "mtime": float_bag(payload, "mtime"),
+        # Both are ``| None`` on the entry: a zero would claim an empty file stamped at
+        # the epoch, and would disagree with the push path below, which writes the
+        # payload's value raw — one record must not have two shapes.
+        "size_bytes": int_opt_bag(payload, "size_bytes"),
+        "mtime": float_opt_bag(payload, "mtime"),
         "content_type": text_opt_bag(payload, "content_type"),
         "updated_at": now_iso,
     }

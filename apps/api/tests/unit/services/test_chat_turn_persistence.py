@@ -19,11 +19,13 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app.models.chat_models import MessageModel
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat import stream as chat_stream
 from app.services.chat.chunks import process_data_chunk
-from app.services.chat.state import merge_tool_outputs
+from app.services.chat.state import inject_todo_progress, merge_tool_outputs
 from app.services.chat.stream import _persist_turn, _StreamState
 
 USER = {"user_id": "u1", "email": "u1@test.local"}
@@ -79,6 +81,38 @@ class TestFollowUpActions:
         bot = await persist(state)
 
         assert bot.follow_up_actions is None
+
+
+class TestTodoProgressCardReachesTheEnvelope:
+    """``inject_todo_progress`` appends to the envelope the caller then saves.
+
+    Appending to a list that is not the one inside the envelope drops the
+    todo-progress card from the persisted message with no error anywhere.
+    """
+
+    @pytest.mark.regression
+    def test_the_card_lands_in_the_callers_envelope(self):
+        tool_data: dict[str, Any] = {}
+
+        inject_todo_progress(tool_data, {"t1": {"status": "completed"}})
+
+        entries = tool_data["tool_data"]
+        assert [e["tool_name"] for e in entries] == ["todo_progress"]
+        assert entries[0]["data"] == {"t1": {"status": "completed"}}
+
+    @pytest.mark.regression
+    def test_a_corrupt_envelope_fails_instead_of_dropping_the_card(self):
+        tool_data: dict[str, Any] = {"tool_data": {"not": "a list"}}
+
+        with pytest.raises(TypeError):
+            inject_todo_progress(tool_data, {"t1": {"status": "completed"}})
+
+    @pytest.mark.regression
+    def test_merging_outputs_into_a_corrupt_envelope_fails_instead_of_no_op(self):
+        tool_data: dict[str, Any] = {"tool_data": {"not": "a list"}}
+
+        with pytest.raises(TypeError):
+            merge_tool_outputs(tool_data, {"tc-1": "3 unread"})
 
 
 class TestPersistedTurnMatchesTheLiveStream:

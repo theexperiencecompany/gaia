@@ -56,7 +56,7 @@ from app.utils.artifact_utils import (
     build_artifact_ref_entry,
 )
 from app.utils.background_tasks import spawn_background_task
-from app.utils.json_helpers import float_bag, text_bag, text_opt_bag
+from app.utils.json_helpers import float_opt_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 _warm_semaphore = asyncio.Semaphore(ARTIFACT_WARM_MAX_CONCURRENCY)
@@ -136,7 +136,8 @@ class ArtifactForwarder:
         self.subscribed = subscribed
         # Unix mtime, not an ISO string: every publisher stamps a float
         # (``ArtifactInfo.mtime`` / ``time.time()`` in app.services.artifact_events),
-        # and this map is compared against the payload's raw value in _is_unchanged.
+        # and _is_unchanged reads the payload's side through the same accessor. None is
+        # "mtime unknown", which a membership check keeps distinct from "never seen".
         self.registry_mtimes: dict[str, float | None] = {}
         self.published_files: set[str] = set()
         self.stats = _TurnStats()
@@ -187,7 +188,7 @@ class ArtifactForwarder:
             self.user_id, self.conversation_id
         )
         self.registry_mtimes = {
-            text_bag(artifact, "path"): float_bag(artifact, "mtime")
+            text_bag(artifact, "path"): float_opt_bag(artifact, "mtime")
             for artifact in registry
             if isinstance(artifact, dict)
         }
@@ -226,7 +227,18 @@ class ArtifactForwarder:
             await self._apply_upsert(payload, path, event)
 
     def _is_unchanged(self, path: str | None, payload: dict[str, object]) -> bool:
-        return path is not None and self.registry_mtimes.get(path) == payload.get("mtime")
+        """Whether this file is already on the registry at this same mtime.
+
+        Membership first, then the value: a path the turn has never seen is never
+        "unchanged", even when neither side knows an mtime. Both sides read through
+        the same accessor so a stored ``null`` and an absent ``mtime`` compare equal
+        instead of one being normalised and the other left raw.
+        """
+        return (
+            path is not None
+            and path in self.registry_mtimes
+            and self.registry_mtimes[path] == float_opt_bag(payload, "mtime")
+        )
 
     async def _apply_upsert(
         self, payload: dict[str, object], path: str | None, event: str | None
@@ -236,7 +248,7 @@ class ArtifactForwarder:
             return
         # Optimistic dedup: the live card is the user-facing truth; the Mongo
         # writes below are reload durability and must not gate it.
-        self.registry_mtimes[path] = float_bag(payload, "mtime")
+        self.registry_mtimes[path] = float_opt_bag(payload, "mtime")
         self.stats.upserts += 1
 
         await self._stream_entry(build_artifact_full_entry(payload))  # 1. show live (full data)

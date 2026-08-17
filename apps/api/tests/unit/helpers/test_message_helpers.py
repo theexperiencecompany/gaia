@@ -535,6 +535,39 @@ class TestGetOnboardingSystemPrompt:
         assert "Inbox summary: 17 unread from work" in prompt
         assert "Alice" in prompt
 
+    async def test_a_legacy_profession_still_reaches_the_prompt(self) -> None:
+        # `UserDocument.onboarding` skips validation because stored rows predate
+        # today's constraints, so a read site must not re-impose them: the 50-char
+        # cap guards new submissions. Re-imposing it here raises into the broad
+        # except at the end of the helper and the user silently loses the prompt.
+        legacy = "a" * 80
+        user = UserDocument(
+            id="u-1",
+            name="Alice",
+            onboarding={
+                "phase": OnboardingPhase.INITIAL,
+                "preferences": {"profession": legacy},
+            },
+        )
+        with (
+            patch(
+                "app.helpers.message_helpers.conversation_repository.get_onboarding_probe",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(is_onboarding_conversation=True, message_count=1),
+            ),
+            patch(
+                "app.helpers.message_helpers.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+        ):
+            prompt = await get_onboarding_system_prompt_if_applicable(
+                "u-1", "conv-1", latest_user_message="hello"
+            )
+
+        assert prompt is not None
+        assert f"Profession: {legacy}" in prompt
+
     async def test_no_profession_falls_back_to_not_specified(self) -> None:
         user = UserDocument(id="u-1", onboarding={"phase": OnboardingPhase.INITIAL})
         with (

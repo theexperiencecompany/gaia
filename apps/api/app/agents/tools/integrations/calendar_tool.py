@@ -537,8 +537,11 @@ def register_calendar_custom_tools(composio: Composio[Any, Any]) -> list[str]:  
             rrule_parts.append(f"BYDAY={','.join(request.by_day)}")
 
         rrule = "RRULE:" + ";".join(rrule_parts)
-        if isinstance(event, dict):
-            event["recurrence"] = [rrule]
+        if not isinstance(event, dict):
+            raise RuntimeError(
+                f"Failed to add recurrence: fetched event is {type(event).__name__}, not an object"
+            )
+        event["recurrence"] = [rrule]
 
         updated = proxy_request_sync(
             user_id=user_id,

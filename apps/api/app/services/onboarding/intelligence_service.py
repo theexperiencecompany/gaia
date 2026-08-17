@@ -74,7 +74,6 @@ from app.models.trigger_config import WorkflowTriggerSchema
 from app.models.user_models import (
     ClarifyAnswerRecord,
     OnboardingPhase,
-    OnboardingPreferences,
     UserDocument,
 )
 from app.models.workflow_models import (
@@ -115,6 +114,7 @@ from app.utils.profile_card import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.seeding_utils import seed_onboarding_conversation
+from app.utils.user_preferences_utils import stored_profession
 from shared.py.wide_events import log
 
 
@@ -452,9 +452,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     onboarding = user.onboarding or {}
     name: str = user.name or "there"
     user_email: str | None = user.email
-    profession: str = (
-        OnboardingPreferences.model_validate(onboarding.get("preferences") or {}).profession or ""
-    )
+    profession: str = stored_profession(onboarding)
     focus: str = onboarding.get("focus", "") or ""
     clarify_answers: list[ClarifyAnswerRecord] = onboarding.get("clarify_answers") or []
     selected_integrations: list[str] = onboarding.get("selected_integrations") or []
@@ -1357,9 +1355,7 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
 
     onboarding = user.onboarding or {}
     name: str = user.name or "there"
-    profession: str = (
-        OnboardingPreferences.model_validate(onboarding.get("preferences") or {}).profession or ""
-    )
+    profession: str = stored_profession(onboarding)
     focus: str = onboarding.get("focus", "") or ""
     clarify_answers: list[ClarifyAnswerRecord] = onboarding.get("clarify_answers") or []
     selected_integrations: list[str] = onboarding.get("selected_integrations") or []

@@ -19,7 +19,13 @@ from app.models.hil_models import HILPreferences
 from app.services.hil.policy import has_pausing_sibling, is_gated, resolve_policy
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
-from .conftest import USER_ID, ai_message_with_calls, make_request, make_tool
+from .conftest import (
+    USER_ID,
+    ai_message_with_calls,
+    ai_message_without_calls,
+    make_request,
+    make_tool,
+)
 
 MODULE = "app.services.hil.policy"
 
@@ -134,6 +140,26 @@ class TestHasPausingSibling:
                 {"id": "call-1", "name": "send_email", "args": {}},
                 {"id": "call-2", "name": "delete_file", "args": {}},
             )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+    async def test_a_later_call_less_ai_message_does_not_hide_the_gated_sibling(self) -> None:
+        # The guard reads its siblings out of the message being executed. If the walk
+        # back stops at the newest AIMessage instead of the newest one that HAS calls,
+        # a call-less AIMessage sitting after it yields zero siblings, this answers
+        # False, and auto mode approves a call that runs again on the resume replay —
+        # the exact double-send this guard exists to prevent.
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "delete_file", "args": {}},
+            ),
+            ai_message_without_calls(),
         ]
         request = make_request(call_id="call-1", messages=state_messages)
         with (

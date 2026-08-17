@@ -1146,6 +1146,18 @@ class TestAddRecurrence:
                 )
         assert proxy.call_count == 1
 
+    @pytest.mark.regression
+    def test_a_non_object_event_fails_instead_of_reporting_an_unapplied_rule(self, tools) -> None:
+        """The GET came back as something other than an event object. Skipping
+        the RRULE assignment and PUTting the untouched body anyway would report
+        a recurrence the calendar never received."""
+        with patch(f"{MODULE}.proxy_request_sync", return_value=["not", "an", "event"]) as proxy:
+            with pytest.raises(RuntimeError):
+                tools["CUSTOM_ADD_RECURRENCE"](
+                    AddRecurrenceInput(event_id="e1", frequency="DAILY"), EXECUTE_REQUEST, AUTH
+                )
+        assert proxy.call_count == 1
+
     def test_percent_encodes_calendar_id_with_reserved_chars(self, tools) -> None:
         out, proxy = self._run(
             tools,

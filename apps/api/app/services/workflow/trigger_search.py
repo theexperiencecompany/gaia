@@ -98,13 +98,14 @@ class TriggerSearchService:
 
             for trigger in integration.associated_triggers:
                 if trigger.slug == trigger_slug:
+                    config_fields: dict[str, object] = {}
                     schema: dict[str, object] = {
                         "trigger_slug": trigger.slug,
                         "trigger_name": trigger.name,
                         "description": trigger.description,
                         "integration_id": integration.id,
                         "integration_name": integration.name,
-                        "config_fields": {},
+                        "config_fields": config_fields,
                     }
 
                     # Extract config schema if available
@@ -119,7 +120,7 @@ class TriggerSearchService:
                             field_config,
                         ) in trigger.workflow_trigger_schema.config_schema.items():
                             default_val = getattr(field_config, "default", _sentinel)
-                            dict_bag(schema, "config_fields")[field_name] = {
+                            config_fields[field_name] = {
                                 "type": getattr(field_config, "type", "string"),
                                 "description": getattr(field_config, "description", ""),
                                 "default": None if default_val is _sentinel else default_val,

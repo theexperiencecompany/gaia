@@ -43,7 +43,9 @@ async def prepare_weather_data(
     # Ensure required fields exist in 'sys' object to avoid validation errors
     if "sys" in current_weather:
         # Make sure the country field is present in the sys object
-        sys_data = dict_bag(current_weather, "sys")
+        sys_data = current_weather["sys"]
+        if not isinstance(sys_data, dict):
+            raise TypeError(f"OpenWeatherMap 'sys' is {type(sys_data).__name__}, not an object")
         if "country" not in sys_data:
             # If we have country information from geolocation, use it
             if country:

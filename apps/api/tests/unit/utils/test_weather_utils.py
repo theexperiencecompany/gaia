@@ -577,6 +577,17 @@ class TestPrepareWeatherData:
         result = await self._call(loc, current_weather=current)
         assert result["sys"]["country"] == ""
 
+    @pytest.mark.regression
+    async def test_sys_present_but_not_an_object_fails_loudly(self) -> None:
+        """A ``sys`` that is not an object cannot be patched. Writing the
+        country into a throwaway dict returns the unpatched payload and the
+        response model blows up further downstream instead of here."""
+        current = _make_current_weather()
+        current["sys"] = "GB"
+        loc = {"city": "London", "country": "GB", "region": None}
+        with pytest.raises(TypeError):
+            await self._call(loc, current_weather=current)
+
     async def test_no_sys_field_creates_minimal_sys(self) -> None:
         current = _make_current_weather(include_sys=False)
         loc = {"city": "Tokyo", "country": "JP", "region": "Kanto"}

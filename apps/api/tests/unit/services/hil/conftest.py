@@ -71,6 +71,11 @@ def ai_message_with_calls(*calls: dict[str, Any]) -> AIMessage:
     )
 
 
+def ai_message_without_calls() -> AIMessage:
+    """A real AIMessage that asked for nothing — ``tool_calls`` is ``[]``, not absent."""
+    return AIMessage(content="Let me think about that.")
+
+
 def human_message(text: str) -> HumanMessage:
     return HumanMessage(content=text)
 

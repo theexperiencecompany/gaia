@@ -22,6 +22,7 @@ __all__ = [
     "int_bag",
     "int_opt_bag",
     "float_bag",
+    "float_opt_bag",
     "bool_bag",
     "int_str_bag",
 ]
@@ -86,6 +87,17 @@ def float_bag(bag: Mapping[str, object], key: str, default: float = 0.0) -> floa
     """
     value = bag.get(key)
     return value if isinstance(value, (float, int)) else default
+
+
+def float_opt_bag(bag: Mapping[str, object], key: str) -> float | None:
+    """The float under ``key``, or None when absent or not a number.
+
+    ``float_bag`` with ``None`` as the fallback: use when the caller must keep
+    "unknown" distinguishable from a genuine zero (a Linear issue with no
+    estimate is not an issue estimated at zero points).
+    """
+    value = bag.get(key)
+    return value if isinstance(value, (float, int)) else None
 
 
 def int_bag(bag: Mapping[str, object], key: str, default: int = 0) -> int:

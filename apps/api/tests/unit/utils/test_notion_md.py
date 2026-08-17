@@ -844,6 +844,18 @@ class TestBlocksToMarkdown:
         assert lines[2] == "Break"
         assert lines[3] == "1. Restart"
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize("payload", [{}, {"numbered_list_item": "1."}])
+    def test_numbered_item_without_an_object_payload_fails_loudly(
+        self, payload: dict[str, object]
+    ) -> None:
+        """The ordinal is stamped onto the block's own payload. Stamping a
+        throwaway dict instead loses the number and renders the item as an
+        unordered bullet — a silently wrong document."""
+        blocks: list[dict[str, object]] = [{"type": "numbered_list_item", **payload}]
+        with pytest.raises(TypeError):
+            blocks_to_markdown(blocks)
+
     def test_skips_unsupported_blocks(self) -> None:
         blocks = [
             {"type": "unsupported"},

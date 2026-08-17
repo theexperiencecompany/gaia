@@ -616,10 +616,13 @@ async def get_settings(
 
     user_name = text_opt_bag(user, "name") or text_opt_bag(user, "username")
     profile_image_url = text_opt_bag(user, "profile_image_url") or text_opt_bag(user, "avatar_url")
-    account_created_at = None
-    if user.get("created_at"):
-        raw_created = user.get("created_at")
-        account_created_at = raw_created.isoformat() if isinstance(raw_created, datetime) else ""
+    # ``user`` comes from ``user_to_legacy_dict``, so ``created_at`` is the
+    # validated ``UserDocument`` field: a datetime, or absent. Anything else
+    # means the shape changed — say so instead of reporting a blank join date.
+    created_at = user.get("created_at")
+    if created_at is not None and not isinstance(created_at, datetime):
+        raise TypeError(f"user created_at is {type(created_at).__name__}, not a datetime")
+    account_created_at = created_at.isoformat() if created_at else None
 
     log.set(outcome="success")
     return BotSettingsResponse(

@@ -17,7 +17,8 @@ from app.models.onboarding_models import (
     ProfileCardDesign,
     UserProfileMetadata,
 )
-from app.models.user_models import BioStatus, OnboardingPreferences, UserDocument
+from app.models.user_models import BioStatus, UserDocument
+from app.utils.user_preferences_utils import stored_profession
 from shared.py.wide_events import log
 
 
@@ -174,8 +175,7 @@ async def generate_holo_card_content(
         user = await user_repository.get(user_id)
     name = (user.name if user else None) or "User"
     onboarding = (user.onboarding if user else None) or {}
-    prefs = OnboardingPreferences.model_validate(onboarding.get("preferences") or {})
-    profession = prefs.profession or ""
+    profession = stored_profession(onboarding)
 
     if not context_summary.strip():
         default_bio = get_random_bio_for_profession(name, profession or "other")

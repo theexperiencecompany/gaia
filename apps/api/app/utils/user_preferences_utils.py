@@ -3,9 +3,24 @@ User preferences utilities for formatting and processing user data.
 Provides functions to format user preferences for agent system prompts.
 """
 
+from collections.abc import Mapping
+
 from app.constants.log_tags import LogTag
-from app.utils.json_helpers import text_bag
+from app.utils.json_helpers import dict_bag, text_bag
 from shared.py.wide_events import log
+
+
+def stored_profession(onboarding: Mapping[str, object] | None) -> str:
+    """The profession on a stored ``onboarding`` subdoc, or "" when it has none.
+
+    Deliberately NOT ``OnboardingPreferences.model_validate``: those constraints
+    (profession ≤ 50 chars, custom_instructions ≤ 500) guard what a user may
+    *submit*, and stored rows predate them — the same reason
+    ``UserDocument.onboarding`` carries ``SkipValidation``. Every caller wants
+    one string for a prompt, and no prompt string is worth aborting a user's
+    onboarding pipeline over.
+    """
+    return text_bag(dict_bag(onboarding or {}, "preferences"), "profession")
 
 
 def format_response_style_instruction(response_style: str) -> str:

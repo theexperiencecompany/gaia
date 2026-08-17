@@ -368,7 +368,12 @@ def blocks_to_markdown(
         # Track numbered list indices
         if block_type == "numbered_list_item":
             numbered_list_index += 1
-            dict_bag(block, "numbered_list_item")["number"] = numbered_list_index
+            item = block.get("numbered_list_item")
+            if not isinstance(item, dict):
+                raise TypeError(
+                    f"numbered_list_item payload is {type(item).__name__}, not an object"
+                )
+            item["number"] = numbered_list_index
         else:
             numbered_list_index = 0
 

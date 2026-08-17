@@ -4,6 +4,7 @@ Tests the bot endpoints with mocked service layer to verify
 routing, status codes, response bodies, and auth checks.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
@@ -285,6 +286,61 @@ class TestGetSettings:
         data = response.json()
         assert data["authenticated"] is True
         assert data["user_name"] == "Alice"
+
+    @patch(
+        "app.api.v1.endpoints.bot.get_user_integration_records",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_settings_reports_the_join_date_as_an_iso_timestamp(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_integrations: AsyncMock,
+        client: AsyncClient,
+    ):
+        mock_get_user.return_value = {
+            "user_id": "uid1",
+            "_id": "uid1",
+            "created_at": datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC),
+        }
+        mock_integrations.return_value = []
+        response = await client.get(f"{BOT_BASE}/settings/discord/u1")
+        assert response.status_code == 200
+        assert response.json()["account_created_at"] == "2024-01-02T03:04:05+00:00"
+
+    @pytest.mark.regression
+    @patch(
+        "app.api.v1.endpoints.bot.get_user_integration_records",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_settings_rejects_a_created_at_that_is_not_a_datetime(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_integrations: AsyncMock,
+        client: AsyncClient,
+    ):
+        """``account_created_at`` is either a real join date or the not-set
+        sentinel. Reporting an empty string for a shape we do not understand
+        renders a blank join date in the bot's settings card."""
+        mock_get_user.return_value = {
+            "user_id": "uid1",
+            "_id": "uid1",
+            "created_at": "2024-01-02T03:04:05+00:00",
+        }
+        mock_integrations.return_value = []
+        response = await client.get(f"{BOT_BASE}/settings/discord/u1")
+        assert response.status_code == 500
 
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",

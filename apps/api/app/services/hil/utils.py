@@ -84,14 +84,20 @@ def configurable_of(request: ToolCallRequest) -> AgentConfigurable:
 
 
 def current_tool_calls(state: object) -> list[dict[str, object]]:
-    """The tool calls of the AI message this node is executing (its last one).
+    """The tool calls of the AI message this node is executing.
 
     These are the pending call's *siblings* — what else the model asked for in the same
     turn. The gate needs them because a sibling that pauses re-runs this whole node.
+
+    The walk back is to the last message that HAS calls, not to the last AIMessage: an
+    AIMessage that asked for nothing still carries ``tool_calls=[]``, and stopping there
+    would report no siblings at all and skip the double-run guard.
+    ``create_agent._last_tool_calling_message`` walks back the same way — the two must
+    agree on which message is being executed or they gate different call sets.
     """
     for message in reversed(_messages_of(state)):
         calls = getattr(message, "tool_calls", None)
-        if isinstance(calls, list):
+        if isinstance(calls, list) and calls:
             return list(calls)
     return []
 

@@ -31,7 +31,12 @@ from app.services.hil.utils import (
     untrusted_fence,
 )
 
-from .conftest import ai_message_with_calls, human_message, make_request
+from .conftest import (
+    ai_message_with_calls,
+    ai_message_without_calls,
+    human_message,
+    make_request,
+)
 
 
 class TestUnpackToolCall:
@@ -139,6 +144,21 @@ class TestCurrentToolCalls:
 
     def test_a_state_with_no_tool_calls_yields_none(self) -> None:
         assert current_tool_calls({"messages": [human_message("hi")]}) == []
+
+    def test_a_later_call_less_ai_message_does_not_hide_the_executing_calls(self) -> None:
+        # The walk back is to the last message that HAS calls, not to the last AIMessage.
+        # An AIMessage that asked for nothing still carries `tool_calls=[]`, so stopping
+        # at the first AIMessage returns no siblings at all — and no siblings means
+        # `has_pausing_sibling` answers False and the double-run guard is skipped.
+        # `create_agent._last_tool_calling_message` walks back the same way, and its
+        # docstring requires the two to agree on which message is being executed.
+        executing = ai_message_with_calls(
+            {"id": "c1", "name": "send_email", "args": {}},
+            {"id": "c2", "name": "delete_file", "args": {}},
+        )
+        state = {"messages": [executing, ai_message_without_calls()]}
+
+        assert [call["id"] for call in current_tool_calls(state)] == ["c1", "c2"]
 
 
 class TestApprovalId:

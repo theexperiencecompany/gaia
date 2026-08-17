@@ -1,16 +1,22 @@
-"""Unit tests for ArtifactForwarder's three best-effort except blocks.
+"""Unit tests for ArtifactForwarder's best-effort except blocks and its dedup.
 
 Each pipeline step here is deliberately best-effort: a bad event, a failed
 persist, or a failed cache warm must never take down the rest of the turn (the
 live SSE stream already delivered the card). These tests drive the class's
 methods directly with a seam mocked to actually raise, proving the surrounding
 except block is reached and swallows the failure instead of propagating it.
+
+The dedup tests at the bottom cover the other half of the class: the per-turn
+``path → mtime`` map, whose whole job is to make a re-emit of an unchanged file
+free.
 """
 
 from unittest.mock import AsyncMock, patch
 
 from app.services.chat.artifact_forwarder import ArtifactForwarder
 from app.utils.artifact_utils import build_artifact_ref_entry
+
+MODULE = "app.services.chat.artifact_forwarder"
 
 
 def _forwarder(*, bot_message_id: str | None = "bot-msg-1") -> ArtifactForwarder:
@@ -99,3 +105,68 @@ class TestWarmCacheIsBestEffort:
             await forwarder._warm_cache("report.pdf")  # must not raise
 
         mock_log.debug.assert_called_once()
+
+
+class TestDedupOfArtifactsWithNoMtime:
+    """An artifact whose event carries no mtime must still dedup.
+
+    The map is the only thing standing between a whole-dir re-emit and a
+    re-publish per event: a miss re-streams the card, rewrites the Mongo
+    registry, and re-delivers the file to the bot. Normalising the stored side
+    ("unknown" → 0.0) while comparing against the payload's raw value (None)
+    makes every such event a miss, forever.
+    """
+
+    async def test_a_stored_row_with_no_mtime_dedups_against_an_mtime_less_event(self) -> None:
+        # Rows written before mtime was stamped hold `mtime: null`; the event that
+        # re-emits them carries no mtime either. Same file, same nothing — a skip.
+        forwarder = _forwarder()
+        with patch(
+            f"{MODULE}.get_conversation_artifacts",
+            new=AsyncMock(return_value=[{"path": "report.pdf", "mtime": None}]),
+        ):
+            await forwarder._load_registry()
+
+        await forwarder._handle_event({"path": "report.pdf", "event": "upsert"})
+
+        assert forwarder.stats.unchanged == 1
+        assert forwarder.stats.upserts == 0
+
+    async def test_an_mtime_less_file_is_published_once_per_turn_not_once_per_event(self) -> None:
+        # The same file re-emitted within the turn: the first event publishes and
+        # seeds the map, the second must hit it.
+        forwarder = _forwarder()
+        payload: dict[str, object] = {"path": "report.pdf", "event": "upsert"}
+        with (
+            patch(f"{MODULE}.stream_manager") as stream,
+            patch(f"{MODULE}.upsert_conversation_artifact", new=AsyncMock()),
+            patch(f"{MODULE}.conversation_repository") as repository,
+            patch(f"{MODULE}.spawn_background_task"),
+        ):
+            stream.publish_chunk = AsyncMock()
+            repository.append_message_tool_data = AsyncMock()
+            await forwarder._handle_event(payload)
+            await forwarder._handle_event(payload)
+
+        assert (forwarder.stats.upserts, forwarder.stats.unchanged) == (1, 1)
+
+    async def test_a_changed_file_is_still_republished(self) -> None:
+        # The dedup must not swallow a real edit: a new mtime is a new card.
+        forwarder = _forwarder()
+        with patch(
+            f"{MODULE}.get_conversation_artifacts",
+            new=AsyncMock(return_value=[{"path": "report.pdf", "mtime": 100.0}]),
+        ):
+            await forwarder._load_registry()
+
+        with (
+            patch(f"{MODULE}.stream_manager") as stream,
+            patch(f"{MODULE}.upsert_conversation_artifact", new=AsyncMock()),
+            patch(f"{MODULE}.conversation_repository") as repository,
+            patch(f"{MODULE}.spawn_background_task"),
+        ):
+            stream.publish_chunk = AsyncMock()
+            repository.append_message_tool_data = AsyncMock()
+            await forwarder._handle_event({"path": "report.pdf", "event": "upsert", "mtime": 200.0})
+
+        assert (forwarder.stats.upserts, forwarder.stats.unchanged) == (1, 0)

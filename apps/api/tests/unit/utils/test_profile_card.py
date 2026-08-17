@@ -276,6 +276,22 @@ class TestGenerateHoloCardContent:
         assert isinstance(bio, str)
         assert bio
 
+    async def test_a_legacy_profession_still_produces_a_card(self) -> None:
+        # Stored onboarding rows skip validation (they predate today's 50-char
+        # cap), so re-imposing it on this read would raise out of holo card
+        # generation and leave the user's card unbuilt.
+        user = UserDocument(
+            _id="u1", name="Alice", onboarding={"preferences": {"profession": "a" * 80}}
+        )
+        with patch("app.utils.profile_card.ainvoke_structured", new_callable=AsyncMock):
+            phrase, bio, status = await generate_holo_card_content(
+                user_id="u1", context_summary="   ", user=user
+            )
+
+        assert status == BioStatus.NO_GMAIL
+        assert isinstance(phrase, str)
+        assert bio
+
     async def test_missing_user_and_preferences_still_fall_back(self) -> None:
         user = UserDocument(_id="u1")
         with patch("app.utils.profile_card.ainvoke_structured", new_callable=AsyncMock):

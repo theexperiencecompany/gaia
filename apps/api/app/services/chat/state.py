@@ -90,6 +90,18 @@ async def recover_stream_state(
     return complete_message, tool_data
 
 
+def _entry_list(tool_data: dict[str, object]) -> list[ToolDataEntry]:
+    """The envelope's entry list, installed in place when the key is absent.
+
+    Callers mutate the returned list and expect the result to be persisted, so
+    it must be the list the envelope holds — never a throwaway copy.
+    """
+    entries = tool_data.setdefault("tool_data", [])
+    if not isinstance(entries, list):
+        raise TypeError(f"tool_data envelope holds {type(entries).__name__}, not a list")
+    return cast(list[ToolDataEntry], entries)
+
+
 def merge_tool_outputs(
     tool_data: dict[str, object],
     tool_outputs: dict[str, str],
@@ -99,11 +111,9 @@ def merge_tool_outputs(
     The envelope-taking counterpart of ``apply_outputs_to_tool_data``, which the
     background-executor drain calls with the entry list directly.
     """
-    raw_entries = tool_data.get("tool_data", [])
-    entries: list[ToolDataEntry] = (
-        cast(list[ToolDataEntry], raw_entries) if isinstance(raw_entries, list) else []
+    apply_outputs_to_tool_data(
+        _entry_list(tool_data), tool_outputs, only_tool_name="tool_calls_data"
     )
-    apply_outputs_to_tool_data(entries, tool_outputs, only_tool_name="tool_calls_data")
 
 
 def inject_todo_progress(
@@ -117,8 +127,4 @@ def inject_todo_progress(
             "data": todo_progress_accumulated,
             "timestamp": datetime.now(UTC).isoformat(),
         }
-        raw_entries = tool_data["tool_data"]
-        entries: list[ToolDataEntry] = (
-            cast(list[ToolDataEntry], raw_entries) if isinstance(raw_entries, list) else []
-        )
-        entries.append(entry)
+        _entry_list(tool_data).append(entry)
