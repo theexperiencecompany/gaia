@@ -20,7 +20,6 @@ import base64
 from collections.abc import Awaitable, Callable
 from time import perf_counter
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
 
 from app.constants.browser import (
     BROWSER_TAKEOVER_PREAMBLE,
@@ -40,6 +39,7 @@ from app.schemas.browser import (
     HandoffOutcome,
     HandoffRequest,
 )
+from app.services.browser.captions import caption_from_actions
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.replay import create_replay_link
 from app.services.browser.screenshots import upload_step_screenshot
@@ -68,50 +68,6 @@ def _summarize_actions(agent_output: AgentOutput) -> str:
         for action_name, params in dumped.items():
             parts.append(f"{action_name}({params})" if params else action_name)
     return "; ".join(parts)
-
-
-def _describe_action(name: str, params: dict[str, Any]) -> str:
-    """A plain-language phrase for one action, using its real target (the URL it
-    opens, the text it types, the query it searches) so a caption reads like intent,
-    not "Clicking" five times. Used when flash mode strips the model's own next_goal."""
-    text = str(params.get("text") or "").strip()
-    if name == "navigate":
-        host = urlparse(str(params.get("url") or "")).hostname or ""
-        return f"Opening {host.removeprefix('www.')}" if host else "Opening the page"
-    if name in ("search", "search_page"):
-        q = str(params.get("query") or params.get("text") or "").strip()
-        return f'Searching "{q}"' if q else "Searching"
-    if name in ("input", "send_keys"):
-        return f'Typing "{text}"' if text else "Typing"
-    if name == "select_dropdown":
-        return f'Choosing "{text}"' if text else "Choosing an option"
-    if name == "click":
-        return "Clicking"
-    if name in ("scroll", "scroll_to_text"):
-        return "Scrolling"
-    if name in ("extract", "read_file", "read_long_content", "find_text", "find_elements"):
-        return "Reading the page"
-    if name == "go_back":
-        return "Going back"
-    if name in ("wait",):
-        return "Waiting for the page"
-    if name in ("request_human_takeover", "solve_captcha_with_help"):
-        return "Handing this step to you"
-    if name == "done":
-        return "Wrapping up"
-    return name.replace("_", " ")
-
-
-def _goal_from_actions(agent_output: AgentOutput) -> str:
-    """A caption built from the step's actions — the fallback when the model's own
-    ``next_goal`` is absent (flash mode)."""
-    parts: list[str] = []
-    for action in getattr(agent_output, "action", None) or []:
-        dumped = action.model_dump(exclude_none=True) if hasattr(action, "model_dump") else {}
-        for name, params in dumped.items():
-            parts.append(_describe_action(name, params if isinstance(params, dict) else {}))
-    # de-dupe consecutive repeats ("Clicking; Clicking" → "Clicking")
-    return ", ".join(dict.fromkeys(p for p in parts if p))
 
 
 class BrowserTaskRunner:
@@ -301,7 +257,7 @@ class BrowserTaskRunner:
         goal = (
             getattr(agent_output, "next_goal", None)
             or getattr(agent_output, "thinking", "")
-            or _goal_from_actions(agent_output)
+            or caption_from_actions(agent_output)
         )
         action_detail = _summarize_actions(agent_output)
         raw_screenshot = getattr(browser_state_summary, "screenshot", None)

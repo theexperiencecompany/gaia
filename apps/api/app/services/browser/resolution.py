@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from app.agents.llm.client import ainvoke_structured
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.log_tags import LogTag
+from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import (
     get_conversation_pending_handoff,
     get_handoff,
@@ -52,7 +53,7 @@ async def resolve_handoff_from_message(
     kind = HandoffDecision.CONTINUE if decision.action == "continue" else HandoffDecision.CANCEL
     try:
         await resolve_handoff(handoff_id, kind, user_id)
-    except PermissionError:
+    except BrowserHandoffNotOwned:
         return None
     return decision.action
 

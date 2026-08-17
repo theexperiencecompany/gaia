@@ -28,6 +28,7 @@ from app.schemas.browser import (
     LiveViewTokenResponse,
 )
 from app.services.browser import registry
+from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import get_handoff, resolve_handoff
 from app.services.browser.profiles import forget_saved_login, list_saved_logins
 from app.services.browser.takeover_token import (
@@ -73,7 +74,7 @@ async def decide_browser_handoff(
 
     try:
         resolved = await resolve_handoff(handoff_id, payload.decision, user_id, payload.message)
-    except PermissionError as exc:
+    except BrowserHandoffNotOwned as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to resolve this handoff"
         ) from exc

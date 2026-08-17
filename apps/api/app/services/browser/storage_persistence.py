@@ -16,6 +16,7 @@ import json
 from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
+from playwright.sync_api import StorageState
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -40,7 +41,7 @@ def _get_cipher() -> Fernet:
     """Get the Fernet cipher for storage_state encryption (lazy init)."""
     global _cipher
     if _cipher is None:
-        key = getattr(settings, "BROWSER_STATE_ENCRYPTION_KEY", None)
+        key: str | None = settings.BROWSER_STATE_ENCRYPTION_KEY
         if not key:
             raise ValueError("BROWSER_STATE_ENCRYPTION_KEY not configured in Infisical")
         try:
@@ -54,16 +55,16 @@ def _get_cipher() -> Fernet:
     return _cipher
 
 
-def _encrypt_state(state: dict) -> str:
+def _encrypt_state(state: StorageState) -> str:
     return _get_cipher().encrypt(json.dumps(state).encode()).decode()
 
 
-def _decrypt_state(blob: str) -> dict:
-    decrypted: dict = json.loads(_get_cipher().decrypt(blob.encode()).decode())
+def _decrypt_state(blob: str) -> StorageState:
+    decrypted: StorageState = json.loads(_get_cipher().decrypt(blob.encode()).decode())
     return decrypted
 
 
-async def load_storage_state(user_id: str, domain: str | None) -> dict | None:
+async def load_storage_state(user_id: str, domain: str | None) -> StorageState | None:
     """Load and decrypt the saved storage_state for ``user_id``+``domain``.
 
     Returns ``None`` when there's nothing to seed with (no user, no domain, or
@@ -85,7 +86,7 @@ async def load_storage_state(user_id: str, domain: str | None) -> dict | None:
     return state
 
 
-async def save_storage_state(user_id: str, domain: str | None, state: dict) -> None:
+async def save_storage_state(user_id: str, domain: str | None, state: StorageState) -> None:
     """Encrypt and persist ``state`` for ``user_id``+``domain`` (upsert).
 
     No-op when there's no user/domain to key on, or when the user has opted
@@ -93,7 +94,8 @@ async def save_storage_state(user_id: str, domain: str | None, state: dict) -> N
     """
     if not user_id or not domain:
         return
-    if not getattr(settings, "BROWSER_PERSIST_LOGINS", True):
+    persist_logins: bool = settings.BROWSER_PERSIST_LOGINS
+    if not persist_logins:
         return
     blob = _encrypt_state(state)
     await browser_profile_repository.upsert_storage_state_blob(user_id, domain, blob)

@@ -11,9 +11,9 @@ to a clean "not available" message rather than a raw stack trace.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import httpx
+from playwright.sync_api import StorageState
 
 from app.config.settings import settings
 from app.services.browser.exceptions import (
@@ -48,7 +48,7 @@ class HostSessionInfo:
     title: str | None
 
 
-async def create_session(storage_state: dict[str, Any] | None) -> HostSession:
+async def create_session(storage_state: StorageState | None) -> HostSession:
     """Create an isolated browser session, seeding ``storage_state`` when given."""
     try:
         async with httpx.AsyncClient(
@@ -73,7 +73,7 @@ async def create_session(storage_state: dict[str, Any] | None) -> HostSession:
     )
 
 
-async def delete_session(session_id: str) -> dict[str, Any]:
+async def delete_session(session_id: str) -> StorageState:
     """Dispose the session and return its ``storage_state`` for persistence."""
     try:
         async with httpx.AsyncClient(
@@ -86,7 +86,7 @@ async def delete_session(session_id: str) -> dict[str, Any]:
         ) from exc
 
     _raise_for_status(response)
-    storage_state: dict[str, Any] = response.json()["storage_state"]
+    storage_state: StorageState = response.json()["storage_state"]
     return storage_state
 
 

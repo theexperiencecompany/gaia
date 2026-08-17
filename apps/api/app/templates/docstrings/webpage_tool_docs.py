@@ -1,16 +1,16 @@
 """Docstrings for webpage-related tools."""
 
 FETCH_WEBPAGES = """
-Fetch content from provided URLs using Firecrawl and return a formatted summary.
+Fetch content from provided URLs concurrently and return a formatted summary.
 
-This tool retrieves web content from multiple URLs concurrently using Firecrawl's advanced scraping capabilities.
-It automatically adds 'https://' to URLs missing a protocol prefix and uses intelligent proxy strategies:
-- First attempts with 'auto' proxy (basic -> stealth retry if needed)
-- Falls back to stealth proxy for sites with advanced anti-bot protection
-- Stealth proxy costs 5 credits per request when used
+Renders each URL to markdown by trying engines in order until one succeeds:
+Crawl4AI (headless-Chromium render, handles JS) -> Firecrawl (managed scraper,
+retries through a stealth proxy if the first attempt looks blocked) -> httpx
+(keyless raw HTTP, no JS rendering, final backstop). Automatically adds
+'https://' to URLs missing a protocol prefix. Results are cached per URL.
 
 Args:
-    urls: A list of website URLs to fetch content from. If not provided, will try to use URLs from the state.
+    urls: A list of website URLs to fetch content from.
 
 Returns:
     A dictionary with either successful webpage data (in markdown format) or an error message

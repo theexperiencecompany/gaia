@@ -22,6 +22,7 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.schemas.browser import HandoffOutcome, HandoffRecord
+from app.services.browser.exceptions import BrowserHandoffNotOwned
 from shared.py.wide_events import log
 
 
@@ -68,14 +69,14 @@ async def resolve_handoff(
 ) -> HandoffStatus | None:
     """Resolve a pending handoff, optionally attaching a free-text note the user
     sends back with a continue. Returns the new status, None if it does not
-    exist/expired. Raises ``PermissionError`` if the caller does not own it.
+    exist/expired. Raises ``BrowserHandoffNotOwned`` if the caller does not own it.
     One-time: a settled handoff keeps its original status.
     """
     record = await get_handoff(handoff_id)
     if record is None:
         return None
     if record.user_id != user_id:
-        raise PermissionError("Not authorized to resolve this handoff")
+        raise BrowserHandoffNotOwned("Not authorized to resolve this handoff")
 
     if record.status != HandoffStatus.PENDING:
         return record.status

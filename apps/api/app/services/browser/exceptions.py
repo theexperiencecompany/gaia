@@ -15,3 +15,7 @@ class BrowserHandoffCancelled(BrowserAutomationError):
 
 class BrowserConcurrencyLimit(BrowserAutomationError):
     """Too many browser sessions are already running for this deployment."""
+
+
+class BrowserHandoffNotOwned(BrowserAutomationError):
+    """The caller does not own the browser handoff it tried to resolve."""

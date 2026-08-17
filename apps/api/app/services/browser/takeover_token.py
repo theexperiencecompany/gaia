@@ -75,7 +75,7 @@ def takeover_token_ttl_seconds(token: str) -> float:
 
 def _get_takeover_secret() -> str:
     """The dedicated HS256 secret for takeover tokens (>= 32 chars, or raise)."""
-    secret: str | None = getattr(settings, "BROWSER_TAKEOVER_TOKEN_SECRET", None)
+    secret: str | None = settings.BROWSER_TAKEOVER_TOKEN_SECRET
 
     if not secret:
         raise ValueError(
