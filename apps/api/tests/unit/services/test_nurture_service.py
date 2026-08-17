@@ -202,7 +202,29 @@ class TestSendStep:
 
         assert result is None
         mock_send.assert_not_awaited()
-        assert "no email address" in mock_log.warning.call_args.args[0]
+        # Exact message, not a substring: the operator reads this line to find out
+        # why a scheduled nurture step never arrived, and a substring match passes
+        # for a mangled message that no longer says it.
+        assert (
+            mock_log.warning.call_args.args[0]
+            == "Skipping nurture email — user has no email address"
+        )
+        # The id is the only way to tell WHICH user was skipped.
+        assert mock_log.warning.call_args.kwargs["user_id"] == "u-1"
+
+    async def test_a_user_with_an_email_is_not_skipped(self) -> None:
+        """The other side of the guard — it must not swallow a normal send."""
+        user = UserDocument(id="u-1", email="u@example.com")
+        step = _step()
+        with (
+            patch("app.services.nurture.service.send_email", new_callable=AsyncMock) as mock_send,
+            patch("app.services.nurture.service.render_email_template", return_value="<html>"),
+            patch("app.services.nurture.service.log") as mock_log,
+        ):
+            await _send_step(user, step)
+
+        mock_send.assert_awaited_once()
+        mock_log.warning.assert_not_called()
 
     async def test_context_builder_overrides_cta_label(self) -> None:
         user = UserDocument(id="u-1", email="u@example.com")

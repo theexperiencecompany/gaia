@@ -287,3 +287,83 @@ class TestDeliverResultToolDataOwnership:
             await rd.deliver_result(run, "traceback...", "error")
 
         follow_ups.assert_not_awaited()
+
+
+class TestDeliverResultReplyQuote:
+    """The reply quote is for QUEUED runs that have an original message to quote.
+
+    Both halves of that condition are load-bearing and neither was asserted: a
+    live run must not quote (the answer lands right after the user's message, so
+    quoting is noise) and a queued run with no recorded message id has nothing to
+    quote. The condition is evaluated twice in the source — once into
+    ``show_reply_quote`` for the bot transport and once as the guard that attaches
+    ``replyToMessage`` — so both need to agree.
+    """
+
+    async def _deliver(self, run: ExecutorRun, quoted: str = "the original question"):
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(
+                rd, "_lookup_user_message_content", new_callable=AsyncMock, return_value=quoted
+            ) as lookup,
+        ):
+            await rd.deliver_result(run, "raw result", "final")
+        return save.await_args.args[0].messages[0], lookup, ws
+
+    @staticmethod
+    def _queued_run(user_message_id: str | None) -> ExecutorRun:
+        return ExecutorRun(
+            stream_id="",
+            conversation_id="conv-1",
+            user={"user_id": "user-1"},
+            kind=RunKind.QUEUED,
+            task_id="task-1",
+            user_message_id=user_message_id,
+        )
+
+    async def test_a_queued_run_quotes_the_message_it_answers(self) -> None:
+        saved, lookup, ws = await self._deliver(self._queued_run("msg-7"))
+
+        assert saved.replyToMessage is not None
+        assert saved.replyToMessage.id == "msg-7"
+        assert saved.replyToMessage.content == "the original question"
+        assert saved.replyToMessage.role == "user"
+        lookup.assert_awaited_once()
+        # The quote must also reach the client over the socket, not just Mongo —
+        # this is the `show_reply_quote` half of the condition.
+        pushed = ws.await_args_list[0].args[1]["message"]
+        assert pushed["replyToMessage"] == {
+            "id": "msg-7",
+            "content": "the original question",
+            "role": "user",
+        }
+
+    async def test_a_queued_run_without_a_message_id_quotes_nothing(self) -> None:
+        saved, lookup, ws = await self._deliver(self._queued_run(None))
+
+        assert saved.replyToMessage is None
+        lookup.assert_not_awaited()
+        assert "replyToMessage" not in ws.await_args_list[0].args[1]["message"]
+
+    async def test_a_live_run_never_quotes_even_with_a_message_id(self) -> None:
+        """The `and` half: a live answer lands right after the user's message."""
+        run = ExecutorRun(
+            stream_id="",
+            conversation_id="conv-1",
+            user={"user_id": "user-1"},
+            kind=RunKind.LIVE,
+            task_id=None,
+            user_message_id="msg-7",
+        )
+
+        saved, lookup, ws = await self._deliver(run)
+
+        assert saved.replyToMessage is None
+        lookup.assert_not_awaited()
+        assert "replyToMessage" not in ws.await_args_list[0].args[1]["message"]
