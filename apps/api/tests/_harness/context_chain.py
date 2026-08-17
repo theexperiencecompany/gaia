@@ -156,6 +156,12 @@ def build_configurable(
     Overrides land on the finished bag rather than riding in as a parent
     configurable, so a test can also *remove* a key (``{"vfs_session_id": None}``)
     — inheritance only ever fills blanks and could not express that.
+
+    Passes ``user_preferences``/``writing_style`` straight into
+    ``build_agent_config`` the way every real root call site does (comms,
+    background narration, the dev direct-invoke entrypoint) — the harness
+    always builds as if it IS that root, so it must feed the same data a real
+    one would rather than leaving worker tiers looking blind to it.
     """
     agent_user: AgentUserContext = {
         "user_id": user.user_id,
@@ -170,6 +176,8 @@ def build_configurable(
         agent_name=_AGENT_NAMES[tier],
         subagent_id=_AGENT_NAMES[tier],
         vfs_session_id="conv-1",
+        user_preferences=user.preferences or None,
+        writing_style=user.writing_style or None,
     )
     configurable: AgentConfigurable = {**agent_configurable(config), **(overrides or {})}
     runnable = cast(RunnableConfig, {**config, "configurable": configurable})

@@ -26,6 +26,7 @@ from app.models.agent_models import AgentConfigurable, AgentUserContext
 from app.schemas.dev_schemas import DevAgentRunResponse, DevSubagentInfo
 from app.services.dev_service import require_dev_user
 from app.utils.errors import create_error
+from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
 
 
@@ -59,7 +60,14 @@ async def _dev_base_configurable(
         "email": user_doc.email,
         "name": user_doc.name,
     }
-    config = build_agent_config(conversation_id=cid, user=user, agent_name=agent_name)
+    user_preferences, writing_style = onboarding_preferences(user_doc.onboarding)
+    config = build_agent_config(
+        conversation_id=cid,
+        user=user,
+        agent_name=agent_name,
+        user_preferences=user_preferences,
+        writing_style=writing_style,
+    )
     return cast(AgentConfigurable, config["configurable"]), user_id, cid
 
 

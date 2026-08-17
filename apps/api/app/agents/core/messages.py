@@ -25,6 +25,7 @@ from app.models.message_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.files import FileService
+from app.utils.user_preferences_utils import onboarding_preferences
 
 
 async def construct_langchain_messages(
@@ -85,9 +86,9 @@ async def construct_langchain_messages(
     )
 
     user_timezone = user_dict.get("timezone") if user_dict else None
-    onboarding = user_dict.get("onboarding", {}) if user_dict else {}
-    user_preferences = onboarding.get("preferences") if onboarding else None
-    writing_style = onboarding.get("writing_style") if onboarding else None
+    user_preferences, writing_style = onboarding_preferences(
+        user_dict.get("onboarding") if user_dict else None
+    )
 
     # Extract user's latest message content
     user_content = (

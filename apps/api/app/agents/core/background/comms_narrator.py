@@ -21,6 +21,7 @@ from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
 from app.models.agent_models import agent_configurable
 from app.models.user_models import AuthenticatedUser
 from app.utils.agent_utils import strip_internal_agent_markers
+from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
 
 
@@ -68,10 +69,13 @@ async def narrate_executor_result(
         )
         return ""
     try:
+        user_preferences, writing_style = onboarding_preferences(user.get("onboarding"))
         config = build_agent_config(
             conversation_id=conversation_id,
             user=user,
             agent_name="comms_agent",
+            user_preferences=user_preferences,
+            writing_style=writing_style,
         )
         # Fresh background task with no parent configurable to inherit from, so
         # route the model by plan (Pro -> paid model, Free -> default) and stamp

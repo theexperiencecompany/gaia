@@ -351,6 +351,46 @@ class TestBuildAgentConfig:
         assert configurable["thread_id"] == "github_executor_conv-1"
 
     @patch("app.helpers.agent_helpers.providers")
+    def test_a_handoff_subagent_inherits_preferences_established_by_comms(
+        self, mock_providers
+    ) -> None:
+        """``user_preferences`` / ``writing_style`` follow the exact same rule as
+        ``user_messages`` above: established once wherever the root call site has
+        the full user document (comms), a child agent (executor, a handoff
+        subagent) never has its own copy to prefer, so the parent's value wins."""
+        mock_providers.get.return_value = None
+
+        configurable = build_agent_config(
+            conversation_id="conv-1",
+            user=FAKE_USER,
+            agent_name="gmail_agent",
+            base_configurable={
+                "conversation_id": "conv-1",
+                "user_preferences": {"profession": "engineer"},
+                "writing_style": {"summary": "terse"},
+            },
+        )["configurable"]
+
+        assert configurable["user_preferences"] == {"profession": "engineer"}
+        assert configurable["writing_style"] == {"summary": "terse"}
+
+    @patch("app.helpers.agent_helpers.providers")
+    def test_no_parent_and_no_explicit_value_leaves_preferences_absent(
+        self, mock_providers
+    ) -> None:
+        """A root call site with no onboarding data (e.g. a dev user who hasn't
+        onboarded) must not fabricate a value — the context section reads a
+        missing key as "render nothing", never as a stale default."""
+        mock_providers.get.return_value = None
+
+        configurable = build_agent_config(
+            conversation_id="conv-1", user=FAKE_USER, agent_name="executor_agent"
+        )["configurable"]
+
+        assert configurable["user_preferences"] is None
+        assert configurable["writing_style"] is None
+
+    @patch("app.helpers.agent_helpers.providers")
     def test_stream_id_always_comes_from_the_parent(self, mock_providers):
         """Pass-through, not a fallback: a child never invents its own stream."""
         mock_providers.get.return_value = None

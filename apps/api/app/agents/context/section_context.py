@@ -50,18 +50,22 @@ class SectionContext:
         user_id: str | None = None,
         subagent_id: str | None = None,
         integration_id: str | None = None,
-        user_preferences: dict[str, Any] | None = None,
-        writing_style: dict[str, Any] | None = None,
     ) -> "SectionContext":
-        """Read a run's configurable into the closed section shape."""
+        """Read a run's configurable into the closed section shape.
+
+        ``user_preferences`` / ``writing_style`` come off ``configurable`` the
+        same way ``user_name`` / ``user_timezone`` do — set once at the run
+        tree's root by ``build_agent_config`` and inherited unchanged by every
+        child, never overridden per call.
+        """
         mode = configurable.get("execution_mode") or "interactive"
         return cls(
             tier=tier,
             user_id=user_id or configurable.get("user_id"),
             user_name=configurable.get("user_name"),
             user_timezone=configurable.get("user_timezone"),
-            user_preferences=user_preferences,
-            writing_style=writing_style,
+            user_preferences=configurable.get("user_preferences"),
+            writing_style=configurable.get("writing_style"),
             query=query,
             subagent_id=subagent_id,
             integration_id=integration_id,

@@ -114,8 +114,18 @@ class TestTheTableIsWellFormed:
     def test_the_executor_receives_its_own_stable_set(self) -> None:
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.DYNAMIC_STABLE)] == [
             "user_identity",
+            "user_prefs",
             "workspace_session",
             "integrations_manifest",
+        ]
+        assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.MEMORY_RECALL)] == [
+            "core_memory",
+            "memory_recall",
+            "gaia_knowledge",
+            "skills",
+            "tracked_todos",
+            "bg_banner",
+            "active_todo_banner",
         ]
 
     def test_a_section_excludes_the_tiers_it_was_not_registered_against(self) -> None:
@@ -123,6 +133,28 @@ class TestTheTableIsWellFormed:
         from being handed the skills listing."""
         assert not section("skills").applies(AgentTier.COMMS)
         assert section("skills").applies(AgentTier.EXECUTOR)
+
+    async def test_user_prefs_reaches_every_tier_because_configurable_carries_it(self) -> None:
+        """``user_prefs`` applies to every tier — proven against the actual data
+        path, not just the registry entry: ``from_configurable`` reads
+        ``user_preferences`` / ``writing_style`` off ``configurable`` (set once
+        by ``build_agent_config`` at a run's root, inherited by every child), so
+        a worker tier built the way production actually builds one renders the
+        section rather than silently getting an empty string forever."""
+        assert section("user_prefs").applies_to == ALL_TIERS
+        worker_ctx = SectionContext.from_configurable(
+            AgentTier.EXECUTOR,
+            {"user_preferences": {"profession": "engineer"}, "writing_style": None},
+        )
+        assert await section("user_prefs").fetch(worker_ctx) != ""
+
+    def test_workspace_session_is_scoped_to_tiers_that_build_from_a_configurable(self) -> None:
+        """Comms never calls ``SectionContext.from_configurable`` — it constructs
+        the context directly in ``messages.py`` with no ``vfs_session_id`` — so
+        ``build_workspace_session_banner`` would always render "" for it.
+        Mirrors ``test_user_prefs_is_scoped_to_the_only_tier_that_populates_it``
+        from the other direction."""
+        assert AgentTier.COMMS not in section("workspace_session").applies_to
 
 
 @pytest.mark.unit

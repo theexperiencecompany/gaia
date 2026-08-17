@@ -49,7 +49,7 @@ Constraints inherited from the existing code, all load-bearing and all currently
 - `build_agent_config` and configurable inheritance. Already centralized in one function with one inheritance table and reasonable coverage; folding it in grows the class without clarifying anything.
 - Middleware behaviour — summarization, compaction, media description, loop guard, HIL. They mutate context, but downstream of the assembly boundary this change owns.
 - Re-introducing parent→child memory/skills prefetch. The dead plumbing is deleted here; a real prefetch optimization is a separate, trace-justified change.
-- Changing which sections a tier gets, except the three corrections named below.
+- Changing which sections a tier gets, except the three corrections named below. **Reopened as a deliberate follow-up, not part of this change:** the registry this change built made the content asymmetry visible — comms alone got `core_memory`/`user_prefs`/`gaia_knowledge`/`tracked_todos`, so the executor and every subagent drafted user-facing prose (emails, documents) with no access to the user's writing style or preferences. Extended to `ALL_TIERS`, gated on fixing the actual gap that made it a Non-Goal in the first place: `AgentConfigurable` carried no onboarding data at all. `build_agent_config` gained `user_preferences`/`writing_style` kwargs, threaded the same way as `user_messages` — set once at whichever root call site already has the full user document (comms, background narration, the dev direct-invoke entrypoint), inherited unchanged by every child. `SectionContext.from_configurable` reads them off `configurable` the same way it reads `user_name`/`user_timezone`, instead of the two unused override kwargs that no call site had ever populated.
 - Prompt *text*. Section bodies are ported verbatim.
 
 ## Decisions
@@ -78,6 +78,8 @@ custom_instructions   ○      ○      ●        ○       ○       dynamic_s
 ```
 
 Six cells differ from this change's first draft of the table. Each was corrected to match what the code observably does today, not the other way round — changing which tier gets which section is an explicit Non-Goal. See finding F1 for the per-cell evidence.
+
+This table is the record of what shipped in this change. `core_memory`, `gaia_knowledge`, `tracked_todos`, and `user_prefs` were later extended from comms-only to every tier — see the Non-Goals section above, "Reopened as a deliberate follow-up."
 
 Alternatives rejected: a base class with per-tier subclasses (five subclasses to express what is a boolean per cell, and the override points become the new place divergence hides); keeping two implementations and adding a shared helper (leaves both call graphs live, so the next divergence is one edit away).
 
@@ -122,6 +124,8 @@ Everything else is ported verbatim. These three are corrections, each with its o
 | 3 | Banners lead in the subagent path, trail in comms | Trail in every tier | After assembly the volatile slot already sits at the tail of `system_instruction`, immediately before contents, so intra-slot position moves a few hundred bytes at the very end. Recency is the stronger argument and comms already depends on it. |
 
 A fourth divergence — comms formats recalled memories via `entry_to_note` (dated), subagents use raw `mem.content` — is unified on `entry_to_note`. Dates are strictly more information, and no comment defends the raw form.
+
+A fifth divergence, already described as F3 under Findings below: `create_agent_context_message` joined sections with `"\n".join(parts)` and then concatenated blocks that each carried their own leading `\n\n` (and, for provider metadata, a trailing `\n`), producing stray blank runs the registry's uniform join removes. Confirmed by A/B against `origin/master`: rendering the same fixture through both the pre-refactor and post-refactor subagent paths shows the `provider_metadata` → `custom_instructions` boundary drop from three blank lines to zero.
 
 ### 7. Delete the dead prefetch plumbing
 

@@ -42,6 +42,7 @@ from app.models.agent_models import (
 from app.models.message_models import MessageRequestWithHistory
 from app.models.models_models import ModelConfig
 from app.models.user_models import AuthenticatedUser
+from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
 
 
@@ -117,6 +118,12 @@ async def _core_agent_logic(
         request, user_id or "", conversation_id, history, trigger_context
     )
 
+    # Established here (comms already has the full user document) so the
+    # executor and every subagent it hands off to inherit it — the worker
+    # tiers' context sections read it off configurable, not off a user doc
+    # they never have.
+    user_preferences, writing_style = onboarding_preferences(user.get("onboarding"))
+
     # Build config with optional tokens
     config = build_agent_config(
         conversation_id=conversation_id,
@@ -130,6 +137,8 @@ async def _core_agent_logic(
         execution_mode=execution_mode,
         source=source,
         user_messages=recent_user_messages(request.messages, request.message),
+        user_preferences=user_preferences,
+        writing_style=writing_style,
         langfuse_trace_id=langfuse_trace_id,
         langfuse_tags=langfuse_tags,
     )

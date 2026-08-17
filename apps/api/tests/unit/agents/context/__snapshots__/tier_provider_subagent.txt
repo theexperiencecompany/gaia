@@ -270,6 +270,8 @@
 [1] system markers=dynamic_context,memory_message
     User Name: Ada
     User Timezone: Asia/Kolkata
+    User Preferences:
+    User Profession: Engineer
     Session directory: /workspace/sessions/conv-1
     Public artifact URL: a file at `artifacts/<name>` is served at https://api.heygaia.io/api/v1/sessions/conv-1/artifacts/<name>
     USER CONTEXT FOR GMAIL:
@@ -304,8 +306,14 @@
     - "GAIA is doing something the user might ask about later" → create_tracked_todo
 
 [3] system markers=memory_recall
+    What you remember about this user (memory core):
+    - Prefers short answers.
+    
     Based on our previous conversations (bracketed dates say when something happened / was last mentioned):
     - Ships on Fridays [mentioned 2026-02-01]
+    
+    About Gaia (your identity and capabilities):
+    - GAIA can run scheduled workflows.
     
     ## Available skills
     - inbox-triage
@@ -316,6 +324,8 @@
     - **gmail-draft-send** (`/workspace/integrations/gmail/agent/skills/gmail-draft-send/skill.md`) — Create and send Gmail emails using draft-first workflow. Always draft first, get user approval, then send.
     - **gmail-find-contacts** (`/workspace/integrations/gmail/agent/skills/gmail-find-contacts/skill.md`) — Find contacts in Gmail - search for specific people or email addresses from email history.
     - **gmail-search-context** (`/workspace/integrations/gmail/agent/skills/gmail-search-context/skill.md`) — Read, search, and summarize Gmail — precise queries, large-inbox fan-out reads, synthesized findings, and the opinionated inbox triage report
+    
+    Tracked: ship the context refactor
 
 [4] human
     summarise my unread mail
