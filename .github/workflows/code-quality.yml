@@ -1006,25 +1006,31 @@ jobs:
           # repo's pr-assets orphan branches). Delete once the hang is read.
           if [ "$MODULE" = "app/decorators/rate_limiting.py" ]; then
             pip install -q py-spy 2>/dev/null || pipx install py-spy 2>/dev/null || true
+            _push_diag() {
+              # One file, one orphan commit, force-pushed. Cheap and unkillable
+              # from the runner's side once it lands.
+              BLOB=$(git hash-object -w "$1")
+              TREE=$(printf '100644 blob %s\t%s\n' "$BLOB" "$2" | git mktree)
+              C=$(git commit-tree "$TREE" -m "mutation diag $2")
+              git push -f origin "$C:refs/heads/mutation-debug" || true
+            }
             (
               i=0
-              while sleep 300; do
-                i=$((i+300))
+              while sleep 240; do
+                i=$((i+240))
+                # ps FIRST and pushed FIRST: py-spy ptrace-attaches, and
+                # attaching to the very D-state/unkillable process being
+                # hunted can hang — the cheap evidence must never queue
+                # behind the expensive evidence.
+                { echo "=== +${i}s $(date -u) ==="; ps auxwwf 2>/dev/null || ps auxww; echo "--- shard.log tail ---"; tail -c 30000 shard.log 2>/dev/null; } > diag-ps.txt 2>&1
+                _push_diag diag-ps.txt "ps-plus-${i}s.txt"
                 {
-                  echo "=== +${i}s $(date -u) ==="
-                  ps auxww
-                  echo "--- py-spy dumps ---"
                   for pid in $(pgrep -f 'python|mutmut'); do
-                    echo "## pid $pid: $(ps -p "$pid" -o args= | cut -c1-200)"
-                    sudo env "PATH=$PATH" py-spy dump --pid "$pid" 2>&1 | head -80 || true
+                    echo "## pid $pid: $(ps -p "$pid" -o stat=,args= 2>/dev/null | cut -c1-200)"
+                    timeout 20 sudo env "PATH=$PATH" py-spy dump --pid "$pid" 2>&1 | head -80
                   done
-                  echo "--- shard.log tail ---"
-                  tail -c 30000 shard.log 2>/dev/null
-                } > diag.txt 2>&1
-                BLOB=$(git hash-object -w diag.txt)
-                TREE=$(printf '100644 blob %s\tdiag-plus-%ss.txt\n' "$BLOB" "$i" | git mktree)
-                C=$(git commit-tree "$TREE" -m "mutation diag +${i}s")
-                git push -f origin "$C:refs/heads/mutation-debug" || true
+                } > diag-spy.txt 2>&1
+                _push_diag diag-spy.txt "spy-plus-${i}s.txt"
               done
             ) > sidecar.log 2>&1 &
             DIAG_PID=$!
