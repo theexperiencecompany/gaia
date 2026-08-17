@@ -851,9 +851,17 @@ class TestBlocksToMarkdown:
     ) -> None:
         """The ordinal is stamped onto the block's own payload. Stamping a
         throwaway dict instead loses the number and renders the item as an
-        unordered bullet — a silently wrong document."""
+        unordered bullet — a silently wrong document.
+
+        Matched on the message, not just the type: for the string payload the
+        base revision also raised TypeError — ``'str' object does not support
+        item assignment``, from stamping the ordinal straight onto the string —
+        so a bare ``pytest.raises(TypeError)`` was green there before the fix.
+        (The ``{}`` case raised KeyError on base, so only one of the two
+        parameters was proving anything.)
+        """
         blocks: list[dict[str, object]] = [{"type": "numbered_list_item", **payload}]
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match=r"numbered_list_item payload is \w+, not an object"):
             blocks_to_markdown(blocks)
 
     def test_skips_unsupported_blocks(self) -> None:

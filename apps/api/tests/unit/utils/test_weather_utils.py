@@ -581,11 +581,17 @@ class TestPrepareWeatherData:
     async def test_sys_present_but_not_an_object_fails_loudly(self) -> None:
         """A ``sys`` that is not an object cannot be patched. Writing the
         country into a throwaway dict returns the unpatched payload and the
-        response model blows up further downstream instead of here."""
+        response model blows up further downstream instead of here.
+
+        Matched on the message, not just the type: the base revision also raised
+        TypeError for this input — downstream, from the response model, once the
+        unpatched payload reached it — so a bare ``pytest.raises(TypeError)`` was
+        green before the fix and could not tell the two apart.
+        """
         current = _make_current_weather()
         current["sys"] = "GB"
         loc = {"city": "London", "country": "GB", "region": None}
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match=r"OpenWeatherMap 'sys' is str, not an object"):
             await self._call(loc, current_weather=current)
 
     async def test_no_sys_field_creates_minimal_sys(self) -> None:

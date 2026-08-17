@@ -17,7 +17,6 @@ from datetime import datetime
 import json
 
 from hypothesis import given, settings, strategies as st
-import pytest
 
 from app.models.chat_models import tool_fields
 from app.utils.agent_utils import format_sse_data, format_sse_response
@@ -64,7 +63,13 @@ JSON_VALUE = st.recursive(
 
 
 class TestConvertLegacyToolData:
-    @pytest.mark.regression
+    # Deliberately NOT @pytest.mark.regression. That marker claims the test goes
+    # red on origin/master, and this one cannot: master pops the empty list and
+    # then writes the (still empty) entries back, so master and HEAD both answer
+    # []. The regression it guards lived only in this PR's intermediate commits,
+    # where the key was popped and the write-back skipped it. Still a real guard
+    # on the contract — it just is not provable against the base revision, and
+    # marking it regression made the lane report a proof it never obtained.
     def test_an_explicit_empty_tool_data_survives_as_an_empty_list(self) -> None:
         """A message that already carries ``tool_data: []`` must keep it.
         Dropping the key makes consumers that index ``message["tool_data"]``
