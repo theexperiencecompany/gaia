@@ -3,7 +3,7 @@ import type { BrowserTask, SavedBrowserLogin } from "../types";
 
 export const browserApi = {
   listTasks: () =>
-    apiService.get<BrowserTask[]>("/browser/tasks", { silent: true }),
+    apiService.get<BrowserTask[]>("/browser/tasks?limit=50", { silent: true }),
 
   listLogins: () =>
     apiService.get<SavedBrowserLogin[]>("/browser/logins", { silent: true }),
