@@ -23,33 +23,31 @@ function LoginRow({
   const [faviconFailed, setFaviconFailed] = useState(false);
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/40 p-2.5">
-      <div className="flex min-w-0 items-center gap-3">
-        {faviconFailed ? (
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-zinc-800 ring-1 ring-white/10">
-            <GlobalIcon className="size-4 text-zinc-500" />
-          </div>
-        ) : (
-          <Image
-            src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(login.domain)}&sz=128`}
-            alt=""
-            width={64}
-            height={64}
-            className="size-9 shrink-0 rounded-full bg-white object-cover ring-1 ring-white/10"
-            unoptimized
-            onError={() => setFaviconFailed(true)}
-          />
-        )}
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-zinc-100">
+    <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/40 p-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          {faviconFailed ? (
+            <GlobalIcon className="size-4 shrink-0 text-zinc-500" />
+          ) : (
+            <Image
+              src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(login.domain)}&sz=64`}
+              alt=""
+              width={32}
+              height={32}
+              className="size-4 shrink-0 rounded-full object-cover"
+              unoptimized
+              onError={() => setFaviconFailed(true)}
+            />
+          )}
+          <span className="truncate text-sm font-medium text-zinc-100">
             {login.domain}
-          </p>
-          <p className="text-xs text-zinc-500">
-            {login.updated_at
-              ? `Signed in ${formatRelativeDate(login.updated_at)}`
-              : "Signed in recently"}
-          </p>
+          </span>
         </div>
+        <p className="mt-0.5 text-xs text-zinc-500">
+          {login.updated_at
+            ? `Saved ${formatRelativeDate(login.updated_at)}`
+            : "Saved recently"}
+        </p>
       </div>
       <Button
         size="sm"
@@ -82,7 +80,7 @@ export function SavedLogins() {
   const handleClearAll = async () => {
     const confirmed = await confirm({
       title: "Clear all saved logins",
-      message: `Forget all ${logins.length} saved logins? GAIA will need to sign in again on every site.`,
+      message: `Forget all ${logins.length} saved sites? GAIA will start fresh on each and need to sign in again where you'd logged in.`,
       confirmText: "Continue",
       cancelText: "Cancel",
       variant: "destructive",
@@ -91,9 +89,9 @@ export function SavedLogins() {
 
     const doubleConfirmed = await confirm({
       title: "This cannot be undone",
-      message: "Really forget every saved login?",
+      message: "Really forget every saved site?",
       confirmText: "Forget everything",
-      cancelText: "Keep my logins",
+      cancelText: "Keep them",
       variant: "destructive",
     });
     if (!doubleConfirmed) return;
@@ -103,7 +101,7 @@ export function SavedLogins() {
 
   return (
     <section>
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-1 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-zinc-200">Saved logins</h3>
         {logins.length > 0 && (
           <Button
@@ -118,6 +116,11 @@ export function SavedLogins() {
           </Button>
         )}
       </div>
+      <p className="mb-3 text-xs leading-relaxed text-zinc-500">
+        Stored encrypted. GAIA saves a session snapshot for each site it visits,
+        so it stays signed in where you've logged in and picks up where it left
+        off elsewhere.
+      </p>
 
       {isLoading ? (
         <div className="flex flex-col gap-2">
@@ -126,7 +129,7 @@ export function SavedLogins() {
         </div>
       ) : error ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800/40 p-6 text-center text-sm text-zinc-400">
-          <span>Couldn&apos;t load your saved logins.</span>
+          <span>Couldn&apos;t load your saved sites.</span>
           <Button size="sm" variant="flat" onPress={() => void refetch()}>
             Retry
           </Button>
@@ -136,10 +139,10 @@ export function SavedLogins() {
           <div className="rounded-full bg-zinc-900 p-3">
             <GlobalIcon className="size-5 text-zinc-500" />
           </div>
-          <p className="text-sm text-zinc-400">No saved logins yet</p>
+          <p className="text-sm text-zinc-400">Nothing saved yet</p>
           <p className="max-w-xs text-xs text-zinc-500">
-            When GAIA signs in somewhere for you, that site appears here so you
-            can review or forget it.
+            As GAIA browses on your behalf, the sites it visits appear here so
+            you can review or forget them.
           </p>
         </div>
       ) : (

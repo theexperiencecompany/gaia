@@ -45,9 +45,7 @@ export function RecapSlideshow({
     <div className="overflow-hidden rounded-2xl bg-zinc-900">
       {title && (
         <div className="border-b border-white/5 px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            Task
-          </p>
+          <p className="text-xs font-medium text-zinc-500">Task</p>
           <p className="mt-0.5 line-clamp-2 text-sm leading-snug text-zinc-200">
             {title}
           </p>

@@ -471,7 +471,7 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
         <div className="mt-3">
           <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
             <CursorInWindowIcon className="size-3.5 text-amber-300/70" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-200/50">
+            <span className="text-[11px] font-medium text-amber-200/60">
               Live browser, you're in control
             </span>
           </div>
