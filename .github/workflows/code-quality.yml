@@ -1062,7 +1062,11 @@ jobs:
                   tail -c 15000 shard.log 2>/dev/null
                 } > diag-ps.txt 2>&1
                 _push_diag diag-ps.txt "ps-plus-${i}s.txt"
-                [ "$i" -lt 60 ] && continue
+                # if/fi, NOT `[ ... ] && continue`: when the test goes false
+                # that compound's status is 1, and the subshell inherits the
+                # step's set -e — the sidecar died at exactly i=60, one
+                # snapshot short of showing which process survives the run.
+                if [ "$i" -lt 60 ]; then continue; fi
                 {
                   for pid in $(pgrep -f 'python|mutmut'); do
                     echo "## pid $pid: $(ps -p "$pid" -o stat=,args= 2>/dev/null | cut -c1-200)"
