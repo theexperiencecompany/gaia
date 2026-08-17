@@ -23,38 +23,39 @@ function LoginRow({
   const [faviconFailed, setFaviconFailed] = useState(false);
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/50 p-3">
+    <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/40 p-2.5">
       <div className="flex min-w-0 items-center gap-3">
         {faviconFailed ? (
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-900">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-zinc-900 ring-1 ring-white/5">
             <GlobalIcon className="size-4 text-zinc-500" />
           </div>
         ) : (
           <Image
             src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(login.domain)}&sz=64`}
             alt=""
-            width={32}
-            height={32}
-            className="size-8 shrink-0 rounded-full bg-zinc-900 object-contain p-1.5"
+            width={36}
+            height={36}
+            className="size-9 shrink-0 rounded-lg bg-zinc-900 object-contain p-1.5 ring-1 ring-white/5"
             unoptimized
             onError={() => setFaviconFailed(true)}
           />
         )}
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-zinc-200">
+          <p className="truncate text-sm font-medium text-zinc-100">
             {login.domain}
           </p>
           <p className="text-xs text-zinc-500">
             {login.updated_at
-              ? `Updated ${formatRelativeDate(login.updated_at)}`
-              : "Updated recently"}
+              ? `Signed in ${formatRelativeDate(login.updated_at)}`
+              : "Signed in recently"}
           </p>
         </div>
       </div>
       <Button
         size="sm"
-        variant="flat"
+        variant="light"
         color="danger"
+        className="h-8"
         isLoading={isForgetting}
         startContent={!isForgetting && <Delete02Icon className="size-4" />}
         onPress={() => onForget(login.domain)}
@@ -81,7 +82,7 @@ export function SavedLogins() {
   const handleClearAll = async () => {
     const confirmed = await confirm({
       title: "Clear all saved logins",
-      message: `Permanently forget all ${logins.length} saved logins? GAIA will need to sign in again on every site.`,
+      message: `Forget all ${logins.length} saved logins? GAIA will need to sign in again on every site.`,
       confirmText: "Continue",
       cancelText: "Cancel",
       variant: "destructive",
@@ -100,61 +101,61 @@ export function SavedLogins() {
     await clearAllLogins();
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-14 w-full rounded-2xl" />
-        <Skeleton className="h-14 w-full rounded-2xl" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800 p-6 text-center text-sm text-zinc-400">
-        <span>Couldn&apos;t load your saved logins.</span>
-        <Button size="sm" variant="flat" onPress={() => void refetch()}>
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
-  if (logins.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-zinc-800 p-6 text-center">
-        <div className="rounded-full bg-zinc-900 p-3">
-          <GlobalIcon className="size-5 text-zinc-500" />
-        </div>
-        <p className="text-sm text-zinc-400">No saved logins yet</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          color="danger"
-          variant="flat"
-          isLoading={isClearingAll}
-          onPress={() => void handleClearAll()}
-        >
-          Clear all
-        </Button>
+    <section>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-zinc-200">Saved logins</h3>
+        {logins.length > 0 && (
+          <Button
+            size="sm"
+            color="danger"
+            variant="light"
+            className="h-7"
+            isLoading={isClearingAll}
+            onPress={() => void handleClearAll()}
+          >
+            Clear all
+          </Button>
+        )}
       </div>
-      <div className="flex flex-col gap-3">
-        {logins.map((login) => (
-          <LoginRow
-            key={login.domain}
-            login={login}
-            onForget={forgetLogin}
-            isForgetting={forgettingDomain === login.domain}
-          />
-        ))}
-      </div>
+
+      {isLoading ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-14 w-full rounded-2xl" />
+          <Skeleton className="h-14 w-full rounded-2xl" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800/40 p-6 text-center text-sm text-zinc-400">
+          <span>Couldn&apos;t load your saved logins.</span>
+          <Button size="sm" variant="flat" onPress={() => void refetch()}>
+            Retry
+          </Button>
+        </div>
+      ) : logins.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-zinc-800/40 p-8 text-center">
+          <div className="rounded-full bg-zinc-900 p-3">
+            <GlobalIcon className="size-5 text-zinc-500" />
+          </div>
+          <p className="text-sm text-zinc-400">No saved logins yet</p>
+          <p className="max-w-xs text-xs text-zinc-500">
+            When GAIA signs in somewhere for you, that site appears here so you
+            can review or forget it.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {logins.map((login) => (
+            <LoginRow
+              key={login.domain}
+              login={login}
+              onForget={forgetLogin}
+              isForgetting={forgettingDomain === login.domain}
+            />
+          ))}
+        </div>
+      )}
+
       <ConfirmationDialog {...confirmationProps} />
-    </div>
+    </section>
   );
 }

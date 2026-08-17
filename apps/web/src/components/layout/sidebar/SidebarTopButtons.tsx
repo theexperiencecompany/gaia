@@ -12,6 +12,7 @@ import {
 } from "@icons";
 import Link from "next/link";
 import React from "react";
+import { ChevronLeft } from "@/components/shared/icons";
 import {
   getNavigationShortcut,
   ShortcutKeysDisplay,
@@ -45,6 +46,22 @@ export default function SidebarTopButtons() {
   const unreadCount = notifications.filter(
     (n) => n.status !== NotificationStatus.READ,
   ).length;
+
+  // In settings, the app nav is noise — a single "Back to chats" is all you need.
+  if (pathname.startsWith("/settings")) {
+    return (
+      <Button
+        as={Link}
+        href="/c"
+        size="sm"
+        variant="light"
+        className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
+        startContent={<ChevronLeft className="size-4" />}
+      >
+        Back to chats
+      </Button>
+    );
+  }
 
   const isRouteActive = (route: string) => {
     if (route === "/c") {

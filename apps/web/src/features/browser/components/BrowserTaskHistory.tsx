@@ -1,155 +1,128 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import { Modal, ModalContent } from "@heroui/modal";
 import { Skeleton } from "@heroui/skeleton";
-import {
-  AiWebBrowsingIcon,
-  AlertCircleIcon,
-  CheckmarkCircle02Icon,
-  Loading03Icon,
-  StopCircleIcon,
-} from "@icons";
+import { AiWebBrowsingIcon, PlayIcon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { RecapSlideshow } from "@/components/browser/RecapSlideshow";
 import { ChevronRight } from "@/components/shared/icons";
 import { useBrowserTasks } from "../hooks/useBrowserTasks";
-import type { BrowserTask } from "../types";
+import type { BrowserTask, BrowserTaskStatus } from "../types";
 import { formatRelativeDate } from "../utils";
 
-function TaskStatusBadge({ status }: { status: BrowserTask["status"] }) {
-  switch (status) {
-    case "completed":
-      return (
-        <Chip
-          size="sm"
-          color="success"
-          variant="flat"
-          radius="sm"
-          startContent={<CheckmarkCircle02Icon className="h-3 w-3" />}
-        >
-          Done
-        </Chip>
-      );
-    case "cancelled":
-      return (
-        <Chip
-          size="sm"
-          color="default"
-          variant="flat"
-          radius="sm"
-          startContent={<StopCircleIcon className="h-3 w-3" />}
-        >
-          Stopped
-        </Chip>
-      );
-    case "failed":
-      return (
-        <Chip
-          size="sm"
-          color="danger"
-          variant="flat"
-          radius="sm"
-          startContent={<AlertCircleIcon className="h-3 w-3" />}
-        >
-          Couldn&apos;t finish
-        </Chip>
-      );
-    case "running":
-    case "paused":
-      return (
-        <Chip
-          size="sm"
-          color="primary"
-          radius="sm"
-          variant="flat"
-          startContent={
-            <div className="animate-spin">
-              <Loading03Icon className="h-3 w-3" />
-            </div>
-          }
-        >
-          Working
-        </Chip>
-      );
-  }
+const STATUS_META: Record<
+  BrowserTaskStatus,
+  { label: string; dot: string; text: string }
+> = {
+  completed: { label: "Done", dot: "bg-emerald-500", text: "text-emerald-400" },
+  cancelled: { label: "Stopped", dot: "bg-zinc-500", text: "text-zinc-400" },
+  failed: {
+    label: "Couldn't finish",
+    dot: "bg-red-500",
+    text: "text-red-400",
+  },
+  running: { label: "Working", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
+  paused: { label: "Working", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
+};
+
+function MetaDot() {
+  return <span className="size-[3px] rounded-full bg-zinc-600" />;
 }
 
 function TaskRow({ task }: { task: BrowserTask }) {
   const router = useRouter();
-  const [isRecapOpen, setIsRecapOpen] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
   const hasRecap = task.screenshots.length > 0;
-  const isClickable = task.conversation_id.length > 0;
+  const clickable = task.conversation_id.length > 0;
+  const meta = STATUS_META[task.status];
+  const thumb = task.screenshots[0];
 
-  const handleRowClick = () => {
-    router.push(`/c/${task.conversation_id}`);
-  };
+  const openConversation = () => router.push(`/c/${task.conversation_id}`);
 
   return (
     <>
       <div
-        className={`flex items-center justify-between gap-3 rounded-2xl bg-zinc-800/50 p-3 transition-colors hover:bg-zinc-800 ${isClickable ? "cursor-pointer" : ""}`}
-        onClick={isClickable ? handleRowClick : undefined}
+        className={`group flex items-center gap-3 rounded-2xl bg-zinc-800/40 p-2.5 transition-colors hover:bg-zinc-800/80 ${clickable ? "cursor-pointer" : ""}`}
+        onClick={clickable ? openConversation : undefined}
         onKeyDown={
-          isClickable
+          clickable
             ? (e) => {
-                if (e.key === "Enter" || e.key === " ") handleRowClick();
+                if (e.key === "Enter") openConversation();
               }
             : undefined
         }
-        role={isClickable ? "button" : undefined}
-        tabIndex={isClickable ? 0 : undefined}
+        role={clickable ? "button" : undefined}
+        tabIndex={clickable ? 0 : undefined}
       >
-        <div className="flex min-w-0 items-center gap-3">
-          {task.screenshots[0] && (
+        {/* The thumbnail is the recap preview — click it to play the slideshow. */}
+        <button
+          type="button"
+          disabled={!hasRecap}
+          onClick={(e) => {
+            e.stopPropagation();
+            setRecapOpen(true);
+          }}
+          className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-white/5 disabled:cursor-default"
+          aria-label={hasRecap ? "Watch recap" : undefined}
+        >
+          {thumb ? (
             <Image
-              src={task.screenshots[0]}
+              src={thumb}
               alt=""
-              width={40}
-              height={40}
-              className="size-10 shrink-0 rounded-xl object-cover"
+              width={64}
+              height={64}
+              className="size-full object-cover"
               unoptimized
             />
-          )}
-          <div className="flex min-w-0 flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <TaskStatusBadge status={task.status} />
-              {task.created_at && (
-                <span className="text-xs text-zinc-500">
-                  {formatRelativeDate(task.created_at)}
-                </span>
-              )}
+          ) : (
+            <div className="flex size-full items-center justify-center">
+              <AiWebBrowsingIcon className="size-4 text-zinc-600" />
             </div>
-            <p className="line-clamp-2 text-sm text-zinc-300">{task.task}</p>
+          )}
+          {hasRecap && (
+            <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100">
+              <PlayIcon className="size-4 text-white" />
+            </span>
+          )}
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-zinc-100">
+            {task.task}
+          </p>
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
+            <span className={`size-1.5 rounded-full ${meta.dot}`} />
+            <span className={meta.text}>{meta.label}</span>
+            {task.created_at && (
+              <>
+                <MetaDot />
+                <span>{formatRelativeDate(task.created_at)}</span>
+              </>
+            )}
+            {task.steps > 0 && (
+              <>
+                <MetaDot />
+                <span>
+                  {task.steps} {task.steps === 1 ? "step" : "steps"}
+                </span>
+              </>
+            )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {hasRecap && (
-            <Button
-              size="sm"
-              variant="flat"
-              onPress={() => setIsRecapOpen(true)}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-            >
-              Watch recap
-            </Button>
-          )}
-          {isClickable && <ChevronRight className="h-4 w-4 text-zinc-500" />}
-        </div>
+
+        {clickable && (
+          <ChevronRight className="size-4 shrink-0 text-zinc-600 transition group-hover:text-zinc-400" />
+        )}
       </div>
 
       {hasRecap && (
-        <Modal size="2xl" isOpen={isRecapOpen} onOpenChange={setIsRecapOpen}>
+        <Modal size="2xl" isOpen={recapOpen} onOpenChange={setRecapOpen}>
           <ModalContent>
             <RecapSlideshow
-              shots={task.screenshots.map((url, i) => ({
-                index: i + 1,
-                url,
-              }))}
+              shots={task.screenshots.map((url, i) => ({ index: i + 1, url }))}
             />
           </ModalContent>
         </Modal>
@@ -161,43 +134,41 @@ function TaskRow({ task }: { task: BrowserTask }) {
 export function BrowserTaskHistory() {
   const { tasks, isLoading, error, refetch } = useBrowserTasks();
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-16 w-full rounded-2xl" />
-        <Skeleton className="h-16 w-full rounded-2xl" />
-        <Skeleton className="h-16 w-full rounded-2xl" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800 p-6 text-center text-sm text-zinc-400">
-        <span>Couldn&apos;t load your browser tasks.</span>
-        <Button size="sm" variant="flat" onPress={() => void refetch()}>
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
-  if (tasks.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-zinc-800 p-6 text-center">
-        <div className="rounded-full bg-zinc-900 p-3">
-          <AiWebBrowsingIcon className="size-5 text-zinc-500" />
-        </div>
-        <p className="text-sm text-zinc-400">No browser tasks yet</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-3">
-      {tasks.map((task) => (
-        <TaskRow key={task.id} task={task} />
-      ))}
-    </div>
+    <section>
+      <h3 className="mb-3 text-sm font-semibold text-zinc-200">Task history</h3>
+
+      {isLoading ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800/40 p-6 text-center text-sm text-zinc-400">
+          <span>Couldn&apos;t load your browser tasks.</span>
+          <Button size="sm" variant="flat" onPress={() => void refetch()}>
+            Retry
+          </Button>
+        </div>
+      ) : tasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-zinc-800/40 p-8 text-center">
+          <div className="rounded-full bg-zinc-900 p-3">
+            <AiWebBrowsingIcon className="size-5 text-zinc-500" />
+          </div>
+          <p className="text-sm text-zinc-400">No browser tasks yet</p>
+          <p className="max-w-xs text-xs text-zinc-500">
+            Ask GAIA to do something on the web and it will show up here with a
+            replayable recap.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {tasks.map((task) => (
+            <TaskRow key={task.id} task={task} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
