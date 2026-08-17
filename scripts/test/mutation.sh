@@ -293,6 +293,20 @@ except subprocess.TimeoutExpired:
     os.killpg(proc.pid, signal.SIGKILL)
     proc.wait()
     sys.exit(124)
+finally:
+    # Reap the detached session on EVERY path, not just timeout. mutmut runs
+    # in its own session (start_new_session above) so killpg can take the
+    # mutant brood down as one unit — but that same detachment hides any
+    # straggler from a CI runner's step-abort, which signals the step's
+    # process group and walks its tree. A leaked child in the detached
+    # session survived the in-script watchdog, timeout(1) --signal=KILL, AND
+    # GitHub's own step timeout, holding the rate_limiting shard open to the
+    # job cap six runs in a row — and a job cancelled at its cap keeps no
+    # logs, which is why there was never any evidence.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
 sys.exit(proc.returncode)
 " "$MUTMUT_PATCH_DIR" 2>&1 | tee "$WORKDIR/mutmut.log" >&2 || MUTMUT_RC=$?
 if [ "$MUTMUT_RC" -ne 0 ]; then

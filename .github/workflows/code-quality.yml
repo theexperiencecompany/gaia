@@ -997,6 +997,10 @@ jobs:
         run: |
           rc=0
           timeout --signal=KILL 1500             bash scripts/test/mutation.sh "$MODULE" "$TESTFILES" "$RANGES"             > shard.log 2>&1 || rc=$?
+          # Scorched earth before reading the log: anything mutmut-shaped that
+          # survived (detached-session stragglers escape tree- and group-based
+          # kills) dies by NAME here, so nothing can outlive this step.
+          pkill -9 -f 'mutmut|\.mutation-' 2>/dev/null || true
           cat shard.log
           if [ "$rc" = "137" ] || [ "$rc" = "124" ]; then
             echo "::error::mutation shard for $MODULE exceeded 25 minutes and was killed by timeout(1) — see the log above for the last phase reached"
