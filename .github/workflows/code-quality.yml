@@ -995,8 +995,43 @@ jobs:
         # 3. `cat` afterwards — so the log is in the step output on every
         #    path, including a timeout kill.
         run: |
+          # TEMPORARY diagnostic sidecar, gated to the one shard that has died
+          # at the job cap seven runs running without ever leaving a log:
+          # every kill layer (in-script watchdog, timeout(1) KILL, the
+          # runner's own step abort) failed to end the step, and a job
+          # cancelled at its cap retains no step log and never reaches the
+          # artifact upload. Every 5 minutes this pushes ps + py-spy stack
+          # dumps to the orphan ref refs/heads/mutation-debug — the only
+          # channel nothing on the runner can destroy (same pattern as the
+          # repo's pr-assets orphan branches). Delete once the hang is read.
+          if [ "$MODULE" = "app/decorators/rate_limiting.py" ]; then
+            pip install -q py-spy 2>/dev/null || pipx install py-spy 2>/dev/null || true
+            (
+              i=0
+              while sleep 300; do
+                i=$((i+300))
+                {
+                  echo "=== +${i}s $(date -u) ==="
+                  ps auxww
+                  echo "--- py-spy dumps ---"
+                  for pid in $(pgrep -f 'python|mutmut'); do
+                    echo "## pid $pid: $(ps -p "$pid" -o args= | cut -c1-200)"
+                    sudo env "PATH=$PATH" py-spy dump --pid "$pid" 2>&1 | head -80 || true
+                  done
+                  echo "--- shard.log tail ---"
+                  tail -c 30000 shard.log 2>/dev/null
+                } > diag.txt 2>&1
+                BLOB=$(git hash-object -w diag.txt)
+                TREE=$(printf '100644 blob %s\tdiag-plus-%ss.txt\n' "$BLOB" "$i" | git mktree)
+                C=$(git commit-tree "$TREE" -m "mutation diag +${i}s")
+                git push -f origin "$C:refs/heads/mutation-debug" || true
+              done
+            ) > sidecar.log 2>&1 &
+            DIAG_PID=$!
+          fi
           rc=0
           timeout --signal=KILL 1500             bash scripts/test/mutation.sh "$MODULE" "$TESTFILES" "$RANGES"             > shard.log 2>&1 || rc=$?
+          [ -n "${DIAG_PID:-}" ] && kill "$DIAG_PID" 2>/dev/null || true
           # Scorched earth before reading the log: anything mutmut-shaped that
           # survived (detached-session stragglers escape tree- and group-based
           # kills) dies by NAME here, so nothing can outlive this step.
