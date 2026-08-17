@@ -57,7 +57,8 @@ every user on mobile", not "a regression manifested in the mobile render path".
    here executes" are headings that cost the reader time and give nothing back.
    A rollback line earns its place only when a revert alone doesn't undo the
    change; a verify section only when there's something to run.
-4. Title: Conventional Commit, `type(scope): description` — CI validates the type
+4. Title: Conventional Commit, `type: description` or `type(scope): description`
+   — the scope is optional, so add one only when it says something. CI validates the type
    against `.github/workflows/pr-naming-conventions.yml`. Write it as the
    changelog line it becomes.
 5. Base is always `master`. Never merge the PR yourself.
