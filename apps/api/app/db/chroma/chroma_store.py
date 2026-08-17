@@ -5,7 +5,7 @@ using ChromaDB for vector storage and retrieval.
 """
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Coroutine, Iterable
 from datetime import UTC, datetime
 import pickle  # nosec B403 - Used for internal trusted data serialization only
 from typing import Any, cast
@@ -37,6 +37,11 @@ from shared.py.wide_events import VectorContext, log
 # A filter value (or the item value it's compared against) is an arbitrary
 # JSON-like scalar/container pulled out of a MongoDB-style query filter dict.
 FilterValue = str | int | float | bool | None | dict[str, Any] | list[Any]
+
+# Caps concurrent ChromaDB HTTP connections during a put batch to avoid
+# exhausting OS file descriptors (ENFILE 24) when a large batch fans out
+# all sockets at once.
+MAX_CONCURRENT_CHROMA_WRITES = 10
 
 
 class ChromaStore(BaseStore):
@@ -519,7 +524,7 @@ class ChromaStore(BaseStore):
         collection: AsyncCollection,
     ) -> None:
         """Apply put operations to ChromaDB in parallel."""
-        tasks = []
+        tasks: list[Coroutine[Any, Any, None]] = []
         doc_ids: list[str] = []
 
         for (namespace, key), op in put_ops.items():
@@ -534,13 +539,11 @@ class ChromaStore(BaseStore):
         if not tasks:
             return
 
-        # Limit concurrent ChromaDB HTTP connections to avoid exhausting OS file
-        # descriptors (ENFILE 24) when a large batch fans out all sockets at once.
-        sem = asyncio.Semaphore(10)
+        sem = asyncio.Semaphore(MAX_CONCURRENT_CHROMA_WRITES)
 
-        async def _guarded(coro: object) -> BaseException | None:
+        async def _guarded(coro: Coroutine[Any, Any, None]) -> None:
             async with sem:
-                return await coro  # type: ignore[misc]
+                await coro
 
         # return_exceptions=True keeps one bad doc from killing the batch, but
         # silently swallows every failure. Surface them so we don't end up with
