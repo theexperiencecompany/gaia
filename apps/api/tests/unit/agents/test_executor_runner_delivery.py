@@ -265,6 +265,22 @@ class TestDeliverResultToolDataOwnership:
         assert saved.message_id != "task-9"  # no placeholder to reconcile with
         assert "tool_data" not in ws.await_args.args[1]["message"]
 
+    async def test_live_run_with_bot_message_id_still_appends_a_fresh_message(self) -> None:
+        """Every live turn carries bot_message_id (for a possible HIL pause).
+        Its presence alone must not route delivery down the HIL-merge path,
+        which races the comms stream's save and drops results on a miss."""
+        _session_with_cards("live_s2")
+        run = _run(
+            RunKind.LIVE, stream_id="live_s2", task_id="task-10", bot_message_id="ack-msg-1"
+        )
+        with patch.object(rd, "_merge_resumed_result", new_callable=AsyncMock) as merge:
+            save, ws = await self._deliver_with_session(run)
+
+        merge.assert_not_awaited()
+        saved = save.await_args.args[0].messages[0]
+        assert saved.message_id != "ack-msg-1"
+        assert saved.message_id != "task-10"
+
     async def test_save_failure_prevents_any_transport_push(self) -> None:
         """MongoDB is the source of truth — a message that failed to persist
         must never be pushed (it would vanish on the next sync)."""
@@ -403,7 +419,10 @@ class TestDeliverResultHilResume:
         assert "old_tool" in tool_names
         assert "tool_calls_data" in tool_names  # the resumed run's new card
 
-    async def test_missing_original_message_drops_delivery(self) -> None:
+    async def test_missing_original_message_falls_back_to_a_fresh_append(self) -> None:
+        """The approved action already RAN — a deleted original bubble must
+        not discard its report. The delivery re-keys to a fresh id and takes
+        the ordinary append path instead."""
         run = _run(RunKind.QUEUED, task_id="task-resume-1", bot_message_id="orig-msg-1")
         with (
             patch.object(
@@ -411,15 +430,21 @@ class TestDeliverResultHilResume:
             ),
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(
                 rd.conversation_repository, "get_message", new_callable=AsyncMock, return_value=None
             ),
         ):
-            result = await rd.deliver_result(run, "raw", "final")
+            text, message_id = await rd.deliver_result(run, "raw", "final")
 
-        assert result == (None, None)
-        save.assert_not_awaited()
-        ws.assert_not_awaited()
+        assert text == "voiced"
+        save.assert_awaited_once()
+        saved = save.await_args.args[0].messages[0]
+        # A fresh id, NOT the dead original and NOT the task id — nothing on
+        # the client reconciles against either for this fallback message.
+        assert saved.message_id == message_id
+        assert saved.message_id != "orig-msg-1"
+        ws.assert_awaited_once()
 
 
 def _approval_card(approval_id: str, status: str, **extra) -> dict:

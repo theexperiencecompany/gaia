@@ -190,9 +190,16 @@ async def _narrate_and_deliver(
     # rival one. Otherwise queued runs share an id with the live placeholder
     # useExecutorStream rendered, so the frontend's existing conversation sync
     # reconciles by id. Other runs have no placeholder, so a fresh id is fine.
-    is_hil_resume = bool(run.bot_message_id)
+    #
+    # QUEUED is load-bearing: every LIVE run also carries ``bot_message_id``
+    # (threaded for a possible pause), but only ``_record_pause`` writes it
+    # into a queue item. On presence alone every live run would take the
+    # merge path and race the comms stream's own save.
+    is_hil_resume = run.is_queued and bool(run.bot_message_id)
     bot_message.message_id = (
-        run.bot_message_id or (run.task_id if run.is_queued else None) or str(uuid4())
+        (run.bot_message_id if is_hil_resume else None)
+        or (run.task_id if run.is_queued else None)
+        or str(uuid4())
     )
     if tool_data:
         bot_message.tool_data = tool_data
@@ -235,10 +242,21 @@ async def _narrate_and_deliver(
 
     if is_hil_resume:
         merged_tool_data = await _merge_resumed_result(run, bot_message, tool_data)
-        if merged_tool_data is None:
-            return None, None
-        tool_data = merged_tool_data
-    else:
+        if merged_tool_data is not None:
+            tool_data = merged_tool_data
+        else:
+            # Original bubble gone or update matched nothing. The approved
+            # action already RAN — append a fresh message rather than discard
+            # its report. A deleted conversation still 404s cleanly below.
+            log.warning(
+                f"{LogTag.AGENT} HIL-resumed delivery: original message unavailable,"
+                " appending a fresh one instead",
+                conversation_id=run.conversation_id,
+                original_message_id=bot_message.message_id,
+            )
+            bot_message.message_id = str(uuid4())
+            is_hil_resume = False
+    if not is_hil_resume:
         try:
             await update_messages(
                 UpdateMessagesRequest(
@@ -352,8 +370,8 @@ async def _merge_resumed_result(
     Returns the FULL merged tool_data (original cards + this run's new cards):
     the WebSocket push replaces the client's stored message wholesale, so a
     delta alone would drop the original cards. ``None`` means the original
-    message could not be found (e.g. conversation deleted mid-run) — the
-    caller drops delivery.
+    message could not be found or updated — the caller falls back to
+    appending a fresh message rather than discarding the result.
     """
     user_id = run.user.get("user_id", "")
     message_id = bot_message.message_id
@@ -378,10 +396,14 @@ async def _merge_resumed_result(
         )
         return None
 
+    existing_tool_data = list(existing.tool_data or [])
     merged = await _reconcile_approval_statuses(
-        _merge_tool_data(list(existing.tool_data or []), list(new_tool_data or []))
+        _merge_tool_data(existing_tool_data, list(new_tool_data or []))
     )
-    if new_tool_data and not await conversation_repository.set_message_tool_data(
+    # Gate on the merge changing something, not on new cards: a resumed run
+    # with no cards still settles approval statuses, and skipping that write
+    # left a live approve/decline prompt after refresh.
+    if merged != existing_tool_data and not await conversation_repository.set_message_tool_data(
         run.conversation_id, user_id=user_id, message_id=message_id, entries=merged
     ):
         log.error(
@@ -390,7 +412,7 @@ async def _merge_resumed_result(
             conversation_id=run.conversation_id,
             message_id=message_id,
         )
-        merged = list(existing.tool_data or [])
+        merged = existing_tool_data
 
     if bot_message.follow_up_actions:
         await conversation_repository.set_message_follow_up_actions(
