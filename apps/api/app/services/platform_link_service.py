@@ -331,15 +331,16 @@ class PlatformLinkService:
                 platform_user_id=unreleased[0],
                 created_at=datetime.now(UTC),
             )
-            # One record per user and platform, so a second unreleased number
-            # has nowhere to live. Name it loudly rather than dropping it in
-            # silence — it needs releasing on Photon by hand.
-            for number in unreleased[1:]:
+            # One record per user and platform, so any further unreleased
+            # number has nowhere to live. Say so loudly rather than dropping it
+            # in silence — those need releasing on Photon by hand.
+            if len(unreleased) > 1:
                 log.error(
-                    "imessage seat left registered with nothing tracking it",
+                    "imessage seats left registered with nothing tracking them",
                     user={"id": user_id},
                     provider=Platform.IMESSAGE.value,
-                    fix="release this number on Photon manually; the sweep cannot see it",
+                    stranded=len(unreleased) - 1,
+                    fix="release these numbers on Photon by hand; the sweep cannot see them",
                 )
 
         return DisconnectPlatformResponse(status="disconnected", platform=platform)
