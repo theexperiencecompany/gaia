@@ -6,11 +6,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
+from app.agents.core import agent as agent_module
 from app.agents.core.agent import (
     _core_agent_logic,
     call_agent,
     call_agent_silent,
 )
+from app.agents.llm import lane as lane_module
+from app.agents.llm.lane import AgentRole
+from app.constants.llm import DEV_MODEL_OPTIONS
+from app.helpers.agent_helpers import recent_user_messages
 from app.models.message_models import MessageRequestWithHistory
 
 # ---------------------------------------------------------------------------
@@ -489,6 +494,8 @@ class TestCallAgentSilent:
         assert token_call.kwargs["token_input"] == 300  # 100 + 200
         assert token_call.kwargs["token_output"] == 125  # 50 + 75
         assert token_call.kwargs["token_total"] == 425
+        # Which model spent those tokens — the counts are unattributable without it.
+        assert token_call.kwargs["agent"] == {"model": "gpt-4o"}
 
     @pytest.mark.asyncio
     async def test_usage_metadata_with_none_metadata(self):
@@ -606,3 +613,208 @@ class TestCallAgentSilent:
                 conversation_id="conv-1",
                 user=_make_user(),
             )
+
+
+# ---------------------------------------------------------------------------
+# the lane the top-level run resolves
+# ---------------------------------------------------------------------------
+
+
+def _fresh_config() -> dict:
+    """A config object this test owns.
+
+    ``_core_agent_logic`` MUTATES ``config["configurable"]``, so the shared
+    module-level FAKE_CONFIG cannot be used by anything that asserts on those
+    writes — one test would see the previous test's key.
+    """
+    return {"configurable": {"thread_id": "conv-1", "user_id": "user-123", "model": "gpt-4o"}}
+
+
+class TestTheLaneTheRunResolves:
+    """This is the top-level run: ``build_agent_config`` resolves the comms lane
+    here and the executor plus every subagent inherit it whole. Everything the run
+    is has to reach that one call — a blanked or dropped argument is a turn that
+    silently loses its tool scope, its trace, or its identity.
+    """
+
+    @pytest.mark.asyncio
+    async def test_every_field_the_run_carries_reaches_build_agent_config(self):
+        request = _make_request(selectedTool="web_search", toolCategory="research")
+        user = _make_user()
+        callback = MagicMock()
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=_fresh_config(),
+            ) as build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=request,
+                conversation_id="conv-1",
+                user=user,
+                usage_metadata_callback=callback,
+                source="web",
+                langfuse_trace_id="trace-1",
+                langfuse_tags=["tag-a"],
+            )
+
+        assert build_config.call_args.args == ()
+        assert build_config.call_args.kwargs == {
+            "conversation_id": "conv-1",
+            "user": user,
+            "role": AgentRole.COMMS,
+            "dev_option": None,
+            "usage_metadata_callback": callback,
+            "agent_name": "comms_agent",
+            "selected_tool": "web_search",
+            "tool_category": "research",
+            "active_todo_id": None,
+            "execution_mode": "interactive",
+            "source": "web",
+            "user_messages": recent_user_messages(request.messages, request.message),
+            "langfuse_trace_id": "trace-1",
+            "langfuse_tags": ["tag-a"],
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_background_trigger_run_says_so(self):
+        """The mode and the todo come from the trigger context, and the executor
+        inherits both — a wrong value here routes the result to the wrong place."""
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=_fresh_config(),
+            ) as build_config,
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                trigger_context={"execution_mode": "background", "todo_id": "todo-9"},
+            )
+
+        assert build_config.call_args.kwargs["execution_mode"] == "background"
+        assert build_config.call_args.kwargs["active_todo_id"] == "todo-9"
+
+
+class TestTheDevModelSelector:
+    """DEV-ONLY: the chat-header model picker. It wins over plan routing inside
+    resolve_lane, and must be inert in production."""
+
+    async def _dev_option_for(self, request, env="development", dev_default=None):
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=_fresh_config(),
+            ) as build_config,
+            patches["log"],
+            patch.object(agent_module.settings, "ENV", env),
+            patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", dev_default),
+        ):
+            await _core_agent_logic(request=request, conversation_id="conv-1", user=_make_user())
+        return build_config.call_args.kwargs["dev_option"]
+
+    @pytest.mark.asyncio
+    async def test_an_explicit_comms_pick_becomes_the_runs_dev_option(self):
+        option = await self._dev_option_for(
+            _make_request(comms_model="minimax-m3", use_default_models=False)
+        )
+
+        assert option == DEV_MODEL_OPTIONS["minimax-m3"]
+
+    @pytest.mark.asyncio
+    async def test_expressing_no_preference_takes_the_env_configured_default(self):
+        """``use_default_models`` is what routes bots, scripts and plain requests
+        onto the dev model too, so it cannot be ignored here."""
+        option = await self._dev_option_for(
+            _make_request(comms_model=None, use_default_models=True),
+            dev_default="deepseek-v4",
+        )
+
+        assert option == DEV_MODEL_OPTIONS["deepseek-v4"]
+
+    @pytest.mark.asyncio
+    async def test_production_never_resolves_a_dev_option(self):
+        option = await self._dev_option_for(
+            _make_request(comms_model="minimax-m3", use_default_models=False),
+            env="production",
+        )
+
+        assert option is None
+
+
+class TestTheExecutorsOwnDevModel:
+    """The executor builds its own configurable and would otherwise inherit
+    comms's lane, so its dev pick rides down on the configurable for
+    prepare_executor_execution to resolve."""
+
+    async def _configurable(self, request, env="development", dev_default=None):
+        config = _fresh_config()
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+            patch.object(agent_module.settings, "ENV", env),
+            patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", dev_default),
+        ):
+            await _core_agent_logic(request=request, conversation_id="conv-1", user=_make_user())
+        return config["configurable"]
+
+    @pytest.mark.asyncio
+    async def test_an_explicit_executor_pick_is_stashed_for_the_executor(self):
+        configurable = await self._configurable(
+            _make_request(executor_model="minimax-m3", use_default_models=False)
+        )
+
+        assert configurable["dev_executor_model"] == "minimax-m3"
+
+    @pytest.mark.asyncio
+    async def test_expressing_no_preference_stashes_the_env_configured_default(self):
+        configurable = await self._configurable(
+            _make_request(executor_model=None, use_default_models=True),
+            dev_default="deepseek-v4",
+        )
+
+        assert configurable["dev_executor_model"] == "deepseek-v4"
+
+    @pytest.mark.asyncio
+    async def test_no_executor_pick_leaves_the_key_off_entirely(self):
+        """Absent, not None: the executor treats a present key as a real choice."""
+        configurable = await self._configurable(
+            _make_request(executor_model=None, use_default_models=False)
+        )
+
+        assert "dev_executor_model" not in configurable
+
+    @pytest.mark.asyncio
+    async def test_production_never_stashes_a_dev_executor_model(self):
+        configurable = await self._configurable(
+            _make_request(executor_model="minimax-m3", use_default_models=False),
+            env="production",
+        )
+
+        assert "dev_executor_model" not in configurable

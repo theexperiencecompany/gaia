@@ -17,6 +17,8 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
+from app.agents.llm.lane import AgentRole
+from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
 
@@ -521,6 +523,99 @@ class TestPrepareExecutorExecution:
             return_value=[],
         ):
             yield
+
+    def _prepare_patches(self, build_config, graph=None):
+        """Everything prepare_executor_execution reaches outside itself."""
+        return (
+            patch(
+                "app.agents.core.graph_manager.GraphManager.get_graph",
+                new_callable=AsyncMock,
+                return_value=graph if graph is not None else MagicMock(name="executor_graph"),
+            ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.build_agent_config",
+                build_config,
+            ),
+            patch(
+                "app.helpers.message_helpers.create_system_message",
+                return_value=SystemMessage(content="executor sys"),
+            ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+                new_callable=AsyncMock,
+                return_value=SystemMessage(content="ctx"),
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_executors_config_is_built_from_the_conversation_it_belongs_to(self):
+        """The executor gets its OWN config, derived from comms's. Every argument
+        here is load-bearing: the thread it resumes on, the bag it inherits (which
+        carries comms's resolved lane), its memory namespace, its VFS session and
+        its deeper recursion budget.
+        """
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        configurable = {
+            "user_id": "u1",
+            "thread_id": "t1",
+            "email": "t@t.com",
+            "user_name": "Test",
+        }
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context:
+            await prepare_executor_execution(task="run tests", configurable=configurable)
+
+        assert build_config.call_args.args == ()
+        assert build_config.call_args.kwargs == {
+            "conversation_id": "t1",
+            "user": {"user_id": "u1", "email": "t@t.com", "name": "Test"},
+            "thread_id": "executor_t1",
+            "base_configurable": configurable,
+            "agent_name": "executor_agent",
+            "role": AgentRole.EXECUTOR,
+            "dev_option": None,
+            "subagent_id": "executor_agent",
+            "vfs_session_id": "t1",
+            "recursion_limit": EXECUTOR_RECURSION_LIMIT,
+        }
+
+    @pytest.mark.asyncio
+    async def test_the_dev_executor_model_comms_stashed_becomes_this_runs_dev_option(self):
+        """DEV-ONLY: without this the executor silently inherits comms's lane and
+        the header's executor picker does nothing."""
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context:
+            await prepare_executor_execution(
+                task="run tests",
+                configurable={
+                    "user_id": "u1",
+                    "thread_id": "t1",
+                    "email": "t@t.com",
+                    "user_name": "Test",
+                    "dev_executor_model": "minimax-m3",
+                },
+            )
+
+        assert build_config.call_args.kwargs["dev_option"] == DEV_MODEL_OPTIONS["minimax-m3"]
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_stashed_id_selects_no_dev_option(self):
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context:
+            await prepare_executor_execution(
+                task="run tests",
+                configurable={
+                    "user_id": "u1",
+                    "thread_id": "t1",
+                    "email": "t@t.com",
+                    "user_name": "Test",
+                    "dev_executor_model": "no-such-model",
+                },
+            )
+
+        assert build_config.call_args.kwargs["dev_option"] is None
 
     @pytest.mark.asyncio
     async def test_happy_path(self):

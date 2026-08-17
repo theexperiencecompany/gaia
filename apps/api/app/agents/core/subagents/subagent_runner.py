@@ -30,7 +30,7 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
 )
-from app.agents.llm.lane import AgentRole, dev_option_for
+from app.agents.llm.lane import AgentRole, dev_option
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
@@ -713,7 +713,7 @@ async def prepare_executor_execution(
         role=AgentRole.EXECUTOR,
         # DEV-ONLY: the switcher's executor pick, stashed by comms. Present only
         # in development; otherwise the executor inherits comms's lane.
-        dev_option=dev_option_for(configurable.get("dev_executor_model"), use_defaults=False),
+        dev_option=dev_option(configurable.get("dev_executor_model")),
         subagent_id="executor_agent",  # Use agent_name as the memory namespace id
         vfs_session_id=vfs_session_id,
         recursion_limit=EXECUTOR_RECURSION_LIMIT,

@@ -48,7 +48,6 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
-    NotificationType,
 )
 from app.models.payment_models import PlanType
 from app.services.cost_budget import get_cost
@@ -240,10 +239,19 @@ def dev_model_id(model_id: str | None, use_defaults: bool) -> str | None:
     return model_id if model_id in DEV_MODEL_OPTIONS else None
 
 
+def dev_option(model_id: str | None) -> DevModelOption | None:
+    """The dev-menu entry for an ALREADY-resolved id.
+
+    What the executor needs: comms resolved the request's preference once and
+    stashed the winning id, so re-running that resolution downstream would only
+    give ``DEV_DEFAULT_MODEL`` a second chance to override an explicit choice.
+    """
+    return DEV_MODEL_OPTIONS.get(model_id) if model_id else None
+
+
 def dev_option_for(model_id: str | None, use_defaults: bool) -> DevModelOption | None:
     """The dev-menu entry a request selected, or ``None``."""
-    resolved = dev_model_id(model_id, use_defaults)
-    return DEV_MODEL_OPTIONS.get(resolved) if resolved else None
+    return dev_option(dev_model_id(model_id, use_defaults))
 
 
 async def resolve_lane(
@@ -334,7 +342,8 @@ async def _notify_degrade_once(user_id: str) -> None:
             NotificationRequest(
                 user_id=user_id,
                 source=NotificationSourceEnum.USAGE_LIMIT,
-                type=NotificationType.INFO,
+                # type is left to NotificationRequest's own default (INFO) rather
+                # than restated here — one source of truth for it.
                 content=NotificationContent(
                     title="Priority compute used for this month",
                     body=(
@@ -357,6 +366,7 @@ __all__ = [
     "LLMProviderName",
     "ModelLane",
     "dev_model_id",
+    "dev_option",
     "dev_option_for",
     "resolve_lane",
 ]

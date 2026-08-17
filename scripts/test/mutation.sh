@@ -158,36 +158,13 @@ EOF
 
 echo "mutating $MODULE (tests: ${TESTFILES[*]}) ..."
 
-# Diff-driven scoping: mutmut has no "mutate only these lines" config, but
-# it honors `# pragma: no mutate` comments. Stamp the pragma onto every line
-# OUTSIDE the PR's changed ranges in the workdir copy, so only the changed
-# lines' constructs get mutants — a 1-line import change then costs seconds,
-# not a 30-minute full-module run. Blank/comment/backslash-continuation
-# lines are skipped (the pragma would break a line continuation). The
-# survivor-verdict layer below stays as defense-in-depth.
-if [ "$CHANGED_RANGES" != "[]" ]; then
-  python3 - "$MODULE" "$CHANGED_RANGES" << 'EOF'
-import json
-import sys
-
-module, ranges_json = sys.argv[1], sys.argv[2]
-changed = {ln for start, end in json.loads(ranges_json) for ln in range(start, end + 1)}
-lines = open(module).read().splitlines()
-out = []
-for i, line in enumerate(lines, 1):
-    stripped = line.strip()
-    if (
-        i not in changed
-        and stripped
-        and not stripped.startswith("#")
-        and not line.rstrip().endswith("\\")
-    ):
-        out.append(line + "  # pragma: no mutate")
-    else:
-        out.append(line)
-open(module, "w").write("\n".join(out) + "\n")
-EOF
-fi
+# Diff-driven scoping: only the PR's changed lines get mutants, so a 1-line
+# change costs seconds instead of a full-module run. mutmut has no config for
+# it but it does have the mechanism — scripts/test/mutmut_diff_scope.py, loaded
+# into the mutmut process below, reads these two env vars. The survivor-verdict
+# layer further down stays as defense-in-depth.
+export MUTMUT_CHANGED_RANGES="$CHANGED_RANGES"
+export MUTMUT_SCOPED_MODULE="$MODULE"
 MUTMUT_RC=0
 # timeout: mutmut can finish its work and then hang at interpreter teardown
 # (threads from C-extension-heavy test runs keep the process alive — seen
@@ -198,7 +175,8 @@ MUTMUT_RC=0
 # wrapper is a portable `timeout`: GNU coreutils' binary is missing on
 # macOS, and the process-group kill takes mutmut's mutant children with it.
 # The decorated-function patch (mutmut_decorated_patch.py) is imported
-# first so endpoints and other decorated functions become mutation targets.
+# first so endpoints and other decorated functions become mutation targets,
+# and mutmut_diff_scope.py scopes generation to the PR's changed lines.
 MUTMUT_PATCH_DIR="$REPO_ROOT/scripts/test"
 # Absolute: the run cd's into $WORKDIR, so a relative path resolves nowhere.
 CLASSIFIER="$REPO_ROOT/scripts/test/mutation_classify.py"
@@ -220,6 +198,7 @@ run_args = ['run'] + (['--max-children', max_children] if max_children else [])
 # unloaded.
 child_code = (
     'import mutmut_decorated_patch; '
+    'import mutmut_diff_scope; '
     'import sys as _sys; '
     f'_sys.argv += {run_args!r}; '
     'from mutmut.__main__ import cli; cli()'
@@ -457,8 +436,8 @@ fi
 if [ "${NO_TESTS:-0}" -gt 0 ]; then
   echo "NOTE: $NO_TESTS mutant(s) had no covering test across the WHOLE module" >&2
   echo "      (the line above is the subset on changed lines, which is the one" >&2
-  echo "      this PR owns; the rest are pre-existing and reach the run only" >&2
-  echo "      because the no-mutate pragma leaks on multi-line statements)." >&2
+  echo "      this PR owns; generation is scoped to a changed line's NODE, so a" >&2
+  echo "      multi-line statement contributes its untouched lines too)." >&2
 fi
 if [ -n "$UNCHANGED" ]; then
   echo "NOTE: survivor(s) on lines the PR did not touch (diff-driven gate):" >&2

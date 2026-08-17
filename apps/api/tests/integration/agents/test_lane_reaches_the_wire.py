@@ -16,9 +16,10 @@ the request is captured before the response is parsed, and the request is the
 subject.
 """
 
+from contextlib import suppress
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
 from langchain_openrouter import ChatOpenRouter
@@ -40,7 +41,7 @@ _CAPTURED: list[dict[str, Any]] = []
 
 
 class _Sink(BaseHTTPRequestHandler):
-    def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's contract
+    def do_POST(self) -> None:
         length = int(self.headers.get("content-length", 0))
         _CAPTURED.append(json.loads(self.rfile.read(length) or b"{}"))
         self.send_response(200)
@@ -71,20 +72,26 @@ def _lane(*, pin: dict[str, Any] | None, model: str) -> ModelLane:
     )
 
 
-async def _request_body_for(lane: ModelLane, sink_url: str) -> dict[str, Any]:
-    """Fire one call through the real client and return what it put on the wire."""
+async def _request_body(configurable: dict[str, Any], sink_url: str) -> dict[str, Any]:
+    """Fire one call through the real client and return what it put on the wire.
+
+    The sink's canned response does not satisfy the SDK's schema, so the parse
+    raises — after the request has been sent, which is the subject here.
+    """
     client = _openrouter_wire_configurables(
         without_sdk_retry(
             ChatOpenRouter(model="unset", api_key=SecretStr("test-key"), base_url=sink_url)
         )
     )
     _CAPTURED.clear()
-    try:
-        await client.ainvoke("hi", config={"configurable": dict(lane.binding_keys())})
-    except Exception:  # noqa: BLE001 — the canned response never parses; the request is the subject
-        pass
+    with suppress(Exception):
+        await client.ainvoke("hi", config={"configurable": configurable})
     assert _CAPTURED, "the client never sent a request"
     return _CAPTURED[0]
+
+
+async def _request_body_for(lane: ModelLane, sink_url: str) -> dict[str, Any]:
+    return await _request_body(dict(lane.binding_keys()), sink_url)
 
 
 @pytest.mark.integration
@@ -127,18 +134,8 @@ class TestLaneReachesTheWire:
         )
         rebound = crossed.rebind(dict(paid.binding_keys()))
 
-        client = _openrouter_wire_configurables(
-            without_sdk_retry(
-                ChatOpenRouter(model="unset", api_key=SecretStr("test-key"), base_url=sink_url)
-            )
-        )
-        _CAPTURED.clear()
-        try:
-            await client.ainvoke("hi", config={"configurable": rebound})
-        except Exception:  # noqa: BLE001 — see _request_body_for
-            pass
+        body = await _request_body(rebound, sink_url)
 
-        body = _CAPTURED[0]
         assert body["model"] == "vendor/fallback-model"
         assert "provider" not in body or body["provider"] is None
         assert body.get("reasoning") != {"effort": "low"}
