@@ -58,7 +58,7 @@ class TestPreferencesSurviveTheRealMultiHopChain:
             "email": real_user.email,
             "name": real_user.name,
         }
-        comms_config = build_agent_config(
+        comms_config = await build_agent_config(
             conversation_id="conv-multi-hop",
             user=agent_user,
             agent_name="comms_agent",
@@ -69,7 +69,7 @@ class TestPreferencesSurviveTheRealMultiHopChain:
         # Hop 2 — executor. Mirrors prepare_executor_execution: a fresh
         # build_agent_config call whose base_configurable is the parent's own
         # live configurable, not a value re-threaded by hand.
-        executor_config = build_agent_config(
+        executor_config = await build_agent_config(
             conversation_id="conv-multi-hop",
             user=agent_user,
             agent_name="executor_agent",
@@ -81,7 +81,7 @@ class TestPreferencesSurviveTheRealMultiHopChain:
         todo = await todo_repository.create(
             TodoDocument(user_id=real_user.id, title="Draft the quarterly update")
         )
-        subagent_config = build_agent_config(
+        subagent_config = await build_agent_config(
             conversation_id="conv-multi-hop",
             user=agent_user,
             agent_name="gmail_agent",
