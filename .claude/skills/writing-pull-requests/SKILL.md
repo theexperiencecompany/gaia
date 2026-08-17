@@ -52,8 +52,11 @@ every user on mobile", not "a regression manifested in the mobile render path".
    subjects.
 2. Fill `.github/pull_request_template.md`. GitHub pre-fills it in the browser;
    from the CLI, `gh pr create --base master --body-file <your-filled-copy>`.
-3. Delete every section you can't fill honestly. An empty or padded heading is
-   worse than no heading.
+3. Delete every section that doesn't apply — don't answer it with "none".
+   "Post-merge steps: none", "Rollback: revert this PR", "Not verified: nothing
+   here executes" are headings that cost the reader time and give nothing back.
+   A rollback line earns its place only when a revert alone doesn't undo the
+   change; a verify section only when there's something to run.
 4. Title: Conventional Commit, `type(scope): description` — CI validates the type
    against `.github/workflows/pr-naming-conventions.yml`. Write it as the
    changelog line it becomes.
@@ -65,11 +68,15 @@ every user on mobile", not "a regression manifested in the mobile render path".
 product would use. Mechanism comes later.
 
 **Why** — the concrete trigger: an incident, a measured number, a broken
-invariant, a user complaint. "Cleanup", "improves maintainability" and "better
-UX" are labels for a reason you haven't written down yet.
+invariant, a user complaint. A few sentences, not a wall — if it runs past a
+short paragraph you're arguing the case instead of stating it. "Cleanup",
+"improves maintainability" and "better UX" are labels for a reason you haven't
+written down yet.
 
 **What changed** — grouped by surface (API / Web / Bots / Infra) so a reviewer
-can find their part. Summarize; don't inventory the diff.
+can find their part. One or two lines per item: what it is now, and the one thing
+worth knowing about it. If a bullet needs a paragraph, the detail belongs in the
+diff or in Why.
 
 **The bug** (fix PRs) — symptom, reproduction, root cause, fix, then the
 regression test and the gap that let it ship. The usual failure is a root cause

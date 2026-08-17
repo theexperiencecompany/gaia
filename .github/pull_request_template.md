@@ -2,7 +2,9 @@
 Write for someone who has never seen this branch, never saw the conversation that
 produced it, and is reading this PR for the first time — today, or a year from now.
 
-Delete every section that does not apply. An empty heading is worse than no heading.
+Delete every section that does not apply — do not answer it with "none". A heading
+that says "Post-merge steps: none" or "Not verified: nothing here executes" costs the
+reader time and gives nothing back.
 
 Write it like you would explain the change to a teammate: plain sentences, in order,
 with the reasoning connecting them. Not a wall of dense prose, and not clipped fragments
@@ -83,19 +85,20 @@ on both sides, plus the states that matter (empty, filled, error). Host them on 
 "I ran it and it passed". Cover the failure path too, not just the happy one. -->
 
 **Not verified:**
-<!-- What you could not exercise, stated plainly. "Nothing" if nothing. -->
+<!-- What you could not exercise, stated plainly. Drop the line if you exercised it all. -->
 
 ## Post-merge steps
 
 <!-- Everything that must happen outside this diff before it works in production: env vars and
 secrets, DNS/vhost/proxy config, migrations, index builds, one-off scripts, feature flags,
 dashboards, third-party settings. Ordered, executable, and specific about who runs it.
-Delete the section only if there is genuinely nothing. -->
+Nothing to do outside the diff? Delete the section — do not write "none". -->
 
 - [ ]
 
 **Rollback:**
-<!-- "Revert this PR" plus anything a revert does not undo. -->
+<!-- Only when a revert alone does not undo it: a deleted branch, a migrated collection,
+a rotated secret. Otherwise delete this line. -->
 
 ## Metrics
 
