@@ -680,3 +680,50 @@ class TestSelectTools:
 
         result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]
         assert "dummy_tool_a" in result["selected_tool_ids"]
+
+
+class TestBindSessionId:
+    """The OpenRouter sticky-routing key, bound onto the tool-bound runnable.
+
+    It pins a conversation to one upstream provider so the prompt cache chains
+    across turns. Binding the wrong key, or silently not binding at all, costs
+    the cache with nothing failing — so both halves are asserted here rather
+    than through a graph run that would never notice either.
+    """
+
+    def test_a_configured_session_id_is_bound_onto_the_runnable(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"session_id": "conv-1"})
+
+        llm.bind.assert_called_once_with(session_id="conv-1")
+        assert bound is llm.bind.return_value
+
+    def test_no_session_id_leaves_the_runnable_exactly_as_it_was(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
+    def test_an_empty_session_id_is_not_bound(self) -> None:
+        # Binding "" would pin every conversation to the same routing key.
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"session_id": ""})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
+    def test_an_unrelated_configurable_key_is_not_mistaken_for_it(self) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"thread_id": "conv-1", "model_name": "m"})
+
+        llm.bind.assert_not_called()
+        assert bound is llm

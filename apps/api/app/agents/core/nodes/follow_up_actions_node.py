@@ -193,6 +193,6 @@ def _pretty_print_messages(messages: list[AnyMessage], ignore_system_messages: b
         if ignore_system_messages and isinstance(message, SystemMessage):
             continue
         pretty += message.pretty_repr()
-    if len(pretty) > _FOLLOW_UP_CONTEXT_MAX_CHARS:
-        pretty = pretty[-_FOLLOW_UP_CONTEXT_MAX_CHARS:]
-    return pretty
+    # No length guard: slicing the tail of a shorter string already returns it
+    # whole, so the branch only added a boundary nothing can observe.
+    return pretty[-_FOLLOW_UP_CONTEXT_MAX_CHARS:]

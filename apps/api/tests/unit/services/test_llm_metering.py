@@ -206,10 +206,20 @@ async def test_missing_model_name_is_surfaced_loudly(mock_record: AsyncMock) -> 
     must never pass silently."""
     mock_record.return_value = 0.0
 
+    # A populated configurable that simply lacks the model: the keys it DOES
+    # carry are what tells whoever reads the error where the name went missing.
+    configurable = {"provider": "openrouter", "thread_id": "t-1"}
     with patch("app.services.llm_metering.log") as mock_log:
-        await record_graph_model_call(_ai(), {}, agent_name="executor")
+        await record_graph_model_call(_ai(), configurable, agent_name="executor")
 
     mock_log.error.assert_called_once()
+    message = mock_log.error.call_args.args[0]
+    assert "model name missing from configurable" in message
+    assert "mispriced" in message
+    assert mock_log.error.call_args.kwargs == {
+        "agent_name": "executor",
+        "configurable_keys": ["provider", "thread_id"],
+    }
     assert mock_record.await_args.kwargs["model_name"] == UNKNOWN_MODEL_NAME
     assert mock_record.await_args.kwargs["user_id"] is None
 
