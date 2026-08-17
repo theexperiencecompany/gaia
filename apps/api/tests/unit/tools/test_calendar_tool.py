@@ -166,6 +166,26 @@ class TestFormatCalendarOptionForStream:
             "end": "",
         }
 
+    def test_each_text_field_is_read_from_its_own_key(self) -> None:
+        """Distinct values per field, so a crossed or misspelled source key shows.
+
+        The minimal-option test only ever sees "" for all four, so reading the
+        wrong key — or no key at all — looked identical to reading the right one.
+        """
+        out = _format_calendar_option_for_stream(
+            {
+                "summary": "Standup",
+                "description": "Daily sync",
+                "calendar_id": "cal-123",
+                "calendar_name": "Work",
+            }
+        )
+
+        assert out["summary"] == "Standup"
+        assert out["description"] == "Daily sync"
+        assert out["calendar_id"] == "cal-123"
+        assert out["calendar_name"] == "Work"
+
     def test_start_end_dicts_are_flattened(self) -> None:
         out = _format_calendar_option_for_stream(
             {
