@@ -425,12 +425,10 @@ async function runStreamingChat(
 
   analytics?.client.capture(analytics.distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
     interaction_type: "chat",
-    channel_id: request.channelId,
     message_length: request.message.length,
   });
 
   analytics?.client.capture(analytics.distinctId, BOT_EVENTS.CHAT_STARTED, {
-    channel_id: request.channelId,
     message_length: request.message.length,
     streaming_enabled: options.streaming,
   });
@@ -461,7 +459,6 @@ async function runStreamingChat(
     // or upstream-echoed tokens. `context` is enough to bucket failures.
     analytics?.client.capture(analytics.distinctId, BOT_EVENTS.ERROR, {
       context: "chat:streaming",
-      channel_id: request.channelId,
       duration_ms: Date.now() - startMs,
     });
     await onGenericError(formattedError);
@@ -533,7 +530,6 @@ async function runStreamingChat(
         analytics.distinctId,
         BOT_EVENTS.CHAT_COMPLETED,
         {
-          channel_id: request.channelId,
           duration_ms: Date.now() - startMs,
           response_length: responseLength,
           streaming_enabled: options.streaming,

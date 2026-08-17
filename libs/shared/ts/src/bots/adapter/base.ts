@@ -452,14 +452,11 @@ export abstract class BaseBotAdapter {
           command: name,
           has_args: Object.keys(args).length > 0,
           has_raw_text: !!rawText,
-          channel_id: target.channelId,
         });
 
         if (name === "auth") {
           wideLog.audit("auth_link_requested", { user_hash: userHash });
-          this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {
-            channel_id: target.channelId,
-          });
+          this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {});
         }
 
         const command = this.commands.get(name);
@@ -488,7 +485,6 @@ export abstract class BaseBotAdapter {
             command: name,
             duration_ms: Date.now() - startMs,
             success: true,
-            channel_id: target.channelId,
           });
         } catch (error) {
           const durationMs = Date.now() - startMs;
@@ -511,12 +507,10 @@ export abstract class BaseBotAdapter {
             duration_ms: durationMs,
             success: false,
             error_type: errorType,
-            channel_id: target.channelId,
           });
           this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
             context: `command:${name}`,
             error_type: errorType,
-            channel_id: target.channelId,
           });
           const errMsg = formatBotError(error);
           try {
@@ -719,7 +713,6 @@ export abstract class BaseBotAdapter {
             media_kind: media.kind,
             is_voice_note: Boolean(media.isVoiceNote),
             outcome: outcome.action === "chat" ? "ingested" : "rejected",
-            channel_id: channelId,
           },
         );
         return outcome;

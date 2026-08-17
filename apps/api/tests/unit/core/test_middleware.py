@@ -47,3 +47,52 @@ def test_bot_auth_runs_inside_posthog_context(middleware_names: list[str]) -> No
     assert middleware_names.index("PostHogRequestContextMiddleware") < (
         middleware_names.index("BotAuthMiddleware")
     )
+
+
+class TestPostHogContextDoesNotSwallowExceptions:
+    """The context must not become the thing that reports the error.
+
+    ``new_context`` autocaptures escaping exceptions by default, through the
+    MODULE-level posthog client — which this codebase never configures, since
+    it builds a ``Posthog()`` instance via the lazy provider. That autocapture
+    raises ``ValueError("API key is required")`` on the way out and REPLACES the
+    real exception, so every authenticated 500 reaches the error handler, the
+    wide event and Sentry as the same bogus ValueError.
+
+    Order assertions above cannot catch this; only driving a request can.
+    """
+
+    @staticmethod
+    def _app_that_raises() -> FastAPI:
+        from starlette.middleware.base import BaseHTTPMiddleware
+
+        from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
+
+        app = FastAPI()
+
+        class _AuthenticateEveryone(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
+                request.state.user = {"user_id": "user-123"}
+                return await call_next(request)
+
+        app.add_middleware(PostHogRequestContextMiddleware)
+        app.add_middleware(_AuthenticateEveryone)
+
+        @app.get("/boom")
+        async def boom() -> None:
+            raise RuntimeError("the real bug in the handler")
+
+        return app
+
+    def test_the_handlers_own_exception_is_what_propagates(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from starlette.testclient import TestClient
+
+        with patch("app.api.v1.middleware.auth.providers") as providers:
+            providers.is_available.return_value = True
+            providers.get.return_value = MagicMock()
+            client = TestClient(self._app_that_raises())
+
+            with pytest.raises(RuntimeError, match="the real bug in the handler"):
+                client.get("/boom")

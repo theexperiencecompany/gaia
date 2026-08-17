@@ -51,7 +51,19 @@ class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
         if providers.get("posthog") is None:
             return await call_next(request)
 
-        with new_context():
+        # capture_exceptions=False, and it is load-bearing. The context manager
+        # defaults to autocapturing whatever escapes it, through the MODULE-LEVEL
+        # posthog client — which GAIA never configures, because it builds a
+        # Posthog() INSTANCE via the lazy provider instead. The autocapture then
+        # raises ValueError("API key is required") on the way out and REPLACES the
+        # real exception: every authenticated 500 would reach the error handler,
+        # the wide event and Sentry as that same bogus ValueError, with the actual
+        # crash buried two levels down in __context__.
+        #
+        # Nothing is lost by disabling it — unhandled_exception_handler captures
+        # the exception explicitly, with the user attached, so autocapture here
+        # would only double-count what that handler already records.
+        with new_context(capture_exceptions=False):
             identify_context(str(user_id))
             return await call_next(request)
 
