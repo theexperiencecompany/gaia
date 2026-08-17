@@ -72,6 +72,38 @@ class TestConsumeSurvivesOneBadEvent:
         mock_log.warning.assert_called_once()
 
 
+class TestParseArtifactMessage:
+    """`_parse_artifact_message` runs *outside* `_consume`'s per-event try/except,
+    so anything it raises kills the forwarder for the whole turn rather than
+    dropping one message."""
+
+    async def test_a_payload_that_is_not_a_json_object_is_dropped_not_raised(self) -> None:
+        forwarder = _forwarder()
+        pubsub = _FakePubSub(
+            [
+                {"type": "message", "data": "[1, 2]"},
+                {"type": "message", "data": "null"},
+                _artifact_message("conv-1", "good.txt"),
+            ]
+        )
+
+        with patch.object(forwarder, "_handle_event", new=AsyncMock()) as mock_handle:
+            await forwarder._consume(pubsub)  # must not raise
+
+        mock_handle.assert_awaited_once_with(
+            {"session_id": "conv-1", "path": "good.txt", "event": "upsert"}
+        )
+
+    async def test_a_message_for_another_conversation_is_dropped(self) -> None:
+        forwarder = _forwarder()
+        pubsub = _FakePubSub([_artifact_message("conv-2", "other.txt")])
+
+        with patch.object(forwarder, "_handle_event", new=AsyncMock()) as mock_handle:
+            await forwarder._consume(pubsub)
+
+        mock_handle.assert_not_awaited()
+
+
 class TestPersistEntryIsBestEffort:
     async def test_repository_failure_is_logged_not_raised(self) -> None:
         """A Mongo write failure on the reload-durability path must not
@@ -170,3 +202,68 @@ class TestDedupOfArtifactsWithNoMtime:
             await forwarder._handle_event({"path": "report.pdf", "event": "upsert", "mtime": 200.0})
 
         assert (forwarder.stats.upserts, forwarder.stats.unchanged) == (1, 0)
+
+    async def test_an_unedited_file_dedups_against_its_stored_mtime(self) -> None:
+        # The counterpart of the test above, and the case both sides of the
+        # comparison have to read the same key to get right: same file, same
+        # mtime, so the re-emit is free.
+        forwarder = _forwarder()
+        with patch(
+            f"{MODULE}.get_conversation_artifacts",
+            new=AsyncMock(return_value=[{"path": "report.pdf", "mtime": 100.0}]),
+        ):
+            await forwarder._load_registry()
+        assert forwarder.registry_mtimes == {"report.pdf": 100.0}
+
+        # Twice: the skip counter is per event, not a "did any skip happen" flag —
+        # it is what tells us how much a whole-dir re-emit actually costs.
+        await forwarder._handle_event({"path": "report.pdf", "event": "upsert", "mtime": 100.0})
+        await forwarder._handle_event({"path": "report.pdf", "event": "upsert", "mtime": 100.0})
+
+        assert (forwarder.stats.upserts, forwarder.stats.unchanged) == (0, 2)
+
+    async def test_publishing_records_the_events_mtime_so_the_next_one_dedups(self) -> None:
+        # Nothing is preloaded here: the first event both publishes and seeds the
+        # map, so a wrong value written on publish only shows up as the identical
+        # second event being published all over again.
+        forwarder = _forwarder()
+        payload: dict[str, object] = {"path": "report.pdf", "event": "upsert", "mtime": 100.0}
+        with (
+            patch(f"{MODULE}.stream_manager") as stream,
+            patch(f"{MODULE}.upsert_conversation_artifact", new=AsyncMock()),
+            patch(f"{MODULE}.conversation_repository") as repository,
+            patch(f"{MODULE}.spawn_background_task"),
+        ):
+            stream.publish_chunk = AsyncMock()
+            repository.append_message_tool_data = AsyncMock()
+            await forwarder._handle_event(payload)
+            assert forwarder.registry_mtimes == {"report.pdf": 100.0}
+            await forwarder._handle_event(dict(payload))
+
+        assert (forwarder.stats.upserts, forwarder.stats.unchanged) == (1, 1)
+
+
+class TestRemoveEventRouting:
+    """`remove` is the one event that must not go down the publish path: the file
+    is gone, so re-streaming a card for it would leave the user a dead link."""
+
+    async def test_a_remove_event_drops_the_file_instead_of_publishing_it(self) -> None:
+        forwarder = _forwarder()
+        with patch(
+            f"{MODULE}.get_conversation_artifacts",
+            new=AsyncMock(return_value=[{"path": "report.pdf", "mtime": 100.0}]),
+        ):
+            await forwarder._load_registry()
+
+        with (
+            patch(f"{MODULE}.stream_manager") as stream,
+            patch(f"{MODULE}.remove_conversation_artifact", new=AsyncMock()) as remove_row,
+            patch(f"{MODULE}.conversation_repository") as repository,
+        ):
+            stream.publish_chunk = AsyncMock()
+            repository.append_message_tool_data = AsyncMock()
+            await forwarder._handle_event({"path": "report.pdf", "event": "remove"})
+
+        assert (forwarder.stats.removes, forwarder.stats.upserts) == (1, 0)
+        assert forwarder.registry_mtimes == {}
+        remove_row.assert_awaited_once()

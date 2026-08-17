@@ -3,7 +3,7 @@
 from collections.abc import AsyncGenerator, Mapping
 from datetime import UTC, datetime
 import json
-from typing import TypedDict, cast
+from typing import TypeAlias, TypedDict, cast
 from uuid import uuid4
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -475,7 +475,10 @@ async def execute_graph_silent(
     Returns (complete_message, tool_data).
     """
     complete_message = ""
-    tool_data: dict[str, object] = {"tool_data": []}
+    # The entry list is held by its own name as well as under the "tool_data" key:
+    # both refer to the same list, so appends here are what the caller reads back.
+    tool_entries: list[object] = []
+    tool_data: dict[str, object] = {"tool_data": tool_entries}
     todo_progress_accumulated: dict[str, object] = {}  # Accumulate todo_progress by source
 
     # Track tool calls to avoid duplicate emissions (same as streaming)
@@ -501,9 +504,7 @@ async def execute_graph_silent(
 
         # Process "updates" events - same logic as execute_graph_streaming
         if stream_mode == "updates":
-            if not isinstance(payload, dict):
-                continue
-            for node_name, state_update in payload.items():
+            for node_name, state_update in _updates_payload(payload).items():
                 # Only collect tool_data from the LLM node — pre-model hooks
                 # produce updates containing historical messages with old tool_calls.
                 if node_name != "agent":
@@ -543,18 +544,12 @@ async def execute_graph_silent(
                                 user_id=user_id,
                             )
                             if tool_entry:
-                                tool_entries = tool_data["tool_data"]
-                                if isinstance(tool_entries, list):
-                                    tool_entries.append(tool_entry)
+                                tool_entries.append(tool_entry)
                                 emitted_tool_calls.add(tc_id)
             continue
 
         if stream_mode == "messages":
-            if not isinstance(payload, tuple):
-                continue
-            chunk, metadata = payload
-            if not isinstance(metadata, dict):
-                continue
+            chunk, metadata = _messages_payload(payload)
 
             if metadata.get("silent"):
                 continue  # Skip silent chunks (e.g. follow-up actions generation)
@@ -571,18 +566,11 @@ async def execute_graph_silent(
                 source = snapshot.get("source", "executor")
                 todo_progress_accumulated[source] = snapshot
 
-            if not isinstance(payload, dict):
-                continue
-            new_data = process_custom_event_for_tools(payload)
+            new_data = process_custom_event_for_tools(cast(JsonObject, payload))
             if new_data:
                 # Merge custom event tool_data into our array
                 if "tool_data" in new_data:
-                    for entry in list_bag(new_data, "tool_data"):
-                        if not isinstance(entry, dict):
-                            continue
-                        tool_entries = tool_data["tool_data"]
-                        if isinstance(tool_entries, list):
-                            tool_entries.append(entry)
+                    tool_entries.extend(list_bag(new_data, "tool_data"))
                 # Always merge non-tool_data keys (follow_up_actions, etc.)
                 for key, value in new_data.items():
                     if key != "tool_data":
@@ -590,17 +578,56 @@ async def execute_graph_silent(
 
     # Inject accumulated todo_progress as a single tool_data entry
     if todo_progress_accumulated:
-        tool_entries = tool_data["tool_data"]
-        if isinstance(tool_entries, list):
-            tool_entries.append(
-                {
-                    "tool_name": "todo_progress",
-                    "data": todo_progress_accumulated,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                }
-            )
+        tool_entries.append(
+            {
+                "tool_name": "todo_progress",
+                "data": todo_progress_accumulated,
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+        )
 
     return complete_message, tool_data
+
+
+# The `astream` payload shapes, per stream_mode. langgraph's own overloads collapse
+# them to one untyped payload, so the mode check at each call site is what selects
+# the shape and these name it.
+UpdatesPayload: TypeAlias = Mapping[str, object]
+MessagesPayload: TypeAlias = tuple[object, UpdatesPayload]
+JsonObject: TypeAlias = dict[str, object]
+
+
+# ``cast``, not ``isinstance`` (API CLAUDE.md item 12): a payload that did not match
+# its own stream_mode is langgraph breaking its contract, and it must surface as the
+# loud unpacking error it has always been rather than as a stream that quietly drops
+# events.
+def _updates_payload(payload: object) -> UpdatesPayload:
+    """The ``updates`` payload: node name → that node's state update."""
+    return cast(UpdatesPayload, payload)
+
+
+def _messages_payload(payload: object) -> MessagesPayload:
+    """The ``messages`` payload: the message chunk plus its metadata."""
+    return cast(MessagesPayload, payload)
+
+
+def _pending_mcp_app_target(
+    app_meta: Mapping[str, object],
+) -> tuple[str, JsonObject, str]:
+    """The `(server_url, mcp_ui, resource_uri)` an mcp_app event is fetched with.
+
+    ``cast``, not ``isinstance`` (API CLAUDE.md item 12): ``app_meta`` is an entry
+    this module buffered itself a few branches earlier, and it is only buffered at
+    all once ``mcp_ui`` and its ``resource_uri`` are known non-empty. Narrowing at
+    runtime here would turn "we recorded a malformed entry" — a bug in this file —
+    into an mcp_app event that silently never renders.
+    """
+    mcp_ui = cast(JsonObject, app_meta["mcp_ui"])
+    return (
+        cast(str, app_meta["server_url"]),
+        mcp_ui,
+        cast(str, mcp_ui["resource_uri"]),
+    )
 
 
 def _json_safe_tool_result(content: MessageContent) -> object:
@@ -681,9 +708,7 @@ async def execute_graph_streaming(
             continue
 
         if stream_mode == "updates":
-            if not isinstance(payload, dict):
-                continue
-            for node_name, state_update in payload.items():
+            for node_name, state_update in _updates_payload(payload).items():
                 # Only emit tool_data from the LLM ("agent") node.
                 # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
                 # etc.) also produce "updates" events that include historical
@@ -755,7 +780,7 @@ async def execute_graph_streaming(
                                     # tool_calls_data entry only ever comes from
                                     # format_tool_call_entry, whose data is the
                                     # ToolCallsDataEntryData dump (item 12).
-                                    entry_data = cast(dict[str, object], tool_entry["data"])
+                                    entry_data = cast(JsonObject, tool_entry["data"])
                                     tc_id_for_app = text_bag(entry_data, "tool_call_id")
                                     if tc_id_for_app:
                                         pending_mcp_apps[tc_id_for_app] = {
@@ -769,11 +794,7 @@ async def execute_graph_streaming(
             continue
 
         if stream_mode == "messages":
-            if not isinstance(payload, tuple):
-                continue
-            chunk, metadata = payload
-            if not isinstance(metadata, dict):
-                continue
+            chunk, metadata = _messages_payload(payload)
             if metadata.get("silent"):
                 continue
 
@@ -814,13 +835,7 @@ async def execute_graph_streaming(
                 # Emit deferred mcp_app event now that tool result is available
                 app_meta = pending_mcp_apps.pop(chunk.tool_call_id, None)
                 if app_meta:
-                    server_url = app_meta["server_url"]
-                    app_mcp_ui = app_meta["mcp_ui"]
-                    if not isinstance(server_url, str) or not isinstance(app_mcp_ui, dict):
-                        continue
-                    resource_uri = app_mcp_ui.get("resource_uri")
-                    if not isinstance(resource_uri, str):
-                        continue
+                    server_url, app_mcp_ui, resource_uri = _pending_mcp_app_target(app_meta)
                     tool_result_payload = _json_safe_tool_result(chunk.content)
                     try:
                         ui_resource = await fetch_mcp_ui_resource(
@@ -903,13 +918,7 @@ async def execute_graph_streaming(
                 tc_id = sub_output.get("tool_call_id", "")
                 app_meta = pending_mcp_apps.pop(tc_id, None)
                 if app_meta:
-                    server_url = app_meta["server_url"]
-                    app_mcp_ui = app_meta["mcp_ui"]
-                    if not isinstance(server_url, str) or not isinstance(app_mcp_ui, dict):
-                        continue
-                    resource_uri = app_mcp_ui.get("resource_uri")
-                    if not isinstance(resource_uri, str):
-                        continue
+                    server_url, app_mcp_ui, resource_uri = _pending_mcp_app_target(app_meta)
                     try:
                         ui_resource = await fetch_mcp_ui_resource(
                             server_url=server_url,

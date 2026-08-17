@@ -18,11 +18,13 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
 from langchain_google_genai.chat_models import _parse_chat_history
 import pytest
 
 from app.agents.middleware.executor import (
     MiddlewareExecutor,
+    _apply_state_update,
     _has_override,
 )
 from app.override.langgraph_bigtool.utils import State
@@ -473,6 +475,18 @@ class TestExecuteBeforeModelStateUpdates:
         assert result["async_key"] == "from_async_before_model"
 
 
+class TestApplyStateUpdate:
+    def test_a_message_update_onto_a_state_with_no_history_starts_the_history(self) -> None:
+        """The first hook to write messages may run before anything seeded the
+        key. Reading it as ``None`` instead of ``[]`` hands the reducer a
+        non-list and loses the very message the hook was trying to inject."""
+        current_state: dict[str, Any] = {"selected_tool_ids": []}
+
+        _apply_state_update(current_state, {"messages": [AIMessage(content="hi", id="a1")]})
+
+        assert [m.id for m in current_state["messages"]] == ["a1"]
+
+
 class TestExecuteAfterModelStateUpdates:
     """``execute_after_model`` merges hook returns the same way and needs the same fix."""
 
@@ -501,6 +515,48 @@ class TestExecuteAfterModelStateUpdates:
 
 
 class TestWrapModelInvocation:
+    @patch(
+        "app.agents.middleware.executor.create_model_request",
+    )
+    @patch(
+        "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
+        return_value=MagicMock(),
+    )
+    async def test_the_request_handed_to_middleware_describes_this_invocation(
+        self, mock_rt: MagicMock, mock_create_req: MagicMock
+    ) -> None:
+        """Every middleware in the chain reads the model, state, runtime and tool
+        palette off this request. Build it from the wrong inputs — or hand the
+        chain something other than the built request — and middleware silently
+        inspects a different call than the one about to run."""
+        mock_model = MagicMock(spec=BaseChatModel)
+        tools: list[Any] = [MagicMock(spec=BaseTool)]
+        invoke_fn = AsyncMock(return_value=AIMessage(content="response"))
+
+        mock_request = MagicMock(spec=ModelRequest)
+        mock_request.system_message = None
+        mock_request.messages = [HumanMessage(content="hello")]
+        mock_create_req.return_value = mock_request
+
+        seen: list[Any] = []
+
+        class _CapturingWrapModel(AgentMiddleware):
+            async def awrap_model_call(self, request: Any, handler: Any) -> Any:
+                seen.append(request)
+                return await handler(request)
+
+        executor = MiddlewareExecutor([_CapturingWrapModel()])
+        state = _make_state()
+        result = await executor.wrap_model_invocation(
+            mock_model, state, _make_config(), None, tools, invoke_fn
+        )
+
+        mock_create_req.assert_called_once_with(mock_model, state, mock_rt.return_value, tools)
+        assert seen == [mock_request]
+        # A request that never reached the chain would surface as the fallback's
+        # direct invocation, which still returns "response" — so pin the path too.
+        assert result.content == "response"
+
     @patch(
         "app.agents.middleware.executor.create_model_request",
     )
@@ -713,6 +769,51 @@ class TestWrapModelInvocation:
 
 
 class TestWrapToolInvocation:
+    @patch(
+        "app.agents.middleware.executor.create_tool_call_request",
+    )
+    @patch(
+        "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
+        return_value=MagicMock(),
+    )
+    async def test_the_tool_runtime_is_named_after_the_tool_being_called(
+        self, mock_rt: MagicMock, mock_create_req: MagicMock
+    ) -> None:
+        """``tool_name`` is the runtime's identity — it is what tool-scoped
+        middleware and the wide event attribute the call to. A wrong name
+        misattributes every downstream decision to another tool."""
+        tool_call = {"name": "search_web", "args": {}, "id": "call_1"}
+        invoke_fn = AsyncMock(return_value=ToolMessage(content="r", tool_call_id="call_1"))
+        mock_create_req.return_value = MagicMock(spec=ToolCallRequest, tool_call=tool_call)
+
+        await MiddlewareExecutor([]).wrap_tool_invocation(
+            tool_call, None, _make_state(), _make_config(), None, invoke_fn
+        )
+
+        assert mock_rt.call_args.kwargs["tool_name"] == "search_web"
+
+    @patch(
+        "app.agents.middleware.executor.create_tool_call_request",
+    )
+    @patch(
+        "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
+        return_value=MagicMock(),
+    )
+    async def test_a_tool_call_with_no_name_is_labelled_unknown(
+        self, mock_rt: MagicMock, mock_create_req: MagicMock
+    ) -> None:
+        """A malformed tool call must still produce a runtime — an empty name
+        would make the call unattributable rather than merely unidentified."""
+        tool_call: dict[str, Any] = {"args": {}, "id": "call_1"}
+        invoke_fn = AsyncMock(return_value=ToolMessage(content="r", tool_call_id="call_1"))
+        mock_create_req.return_value = MagicMock(spec=ToolCallRequest, tool_call=tool_call)
+
+        await MiddlewareExecutor([]).wrap_tool_invocation(
+            tool_call, None, _make_state(), _make_config(), None, invoke_fn
+        )
+
+        assert mock_rt.call_args.kwargs["tool_name"] == "unknown"
+
     @patch(
         "app.agents.middleware.executor.create_tool_call_request",
     )

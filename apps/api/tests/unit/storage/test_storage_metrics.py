@@ -163,6 +163,25 @@ def test_bytes_from_repeated_writes_accumulate_into_one_total(op: str) -> None:
     assert peek_fs_metrics()[op]["bytes"] == 123
 
 
+def test_bytes_reach_the_prometheus_counter(op: str) -> None:
+    record_fs_op(op, duration_ms=1.0, bytes_written=64)
+
+    assert byte_total(op) == 64
+
+
+def test_an_op_moving_no_bytes_never_creates_the_bytes_series(op: str) -> None:
+    """Absent, not zero — same wire contract as the wide event's omitted key.
+
+    ``inc(0)`` would leave the counter's VALUE at zero, so a value assertion
+    cannot tell the guard from its `>= 0` mutation; what distinguishes them is
+    that touching the child at all registers the label series. An op that moves
+    no bytes must not appear in ``fs_op_bytes_total`` in the first place.
+    """
+    record_fs_op(op, duration_ms=1.0)
+
+    assert byte_total(op) is None
+
+
 def test_a_later_label_value_replaces_the_earlier_one_for_the_same_key(op: str) -> None:
     # Documented last-write-wins. Appending instead would grow the wide event
     # field unboundedly across a long request.

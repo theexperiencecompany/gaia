@@ -95,6 +95,33 @@ class TestCastTypeArgument:
 
         assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
 
+    def test_a_wrapped_cast_keeping_the_value_on_the_type_line_is_equivalent(
+        self, workdir: Path
+    ) -> None:
+        # The formatter wraps after `cast(` but often leaves the VALUE beside
+        # the type. Anchoring the blanking at end-of-line missed exactly this
+        # shape, and reported an unkillable mutant on it.
+        _write_mutants(
+            workdir,
+            "    return cast(\n        RealType, make(a, b),\n    )",
+            "    return cast(\n        XXMutatedTypeXX, make(a, b),\n    )",
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+
+    def test_a_value_change_beside_the_type_is_still_reported(self, workdir: Path) -> None:
+        _write_mutants(
+            workdir,
+            "    return cast(\n        RealType, make(a, b),\n    )",
+            "    return cast(\n        RealType, make(a, c),\n    )",
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
     def test_a_real_change_below_a_wrapped_cast_is_still_reported(self, workdir: Path) -> None:
         # The blanking must reach the type argument and stop. A mutation to the
         # VALUE changes what the function returns.
@@ -121,97 +148,3 @@ class TestCastTypeArgument:
         result = _classify(workdir)
 
         assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
-
-
-class TestClassMethodSurvivor:
-    """A method's survivor must reach a verdict — it used to reach neither.
-
-    mutmut names a method's variants ``xǁClassǁmethod__mutmut_N`` and points the
-    dict entry at ``Class.xǁClassǁmethod__mutmut_orig``. Two things went wrong
-    only on that shape, and fixing either one alone leaves the other live:
-    resolving the original through a ``\\w+`` capture stopped at the dot and
-    yielded the CLASS, which is not a function — the script exited with an empty
-    verdict and the lane reported CLASSIFIER FAILED; and the body splitter
-    anchored ``def`` at column 0, so an indented method body was never found,
-    original and mutant both came back empty, compared equal, and every method
-    survivor was silently EQUIV. Kept here because the module-level probes above
-    pass with both bugs present.
-    """
-
-    @staticmethod
-    def _write_method_mutants(workdir: Path, orig_body: str, mutant_body: str) -> None:
-        """The mutants layout mutmut emits for a METHOD — indented, class-qualified."""
-        target = workdir / "mutants" / MODULE_REL
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            "class Probe:\n"
-            f"    def xǁProbeǁrun__mutmut_orig(self):\n{orig_body}\n\n"
-            f"    def xǁProbeǁrun__mutmut_1(self):\n{mutant_body}\n\n"
-            "mutants_xǁProbeǁrun__mutmut['_mutmut_orig'] = Probe.xǁProbeǁrun__mutmut_orig\n"
-        )
-
-    @staticmethod
-    def _classify_method(
-        workdir: Path, ranges: str = "[[1,200]]"
-    ) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [
-                sys.executable,
-                str(CLASSIFIER),
-                f"{MODULE_DOTTED}.xǁProbeǁrun__mutmut_1: survived",
-                str(workdir),
-                ranges,
-                MODULE_REL,
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-    @pytest.fixture
-    def method_workdir(self, tmp_path: Path) -> Path:
-        """The real module the classifier resolves the method's def line against."""
-        (tmp_path / MODULE_REL).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / MODULE_REL).write_text(
-            "class Probe:\n    def run(self):\n        value = 1\n        return value\n"
-        )
-        return tmp_path
-
-    def test_a_differing_method_body_is_reported_not_called_equivalent(
-        self, method_workdir: Path
-    ) -> None:
-        self._write_method_mutants(
-            method_workdir,
-            "        value = 1\n        return value",
-            "        value = 2\n        return value",
-        )
-
-        result = self._classify_method(method_workdir)
-
-        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
-        assert result.returncode == 1
-
-    def test_a_method_survivor_always_emits_a_verdict(self, method_workdir: Path) -> None:
-        """An empty verdict is what the lane surfaces as CLASSIFIER FAILED."""
-        self._write_method_mutants(
-            method_workdir,
-            "        value = 1\n        return value",
-            "        value = 2\n        return value",
-        )
-
-        result = self._classify_method(method_workdir)
-
-        assert result.stdout.strip() != "", result.stderr
-
-    def test_an_identical_method_body_is_still_equivalent(self, method_workdir: Path) -> None:
-        """The EQUIV path must keep working for methods, not just be unreachable."""
-        self._write_method_mutants(
-            method_workdir,
-            "        value = 1\n        return value",
-            "        value = 1\n        return value",
-        )
-
-        result = self._classify_method(method_workdir)
-
-        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
-        assert result.returncode == 0

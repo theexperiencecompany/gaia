@@ -40,6 +40,7 @@ for entry in entries:
 fi
 
 rc=0
+failed_modules=()
 while IFS=$'\t' read -r module testfiles ranges; do
   [ -n "$module" ] || continue
   echo "=== $module ===" >> shard.log
@@ -53,7 +54,10 @@ while IFS=$'\t' read -r module testfiles ranges; do
   if [ "$module_rc" = "137" ] || [ "$module_rc" = "124" ]; then
     echo "::error::mutation for $module exceeded its timeout and was killed — see the log for the last phase reached"
   fi
-  [ "$module_rc" = "0" ] || rc="$module_rc"
+  if [ "$module_rc" != "0" ]; then
+    rc="$module_rc"
+    failed_modules+=("$module")
+  fi
 done < "$SHARD_TSV"
 
 # tail, NEVER cat: with mutmut's debug output on, a busy module writes a 13MB
@@ -64,5 +68,19 @@ done < "$SHARD_TSV"
 # proved it. The full file ships as the artifact.
 echo "--- shard.log (last 200KB; full file in the artifact) ---"
 tail -c 200000 shard.log
+
+# The verdict, last and on its own. A shard carries several modules when the
+# diff is large, so "this check is red" has to say WHICH — otherwise the only
+# way to find out is scrolling a 200KB tail.
+if [ "${#failed_modules[@]}" -eq 0 ]; then
+  echo "Mutation shard OK — every module clean"
+else
+  echo "::error::mutation failed for: ${failed_modules[*]}"
+  {
+    echo "### Mutation failures"
+    echo
+    for module in "${failed_modules[@]}"; do echo "- \`$module\`"; done
+  } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+fi
 
 exit "$rc"

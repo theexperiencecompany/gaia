@@ -5,6 +5,7 @@ routing, status codes, response bodies, and auth checks.
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
@@ -157,6 +158,63 @@ class TestResetSession:
         assert data["success"] is True
         assert data["conversation_id"] == "new-convo-id"
 
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_reset_session_resolves_user_id_from_the_legacy_id_key(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_bot_svc: MagicMock,
+        client: AsyncClient,
+    ):
+        """The platform lookup returns ``user_to_legacy_dict`` output: ``_id``, no
+        ``user_id``. The endpoint must fill ``user_id`` from it before handing the
+        dict to BotService, which addresses every downstream write by that key.
+        """
+        mock_get_user.return_value = {"_id": "uid-from-legacy-id", "name": "Alice"}
+        mock_bot_svc.reset_session = AsyncMock(return_value="new-convo-id")
+
+        response = await client.post(
+            f"{BOT_BASE}/reset-session",
+            json={"platform": "discord", "platform_user_id": "u1", "channel_id": "ch1"},
+        )
+
+        assert response.status_code == 200
+        passed_user = mock_bot_svc.reset_session.await_args.args[3]
+        assert passed_user["user_id"] == "uid-from-legacy-id"
+
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_reset_session_prefers_user_id_over_the_legacy_id_key(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_bot_svc: MagicMock,
+        client: AsyncClient,
+    ):
+        """``_id`` is only the fallback — distinct values here so a swapped or
+        misspelled key cannot pass by coincidence.
+        """
+        mock_get_user.return_value = {"user_id": "uid-primary", "_id": "uid-fallback"}
+        mock_bot_svc.reset_session = AsyncMock(return_value="new-convo-id")
+
+        response = await client.post(
+            f"{BOT_BASE}/reset-session",
+            json={"platform": "discord", "platform_user_id": "u1", "channel_id": "ch1"},
+        )
+
+        assert response.status_code == 200
+        passed_user = mock_bot_svc.reset_session.await_args.args[3]
+        assert passed_user["user_id"] == "uid-primary"
+
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
         new_callable=AsyncMock,
@@ -286,6 +344,41 @@ class TestGetSettings:
         data = response.json()
         assert data["authenticated"] is True
         assert data["user_name"] == "Alice"
+        assert data["profile_image_url"] == "https://img.example.com/a.png"
+
+    @patch(
+        "app.api.v1.endpoints.bot.get_user_integration_records",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_settings_falls_back_to_the_secondary_name_and_avatar_keys(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_integrations: AsyncMock,
+        client: AsyncClient,
+    ):
+        """Users linked from a platform carry ``username``/``avatar_url`` rather
+        than ``name``/``profile_image_url``; the card falls back to them so those
+        accounts still render a handle and an avatar.
+        """
+        mock_get_user.return_value = {
+            "_id": "uid1",
+            "username": "alice_handle",
+            "avatar_url": "https://img.example.com/fallback.png",
+        }
+        mock_integrations.return_value = []
+
+        response = await client.get(f"{BOT_BASE}/settings/discord/u1")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_name"] == "alice_handle"
+        assert data["profile_image_url"] == "https://img.example.com/fallback.png"
 
     @patch(
         "app.api.v1.endpoints.bot.get_user_integration_records",
@@ -338,6 +431,10 @@ class TestGetSettings:
         also answered 500 here — incidentally, from an AttributeError on
         ``str.isoformat`` swallowed by the handler's catch-all — so a status-only
         assertion was green before the fix and proved nothing.
+
+        The payload is pinned verbatim rather than by substring: an earlier
+        ``"str" in body["why"]`` was satisfied by the "up*str*eam" in the trailing
+        sentence, so it stayed green even when the message reported the wrong type.
         """
         mock_get_user.return_value = {
             "user_id": "uid1",
@@ -348,10 +445,141 @@ class TestGetSettings:
         response = await client.get(f"{BOT_BASE}/settings/discord/u1")
         assert response.status_code == 500
         body = response.json()
-        assert "created_at" in body["message"]
+        assert body["message"] == "User record has an unexpected created_at type"
         # Names the type it actually got, so the operator can see the shape drift.
-        assert "str" in body["why"]
-        assert body["fix"]
+        assert body["why"] == (
+            "user created_at is str, not a datetime — user_to_legacy_dict returns "
+            "the validated UserDocument field, so the shape changed upstream"
+        )
+        assert body["fix"] == (
+            "Check UserDocument.created_at and the user_to_legacy_dict projection"
+        )
+
+    @patch(
+        "app.api.v1.endpoints.bot.get_user_integration_records",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_settings_looks_up_integrations_for_the_resolved_user_id(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_integrations: AsyncMock,
+        client: AsyncClient,
+    ):
+        """``user_id`` falls back to the legacy ``_id`` and is what the
+        integration records are fetched for — query the wrong id and the card
+        silently lists somebody else's integrations, or none at all.
+        """
+        mock_get_user.return_value = {"_id": "uid-from-legacy-id"}
+        mock_integrations.return_value = []
+
+        response = await client.get(f"{BOT_BASE}/settings/discord/u1")
+
+        assert response.status_code == 200
+        mock_integrations.assert_awaited_once_with("uid-from-legacy-id")
+
+    @patch(
+        "app.api.v1.endpoints.bot.get_user_integration_records",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_settings_prefers_user_id_over_the_legacy_id_key(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_integrations: AsyncMock,
+        client: AsyncClient,
+    ):
+        mock_get_user.return_value = {"user_id": "uid-primary", "_id": "uid-fallback"}
+        mock_integrations.return_value = []
+
+        response = await client.get(f"{BOT_BASE}/settings/discord/u1")
+
+        assert response.status_code == 200
+        mock_integrations.assert_awaited_once_with("uid-primary")
+
+    @patch(
+        "app.api.v1.endpoints.bot.get_integration_details",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.get_user_integration_records",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_settings_renders_a_connected_integration_from_its_record(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_integrations: AsyncMock,
+        mock_details: AsyncMock,
+        client: AsyncClient,
+    ):
+        """Each record's ``integration_id`` drives the marketplace lookup, and its
+        ``status`` is carried through to the card verbatim.
+        """
+        mock_get_user.return_value = {"_id": "uid1"}
+        mock_integrations.return_value = [
+            {"integration_id": "gmail", "status": "connected"},
+        ]
+        mock_details.return_value = SimpleNamespace(
+            name="Gmail", icon_url="https://cdn.example/gmail.png"
+        )
+
+        response = await client.get(f"{BOT_BASE}/settings/discord/u1")
+
+        assert response.status_code == 200
+        mock_details.assert_awaited_once_with("gmail")
+        assert response.json()["connected_integrations"] == [
+            {
+                "name": "Gmail",
+                "logo_url": "https://cdn.example/gmail.png",
+                "status": "connected",
+            }
+        ]
+
+    @patch(
+        "app.api.v1.endpoints.bot.get_integration_details",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.get_user_integration_records",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_settings_defaults_a_record_with_no_status_to_created(
+        self,
+        mock_auth: AsyncMock,
+        mock_get_user: AsyncMock,
+        mock_integrations: AsyncMock,
+        mock_details: AsyncMock,
+        client: AsyncClient,
+    ):
+        mock_get_user.return_value = {"_id": "uid1"}
+        mock_integrations.return_value = [{"integration_id": "gmail"}]
+        mock_details.return_value = SimpleNamespace(name="Gmail", icon_url=None)
+
+        response = await client.get(f"{BOT_BASE}/settings/discord/u1")
+
+        assert response.status_code == 200
+        assert response.json()["connected_integrations"][0]["status"] == "created"
 
     @patch(
         "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",

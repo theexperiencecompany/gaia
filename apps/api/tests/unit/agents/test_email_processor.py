@@ -238,6 +238,25 @@ class TestProcessSinglePlatform:
         assert "error" in result
         assert result["error"] == "timeout"
 
+    @patch(_PATCH_CRAWL, new_callable=AsyncMock)
+    @patch(_PATCH_BUILD_URL, return_value="https://github.com/testuser")
+    @patch(_PATCH_VALIDATE, return_value=True)
+    @patch(_PATCH_EXTRACT_USER, new_callable=AsyncMock, return_value="testuser")
+    async def test_empty_crawl_with_no_reason_still_reports_a_reason(
+        self,
+        mock_extract: AsyncMock,
+        mock_validate: MagicMock,
+        mock_build: MagicMock,
+        mock_crawl: AsyncMock,
+    ) -> None:
+        """A crawl that returns neither content nor an error is still a failure —
+        the caller must get a reason it can log, never a null one."""
+        mock_crawl.return_value = {"content": None, "error": None}
+        result = await _process_single_platform(
+            USER_ID, "github", [{"id": "1"}], asyncio.Semaphore()
+        )
+        assert result == {"error": "Crawl failed"}
+
     @patch(
         _PATCH_EXTRACT_USER,
         new_callable=AsyncMock,
@@ -720,6 +739,51 @@ class TestFetchEmailsForOnboardingScope:
         mock_search.return_value = GmailMessagesResponse(messages=[])
         await fetch_emails_for_onboarding(USER_ID, months=3, include_sent=True)
         assert mock_search.await_args.kwargs["query"] == "(in:inbox OR in:sent) newer_than:90d"
+
+
+class TestFetchEmailsForOnboardingBatchProgress:
+    """`on_batch` drives the onboarding progress UI: it reports how many messages
+    have landed and the display name of the most recent sender, so the user sees
+    real names scroll by. Reading the wrong message — or the wrong header — shows
+    someone else's name next to the count."""
+
+    @staticmethod
+    async def _run(messages: list[dict[str, object]]) -> list[tuple[int, str | None]]:
+        seen: list[tuple[int, str | None]] = []
+
+        async def on_batch(count: int, sender: str | None) -> None:
+            seen.append((count, sender))
+
+        with patch(_PATCH_SEARCH, new_callable=AsyncMock) as mock_search:
+            mock_search.return_value = GmailMessagesResponse(messages=messages)
+            await fetch_emails_for_onboarding(USER_ID, on_batch=on_batch)
+        return seen
+
+    async def test_progress_reports_the_last_message_in_the_batch(self) -> None:
+        seen = await self._run(
+            [
+                {"id": "1", "from": "Alan Turing <alan@x.com>"},
+                {"id": "2", "from": "Grace Hopper <grace@x.com>"},
+                {"id": "3", "from": "Ada Lovelace <ada@x.com>"},
+            ]
+        )
+        assert seen == [(3, "Ada Lovelace")]
+
+    async def test_progress_falls_back_to_the_sender_header(self) -> None:
+        seen = await self._run(
+            [
+                {"id": "1", "from": "Alan Turing <alan@x.com>"},
+                {"id": "2", "sender": "Grace Hopper <grace@x.com>"},
+                {"id": "3", "sender": "Ada Lovelace <ada@x.com>"},
+            ]
+        )
+        assert seen == [(3, "Ada Lovelace")]
+
+    async def test_a_message_with_no_usable_sender_reports_no_name(self) -> None:
+        # Gmail is a foreign payload: a missing or wrong-typed header must leave
+        # the progress line nameless, not crash the whole onboarding scan.
+        seen = await self._run([{"id": "1"}, {"id": "2", "from": ["not", "a", "string"]}])
+        assert seen == [(2, None)]
 
 
 class TestFetchEmailsForOnboardingSentLabelSurvives:

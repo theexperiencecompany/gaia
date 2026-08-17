@@ -1,5 +1,6 @@
 """Unit tests for app.agents.core.agent — call_agent and call_agent_silent."""
 
+import copy
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -81,9 +82,12 @@ def _common_patches():
             "app.agents.core.agent.build_initial_state",
             return_value=FAKE_STATE,
         ),
+        # A fresh copy per call: _core_agent_logic mutates the configurable it is
+        # handed (stream_id, workflow routing fields), so a shared return_value
+        # leaks one test's writes into every later test in the module.
         "build_config": patch(
             "app.agents.core.agent.build_agent_config",
-            return_value=FAKE_CONFIG,
+            side_effect=lambda *args, **kwargs: copy.deepcopy(FAKE_CONFIG),
         ),
         "apply_plan": patch(
             "app.agents.core.agent.apply_plan_model",
@@ -128,7 +132,7 @@ class TestCoreAgentLogic:
 
         assert graph is FAKE_GRAPH
         assert state is FAKE_STATE
-        assert config is FAKE_CONFIG
+        assert config == FAKE_CONFIG
 
     @pytest.mark.asyncio
     async def test_construct_messages_receives_correct_args(self):
@@ -211,6 +215,97 @@ class TestCoreAgentLogic:
         assert configurable["workflow_notify_on_completion"] is False
 
     @pytest.mark.asyncio
+    async def test_workflow_runs_notify_on_completion_unless_told_otherwise(self):
+        """Opting out is explicit: a workflow trigger that says nothing about
+        notification still notifies, so a missing key can never silence delivery."""
+        patches = _common_patches()
+        trigger = {"type": "schedule", "workflow_id": "wf-1", "workflow_title": "Morning brief"}
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+        ):
+            _, _, config = await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                trigger_context=trigger,
+            )
+
+        assert config["configurable"]["workflow_notify_on_completion"] is True
+
+    @pytest.mark.asyncio
+    async def test_active_todo_id_is_read_from_the_trigger_context(self):
+        """The todo binding reaches message construction — without it a scheduled
+        run writes its progress to no todo at all."""
+        patches = _common_patches()
+        trigger = {"type": "schedule", "active_todo_id": "todo-active", "todo_id": "todo-legacy"}
+        with (
+            patches["construct"] as mock_construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                trigger_context=trigger,
+            )
+
+        assert mock_construct.call_args.kwargs["active_todo_id"] == "todo-active"
+
+    @pytest.mark.asyncio
+    async def test_active_todo_id_falls_back_to_the_legacy_todo_id_key(self):
+        """Older trigger payloads only carry ``todo_id``; they must still bind."""
+        patches = _common_patches()
+        trigger = {"type": "schedule", "todo_id": "todo-legacy"}
+        with (
+            patches["construct"] as mock_construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                trigger_context=trigger,
+            )
+
+        assert mock_construct.call_args.kwargs["active_todo_id"] == "todo-legacy"
+
+    @pytest.mark.asyncio
+    async def test_no_trigger_context_leaves_the_todo_binding_unset(self):
+        patches = _common_patches()
+        with (
+            patches["construct"] as mock_construct,
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        assert mock_construct.call_args.kwargs["active_todo_id"] is None
+
+    @pytest.mark.asyncio
     async def test_log_set_called_with_agent_metadata(self):
         patches = _common_patches()
         with (
@@ -281,27 +376,12 @@ class TestCallAgent:
         async def _fake_stream(*args, **kwargs):
             yield "data: [DONE]\n\n"
 
-        def capture_config():
-            original_return = FAKE_CONFIG.copy()
-            original_return["configurable"] = FAKE_CONFIG["configurable"].copy()
-            return original_return
-
         patches = _common_patches()
-        # Use a side_effect on build_agent_config to capture the config
         with (
             patches["construct"],
             patches["get_graph"],
             patches["build_state"],
-            patch(
-                "app.agents.core.agent.build_agent_config",
-                return_value={
-                    "configurable": {
-                        "thread_id": "conv-1",
-                        "user_id": "user-123",
-                        "model_name": "gpt-4o",
-                    }
-                },
-            ),
+            patches["build_config"],
             patches["apply_plan"],
             patches["apply_dev_model"],
             patches["log"],
@@ -455,6 +535,71 @@ class TestCallAgentSilent:
             )
 
         assert result == ("Hello!", {"tool": "data"})
+
+    @pytest.mark.asyncio
+    async def test_executor_tool_data_is_appended_to_the_comms_tool_data(self):
+        """The detached executor's tool calls are folded onto this message —
+        dropping or replacing them makes a background run render as if the
+        executor never ran."""
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", {"tool_data": [{"name": "comms_tool"}]}),
+            ),
+            patch("app.agents.core.agent.await_executor_done", new_callable=AsyncMock),
+            patch(
+                "app.agents.core.agent.drain_executor_tool_data",
+                return_value=[{"name": "executor_tool"}],
+            ),
+        ):
+            _, tool_data = await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        assert tool_data["tool_data"] == [{"name": "comms_tool"}, {"name": "executor_tool"}]
+
+    @pytest.mark.asyncio
+    async def test_executor_tool_data_survives_a_comms_message_with_none(self):
+        """A comms message that made no tool calls carries no ``tool_data`` key;
+        the executor's calls must still land instead of being lost to a KeyError."""
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["apply_plan"],
+            patches["apply_dev_model"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", {}),
+            ),
+            patch("app.agents.core.agent.await_executor_done", new_callable=AsyncMock),
+            patch(
+                "app.agents.core.agent.drain_executor_tool_data",
+                return_value=[{"name": "executor_tool"}],
+            ),
+        ):
+            _, tool_data = await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        assert tool_data["tool_data"] == [{"name": "executor_tool"}]
 
     @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):

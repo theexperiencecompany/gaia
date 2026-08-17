@@ -21,16 +21,26 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
-_obj_marker = "-_object_-"
 
 
 def _clean_reserved_keyword(keyword: str) -> str:
     return f"{keyword}_rs"
 
 
+class _RenamedProperty(t.NamedTuple):
+    """A schema property renamed away from a Python reserved keyword.
+
+    ``nested`` holds the same map for the property's own sub-properties, so a
+    reserved name at any depth travels back to Composio under its real name.
+    """
+
+    original_name: str
+    nested: "dict[str, _RenamedProperty]"
+
+
 def _substitute_reserved_python_keywords(
     schema: dict[str, object],
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> tuple[dict[str, object], dict[str, _RenamedProperty]]:
     if "properties" not in schema:
         return schema, {}
 
@@ -38,50 +48,37 @@ def _substitute_reserved_python_keywords(
     if not isinstance(properties, dict):
         raise ValueError(f"Expected 'properties' to be a dict, got {type(properties).__name__}")
 
-    keywords: dict[str, object] = {}
+    keywords: dict[str, _RenamedProperty] = {}
     for p_name in list(properties):
         if p_name not in _python_reserved:
             continue
 
-        _keywords: dict[str, object] = {}
+        nested: dict[str, _RenamedProperty] = {}
         p_val = properties.pop(p_name)
         if not isinstance(p_val, dict):
             raise ValueError(
                 f"Expected property {p_name!r} schema to be a dict, got {type(p_val).__name__}"
             )
         if p_val.get("type") == "object":
-            p_val, _keywords = _substitute_reserved_python_keywords(schema=p_val)
+            p_val, nested = _substitute_reserved_python_keywords(schema=p_val)
 
         p_name_clean = _clean_reserved_keyword(keyword=p_name)
         properties[p_name_clean] = p_val
-        keywords[p_name_clean] = p_name
-        keywords[f"{p_name_clean}{_obj_marker}"] = _keywords
+        keywords[p_name_clean] = _RenamedProperty(original_name=p_name, nested=nested)
 
     return schema, keywords
 
 
 def _reinstate_reserved_python_keywords(
-    request: dict[str, object], keywords: dict[str, object]
+    request: dict[str, object], keywords: dict[str, _RenamedProperty]
 ) -> dict[str, object]:
-    for clean_key in sorted(list(keywords), reverse=True):
-        subkeys: dict[str, object] | None = None
-        if clean_key.endswith(_obj_marker):
-            marker_value = keywords[clean_key]
-            if not isinstance(marker_value, dict):
-                raise ValueError(
-                    f"Expected {clean_key!r} marker to hold a keyword map, "
-                    f"got {type(marker_value).__name__}"
-                )
-            subkeys = marker_value
-            clean_key, _ = clean_key.split(_obj_marker, maxsplit=1)
-
+    for clean_key, renamed in keywords.items():
         if clean_key not in request:
             continue
 
         original_value = request.pop(clean_key)
-        # Empty subkeys (a nested object whose reserved properties were all
-        # leaves) is the normal scalar case: nothing to reinstate inside.
-        if subkeys:
+        if renamed.nested:
+            # The value is the caller's tool argument, not ours by construction.
             if not isinstance(original_value, dict):
                 raise ValueError(
                     f"Expected {clean_key!r} value to be a dict for keyword "
@@ -89,15 +86,9 @@ def _reinstate_reserved_python_keywords(
                 )
             original_value = _reinstate_reserved_python_keywords(
                 request=original_value,
-                keywords=subkeys,
+                keywords=renamed.nested,
             )
-        original_key = keywords[clean_key]
-        if not isinstance(original_key, str):
-            raise ValueError(
-                f"Expected {clean_key!r} to map to a keyword name, "
-                f"got {type(original_key).__name__}"
-            )
-        request[original_key] = original_value
+        request[renamed.original_name] = original_value
     return request
 
 
@@ -156,7 +147,7 @@ class LangchainProvider(
         description: str,
         schema_params: dict[str, object],
         execute_tool: AgenticProviderExecuteFn,
-        keywords: dict[str, object],
+        keywords: dict[str, _RenamedProperty],
         toolkit: str | None = None,
     ) -> types.FunctionType:
         def function(**kwargs: object) -> dict[str, object]:

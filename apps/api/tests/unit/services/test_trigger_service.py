@@ -935,6 +935,86 @@ class TestSlackTriggerHandler:
         assert len(result) == 1
 
     @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_find_workflows_channel_filter_ignores_blank_entries(self, mock_repo):
+        """Blank/whitespace channel ids are dropped, so they can never match a
+        message whose channel resolves to the empty string."""
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=["   ", "C001"]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+
+        handler = SlackTriggerHandler()
+        # `channel: ""` is the empty-string channel a blank config entry would match.
+        result = await handler.find_workflows("SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": ""})
+        assert result == []
+
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_find_workflows_untyped_payload_falls_back_to_channel(self, mock_repo):
+        """A payload the typed model rejects still filters on its `channel` key."""
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=["C001", "C002"]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+
+        handler = SlackTriggerHandler()
+        # `text` must be a string, so SlackReceiveMessagePayload rejects this payload.
+        matched = await handler.find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C001", "text": 123}
+        )
+        assert len(matched) == 1
+
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+        unmatched = await handler.find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C999", "text": 123}
+        )
+        assert unmatched == []
+
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_find_workflows_typed_payload_wins_over_the_dict_fallback(self, mock_repo):
+        """A payload the typed model accepts is never re-read through the fallback:
+        an explicit `channel: null` means "no channel", not "look at channel_id"."""
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=["C001"]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+
+        handler = SlackTriggerHandler()
+        result = await handler.find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": None, "channel_id": "C001"}
+        )
+        assert result == []
+
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_find_workflows_untyped_payload_falls_back_to_channel_id(self, mock_repo):
+        """With no usable `channel`, the fallback reads the legacy `channel_id` key."""
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=["C001", "C002"]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+
+        handler = SlackTriggerHandler()
+        # `channel` is a non-string, which both fails the typed model and makes the
+        # fallback skip it — `channel_id` is what decides the match.
+        matched = await handler.find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": 42, "channel_id": "C002"}
+        )
+        assert len(matched) == 1
+
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+        unmatched = await handler.find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": 42, "channel_id": "C999"}
+        )
+        assert unmatched == []
+
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
     async def test_find_workflows_exception_returns_empty(self, mock_repo):
         mock_repo.find_active_by_composio_trigger = AsyncMock(side_effect=Exception("DB error"))
 

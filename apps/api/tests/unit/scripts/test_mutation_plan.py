@@ -13,6 +13,7 @@ that prints a chosen module list. Nothing here runs mutmut.
 
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -21,10 +22,12 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[5]
 PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation-plan.sh"
 
-# Mirrors MAX_SHARDS in the script under test. GitHub refuses a matrix over
-# 256 jobs, so the packing below is what keeps a huge diff producing a matrix
-# at all instead of none.
-MAX_SHARDS = 250
+# Mirrors MAX_SHARDS in the script under test, which tracks the matrix's
+# max-parallel: a wider matrix cannot finish sooner, it only adds a check row
+# and a full setup per job. The packing below is also what keeps a huge diff
+# producing a matrix at all, rather than blowing GitHub's 256-job hard limit
+# and yielding none — and a lane with no matrix is a lane that counts as a pass.
+MAX_SHARDS = 12
 
 
 @pytest.fixture
@@ -150,7 +153,10 @@ class TestPackingAHugeDiff:
         _, outputs = harness(self._many(430))
 
         labels = [item["label"] for item in json.loads(outputs["matrix"])]
-        assert all("modules (" in label for label in labels[:10])
+        # Every shard says which slice it is and how much it carries, so a red
+        # check is locatable without opening it.
+        assert labels[0] == f"shard 1/{MAX_SHARDS} (36 modules)"
+        assert all(re.fullmatch(r"shard \d+/12 \(\d+ modules\)", label) for label in labels)
 
     def test_exactly_the_limit_still_gets_one_module_each(self, harness) -> None:
         _, outputs = harness(self._many(MAX_SHARDS))

@@ -16,10 +16,14 @@
 #   count=<n>
 #
 # `group` is a compact JSON STRING holding that shard's modules, because a
-# GitHub matrix value cannot hold nested JSON. Normally one module per shard;
-# a diff with more modules than MAX_SHARDS packs several per shard, because a
-# matrix cannot exceed 256 jobs and a diff that big would otherwise produce no
-# matrix at all — the lane would skip, and a skipped lane counts as a pass.
+# GitHub matrix value cannot hold nested JSON.
+#
+# The shard count is capped at the matrix's own max-parallel. Going wider buys
+# NOTHING: GitHub still runs only max-parallel jobs at a time, so the wall
+# clock is identical either way — what the extra jobs actually cost is one
+# check row each in the PR (a 430-module diff produced 250 of them, which no
+# reviewer can read past) and one full checkout + `uv sync` each, paid per job
+# instead of per lane. Same speed, unreadable result, more runner time.
 #
 # The heavy lifting stays in mutation-matrix.sh, which is also what fails the
 # lane loudly when changed app code has no test file anywhere. That failure
@@ -41,8 +45,12 @@ python3 - << 'EOF'
 import json
 import os
 
-# GitHub refuses a matrix over 256 jobs; stay under it with room to spare.
-MAX_SHARDS = 250
+# Match the matrix's max-parallel in code-quality.yml: more shards than can run
+# at once add check rows and setup cost without shortening the lane. (It also
+# stays clear of GitHub's hard 256-job matrix limit, which a one-shard-per-
+# module plan blew through on the mypy-strict diff — no matrix, a skipped lane,
+# and a skipped lane counts as a pass.)
+MAX_SHARDS = 12
 
 modules = json.loads(os.environ["MATRIX_JSON"])
 shards: list[list[dict[str, str]]] = [[] for _ in range(min(len(modules), MAX_SHARDS))]
@@ -57,9 +65,14 @@ for index, entry in enumerate(modules):
 
 include = [
     {
-        # The check's displayed name. One module names itself; a packed shard
-        # says how many it carries so nothing looks silently dropped.
-        "label": shard[0]["module"] if len(shard) == 1 else f"{len(shard)} modules ({number})",
+        # The check's displayed name. A lone module names itself — the common
+        # case, and the most useful thing a reviewer can read at a glance. A
+        # packed shard says how many it carries, so nothing looks dropped.
+        "label": (
+            shard[0]["module"]
+            if len(shard) == 1
+            else f"shard {number}/{len(shards)} ({len(shard)} modules)"
+        ),
         "group": json.dumps(shard, separators=(",", ":")),
     }
     for number, shard in enumerate(shards, start=1)

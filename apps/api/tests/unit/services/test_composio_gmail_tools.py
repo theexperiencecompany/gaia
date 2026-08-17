@@ -20,10 +20,12 @@ from app.services.composio.custom_tools.gmail_tools import (
     MarkAsReadInput,
     MarkAsUnreadInput,
     StarEmailInput,
+    _conversation_id,
     _resolve_timeframe,
     _timeframe_clause,
     register_gmail_custom_tools,
 )
+from app.utils.errors import AppError
 from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
@@ -636,3 +638,196 @@ class TestFetchMessages:
         # Inline returned (not offloaded, no digest).
         assert "offloaded_to" not in result
         assert result["fetched_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Request shape of the shared fetch helpers
+# ---------------------------------------------------------------------------
+
+
+def _list_query(mock_proxy: MagicMock) -> dict[str, Any]:
+    """The query params of the single `users/me/messages` list call."""
+    calls = [
+        call
+        for call in mock_proxy.call_args_list
+        if re.match(r".+/users/me/messages/?$", call.kwargs["endpoint"])
+    ]
+    assert len(calls) == 1, f"expected one list call, got {len(calls)}"
+    return calls[0].kwargs["query"]
+
+
+class TestAuthCredentials:
+    """`user_id` is what every Gmail call is authorised as — a blank or
+    wrong-typed one must stop the call, not reach Composio."""
+
+    @pytest.mark.parametrize("creds", [{}, {"user_id": ""}, {"user_id": None}, {"user_id": 123}])
+    def test_an_unusable_user_id_is_rejected(self, creds: dict[str, Any]) -> None:
+        tools = _register_and_get_tools()
+        with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
+            tools["MARK_AS_READ"](
+                request=MarkAsReadInput(message_ids=["m1"]),
+                execute_request=MagicMock(),
+                auth_credentials=creds,
+            )
+
+    def test_a_usable_user_id_is_the_one_the_proxy_is_called_with(self, mock_proxy) -> None:
+        tools = _register_and_get_tools()
+        tools["MARK_AS_READ"](
+            request=MarkAsReadInput(message_ids=["m1"]),
+            execute_request=MagicMock(),
+            auth_credentials={"user_id": "user_test_123"},
+        )
+        assert mock_proxy.call_args.kwargs["user_id"] == "user_test_123"
+
+
+class TestConversationIdResolution:
+    """Which run-config key names the session decides where an offloaded
+    result is written — reading the wrong one silently disables offload."""
+
+    def test_thread_id_is_used_when_there_is_no_vfs_session_id(self) -> None:
+        assert _conversation_id({"configurable": {"thread_id": "conv-1"}}) == "conv-1"
+
+    def test_vfs_session_id_wins_over_thread_id(self) -> None:
+        assert (
+            _conversation_id({"configurable": {"vfs_session_id": "vfs-1", "thread_id": "conv-1"}})
+            == "vfs-1"
+        )
+
+    def test_neither_key_means_no_session(self) -> None:
+        assert _conversation_id({"configurable": {}}) is None
+
+
+class TestListRequestShape:
+    """The list call's query params are the Gmail API contract: a renamed key
+    is not an error, it is silently ignored, so the filter just stops applying."""
+
+    def test_fetch_messages_sends_the_query_and_page_size_gmail_expects(self, mock_proxy) -> None:
+        tools = _register_and_get_tools()
+        mock_proxy.return_value = {"messages": []}
+
+        tools["FETCH_MESSAGES"](
+            request=FetchMessagesInput(query="from:a@b.com", per_page=7, body_processing="none"),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert _list_query(mock_proxy) == {"q": "from:a@b.com", "maxResults": 7}
+
+    def test_a_later_page_carries_the_page_token(self, mock_proxy) -> None:
+        tools = _register_and_get_tools()
+        list_iter = iter([{"messages": [{"id": "m1"}], "nextPageToken": "tok-1"}, {"messages": []}])
+        msg = {
+            "id": "m1",
+            "threadId": "t1",
+            "labelIds": ["INBOX"],
+            "payload": {"headers": [{"name": "From", "value": "a@b.com"}], "body": {"data": ""}},
+        }
+
+        def side_effect(*_args, **kw):
+            if re.match(r".+/users/me/messages/?$", kw["endpoint"]):
+                return next(list_iter)
+            return msg
+
+        mock_proxy.side_effect = side_effect
+
+        tools["FETCH_MESSAGES"](
+            request=FetchMessagesInput(query="from:a@b.com", per_page=7, body_processing="none"),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        queries = [
+            call.kwargs["query"]
+            for call in mock_proxy.call_args_list
+            if re.match(r".+/users/me/messages/?$", call.kwargs["endpoint"])
+        ]
+        assert queries == [
+            {"q": "from:a@b.com", "maxResults": 7},
+            {"q": "from:a@b.com", "maxResults": 7, "pageToken": "tok-1"},
+        ]
+
+
+class TestGatherContextRecentInboxRequest:
+    """`gather_context` asks Gmail for the newest inbox ids; the label filter and
+    the cap are the whole request."""
+
+    @staticmethod
+    def _run(mock_proxy: MagicMock, **kwargs: Any) -> None:
+        mock_proxy.side_effect = [
+            {"emailAddress": "u@x.com", "messagesTotal": 1, "threadsTotal": 1},
+            {"messagesUnread": 0, "messagesTotal": 1},
+            {"messages": [{"id": "m1"}]},
+        ]
+        tools = _register_and_get_tools()
+        tools["CUSTOM_GATHER_CONTEXT"](
+            request=GatherContextInput(**kwargs),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+    def test_it_asks_only_for_inbox_messages_up_to_the_cap(self, mock_proxy) -> None:
+        self._run(mock_proxy)
+        assert _list_query(mock_proxy) == {"labelIds": "INBOX", "maxResults": 5}
+
+    def test_a_since_value_becomes_an_after_query(self, mock_proxy) -> None:
+        self._run(mock_proxy, since="2026-06-19T00:00:00+00:00")
+        assert _list_query(mock_proxy) == {
+            "labelIds": "INBOX",
+            "maxResults": 5,
+            "q": "after:1781827200",
+        }
+
+    def test_an_unparseable_since_is_rejected_before_any_call(self, mock_proxy) -> None:
+        with pytest.raises(AppError, match="Invalid 'since' value"):
+            self._run(mock_proxy, since="last tuesday")
+
+
+class TestMessageFormatSelection:
+    """`format=full` downloads the whole MIME tree; `format=metadata` doesn't.
+    Asking for attachments needs the tree, asking for headers alone does not."""
+
+    @staticmethod
+    def _message_format(mock_proxy: MagicMock) -> str:
+        calls = [
+            call
+            for call in mock_proxy.call_args_list
+            if re.search(r"/users/me/messages/[^/]+$", call.kwargs["endpoint"])
+        ]
+        assert len(calls) == 1, f"expected one message call, got {len(calls)}"
+        return calls[0].kwargs["query"]["format"]
+
+    def _fetch(self, mock_proxy: MagicMock, **kwargs: Any) -> None:
+        list_iter = iter([{"messages": [{"id": "m1"}]}])
+        msg = {
+            "id": "m1",
+            "threadId": "t1",
+            "labelIds": ["INBOX"],
+            "payload": {"headers": [{"name": "From", "value": "a@b.com"}], "body": {"data": ""}},
+        }
+
+        def side_effect(*_args, **kw):
+            if re.match(r".+/users/me/messages/?$", kw["endpoint"]):
+                return next(list_iter)
+            return msg
+
+        mock_proxy.side_effect = side_effect
+        tools = _register_and_get_tools()
+        tools["FETCH_MESSAGES"](
+            request=FetchMessagesInput(timeframe="today", per_page=10, **kwargs),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+    def test_selecting_attachments_requests_the_full_mime_tree(self, mock_proxy) -> None:
+        self._fetch(mock_proxy, fields=["id", "attachments"], body_processing="none")
+        assert self._message_format(mock_proxy) == "full"
+
+    def test_a_header_only_selection_stays_on_metadata(self, mock_proxy) -> None:
+        self._fetch(mock_proxy, fields=["id", "subject"], body_processing="none")
+        assert self._message_format(mock_proxy) == "metadata"
+
+    def test_the_default_field_selection_stays_on_metadata(self, mock_proxy) -> None:
+        # `fields=None` takes the model default, which carries no body and no
+        # attachments — the cheap path the tool is tuned for.
+        self._fetch(mock_proxy, body_processing="none")
+        assert self._message_format(mock_proxy) == "metadata"

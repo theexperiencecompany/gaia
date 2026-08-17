@@ -99,7 +99,10 @@ def _normalized(lines: list[str]) -> list[str]:
     type_arg_follows = False
     for line in lines:
         if type_arg_follows:
-            out.append(re.sub(r"^\s*[^,]+,\s*$", "_,", line))
+            # Up to the first comma, not the whole line: the formatter wraps
+            # after `cast(` but often leaves the VALUE on the type's line, and
+            # anchoring at end-of-line missed exactly those.
+            out.append(re.sub(r"^(\s*)[^,]+,", r"\1_,", line, count=1))
             type_arg_follows = False
             continue
         out.append(re.sub(r"cast\(\s*[^,)]+,\s*", "cast(_, ", line))
@@ -252,6 +255,37 @@ def _only_boolean_uses(call) -> bool:
     return True
 
 
+def _lookup_with_default(node) -> bool:
+    """True for ``x.get(k, d)`` or ``getattr(o, n, d)`` — a lookup with a fallback.
+
+    Both hand back ``d`` only when the lookup misses, so the same reasoning about
+    which falsy fallback was written applies to either spelling.
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Attribute) and func.attr == "get" and len(node.args) == 2:
+        return True
+    return isinstance(func, ast.Name) and func.id == "getattr" and len(node.args) == 3
+
+
+def _outermost_lookup(node):
+    """Follow a fallback that is itself another lookup's fallback, to the last one.
+
+    ``a.get(k, b.get(j, 0))`` delivers that 0 through the OUTER call, so the outer
+    call's consumers are the ones that decide whether the literal is observable.
+    Checking the inner call alone answered "its value is an argument, so it might
+    be", and reported an unkillable mutant on every nested-fallback read.
+    """
+    current = node
+    while True:
+        parent = getattr(current, "parent", None)
+        if _lookup_with_default(parent) and parent.args[-1] is current:
+            current = parent
+            continue
+        return current
+
+
 def _unobservable_get_default(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
@@ -281,14 +315,9 @@ def _unobservable_get_default(
         for child in ast.iter_child_nodes(node):
             child.parent = node
     for node in ast.walk(tree):
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "get"
-            and len(node.args) == 2
-        ):
+        if not _lookup_with_default(node):
             continue
-        default = node.args[1]
+        default = node.args[-1]
         if not _falsy_literal(default):
             continue
         span = (
@@ -301,7 +330,7 @@ def _unobservable_get_default(
             continue
         return _falsy_replacement(
             _mutated_token(span, line_no, orig_line, mut_line)
-        ) and _only_boolean_uses(node)
+        ) and _only_boolean_uses(_outermost_lookup(node))
     return False
 
 

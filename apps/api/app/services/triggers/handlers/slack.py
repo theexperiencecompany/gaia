@@ -21,7 +21,7 @@ from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
-from app.utils.json_helpers import text_bag, text_opt_bag
+from app.utils.json_helpers import list_bag, text_bag, text_opt_bag
 from shared.py.wide_events import log
 
 
@@ -248,24 +248,18 @@ class SlackTriggerHandler(TriggerHandler):
                     # Get trigger_data
                     trigger_data = config_dict.get("trigger_data", {})
 
-                    # Filter by channel_ids if specified (list from the config
-                    # model, or comma-separated string from legacy stored configs)
-                    channel_ids_value = trigger_data.get("channel_ids")
-                    if isinstance(channel_ids_value, list):
-                        selected_channels = [
-                            c.strip() for c in channel_ids_value if isinstance(c, str) and c.strip()
-                        ]
-                    elif isinstance(channel_ids_value, str):
-                        selected_channels = [
-                            c.strip() for c in channel_ids_value.split(",") if c.strip()
-                        ]
-                    else:
-                        selected_channels = []
+                    # Filter by channel_ids if specified
+                    selected_channels = [
+                        c.strip()
+                        for c in list_bag(trigger_data, "channel_ids")
+                        if isinstance(c, str) and c.strip()
+                    ]
                     if selected_channels:
                         # Use typed payload model for type-safe access
                         try:
-                            payload = SlackReceiveMessagePayload.model_validate(data)
-                            message_channel = payload.channel or ""
+                            message_channel = SlackReceiveMessagePayload.model_validate(
+                                data
+                            ).channel
                         except Exception:
                             # Fallback to dict access if validation fails
                             message_channel = text_opt_bag(data, "channel") or text_bag(

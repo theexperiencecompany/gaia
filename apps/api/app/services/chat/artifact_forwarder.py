@@ -25,7 +25,7 @@ import contextlib
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TypedDict
 
 from redis.asyncio.client import PubSub
 
@@ -187,11 +187,7 @@ class ArtifactForwarder:
         registry: list[ArtifactRegistryEntry] = await get_conversation_artifacts(
             self.user_id, self.conversation_id
         )
-        self.registry_mtimes = {
-            text_bag(artifact, "path"): float_opt_bag(artifact, "mtime")
-            for artifact in registry
-            if isinstance(artifact, dict)
-        }
+        self.registry_mtimes = {artifact["path"]: artifact["mtime"] for artifact in registry}
 
     async def _consume(self, pubsub: PubSub) -> None:
         """Forward each artifact event; one bad event is logged, never fatal."""
@@ -407,9 +403,14 @@ def _parse_artifact_message(
         payload = json.loads(text_bag(message, "data"))
     except (ValueError, TypeError):
         return None
+    # Valid JSON that is not an object is still not an artifact event. This runs
+    # outside _consume's per-event guard, so letting one through would take the
+    # whole forwarder down rather than dropping a single message.
+    if not isinstance(payload, dict):
+        return None
     if payload.get("session_id") != conversation_id:
         return None
-    return cast(dict[str, object], payload)
+    return payload
 
 
 async def _close_pubsub(pubsub: PubSub, channel: str) -> None:

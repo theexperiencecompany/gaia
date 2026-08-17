@@ -630,7 +630,6 @@ async def get_settings(
                 "shape changed upstream"
             ),
             fix="Check UserDocument.created_at and the user_to_legacy_dict projection",
-            status_code=500,
         )
     account_created_at = created_at.isoformat() if created_at else None
 

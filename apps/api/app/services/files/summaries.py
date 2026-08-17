@@ -6,6 +6,8 @@ normalize that into the `(description, page_wise_summary)` pair stored in Mongo
 and render the human-readable `<file>.summary.md` sidecar.
 """
 
+from typing import cast
+
 from fastapi import HTTPException
 
 from app.models.files_models import DocumentSummaryModel, PageWiseSummary
@@ -13,6 +15,9 @@ from shared.py.wide_events import log
 
 # Raw output of `generate_file_summary`.
 GeneratedSummary = str | list[DocumentSummaryModel] | DocumentSummaryModel
+
+# A stored page's ``data`` block: `DocumentPageModel` after `model_dump(mode="json")`.
+PageData = dict[str, object]
 
 
 def process_summary(summary: object) -> tuple[str, PageWiseSummary]:
@@ -57,21 +62,15 @@ def render_summary_markdown(
 
     if isinstance(page_wise_summary, list):
         for page in page_wise_summary:
-            data = page.get("data")
-            parts += [
-                f"## Page {data.get('page_number', '?') if isinstance(data, dict) else '?'}",
-                "",
-            ]
-            raw_summary = page.get("summary")
-            if isinstance(raw_summary, str) and raw_summary:
-                parts += [f"**Summary:** {raw_summary.strip()}", ""]
-            if isinstance(data, dict) and data.get("content"):
+            data = cast(PageData, page.get("data", {}))
+            parts += [f"## Page {data.get('page_number', '?')}", ""]
+            if page.get("summary"):
+                parts += [f"**Summary:** {cast(str, page['summary']).strip()}", ""]
+            if data.get("content"):
                 parts += [str(data["content"]).strip(), ""]
     elif isinstance(page_wise_summary, dict):
-        data = page_wise_summary.get("data")
-        if isinstance(data, dict):
-            content = data.get("content")
-            if content:
-                parts += ["## Content", "", str(content).strip(), ""]
+        content = cast(PageData, page_wise_summary.get("data", {})).get("content")
+        if content:
+            parts += ["## Content", "", str(content).strip(), ""]
 
     return "\n".join(parts).rstrip() + "\n"

@@ -186,8 +186,18 @@ class TestNightlyJobComposition:
         manager = SimpleNamespace(pool=None)
 
         with patch.object(tasks, "get_checkpointer_manager", AsyncMock(return_value=manager)):
-            with pytest.raises(AppError, match="no connection pool"):
+            with pytest.raises(AppError) as excinfo:
                 await prune_checkpoint_versions({})
+
+        # The whole point of a structured error is the operator-facing context;
+        # a message alone leaves the on-call engineer with nothing to act on.
+        assert excinfo.value.message == (
+            "checkpointer manager has no connection pool — cannot prune"
+        )
+        assert excinfo.value.why == "pruning needs a live pool to scan and delete checkpoint rows"
+        assert excinfo.value.fix == (
+            "ensure the checkpointer manager was initialized (API startup) before this task runs"
+        )
 
 
 class TestSweepOrphanThreads:
@@ -204,8 +214,17 @@ class TestSweepOrphanThreads:
             ),
         ):
             pool = FakePool(cursor)
-            with pytest.raises(AppError, match="count query returned no rows"):
+            with pytest.raises(AppError) as excinfo:
                 await sweep_orphan_threads(pool, checkpointer)  # type: ignore[arg-type]
+
+        assert excinfo.value.message == "checkpoint count query returned no rows"
+        assert excinfo.value.why == (
+            "count(*) over the checkpoints table always yields exactly one row"
+        )
+        assert excinfo.value.fix == (
+            "investigate the checkpoints table/connection — a missing row means "
+            "the query or schema changed"
+        )
 
     async def test_count_row_feeds_the_deleted_checkpoints_total(self) -> None:
         cursor = FakeCursor([("orphan_tid",)])

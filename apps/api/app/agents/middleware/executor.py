@@ -91,7 +91,7 @@ def _apply_state_update(current_state: dict[str, object], update: Mapping[str, o
             # list. Bridged with checked container/value guards — elements pass
             # through unfiltered (RemoveMessage tombstones drive summarization
             # deletion), and a "messages" write is a Messages value by contract.
-            raw_messages = current_state.get("messages", [])
+            raw_messages = current_state.get("messages")
             current_state["messages"] = messages_delta_reducer(
                 cast(list[AnyMessage], raw_messages if isinstance(raw_messages, list) else []),
                 [cast(Messages, value)],

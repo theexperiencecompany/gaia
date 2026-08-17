@@ -17,7 +17,7 @@ import pytest
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel, FileDocument
 from app.services.files.service import FileService
 from app.services.files.store import index_file, insert_metadata, reindex_file
-from app.services.files.summaries import process_summary
+from app.services.files.summaries import process_summary, render_summary_markdown
 from app.utils.upload_validation import MAX_UPLOAD_BYTES
 
 
@@ -413,6 +413,108 @@ class TestProcessSummary:
         assert description == ""
         assert isinstance(page_wise, list)
         assert len(page_wise) == 0
+
+
+# ---------------------------------------------------------------------------
+# render_summary_markdown
+# ---------------------------------------------------------------------------
+
+
+class TestRenderSummaryMarkdown:
+    """The `<file>.summary.md` sidecar body, asserted as whole documents.
+
+    Inputs are the real stored shapes: `process_summary` output is what lands in
+    Mongo, so the fixtures are round-tripped through it rather than hand-rolled.
+    """
+
+    def test_header_only_when_no_description_or_pages(self):
+        assert render_summary_markdown("notes.txt", "text/plain", None, None) == (
+            "# Summary: notes.txt\n\n- Type: `text/plain`\n"
+        )
+
+    def test_description_renders_stripped_under_overview(self):
+        assert render_summary_markdown("notes.txt", "text/plain", "  Plain text.  ", None) == (
+            "# Summary: notes.txt\n\n- Type: `text/plain`\n\n## Overview\n\nPlain text.\n"
+        )
+
+    def test_empty_description_omits_overview_section(self):
+        assert "## Overview" not in render_summary_markdown("n.txt", "text/plain", "", None)
+
+    def test_page_list_renders_every_page_with_summary_and_content(
+        self, sample_document_summary_list
+    ):
+        description, page_wise = process_summary(sample_document_summary_list)
+        assert render_summary_markdown("doc.pdf", "application/pdf", description, page_wise) == (
+            "# Summary: doc.pdf\n"
+            "\n"
+            "- Type: `application/pdf`\n"
+            "\n"
+            "## Overview\n"
+            "\n"
+            "Summary of page 1. Summary of page 2.\n"
+            "\n"
+            "## Page 1\n"
+            "\n"
+            "**Summary:** Summary of page 1.\n"
+            "\n"
+            "Page 1 content\n"
+            "\n"
+            "## Page 2\n"
+            "\n"
+            "**Summary:** Summary of page 2.\n"
+            "\n"
+            "Page 2 content\n"
+        )
+
+    def test_page_missing_data_block_falls_back_to_unknown_page_number(self):
+        """A page with no ``data`` renders `## Page ?` rather than raising."""
+        assert render_summary_markdown(
+            "doc.pdf", "application/pdf", None, [{"summary": "Only a summary."}]
+        ) == (
+            "# Summary: doc.pdf\n"
+            "\n"
+            "- Type: `application/pdf`\n"
+            "\n"
+            "## Page ?\n"
+            "\n"
+            "**Summary:** Only a summary.\n"
+        )
+
+    def test_page_with_empty_summary_and_content_renders_heading_only(self):
+        assert render_summary_markdown(
+            "doc.pdf",
+            "application/pdf",
+            None,
+            [{"data": {"page_number": 7, "content": ""}, "summary": ""}],
+        ) == ("# Summary: doc.pdf\n\n- Type: `application/pdf`\n\n## Page 7\n")
+
+    def test_single_page_dict_renders_content_section(self, sample_document_summary_model):
+        description, page_wise = process_summary(sample_document_summary_model)
+        assert render_summary_markdown("doc.pdf", "application/pdf", description, page_wise) == (
+            "# Summary: doc.pdf\n"
+            "\n"
+            "- Type: `application/pdf`\n"
+            "\n"
+            "## Overview\n"
+            "\n"
+            "Summary of page 1\n"
+            "\n"
+            "## Content\n"
+            "\n"
+            "Page 1 content\n"
+        )
+
+    def test_single_page_dict_missing_data_block_omits_content_section(self):
+        assert render_summary_markdown(
+            "doc.pdf", "application/pdf", "Overview.", {"summary": "s"}
+        ) == ("# Summary: doc.pdf\n\n- Type: `application/pdf`\n\n## Overview\n\nOverview.\n")
+
+    def test_string_page_wise_summary_is_ignored(self):
+        """`PageWiseSummary` admits a bare str; neither page branch should fire."""
+        rendered = render_summary_markdown("n.txt", "text/plain", "Overview.", "stray text")
+        assert "stray text" not in rendered
+        assert "## Page" not in rendered
+        assert "## Content" not in rendered
 
 
 # ---------------------------------------------------------------------------

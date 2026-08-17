@@ -1,7 +1,9 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import ToolMessage
 import pytest
 
 from app.helpers.agent_helpers import (
@@ -620,7 +622,10 @@ class TestExecuteGraphSilent:
             {},
             {"configurable": {"user_id": USER_ID}},
         )
-        assert len(tool_data["tool_data"]) == 1
+        # The event payload itself must reach the extractor — hand it anything
+        # else and the turn silently stores no tool_data at all.
+        mock_process.assert_called_once_with({"some": "data"})
+        assert tool_data["tool_data"] == [{"tool_name": "custom_tool"}]
         assert tool_data["follow_up_actions"] == ["action1"]
 
     async def test_todo_progress_accumulated(self):
@@ -897,6 +902,128 @@ class TestExecuteGraphStreaming:
             results.append(s)
 
         assert any("[DONE]" in r for r in results)
+
+
+# ---------------------------------------------------------------------------
+# execute_graph_streaming — deferred mcp_app emission
+# ---------------------------------------------------------------------------
+
+MCP_SERVER_URL = "https://mcp.example.com/mcp"
+MCP_RESOURCE_URI = "ui://get-time/app.html"
+
+
+def _mcp_tool_entry() -> dict:
+    """A `format_tool_call_entry` result for a tool that carries MCP UI metadata."""
+    return {
+        "tool_name": "tool_calls_data",
+        "tool_category": "mcp",
+        "timestamp": "2025-01-01T00:00:00+00:00",
+        "mcp_ui": {"resource_uri": MCP_RESOURCE_URI, "csp": "default-src 'self'"},
+        "mcp_server_url": MCP_SERVER_URL,
+        "data": {
+            "tool_call_id": "tc-1",
+            "tool_name": "get_time",
+            "inputs": {"tz": "UTC"},
+        },
+    }
+
+
+def _mcp_app_frames(results: list[str]) -> list[dict]:
+    """The mcp_app events among the emitted SSE frames, decoded."""
+    frames = []
+    for raw in results:
+        if not raw.startswith("data: "):
+            continue
+        try:
+            parsed = json.loads(raw[len("data: ") :])
+        except json.JSONDecodeError:
+            continue
+        entry = parsed.get("tool_data") if isinstance(parsed, dict) else None
+        if isinstance(entry, dict) and entry.get("tool_name") == "mcp_app":
+            frames.append(entry)
+    return frames
+
+
+@pytest.mark.asyncio
+class TestExecuteGraphStreamingMcpApp:
+    """The mcp_app event is buffered on the tool call and emitted on its result.
+
+    The metadata is recorded when the tool *call* is seen and replayed when the
+    matching result arrives, so these drive both halves in one stream: a lookup
+    keyed on the wrong field strands the entry and the iframe never renders.
+    """
+
+    @patch("app.helpers.agent_helpers.fetch_mcp_ui_resource", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_tool_result_emits_the_buffered_mcp_app_event(
+        self, mock_sm, mock_format_entry, mock_fetch
+    ):
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+        mock_format_entry.return_value = _mcp_tool_entry()
+        mock_fetch.return_value = {"html": "<h1>12:00</h1>"}
+
+        ai_msg = MagicMock()
+        ai_msg.tool_calls = [{"id": "tc-1", "name": "get_time", "args": {"tz": "UTC"}}]
+        tool_msg = ToolMessage(content="12:00", tool_call_id="tc-1", name="get_time")
+
+        events = [
+            ((), "updates", {"agent": {"messages": [ai_msg]}}),
+            ((), "messages", (tool_msg, {"agent_name": "comms_agent"})),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {"user_id": USER_ID}}):
+            results.append(s)
+
+        mock_fetch.assert_awaited_once_with(
+            server_url=MCP_SERVER_URL,
+            resource_uri=MCP_RESOURCE_URI,
+            user_id=USER_ID,
+        )
+        frames = _mcp_app_frames(results)
+        assert len(frames) == 1
+        data = frames[0]["data"]
+        assert data["tool_call_id"] == "tc-1"
+        assert data["server_url"] == MCP_SERVER_URL
+        assert data["resource_uri"] == MCP_RESOURCE_URI
+        assert data["html_content"] == "<h1>12:00</h1>"
+        assert data["tool_arguments"] == {"tz": "UTC"}
+
+    @patch("app.helpers.agent_helpers.fetch_mcp_ui_resource", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_subagent_tool_output_emits_the_buffered_mcp_app_event(self, mock_sm, mock_fetch):
+        """Custom MCP tools run inside a subagent, so both halves arrive as
+        "custom" events rather than updates/messages.
+        """
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+        mock_fetch.return_value = {"html": "<h1>12:00</h1>"}
+
+        events = [
+            ((), "custom", {"tool_data": _mcp_tool_entry()}),
+            ((), "custom", {"tool_output": {"tool_call_id": "tc-1", "output": "12:00"}}),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = []
+        async for s in execute_graph_streaming(graph, {}, {"configurable": {"user_id": USER_ID}}):
+            results.append(s)
+
+        mock_fetch.assert_awaited_once_with(
+            server_url=MCP_SERVER_URL,
+            resource_uri=MCP_RESOURCE_URI,
+            user_id=USER_ID,
+        )
+        frames = _mcp_app_frames(results)
+        assert len(frames) == 1
+        data = frames[0]["data"]
+        assert data["tool_call_id"] == "tc-1"
+        assert data["server_url"] == MCP_SERVER_URL
+        assert data["resource_uri"] == MCP_RESOURCE_URI
+        assert data["tool_result"] == "12:00"
 
 
 # ---------------------------------------------------------------------------
