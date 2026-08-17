@@ -1036,15 +1036,33 @@ jobs:
               # This plus a 60s cadence brackets the moment of death.
               echo "sidecar alive pid=$$ $(date -u)" > diag-alive.txt
               _push_diag diag-alive.txt "sidecar-alive.txt"
+              # 10-second cadence with system vitals: the alive-marker landed
+              # and the first +60s snapshot never did, so the box goes from
+              # healthy to incapacitated in under a minute of mutmut starting.
+              # Each snapshot names the second it was taken and what was
+              # exploding — load, memory, disk, top consumers.
               i=0
-              while sleep 60; do
-                i=$((i+60))
+              while sleep 10; do
+                i=$((i+10))
                 # ps FIRST and pushed FIRST: py-spy ptrace-attaches, and
                 # attaching to the very D-state/unkillable process being
                 # hunted can hang — the cheap evidence must never queue
                 # behind the expensive evidence.
-                { echo "=== +${i}s $(date -u) ==="; ps auxwwf 2>/dev/null || ps auxww; echo "--- shard.log tail ---"; tail -c 30000 shard.log 2>/dev/null; } > diag-ps.txt 2>&1
+                {
+                  echo "=== +${i}s $(date -u) ==="
+                  uptime
+                  free -m 2>/dev/null
+                  df -h / /tmp 2>/dev/null
+                  echo "--- top by RSS ---"
+                  ps aux --sort=-rss 2>/dev/null | head -12
+                  echo "--- top by CPU ---"
+                  ps aux --sort=-pcpu 2>/dev/null | head -8
+                  echo "--- shard.log size + tail ---"
+                  ls -la shard.log 2>/dev/null
+                  tail -c 15000 shard.log 2>/dev/null
+                } > diag-ps.txt 2>&1
                 _push_diag diag-ps.txt "ps-plus-${i}s.txt"
+                [ "$i" -lt 60 ] && continue
                 {
                   for pid in $(pgrep -f 'python|mutmut'); do
                     echo "## pid $pid: $(ps -p "$pid" -o stat=,args= 2>/dev/null | cut -c1-200)"
