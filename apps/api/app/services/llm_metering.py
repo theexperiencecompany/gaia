@@ -28,7 +28,6 @@ from langchain_core.messages import AIMessage
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.constants.log_tags import LogTag
-from app.models.agent_models import AgentConfigurable, lane_model_name
 from app.services.cost_budget import record_model_call_usage
 from shared.py.wide_events import log
 
@@ -162,41 +161,12 @@ def extract_message_usage(message: AIMessage) -> TokenUsage:
     )
 
 
-async def record_graph_model_call(
-    message: AIMessage, configurable: AgentConfigurable, *, agent_name: str
-) -> tuple[TokenUsage, float]:
-    """Price + record one agent-graph model call from its AIMessage. Returns
-    ``(usage, cost_usd)``.
+def extract_message_model(message: AIMessage) -> str:
+    """The model the provider says served this call, or ``UNKNOWN_MODEL_NAME``.
 
-    The single seam for graph spend: it charges the user's day/month budget and
-    counts toward the request tree's token ceiling, because a graph call is work
-    the user asked for. Both graph callers go through here — the accounting
-    middleware for the call whose message lands in state, and
-    ``ainvoke_llm``'s sticky-flip replay for the first invocation it discards
-    (the provider billed that one too, so nothing else would ever see it).
+    For the one seam that cannot reach the lane: ``lane`` imports ``client``, so
+    ``client`` cannot import ``ModelLane`` back. Everywhere else resolves the
+    lane at the call site, the way ``accounting`` does.
     """
-    usage = extract_message_usage(message)
-    model_name = lane_model_name(configurable)
-    user_id = configurable.get("user_id")
-    root_request_id = configurable.get("root_request_id")
-
-    if model_name == UNKNOWN_MODEL_NAME:
-        # An unnamed model is priced at DEFAULT_PRICING — ~11x the real rate
-        # for our default model — so this must never pass silently.
-        log.error(
-            f"{LogTag.AGENT} model name missing from configurable — call will be mispriced",
-            agent_name=agent_name,
-            configurable_keys=sorted(configurable.keys()),
-        )
-
-    cost = await record_llm_call(
-        user_id=str(user_id) if user_id else None,
-        model_name=str(model_name),
-        input_tokens=usage["input_tokens"],
-        output_tokens=usage["output_tokens"],
-        cached_tokens=usage["cached_tokens"],
-        reasoning_tokens=usage["reasoning_tokens"],
-        root_request_id=str(root_request_id) if root_request_id else None,
-        charge_to_budget=True,
-    )
-    return usage, cost
+    resp_meta = getattr(message, "response_metadata", None) or {}
+    return str(resp_meta.get("model_name") or "") or UNKNOWN_MODEL_NAME

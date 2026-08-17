@@ -58,7 +58,7 @@ from app.services.cost_budget import (
     get_budget_stop_reason,
     is_budget_wrapup_threshold,
 )
-from app.services.llm_metering import record_graph_model_call
+from app.services.llm_metering import extract_message_usage, record_llm_call
 from shared.py.wide_events import ModelContext, log
 
 
@@ -310,13 +310,22 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # actively asked for, so it charges the budget. Auxiliary one-shot calls
         # reach the same helper via ``ainvoke_structured`` with
         # ``charge_to_budget=False`` (COGS observability only).
-        usage, total_cost = await record_graph_model_call(
-            ai_msg, configurable, agent_name=self.agent_name
-        )
+        usage = extract_message_usage(ai_msg)
         input_tokens = usage["input_tokens"]
         output_tokens = usage["output_tokens"]
         cached_tokens = usage["cached_tokens"]
         reasoning_tokens = usage["reasoning_tokens"]
+        root_request_id = configurable.get("root_request_id")
+        total_cost = await record_llm_call(
+            user_id=str(user_id) if user_id else None,
+            model_name=str(model_name),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            reasoning_tokens=reasoning_tokens,
+            root_request_id=str(root_request_id) if root_request_id else None,
+            charge_to_budget=True,
+        )
 
         step_index = self._next_step(thread_id)
         start = self._start_ts.pop(thread_id, None)

@@ -2,9 +2,9 @@
 seam both metering routes share.
 
 Covers ``extract_message_usage`` (the AIMessage -> token counts read, including
-every provider-shape fallback), ``record_graph_model_call`` (the agent-graph
-route: charges the budget and counts toward the request tree's ceiling), and
-``record_llm_call`` itself (the funnel both routes price through).
+every provider-shape fallback), ``extract_message_model`` (the model the
+provider says served the call), and ``record_llm_call`` itself (the funnel every
+metering route prices through).
 """
 
 from typing import Any
@@ -15,8 +15,8 @@ from langchain_core.messages import AIMessage
 from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.models.agent_models import AgentConfigurable
 from app.services.llm_metering import (
+    extract_message_model,
     extract_message_usage,
-    record_graph_model_call,
     record_llm_call,
 )
 
@@ -154,83 +154,29 @@ def test_missing_input_token_details_does_not_raise() -> None:
     assert extract_message_usage(message)["cached_tokens"] == 0
 
 
-# --- record_graph_model_call -------------------------------------------------- #
+# --- extract_message_model ----------------------------------------------------- #
 
 
-@patch("app.services.llm_metering.record_llm_call", new_callable=AsyncMock)
-async def test_graph_spend_charges_the_budget_and_the_request_tree(
-    mock_record: AsyncMock,
-) -> None:
-    mock_record.return_value = 0.004
-    configurable: AgentConfigurable = {
-        "user_id": "u1",
-        # The RUN'S LANE is what the call is priced against — the same object
-        # the request was bound from, so metering can never disagree with what
-        # actually ran.
-        "lane": {"provider": "openrouter", "model": "some/model"},
-        "root_request_id": "req-1",
-    }
+def test_the_model_is_read_from_what_the_provider_reported() -> None:
+    """The response is the only account of what actually RAN. A provider that
+    fell back serves a different model than the lane asked for, and the spend
+    belongs to the one that answered."""
+    message = AIMessage(content="hi", response_metadata={"model_name": "served/model"})
 
-    usage, cost = await record_graph_model_call(
-        _ai(input_tokens=1_000, output_tokens=50, cached=800), configurable, agent_name="comms"
+    assert extract_message_model(message) == "served/model"
+
+
+def test_a_response_with_no_model_is_unknown_rather_than_guessed() -> None:
+    """``unknown`` prices at DEFAULT_PRICING instead of a real rate, so the
+    metering seams log it loudly; silently substituting a plausible default
+    would hide the miss."""
+    assert extract_message_model(AIMessage(content="hi")) == UNKNOWN_MODEL_NAME
+    assert extract_message_model(AIMessage(content="hi", response_metadata={})) == (
+        UNKNOWN_MODEL_NAME
     )
-
-    assert cost == 0.004
-    assert usage == {
-        "input_tokens": 1_000,
-        "output_tokens": 50,
-        "cached_tokens": 800,
-        "reasoning_tokens": 0,
-    }
-    mock_record.assert_awaited_once_with(
-        user_id="u1",
-        model_name="some/model",
-        input_tokens=1_000,
-        output_tokens=50,
-        cached_tokens=800,
-        reasoning_tokens=0,
-        root_request_id="req-1",
-        charge_to_budget=True,
-    )
-
-
-@patch("app.services.llm_metering.record_llm_call", new_callable=AsyncMock)
-async def test_a_bag_with_no_lane_prices_as_unknown_rather_than_guessing(
-    mock_record: AsyncMock,
-) -> None:
-    """LangChain's own binding keys are the lane's EXPANSION, not the decision,
-    and a bag written before lanes existed (an in-flight queue item, a stored HIL
-    resume) carries them without one. Reading them here would meter a call against
-    a key nothing keeps in sync with the lane; ``unknown`` is loud instead."""
-    mock_record.return_value = 0.0
-
-    await record_graph_model_call(_ai(), {"model": "legacy/id"}, agent_name="executor")
-
-    assert mock_record.await_args.kwargs["model_name"] == UNKNOWN_MODEL_NAME
-
-
-@patch("app.services.llm_metering.record_llm_call", new_callable=AsyncMock)
-async def test_missing_model_name_is_surfaced_loudly(mock_record: AsyncMock) -> None:
-    """An unnamed model prices at DEFAULT_PRICING — ~11x the real rate — so it
-    must never pass silently."""
-    mock_record.return_value = 0.0
-
-    # A populated configurable that simply lacks the model: the keys it DOES
-    # carry are what tells whoever reads the error where the name went missing.
-    configurable = {"provider": "openrouter", "thread_id": "t-1"}
-    with patch("app.services.llm_metering.log") as mock_log:
-        await record_graph_model_call(_ai(), configurable, agent_name="executor")
-
-    mock_log.error.assert_called_once()
-    message = mock_log.error.call_args.args[0]
-    assert "model name missing from configurable" in message
-    assert "mispriced" in message
-    assert mock_log.error.call_args.kwargs == {
-        "agent_name": "executor",
-        "configurable_keys": ["provider", "thread_id"],
-    }
-    assert mock_record.await_args.kwargs["model_name"] == UNKNOWN_MODEL_NAME
-    assert mock_record.await_args.kwargs["user_id"] is None
+    assert extract_message_model(
+        AIMessage(content="hi", response_metadata={"model_name": ""})
+    ) == UNKNOWN_MODEL_NAME
 
 
 # --- record_llm_call ---------------------------------------------------------- #

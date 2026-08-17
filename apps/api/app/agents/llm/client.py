@@ -55,8 +55,12 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.models.agent_models import agent_configurable, lane_model_name
-from app.services.llm_metering import record_graph_model_call, record_llm_call
+from app.models.agent_models import agent_configurable
+from app.services.llm_metering import (
+    extract_message_model,
+    extract_message_usage,
+    record_llm_call,
+)
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
@@ -592,14 +596,30 @@ async def _meter_discarded_replay(
     if usage_handler is not None or not isinstance(discarded, AIMessage):
         return
     configurable = agent_configurable(config)
-    usage, cost = await record_graph_model_call(discarded, configurable, agent_name=label)
+    usage = extract_message_usage(discarded)
+    # The provider's own account of what it served. This seam cannot resolve the
+    # lane the way accounting does — ``lane`` imports this module, so importing
+    # ModelLane back would close the cycle.
+    model_name = extract_message_model(discarded)
+    user_id = configurable.get("user_id")
+    root_request_id = configurable.get("root_request_id")
+    cost = await record_llm_call(
+        user_id=str(user_id) if user_id else None,
+        model_name=model_name,
+        input_tokens=usage["input_tokens"],
+        output_tokens=usage["output_tokens"],
+        cached_tokens=usage["cached_tokens"],
+        reasoning_tokens=usage["reasoning_tokens"],
+        root_request_id=str(root_request_id) if root_request_id else None,
+        charge_to_budget=True,
+    )
     log.info(
         "llm_call",
         llm_event="llm_call",
         sticky_flip_discarded=True,
         agent_name=label,
-        model=lane_model_name(configurable),
-        user_id=configurable.get("user_id"),
+        model=model_name,
+        user_id=user_id,
         input_tokens=usage["input_tokens"],
         cached_tokens=usage["cached_tokens"],
         output_tokens=usage["output_tokens"],

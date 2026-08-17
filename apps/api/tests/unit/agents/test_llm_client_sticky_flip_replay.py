@@ -24,6 +24,7 @@ from app.agents.llm.client import ainvoke_llm
 def _usage_message(content: str, *, prompt: int, cached: int) -> AIMessage:
     return AIMessage(
         content=content,
+        response_metadata={"model_name": "served/model"},
         usage_metadata={
             "input_tokens": prompt,
             "output_tokens": 5,
@@ -52,17 +53,9 @@ class TestStickyFlipReplayAccounting:
         return runnable
 
     @pytest.mark.regression
-    @patch("app.agents.llm.client.record_graph_model_call", new_callable=AsyncMock)
+    @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
     async def test_discarded_first_invocation_is_metered(self, mock_record: AsyncMock) -> None:
-        mock_record.return_value = (
-            {
-                "input_tokens": 10_000,
-                "output_tokens": 5,
-                "cached_tokens": 0,
-                "reasoning_tokens": 0,
-            },
-            0.004,
-        )
+        mock_record.return_value = 0.004
         primary = self._flipping_primary()
 
         result = await ainvoke_llm(
@@ -75,14 +68,19 @@ class TestStickyFlipReplayAccounting:
 
         assert result.content == "warm"
         mock_record.assert_awaited_once()
-        metered_message, configurable = mock_record.await_args.args
-        assert metered_message.content == "cold"
-        assert configurable["root_request_id"] == "r1"
-        # Booked against the agent that made the call — unattributed spend
-        # cannot be split out of COGS afterwards.
-        assert mock_record.await_args.kwargs["agent_name"] == "comms_agent"
+        charged = mock_record.await_args.kwargs
+        # The DISCARDED invocation is the one being paid for: it is the cold
+        # call, so none of its input was cached.
+        assert charged["cached_tokens"] == 0
+        assert charged["input_tokens"] == 10_000
+        assert charged["root_request_id"] == "r1"
+        assert charged["user_id"] == "u1"
+        # Priced against what the provider reported serving, not what the run
+        # asked for — a fallback bills the model that actually answered.
+        assert charged["model_name"] == "served/model"
+        assert charged["charge_to_budget"] is True
 
-    @patch("app.agents.llm.client.record_graph_model_call", new_callable=AsyncMock)
+    @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
     async def test_no_replay_means_no_extra_metering(self, mock_record: AsyncMock) -> None:
         runnable = NonCallableMagicMock()
         runnable.with_retry = MagicMock(return_value=runnable)
@@ -95,7 +93,7 @@ class TestStickyFlipReplayAccounting:
         assert runnable.ainvoke.await_count == 1
         mock_record.assert_not_awaited()
 
-    @patch("app.agents.llm.client.record_graph_model_call", new_callable=AsyncMock)
+    @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
     async def test_auxiliary_lane_is_left_to_its_usage_handler(
         self, mock_record: AsyncMock
     ) -> None:
