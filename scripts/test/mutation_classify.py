@@ -102,11 +102,41 @@ def _normalized(lines: list[str]) -> list[str]:
     still maps a differing line back to the real file.
     """
 
-    def _blank(match: re.Match[str]) -> str:
-        return "cast(" + "\n" * match.group(1).count("\n") + "_,"
-
-    joined = re.sub(r"cast\((\s*[^,()]+),", _blank, "\n".join(lines))
-    return joined.split("\n")
+    joined = "\n".join(lines)
+    out: list[str] = []
+    pos = 0
+    while (start := joined.find("cast(", pos)) != -1:
+        # Scan the FIRST argument with bracket/quote balancing: a type arg
+        # like ``dict[str, object] | None`` (or a quoted forward ref) holds
+        # commas a regex stops at, and a half-blanked cast then reads as a
+        # real change.
+        i = start + len("cast(")
+        depth = 0
+        quote: str | None = None
+        while i < len(joined):
+            ch = joined[i]
+            if quote:
+                if ch == quote and joined[i - 1] != "\\":
+                    quote = None
+            elif ch in "\"'":
+                quote = ch
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                if depth == 0:
+                    break  # cast with one argument — not ours to touch
+                depth -= 1
+            elif ch == "," and depth == 0:
+                break
+            i += 1
+        if i < len(joined) and joined[i] == ",":
+            arg = joined[start + len("cast(") : i]
+            out.append(joined[pos:start] + "cast(" + "\n" * arg.count("\n") + "_")
+        else:
+            out.append(joined[pos : i])
+        pos = i
+    out.append(joined[pos:])
+    return "".join(out).split("\n")
 
 
 orig_raw = _body(orig_name)
