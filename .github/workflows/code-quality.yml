@@ -1122,7 +1122,15 @@ jobs:
           # survived (detached-session stragglers escape tree- and group-based
           # kills) dies by NAME here, so nothing can outlive this step.
           pkill -9 -f 'mutmut|\.mutation-' 2>/dev/null || true
-          cat shard.log
+          # tail, NEVER cat: with mutmut's debug on, a busy module writes a
+          # 13MB shard.log, and feeding that through the runner's live-log
+          # pipe is where this step actually froze — mutation.sh had finished
+          # (its EXIT trap had already removed the workdir) and the job then
+          # sat at the cat for 35 minutes until the cap cancelled it, which
+          # also destroyed the logs that proved all of this. The full file
+          # ships as the artifact below.
+          echo "--- shard.log (last 200KB; full file in the artifact) ---"
+          tail -c 200000 shard.log
           if [ "$rc" = "137" ] || [ "$rc" = "124" ]; then
             echo "::error::mutation shard for $MODULE exceeded 25 minutes and was killed by timeout(1) — see the log above for the last phase reached"
           fi
