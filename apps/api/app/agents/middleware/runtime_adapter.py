@@ -8,10 +8,11 @@ with our langgraph_bigtool-based agent state.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import cast
 
 from langchain.agents.middleware.types import (
     AgentState,
+    JumpTo,
     ModelRequest,
     ToolCallRequest,
 )
@@ -36,18 +37,12 @@ def _noop_stream_writer(_: object) -> None:
 
 def to_agent_state(state: State | dict[str, object]) -> AgentState[object]:
     """Convert graph state into LangChain AgentState-compatible shape."""
-    raw_messages = state.get("messages", [])
     agent_state: AgentState[object] = AgentState(
-        # Container-guarded, elements unfiltered (RemoveMessage tombstones drive
-        # summarization deletion); bridged to the adapter's narrower type.
-        messages=cast(list[AnyMessage], raw_messages if isinstance(raw_messages, list) else [])
+        messages=list(cast(list[AnyMessage], state.get("messages", [])))
     )
     jump_to = state.get("jump_to")
-    if isinstance(jump_to, str):
-        if jump_to in {"tools", "model", "end"}:
-            # The membership check proves the value is one of the three literals;
-            # mypy cannot narrow a str through `in`, so the checked value is bridged.
-            agent_state["jump_to"] = cast(Literal["tools", "model", "end"], jump_to)
+    if jump_to in {"tools", "model", "end"}:
+        agent_state["jump_to"] = cast(JumpTo, jump_to)
     if "structured_response" in state:
         agent_state["structured_response"] = state["structured_response"]
     return agent_state

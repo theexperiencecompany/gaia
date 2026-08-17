@@ -169,6 +169,12 @@ class TestGetOrCreateSession:
         result = await BotService.get_or_create_session("discord", "user123", None, sample_user)
 
         assert result == "conv-existing"
+        # The existence probe is scoped to the session's own conversation AND to
+        # the owning user — a probe missing either would reuse someone else's
+        # thread (or recreate one that already exists).
+        mock_conversations.exists.assert_awaited_once_with(
+            "conv-existing", user_id=sample_user["user_id"]
+        )
 
     async def test_creates_new_session_when_no_existing(
         self,

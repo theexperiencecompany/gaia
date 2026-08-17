@@ -158,7 +158,10 @@ class TestSubagentMiddlewareInit:
         mw = _make_middleware()
         assert mw._tool_runtime_config.enable_retrieve_tools is True
         assert mw._tool_runtime_config.include_subagents_in_retrieve is False
-        assert "read" in mw._tool_runtime_config.initial_tool_names
+        # A spawn boots with read AND bash already resolved; anything else it
+        # needs it retrieves. Pinned exactly — a dropped default is a subagent
+        # that cannot touch the filesystem until it goes looking for the tool.
+        assert mw._tool_runtime_config.initial_tool_names == ["read", "bash"]
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +355,9 @@ class TestSpawnSubagentTool:
         ctx = h.execute.await_args.kwargs["ctx"]
         assert ctx.config["configurable"]["thread_id"] == "spawn_conv-9_call_abc"
         assert ctx.initial_state["selected_tool_ids"] == ["read"]
+        # The spawn runs as the SAME person as its parent — a dropped or blanked
+        # user_id would run the subagent against nobody's data.
+        assert ctx.config["configurable"]["user_id"] == "u1"
 
 
 # ---------------------------------------------------------------------------

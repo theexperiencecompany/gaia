@@ -582,10 +582,8 @@ async def execute_workflow_as_chat(
     user_id = user["user_id"]
 
     # The caller loaded this workflow from the DB, so its id is set; the model
-    # keeps it Optional for not-yet-persisted docs.
-    task_id = workflow.id
-    if task_id is None:
-        raise RuntimeError(f"cannot execute workflow without an id: {workflow!r}")
+    # keeps it Optional only for not-yet-persisted docs.
+    task_id = cast(str, workflow.id)
 
     try:
         log.info(

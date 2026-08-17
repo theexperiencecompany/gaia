@@ -315,7 +315,7 @@ def block_to_markdown(block: dict[str, object]) -> str:
         return _bullet(parsed_data, number)
 
     if block_type == "to_do":
-        checked = bool_bag(dict_bag(block, "to_do"), "checked", False)
+        checked = bool_bag(dict_bag(block, "to_do"), "checked")
         return _todo(parsed_data, checked)
 
     if block_type == "toggle":
@@ -440,7 +440,7 @@ def simplify_block(block: dict[str, object]) -> dict[str, object]:
     elif block_type == "child_database":
         simplified["title"] = text_bag(dict_bag(block, "child_database"), "title")
     elif block_type == "to_do":
-        simplified["checked"] = bool_bag(dict_bag(block, "to_do"), "checked", False)
+        simplified["checked"] = bool_bag(dict_bag(block, "to_do"), "checked")
     elif block_type == "code":
         simplified["language"] = text_bag(dict_bag(block, "code"), "language")
     elif block_type in ["image", "video", "file", "pdf"]:

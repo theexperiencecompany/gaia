@@ -9,7 +9,7 @@ bubbles that pause up to the parent, exactly as ``handoff`` does.
 
 from collections.abc import Callable, Mapping, Sequence
 import time
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, Protocol, cast
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -116,14 +116,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, None, object]):
         self._excluded_tools.add("spawn_subagent")
         self._tool_space = tool_space
         self._store: BaseStore | None = store
-        self._tool_runtime_config = (
-            tool_runtime_config
-            if tool_runtime_config
-            else ToolRuntimeConfig(
-                initial_tool_names=["read", "bash"],
-                enable_retrieve_tools=True,
-                include_subagents_in_retrieve=False,
-            )
+        self._tool_runtime_config = tool_runtime_config or ToolRuntimeConfig(
+            initial_tool_names=["read", "bash"],
+            enable_retrieve_tools=True,
+            include_subagents_in_retrieve=False,
         )
 
         self.tools = [self._create_spawn_subagent_tool()]
@@ -275,9 +271,9 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, None, object]):
         outcome = recovered or await execute_subagent_stream(
             ctx=ctx, stream_writer=writer, subagent_id=sa_id
         )
-        while outcome.paused:
-            if outcome.interrupt is None:
-                raise RuntimeError("paused subagent run without an interrupt payload")
+        # ``outcome.paused`` IS ``interrupt is not None``; spelling it out is what
+        # narrows the payload for the ``resume_for_gate`` call below.
+        while outcome.interrupt is not None:
             decision = resume_for_gate(outcome.interrupt)
             outcome = await execute_subagent_stream(
                 ctx=ctx,
@@ -301,7 +297,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, None, object]):
             raise ValueError("Spawn graph not configured for subagent execution")
 
         configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") or ""
+        user_id = cast(str, configurable.get("user_id"))
         conversation_id = str(configurable.get("conversation_id") or "")
 
         middleware_factory = self._spawn_middleware_factory

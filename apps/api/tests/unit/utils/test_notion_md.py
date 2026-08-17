@@ -477,6 +477,27 @@ class TestBlockToMarkdown:
         }
         assert block_to_markdown(block) == "Hello world"
 
+    def test_legacy_text_key_is_read_when_rich_text_is_absent(self) -> None:
+        """Older Notion payloads spell the run list ``text``. Dropping that
+        fallback renders those blocks as empty strings with no error."""
+        block = {
+            "type": "paragraph",
+            "paragraph": {
+                "text": [{"type": "text", "plain_text": "From the legacy key", "annotations": {}}]
+            },
+        }
+        assert block_to_markdown(block) == "From the legacy key"
+
+    def test_rich_text_wins_over_the_legacy_text_key(self) -> None:
+        block = {
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "plain_text": "current", "annotations": {}}],
+                "text": [{"type": "text", "plain_text": "legacy", "annotations": {}}],
+            },
+        }
+        assert block_to_markdown(block) == "current"
+
     def test_heading_1(self) -> None:
         block = {
             "type": "heading_1",
@@ -809,6 +830,15 @@ class TestBlocksToMarkdown:
             }
         ]
         assert blocks_to_markdown(blocks) == "Hello"
+
+    def test_a_non_object_numbered_list_payload_names_the_type_it_got(self) -> None:
+        """Numbering writes back into the payload, so a non-object there is a
+        malformed page. The error must name what arrived or the report is
+        useless for finding the bad block."""
+        blocks = [{"type": "numbered_list_item", "numbered_list_item": "not-an-object"}]
+
+        with pytest.raises(TypeError, match="numbered_list_item payload is str, not an object"):
+            blocks_to_markdown(blocks)
 
     def test_numbered_list_index_tracking(self) -> None:
         blocks = [
@@ -1204,6 +1234,23 @@ class TestExtractPlainText:
             }
         ]
         assert extract_plain_text(blocks) == "Hello"
+
+    def test_runs_within_one_block_join_with_no_separator(self) -> None:
+        """Notion splits a styled sentence into several runs. Joining them with
+        anything but "" inserts characters the page never contained."""
+        blocks = [
+            {
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {"plain_text": "Hello, "},
+                        {"plain_text": "world"},
+                        {"plain_text": "!"},
+                    ]
+                },
+            }
+        ]
+        assert extract_plain_text(blocks) == "Hello, world!"
 
     def test_multiple_blocks(self) -> None:
         blocks = [

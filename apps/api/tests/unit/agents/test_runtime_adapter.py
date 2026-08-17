@@ -29,8 +29,14 @@ def _state(**extra: Any) -> dict[str, Any]:
 
 class TestToAgentState:
     def test_copies_messages(self) -> None:
-        agent_state = to_agent_state(_state())
+        state = _state()
+        agent_state = to_agent_state(state)
         assert agent_state["messages"] == [SYSTEM, HUMAN]
+        assert agent_state["messages"] is not state["messages"]
+
+    def test_missing_messages_becomes_an_empty_list(self) -> None:
+        agent_state = to_agent_state({})
+        assert agent_state["messages"] == []
 
     def test_valid_jump_to_is_carried_through(self) -> None:
         for jump_to in ("tools", "model", "end"):

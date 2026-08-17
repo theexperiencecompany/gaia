@@ -9,8 +9,8 @@ from app.db.rabbitmq import get_rabbitmq_publisher, init_rabbitmq_publisher
 
 @pytest.mark.asyncio
 async def test_loader_builds_publisher_from_settings_and_connects() -> None:
-    """The registered loader constructs the publisher with RABBITMQ_URL (empty
-    string when unset) and connects it before it is handed out."""
+    """The registered loader constructs the publisher with RABBITMQ_URL and
+    connects it before it is handed out."""
     publisher = MagicMock()
     publisher.connect = AsyncMock()
     with (
@@ -27,6 +27,15 @@ async def test_loader_builds_publisher_from_settings_and_connects() -> None:
     assert result is publisher
     ctor.assert_called_once_with("amqp://broker/")
     publisher.connect.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_publisher_returns_the_instance_under_its_provider_key() -> None:
+    publisher = MagicMock()
+    aget = AsyncMock(return_value=publisher)
+    with patch("app.db.rabbitmq.providers.aget", aget):
+        assert await get_rabbitmq_publisher() is publisher
+    aget.assert_awaited_once_with("rabbitmq_publisher")
 
 
 @pytest.mark.asyncio

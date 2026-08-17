@@ -169,6 +169,17 @@ class TestProcessForecastData:
         result = process_forecast_data(_make_forecast_data(items))
         assert len(result) == 1
 
+    def test_non_object_entries_are_skipped_not_terminal(self) -> None:
+        """A junk entry in OpenWeatherMap's list must skip that entry only —
+        the valid days after it still have to be summarised."""
+        items: list[Any] = [
+            "not-an-object",
+            _make_forecast_item("2024-01-15", "12:00:00", 12.0, 60, "Clear", "clear sky", "01d"),
+            _make_forecast_item("2024-01-16", "12:00:00", 14.0, 55, "Rain", "light rain", "10d"),
+        ]
+        result = process_forecast_data(_make_forecast_data(items))
+        assert [day["date"] for day in result] == ["2024-01-15", "2024-01-16"]
+
     def test_icon_matches_most_common_condition(self) -> None:
         """Icon should come from an item whose main condition == most_common_condition."""
         items = [
@@ -388,9 +399,9 @@ class TestGetLocationData:
             new_callable=AsyncMock,
             return_value=geocode_result,
         ):
-            result = await get_location_data(location_name="Tunbridge Wells")
+            result = await get_location_data(location_name="tunbridge wells kent")
 
-        # city extracted from display_name split
+        # city is the first display_name segment, NOT the raw query the caller typed
         assert result["city"] == "Tunbridge Wells"
 
     async def test_location_name_missing_city_and_display_name(self) -> None:
@@ -562,6 +573,14 @@ class TestPrepareWeatherData:
         assert result["location"]["city"] == "London"
         assert result["location"]["country"] == "GB"
         assert result["location"]["region"] == "England"
+
+    async def test_sys_country_from_the_api_wins_over_geolocation(self) -> None:
+        """The country the weather API reported is only *filled in* when absent —
+        a geolocation guess must never overwrite it."""
+        current = _make_current_weather(country="GB")
+        loc = {"city": "Calais", "country": "FR", "region": "Hauts-de-France"}
+        result = await self._call(loc, current_weather=current)
+        assert result["sys"]["country"] == "GB"
 
     async def test_sys_present_but_missing_country_uses_location_country(self) -> None:
         current = _make_current_weather()

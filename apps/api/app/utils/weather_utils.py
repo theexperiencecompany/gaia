@@ -56,7 +56,7 @@ async def prepare_weather_data(
     else:
         # Create a minimal sys object if it doesn't exist
         current_weather["sys"] = {
-            "country": country if country else "",
+            "country": country or "",
             "sunrise": int(datetime.datetime.now(datetime.UTC).timestamp()),
             "sunset": int(datetime.datetime.now(datetime.UTC).timestamp() + 43200),  # +12 hours
         }
@@ -195,9 +195,7 @@ async def user_weather(location_name: str | None = None) -> dict[str, object] | 
             cache_key = text_bag(location_data, "cache_key")
 
             cached_weather = await get_cache(cache_key)
-            if not isinstance(cached_weather, dict):
-                cached_weather = None
-            if cached_weather:
+            if isinstance(cached_weather, dict):
                 log.debug(
                     f"{LogTag.TOOL} Using cached weather data for location",
                     cached_weather=cached_weather,
@@ -250,12 +248,11 @@ def process_forecast_data(forecast_data: dict[str, object]) -> list[dict[str, ob
         List[Dict]: List of daily forecast summaries
     """
 
-    daily_data = defaultdict(list)
+    daily_data: defaultdict[str, list[dict[str, object]]] = defaultdict(list)
 
-    for raw_item in list_bag(forecast_data, "list"):
-        if not isinstance(raw_item, dict):
+    for item in list_bag(forecast_data, "list"):
+        if not isinstance(item, dict):
             continue
-        item = raw_item
         # Convert timestamp to date string (YYYY-MM-DD)
         dt_txt = text_bag(item, "dt_txt")
         if dt_txt:
@@ -265,13 +262,8 @@ def process_forecast_data(forecast_data: dict[str, object]) -> list[dict[str, ob
     # Create a summary for each day
     daily_forecasts = []
 
+    # Every key exists because an item was appended to it, so `items` is never empty.
     for date, items in daily_data.items():
-        if not items:
-            continue
-        items = [i for i in items if isinstance(i, dict)]
-        if not items:
-            continue
-
         # Calculate min and max temperatures for the day
         temps = [float_bag(dict_bag(item, "main"), "temp") for item in items]
         min_temp = min(temps)

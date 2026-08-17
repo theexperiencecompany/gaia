@@ -16,6 +16,7 @@ from app.services.workflow.notifications import (
 )
 from app.utils.errors import AppError
 from app.workers.tasks.workflow_tasks import (
+    _quota_exhausted_body,
     execute_workflow_as_chat,
     execute_workflow_by_id,
     generate_workflow_steps,
@@ -209,7 +210,14 @@ class TestExecuteWorkflowById:
 
     @pytest.mark.parametrize(
         "context,expected_trigger_type",
-        [({"trigger_type": "scheduled"}, "scheduled"), (None, "manual")],
+        [
+            ({"trigger_type": "scheduled"}, "scheduled"),
+            (None, "manual"),
+            # A context carrying other keys but no trigger_type: the run is
+            # still a manual one, and the execution record must say so rather
+            # than record a blank trigger.
+            ({"workflow_id": "wf-1"}, "manual"),
+        ],
     )
     async def test_trigger_type_from_context(self, ctx, context, expected_trigger_type):
         workflow = _make_workflow()
@@ -401,8 +409,10 @@ class TestProcessWorkflowGenerationTask:
         assert payload["type"] == "workflow.generation_failed"
         assert payload["todo_id"] == todo_id
 
-    async def test_empty_description_uses_no_details_section(self, ctx):
-        """When description is empty the prompt template omits the details section."""
+    @pytest.mark.parametrize("description_kwargs", [{"description": ""}, {}])
+    async def test_empty_description_uses_no_details_section(self, ctx, description_kwargs):
+        """When description is empty — passed blank or left to the default — the
+        prompt template omits the details section."""
         # Must be a valid 24-char hex ObjectId string because production code
         # calls ObjectId(todo_id) before the mocked update_one is invoked.
         todo_id = "507f1f77bcf86cd799439013"
@@ -433,7 +443,7 @@ class TestProcessWorkflowGenerationTask:
             mock_ws_mgr.return_value = mock_ws
 
             await process_workflow_generation_task(
-                ctx, todo_id, user_id, "Buy groceries", description=""
+                ctx, todo_id, user_id, "Buy groceries", **description_kwargs
             )
 
         assert len(captured_requests) == 1
@@ -945,6 +955,74 @@ class TestWorkflowNotificationSenders:
         mock_notif.create_notification.assert_awaited_once()
         notif_req = mock_notif.create_notification.call_args[0][0]
         assert notif_req.source == NotificationSourceEnum.WORKFLOW_FAILED
+
+
+# ---------------------------------------------------------------------------
+# _quota_exhausted_body
+# ---------------------------------------------------------------------------
+
+
+class TestQuotaExhaustedBody:
+    """The reset time is the actionable half of the message.
+
+    Rendering it in UTC for a user in Kolkata tells them to come back at the
+    wrong time of day, and the wording alone ("Resets ...") reads as correct
+    either way — only the rendered stamp shows the bug.
+    """
+
+    RESET = datetime(2026, 3, 21, 12, 0, 0, tzinfo=UTC)
+
+    async def test_reset_time_is_rendered_in_the_users_timezone(self):
+        workflow = _make_workflow(title="Daily Standup")
+
+        with patch(
+            "app.workers.tasks.workflow_tasks.get_user_by_id",
+            AsyncMock(return_value={"timezone": "Asia/Kolkata"}),
+        ):
+            body = await _quota_exhausted_body(workflow, self.RESET.isoformat())
+
+        assert body == (
+            "'Daily Standup' couldn't run — you've used all your workflow executions for today."
+            " Resets Mar 21 at 05:30 PM IST."
+        )
+
+    @pytest.mark.parametrize("profile", [None, {}, {"timezone": None}])
+    async def test_a_profile_without_a_timezone_renders_utc(self, profile):
+        workflow = _make_workflow(title="Daily Standup")
+
+        with patch(
+            "app.workers.tasks.workflow_tasks.get_user_by_id",
+            AsyncMock(return_value=profile),
+        ):
+            body = await _quota_exhausted_body(workflow, self.RESET.isoformat())
+
+        assert body.endswith("Resets Mar 21 at 12:00 PM UTC.")
+
+    async def test_a_failed_profile_lookup_still_names_a_reset_time(self):
+        """The lookup is best-effort — losing it must cost the timezone, not the
+        whole reset line."""
+        workflow = _make_workflow(title="Daily Standup")
+
+        with patch(
+            "app.workers.tasks.workflow_tasks.get_user_by_id",
+            AsyncMock(side_effect=RuntimeError("mongo down")),
+        ):
+            body = await _quota_exhausted_body(workflow, self.RESET.isoformat())
+
+        assert body.endswith("Resets Mar 21 at 12:00 PM UTC.")
+
+    async def test_an_unparseable_reset_stamp_drops_the_reset_sentence(self):
+        workflow = _make_workflow(title="Daily Standup")
+
+        with patch(
+            "app.workers.tasks.workflow_tasks.get_user_by_id",
+            AsyncMock(return_value={"timezone": "Asia/Kolkata"}),
+        ):
+            body = await _quota_exhausted_body(workflow, "not-a-timestamp")
+
+        assert body == (
+            "'Daily Standup' couldn't run — you've used all your workflow executions for today."
+        )
 
 
 # ---------------------------------------------------------------------------
