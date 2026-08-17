@@ -346,10 +346,6 @@ unfixable = [
 "apps/api/app/utils/composio_hooks/reddit_hooks.py" = ["ARG001"]
 "apps/api/app/utils/composio_hooks/slack_hooks.py" = ["ARG001"]
 "apps/api/app/utils/composio_hooks/twitter_hooks.py" = ["ARG001"]
-# ARG001: this module replaces mutmut's own `create_mutants(max_children)`, which
-# mutmut calls positionally — the replacement must keep that exact shape even
-# though it drops the process pool the argument sizes.
-"scripts/test/mutmut_diff_scope.py" = ["ARG001"]
 # ARG001: LangChain injects `config: RunnableConfig` / `store: BaseStore` into
 # @tool-decorated functions via the tool call signature regardless of whether a
 # given tool implementation reads them — framework contract, not dead code.

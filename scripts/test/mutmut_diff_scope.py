@@ -38,7 +38,7 @@ RANGES_ENV = "MUTMUT_CHANGED_RANGES"
 MODULE_ENV = "MUTMUT_SCOPED_MODULE"
 
 
-def _serial_create_mutants(max_children: int) -> mutmut_main.MutantGenerationStats:
+def _serial_create_mutants(_max_children: int) -> mutmut_main.MutantGenerationStats:
     """``create_mutants`` without the process pool.
 
     mutmut generates mutants in a ``multiprocessing.Pool``, and the workers only
@@ -46,6 +46,9 @@ def _serial_create_mutants(max_children: int) -> mutmut_main.MutantGenerationSta
     apply on Linux CI and silently not on macOS (spawn). A run mutates exactly
     one file (``source_paths`` is the single module under test), so the pool wins
     nothing and dropping it makes the scoping platform-independent.
+
+    ``_max_children`` sizes that pool and is therefore unused here; mutmut passes
+    it positionally, so the name is free to say so.
 
     Mirrors mutmut 3.7.0's own body; only the pool is gone.
     """
