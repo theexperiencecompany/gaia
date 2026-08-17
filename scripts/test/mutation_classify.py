@@ -99,7 +99,10 @@ def _normalized(lines: list[str]) -> list[str]:
     type_arg_follows = False
     for line in lines:
         if type_arg_follows:
-            out.append(re.sub(r"^\s*[^,]+,\s*$", "_,", line))
+            # Up to the first comma, not the whole line: the formatter wraps
+            # after `cast(` but often leaves the VALUE on the type's line, and
+            # anchoring at end-of-line missed exactly those.
+            out.append(re.sub(r"^(\s*)[^,]+,", r"\1_,", line, count=1))
             type_arg_follows = False
             continue
         out.append(re.sub(r"cast\(\s*[^,)]+,\s*", "cast(_, ", line))
