@@ -27,6 +27,7 @@ from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
+from app.agents.context.tiers import AgentTier
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -319,7 +320,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, None, object]):
         # stale; the conversation uuid keeps them collectable with the conversation.
         thread_id = f"{SPAWN_THREAD_PREFIX}{conversation_id}_{tool_call_id}"
 
-        spawn_config = build_agent_config(
+        spawn_config = await build_agent_config(
             conversation_id=conversation_id,
             user={
                 "user_id": user_id,
@@ -337,6 +338,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, None, object]):
         user_content = f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
         messages = await build_initial_messages(
             system_message=SystemMessage(content=self._system_prompt),
+            tier=AgentTier.SPAWN,
             agent_name=SPAWN_AGENT_NAME,
             configurable=new_configurable,
             task=user_content,

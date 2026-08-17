@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime
+import json
 from pathlib import Path
 import tomllib
 from typing import TypedDict
@@ -7,6 +8,16 @@ from typing import TypedDict
 from app.utils.json_helpers import dict_bag, list_bag, text_bag
 
 ELLIPSIS = "…"
+
+
+def is_json_safe(value: object) -> bool:
+    """Whether ``value`` survives a JSON round trip — the honest test for
+    "can this be persisted", rather than a proxy like isinstance-on-scalars."""
+    try:
+        json.dumps(value)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def clip_text(text: str, limit: int) -> str:

@@ -19,7 +19,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.agents.core.subagents import subagent_helpers
+from app.agents.context import sections
+from app.agents.context.section_context import SectionContext
+from app.agents.context.tiers import AgentTier
 from app.agents.tools import integration_instructions_tools as tool_mod
 from app.agents.workspace.skill_loader import library_hash
 from app.models.integration_instructions_models import (
@@ -319,10 +321,14 @@ async def test_tool_requires_user_id(fake_collection: FakeCollection) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 6. Subagent context injection (real _fetch_instructions_block).              #
+# 6. Subagent context injection (real custom-instructions section).            #
 # --------------------------------------------------------------------------- #
 def _stub_integration(name: str):
     return type("Stub", (), {"name": name})()
+
+
+def _slack_ctx(user_id: str) -> SectionContext:
+    return SectionContext(tier=AgentTier.PROVIDER_SUBAGENT, user_id=user_id, integration_id="slack")
 
 
 async def test_context_block_injected_when_set(
@@ -332,16 +338,14 @@ async def test_context_block_injected_when_set(
     await svc.upsert_instructions(
         uid, "slack", "focus on #eng and #design", InstructionsEditor.USER
     )
-    monkeypatch.setattr(
-        subagent_helpers, "get_integration_by_id", lambda _id: _stub_integration("Slack")
-    )
-    block = await subagent_helpers._fetch_instructions_block("slack", uid)
+    monkeypatch.setattr(sections, "get_integration_by_id", lambda _id: _stub_integration("Slack"))
+    block = await sections._custom_instructions(_slack_ctx(uid))
     assert "focus on #eng and #design" in block
     assert "SLACK" in block.upper()
 
 
 async def test_context_block_empty_when_unset(fake_collection: FakeCollection) -> None:
-    block = await subagent_helpers._fetch_instructions_block("slack", _uid())
+    block = await sections._custom_instructions(_slack_ctx(_uid()))
     assert block == ""
 
 
@@ -350,8 +354,6 @@ async def test_context_block_empty_for_whitespace_only(
 ) -> None:
     uid = _uid()
     await svc.upsert_instructions(uid, "slack", "   ", InstructionsEditor.USER)
-    monkeypatch.setattr(
-        subagent_helpers, "get_integration_by_id", lambda _id: _stub_integration("Slack")
-    )
-    block = await subagent_helpers._fetch_instructions_block("slack", uid)
+    monkeypatch.setattr(sections, "get_integration_by_id", lambda _id: _stub_integration("Slack"))
+    block = await sections._custom_instructions(_slack_ctx(uid))
     assert block == "", "whitespace-only instructions produced a noisy context block"

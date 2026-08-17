@@ -116,7 +116,7 @@ async def get_notifications(
     try:
         notifications, notification_count = await asyncio.gather(
             notification_service.get_user_notifications(
-                user_id, status, limit + 1, offset, channel_type
+                user_id, status, limit, offset, channel_type
             ),
             notification_service.get_user_notifications_count(user_id, status, channel_type),
         )

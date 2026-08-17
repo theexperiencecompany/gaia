@@ -6,6 +6,7 @@ Provides functions to format user preferences for agent system prompts.
 from collections.abc import Mapping
 
 from app.constants.log_tags import LogTag
+from app.models.user_models import OnboardingDocument
 from app.utils.json_helpers import dict_bag, text_bag
 from shared.py.wide_events import log
 
@@ -21,6 +22,21 @@ def stored_profession(onboarding: Mapping[str, object] | None) -> str:
     onboarding pipeline over.
     """
     return text_bag(dict_bag(onboarding or {}, "preferences"), "profession")
+
+
+def onboarding_preferences(
+    onboarding: OnboardingDocument | None,
+) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+    """The ``(preferences, writing_style)`` pair off a raw ``onboarding`` blob.
+
+    Every root call site that hands a user's onboarding data to
+    ``build_agent_config`` or a comms ``SectionContext`` reads the same two keys
+    off the same shape (``UserDocument.onboarding`` / ``AuthenticatedUser.onboarding``)
+    — pulled out once so that reading doesn't drift between call sites.
+    """
+    if not onboarding:
+        return None, None
+    return onboarding.get("preferences"), onboarding.get("writing_style")
 
 
 def format_response_style_instruction(response_style: str) -> str:

@@ -49,7 +49,7 @@ The **only** agent the user talks to. Owns the conversation thread, narrates pro
 
 - `apps/api/app/agents/core/agent.py` — entry points `call_agent()` (live SSE stream) and `call_agent_silent()` (background/workflow).
 - `apps/api/app/agents/core/graph_builder/build_graph.py` — `build_comms_graph()` / `build_comms_agent()`. Comms is built with `disable_retrieve_tools=True` and end-graph hooks `[follow_up_actions_node, memory_node]`.
-- `apps/api/app/agents/core/state.py` — `State` Pydantic model: `query`, `intent`, `messages`, `memory_user_id`, `memories`, `active_todo_id`, `execution_mode` (interactive/background).
+- `apps/api/app/override/langgraph_bigtool/utils.py` — `State`, the graph state every tier runs on: `messages` (a `DeltaChannel`, not a plain snapshot channel), `todos`, `intent`, `integration_usernames`, `remaining_steps`. Per-run values like `user_id`, `active_todo_id` and `execution_mode` live in `config["configurable"]` (`AgentConfigurable`), not in state.
 - `apps/api/app/agents/core/messages.py` — `construct_langchain_messages` builds the message array with per-turn context (calendar, reply-to, file refs, timezone).
 - `apps/api/app/agents/core/graph_manager.py` — `GraphManager.get_graph(name)` resolves graphs via lazy providers.
 
@@ -120,8 +120,22 @@ Every integration is a `CompiledStateGraph` of its own. The executor hands off t
 - `apps/api/app/agents/core/subagents/base_subagent.py` — `SubAgentFactory.create_provider_subagent()`. Wires the per-integration graph: scoped tool dict, `SubagentMiddleware`, todo tools, MCP/Composio tools, end-hook `[memory_node]`, checkpointer, and the three pre-model hooks.
 - `apps/api/app/agents/core/subagents/provider_subagents.py` — `create_subagent()` (non-auth MCP) and `create_subagent_for_user()` (per-user auth MCP; rebuilt on every handoff, no memoization). `register_subagent_providers()` registers lazy loaders.
 - `apps/api/app/agents/core/subagents/handoff_tools.py` — `@tool handoff(subagent_id, task, config, background=False)`. Resolves the subagent via `_resolve_subagent()`, builds a `SubagentExecutionContext`, then runs blocking (`_run_blocking_handoff`) or fires `run_subagent_background()`. Includes `_get_subagent_by_id` (Redis cached at `SUBAGENT_CACHE_PREFIX`), `_sanitize_task_user_reference` (replaces Gaia display name with service username), and `index_custom_mcp_as_subagent` (ChromaDB indexing for semantic search). Also exports `check_integration_connection()`.
-- `apps/api/app/agents/core/subagents/subagent_runner.py` — `SubagentExecutionContext`, `build_initial_messages` (builds `[static_system, dynamic_context, current_time, human_task]` triplet for cache stability), `execute_subagent_stream` (handles `messages`/`custom`/`updates` events; emits `subagent_start`/`subagent_end` lifecycle), `prepare_executor_execution` (builds executor context with `DIRECT EXECUTION HINT`).
-- `apps/api/app/agents/core/subagents/subagent_helpers.py` — `create_subagent_system_message` (provider-specific prompt + integration instructions), `create_agent_context_message` (dynamic context block: user_name, memories, skills, integration metadata).
+- `apps/api/app/agents/core/subagents/subagent_runner.py` — `SubagentExecutionContext`, `build_initial_messages` (seeds `[static_system, dynamic_stable, memory_recall?, human_task, current_time]` in canonical slot order — see §Context assembly), `execute_subagent_stream` (handles `messages`/`custom`/`updates` events; emits `subagent_start`/`subagent_end` lifecycle), `prepare_executor_execution` (builds executor context with `DIRECT EXECUTION HINT`).
+- `apps/api/app/agents/core/subagents/subagent_helpers.py` — `build_subagent_system_prompt` / `create_subagent_system_message`: the STATIC per-integration prompt only. Byte-identical across users so the implicit prompt cache hits; everything per-user is assembled separately (below).
+
+### Context assembly (all five tiers)
+
+One module builds the per-run context for comms, the executor, provider subagents, spawned subagents and the workflow author. Tier differences are rows in a table, not divergent code paths.
+
+- `apps/api/app/agents/context/slots.py` — `PromptSlot`, the canonical message order `[static, dynamic_stable, onboarding, todo_context, background_executor, executor_status, memory_recall, …conversation…, time]`, plus the marker read/write helpers. The two constraints that fix this order (Gemini's leading-contiguous system block; longest-common-prefix cache matching) are documented there.
+- `apps/api/app/agents/context/tiers.py` — `AgentTier`, the closed set of tiers a section declares applicability against.
+- `apps/api/app/agents/context/section_context.py` — `SectionContext`, the closed shape every section reads from. Its own module so the fetchers can take it without importing the table that calls them.
+- `apps/api/app/agents/context/sections.py` — `Section(id, slot, applies_to, order, fetch)` and the section × tier table. A row points straight at its body in `fetchers.py`; the private functions here are only the sections that genuinely branch before rendering.
+- `apps/api/app/agents/context/fetchers.py` — the section bodies (memory recall, core memory, GAIA knowledge, tracked todos, connected-integrations manifest, run banners). Each takes the whole `SectionContext`, declines to render when the context it needs is absent, and degrades to `""` rather than raising.
+- `apps/api/app/agents/context/assemble.py` — `assemble_context`: gathers the applicable sections concurrently and emits the stable + volatile system messages, degrading to an empty stable block if the gather itself fails.
+- `apps/api/app/agents/core/nodes/pre_model_hooks.py` — the hook chains each graph runs before every LLM call. `manage_system_prompts_node` runs LAST and places every message by `PromptSlot`.
+
+Tests: `apps/api/tests/_harness/context_chain.py` produces the *effective* array (post-hook, pre-LLM) in-process for any tier, with no graph, checkpointer or LLM; `apps/api/tests/unit/agents/context/` asserts the slot, cache-prefix and user-independence invariants against it.
 
 ### OAuth integration definitions (source of subagent configs)
 

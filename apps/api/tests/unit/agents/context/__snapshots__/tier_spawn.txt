@@ -1,0 +1,33 @@
+[0] system
+    You are a spawned worker subagent.
+
+[1] system markers=dynamic_context,memory_message
+    User Name: Ada
+    User Timezone: Asia/Kolkata
+    User Preferences:
+    User Profession: Engineer
+    Session directory: /workspace/sessions/conv-1
+    Public artifact URL: a file at `artifacts/<name>` is served at https://api.heygaia.io/api/v1/sessions/conv-1/artifacts/<name>
+
+[2] system markers=memory_recall
+    What you remember about this user (memory core):
+    - Prefers short answers.
+    
+    Based on our previous conversations (bracketed dates say when something happened / was last mentioned):
+    - Ships on Fridays [mentioned 2026-02-01]
+    
+    About Gaia (your identity and capabilities):
+    - GAIA can run scheduled workflows.
+    
+    ## Available skills
+    - inbox-triage
+    
+    Tracked: ship the context refactor
+
+[3] human
+    Task:
+    summarise my unread mail
+
+[4] human markers=time_context
+    [Current UTC Time: Tuesday, March 17, 2026, 14:30 UTC]
+    [User Local Time (Asia/Kolkata): Tuesday, March 17, 2026, 20:00]
