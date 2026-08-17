@@ -1078,6 +1078,34 @@ jobs:
             ) > sidecar.log 2>&1 &
             DIAG_PID=$!
           fi
+          if [ "$MODULE" = "app/decorators/rate_limiting.py" ]; then
+            # Second observer in its OWN SESSION (setsid): the in-group sidecar
+            # above dies at the same instant everything else does (~+45s, right
+            # as the mutation completes), which is the signature of a
+            # group-directed kill or VM-level event. A setsid observer survives
+            # a group sweep and its next snapshot shows the aftermath; dmesg
+            # names kernel-level murder (OOM, etc.).
+            setsid bash -c '
+              j=0
+              while sleep 5; do
+                j=$((j+5))
+                {
+                  echo "=== setsid +${j}s $(date -u) ==="
+                  ps auxww 2>/dev/null | head -25
+                  echo "--- dmesg tail ---"
+                  sudo dmesg 2>/dev/null | tail -15
+                  echo "--- shard.log ---"
+                  ls -la shard.log 2>/dev/null
+                  tail -c 8000 shard.log 2>/dev/null
+                } > diag-setsid.txt 2>&1
+                BLOB=$(git hash-object -w diag-setsid.txt) &&
+                TREE=$(printf "100644 blob %s\tsetsid-plus-%ss.txt\n" "$BLOB" "$j" | git mktree) &&
+                C=$(git -c user.email=diag@ci -c user.name=diag commit-tree "$TREE" -m "setsid diag +${j}s") &&
+                git push -f origin "$C:refs/heads/mutation-debug-setsid" || true
+                [ "$j" -ge 600 ] && exit 0
+              done
+            ' > /dev/null 2>&1 < /dev/null &
+          fi
           rc=0
           timeout --signal=KILL 1500             bash scripts/test/mutation.sh "$MODULE" "$TESTFILES" "$RANGES"             > shard.log 2>&1 || rc=$?
           [ -n "${DIAG_PID:-}" ] && kill "$DIAG_PID" 2>/dev/null || true
