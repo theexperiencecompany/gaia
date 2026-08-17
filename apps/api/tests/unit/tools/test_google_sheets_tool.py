@@ -21,6 +21,7 @@ from app.agents.tools.integrations.google_sheets_tool import (
     NEW_FORMAT_RULE_INDEX,
     RECENT_SPREADSHEETS_PAGE_SIZE,
     SHEETS_TOOLKIT,
+    _sheets_proxy,
     _user_id,
     register_google_sheets_custom_tools,
 )
@@ -211,6 +212,43 @@ class TestUserId:
         # nobody and surface as a confusing 500 deep inside the proxy.
         with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
             _user_id(credentials)
+
+
+# ---------------------------------------------------------------------------
+# _sheets_proxy
+# ---------------------------------------------------------------------------
+
+
+class TestSheetsProxy:
+    """Every tool in this module reads the proxy answer as a JSON object, so
+    the narrowing here is the only place a wrong shape can still be named."""
+
+    def _proxy(self, payload: Any) -> dict[str, Any]:
+        with patch(f"{MODULE}.proxy_request_sync", return_value=payload):
+            return _sheets_proxy("user-42", endpoint="/x", method="GET")
+
+    def test_object_payload_is_returned_unchanged(self) -> None:
+        assert self._proxy({"id": "perm-1"}) == {"id": "perm-1"}
+
+    def test_absent_data_degrades_to_an_empty_object(self) -> None:
+        # Endpoints that answer with no body (a Drive permission create without
+        # an id) are a normal path; callers read the missing fields as None.
+        assert self._proxy(None) == {}
+
+    @pytest.mark.parametrize("payload", [[{"id": "a"}], "plain string", 42])
+    def test_non_object_payload_fails_loud(self, payload: Any) -> None:
+        # Degrading these to {} would make every caller report success on
+        # nothing, so the error has to name the shape that actually arrived.
+        with pytest.raises(AppError) as exc_info:
+            self._proxy(payload)
+
+        assert exc_info.value.message == (
+            f"Sheets proxy returned a non-object payload ({type(payload).__name__})"
+        )
+        assert exc_info.value.why == (
+            "the Sheets/Drive proxy response is a JSON object on every supported path"
+        )
+        assert exc_info.value.fix == "inspect the proxied endpoint's response shape"
 
 
 # ---------------------------------------------------------------------------

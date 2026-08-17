@@ -335,6 +335,9 @@ class TestGetPersonalization:
         assert data["house"] == "Bluehaven"
         assert data["personality_phrase"] == "Curious Explorer"
         assert data["has_personalization"] is True
+        assert data["phase"] == "personalization_complete"
+        # A finished bio is served verbatim, not re-derived or blanked.
+        assert data["user_bio"] == "A bio about the user."
 
     async def test_get_personalization_user_not_found_returns_404(self, client: AsyncClient):
         with patch(_GET_USER, new_callable=AsyncMock, return_value=None):
@@ -373,3 +376,24 @@ class TestGetPersonalization:
         data = response.json()
         assert data["has_personalization"] is False
         assert data["house"] == "Bluehaven"
+        assert data["phase"] == "initial"
+
+    async def test_get_personalization_finished_bio_extraction_with_no_bio_is_empty(
+        self, client: AsyncClient
+    ):
+        """Extraction is done but produced nothing: an empty bio, not a placeholder
+        and not the 'still working on it' message."""
+        user_doc = _make_user_doc(
+            onboarding={"phase": "personalization_complete", "bio_status": "completed"}
+        )
+        mock_composio = MagicMock()
+        mock_composio.check_connection_status = AsyncMock(return_value={"gmail": True})
+        with (
+            patch(_GET_USER, new_callable=AsyncMock, return_value=user_doc),
+            patch(_COUNT_BEFORE, new_callable=AsyncMock, return_value=0),
+            patch(_COMPOSIO_SERVICE, return_value=mock_composio),
+        ):
+            response = await client.get(PERSONALIZATION_URL)
+
+        assert response.status_code == 200
+        assert response.json()["user_bio"] == ""

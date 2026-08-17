@@ -243,6 +243,9 @@ class TestCloseCheckpointerManager:
             mock_providers.is_initialized.return_value = True
             mock_providers.aget = AsyncMock(return_value=mock_mgr)
             await close_checkpointer_manager()
+            # The provider key is the whole contract: fetch the wrong one and
+            # the real checkpointer is left holding its connection pool open.
+            mock_providers.aget.assert_awaited_once_with("checkpointer_manager")
             mock_mgr.close.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -275,6 +278,7 @@ class TestCloseMcpClientPool:
             mock_providers.is_initialized.return_value = True
             mock_providers.aget = AsyncMock(return_value=mock_pool)
             await close_mcp_client_pool()
+            mock_providers.aget.assert_awaited_once_with("mcp_client_pool")
             mock_pool.shutdown.assert_awaited_once()
 
     @pytest.mark.asyncio

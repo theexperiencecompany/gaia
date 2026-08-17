@@ -3054,7 +3054,17 @@ class TestMCPClientHandleCustomIntegrationConnect:
                 )
 
             mock_index.assert_awaited_once()
-            mock_subagent.assert_awaited_once()
+            # Fetching the wrong provider leaves the store empty and the
+            # integration undiscoverable via retrieve_tools.
+            mock_providers.aget.assert_awaited_once_with("chroma_tools_store")
+            mock_subagent.assert_awaited_once_with(
+                store=mock_store,
+                integration_id=INTEGRATION_ID,
+                name="My Tool",
+                description="A custom tool",
+                server_url=SERVER_URL,
+                tools=tools,
+            )
 
     async def test_handles_index_error(self):
         client = MCPClient(user_id=USER_ID)
@@ -3110,6 +3120,42 @@ class TestMCPClientHandleCustomIntegrationConnect:
             mock_subagent.assert_awaited_once()
             call_kwargs = mock_subagent.call_args[1]
             assert call_kwargs["name"] == "Resolved Name"
+            assert call_kwargs["description"] == "Resolved Desc"
+
+    async def test_resolved_name_falls_back_to_the_integration_id(self):
+        """A custom doc with no name still gets indexed — without the fallback
+        resolved_name is falsy and the subagent index is skipped entirely."""
+        client = MCPClient(user_id=USER_ID)
+        tools = [_mock_tool()]
+
+        resolved = MagicMock()
+        resolved.custom_doc = {"description": "Resolved Desc"}
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.derive_integration_namespace",
+                return_value="ns",
+            ),
+            patch(
+                "app.services.mcp.mcp_client.index_tools_to_store",
+                new_callable=AsyncMock,
+            ),
+            patch("app.services.mcp.mcp_client.providers") as mock_providers,
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+        ):
+            mock_providers.aget = AsyncMock(return_value=MagicMock())
+            mock_resolver.resolve = AsyncMock(return_value=resolved)
+
+            with patch(
+                "app.agents.core.subagents.handoff_tools.index_custom_mcp_as_subagent",
+                new_callable=AsyncMock,
+            ) as mock_subagent:
+                await client._handle_custom_integration_connect(
+                    INTEGRATION_ID, SERVER_URL, tools, name=None
+                )
+
+            mock_subagent.assert_awaited_once()
+            assert mock_subagent.call_args[1]["name"] == INTEGRATION_ID
 
 
 # ===========================================================================

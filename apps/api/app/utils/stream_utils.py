@@ -42,6 +42,11 @@ class SubagentGroup(TypedDict):
     nested_subagents: list["SubagentGroup"]
 
 
+# The subagent_starts / subagent_ends maps process_data_chunk accumulates:
+# subagent_id -> the raw lifecycle event dict.
+SubagentEvents = dict[str, dict[str, object]]
+
+
 async def extract_tool_entries_from_update(
     state_update: object,
     emitted_tool_calls: set[str],
@@ -239,10 +244,10 @@ def reconstruct_subagent_groups(accumulated: dict[str, object]) -> None:
 
     Uses subagent_starts/subagent_ends accumulated by process_data_chunk.
     """
-    raw_starts = accumulated.pop("subagent_starts", {})
-    raw_ends = accumulated.pop("subagent_ends", {})
-    subagent_starts = raw_starts if isinstance(raw_starts, dict) else {}
-    subagent_ends = raw_ends if isinstance(raw_ends, dict) else {}
+    # process_data_chunk owns both maps and only ever writes event dicts into
+    # them, so cast at the boundary rather than re-checking a shape we produced.
+    subagent_starts = cast(SubagentEvents, accumulated.pop("subagent_starts", {}))
+    subagent_ends = cast(SubagentEvents, accumulated.pop("subagent_ends", {}))
 
     if not subagent_starts:
         return
@@ -272,8 +277,7 @@ def reconstruct_subagent_groups(accumulated: dict[str, object]) -> None:
         )
 
     # Route subagent-tagged entries into their group
-    raw_flat = accumulated.get("tool_data", [])
-    flat_entries = cast(list[ToolDataEntry], raw_flat) if isinstance(raw_flat, list) else []
+    flat_entries = cast(list[ToolDataEntry], accumulated.get("tool_data", []))
     top_level: list[ToolDataEntry] = []
     for entry in flat_entries:
         target_id: str | None = entry.get("subagent_id")
@@ -285,12 +289,7 @@ def reconstruct_subagent_groups(accumulated: dict[str, object]) -> None:
     # Nest child groups inside their parent
     root_groups: list[SubagentGroup] = []
     for subagent_id, group in groups.items():
-        parent_start = subagent_starts[subagent_id]
-        parent_id = (
-            text_opt_bag(parent_start, "parent_subagent_id")
-            if isinstance(parent_start, dict)
-            else None
-        )
+        parent_id = text_opt_bag(subagent_starts[subagent_id], "parent_subagent_id")
         if parent_id and parent_id in groups:
             groups[parent_id]["nested_subagents"].append(group)
         else:

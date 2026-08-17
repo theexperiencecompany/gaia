@@ -107,3 +107,26 @@ class TestApply:
         patch_module.apply()
         assert patch_module._applied is True
         assert getattr(CustomTool, _PRIVATE_PARSE_INFO) is patch_module._patched_parse_info
+
+    def test_apply_installs_the_wrapper_and_keeps_the_original_callable(self) -> None:
+        # Import time already ran apply(), so the idempotence guard short-circuits
+        # every later call and the body never runs under test. Reset the flag and
+        # put the unpatched method back to exercise a cold-process apply().
+        saved_applied = patch_module._applied
+        saved_original = patch_module._original_parse_info
+        saved_attr = getattr(CustomTool, _PRIVATE_PARSE_INFO)
+        patch_module._applied = False
+        patch_module._original_parse_info = None
+        setattr(CustomTool, _PRIVATE_PARSE_INFO, saved_original)
+        try:
+            patch_module.apply()
+
+            assert patch_module._applied is True
+            # The wrapper delegates through _original_parse_info; losing it turns
+            # every tool's schema parse into the "apply() was not called" error.
+            assert patch_module._original_parse_info is saved_original
+            assert getattr(CustomTool, _PRIVATE_PARSE_INFO) is patch_module._patched_parse_info
+        finally:
+            patch_module._applied = saved_applied
+            patch_module._original_parse_info = saved_original
+            setattr(CustomTool, _PRIVATE_PARSE_INFO, saved_attr)

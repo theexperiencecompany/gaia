@@ -36,6 +36,16 @@ def _make_factory(request: MagicMock | None = None) -> MagicMock:
     return factory
 
 
+def _schedule_trigger_config() -> MagicMock:
+    """A scheduled trigger config as a factory emits it — no timezone yet."""
+    from app.models.workflow_models import TriggerType
+
+    trigger_config = MagicMock()
+    trigger_config.type = TriggerType.SCHEDULE
+    trigger_config.timezone = None
+    return trigger_config
+
+
 def _existing_wf(
     key: str = "gmail_digest",
     composio_trigger_ids: list[str] | None = None,
@@ -116,6 +126,81 @@ class TestProvisionSystemWorkflows:
 
         mock_workflow_svc.create_workflow.assert_awaited_once_with(req, "user-1")
         mock_notify.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.get_user_by_id", new_callable=AsyncMock)
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_schedule_trigger_stamped_with_profile_timezone(
+        self,
+        mock_repo: MagicMock,
+        mock_workflow_svc: MagicMock,
+        mock_notify: AsyncMock,
+        mock_ensure: MagicMock,
+        mock_get_user: AsyncMock,
+    ) -> None:
+        """A scheduled definition with no timezone inherits the user's profile timezone."""
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        mock_workflow_svc.create_workflow = AsyncMock()
+        mock_get_user.return_value = {"timezone": "Asia/Kolkata"}
+
+        trigger_config = _schedule_trigger_config()
+        mock_ensure.return_value = trigger_config
+        req = _make_workflow_request()
+
+        with patch.dict(
+            f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
+            {"gmail": [("gmail_digest", _make_factory(req))]},
+        ):
+            from app.services.system_workflows.provisioner import (
+                provision_system_workflows,
+            )
+
+            await provision_system_workflows("user-1", "gmail", "Gmail")
+
+        mock_get_user.assert_awaited_once_with("user-1")
+        assert trigger_config.timezone == "Asia/Kolkata"
+        assert req.trigger_config is trigger_config
+        mock_workflow_svc.create_workflow.assert_awaited_once_with(req, "user-1")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("profile", [{}, {"timezone": "   "}, {"timezone": None}])
+    @patch(f"{MODULE}.get_user_by_id", new_callable=AsyncMock)
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_schedule_trigger_falls_back_to_utc(
+        self,
+        mock_repo: MagicMock,
+        mock_workflow_svc: MagicMock,
+        mock_notify: AsyncMock,
+        mock_ensure: MagicMock,
+        mock_get_user: AsyncMock,
+        profile: dict[str, object],
+    ) -> None:
+        """A missing or blank profile timezone falls back to UTC, not to an empty string."""
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        mock_workflow_svc.create_workflow = AsyncMock()
+        mock_get_user.return_value = profile
+
+        trigger_config = _schedule_trigger_config()
+        mock_ensure.return_value = trigger_config
+
+        with patch.dict(
+            f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
+            {"gmail": [("gmail_digest", _make_factory())]},
+        ):
+            from app.services.system_workflows.provisioner import (
+                provision_system_workflows,
+            )
+
+            await provision_system_workflows("user-1", "gmail", "Gmail")
+
+        assert trigger_config.timezone == "UTC"
+        mock_workflow_svc.create_workflow.assert_awaited_once()
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)

@@ -365,3 +365,53 @@ class TestReconstructSubagentGroups:
 
         assert self._group(td, "done")["completed_at"] is not None
         assert self._group(td, "cut")["completed_at"] is not None
+
+    def test_a_child_subagent_is_nested_inside_its_parent(self) -> None:
+        """A spawned subagent carries ``parent_subagent_id``. Losing it flattens
+        the tree, so the persisted turn shows two sibling cards where the user
+        watched one card open inside another."""
+        td = self._data(
+            starts={
+                "parent": {"subagent_name": "planner", "agent_type": "spawned"},
+                "child": {
+                    "subagent_name": "gmail",
+                    "agent_type": "handoff",
+                    "parent_subagent_id": "parent",
+                },
+            },
+            ends={},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        groups = [e["data"] for e in td["tool_data"] if e["tool_name"] == "subagent_group"]
+        assert [g["subagent_id"] for g in groups] == ["parent"]
+        assert [n["subagent_id"] for n in groups[0]["nested_subagents"]] == ["child"]
+
+    def test_an_unknown_parent_id_leaves_the_child_at_the_top_level(self) -> None:
+        """The parent must actually be in this turn's groups — a dangling id
+        would otherwise drop the child card from the save entirely."""
+        td = self._data(
+            starts={"child": {"subagent_name": "gmail", "parent_subagent_id": "not-in-this-turn"}},
+            ends={},
+            entries=[],
+        )
+
+        reconstruct_subagent_groups(td)
+
+        groups = [e["data"] for e in td["tool_data"] if e["tool_name"] == "subagent_group"]
+        assert [g["subagent_id"] for g in groups] == ["child"]
+
+    def test_an_accumulator_holding_only_starts_still_builds_a_group(self) -> None:
+        """``subagent_ends`` and ``tool_data`` are absent on a turn cut short
+        before either was written — the group must still be reconstructed."""
+        td: dict = {"subagent_starts": {"sub-1": {"subagent_name": "todoist"}}}
+
+        reconstruct_subagent_groups(td)
+
+        group = self._group(td, "sub-1")
+        assert group["subagent_name"] == "todoist"
+        assert group["agent_type"] == "spawned"
+        assert group["duration_ms"] is None
+        assert group["tool_calls"] == []

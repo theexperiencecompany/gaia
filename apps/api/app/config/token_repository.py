@@ -10,6 +10,7 @@ Note: User authentication via WorkOS is handled separately by the WorkOSAuthMidd
 
 from datetime import UTC, datetime, timedelta
 import json
+from typing import SupportsFloat, cast
 
 from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2.rfc6749 import OAuth2Token
@@ -68,27 +69,26 @@ class TokenRepository:
     def _get_token_expiration(self, token_data: dict[str, object]) -> datetime:
         """Get token expiration time with fallback logic."""
 
-        # Try expires_at first (epoch seconds are UTC).
+        # Try expires_at first (epoch seconds are UTC). These values come off a
+        # provider's token response, so ``float()`` is the validator: whatever it
+        # cannot read raises and is reported, rather than being skipped silently.
         expires_at = token_data.get("expires_at")
-        if isinstance(expires_at, (int, float, str)):
+        if expires_at is not None:
             try:
-                return datetime.fromtimestamp(float(expires_at), UTC)
+                return datetime.fromtimestamp(float(cast(SupportsFloat | str, expires_at)), UTC)
             except (ValueError, TypeError, OverflowError):
                 log.warning(f"{LogTag.STARTUP} Invalid expires_at", expires_at=expires_at)
 
         # Fall back to expires_in
         expires_in = token_data.get("expires_in", 3500)  # Default about 1 hour
-        if isinstance(expires_in, (int, float, str)):
-            try:
-                expires_in = float(expires_in)
-                return datetime.now(UTC) + timedelta(seconds=expires_in)
-            except (ValueError, TypeError):
-                log.warning(
-                    f"{LogTag.STARTUP} Invalid expires_in, using default", expires_in=expires_in
-                )
-                return datetime.now(UTC) + timedelta(seconds=3600)
-
-        return datetime.now(UTC) + timedelta(seconds=3600)
+        try:
+            seconds = float(cast(SupportsFloat | str, expires_in))
+            return datetime.now(UTC) + timedelta(seconds=seconds)
+        except (ValueError, TypeError):
+            log.warning(
+                f"{LogTag.STARTUP} Invalid expires_in, using default", expires_in=expires_in
+            )
+            return datetime.now(UTC) + timedelta(seconds=3600)
 
     async def store_token(
         self, user_id: str, provider: str, token_data: dict[str, object]

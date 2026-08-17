@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from shared.py.wide_events import log
+
 # ---------------------------------------------------------------------------
 # ComposioService tests
 # ---------------------------------------------------------------------------
@@ -248,6 +250,45 @@ class TestGetTools:
         assert "TOOL_A" in names
         assert "CUSTOM_TOOL" in names
 
+    @pytest.mark.asyncio
+    async def test_get_tools_accumulates_the_composio_wide_event_bag(self):
+        """Every load adds to one ``composio`` bag; a second load must not reset it."""
+        svc = _make_service()
+        tool_a = MagicMock()
+        tool_a.name = "TOOL_A"
+        tool_a.description = "desc"
+        tool_b = MagicMock()
+        tool_b.name = "TOOL_B"
+        tool_b.description = "desc"
+
+        # Two `tools.get` calls per get_tools (names, then tools-with-modifiers).
+        svc.composio.tools.get = MagicMock(
+            side_effect=[[tool_a], [tool_a], [tool_a, tool_b], [tool_a, tool_b]]
+        )
+        svc._store_tool_metadata = AsyncMock()
+
+        log.reset()
+        with (
+            patch("app.services.composio.composio_service.custom_tools_registry") as mock_reg,
+            patch(
+                "app.services.composio.composio_service.before_execute",
+                return_value=lambda f: f,
+            ),
+            patch(
+                "app.services.composio.composio_service.after_execute",
+                return_value=lambda f: f,
+            ),
+            patch(
+                "app.services.composio.composio_service.schema_modifier",
+                return_value=lambda f: f,
+            ),
+        ):
+            mock_reg.get_tool_names.return_value = []
+            await svc.get_tools("gmail")
+            await svc.get_tools("slack")
+
+        assert log.get()["composio"] == {"toolkits": ["gmail", "slack"], "tools_loaded": 3}
+
 
 class TestStoreToolMetadata:
     @pytest.mark.asyncio
@@ -333,6 +374,34 @@ class TestGetToolsByName:
         # Verify modifiers list is empty
         call_kwargs = svc.composio.tools.get.call_args[1]
         assert call_kwargs["modifiers"] == []
+
+    @pytest.mark.asyncio
+    async def test_get_tools_by_name_accumulates_the_composio_wide_event_bag(self):
+        """The by-name path shares the ``composio`` bag with get_tools."""
+        svc = _make_service()
+        tool = MagicMock()
+        tool.name = "TOOL_A"
+        svc.composio.tools.get = MagicMock(return_value=[tool])
+
+        log.reset()
+        log.set(composio={"toolkits": ["gmail"], "tools_loaded": 4})
+        with (
+            patch(
+                "app.services.composio.composio_service.before_execute",
+                return_value=lambda f: f,
+            ),
+            patch(
+                "app.services.composio.composio_service.after_execute",
+                return_value=lambda f: f,
+            ),
+            patch(
+                "app.services.composio.composio_service.schema_modifier",
+                return_value=lambda f: f,
+            ),
+        ):
+            await svc.get_tools_by_name(["TOOL_A"])
+
+        assert log.get()["composio"] == {"toolkits": ["gmail"], "tools_loaded": 5}
 
 
 class TestGetTool:

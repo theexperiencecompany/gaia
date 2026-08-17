@@ -7,6 +7,7 @@ truth for that behavior so the two call sites cannot drift.
 """
 
 import json
+from typing import cast
 
 from app.core.stream_manager import stream_manager
 from app.models.stream_events import FollowUpActionsFrame
@@ -30,10 +31,9 @@ async def publish_other_data(
     """Publish follow-up actions if present, returning the (possibly updated) list."""
     other_data_dict = new_data.get("other_data")
     if isinstance(other_data_dict, dict) and "follow_up_actions" in other_data_dict:
-        raw_actions = other_data_dict["follow_up_actions"]
-        follow_up_actions = (
-            [a for a in raw_actions if isinstance(a, str)] if isinstance(raw_actions, list) else []
-        )
+        # cast, not a filter: FollowUpActionsFrame validates the list below, so
+        # a malformed payload must raise there rather than be silently pruned.
+        follow_up_actions = cast(list[str], other_data_dict["follow_up_actions"])
         await stream_manager.publish_chunk(
             stream_id,
             f"data: {json.dumps(FollowUpActionsFrame(follow_up_actions=follow_up_actions).model_dump())}\n\n",
@@ -46,11 +46,11 @@ async def publish_tool_data(
 ) -> None:
     """Append each tool-data entry and stream it to the frontend."""
     for tool_entry in list_bag(new_data, "tool_data"):
-        entries = tool_data.get("tool_data")
-        if not isinstance(entries, list):
-            entries = []
-            tool_data["tool_data"] = entries
-        entries.append(tool_entry)
+        # The envelope is created as {"tool_data": []} by its owner
+        # (``_StreamState``), so a missing or non-list key is a bug worth
+        # raising on, not one to paper over with a fresh list that silently
+        # discards everything accumulated so far.
+        cast(list[object], tool_data["tool_data"]).append(tool_entry)
         await stream_manager.publish_chunk(
             stream_id,
             f"data: {json.dumps({'tool_data': tool_entry})}\n\n",

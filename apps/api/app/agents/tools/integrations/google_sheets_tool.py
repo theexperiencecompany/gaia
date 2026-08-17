@@ -69,10 +69,11 @@ def _sheets_proxy(
 ) -> dict[str, object]:
     # proxy_request_sync returns object; every call site here treats the
     # Sheets/Drive proxy response as a JSON object, so narrow it once here.
-    # proxy_request_sync returns object; every call site here treats the
-    # Sheets/Drive proxy response as a JSON object, so narrow it once here —
-    # and fail loud instead of masking a non-object payload as an empty dict,
-    # which would make every caller report success on nothing.
+    # None is a real answer — the proxy hands back a body with no ``data`` on
+    # endpoints that return nothing (a Drive permission create with no id), and
+    # callers read the missing fields as None. Any *other* non-object payload is
+    # a shape the callers cannot read, so it fails loud rather than degrading to
+    # {} and letting every caller report success on nothing.
     response = proxy_request_sync(
         user_id=user_id,
         toolkit=SHEETS_TOOLKIT,

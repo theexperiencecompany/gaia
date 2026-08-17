@@ -172,6 +172,36 @@ class TestPersistedTurnMatchesTheLiveStream:
         streamed = [json.loads(c[6:-2])["tool_data"] for c in published if '"tool_data"' in c]
         assert streamed == state.tool_data["tool_data"]
 
+    async def test_follow_up_chips_are_streamed_and_returned_verbatim(self):
+        """The chips the client renders and the list the turn is saved with come
+        from the same frame. Publishing one set while returning another is how a
+        reload shows different chips than the live turn did."""
+        published, state = await self._run_turn(
+            [{"follow_up_actions": ["Draft a reply", "Add to calendar"]}]
+        )
+
+        frames = [json.loads(c[6:-2]) for c in published if '"follow_up_actions"' in c]
+        assert frames == [{"follow_up_actions": ["Draft a reply", "Add to calendar"]}]
+        assert state.follow_up_actions == ["Draft a reply", "Add to calendar"]
+
+    async def test_a_chunk_without_chips_leaves_the_previous_ones_alone(self):
+        """Only a frame that carries ``follow_up_actions`` may replace them — a
+        later tool chunk must not blank the chips the user can already see."""
+        published, state = await self._run_turn(
+            [
+                {"follow_up_actions": ["Draft a reply"]},
+                {
+                    "tool_data": {
+                        "tool_name": "tool_calls_data",
+                        "data": {"tool_name": "add_memory", "tool_call_id": "tc-1"},
+                    }
+                },
+            ]
+        )
+
+        assert state.follow_up_actions == ["Draft a reply"]
+        assert len([c for c in published if '"follow_up_actions"' in c]) == 1
+
     async def test_the_saved_card_carries_the_result_the_client_joined_live(self):
         """Live, the client merges the ``tool_output`` frame onto the card by
         ``tool_call_id``. The save must reach the same place, or the reloaded

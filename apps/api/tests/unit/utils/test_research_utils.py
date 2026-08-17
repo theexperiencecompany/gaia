@@ -8,6 +8,8 @@ heuristic fallback, plus the cache key and the URL ranker.
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+import pytest
+
 from app.utils.research_utils import (
     build_research_cache_key,
     decompose_research_queries,
@@ -67,3 +69,56 @@ def test_rank_and_deduplicate_urls() -> None:
     assert len(ranked) == 1
     assert ranked[0]["url"] == "https://a.com"
     assert ranked[0]["appearances"] == 2
+    # Repeat appearances accumulate the provider scores rather than replacing
+    # them — string and float scores both count.
+    assert ranked[0]["score"] == pytest.approx(1.7)
+
+
+def test_rank_orders_by_appearances_then_score() -> None:
+    """The sort key is appearances*2 + score, so a twice-seen URL outranks a higher-scored one."""
+    results = [
+        {"results": [{"url": "https://twice.com", "score": 0.1}]},
+        {"results": [{"url": "https://twice.com", "score": 0.1}]},
+        {"results": [{"url": "https://once.com", "score": 0.9}]},
+    ]
+    ranked = rank_and_deduplicate_urls(results, max_urls=10)
+
+    assert [r["url"] for r in ranked] == ["https://twice.com", "https://once.com"]
+
+
+def test_rank_skips_malformed_results_and_keeps_the_rest() -> None:
+    """A payload that is not a dict is skipped, not crashed on, and does not stop the scan."""
+    results = [
+        "not-a-dict",
+        None,
+        {},
+        {"results": "not-a-list"},
+        {"results": [{"url": "https://good.com", "title": "T", "content": "C", "score": 0.4}]},
+    ]
+    ranked = rank_and_deduplicate_urls(results, max_urls=10)
+
+    assert ranked == [
+        {
+            "url": "https://good.com",
+            "title": "T",
+            "snippet": "C",
+            "score": 0.4,
+            "appearances": 1,
+        }
+    ]
+
+
+def test_rank_defaults_an_unusable_score_to_one_half() -> None:
+    """A score float() cannot read falls back to 0.5, the same as an absent one."""
+    results = [
+        {"results": [{"url": "https://a.com", "score": {"nested": 1}}]},
+        {"results": [{"url": "https://b.com", "score": "not-a-number"}]},
+        {"results": [{"url": "https://c.com"}]},
+    ]
+    ranked = rank_and_deduplicate_urls(results, max_urls=10)
+
+    assert {r["url"]: r["score"] for r in ranked} == {
+        "https://a.com": 0.5,
+        "https://b.com": 0.5,
+        "https://c.com": 0.5,
+    }

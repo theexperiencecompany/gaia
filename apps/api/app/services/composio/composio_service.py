@@ -158,7 +158,7 @@ class ComposioService:
 
         result = [tool for tool in tools if tool.name not in exclude_tools]
         await self._store_tool_metadata(tool_kit, result)
-        existing = dict_bag(log.get() or {}, "composio")
+        existing = dict_bag(log.get(), "composio")
         log.set(
             composio={
                 **existing,
@@ -230,7 +230,7 @@ class ComposioService:
             result_count=len(result),
             tools_time=tools_time,
         )
-        existing = dict_bag(log.get() or {}, "composio")
+        existing = dict_bag(log.get(), "composio")
         log.set(
             composio={
                 **existing,
