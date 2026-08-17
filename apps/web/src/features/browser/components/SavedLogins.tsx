@@ -101,8 +101,13 @@ export function SavedLogins() {
 
   return (
     <section>
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-zinc-200">Saved logins</h3>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-200">Saved logins</h3>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            Encrypted session data for the sites GAIA visits.
+          </p>
+        </div>
         {logins.length > 0 && (
           <Button
             size="sm"
@@ -116,11 +121,6 @@ export function SavedLogins() {
           </Button>
         )}
       </div>
-      <p className="mb-3 text-xs leading-relaxed text-zinc-500">
-        Stored encrypted. GAIA saves a session snapshot for each site it visits,
-        so it stays signed in where you've logged in and picks up where it left
-        off elsewhere.
-      </p>
 
       {isLoading ? (
         <div className="flex flex-col gap-2">
