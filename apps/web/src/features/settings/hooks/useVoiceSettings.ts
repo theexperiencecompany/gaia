@@ -5,7 +5,6 @@ import {
   type VoiceListResponse,
   voiceApi,
 } from "@/features/settings/api/voiceApi";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 const VOICES_QUERY_KEY = ["voice-settings", "voices"];
@@ -76,10 +75,6 @@ export function useSelectVoice() {
         (v) => v.voice_id === voiceId,
       )?.name;
       toast.success(name ? `Voice set to ${name}` : "Voice updated");
-      trackEvent(ANALYTICS_EVENTS.SETTINGS_PREFERENCES_CHANGED, {
-        setting: "voice",
-        voice_id: voiceId,
-      });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: VOICES_QUERY_KEY });

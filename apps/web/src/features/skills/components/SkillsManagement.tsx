@@ -75,13 +75,8 @@ export default function SkillsManagement() {
     });
     if (!confirmed) return;
     setDeletingId(skill.id);
-    const removed = await removeSkill(skill);
+    await removeSkill(skill);
     setDeletingId(null);
-    if (removed) {
-      trackEvent(ANALYTICS_EVENTS.SKILL_UNINSTALLED, {
-        target: skill.target,
-      });
-    }
   };
 
   return (

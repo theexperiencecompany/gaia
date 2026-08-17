@@ -365,7 +365,7 @@ async def delete_memory(
     if not success:
         log.warning("memory_not_found", operation="delete", memory_id=memory_id)
         raise HTTPException(status_code=404, detail="Memory not found")
-    capture_context_event(AnalyticsEvents.MEMORY_ITEM_DELETED)
+    capture_context_event(AnalyticsEvents.MEMORY_ITEM_DELETED, {"memory_id": memory_id})
     return DeleteMemoryResponse(success=True, message="Memory deleted successfully")
 
 

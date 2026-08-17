@@ -84,7 +84,12 @@ async def submit_support_request(
         log.set(outcome="success")
         capture_context_event(
             AnalyticsEvents.SUPPORT_TICKET_SUBMITTED,
-            {"request_type": request_data.type.value},
+            {
+                "request_type": request_data.type.value,
+                "title_length": len(request_data.title),
+                "description_length": len(request_data.description),
+                "attachment_count": 0,
+            },
         )
         return result
 
@@ -168,7 +173,12 @@ async def submit_support_request_with_attachments(
         log.set(outcome="success")
         capture_context_event(
             AnalyticsEvents.SUPPORT_TICKET_SUBMITTED,
-            {"request_type": request_data.type.value},
+            {
+                "request_type": request_data.type.value,
+                "title_length": len(request_data.title),
+                "description_length": len(request_data.description),
+                "attachment_count": len(attachments),
+            },
         )
         return result
 

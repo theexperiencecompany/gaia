@@ -810,12 +810,53 @@ class TestCalendarAnalytics:
             resp = await client.post(f"{API}/calendar/event", json=self._EVENT_JSON)
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_CREATED)
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.CALENDAR_EVENT_CREATED,
+            {
+                "is_all_day": False,
+                "has_description": False,
+                "has_recurrence": False,
+                "recurrence_frequency": None,
+            },
+        )
         assert len(mock_svc.create_calendar_event.await_args.args) == 2
         assert all(arg is not None for arg in mock_svc.create_calendar_event.await_args.args)
         mock_log.set.assert_any_call(
             user={"id": USER_ID},
             calendar={"operation": "create_event", "calendar_id": None},
+        )
+
+    async def test_create_event_captures_description_and_recurrence(
+        self, client: AsyncClient
+    ) -> None:
+        """The create capture reports the shape of the event, not its content."""
+        with (
+            patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            mock_svc.create_calendar_event.return_value = GoogleCalendarEventResource(
+                id="ev-new", summary="Standup"
+            )
+            resp = await client.post(
+                f"{API}/calendar/event",
+                json={
+                    **self._EVENT_JSON,
+                    "is_all_day": True,
+                    "description": "daily sync",
+                    "recurrence": {"rrule": {"frequency": "WEEKLY", "by_day": ["MO", "WE"]}},
+                },
+            )
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.CALENDAR_EVENT_CREATED,
+            {
+                "is_all_day": True,
+                "has_description": True,
+                "has_recurrence": True,
+                "recurrence_frequency": "WEEKLY",
+            },
         )
 
     async def test_create_event_logs_calendar_id(self, client: AsyncClient) -> None:

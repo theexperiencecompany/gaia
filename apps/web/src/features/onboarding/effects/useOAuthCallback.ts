@@ -36,10 +36,6 @@ export function useOAuthCallback(dispatch: Dispatch<Action>): void {
     const integration = searchParams.get("integration") ?? "gmail";
 
     if (oauthSuccess === "true") {
-      trackEvent(ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
-        integration,
-        source: "onboarding",
-      });
       toast.success("Gmail connected!");
       dispatch({
         type: "answer",

@@ -113,7 +113,9 @@ async def complete_user_onboarding(
             onboarding_data,
             background_tasks,
         )
-        capture_context_event(AnalyticsEvents.ONBOARDING_COMPLETED)
+        # No completion event here: this only QUEUES the pipeline. The worker
+        # emits it once the phase actually reaches PERSONALIZATION_COMPLETE,
+        # so a pipeline that fails afterwards is not counted as a completion.
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user
         )
@@ -331,9 +333,16 @@ async def update_user_preferences(
 
     try:
         updated_user = await update_onboarding_preferences(user["user_id"], preferences)
+        # PATCH semantics: only the fields the caller actually sent were written,
+        # so `fields` is what changed — not the whole preferences object.
         capture_context_event(
             AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-            {"has_custom_instructions": bool(preferences.custom_instructions)},
+            {
+                "setting": "onboarding_preferences",
+                "fields": sorted(preferences.model_fields_set),
+                "response_style": preferences.response_style,
+                "has_custom_instructions": bool(preferences.custom_instructions),
+            },
         )
 
         return OnboardingResponse(

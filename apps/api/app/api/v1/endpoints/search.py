@@ -57,7 +57,7 @@ async def search_messages_endpoint(
         result_count = len(results.messages) + len(results.conversations) + len(results.notes)
         capture_context_event(
             AnalyticsEvents.SEARCH_PERFORMED,
-            {"mode": "keyword", "result_count": result_count},
+            {"mode": "keyword", "query_length": len(query), "result_count": result_count},
         )
         # set_ns: log.set(search={...}) would clobber the query context set above
         log.set_ns("search", result_count=result_count)

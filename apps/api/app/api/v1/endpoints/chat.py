@@ -176,18 +176,29 @@ async def chat_stream_endpoint(
         conversation_id=conversation_id,
         user_id=user_id,
     )
-    # Server-side GROUND TRUTH for a chat message, and the one to count for
-    # volume: it fires for every surface (web, desktop, and bots via
-    # endpoints/bot.py) and no ad blocker can drop it. The web client also
-    # emits `chat:message_sent` for the same message — that is INTENT, kept
-    # deliberately for the composer context it carries. Two names, two
-    # meanings; see the comment in apps/web/src/hooks/useSendMessage.ts.
+    # The ONE event for a chat message. It fires for every surface (web,
+    # desktop, and bots via endpoints/bot.py), no ad blocker can drop it, and
+    # it lands only once the request has passed the rate limit and the cost
+    # budget — so it counts messages that were actually accepted.
+    #
+    # The composer context below used to ride on a second, client-side
+    # `chat:message_sent`. Every field of it arrives in this request anyway, so
+    # that emitter was a duplicate of this one wearing a different name and has
+    # been removed; counting either name now gives the same, correct number.
     capture_context_event(
         AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
         {
             "is_new_conversation": body.conversation_id is None,
             "message_count": len(body.messages) if body.messages else 0,
             "has_files": bool(body.fileIds or body.fileData),
+            "file_count": len(body.fileIds or []) + len(body.fileData or []),
+            "has_selected_tool": bool(body.selectedTool),
+            "tool_name": body.selectedTool,
+            "tool_category": body.toolCategory,
+            "has_selected_workflow": bool(body.selectedWorkflow),
+            "workflow_id": body.selectedWorkflow.id if body.selectedWorkflow else None,
+            "has_selected_calendar_event": bool(body.selectedCalendarEvent),
+            "is_reply": bool(body.replyToMessage),
             "source": _resolve_source(request),
         },
     )

@@ -73,8 +73,8 @@ async def install_skill_from_github(
         installed = await install_from_github(
             user_id=user_id,
             repo_url=repo_url,
-            skill_path=skill_path if skill_path else None,
-            target_override=target if target else None,
+            skill_path=skill_path or None,
+            target_override=target or None,
         )
 
         files_info = f" ({len(installed.files)} files)" if len(installed.files) > 1 else ""
@@ -174,7 +174,7 @@ async def list_installed_skills(
     try:
         skills = await list_skills(
             user_id=user_id,
-            target=target if target else None,
+            target=target or None,
         )
 
         if not skills:
@@ -236,8 +236,8 @@ async def manage_skill(
             return f"Skill '{skill_name}' {'disabled' if success else 'was already disabled'}."
 
         if action == "uninstall":
-            success = await uninstall_skill_full(user_id, skill.id)
-            if success:
+            uninstalled = await uninstall_skill_full(user_id, skill.id)
+            if uninstalled:
                 return f"Skill '{skill_name}' uninstalled and files removed."
             return f"Failed to uninstall skill '{skill_name}'."
 

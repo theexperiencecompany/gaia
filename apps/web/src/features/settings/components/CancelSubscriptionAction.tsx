@@ -6,7 +6,6 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import type { Subscription } from "@/features/pricing/api/pricingApi";
 import { pricingApi } from "@/features/pricing/api/pricingApi";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 interface CancelSubscriptionActionProps {
   subscription: Subscription;
@@ -27,10 +26,6 @@ export function CancelSubscriptionAction({
     setIsCancelling(true);
     try {
       await pricingApi.cancelSubscription();
-      trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_CANCELLED, {
-        product_id: subscription.product_id,
-        billing_interval: subscription.payment_frequency_interval,
-      });
       await refetchStatus();
     } finally {
       setIsCancelling(false);

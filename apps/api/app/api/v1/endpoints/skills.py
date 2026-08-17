@@ -248,6 +248,7 @@ async def install_skill_with_auto_discover(
             AnalyticsEvents.SKILL_INSTALLED,
             {
                 "skill_id": installed.id if hasattr(installed, "id") else None,
+                "target": installed.target,
                 "source": "github",
             },
         )
@@ -300,6 +301,7 @@ async def create_inline_skill_endpoint(
             AnalyticsEvents.SKILL_INSTALLED,
             {
                 "skill_id": installed.id if hasattr(installed, "id") else None,
+                "target": installed.target,
                 "source": "inline",
             },
         )
@@ -499,14 +501,17 @@ async def uninstall_skill_endpoint(
     """Uninstall a skill and remove its files from VFS."""
     log.set(operation="uninstall_skill", skill_id=skill_id)
     try:
-        success = await uninstall_skill_full(user_id, skill_id)
-        if not success:
+        uninstalled = await uninstall_skill_full(user_id, skill_id)
+        if not uninstalled:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Skill {skill_id} not found",
             )
         log.set(outcome="success")
-        capture_context_event(AnalyticsEvents.SKILL_UNINSTALLED, {"skill_id": skill_id})
+        capture_context_event(
+            AnalyticsEvents.SKILL_UNINSTALLED,
+            {"skill_id": skill_id, "target": uninstalled.target},
+        )
     except HTTPException:
         raise
     except Exception as e:

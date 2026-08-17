@@ -6,6 +6,7 @@ Provides type-safe event tracking with consistent naming conventions.
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from posthog import Posthog
 
@@ -26,6 +27,10 @@ class AnalyticsEvents(StrEnum):
 
     # Core product actions
     CHAT_MESSAGE_SUBMITTED = "chat:message_submitted"
+    # The other half of submitted: a turn stopped at a gate, carrying why.
+    # Without it a refusal is a MISSING event, and missing is
+    # indistinguishable from a user who never typed.
+    CHAT_MESSAGE_REFUSED = "chat:message_refused"
     WORKFLOW_CREATED = "workflow:created"
     WORKFLOW_EXECUTED = "workflow:executed"
     WORKFLOW_ACTIVATED = "workflow:activated"
@@ -42,14 +47,12 @@ class AnalyticsEvents(StrEnum):
     # Payments (used by payment webhook processing)
     PAYMENT_SUCCEEDED = "payment:succeeded"
     PAYMENT_FAILED = "payment:failed"
-    PAYMENT_REFUNDED = "payment:refunded"
 
     # Subscription lifecycle (used by payment webhook processing)
     SUBSCRIPTION_ACTIVATED = "subscription:activated"
     SUBSCRIPTION_RENEWED = "subscription:renewed"
     SUBSCRIPTION_CANCELLED = "subscription:cancelled"
     SUBSCRIPTION_EXPIRED = "subscription:expired"
-    SUBSCRIPTION_FAILED = "subscription:failed"
     RATE_LIMIT_HIT = "rate_limit_hit"
 
     # Conversations
@@ -57,7 +60,6 @@ class AnalyticsEvents(StrEnum):
     CONVERSATION_RENAMED = "chat:conversation_renamed"
     CONVERSATION_STARRED = "chat:conversation_starred"
     CONVERSATION_DELETED = "chat:conversation_deleted"
-    CONVERSATION_ARCHIVED = "chat:conversation_archived"
     CHAT_MESSAGE_COMPLETED = "chat:message_completed"
     CHAT_MESSAGE_CANCELLED = "chat:message_cancelled"
 
@@ -72,18 +74,16 @@ class AnalyticsEvents(StrEnum):
     TODO_TOGGLED = "todos:toggled"
     TODO_DELETED = "todos:deleted"
 
-    # Calendar
-    CALENDAR_CONNECTED = "calendar:connected"
-    CALENDAR_DISCONNECTED = "calendar:disconnected"
     CALENDAR_EVENT_CREATED = "calendar:event_created"
     CALENDAR_EVENT_UPDATED = "calendar:event_updated"
     CALENDAR_EVENT_DELETED = "calendar:event_deleted"
 
-    # Mail
-    MAILBOX_CONNECTED = "email:mailbox_connected"
     EMAIL_SENT = "email:sent"
     EMAIL_REPLIED = "email:replied"
-    EMAIL_COMPOSED = "email:compose_opened"
+    # NOT the same as the web's email:compose_opened, which is the user opening
+    # the modal. This fires when the ASSISTANT finishes composing a draft — a
+    # different action that happened to be wearing the same name.
+    EMAIL_COMPOSED = "email:draft_composed"
 
     # Memory
     MEMORY_CLEARED = "memory:cleared"
@@ -106,8 +106,6 @@ class AnalyticsEvents(StrEnum):
     # Search
     SEARCH_PERFORMED = "search:performed"
 
-    # Notifications
-    NOTIFICATION_CREATED = "notification:created"
     NOTIFICATION_PREFERENCE_UPDATED = "settings:notifications_toggled"
 
     # Onboarding
@@ -117,8 +115,6 @@ class AnalyticsEvents(StrEnum):
     # Integrations
     INTEGRATION_CONNECTED = "integration:connected"
     INTEGRATION_DISCONNECTED = "integration:disconnected"
-    INTEGRATION_RECONNECTED = "integration:reconnected"
-    INTEGRATION_ERROR = "integration:error"
 
     # Skills
     SKILL_INSTALLED = "skill:installed"
@@ -129,17 +125,13 @@ class AnalyticsEvents(StrEnum):
 
     # Settings / profile
     SETTINGS_PREFERENCES_CHANGED = "settings:preferences_changed"
-    MODEL_SELECTED = "settings:model_selected"
 
     # Worker / agent lifecycle
     AGENT_RUN_STARTED = "agent:run_started"
     AGENT_RUN_COMPLETED = "agent:run_completed"
     AGENT_RUN_FAILED = "agent:run_failed"
     TOOL_USED = "tool:used"
-    SANDBOX_EXECUTED = "sandbox:executed"
 
-    # Usage / limits
-    RATE_LIMIT_WARNED = "rate_limit:warned"
     USAGE_QUERIED = "usage:queried"
 
 
@@ -212,14 +204,15 @@ def capture_event(
     user_id: str,
     event: str,
     properties: dict[str, Any] | None = None,
+    dedupe_key: str | None = None,
 ) -> None:
-    """
-    Capture an analytics event in PostHog.
+    """Capture an analytics event in PostHog, attributed to ``user_id``.
 
-    Args:
-        user_id: Unique identifier for the user
-        event: Event name
-        properties: Event properties
+    ``dedupe_key`` makes the capture idempotent: pass a value derived from the
+    thing that happened (a run id, a user plus a phase) and PostHog collapses
+    repeats of it into one event. Anything emitted from a retryable worker task
+    needs one — an ARQ retry re-runs the whole body, and without a key the
+    second pass simply counts the milestone twice.
     """
     client = _get_posthog_client()
     if client is None:
@@ -232,10 +225,18 @@ def capture_event(
             **(properties or {}),
             "timestamp": datetime.now(UTC).isoformat(),
         }
+        # A stable uuid is PostHog's dedupe key — the same one twice is stored
+        # once. uuid5 so the same inputs always produce the same id, on any
+        # worker, on any retry.
         client.capture(
             event=event,
             distinct_id=user_id,
             properties=event_properties,
+            **(
+                {"uuid": str(uuid5(NAMESPACE_URL, f"{event}:{user_id}:{dedupe_key}"))}
+                if dedupe_key
+                else {}
+            ),
         )
     except Exception as e:
         log.error(

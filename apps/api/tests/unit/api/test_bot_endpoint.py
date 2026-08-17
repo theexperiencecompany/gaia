@@ -653,6 +653,46 @@ class TestBotChatStream:
         mock_plan.assert_awaited_once_with("u1")
         mock_tiered.assert_not_awaited()
 
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_a_refused_turn_is_not_counted_as_a_submitted_message(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        mock_tiered: AsyncMock,
+        mock_capture: MagicMock,
+        client: AsyncClient,
+    ):
+        """chat:message_submitted is the ground-truth volume metric.
+
+        A turn refused at the plan gate never reaches the agent, so counting it
+        would inflate bot volume by exactly the traffic of the users who hit
+        walls most — and make the bot surface incomparable to the web one, which
+        captures after its own gates. The refusal is its own event, with why.
+        """
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
+        ):
+            await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("imessage"))
+
+        captured = [call.args[1] for call in mock_capture.call_args_list]
+        assert AnalyticsEvents.CHAT_MESSAGE_SUBMITTED not in captured
+        assert AnalyticsEvents.CHAT_MESSAGE_REFUSED in captured
+        refusal = next(
+            call
+            for call in mock_capture.call_args_list
+            if call.args[1] == AnalyticsEvents.CHAT_MESSAGE_REFUSED
+        )
+        assert refusal.args[0] == "u1"
+        assert refusal.args[2] == {"platform": "imessage", "reason": "plan_required"}
+
     @pytest.mark.parametrize(
         ("platform", "plan"),
         [("imessage", PlanType.PRO), ("telegram", PlanType.FREE)],

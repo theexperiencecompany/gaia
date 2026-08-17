@@ -75,6 +75,15 @@ def _refusal_stream(error_code: str) -> StreamingResponse:
     return StreamingResponse(frame(), media_type="text/event-stream")
 
 
+def _capture_bot_turn_refused(user_id: str, platform: str, reason: str) -> None:
+    """A bot turn stopped at a gate, with why — the counterpart to submitted."""
+    capture_event(
+        user_id,
+        AnalyticsEvents.CHAT_MESSAGE_REFUSED,
+        {"platform": platform, "reason": reason},
+    )
+
+
 def _resolve_user_id(user: dict[str, Any]) -> str:
     """The stable GAIA user id from a user document, or "" if it carries neither key.
 
@@ -280,21 +289,11 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     user_id = _resolve_user_id(user)
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform, outcome="success")
-    # Bot routes are auth-excluded, so the PostHog request context carries no
-    # identity — attribute explicitly with the linked user's id.
-    capture_event(
-        user_id,
-        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
-        {
-            "platform": body.platform,
-            "has_files": bool(body.file_ids or body.file_data),
-        },
-    )
-
     # Linking is Pro-gated for premium platforms; re-check on every turn so a
     # user who downgrades after linking is refused here, not silently served.
     if await platform_requires_upgrade(user_id, body.platform):
         log.set(outcome="plan_required")  # pragma: no mutate
+        _capture_bot_turn_refused(user_id, body.platform, "plan_required")
         return _refusal_stream(BOT_STREAM_ERROR_PLAN_REQUIRED)
 
     # Same quota the web chat endpoint charges via @tiered_rate_limit. It cannot
@@ -311,6 +310,21 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     # without this a bot user over budget got a stream that opened and then died
     # partway instead of a clean refusal before any work.
     await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
+
+    # Captured HERE, past every gate, for the same reason the web endpoint
+    # captures after its own: chat:message_submitted is the ground-truth volume
+    # metric, and a turn refused for plan or quota never reached the agent.
+    # Counting refusals as submissions inflates bot volume by exactly the
+    # traffic of the users who hit walls most, and makes the two surfaces
+    # incomparable. A refusal is its own event, with a reason.
+    capture_event(
+        user_id,
+        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
+        {
+            "platform": body.platform,
+            "has_files": bool(body.file_ids or body.file_data),
+        },
+    )
 
     conversation_id = await BotService.get_or_create_session(
         body.platform, body.platform_user_id, body.channel_id, user

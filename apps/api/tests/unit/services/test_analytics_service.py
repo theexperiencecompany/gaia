@@ -49,12 +49,10 @@ class TestAnalyticsEvents:
         assert AnalyticsEvents.USER_SIGNED_UP == "user:signed_up"
         assert AnalyticsEvents.PAYMENT_SUCCEEDED == "payment:succeeded"
         assert AnalyticsEvents.PAYMENT_FAILED == "payment:failed"
-        assert AnalyticsEvents.PAYMENT_REFUNDED == "payment:refunded"
         assert AnalyticsEvents.SUBSCRIPTION_ACTIVATED == "subscription:activated"
         assert AnalyticsEvents.SUBSCRIPTION_RENEWED == "subscription:renewed"
         assert AnalyticsEvents.SUBSCRIPTION_CANCELLED == "subscription:cancelled"
         assert AnalyticsEvents.SUBSCRIPTION_EXPIRED == "subscription:expired"
-        assert AnalyticsEvents.SUBSCRIPTION_FAILED == "subscription:failed"
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +376,7 @@ class TestTrackPaymentEvent:
     def test_extra_properties_merged(self, mock_posthog):
         track_payment_event(
             "user1",
-            AnalyticsEvents.PAYMENT_REFUNDED,
+            AnalyticsEvents.PAYMENT_FAILED,
             properties={"reason": "duplicate"},
         )
 

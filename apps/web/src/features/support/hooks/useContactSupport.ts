@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { type SupportRequest, supportApi } from "../api/supportApi";
@@ -124,15 +123,6 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
     if (!validateForm()) {
       return false;
     }
-
-    // Single capture point for every support-form submit (contact page form
-    // and the support modal both route through this hook).
-    trackEvent(ANALYTICS_EVENTS.SUPPORT_FORM_SUBMITTED, {
-      request_type: formData.type,
-      title_length: formData.title.length,
-      description_length: formData.description.length,
-      attachment_count: formData.attachments.length,
-    });
 
     setIsSubmitting(true);
 

@@ -278,10 +278,6 @@ function VoiceSessionInner({
             updatedAt: new Date(),
           };
           await db.putConversation(created);
-          trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_CREATED, {
-            conversationId: discoveredConversationId,
-            source: "voice_agent",
-          });
           trackEvent(ANALYTICS_EVENTS.FEATURE_DISCOVERED, {
             feature: "voice_agent",
           });

@@ -281,7 +281,11 @@ class TestNotificationAnalytics:
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
             AnalyticsEvents.NOTIFICATION_PREFERENCE_UPDATED,
-            {"changed_channel_count": 2},
+            {
+                "changed_channel_count": 2,
+                "channels_enabled": ["discord"],
+                "channels_disabled": ["telegram"],
+            },
         )
 
 

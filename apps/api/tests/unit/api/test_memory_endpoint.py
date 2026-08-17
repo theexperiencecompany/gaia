@@ -86,7 +86,10 @@ class TestMemoryAnalytics:
             resp = await client.delete("/api/v1/memory/507f1f77-bcf8-6cd7-9943-9011aaaaaaaa")
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.MEMORY_ITEM_DELETED)
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.MEMORY_ITEM_DELETED,
+            {"memory_id": "507f1f77-bcf8-6cd7-9943-9011aaaaaaaa"},
+        )
 
     async def test_clear_all_captures_memory_cleared(self, client: AsyncClient) -> None:
         with (

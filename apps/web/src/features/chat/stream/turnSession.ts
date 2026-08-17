@@ -373,11 +373,6 @@ export class TurnSession {
     }
 
     if (event.type === "tool_data") {
-      trackEvent(ANALYTICS_EVENTS.TOOL_USED, {
-        tool_name: event.entry.tool_name,
-        tool_category: event.entry.tool_category || "unknown",
-        timestamp: event.entry.timestamp || new Date().toISOString(),
-      });
       if (event.entry.tool_name === TOOL_CALLS_DATA_TOOL_NAME) {
         const hints = readToolDataLoadingHints(event.entry.data);
         if (hints) {
@@ -476,10 +471,6 @@ export class TurnSession {
       };
       try {
         await db.putConversation(conversation);
-        trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_CREATED, {
-          conversationId,
-          source: "chat",
-        });
       } catch (error) {
         console.error("Failed to save conversation to IndexedDB:", error);
       }

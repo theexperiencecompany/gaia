@@ -493,6 +493,10 @@ class PaymentWebhookService:
                 user_id=user_id,
                 event_type=AnalyticsEvents.SUBSCRIPTION_CANCELLED,
                 subscription_id=sub_data.subscription_id,
+                properties={
+                    "product_id": sub_data.product_id,
+                    "billing_interval": sub_data.payment_frequency_interval,
+                },
             )
 
         return DodoWebhookProcessingResult(

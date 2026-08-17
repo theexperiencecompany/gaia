@@ -1674,6 +1674,10 @@ class TestHandleSubscriptionCancelled:
         call_kwargs = mock_track_subscription.call_args[1]
         assert call_kwargs["event_type"] == "subscription:cancelled"
         assert call_kwargs["user_id"] == FAKE_USER_ID
+        assert call_kwargs["properties"] == {
+            "product_id": "prod_abc123",
+            "billing_interval": "month",
+        }
 
     async def test_scheduled_cancel_keeps_status_and_sets_flag(
         self,

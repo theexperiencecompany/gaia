@@ -316,10 +316,11 @@ class TestManageSkill:
         )
         assert "disabled" in result
 
-    @patch(f"{MODULE}.uninstall_skill_full", new_callable=AsyncMock, return_value=True)
+    @patch(f"{MODULE}.uninstall_skill_full", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock)
     async def test_uninstall(self, mock_get: AsyncMock, mock_uninstall: AsyncMock) -> None:
         mock_get.return_value = _skill_record()
+        mock_uninstall.return_value = _skill_record()
 
         from app.agents.tools.skill_tools import manage_skill
 
@@ -328,7 +329,7 @@ class TestManageSkill:
         )
         assert "uninstalled" in result
 
-    @patch(f"{MODULE}.uninstall_skill_full", new_callable=AsyncMock, return_value=False)
+    @patch(f"{MODULE}.uninstall_skill_full", new_callable=AsyncMock, return_value=None)
     @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock)
     async def test_uninstall_failed(self, mock_get: AsyncMock, mock_uninstall: AsyncMock) -> None:
         mock_get.return_value = _skill_record()

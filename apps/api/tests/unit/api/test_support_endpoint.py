@@ -69,7 +69,13 @@ class TestSubmitSupportRequest:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SUPPORT_TICKET_SUBMITTED, {"request_type": "support"}
+            AnalyticsEvents.SUPPORT_TICKET_SUBMITTED,
+            {
+                "request_type": "support",
+                "title_length": len("Need help"),
+                "description_length": len("It broke completely"),
+                "attachment_count": 0,
+            },
         )
 
     async def test_submit_with_attachments_captures_analytics(self, client: AsyncClient) -> None:
@@ -92,5 +98,11 @@ class TestSubmitSupportRequest:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SUPPORT_TICKET_SUBMITTED, {"request_type": "feature"}
+            AnalyticsEvents.SUPPORT_TICKET_SUBMITTED,
+            {
+                "request_type": "feature",
+                "title_length": len("New idea"),
+                "description_length": len("Add a thing"),
+                "attachment_count": 1,
+            },
         )

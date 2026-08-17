@@ -170,7 +170,7 @@ class TestInstallFromGitHub:
     """Tests for the install skill from GitHub endpoint."""
 
     async def test_install_with_skill_path_returns_201(self, client: AsyncClient):
-        mock_skill = _make_skill_mock()
+        mock_skill = _make_skill_mock(target="gmail_agent")
         with (
             patch(
                 "app.api.v1.endpoints.skills.get_skill_targets",
@@ -195,7 +195,7 @@ class TestInstallFromGitHub:
         assert response.status_code == 201
         mock_capture.assert_called_once_with(
             AnalyticsEvents.SKILL_INSTALLED,
-            {"skill_id": "sk_abc123", "source": "github"},
+            {"skill_id": "sk_abc123", "target": "gmail_agent", "source": "github"},
         )
 
     async def test_install_with_skill_name_auto_discovers(self, client: AsyncClient):
@@ -317,7 +317,7 @@ class TestInstallInline:
     """Tests for the create inline skill endpoint."""
 
     async def test_create_inline_skill_returns_201(self, client: AsyncClient):
-        mock_skill = _make_skill_mock(source="inline")
+        mock_skill = _make_skill_mock(source="inline", target="gmail_agent")
         with (
             patch(
                 "app.api.v1.endpoints.skills._validate_target",
@@ -343,7 +343,7 @@ class TestInstallInline:
         assert response.status_code == 201
         mock_capture.assert_called_once_with(
             AnalyticsEvents.SKILL_INSTALLED,
-            {"skill_id": "sk_abc123", "source": "inline"},
+            {"skill_id": "sk_abc123", "target": "gmail_agent", "source": "inline"},
         )
 
     async def test_create_inline_skill_missing_name_returns_422(self, client: AsyncClient):
@@ -609,7 +609,7 @@ class TestUninstallSkill:
             patch(
                 _UNINSTALL_SKILL,
                 new_callable=AsyncMock,
-                return_value=True,
+                return_value=_make_skill_mock(target="gmail_agent"),
             ),
             patch(_CAPTURE) as mock_capture,
         ):
@@ -617,14 +617,15 @@ class TestUninstallSkill:
 
         assert response.status_code == 204
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SKILL_UNINSTALLED, {"skill_id": "sk_abc123"}
+            AnalyticsEvents.SKILL_UNINSTALLED,
+            {"skill_id": "sk_abc123", "target": "gmail_agent"},
         )
 
     async def test_uninstall_skill_not_found_returns_404(self, client: AsyncClient):
         with patch(
             _UNINSTALL_SKILL,
             new_callable=AsyncMock,
-            return_value=False,
+            return_value=None,
         ):
             response = await client.delete(f"{BASE_URL}/sk_nonexistent")
 

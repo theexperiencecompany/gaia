@@ -184,7 +184,9 @@ class TestStarConversation:
         with patch("app.services.conversation_service.capture_event") as mock_capture:
             await star_conversation("conv_abc", True, test_user)
         mock_capture.assert_called_once_with(
-            "user_123", AnalyticsEvents.CONVERSATION_STARRED, {"starred": True}
+            "user_123",
+            AnalyticsEvents.CONVERSATION_STARRED,
+            {"starred": True, "conversation_id": "conv_abc"},
         )
 
 

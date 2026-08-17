@@ -147,6 +147,9 @@ class TodoService:
                 "user_id": user_id,
             },
         )
+        # Whether the caller filed the todo into a project themselves — read
+        # before the Inbox default below makes project_id unconditionally set.
+        project_chosen = todo.project_id is not None
         if not todo.project_id:
             todo.project_id = await cls._get_inbox_id(user_id)
         else:
@@ -208,6 +211,10 @@ class TodoService:
             {
                 "priority": created.priority.value,
                 "has_due_date": created.due_date is not None,
+                "has_description": bool(created.description),
+                "labels_count": len(created.labels),
+                "subtasks_count": len(created.subtasks),
+                "has_project": project_chosen,
             },
         )
         return TodoResponse.from_document(created)
@@ -323,18 +330,30 @@ class TodoService:
 
         schedule_user_todos_sync(user_id)
         if updates.completed is not None:
-            # Toggle semantics (matching the frontend's `todos:toggled`): fires
-            # for both completing and un-completing, tracked or plain.
+            # Toggle semantics: fires for both completing and un-completing,
+            # tracked or plain.
             capture_event(
                 user_id,
                 AnalyticsEvents.TODO_TOGGLED,
-                {"completed": updates.completed},
+                {
+                    "completed": updates.completed,
+                    "todo_id": todo_id,
+                    "priority": updated.priority.value,
+                    "has_due_date": updated.due_date is not None,
+                },
             )
         elif update.model_fields_set:
             capture_event(
                 user_id,
                 AnalyticsEvents.TODO_UPDATED,
-                {"changed_field_count": len(update.model_fields_set)},
+                {
+                    "changed_field_count": len(update.model_fields_set),
+                    "changed_fields": sorted(update.model_fields_set),
+                    "todo_id": todo_id,
+                    "priority": updated.priority.value,
+                    "has_due_date": updated.due_date is not None,
+                    "has_subtasks": bool(updated.subtasks),
+                },
             )
         return TodoResponse.from_document(updated)
 

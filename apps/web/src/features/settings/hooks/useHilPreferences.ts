@@ -5,7 +5,6 @@ import {
 } from "@shared/chat";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { approvalsApi } from "@/features/settings/api/approvalsApi";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 const HIL_PREFS_KEY = ["hil", "preferences"] as const;
@@ -25,11 +24,7 @@ export function useHilPreferences() {
 
   const modeMutation = useMutation({
     mutationFn: (mode: HilMode) => approvalsApi.putHilPreferences({ mode }),
-    onSuccess: (data, mode) => {
-      trackEvent(ANALYTICS_EVENTS.SETTINGS_PREFERENCES_CHANGED, {
-        setting: "hil_approvals",
-        mode,
-      });
+    onSuccess: (data) => {
       qc.setQueryData(HIL_PREFS_KEY, data);
     },
   });
@@ -37,12 +32,7 @@ export function useHilPreferences() {
   const overrideMutation = useMutation({
     mutationFn: ({ name, ask }: { name: string; ask: boolean | null }) =>
       approvalsApi.setToolOverride(name, ask),
-    onSuccess: (data, { name, ask }) => {
-      trackEvent(ANALYTICS_EVENTS.SETTINGS_PREFERENCES_CHANGED, {
-        setting: "tool_approval",
-        tool_name: name,
-        require_approval: ask === true,
-      });
+    onSuccess: (data) => {
       qc.setQueryData(HIL_PREFS_KEY, data);
     },
     // The mutation is fire-and-forget from every call site (`.mutate()`), so

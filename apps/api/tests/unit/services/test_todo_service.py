@@ -284,7 +284,12 @@ class TestCreateTodo:
     async def test_captures_todo_created(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
     ):
-        created = _make_todo_doc(project_id=FAKE_INBOX_ID, priority="high")
+        created = _make_todo_doc(
+            project_id=FAKE_INBOX_ID,
+            priority="high",
+            labels=["home", "errand"],
+            subtasks=[{"id": "s1", "title": "sub", "completed": False}],
+        )
         mock_todo_repo.create = AsyncMock(return_value=created)
         with patch("app.services.todos.todo_service.capture_event") as mock_capture:
             await TodoService.create_todo(
@@ -293,8 +298,30 @@ class TestCreateTodo:
         mock_capture.assert_called_once_with(
             FAKE_USER_ID,
             AnalyticsEvents.TODO_CREATED,
-            {"priority": "high", "has_due_date": False},
+            {
+                "priority": "high",
+                "has_due_date": False,
+                "has_description": True,
+                "labels_count": 2,
+                "subtasks_count": 1,
+                # No project on the request — the Inbox default must not read as
+                # the user having chosen one.
+                "has_project": False,
+            },
         )
+
+    async def test_captures_todo_created_with_chosen_project(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
+    ):
+        mock_project_repo.get = AsyncMock(
+            return_value=_make_project_doc(project_id=FAKE_PROJECT_ID, name="Work")
+        )
+        mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc(project_id=FAKE_PROJECT_ID))
+        with patch("app.services.todos.todo_service.capture_event") as mock_capture:
+            await TodoService.create_todo(
+                TodoModel(title="Buy milk", project_id=FAKE_PROJECT_ID), FAKE_USER_ID
+            )
+        assert mock_capture.call_args.args[2]["has_project"] is True
 
 
 class TestGetTodo:
@@ -371,28 +398,49 @@ class TestUpdateTodo:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         mock_todo_repo.update = AsyncMock(
-            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, title="new")
+            return_value=_make_todo_doc(
+                todo_id=FAKE_TODO_ID,
+                title="new",
+                priority="high",
+                subtasks=[{"id": "s1", "title": "sub", "completed": False}],
+            )
         )
         with patch("app.services.todos.todo_service.capture_event") as mock_capture:
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(title="new"), FAKE_USER_ID
             )
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.TODO_UPDATED, {"changed_field_count": 1}
+            FAKE_USER_ID,
+            AnalyticsEvents.TODO_UPDATED,
+            {
+                "changed_field_count": 1,
+                "changed_fields": ["title"],
+                "todo_id": FAKE_TODO_ID,
+                "priority": "high",
+                "has_due_date": False,
+                "has_subtasks": True,
+            },
         )
 
     async def test_captures_completed_toggle(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         mock_todo_repo.update = AsyncMock(
-            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, completed=True)
+            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, completed=True, priority="medium")
         )
         with patch("app.services.todos.todo_service.capture_event") as mock_capture:
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(completed=True), FAKE_USER_ID
             )
         mock_capture.assert_called_once_with(
-            FAKE_USER_ID, AnalyticsEvents.TODO_TOGGLED, {"completed": True}
+            FAKE_USER_ID,
+            AnalyticsEvents.TODO_TOGGLED,
+            {
+                "completed": True,
+                "todo_id": FAKE_TODO_ID,
+                "priority": "medium",
+                "has_due_date": False,
+            },
         )
 
     async def test_completing_tracked_routes_through_service(

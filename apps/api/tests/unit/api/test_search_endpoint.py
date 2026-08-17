@@ -114,7 +114,8 @@ class TestSearchAnalytics:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.SEARCH_PERFORMED, {"mode": "keyword", "result_count": 1}
+            AnalyticsEvents.SEARCH_PERFORMED,
+            {"mode": "keyword", "query_length": 5, "result_count": 1},
         )
 
     @patch(

@@ -283,7 +283,17 @@ async def create_event(
         )
 
         created = await calendar_service.create_calendar_event(event, user_id)
-        capture_context_event(AnalyticsEvents.CALENDAR_EVENT_CREATED)
+        capture_context_event(
+            AnalyticsEvents.CALENDAR_EVENT_CREATED,
+            {
+                "is_all_day": event.is_all_day,
+                "has_description": bool(event.description),
+                "has_recurrence": event.recurrence is not None,
+                "recurrence_frequency": (
+                    event.recurrence.rrule.frequency if event.recurrence else None
+                ),
+            },
+        )
         return created
     except HTTPException:
         raise

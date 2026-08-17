@@ -225,13 +225,15 @@ class TestFileServiceUpload:
                 conversation_id="conv-1",
             )
 
-        mock_capture.assert_called_once()
-        call_args = mock_capture.call_args
-        assert call_args.args[0] == "user-abc"
-        assert call_args.args[1] == AnalyticsEvents.FILE_UPLOADED
-        props = call_args.args[2]
-        assert props["size_bytes"] == 100
-        assert props["resource_type"] == "raw"
+        mock_capture.assert_called_once_with(
+            "user-abc",
+            AnalyticsEvents.FILE_UPLOADED,
+            {
+                "size_bytes": 100,
+                "resource_type": "raw",
+                "content_type": "application/pdf",
+            },
+        )
 
     async def test_missing_filename_raises_400(self):
         file = _upload_file_mock(filename=None)

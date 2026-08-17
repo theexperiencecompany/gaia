@@ -47,7 +47,7 @@ export default function DesktopSettings() {
           toast.error(result.error);
         }
         if (result.ok) {
-          trackEvent(ANALYTICS_EVENTS.SETTINGS_PREFERENCES_CHANGED, {
+          trackEvent(ANALYTICS_EVENTS.SETTINGS_DESKTOP_PREFERENCE_CHANGED, {
             setting: "popup_shortcut",
           });
         }
@@ -66,7 +66,7 @@ export default function DesktopSettings() {
     try {
       const ok = await api.setAppIcon(id);
       if (ok) {
-        trackEvent(ANALYTICS_EVENTS.SETTINGS_PREFERENCES_CHANGED, {
+        trackEvent(ANALYTICS_EVENTS.SETTINGS_DESKTOP_PREFERENCE_CHANGED, {
           setting: "app_icon",
           app_icon_id: id,
         });

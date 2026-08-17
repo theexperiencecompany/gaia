@@ -206,7 +206,11 @@ Event properties are counts, enums, durations, booleans and ids — never messag
 
 Capture **after the operation succeeds**, not before it starts — an event emitted on entry counts attempts as successes. Failure is its own event with a `reason`, not a missing one. Prefer the server: a client-side capture is lost to ad blockers, so anything the backend already sees belongs there.
 
-**One user action, one event name** — with one deliberate exception. `chat:message_sent` (web client, intent) and `chat:message_submitted` (server, ground truth) both fire for the same message on purpose: the gap between them measures the ad-blocked and failed-request rate, and the client one carries composer context (`was_queued`, tool/workflow selection) the server never receives. Count `chat:message_submitted` for volume. Do not collapse the pair, and do not add another one — a second emitter of the *same* name double-counts silently, which is worse than two honest names.
+**One user action, one event name, emitted from exactly one place — and that place is the server.** No exceptions. If the backend sees the action at all, the backend owns the event: it fires after the work actually succeeded, it sees the authoritative result, and no ad blocker can drop it. A client emitter for the same action fires on click — before the request resolves — so it counts attempts, failures and abandoned actions as successes, and it double-counts everything it *does* get right.
+
+This was learned the expensive way. Twenty-four event names were being emitted from both the web app and the API at once, so twenty-four metrics read roughly double, and nothing failed to make that visible. `chat:message_sent` was the same mistake with a second name on it: every field it carried — tool, workflow, calendar event, reply, file count — already arrives in the request the server handles, so it was one message counted twice.
+
+The client only emits what the server genuinely cannot see: UI interactions that never reach the backend at all. When you find yourself wanting a client event for something the server also handles, add the property to the server's event instead.
 
 ## Design System
 

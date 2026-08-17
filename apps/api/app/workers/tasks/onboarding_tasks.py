@@ -29,6 +29,10 @@ async def _capture_onboarding_completion(user_id: str) -> None:
             user_id,
             AnalyticsEvents.ONBOARDING_COMPLETED,
             {"pipeline_mode": onboarding.get("pipeline_mode", "full")},
+            # A user completes onboarding once. This task is retryable and the
+            # phase stays PERSONALIZATION_COMPLETE afterwards, so a retry would
+            # otherwise re-emit the milestone every time it ran again.
+            dedupe_key=user_id,
         )
     except Exception as get_err:
         log.warning(

@@ -130,7 +130,13 @@ class TestCompleteOnboarding:
 class TestOnboardingAnalytics:
     """Analytics captures on onboarding endpoints."""
 
-    async def test_complete_captures_onboarding_completed(self, client: AsyncClient):
+    async def test_complete_does_not_capture_completion_it_only_queues(self, client: AsyncClient):
+        """Submitting the form QUEUES the pipeline; it does not finish onboarding.
+
+        Capturing here counted the milestone at the wrong moment and counted
+        submissions whose pipeline later failed. The worker owns the event and
+        fires it once the phase actually reaches PERSONALIZATION_COMPLETE.
+        """
         with (
             patch(
                 _COMPLETE_ONBOARDING,
@@ -150,7 +156,8 @@ class TestOnboardingAnalytics:
             response = await client.post(BASE_URL, json=_make_onboarding_request())
 
         assert response.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.ONBOARDING_COMPLETED)
+        captured = [call.args[0] for call in mock_capture.call_args_list]
+        assert AnalyticsEvents.ONBOARDING_COMPLETED not in captured
 
     async def test_update_phase_captures_step_completed(self, client: AsyncClient):
         with (
@@ -354,7 +361,12 @@ class TestUpdatePreferences:
         assert response.status_code == 200
         mock_capture.assert_called_once_with(
             AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
-            {"has_custom_instructions": True},
+            {
+                "setting": "onboarding_preferences",
+                "fields": ["custom_instructions", "profession"],
+                "response_style": None,
+                "has_custom_instructions": True,
+            },
         )
 
     async def test_update_preferences_empty_body_allowed(self, client: AsyncClient):

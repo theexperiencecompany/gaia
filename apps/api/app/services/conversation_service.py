@@ -184,7 +184,11 @@ async def star_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found or update failed")
     # Called from the endpoint today, but attributed explicitly so a future
     # worker/bot caller is covered without relying on a request context.
-    capture_event(user_id, AnalyticsEvents.CONVERSATION_STARRED, {"starred": starred})
+    capture_event(
+        user_id,
+        AnalyticsEvents.CONVERSATION_STARRED,
+        {"starred": starred, "conversation_id": conversation_id},
+    )
     return StarConversationResponse(message="Conversation updated successfully", starred=starred)
 
 

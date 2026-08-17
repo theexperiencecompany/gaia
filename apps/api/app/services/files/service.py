@@ -212,6 +212,7 @@ class FileService:
                 {
                     "size_bytes": upload.size_bytes,
                     "resource_type": upload.resource_type,
+                    "content_type": upload.content_type,
                 },
             )
 
