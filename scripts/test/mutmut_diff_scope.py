@@ -53,7 +53,7 @@ def _serial_create_mutants(max_children: int) -> mutmut_main.MutantGenerationSta
     for path in mutmut_main.walk_source_files():
         result = mutmut_main.create_file_mutants(path)
         for warning in result.warnings:
-            warnings.warn(warning)
+            warnings.warn(warning, stacklevel=2)
         if result.error:
             raise result.error
         if result.unmodified:

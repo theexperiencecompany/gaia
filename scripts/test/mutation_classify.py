@@ -26,14 +26,27 @@ module, mutant_name = survivor.rsplit(".", 1)
 mutant_file = f"{workdir}/mutants/{module.replace('.', '/')}.py"
 src = Path(mutant_file).read_text()
 # The mutants dict is per function, named without the mutant id:
-# mutants_<base>__mutmut['_mutmut_orig'] = <base>__mutmut_orig
+#   mutants_<base>__mutmut['_mutmut_orig'] = <base>__mutmut_orig
+# For a METHOD the right-hand side is QUALIFIED by its class:
+#   mutants_xǁCǁm__mutmut['_mutmut_orig'] = C.xǁCǁm__mutmut_orig
+# `[\w.]+` then the tail after the last dot, because `\w+` stopped at the dot and
+# captured the CLASS name — which resolves to no function, so every method
+# survivor left this script with an empty verdict and mutation.sh (correctly)
+# failed closed on it. Observed on
+# accounting.LLMAccountingMiddleware.aafter_model.
 base = re.sub(r"__mutmut_\d+$", "", mutant_name)
 dict_name = f"mutants_{base}__mutmut"
-orig_match = re.search(rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*(\w+)", src, re.MULTILINE)
+orig_match = re.search(
+    rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*([\w.]+)", src, re.MULTILINE
+)
 if not orig_match:
     sys.exit(1)
-orig_name = orig_match.group(1)
-blocks = re.split(r"^(?:async )?def ", src, flags=re.MULTILINE)
+orig_name = orig_match.group(1).rsplit(".", 1)[-1]
+# Leading indentation allowed: a mutated METHOD is emitted inside its class, so a
+# module-level-only split found no body for it, and two empty bodies compare
+# equal — silently reporting every method survivor as a provably equivalent
+# mutant. That is the false green this script exists to prevent.
+blocks = re.split(r"^[ \t]*(?:async )?def ", src, flags=re.MULTILINE)
 
 
 def _def_lines(path: str) -> dict[str, int]:
@@ -76,9 +89,24 @@ def _body(name: str) -> list[str]:
 
 
 def _normalized(lines: list[str]) -> list[str]:
-    # typing.cast(T, x) is documented to return x unchanged at runtime, so a
-    # mutant that only changes the type argument is behaviorally identical.
-    return [re.sub(r"cast\(\s*[^,)]+,\s*", "cast(_, ", ln) for ln in lines]
+    """Blank the TYPE argument of every ``cast()``.
+
+    typing.cast(T, x) is documented to return x unchanged at runtime, so a mutant
+    that only rewrites T is behaviorally identical. Matched across the joined body
+    rather than line by line: the formatter puts a long cast's type argument on
+    its own line, and a per-line regex then finds no ``cast(`` to anchor to and
+    reports a provably equivalent mutant as a survivor (observed on
+    create_agent._fallback_config, where ``cast(RunnableConfig,`` is split).
+
+    The substitution preserves the line COUNT so the caller's index arithmetic
+    still maps a differing line back to the real file.
+    """
+
+    def _blank(match: re.Match[str]) -> str:
+        return "cast(" + "\n" * match.group(1).count("\n") + "_,"
+
+    joined = re.sub(r"cast\((\s*[^,()]+),", _blank, "\n".join(lines))
+    return joined.split("\n")
 
 
 orig_raw = _body(orig_name)
