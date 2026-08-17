@@ -1253,8 +1253,13 @@ services:
         delay: 5s
       resources:
         limits:
-          memory: 2G
-          cpus: "1.5"
+          # Sized from measurement, not guesswork: an idle Chromium holds a few
+          # hundred MB and each concurrent session adds several hundred more on a
+          # real page, so BROWSER_HOST_MAX_SESSIONS sessions do not fit in 2G.
+          # Chromium is also capped per renderer (see BROWSER_HOST_JS_HEAP_MB) so
+          # one heavy page cannot eat the whole budget.
+          memory: 6G
+          cpus: "2.0"
       placement:
         constraints:
           - node.role == manager
