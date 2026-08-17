@@ -111,8 +111,10 @@ plainly instead of implying anyone can reproduce them.
 **Risk** — the specific failure mode and its blast radius: who breaks, how
 visibly, how fast you'd notice. "Low risk" is a rubber stamp.
 
-**Out of scope** — deliberate omissions, one line each. State the boundary; don't
-re-argue approaches you rejected.
+Don't add a section listing what you didn't do. A reader needs to know what the
+change is, not the shape of every change it isn't. The rare exception is a
+missing piece someone would otherwise assume is there — a surface the feature
+visibly skips — and that's one line inside Summary, not a heading.
 
 ## Two things worth adding when they fit
 

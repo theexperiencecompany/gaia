@@ -113,10 +113,6 @@ reported rather than reproducible from this diff, say exactly that. -->
 
 <!-- The specific failure mode and its blast radius — who breaks, how visibly. Not "low risk". -->
 
-## Out of scope
-
-<!-- Deliberate omissions, one line each. Do not re-argue rejected approaches. -->
-
 ## Related
 
 <!-- Closes #123 · Depends on #456 -->
