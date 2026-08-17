@@ -97,7 +97,7 @@ class TestFollowUpActionsNode:
         store = _make_store()
 
         written_values = []
-        mock_writer = MagicMock(side_effect=lambda x: written_values.append(x))
+        mock_writer = MagicMock(side_effect=written_values.append)
 
         with patch(
             "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
@@ -116,7 +116,7 @@ class TestFollowUpActionsNode:
         store = _make_store()
 
         written_values = []
-        mock_writer = MagicMock(side_effect=lambda x: written_values.append(x))
+        mock_writer = MagicMock(side_effect=written_values.append)
 
         with patch(
             "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
@@ -141,7 +141,7 @@ class TestFollowUpActionsNode:
         follow_up = FollowUpActions(actions=suggested_actions)
 
         written_values = []
-        mock_writer = MagicMock(side_effect=lambda x: written_values.append(x))
+        mock_writer = MagicMock(side_effect=written_values.append)
 
         captured_llm_inputs = []
 
@@ -199,7 +199,7 @@ class TestFollowUpActionsNode:
         follow_up = FollowUpActions(actions=suggested_actions)
 
         written_values = []
-        mock_writer = MagicMock(side_effect=lambda x: written_values.append(x))
+        mock_writer = MagicMock(side_effect=written_values.append)
 
         mock_registry = MagicMock()
         mock_registry.get_tool_names.return_value = ["web_search", "reminder"]
@@ -285,7 +285,7 @@ class TestFollowUpActionsNode:
         store = _make_store()
 
         written_values = []
-        mock_writer = MagicMock(side_effect=lambda x: written_values.append(x))
+        mock_writer = MagicMock(side_effect=written_values.append)
 
         with (
             patch(

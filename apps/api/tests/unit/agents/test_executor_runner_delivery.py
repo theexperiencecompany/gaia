@@ -813,9 +813,7 @@ class TestApprovalOutcomesNoteContent:
             patch.object(
                 rd.conversation_repository, "get_message", new=AsyncMock(return_value=message)
             ) as get_msg,
-            patch.object(
-                rd, "get_approval", new=AsyncMock(side_effect=lambda aid: records.get(aid))
-            ),
+            patch.object(rd, "get_approval", new=AsyncMock(side_effect=records.get)),
         ):
             note = await rd._approval_outcomes_note(
                 _run(RunKind.QUEUED, bot_message_id="orig-msg-1")

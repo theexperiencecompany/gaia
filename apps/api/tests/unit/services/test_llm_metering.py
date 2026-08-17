@@ -173,9 +173,10 @@ def test_a_response_with_no_model_is_unknown_rather_than_guessed() -> None:
     assert extract_message_model(AIMessage(content="hi", response_metadata={})) == (
         UNKNOWN_MODEL_NAME
     )
-    assert extract_message_model(
-        AIMessage(content="hi", response_metadata={"model_name": ""})
-    ) == UNKNOWN_MODEL_NAME
+    assert (
+        extract_message_model(AIMessage(content="hi", response_metadata={"model_name": ""}))
+        == UNKNOWN_MODEL_NAME
+    )
 
 
 # --- record_llm_call ---------------------------------------------------------- #

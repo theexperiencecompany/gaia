@@ -563,8 +563,10 @@ class TestDevOverride:
             dev_option_for(None, use_defaults=True)
 
         assert log.warning.call_args.args == (
-            f"{LogTag.AGENT} DEV_DEFAULT_MODEL is not a DEV_MODEL_OPTIONS key; "
-            "keeping the plan-resolved lane",
+            (
+                f"{LogTag.AGENT} DEV_DEFAULT_MODEL is not a DEV_MODEL_OPTIONS key; "
+                "keeping the plan-resolved lane"
+            ),
         )
         assert log.warning.call_args.kwargs == {"dev_default": "not-a-real-id"}
 
