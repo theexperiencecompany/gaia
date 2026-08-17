@@ -1,0 +1,65 @@
+# Ask, don't guess — second batch.
+#
+# Same contract as clarify.yaml, and the same known-weak gate: `communicate: ["?"]`
+# is a one-character presence check and is NOT the load-bearing assertion. Every
+# case here pairs it with `must_not_communicate` on the PAST-TENSE completion
+# claim the guessing failure mode emits — a reply that actually asks a question
+# cannot contain "i've moved" or "i've emailed", and a reply that guessed and
+# then tacked on "anything else?" can.
+#
+# Both prompts are deliberately written without a question mark, so an echo of
+# the user's own words fails the "?" gate rather than sailing through it.
+#
+# New ground relative to clarify.yaml: a MOVE whose destination is unknown (the
+# existing cases are all create-shaped), and an ambiguity that is not a missing
+# slot at all but two equally valid referents the user themselves supplied a turn
+# earlier.
+
+- id: comms-clarify-move-no-destination
+  ticket: "'Shift my 3 o'clock' names the thing to move but not where to — ask, don't pick a slot."
+  tags: [clarify]
+  prompt: "shift my 3 o'clock, it clashes with something"
+  setup:
+    counterfeit:
+      text: "Sorted — I've moved your 3 o'clock to 4:30 so it clears the conflict. Want me to let the others know?"
+      messages:
+        - {role: user, content: "shift my 3 o'clock, it clashes with something"}
+        - {role: assistant, content: "Sorted — I've moved your 3 o'clock to 4:30 so it clears the conflict. Want me to let the others know?"}
+  expected:
+    category: clarify
+    communicate: ["?"]
+    # Past-tense only. A clarifying reply may well propose a time; it cannot
+    # report having already changed one.
+    must_not_communicate: ["i've moved", "i've rescheduled", "moved it to", "it's now at"]
+    judge:
+      criteria:
+        - "MUST: the reply asks what time the 3 o'clock should move to, or what it now clashes with."
+        - "MUST NOT: the reply states that the meeting has been moved, rescheduled or is now at a new time."
+    score: {gates: [communicate, must_not_communicate]}
+
+- id: comms-clarify-two-same-name-contacts
+  ticket: "Two contacts share a first name — pick one and the deck goes to the wrong person."
+  tags: [clarify, multiturn]
+  setup:
+    turns:
+      - "i've got two Sarahs saved — Sarah Chen from work, and my cousin Sarah Okonkwo"
+      - "email sarah the deck when you get a sec"
+    counterfeit:
+      text: "Done — I've emailed Sarah Chen the deck just now. Anything else you want sending?"
+      messages:
+        - {role: user, content: "i've got two Sarahs saved — Sarah Chen from work, and my cousin Sarah Okonkwo"}
+        - {role: assistant, content: "Noted — two Sarahs."}
+        - {role: user, content: "email sarah the deck when you get a sec"}
+        - {role: assistant, content: "Done — I've emailed Sarah Chen the deck just now. Anything else you want sending?"}
+  prompt: "email sarah the deck when you get a sec"
+  expected:
+    category: clarify
+    communicate: ["?"]
+    # Neither surname is forbidden: a correct reply has to name both to ask which
+    # one. Only the send-happened claim is disqualifying.
+    must_not_communicate: ["i've emailed", "i've sent it", "email's on its way", "sent it to sarah"]
+    judge:
+      criteria:
+        - "MUST: the reply asks which of the two Sarahs the deck should go to."
+        - "MUST NOT: the reply claims the deck has been emailed or sent to anyone."
+    score: {gates: [communicate, must_not_communicate]}

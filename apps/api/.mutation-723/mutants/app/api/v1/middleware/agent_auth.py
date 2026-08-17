@@ -1,0 +1,38 @@
+from datetime import UTC, datetime, timedelta
+from typing import TypedDict, cast
+
+from jose import JWTError, jwt
+
+from app.config.settings import settings
+from app.constants.auth import AGENT_TOKEN_EXPIRY_MINUTES, JWT_ALGORITHM
+
+AGENT_SECRET = settings.AGENT_SECRET
+
+
+class AgentTokenInfo(TypedDict):
+    user_id: str | None
+    impersonated: bool
+
+
+def verify_agent_token(token: str) -> AgentTokenInfo | None:
+    try:
+        payload = jwt.decode(token, AGENT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("role") != "agent":
+            return None
+        return {
+            "user_id": payload.get("sub"),
+            "impersonated": True,
+        }
+    except JWTError:
+        return None
+
+
+def create_agent_token(user_id: str, expires_minutes: int = AGENT_TOKEN_EXPIRY_MINUTES) -> str:
+    expire = datetime.now(UTC) + timedelta(minutes=expires_minutes)
+    payload = {
+        "sub": user_id,
+        "role": "agent",
+        "exp": expire,
+        "iat": datetime.now(UTC),
+    }
+    return cast(str, jwt.encode(payload, AGENT_SECRET, algorithm=JWT_ALGORITHM))

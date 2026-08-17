@@ -1,0 +1,223 @@
+# HARD tier — precision. Siblings of hard.yaml's
+# `hard-precision-reminder-datetime`, which was the only case in the category.
+#
+# One claim, seven shapes of it: a value the user typed has to survive the whole
+# round trip — through the agent's paraphrase, into the tool call, into the
+# database — byte for byte. The failure mode is not refusal or a missing
+# artifact; it is an artifact that looks right and is subtly wrong. $2,450
+# instead of 2,450.75. The address without its +legal tag. The reminder set for
+# the time that was mentioned in the title rather than the time it was asked for.
+#
+# Every case therefore gates BOTH ends of that trip:
+#
+#   * `tool_calls` with `args` — the value was in the call the agent actually
+#     made. `args` values are substring-matched into string arguments and
+#     whole-value-matched into lists, so `{title: "2,450.75"}` is satisfied only
+#     by a title that really carries those characters, and `{labels:
+#     "q3-infra-2027"}` is not satisfied by a label merely starting with it.
+#   * `end_state` — the value is in the stored record. This is the authoritative
+#     one: prose can claim anything, the database cannot.
+#
+# A case that asserted only the tool NAME would pass on every one of the wrong
+# answers above, which is the whole reason this file exists.
+#
+# Note for anyone extending this file: the `notifications` projection lowercases
+# `title_contains` / `body_contains` before echoing them back, and `EndStateEquality`
+# compares the echoed value for equality — so those two terms must be written in
+# lowercase here or a correct run fails. `todos` and `reminders` echo the term
+# with the casing you wrote, so they are free.
+
+# ── An exact currency amount ─────────────────────────────────────────────────
+- id: hard-precision-currency-amount
+  ticket: "A wire amount rounded from 2,450.75 to 2,450 in the stored todo is a real payment error, not a formatting nit."
+  tags: [hard, precision]
+  prompt: "add a todo: wire 2,450.75 to the escrow account before friday's cutoff"
+  setup:
+    counterfeit:
+      text: "Added — a todo to wire $2,450 to the escrow account before Friday's cutoff."
+      messages:
+        - {role: user, content: "add a todo: wire 2,450.75 to the escrow account before friday's cutoff"}
+        - {role: assistant, content: "Added — a todo to wire $2,450 to the escrow account before Friday's cutoff."}
+      tool_calls:
+        - {name: create_todo, args: {title: "Wire $2,450 to the escrow account before Friday's cutoff"}}
+      end_state:
+        todos: [{title_contains: null}]
+  expected:
+    category: precision
+    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "2,450.75"}}]
+    end_state:
+      todos: [{title_contains: "2,450.75"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the stored todo title carries the amount 2,450.75 with both decimal places."
+
+# ── An email address with a plus-tag and a two-part TLD ──────────────────────
+- id: hard-precision-email-plus-tag
+  ticket: "Dropping the +legal tag or the .uk sends the NDA to an address that filters elsewhere or does not exist."
+  tags: [hard, precision]
+  prompt: "add a todo: email the signed NDA to r.okonkwo+legal@brightpath.co.uk before 5pm monday"
+  setup:
+    counterfeit:
+      text: "Done — added a todo to email the signed NDA to r.okonkwo@brightpath.co.uk before 5pm Monday."
+      messages:
+        - {role: user, content: "add a todo: email the signed NDA to r.okonkwo+legal@brightpath.co.uk before 5pm monday"}
+        - {role: assistant, content: "Done — added a todo to email the signed NDA to r.okonkwo@brightpath.co.uk before 5pm Monday."}
+      tool_calls:
+        - {name: create_todo, args: {title: "Email the signed NDA to r.okonkwo@brightpath.co.uk before 5pm Monday"}}
+      end_state:
+        todos: [{title_contains: null}]
+  expected:
+    category: precision
+    tool_calls:
+      - {tool: create_todo, min_calls: 1, args: {title: "r.okonkwo+legal@brightpath.co.uk"}}
+    end_state:
+      todos: [{title_contains: "r.okonkwo+legal@brightpath.co.uk"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the stored todo carries the address r.okonkwo+legal@brightpath.co.uk in full, including the +legal tag."
+
+# ── Two clock times in one request, only one of which is the schedule ────────
+- id: hard-precision-two-clock-times
+  ticket: "The title mentions 22:00 and the reminder is for 06:45; firing at 22:00 wakes the user for a test they have already failed to fast for."
+  tags: [hard, precision]
+  prompt: >-
+    set a reminder for the 22nd at 06:45 titled "blood test — fasting since
+    22:00 the night before"
+  setup:
+    counterfeit:
+      text: "Reminder set for the 22nd at 22:00 — blood test, fasting from the night before."
+      messages:
+        - {role: user, content: 'set a reminder for the 22nd at 06:45 titled "blood test — fasting since 22:00 the night before"'}
+        - {role: assistant, content: "Reminder set for the 22nd at 22:00 — blood test, fasting from the night before."}
+      tool_calls:
+        - {name: create_reminder_tool, args: {scheduled_at: "2027-03-22 22:00:00"}}
+      end_state:
+        reminders: [{title_contains: "22:00", datetime_contains: null}]
+  expected:
+    category: precision
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1, args: {scheduled_at: "06:45"}}]
+    end_state:
+      # One entry, two claims: the title kept the 22:00 fasting instruction AND
+      # the reminder itself fires at 06:45. A run that confuses the two fails.
+      reminders: [{title_contains: "22:00", datetime_contains: "06:45"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the reminder is scheduled for 06:45 and its title still names 22:00 as the fasting cutoff."
+
+# ── A title whose punctuation is load-bearing ────────────────────────────────
+- id: hard-precision-title-punctuation
+  ticket: "'Exact title' means exact — a ticket reference and its scope parenthetical are what the title is for."
+  tags: [hard, precision]
+  prompt: >-
+    create a todo with this exact title: Re-run migration #114 (staging only) —
+    do not touch prod
+  setup:
+    counterfeit:
+      text: "Created — 'Re-run migration 114 on staging only, do not touch prod'."
+      messages:
+        - {role: user, content: "create a todo with this exact title: Re-run migration #114 (staging only) — do not touch prod"}
+        - {role: assistant, content: "Created — 'Re-run migration 114 on staging only, do not touch prod'."}
+      tool_calls:
+        - {name: create_todo, args: {title: "Re-run migration 114 on staging only, do not touch prod"}}
+      end_state:
+        todos: [{title_contains: null}]
+  expected:
+    category: precision
+    # Gated on the STORED title, not on which todo tool stored it. The run of
+    # 2026-08-08 preserved the title character-for-character via
+    # `create_tracked_todo` — the exact thing this case tests — and was failed
+    # for not using `create_todo`. `end_state` is the stronger check anyway: it
+    # reads the title back out of the database, and rejects the counterfeit that
+    # dropped the hash and the parenthetical.
+    end_state:
+      todos: [{title_contains: "#114 (staging only)"}]
+    score: {gates: [end_state]}
+    judge:
+      criteria:
+        - "MUST: the stored title contains '#114 (staging only)' exactly, hash and parentheses included."
+
+# ── A label slug that a filter depends on ───────────────────────────────────
+- id: hard-precision-label-slug
+  ticket: "A label stored as 'infra' instead of 'q3-infra-2027' silently drops the todo out of the saved filter it was created for."
+  tags: [hard, precision]
+  prompt: >-
+    add a todo "renew the wildcard TLS cert" and put the label q3-infra-2027 on
+    it — that exact label, we filter on it
+  setup:
+    counterfeit:
+      text: "Added 'renew the wildcard TLS cert' with the infra label."
+      messages:
+        - {role: user, content: 'add a todo "renew the wildcard TLS cert" and put the label q3-infra-2027 on it — that exact label, we filter on it'}
+        - {role: assistant, content: "Added 'renew the wildcard TLS cert' with the infra label."}
+      tool_calls:
+        - {name: create_todo, args: {title: "renew the wildcard TLS cert", labels: ["infra"]}}
+      end_state:
+        todos: [{title_contains: "wildcard TLS cert", labels_contains: null}]
+  expected:
+    category: precision
+    tool_calls:
+      - {tool: create_todo, min_calls: 1, args: {title: "wildcard TLS cert", labels: "q3-infra-2027"}}
+    end_state:
+      todos: [{title_contains: "wildcard TLS cert", labels_contains: "q3-infra-2027"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the todo carries the label q3-infra-2027 exactly, not a shortened or reworded variant."
+
+# ── A cutoff time that has to survive into a notification body ──────────────
+- id: hard-precision-notification-cutoff
+  ticket: "A deploy-freeze notice that says 5:30pm instead of 17:30 UTC is the notification landing an hour wrong for half the team."
+  tags: [hard, precision]
+  prompt: >-
+    send me an inapp notification titled "Deploy freeze" telling me the cutoff is
+    17:30 UTC on the 28th
+  setup:
+    counterfeit:
+      text: "Sent — 'Deploy freeze': the cutoff is 5:30pm on the 28th."
+      messages:
+        - {role: user, content: 'send me an inapp notification titled "Deploy freeze" telling me the cutoff is 17:30 UTC on the 28th'}
+        - {role: assistant, content: "Sent — 'Deploy freeze': the cutoff is 5:30pm on the 28th."}
+      tool_calls:
+        - {name: send_notification, args: {title: "Deploy freeze", message: "The cutoff is 5:30pm on the 28th.", channels: ["inapp"]}}
+      end_state:
+        notifications: [{title_contains: "deploy freeze", body_contains: null}]
+  expected:
+    category: precision
+    tool_calls:
+      - {tool: send_notification, min_calls: 1, args: {channels: "inapp", message: "17:30"}}
+    end_state:
+      # Lowercase is required here: the notifications projection lowercases the
+      # term before echoing it back for comparison.
+      notifications: [{title_contains: "deploy freeze", body_contains: "17:30 utc"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the notification body states the cutoff as 17:30 UTC, not a converted or 12-hour rendering."
+
+# ── An unusual spelling of a name ────────────────────────────────────────────
+- id: hard-precision-name-spelling
+  ticket: "Normalising Ffion Llewellyn-Hughes to a more familiar spelling makes the todo useless for finding the contact again."
+  tags: [hard, precision]
+  prompt: "add a todo: confirm the catering with Ffion Llewellyn-Hughes for the 12th"
+  setup:
+    counterfeit:
+      text: "Added — confirm the catering with Fiona Llewelyn Hughes for the 12th."
+      messages:
+        - {role: user, content: "add a todo: confirm the catering with Ffion Llewellyn-Hughes for the 12th"}
+        - {role: assistant, content: "Added — confirm the catering with Fiona Llewelyn Hughes for the 12th."}
+      tool_calls:
+        - {name: create_todo, args: {title: "Confirm the catering with Fiona Llewelyn Hughes for the 12th"}}
+      end_state:
+        todos: [{title_contains: null}]
+  expected:
+    category: precision
+    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "Ffion Llewellyn-Hughes"}}]
+    end_state:
+      todos: [{title_contains: "Ffion Llewellyn-Hughes"}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "MUST: the stored todo spells the name Ffion Llewellyn-Hughes exactly, double-F and hyphen included."

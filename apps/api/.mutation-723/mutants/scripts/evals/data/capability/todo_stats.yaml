@@ -1,0 +1,239 @@
+# Todo statistics / aggregation family — questions ABOUT the todo list rather
+# than mutations of it: get_todo_statistics, get_todos_summary, get_today_todos,
+# get_upcoming_todos, list_todos with filters, search_todos /
+# semantic_search_todos.
+#
+# Most cases seed state in turn 1 and ask the aggregation question in turn 2, so
+# the answer has a single correct value. `answer_contains` gates the FINAL
+# bubble (the aggregation answer itself) rather than the whole transcript, which
+# is what makes the count cases falsifiable — the seeding turn cannot satisfy
+# them by accident.
+#
+# Where two tools are equally defensible for a question (statistics vs a
+# filtered list), the tool is recorded in `tool_calls` for the finalize-time
+# report but the runtime gate is the ANSWER, not the route.
+
+- id: stats-open-count-precision
+  ticket: "Three todos, one completed: the remaining count must be exactly 2."
+  tags: [todo_stats, precision, multiturn]
+  setup:
+    turns:
+      - "Add three todos: renew passport, book flights, buy sunscreen"
+      - "Mark buy sunscreen as done"
+      - "How many todos do I have left?"
+  prompt: "Add three todos: renew passport, book flights, buy sunscreen"
+  expected:
+    category: todo_stats
+    tool_calls:
+      - {tool: create_todo, min_calls: 3}
+      - {tool: update_todo, min_calls: 1}
+    end_state:
+      # A bare "2" is not a claim about the count — a wrong answer contains it as
+      # easily as the right one ("3 todos, 2 of them urgent"). Any of these
+      # phrasings can only come from actually answering two.
+      answer_contains: ["2 todos", "2 left", "2 remaining", "two todos", "two left", "two remaining"]
+      todos:
+        - {title_contains: "passport", completed: false}
+        - {title_contains: "flights", completed: false}
+        - {title_contains: "sunscreen", completed: true}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the final reply says exactly two todos remain"
+        - "the completed sunscreen todo is not counted as remaining"
+
+- id: stats-statistics-tool
+  ticket: "A stats request must read the statistics tool, not re-derive numbers from chat history."
+  tags: [todo_stats, multiturn]
+  setup:
+    turns:
+      - "Add two todos: sort the recycling, and email the landlord"
+      - "Give me my todo statistics"
+  prompt: "Add two todos: sort the recycling, and email the landlord"
+  expected:
+    category: todo_stats
+    tool_calls: [{tool: get_todo_statistics}]
+    end_state:
+      todos:
+        - {title_contains: "recycling", completed: false}
+        - {title_contains: "landlord", completed: false}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the numbers reported come from the statistics tool"
+        - "the reply does not invent categories the tool did not return"
+
+- id: stats-summary-single-call
+  ticket: "'Everything in one go' should reach for the summary tool rather than fanning out."
+  tags: [todo_stats, multiturn]
+  setup:
+    turns:
+      - "Add a todo: descale the kettle"
+      - "Give me a complete overview of my todo list in one go"
+  prompt: "Add a todo: descale the kettle"
+  expected:
+    category: todo_stats
+    communicate: ["kettle"]
+    tool_calls: [{tool: get_todos_summary}]
+    score: {gates: [communicate, tool_calls]}
+    judge:
+      criteria:
+        - "the overview reflects the todo that was actually created"
+        - "the reply is a single coherent overview, not a list of tool dumps"
+
+- id: stats-today
+  ticket: "'What's on today' must use the today view and surface the due-today todo."
+  tags: [todo_stats, multiturn, temporal]
+  setup:
+    turns:
+      - "Add a todo: submit the expense report, due today"
+      - "What's on my plate today?"
+  prompt: "Add a todo: submit the expense report, due today"
+  expected:
+    category: todo_stats
+    communicate: ["expense report"]
+    tool_calls: [{tool: get_today_todos}]
+    end_state:
+      answer_contains: "expense report"
+      todos: [{title_contains: "expense report", completed: false}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the expense report todo is presented as due today"
+        - "no todo without a due date is presented as due today"
+
+- id: stats-upcoming-window
+  ticket: "A look-ahead question must use the upcoming view over the window the user named."
+  tags: [todo_stats, multiturn, temporal]
+  setup:
+    turns:
+      - "Add a todo: renew the car insurance, due in 3 days"
+      - "What todos are coming up over the next week?"
+  prompt: "Add a todo: renew the car insurance, due in 3 days"
+  expected:
+    category: todo_stats
+    communicate: ["car insurance"]
+    tool_calls: [{tool: get_upcoming_todos}]
+    end_state:
+      answer_contains: "insurance"
+      todos: [{title_contains: "insurance", completed: false}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the insurance todo is listed as due within the next week"
+        - "the look-ahead window matches the week the user asked about"
+
+- id: stats-overdue-count
+  ticket: "Exactly one todo is overdue; the count must be 1, not 'a few'."
+  tags: [todo_stats, precision, multiturn]
+  setup:
+    turns:
+      - "Add a todo: pay the parking fine, it was due last Monday"
+      - "Add a todo: buy a birthday card, due next month"
+      - "How many overdue todos do I have?"
+  prompt: "Add a todo: pay the parking fine, it was due last Monday"
+  expected:
+    category: todo_stats
+    tool_calls:
+      - {tool: create_todo, min_calls: 2}
+      - {tool: list_todos}
+    end_state:
+      # `end_state` is this case's only gate, so a bare "1" was the whole
+      # deterministic check — and "1" appears in almost any sentence with a date
+      # or a list in it.
+      answer_contains: ["1 overdue", "one overdue", "1 todo is overdue", "one todo is overdue"]
+      todos:
+        - {title_contains: "parking fine", completed: false}
+        - {title_contains: "birthday card", completed: false}
+    score: {gates: [end_state]}
+    judge:
+      criteria:
+        - "the final reply says exactly one todo is overdue and names the parking fine"
+        - "the birthday card todo due next month is NOT counted as overdue"
+
+- id: stats-finished-this-week
+  ticket: "'What did I finish' must report only the completed item, not the open one."
+  tags: [todo_stats, multiturn, precision]
+  setup:
+    turns:
+      - "Add two todos: draft the offsite agenda, and chase the invoice"
+      - "I finished the offsite agenda — mark it done"
+      - "What did I get done this week?"
+  prompt: "Add two todos: draft the offsite agenda, and chase the invoice"
+  expected:
+    category: todo_stats
+    tool_calls:
+      - {tool: create_todo, min_calls: 2}
+      - {tool: update_todo, min_calls: 1}
+    end_state:
+      answer_contains: "agenda"
+      todos:
+        - {title_contains: "agenda", completed: true}
+        - {title_contains: "invoice", completed: false}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the final reply names the offsite agenda as completed"
+        - "the still-open invoice todo is NOT reported as finished"
+
+- id: stats-empty-must-check
+  ticket: "An empty list must be reported after actually looking — no invented todos."
+  tags: [todo_stats, negative]
+  prompt: "Is there anything on my todo list right now?"
+  expected:
+    category: todo_stats
+    tool_calls: [{tool: list_todos}]
+    score: {gates: [tool_calls]}
+    judge:
+      criteria:
+        - "the agent queries the todo list before answering"
+        - "the reply says the list is empty and names no todos"
+
+- id: stats-semantic-grouping
+  ticket: "A themed question must return the two health todos and exclude the unrelated one."
+  tags: [todo_stats, multiturn, precision]
+  setup:
+    turns:
+      - "Add three todos: buy printer paper, schedule a dentist cleaning, renew the gym membership"
+      - "Which of my todos are health related?"
+  prompt: "Add three todos: buy printer paper, schedule a dentist cleaning, renew the gym membership"
+  expected:
+    category: todo_stats
+    communicate: ["dentist"]
+    tool_calls: [{tool: create_todo, min_calls: 3}]
+    end_state:
+      answer_contains: "dentist"
+      todos:
+        - {title_contains: "printer paper", completed: false}
+        - {title_contains: "dentist", completed: false}
+        - {title_contains: "gym", completed: false}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the final reply names the dentist and gym todos as health related"
+        - "the printer paper todo is NOT presented as health related"
+
+- id: stats-priority-filter
+  ticket: "A priority filter must return only the high-priority todo."
+  tags: [todo_stats, multiturn, precision]
+  setup:
+    turns:
+      - "Add 'ship the release' as high priority and 'tidy my desk' as low priority"
+      - "What are my high priority todos?"
+  prompt: "Add 'ship the release' as high priority and 'tidy my desk' as low priority"
+  expected:
+    category: todo_stats
+    communicate: ["ship the release"]
+    tool_calls:
+      - {tool: create_todo, min_calls: 2}
+      - {tool: list_todos}
+    end_state:
+      answer_contains: "release"
+      todos:
+        - {title_contains: "release", completed: false, priority: "high"}
+        - {title_contains: "desk", completed: false, priority: "low"}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the final reply lists only the high priority release todo"
+        - "the low priority desk todo is NOT listed as high priority"

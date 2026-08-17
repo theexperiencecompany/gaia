@@ -1,0 +1,118 @@
+# Everyday assistant behavior, continued. Read everyday.yaml's header first —
+# the wire facts it documents (comms ack vs out-of-band answer, follow_up_actions
+# only on non-delegated turns, openui:false being metadata) all apply here.
+#
+# What this file adds is gate discipline. everyday.yaml carries one case with
+# `score: {gates: []}`, which runner._verdict records as PASSED unconditionally —
+# a case that cannot go red. Every case below declares at least one gate that a
+# worthless run fails, and every case carries a hand-written `setup.counterfeit`
+# (the fluent, confident, wrong answer) that those gates reject. `verify --suite
+# quality` proves both offline.
+#
+# Gate choices, and why:
+# - `suggestion` (via `suggestions: true`) only on turns the comms agent answers
+#   itself — a delegated turn emits no follow_up_actions frame at all.
+# - `communicate` on values the prompt does NOT contain ("vinci", "17", "102"):
+#   the agent has to actually know or compute something. Safe here because these
+#   are non-delegated turns, so the SSE text IS the answer (precedent:
+#   quality-followup-two-turn gates "paris").
+# - `communicate` on a user-supplied noun appears once, on the todo case, beside
+#   `tool_call_correctness` with `args` — the documented exception.
+# - `openui: false` is never gated: OpenUICheck returns 1.0 unconditionally in
+#   that branch, so it is a gate that cannot go red.
+
+- id: quality-everyday-x-movie-pick
+  ticket: "User asks for a decision — GAIA has to actually pick one, not hedge about being an AI."
+  tags: [everyday]
+  prompt: "i can't decide what to watch tonight, just pick something for me"
+  setup:
+    counterfeit:
+      text: "As an AI, I don't have personal preferences, but here are ten highly rated options you might enjoy: The Shawshank Redemption, Parasite, Spirited Away, Heat, Arrival, Whiplash, The Thing, Chungking Express, Fargo, and Aliens. Any of these would be a solid choice depending on your mood!"
+      messages:
+        - {role: user, content: "i can't decide what to watch tonight, just pick something for me"}
+        - {role: assistant, content: "As an AI, I don't have personal preferences, but here are ten highly rated options you might enjoy: The Shawshank Redemption, Parasite, Spirited Away, Heat, Arrival, Whiplash, The Thing, Chungking Express, Fargo, and Aliens. Any of these would be a solid choice depending on your mood!"}
+  expected:
+    category: everyday
+    communicate: []
+    must_not_communicate:
+      - "as an ai"
+      - "as a language model"
+      - "i don't have personal preferences"
+      - "i don’t have personal preferences"
+    suggestions: true
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply names exactly one specific thing to watch, by title."
+        - "MUST NOT: the reply lists three or more alternatives to choose between."
+        - "MUST NOT: the reply asks the user what genre or mood they are in before naming anything."
+    score: {gates: [suggestion, must_not_communicate]}
+
+- id: quality-everyday-x-mona-lisa
+  ticket: "Ordinary trivia the comms agent answers itself — a confident wrong painter is the failure."
+  tags: [everyday]
+  prompt: "quick one, who actually painted the mona lisa?"
+  setup:
+    counterfeit:
+      text: "That one's Michelangelo — he finished it around 1503 while he was working in Florence."
+      messages:
+        - {role: user, content: "quick one, who actually painted the mona lisa?"}
+        - {role: assistant, content: "That one's Michelangelo — he finished it around 1503 while he was working in Florence."}
+  expected:
+    category: everyday
+    communicate: ["vinci"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply names Leonardo da Vinci as the painter."
+        - "MUST NOT: the reply runs longer than two sentences."
+        - "MUST NOT: the reply says it needs to look this up or that it cannot be certain."
+    score: {gates: [communicate]}
+
+- id: quality-everyday-x-dentist-todo
+  ticket: "Everyday capture — the todo lands with the user's own words in the title, not a paraphrase."
+  tags: [everyday, tool]
+  prompt: "can you stick 'book the dentist' on my todo list"
+  setup:
+    counterfeit:
+      text: "yep, that's on the list now."
+      messages:
+        - {role: user, content: "can you stick 'book the dentist' on my todo list"}
+        - {role: assistant, content: "yep, that's on the list now."}
+      tool_calls:
+        - {name: create_todo, args: {title: "Book appointment"}}
+  expected:
+    category: everyday
+    communicate: ["dentist"]
+    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "dentist"}}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply names the dentist, so the user can see which item landed."
+        - "MUST NOT: the reply asks which project or list to file it under."
+        - "MUST NOT: the reply runs longer than two sentences."
+    score: {gates: [communicate, tool_call_correctness, tool_card]}
+
+- id: quality-everyday-x-tip-split
+  ticket: "Two-step everyday arithmetic — both numbers have to be right, not just plausible."
+  tags: [everyday]
+  prompt: "dinner was 85 bucks and i wanna leave 20 percent. what's the tip, and what do i hand over in total?"
+  setup:
+    counterfeit:
+      text: "20% of $85 is $15.30, so you'd be handing over $100.30 all in. Round it up to $100 and call it even."
+      messages:
+        - {role: user, content: "dinner was 85 bucks and i wanna leave 20 percent. what's the tip, and what do i hand over in total?"}
+        - {role: assistant, content: "20% of $85 is $15.30, so you'd be handing over $100.30 all in. Round it up to $100 and call it even."}
+  expected:
+    category: everyday
+    communicate: ["17", "102"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: the reply states the tip as 17 and the total as 102."
+        - "MUST NOT: the reply shows a worked calculation longer than one line."
+        - "MUST NOT: the reply asks whether the user wants pre-tax or post-tax."
+    score: {gates: [communicate]}

@@ -1,0 +1,26 @@
+{% extends "_base_email.html" %}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+Aryan again.<br /><br />
+Quick tip for your first day. Don't treat GAIA like a chatbot you ask
+questions to. Give it an actual job and let it do the work.<br /><br />
+Here are a few things people try first. Feel free to steal one, word for
+word:<br /><br />
+&ldquo;Go through the emails I haven't read this week and tell me which ones
+actually need a reply.&rdquo;<br /><br />
+&ldquo;Find me 45 free minutes tomorrow and block it for deep
+work.&rdquo;<br /><br />
+&ldquo;Research the best options for something you're deciding on right now
+and give me a quick comparison.&rdquo;<br /><br />
+It takes about five minutes, and you'll get one real thing off your plate.
+That's the whole point of GAIA.<br /><br />
+If you'd rather I walk you through it, grab 15 minutes with me here:
+<a
+  href="{{ founder_meeting_url }}"
+  style="color: #067df7; text-decoration-line: none"
+  target="_blank"
+  >cal.com/aryanranderiya</a
+>.<br /><br />
+Best,<br />
+Aryan
+{% endblock %}

@@ -1,0 +1,163 @@
+# Workflows — extended coverage beyond workflows.yaml: the rest of the
+# lifecycle (get / list / pause / resume / edit), trigger discovery, schedule
+# precision, and the abstention case where the request is too vague to automate.
+#
+# Real tools: create_workflow, get_workflow, execute_workflow, pause_workflow,
+# resume_workflow, edit_workflow (app/agents/tools/workflow_tool.py) plus
+# list_workflows and search_triggers (workflow_shared_tools.py).
+#
+# `end_state.workflows` projects only a COUNT, so it cannot assert a schedule —
+# but the count is what catches the two failure modes that actually happen:
+# editing by creating a second workflow, and expanding one multi-day schedule
+# into several workflows. Schedule contents stay judge criteria.
+#
+# The prompts name create_workflow/execute_workflow explicitly, matching the
+# convention already established in workflows.yaml.
+
+- id: workflows-list
+  ticket: "A created workflow must come back in the listing, with what it does."
+  tags: [workflows, multiturn]
+  setup:
+    turns:
+      - "Create an automated workflow using the create_workflow tool: every Sunday at 6pm send me an in-app notification to plan the week"
+      - "What workflows do I have set up?"
+  prompt: "Create an automated workflow using the create_workflow tool: every Sunday at 6pm send me an in-app notification to plan the week"
+  expected:
+    category: workflows
+    communicate: ["plan the week"]
+    tool_calls: [{tool: create_workflow}, {tool: list_workflows}]
+    end_state:
+      answer_contains: "sunday"
+      workflows: [{count: 1}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the listing names the workflow and when it runs"
+        - "no workflow that was never created appears in the listing"
+
+- id: workflows-get-details
+  ticket: "'What does it actually do' must read the stored workflow, not paraphrase the request."
+  tags: [workflows, multiturn]
+  setup:
+    turns:
+      - "Create an automated workflow using the create_workflow tool: every weekday at 9am send me an in-app notification with my overdue todos"
+      - "Show me exactly what that workflow does, step by step"
+  prompt: "Create an automated workflow using the create_workflow tool: every weekday at 9am send me an in-app notification with my overdue todos"
+  expected:
+    category: workflows
+    communicate: ["overdue"]
+    tool_calls: [{tool: create_workflow}, {tool: get_workflow}]
+    end_state: {workflows: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the steps described match the stored workflow the tool returned"
+        - "the description does not invent steps that were never configured"
+
+- id: workflows-pause
+  ticket: "Pausing must pause the existing workflow, not delete or recreate it."
+  tags: [workflows, multiturn]
+  setup:
+    turns:
+      - "Create an automated workflow using the create_workflow tool: every day at 7am send me an in-app notification with the weather in Lisbon"
+      - "Pause that workflow for now"
+  prompt: "Create an automated workflow using the create_workflow tool: every day at 7am send me an in-app notification with the weather in Lisbon"
+  expected:
+    category: workflows
+    # "paused", not "pause": `says` matches whole words, so the noun rejected
+    # "Workflow paused successfully" — the exact confirmation this case wants.
+    communicate: ["paused"]
+    tool_calls: [{tool: create_workflow}, {tool: pause_workflow}]
+    end_state: {workflows: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the workflow was paused, not deleted"
+        - "the reply confirms it will not run until resumed"
+
+- id: workflows-resume
+  ticket: "Resume must reactivate the same paused workflow."
+  tags: [workflows, multiturn]
+  setup:
+    turns:
+      - "Create an automated workflow using the create_workflow tool: every Friday at 4pm send me an in-app notification to file my timesheet"
+      - "Pause it"
+      - "Actually turn it back on"
+  prompt: "Create an automated workflow using the create_workflow tool: every Friday at 4pm send me an in-app notification to file my timesheet"
+  expected:
+    category: workflows
+    communicate: ["timesheet"]
+    tool_calls:
+      - {tool: create_workflow}
+      - {tool: pause_workflow}
+      - {tool: resume_workflow}
+    end_state: {workflows: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the same workflow was resumed rather than a new one created"
+        - "the reply confirms it is active again"
+
+- id: workflows-edit-schedule
+  ticket: "Changing the time must edit the workflow — a second workflow is the bug."
+  tags: [workflows, multiturn, conflict]
+  setup:
+    turns:
+      - "Create an automated workflow using the create_workflow tool: every morning at 6am send me an in-app notification to meditate"
+      - "6am is too early — make it 8am instead"
+  prompt: "Create an automated workflow using the create_workflow tool: every morning at 6am send me an in-app notification to meditate"
+  expected:
+    category: workflows
+    communicate: ["8am"]
+    tool_calls: [{tool: create_workflow}, {tool: edit_workflow}]
+    end_state: {workflows: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "exactly one meditation workflow exists afterwards, scheduled at 8am"
+        - "no 6am workflow was left behind"
+
+- id: workflows-precision-two-day-schedule
+  ticket: "Mondays AND Thursdays is one workflow with two fire days, not two workflows."
+  tags: [workflows, precision]
+  prompt: >-
+    Create an automated workflow using the create_workflow tool: every Monday
+    and Thursday at 7am, send me an in-app notification reminding me to weigh in.
+  expected:
+    category: workflows
+    communicate: ["monday"]
+    tool_calls: [{tool: create_workflow}]
+    end_state: {workflows: [{count: 1}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "ONE workflow was created whose schedule covers both Monday and Thursday at 7am"
+        - "the agent did not create one workflow per day"
+
+- id: workflows-search-triggers
+  ticket: "'What can trigger this' must enumerate real triggers, not plausible-sounding ones."
+  tags: [workflows]
+  prompt: "What kinds of events can automatically kick off a workflow for me?"
+  expected:
+    category: workflows
+    tool_calls: [{tool: search_triggers}]
+    end_state: {workflows: [{count: 0}]}
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the triggers named come from the trigger catalog the tool returned"
+        - "no workflow was created — the user only asked a question"
+
+- id: workflows-abstention-too-vague
+  ticket: "'Automate my mornings' is not a specification: ask, and build nothing yet."
+  tags: [workflows, ambiguity, negative]
+  prompt: "Automate my mornings."
+  expected:
+    category: workflows
+    end_state:
+      workflows: [{count: 0}]
+    score: {gates: [end_state]}
+    judge:
+      criteria:
+        - "the agent asks what should happen, and when"
+        - "no workflow was created from a guess about what 'mornings' means"

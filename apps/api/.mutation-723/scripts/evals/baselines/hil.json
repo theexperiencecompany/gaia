@@ -1,0 +1,20 @@
+{
+  "suite": "hil",
+  "run_id": "hil-20260808-133913-47f740",
+  "app_version": "api-v0.17.0-343-g6fc5c9ed8-dirty",
+  "baseline_accuracy": 0.7143,
+  "graded": 21,
+  "errored": 0,
+  "per_category": {
+    "comprehension": [
+      7,
+      10
+    ],
+    "gate": [
+      8,
+      11
+    ]
+  },
+  "provisional": null,
+  "captured_at": "2026-08-08"
+}

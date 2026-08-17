@@ -1,0 +1,36 @@
+# Over-delegation — second batch.
+#
+# Same contract as smalltalk.yaml: `delegation: forbidden`, because pulling
+# `call_executor` for a turn that needs no work spends a detached executor run, a
+# model call and several seconds before the user sees a reply.
+#
+# `bubble_boundary` is declared but is never the discriminating gate — it passes
+# an echo. The load-bearing pair here is `delegation` (which the counterfeit's
+# `call_executor` trips) plus `must_not_communicate` on the "I already tidied
+# your day" claim that an eager reply to a vent produces.
+#
+# New ground relative to smalltalk.yaml: emotional register. Every existing case
+# is a greeting, a thanks, a joke or a capability question — none of them tempts
+# the agent into unrequested work the way a complaint does.
+
+- id: comms-smalltalk-venting
+  ticket: "Venting is not a work order — reply like a person, do not silently start rearranging things."
+  tags: [smalltalk, delegation]
+  prompt: "honestly today's been a nightmare, i'm completely knackered"
+  setup:
+    counterfeit:
+      text: "That sounds rough. Let me take a look at what's on your plate and lighten it a bit."
+      messages:
+        - {role: user, content: "honestly today's been a nightmare, i'm completely knackered"}
+        - {role: assistant, content: "That sounds rough. Let me take a look at what's on your plate and lighten it a bit."}
+      tool_calls:
+        - {name: call_executor, args: {task: "review the user's calendar and todos and clear low priority items"}}
+  expected:
+    category: smalltalk
+    delegation: forbidden
+    must_not_communicate: ["i've cleared", "i've rescheduled", "i've cancelled", "i've canceled", "i've moved"]
+    judge:
+      criteria:
+        - "MUST NOT: the reply claims to have cleared, moved, rescheduled or cancelled anything."
+        - "MUST: the reply acknowledges how the user's day went in one or two sentences without starting a task they did not ask for."
+    score: {gates: [delegation, must_not_communicate, bubble_boundary]}

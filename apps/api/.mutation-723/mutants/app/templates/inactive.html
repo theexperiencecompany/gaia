@@ -1,0 +1,24 @@
+{% extends "_base_email.html" %}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+Aryan here, one of the founders of GAIA.<br /><br />
+Noticed you haven't used GAIA in a bit. No worries at all, just wanted to
+check in.<br /><br />
+If it didn't do what you were expecting, or something felt off, we'd really
+appreciate hearing about it. We're building this to be genuinely helpful,
+and your feedback means a lot.<br /><br />
+You can just reply here or hit me up at
+<a
+  href="mailto:{{ contact_email }}"
+  style="
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+    color: #067df7;
+    text-decoration-line: none;
+  "
+  target="_blank"
+  >{{ contact_email }}</a
+>. I make sure to check all my emails.<br /><br />
+Best,<br />
+Aryan
+{% endblock %}

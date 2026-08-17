@@ -1,0 +1,179 @@
+"""Service to learn and save user writing style."""
+
+from collections.abc import Awaitable, Callable
+import time
+from typing import Any
+
+from app.agents.llm.client import ainvoke_structured, metered_config
+from app.agents.prompts.onboarding_prompts import (
+    WRITING_STYLE_EXAMPLE_PROMPT,
+    WRITING_STYLE_PROMPT,
+)
+from app.constants.email import SENT_EMAIL_QUERY
+from app.constants.log_tags import LogTag
+from app.db.repositories.users import user_repository
+from app.models.onboarding_models import (
+    WritingStyleExampleBlocks,
+    WritingStyleExampleOutput,
+    WritingStyleOutput,
+    WritingStyleProfile,
+)
+from app.services.mail.mail_service import search_messages
+from shared.py.wide_events import log
+
+# Minimum usable sent-email count below which style learning is skipped.
+_MIN_SENT_EMAILS = 5
+_MAX_SAMPLES = 30
+
+
+async def learn_writing_style(
+    user_id: str,
+    profession: str = "",
+    on_status: Callable[[str], Awaitable[None]] | None = None,
+) -> WritingStyleProfile | None:
+    """Fetch the user's recent sent emails and analyze writing style."""
+    t0 = time.monotonic()
+    try:
+        if on_status is not None:
+            await on_status("Reading your sent folder")
+        result = await search_messages(
+            user_id=user_id,
+            query=SENT_EMAIL_QUERY,
+            max_results=50,
+        )
+
+        sent_emails: list[dict[str, Any]] = result.messages
+        sent_count = len(sent_emails)
+
+        if on_status is not None:
+            await on_status(f"Found {sent_count} sent email{'s' if sent_count != 1 else ''}")
+
+        if sent_count < _MIN_SENT_EMAILS:
+            log.info(
+                f"{LogTag.ONBOARDING} writing_style skipped",
+                user_id=user_id,
+                outcome="skipped",
+                skip_reason="insufficient_sent",
+                sent_count=sent_count,
+                duration_s=round(time.monotonic() - t0, 2),
+            )
+            return None
+
+        samples: list[str] = []
+        skipped_short = 0
+        skipped_autoreply = 0
+        for email in sent_emails:
+            body = email.get("body", email.get("snippet", "")).strip()
+            subject = email.get("subject", "")
+            if len(body) < 20:
+                skipped_short += 1
+                continue
+            if any(kw in subject.lower() for kw in ["out of office", "auto-reply", "automatic"]):
+                skipped_autoreply += 1
+                continue
+            samples.append(body)
+            if len(samples) >= _MAX_SAMPLES:
+                break
+
+        if len(samples) < _MIN_SENT_EMAILS:
+            log.info(
+                f"{LogTag.ONBOARDING} writing_style skipped",
+                user_id=user_id,
+                outcome="skipped",
+                skip_reason="insufficient_samples",
+                sent_count=sent_count,
+                samples=len(samples),
+                skipped_short=skipped_short,
+                skipped_autoreply=skipped_autoreply,
+                duration_s=round(time.monotonic() - t0, 2),
+            )
+            return None
+
+        email_samples_text = "\n---\n".join(samples)
+
+        prompt = WRITING_STYLE_PROMPT.format(
+            profession=profession or "professional",
+            email_samples=email_samples_text,
+        )
+        if on_status is not None:
+            await on_status("Analyzing tone and phrasing")
+        t_llm = time.monotonic()
+        result_data: WritingStyleOutput = await ainvoke_structured(
+            WritingStyleOutput,
+            prompt,
+            label="onboarding_writing_style",
+            config=metered_config(user_id),
+        )
+
+        profile = WritingStyleProfile(
+            summary=result_data.summary,
+            example=result_data.example,
+        )
+
+        log.info(
+            f"{LogTag.ONBOARDING} writing_style learned",
+            user_id=user_id,
+            outcome="ok",
+            sent_count=sent_count,
+            samples=len(samples),
+            skipped_short=skipped_short,
+            skipped_autoreply=skipped_autoreply,
+            summary_chars=len(profile.summary),
+            llm_duration_s=round(time.monotonic() - t_llm, 2),
+            duration_s=round(time.monotonic() - t0, 2),
+        )
+        return profile
+
+    except Exception as e:
+        log.error(
+            f"{LogTag.ONBOARDING} writing_style failed",
+            user_id=user_id,
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
+        return None
+
+
+async def regenerate_example_for_style(
+    summary: str,
+    *,
+    user_id: str,
+    profession: str = "",
+) -> WritingStyleExampleBlocks | None:
+    """Generate a new example email from an edited writing style summary."""
+    try:
+        prompt = WRITING_STYLE_EXAMPLE_PROMPT.format(
+            summary=summary,
+            profession=profession or "professional",
+        )
+        result_data: WritingStyleExampleOutput = await ainvoke_structured(
+            WritingStyleExampleOutput,
+            prompt,
+            label="onboarding_writing_style_example",
+            config=metered_config(user_id),
+        )
+        return result_data.example
+
+    except Exception as e:
+        log.error(
+            f"{LogTag.ONBOARDING} writing_style Failed to regenerate example",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
+        return None
+
+
+async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
+    """Persist a user-edited writing style summary as the canonical style."""
+    await user_repository.set_writing_style_user_summary(user_id, edited_summary)
+    log.info(f"{LogTag.ONBOARDING} writing_style Saved user-edited summary for", user_id=user_id)
+
+
+async def save_generated_example(user_id: str, example: WritingStyleExampleBlocks) -> None:
+    """Persist a regenerated example email to MongoDB as structured blocks."""
+    await user_repository.set_writing_style_and_triage(user_id, writing_style_example=example)
+    log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for", user_id=user_id)

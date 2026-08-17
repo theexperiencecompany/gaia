@@ -1,0 +1,28 @@
+{
+  "suite": "regression",
+  "run_id": "regression-20260808-162115-902b92",
+  "app_version": "api-v0.17.0-345-gad824912a-dirty",
+  "baseline_accuracy": 1.0,
+  "graded": 5,
+  "errored": 0,
+  "per_category": {
+    "chat": [
+      1,
+      1
+    ],
+    "search": [
+      1,
+      1
+    ],
+    "todos": [
+      2,
+      2
+    ],
+    "tracked_todos": [
+      1,
+      1
+    ]
+  },
+  "provisional": null,
+  "captured_at": "2026-08-08"
+}

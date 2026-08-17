@@ -1,0 +1,174 @@
+# Longer conversations: context carry-over, mid-conversation corrections, and
+# topic switches. Every case here is 3+ turns.
+#
+# TURN ENCODING — READ THIS BEFORE ADDING A CASE HERE:
+# turns go in `prompt`, separated by a line containing exactly `---`, which is
+# what ChatStreamTransport splits on (TURN_SEPARATOR = "\n---\n"). The
+# `setup.turns` form used by hard.yaml does NOT reach the transport: load_cases
+# passes the whole leftover row as `Case.setup`, so a YAML `setup:` block lands
+# at `case.setup["setup"]["turns"]` while the transport reads
+# `case.setup["turns"]` — it finds nothing and falls back to splitting `prompt`,
+# i.e. turn 1 only. Use the `---` form until that is fixed.
+#
+# `bubble_boundary` is the gate that earns its keep in this file. It is applied
+# to every case unconditionally and, on a multi-turn transcript, it goes red
+# when two consecutive assistant bubbles are byte-identical — the canned-ack
+# failure where the agent answers three different turns with the same string.
+# On single-turn cases it cannot fail (there is only one assistant bubble), so
+# it is only gated here and in bubbles.yaml.
+
+- id: quality-mt-context-carry-dog
+  ticket: "Three turns of pronouns — turn 3's 'one' must resolve to the beagle from turn 2."
+  tags: [multiturn, context]
+  prompt: |-
+    i'm thinking about getting a dog
+    ---
+    leaning towards a beagle i think
+    ---
+    how much should i budget a month for one?
+  expected:
+    category: multiturn
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The third reply answers about a beagle specifically — it does not ask 'one what?' or 'which breed?'."
+        - "The third reply gives a rough monthly figure or the cost drivers, and does not fabricate a precise vet bill or insurance premium as fact."
+        - "No reply reintroduces itself or restates the conversation so far."
+        - "The three replies are visibly different messages, not the same acknowledgment repeated."
+    score: {gates: [bubble_boundary]}
+
+- id: quality-mt-correction-reminder
+  ticket: "Two corrections in a row — final state is 5pm and the optometrist, no defensiveness."
+  tags: [multiturn, correction, tool]
+  prompt: |-
+    remind me to call the dentist at 3pm tomorrow
+    ---
+    actually make it 5pm
+    ---
+    and it's the optometrist, not the dentist
+  expected:
+    category: multiturn
+    communicate: ["optometrist"]
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The final reply reflects BOTH corrections — 5pm and the optometrist — not just the last one."
+        - "The corrections are absorbed without 'I apologize for the confusion' or any stacked apology."
+        - "No reply claims the reminder is confirmed and saved before it can see that result."
+        - "The three replies are distinct messages, not the same acknowledgment repeated."
+    score: {gates: [bubble_boundary, communicate, tool_call_correctness, tool_card]}
+
+- id: quality-mt-topic-switch-abandon
+  ticket: "User abandons the thread mid-conversation — drop it cleanly and pick up the new one."
+  tags: [multiturn, switch]
+  prompt: |-
+    what's a good beginner camera under 600
+    ---
+    actually forget that, i need to plan my mum's birthday
+    ---
+    she's into gardening and old movies
+  expected:
+    category: multiturn
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The second reply drops the camera thread without sulking, without summarising what it was about to say, and without asking whether the user is sure."
+        - "The third reply produces a concrete idea that uses BOTH gardening and old movies, not a generic gift list."
+        - "No reply drifts back to cameras."
+        - "The three replies are distinct messages, not the same acknowledgment repeated."
+    score: {gates: [bubble_boundary]}
+
+- id: quality-mt-todo-then-retract
+  ticket: "Two todos then a retraction — the third turn must not create a third todo."
+  tags: [multiturn, correction, tool]
+  prompt: |-
+    add a todo to book flights
+    ---
+    add another one for the hotel
+    ---
+    actually scratch the hotel one, my sister's booking it
+  expected:
+    category: multiturn
+    communicate: []
+    tool_calls: [{tool: create_todo, min_calls: 2}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The second reply knows 'another one' means another todo without asking what the user means."
+        - "The third reply does NOT create a third todo — it removes or cancels the hotel one."
+        - "The third reply is honest about what it did; it does not claim a deletion it cannot see happened."
+        - "The three replies are distinct messages, not the same acknowledgment repeated."
+    score: {gates: [bubble_boundary, tool_call_correctness, tool_card]}
+
+- id: quality-mt-vague-to-specific
+  ticket: "Vague ask that sharpens over three turns — question first, advice only once it can be specific."
+  tags: [multiturn, ambiguity]
+  prompt: |-
+    i need help with a thing at work
+    ---
+    it's a presentation
+    ---
+    friday, 10 minutes, to the exec team
+  expected:
+    category: multiturn
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The first reply asks ONE question instead of guessing or dumping generic work advice."
+        - "The third reply is materially more specific than the first two — it uses the 10 minutes, the Friday deadline, and the exec audience."
+        - "No reply produces a long bulleted framework before it knows what the presentation is."
+        - "The three replies are distinct messages, not the same acknowledgment repeated."
+    score: {gates: [bubble_boundary]}
+
+- id: quality-mt-vibe-then-practical
+  ticket: "Bad news first, task second — don't jump to fixing before the user asks for it."
+  tags: [multiturn, emotional]
+  prompt: |-
+    rough day. the project i've been on for eight months just got cancelled
+    ---
+    yeah it sucks. anyway i still have to tell my team tomorrow morning
+    ---
+    help me work out what to actually say to them
+  expected:
+    category: multiturn
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The first reply reacts to the news without offering advice, next steps, or a list of tips."
+        - "The first reply does not open with 'I'm sorry to hear that'."
+        - "The third reply gets genuinely practical — it drafts or shapes what to say to the team, rather than staying in supportive mode."
+        - "The three replies are distinct messages, not the same acknowledgment repeated."
+    score: {gates: [bubble_boundary]}
+
+- id: quality-mt-elliptical-followups
+  ticket: "Three elliptical follow-ups — each 'and X' must inherit the question from turn 1."
+  tags: [multiturn, context]
+  prompt: |-
+    what's the capital of australia
+    ---
+    and new zealand
+    ---
+    and canada
+  expected:
+    category: multiturn
+    communicate: ["canberra", "wellington", "ottawa"]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "Turns 2 and 3 are understood as 'what's the capital of X' — neither reply asks what the user means."
+        - "All three answers are correct (Canberra, Wellington, Ottawa) and none names the largest city instead (Sydney, Auckland, Toronto)."
+        - "The replies stay short and do not restate the question each time."
+        - "The three replies are distinct messages, not the same acknowledgment repeated."
+    score: {gates: [bubble_boundary, communicate]}

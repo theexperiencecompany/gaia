@@ -1,0 +1,226 @@
+# OpenUI conformance — judged against the SHIPPED prompt, not a paraphrase.
+#
+# Cases declare `openui_policy: required | forbidden | suppressed`, and
+# `_apply_openui_policy_criteria` (suites/quality.py) appends judge criteria
+# composed by quoting `OPENUI_SURFACE_POLICY` from
+# app/agents/prompts/openui_prompts.py VERBATIM. Edit that prompt and these
+# rubrics change with it; renumber its rules and case loading raises rather
+# than silently grading a spec we stopped shipping. The suppressed-tool list is
+# read live from `tool_fields` (31 tools at time of writing) — never copied.
+#
+# ── READ THIS BEFORE ADDING A "MUST USE OPENUI" CASE ────────────────────────
+#
+# TWO OBSERVABILITY LIMITS, measured rather than assumed. Both bite the
+# positive direction, which is why this file is weighted to the negative one.
+#
+# 1. FENCES DO NOT REACH THIS TRANSPORT. Across every quality journal on disk —
+#    86 case executions, 5 runs — `:::openui` appears in the SSE-observable
+#    content (`text` and `messages`) exactly 0 times. The two cases that
+#    explicitly ask for a component, quality-openui-chart and
+#    quality-openui-dashboard, ran 8 times between them and every single reply
+#    was the comms acknowledgment ("on it, pulling the numbers... chart coming
+#    right up"); the rendered component lands out-of-band, in the executor's
+#    answer via WebSocket + Mongo. So a wire-based case CANNOT observe a fence
+#    it demands. A `required` case here grades the ACKNOWLEDGMENT's honesty,
+#    which is real but is NOT proof the component was emitted. Proving that
+#    needs a WebSocket/Mongo-aware transport; until then, do not read a green
+#    `required` case as "the component rendered".
+#
+# 2. `OpenUICheck` CANNOT FAIL IN THE NEGATIVE DIRECTION. With
+#    `openui: false` it returns 1.0 unconditionally without inspecting the
+#    text — visible in production data: quality-openui-chart scored
+#    `openui: 1.0` on all 4 of its runs while emitting no fence and having none
+#    demanded. So NO case in this file gates on `openui`; a vacuous gate is
+#    worse than none. The stray-fence check is carried by the imported-policy
+#    rubric, which does read the text. Making it structural needs a one-line
+#    change in core/scorers.py (inspect the text when `want` is false) — that
+#    file is frozen while the long runs execute, so it is queued, not forked.
+#    A rival scorer in this module would be worse than waiting.
+
+# ── forbidden: prose is correct, a component is over-engineering ────────────
+# This is the direction that actually catches over-eager component generation,
+# and the direction this transport CAN see: these turns are pure conversation,
+# so comms answers directly on the wire rather than delegating out-of-band.
+
+- id: quality-openui-no-fence-greeting
+  ticket: "A greeting must never carry a component — the policy names this case explicitly."
+  tags: [openui, forbidden]
+  prompt: "morning! how's it going"
+  expected:
+    category: openui
+    openui_policy: forbidden
+    communicate: []
+    delegation: forbidden
+    suggestions: false
+    judge:
+      criteria:
+        - "The reply is a conversational greeting in kind, a few words long."
+    score: {gates: [emoji_discipline, delegation]}
+
+- id: quality-openui-no-fence-opinion
+  ticket: "An opinion is plain text — no component, no table, no structured layout."
+  tags: [openui, forbidden]
+  prompt: "what do you reckon, is it worth learning rust in 2026?"
+  expected:
+    category: openui
+    openui_policy: forbidden
+    communicate: []
+    delegation: forbidden
+    suggestions: false
+    judge:
+      criteria:
+        - "The reply takes a position rather than laying out a balanced comparison of languages."
+        - "The reply does not render a pros/cons table or a structured breakdown for what is an opinion question."
+    score: {gates: [emoji_discipline, delegation]}
+
+- id: quality-openui-no-fence-emotional
+  ticket: "Emotional support is plain text — a component here would be tone-deaf as well as wrong."
+  tags: [openui, forbidden, emotional]
+  prompt: "i bombed the interview today and i feel awful about it"
+  expected:
+    category: openui
+    openui_policy: forbidden
+    communicate: []
+    delegation: forbidden
+    suggestions: false
+    judge:
+      criteria:
+        - "The reply validates the feeling before offering anything practical."
+        - "The reply does not render a structured 'next steps' component, checklist, or timeline."
+        - "The reply does not open with 'I'm sorry to hear that'."
+    score: {gates: [emoji_discipline, delegation]}
+
+- id: quality-openui-no-fence-one-liner
+  ticket: "A single-sentence factual answer is plain text — policy rule 3, verbatim."
+  tags: [openui, forbidden]
+  prompt: "how many ml in a us cup?"
+  expected:
+    category: openui
+    openui_policy: forbidden
+    communicate: []
+    suggestions: false
+    judge:
+      criteria:
+        - "The reply is essentially one short sentence carrying the number."
+        - "The reply does not wrap a single conversion in a card, table, or stat component."
+    score: {gates: [emoji_discipline]}
+
+- id: quality-openui-no-fence-short-list
+  ticket: "A short UNSTRUCTURED list stays prose — rule 4 draws this line, not list-ness."
+  tags: [openui, forbidden]
+  prompt: "give me three podcast recommendations for a long drive"
+  expected:
+    category: openui
+    openui_policy: forbidden
+    communicate: []
+    suggestions: false
+    judge:
+      criteria:
+        - "Three concrete podcasts are named."
+        - "They arrive as ordinary prose or a plain markdown list, not as a component, card grid, or table."
+    score: {gates: [emoji_discipline]}
+
+- id: quality-openui-links-stay-markdown
+  ticket: "Links are the point — the policy routes those to markdown links, NOT a component."
+  tags: [openui, forbidden]
+  prompt: "send me a couple of links for learning css grid"
+  expected:
+    category: openui
+    openui_policy: forbidden
+    communicate: []
+    suggestions: false
+    judge:
+      criteria:
+        - "Any links are given as clickable markdown links in prose, per the policy's link rule."
+        - "The reply does not wrap the links in an :::openui component."
+        - "No URL is invented — a fabricated link is worse than fewer links."
+    score: {gates: [emoji_discipline]}
+
+# ── suppressed: a native tool card already renders it ───────────────────────
+# Policy rule 1. Duplicating a native card with a fence renders the data twice.
+
+- id: quality-openui-suppressed-todo-card
+  ticket: "create_todo already renders a native card — the reply must not duplicate it with a fence."
+  tags: [openui, suppressed, tool]
+  prompt: "add a todo to call the accountant on monday"
+  expected:
+    category: openui
+    openui_policy: suppressed
+    communicate: []
+    delegation: required
+    tool_calls: [{tool: create_todo, min_calls: 1}]
+    suggestions: false
+    judge:
+      criteria:
+        - "The reply is a short conversational line alongside the card, not a re-listing of the todo's fields."
+        - "The reply does not claim the todo is saved before it can see that result."
+    score: {gates: [emoji_discipline, delegation, tool_call_correctness, tool_card]}
+
+- id: quality-openui-suppressed-weather-card
+  ticket: "Weather renders natively — no fence duplicating the forecast."
+  tags: [openui, suppressed, tool]
+  prompt: "what's the forecast in oslo tomorrow"
+  expected:
+    category: openui
+    openui_policy: suppressed
+    communicate: []
+    delegation: required
+    tool_calls: [{tool: get_weather, min_calls: 1}]
+    suggestions: false
+    judge:
+      criteria:
+        - "The acknowledgment invents no temperature or condition."
+        - "The reply does not restate forecast fields that the native card already shows."
+    score: {gates: [emoji_discipline, delegation, tool_call_correctness, tool_card]}
+
+# ── required: a component IS the right answer ───────────────────────────────
+# LIMIT 1 APPLIES TO EVERY CASE BELOW: these grade the acknowledgment on the
+# wire, NOT the component itself, which this transport cannot see. They are
+# here so the family exists and so the imported rubric is exercised — a green
+# result is NOT evidence a component rendered. Do not read them as such.
+
+- id: quality-openui-required-comparison
+  ticket: "Comparison of structured options — policy rule 5 calls this a forcing rule. NOTE: verifies the ack only; the component is out-of-band."
+  tags: [openui, required, unobservable-component]
+  prompt: "compare the three main types of retirement account side by side"
+  expected:
+    category: openui
+    openui_policy: required
+    communicate: []
+    suggestions: false
+    judge:
+      criteria:
+        - "The acknowledgment does not fabricate contribution limits, tax rules, or figures."
+        - "The reply does not flatten a genuinely tabular comparison into a wall of prose paragraphs."
+    score: {gates: [emoji_discipline]}
+
+- id: quality-openui-required-stats
+  ticket: "Stats/KPIs are a named forcing case for a component. NOTE: verifies the ack only."
+  tags: [openui, required, unobservable-component]
+  prompt: "show me a breakdown of how i spent my time this week"
+  expected:
+    category: openui
+    openui_policy: required
+    communicate: []
+    delegation: required
+    suggestions: false
+    judge:
+      criteria:
+        - "The acknowledgment invents no hours, percentages, or categories — it has not looked yet."
+        - "The reply does not promise a visual it then fails to describe at all."
+    score: {gates: [emoji_discipline, delegation]}
+
+- id: quality-openui-required-steps
+  ticket: "A stepwise process is a named component type. NOTE: verifies the ack only."
+  tags: [openui, required, unobservable-component]
+  prompt: "walk me through setting up ssh keys for github, step by step"
+  expected:
+    category: openui
+    openui_policy: required
+    communicate: []
+    suggestions: false
+    judge:
+      criteria:
+        - "The steps given are technically correct and in a workable order."
+        - "Any command shown is real and correctly formed, not approximated."
+    score: {gates: [emoji_discipline]}
