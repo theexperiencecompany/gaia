@@ -120,8 +120,9 @@ const nextConfig = {
   },
   experimental: {
     // prefetchInlining stays OFF until OpenNext serves Next's segment-prefetch
-    // protocol (as of @opennextjs/cloudflare 1.20.2 it does not — peer dep tops
-    // out at Next 16.2.11). With it on, build-time RSC payloads carry the
+    // protocol. As of @opennextjs/cloudflare 1.20.2 it does not: /_tree
+    // requests get the full build-time RSC payload back, with no
+    // x-nextjs-postponed header. With inlining on, that payload carries the
     // InliningHintsStale bit; OpenNext serves that same payload for every
     // /_tree prefetch, so the client marks the route cache entry immediately
     // stale and refetches in an infinite ~5 req/s loop for every viewport-
