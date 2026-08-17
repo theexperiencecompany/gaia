@@ -89,7 +89,42 @@ class TestSubscribeExecutorStreamReplay:
 
         assert body == "data: [STREAM_ERROR]\n\n"
 
+    @pytest.mark.regression
+    async def test_the_log_lookup_names_the_requested_stream(self, client) -> None:
+        """The expired-log check must ask about THIS stream. Asking about any
+        other id answers for the wrong stream, and a live log reads as expired —
+        exactly the bare-[DONE] regression above, back by another door."""
+        events_by_stream = {STREAM_ID: True}
+
+        async def _has_events(stream_id: str) -> bool:
+            return events_by_stream.get(stream_id, False)
+
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.get_progress",
+                new=AsyncMock(
+                    return_value={"user_id": "507f1f77bcf86cd799439011", "is_complete": True}
+                ),
+            ),
+            patch("app.api.v1.endpoints.chat.stream_manager.has_events", new=_has_events),
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+                new=_fake_subscribe,
+            ),
+            patch("app.api.v1.endpoints.chat.redis_cache.redis", new=MagicMock()),
+        ):
+            async with client.stream("GET", f"/api/v1/stream/{STREAM_ID}") as response:
+                assert response.status_code == 200
+                body = "".join([chunk async for chunk in response.aiter_text()])
+
+        assert body == "".join(FRAMES)
+
     async def test_completed_stream_with_expired_log_returns_done_only(self, client) -> None:
+        # subscribe_stream and the Redis singleton are pinned even though the
+        # short-circuit means neither should be reached. That is the point: if
+        # the guard ever stops short-circuiting, this test fails on the frames
+        # it did not expect, instead of idling on real keepalives until the
+        # runner kills it. A wrong branch must be a fast red, not a hang.
         with (
             patch(
                 "app.api.v1.endpoints.chat.stream_manager.get_progress",
@@ -101,9 +136,44 @@ class TestSubscribeExecutorStreamReplay:
                 "app.api.v1.endpoints.chat.stream_manager.has_events",
                 new=AsyncMock(return_value=False),
             ),
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+                new=_fake_subscribe,
+            ),
+            patch("app.api.v1.endpoints.chat.redis_cache.redis", new=MagicMock()),
         ):
             async with client.stream("GET", f"/api/v1/stream/{STREAM_ID}") as response:
                 assert response.status_code == 200
                 body = "".join([chunk async for chunk in response.aiter_text()])
 
         assert body == "data: [DONE]\n\n"
+
+    @pytest.mark.parametrize("has_events", [True, False])
+    async def test_a_live_stream_always_replays_whatever_the_log_says(
+        self, client, has_events: bool
+    ) -> None:
+        """The expired-log short-circuit is gated on completion first. A stream
+        still running has more frames coming by definition, so it must be
+        followed regardless of what the log lookup answers."""
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.get_progress",
+                new=AsyncMock(
+                    return_value={"user_id": "507f1f77bcf86cd799439011", "is_complete": False}
+                ),
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.has_events",
+                new=AsyncMock(return_value=has_events),
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+                new=_fake_subscribe,
+            ),
+            patch("app.api.v1.endpoints.chat.redis_cache.redis", new=MagicMock()),
+        ):
+            async with client.stream("GET", f"/api/v1/stream/{STREAM_ID}") as response:
+                assert response.status_code == 200
+                body = "".join([chunk async for chunk in response.aiter_text()])
+
+        assert body == "".join(FRAMES)
