@@ -711,25 +711,46 @@ class TestMemoryLaneProviderSelection:
             "timeout": 9.0,
         }
 
+    @patch("app.agents.llm.client._aux_structured_runnable")
     @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
     @patch("app.agents.llm.client.get_memory_llm")
     @patch("app.agents.llm.client.memory_lane_available", return_value=True)
     async def test_gemini_is_preferred_and_carries_an_aux_fallback(
-        self, mock_available: MagicMock, mock_memory_llm: MagicMock, mock_ainvoke: AsyncMock
+        self,
+        mock_available: MagicMock,
+        mock_memory_llm: MagicMock,
+        mock_ainvoke: AsyncMock,
+        mock_aux_runnable: MagicMock,
     ) -> None:
         mock_ainvoke.return_value = _Extracted(fact="from-gemini")
+        config = RunnableConfig(configurable={"user_id": "u1"})
+        structured = mock_memory_llm.return_value.with_structured_output.return_value
 
         result = await ainvoke_structured_gemini(
-            _Extracted, "transcript", label="memory:extract", temperature=0.4
+            _Extracted,
+            "transcript",
+            label="memory:extract",
+            temperature=0.4,
+            config=config,
+            timeout=9.0,
         )
 
         assert result.fact == "from-gemini"
         mock_memory_llm.assert_called_once()
         assert mock_memory_llm.call_args.kwargs["temperature"] == 0.4
         assert mock_memory_llm.return_value.with_structured_output.call_args.args[0] is _Extracted
+        # The handover is the whole call, not just the runnable: a dropped
+        # argument here silently re-defaults it on the lane that actually runs.
+        assert mock_ainvoke.await_args.args == (structured, "transcript")
+        kwargs = dict(mock_ainvoke.await_args.kwargs)
+        fallback = kwargs.pop("fallback")
+        assert kwargs == {"config": config, "label": "memory:extract", "timeout": 9.0}
         # A Gemini outage has somewhere to go: ainvoke_llm gets a real fallback
-        # factory instead of the None that dropped every extraction.
-        assert mock_ainvoke.await_args.kwargs["fallback"] is not None
+        # factory instead of the None that dropped every extraction — and the
+        # aux runnable it builds carries this call's schema, temperature and
+        # config rather than a defaulted set.
+        assert fallback() is mock_aux_runnable.return_value
+        assert mock_aux_runnable.call_args.args == (_Extracted, 0.4, config)
 
     @patch("app.agents.llm.client.get_helper_llm")
     @patch("app.agents.llm.client.get_memory_llm")
