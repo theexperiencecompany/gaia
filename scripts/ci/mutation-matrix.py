@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Sequence
+from functools import lru_cache
 import io
 import json
 import os
@@ -118,8 +119,16 @@ def _is_comment_only_change(module_path: str, merge_base: str) -> bool:
     return old_tokens == new_tokens
 
 
-def _module_refs(path: Path) -> set[str]:
+@lru_cache(maxsize=None)
+def _module_refs(path: Path) -> frozenset[str]:
     """Every app.* dotted name a test file references.
+
+    Memoized, and returning an immutable set so a shared cached value cannot be
+    mutated by a caller. Every changed module used to re-parse every test file
+    AND (via the consumer fallback) every app file: on a whole-tree diff — 427
+    modules against ~1500 files — that is hundreds of thousands of AST parses,
+    and the plan step hit the lane's 10-minute ceiling and was cancelled, so
+    nothing downstream got a gate at all. Each file is now parsed once.
 
     Two reference forms are trusted:
     - import statements (import X / from X import Y)
@@ -134,7 +143,7 @@ def _module_refs(path: Path) -> set[str]:
     try:
         tree = ast.parse(path.read_text())
     except (SyntaxError, UnicodeDecodeError):
-        return refs
+        return frozenset()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -150,7 +159,7 @@ def _module_refs(path: Path) -> set[str]:
                 _collect_module_strings(refs, keyword.value)
         elif isinstance(node, ast.Assign):
             _collect_module_strings(refs, node.value)
-    return refs
+    return frozenset(refs)
 
 
 def _collect_module_strings(refs: set[str], node: ast.AST) -> None:
@@ -181,16 +190,23 @@ def _is_bare_module_path(candidate: str) -> bool:
     return all(part.isidentifier() for part in candidate.split("."))
 
 
-def _matches(module: str, module_py: str, refs: set[str]) -> bool:
+def _matches(module: str, module_py: str, refs: frozenset[str]) -> bool:
     """Whether ``refs`` reference ``module`` exactly or as a prefix."""
     return module in refs or module_py in refs or any(ref.startswith(f"{module}.") for ref in refs)
 
 
-def _importers_of(module: str) -> list[str]:
+@lru_cache(maxsize=None)
+def _py_files(root: Path) -> tuple[Path, ...]:
+    """Sorted *.py under root, walked once — the rglob itself was repeated per module."""
+    return tuple(sorted(root.rglob("*.py")))
+
+
+@lru_cache(maxsize=None)
+def _importers_of(module: str) -> tuple[str, ...]:
     """App modules that import ``module`` (one level of consumer following)."""
     module_py = f"{module}.py"
     importers: set[str] = set()
-    for path in sorted(APP_DIR.rglob("*.py")):
+    for path in _py_files(APP_DIR):
         if _matches(module, module_py, _module_refs(path)):
             relative = path.relative_to(APP_DIR).with_suffix("")
             importers.add(f"app.{relative.as_posix().replace('/', '.')}")
@@ -208,7 +224,7 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
     module = f"app.{module_rel.replace('/', '.')}"
     module_py = f"{module}.py"
     hits: list[str] = []
-    for path in sorted(tests_dir.rglob("*.py")):
+    for path in _py_files(tests_dir):
         # Only actual test files qualify: conftest.py defines fixtures and
         # helper modules (store.py, llm.py, ...) support them — running one
         # as the module's test file would prove nothing and mask the real
