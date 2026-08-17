@@ -175,7 +175,10 @@ async def init_chromadb_client() -> AsyncClientAPI:
     client = await chromadb.AsyncHttpClient(
         host=host,
         port=port,
-        settings=Settings(chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL),
+        settings=Settings(
+            chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+            chroma_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+        ),
     )
 
     response = await client.heartbeat()
@@ -241,7 +244,10 @@ def init_chromadb_constructor() -> ClientAPI:
     constructor_client = chromadb.HttpClient(
         host=host,
         port=port,
-        settings=Settings(chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL),
+        settings=Settings(
+            chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+            chroma_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+        ),
     )
 
     return constructor_client
