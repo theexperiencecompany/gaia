@@ -15,14 +15,11 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { RecapSlideshow } from "@/components/browser/RecapSlideshow";
-import {
-  BOT_PLATFORM_ICONS,
-  BOT_PLATFORM_LABELS,
-  isBotPlatform,
-} from "@/config/botPlatforms";
+import { BOT_PLATFORM_LABELS, isBotPlatform } from "@/config/botPlatforms";
 import { useBrowserTasks } from "../hooks/useBrowserTasks";
 import type { BrowserTask, BrowserTaskStatus } from "../types";
 import { formatRelativeDate } from "../utils";
+import { PLATFORM_GLYPHS } from "./platformGlyphs";
 
 const STATUS_META: Record<
   BrowserTaskStatus,
@@ -56,6 +53,8 @@ function TaskRow({
   const hasRecap = task.frames.length > 0;
   const meta = STATUS_META[task.status];
   const thumb = task.frames[0]?.url;
+  const platform = isBotPlatform(task.source) ? task.source : null;
+  const PlatformGlyph = platform ? PLATFORM_GLYPHS[platform] : null;
   const canOpenChat =
     IN_APP_SOURCES.has(task.source) && task.conversation_id.length > 0;
 
@@ -117,22 +116,17 @@ function TaskRow({
                 </span>
               </>
             )}
-            {isBotPlatform(task.source) && (
+            {PlatformGlyph && platform && (
               <>
                 <MetaDot />
                 <Tooltip
-                  content={`This chat was on ${BOT_PLATFORM_LABELS[task.source]}`}
+                  content={`This chat was on ${BOT_PLATFORM_LABELS[platform]}`}
                   size="sm"
                   closeDelay={0}
                 >
-                  <Image
-                    src={BOT_PLATFORM_ICONS[task.source]}
-                    alt={BOT_PLATFORM_LABELS[task.source]}
-                    width={28}
-                    height={28}
-                    className="size-3.5 rounded-[4px]"
-                    unoptimized
-                  />
+                  <span className="inline-flex">
+                    <PlatformGlyph className="size-4" />
+                  </span>
                 </Tooltip>
               </>
             )}
