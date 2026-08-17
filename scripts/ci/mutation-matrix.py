@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Sequence
-from functools import lru_cache
+from functools import cache
 import io
 import json
 import os
@@ -119,7 +119,7 @@ def _is_comment_only_change(module_path: str, merge_base: str) -> bool:
     return old_tokens == new_tokens
 
 
-@lru_cache(maxsize=None)
+@cache
 def _module_refs(path: Path) -> frozenset[str]:
     """Every app.* dotted name a test file references.
 
@@ -195,13 +195,13 @@ def _matches(module: str, module_py: str, refs: frozenset[str]) -> bool:
     return module in refs or module_py in refs or any(ref.startswith(f"{module}.") for ref in refs)
 
 
-@lru_cache(maxsize=None)
+@cache
 def _py_files(root: Path) -> tuple[Path, ...]:
     """Sorted *.py under root, walked once — the rglob itself was repeated per module."""
     return tuple(sorted(root.rglob("*.py")))
 
 
-@lru_cache(maxsize=None)
+@cache
 def _importers_of(module: str) -> tuple[str, ...]:
     """App modules that import ``module`` (one level of consumer following)."""
     module_py = f"{module}.py"
