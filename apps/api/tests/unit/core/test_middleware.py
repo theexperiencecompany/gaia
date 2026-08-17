@@ -5,9 +5,16 @@ IS its execution order. Two orderings here are load-bearing and neither was
 asserted anywhere; the module had no unit test at all.
 """
 
+from unittest.mock import MagicMock, patch
+
 from fastapi import FastAPI
 import pytest
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import Response
+from starlette.testclient import TestClient
 
+from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
 from app.core.middleware import configure_middleware
 
 
@@ -64,14 +71,12 @@ class TestPostHogContextDoesNotSwallowExceptions:
 
     @staticmethod
     def _app_that_raises() -> FastAPI:
-        from starlette.middleware.base import BaseHTTPMiddleware
-
-        from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
-
         app = FastAPI()
 
         class _AuthenticateEveryone(BaseHTTPMiddleware):
-            async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
+            async def dispatch(
+                self, request: Request, call_next: RequestResponseEndpoint
+            ) -> Response:
                 request.state.user = {"user_id": "user-123"}
                 return await call_next(request)
 
@@ -85,9 +90,6 @@ class TestPostHogContextDoesNotSwallowExceptions:
         return app
 
     def test_the_handlers_own_exception_is_what_propagates(self) -> None:
-        from unittest.mock import MagicMock, patch
-
-        from starlette.testclient import TestClient
 
         with patch("app.api.v1.middleware.auth.providers") as providers:
             providers.is_available.return_value = True
