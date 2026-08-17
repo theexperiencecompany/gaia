@@ -1007,11 +1007,20 @@ jobs:
           if [ "$MODULE" = "app/decorators/rate_limiting.py" ]; then
             _push_diag() {
               # One file, one orphan commit, force-pushed. Cheap and unkillable
-              # from the runner's side once it lands.
-              BLOB=$(git hash-object -w "$1")
-              TREE=$(printf '100644 blob %s\t%s\n' "$BLOB" "$2" | git mktree)
-              C=$(git commit-tree "$TREE" -m "mutation diag $2")
-              git push -f origin "$C:refs/heads/mutation-debug" || echo "PUSH FAILED for $2"
+              # from the runner's side once it lands. Subshell + set +e +
+              # explicit -c identity: the runner has no git user configured, so
+              # a bare commit-tree exits 128 — which, under the step's bash -e,
+              # killed the whole shard in 12 seconds on the first attempt.
+              # Diagnostics must never be able to fail the verdict they exist
+              # to explain.
+              (
+                set +e
+                BLOB=$(git hash-object -w "$1") &&
+                TREE=$(printf '100644 blob %s\t%s\n' "$BLOB" "$2" | git mktree) &&
+                C=$(git -c user.email=mutation-diag@ci -c user.name=mutation-diag commit-tree "$TREE" -m "mutation diag $2") &&
+                git push -f origin "$C:refs/heads/mutation-debug" ||
+                echo "PUSH FAILED for $2"
+              ) || true
             }
             # Synchronous marker at +0s, BEFORE anything can hang: if this
             # lands, the channel works and any later silence is the loop's
