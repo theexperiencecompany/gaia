@@ -35,13 +35,14 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config, get_stream_writer
 from langgraph.runtime import Runtime
 
+from app.agents.llm.lane import ModelLane
 from app.config.rate_limits import (
     PRIMARY_METERED_FEATURE,
     RateLimitPeriod,
     get_daily_cost_budget_usd,
     get_reset_time,
 )
-from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
+from app.constants.llm import AGENT_RECURSION_LIMIT, LANE_FIELD_ID, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
 from app.decorators.rate_limiting import build_rate_limit_card
 from app.models.agent_models import agent_configurable
@@ -331,18 +332,21 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         config = _current_config()
         configurable = agent_configurable(config)
         thread_id = self._thread_id(config)
-        model_name = configurable.get("model_name") or configurable.get("model") or "unknown"
-        provider = configurable.get("provider", "unknown")
-        user_id = configurable.get("user_id")
-
-        if model_name == "unknown":
-            # An unnamed model is priced at DEFAULT_PRICING — ~11x the real rate
-            # for our default model — so this must never pass silently.
-            log.error(
-                f"{LogTag.AGENT} model name missing from configurable — call will be mispriced",
+        lane = ModelLane.from_configurable(configurable.get(LANE_FIELD_ID))
+        model_name = (lane.model if lane else None) or "unknown"
+        provider = lane.provider if lane else "unknown"
+        if lane is None:
+            # Priced as "unknown", which cannot match a real pricing entry, so the
+            # call undercharges the budget. Loud rather than silent, matching
+            # cost_budget's fail-open-but-visible convention — and reachable for a
+            # deploy window by any bag written before lanes existed.
+            log.warning(
+                f"{LogTag.AGENT} No lane on the configurable — the call is priced as "
+                "'unknown' and undercharges the budget (pre-lane queue item or HIL resume?)",
                 agent_name=self.agent_name,
-                configurable_keys=sorted(configurable.keys()),
+                thread_id=thread_id,
             )
+        user_id = configurable.get("user_id")
 
         # Price the call (full input_tokens + cached_tokens, so the cached subset
         # is billed at the discounted rate rather than free) and record it into

@@ -26,23 +26,26 @@ module, mutant_name = survivor.rsplit(".", 1)
 mutant_file = f"{workdir}/mutants/{module.replace('.', '/')}.py"
 src = Path(mutant_file).read_text()
 # The mutants dict is per function, named without the mutant id:
-# mutants_<base>__mutmut['_mutmut_orig'] = <base>__mutmut_orig
+#   mutants_<base>__mutmut['_mutmut_orig'] = <base>__mutmut_orig
+# For a METHOD the right-hand side is QUALIFIED by its class:
+#   mutants_xǁCǁm__mutmut['_mutmut_orig'] = C.xǁCǁm__mutmut_orig
+# `[\w.]+` then the tail after the last dot, because `\w+` stopped at the dot and
+# captured the CLASS name — which resolves to no function, so every method
+# survivor left this script with an empty verdict and mutation.sh (correctly)
+# failed closed on it. Observed on
+# accounting.LLMAccountingMiddleware.aafter_model.
 base = re.sub(r"__mutmut_\d+$", "", mutant_name)
 dict_name = f"mutants_{base}__mutmut"
-# `[\w.]+`, not `\w+`: a METHOD's original is referenced through its class —
-# `mutants_xǁCǁm__mutmut['_mutmut_orig'] = C.xǁCǁm__mutmut_orig`. Stopping at
-# the dot captured just the class name, which then resolved to no function and
-# failed the lane closed on every class-method survivor.
 orig_match = re.search(
     rf"^{re.escape(dict_name)}\['_mutmut_orig'\]\s*=\s*([\w.]+)", src, re.MULTILINE
 )
 if not orig_match:
     sys.exit(1)
 orig_name = orig_match.group(1).rsplit(".", 1)[-1]
-# Leading indentation matters: a method's `def` is indented, so anchoring the
-# split at column 0 never split them out. `_body` then returned [] for BOTH
-# sides of every method comparison, they compared equal, and the mutant was
-# reported EQUIV — a real survivor silently passing the gate.
+# Leading indentation allowed: a mutated METHOD is emitted inside its class, so a
+# module-level-only split found no body for it, and two empty bodies compare
+# equal — silently reporting every method survivor as a provably equivalent
+# mutant. That is the false green this script exists to prevent.
 blocks = re.split(r"^[ \t]*(?:async )?def ", src, flags=re.MULTILINE)
 
 
@@ -86,25 +89,24 @@ def _body(name: str) -> list[str]:
 
 
 def _normalized(lines: list[str]) -> list[str]:
-    """Blank out what cannot change behaviour, so only real differences remain."""
-    # typing.cast(T, x) is documented to return x unchanged at runtime, so a
-    # mutant that only changes the type argument is behaviorally identical.
-    #
-    # Two shapes, because this runs per line and the formatter wraps a long
-    # call: `cast(T, x)` on one line, and `cast(` with the type alone on the
-    # next. Only the wrapped form needs the state flag — without it a wrapped
-    # cast was reported as a real survivor, which is a test the author cannot
-    # write, on a line that cannot misbehave.
-    out: list[str] = []
-    type_arg_follows = False
-    for line in lines:
-        if type_arg_follows:
-            out.append(re.sub(r"^\s*[^,]+,\s*$", "_,", line))
-            type_arg_follows = False
-            continue
-        out.append(re.sub(r"cast\(\s*[^,)]+,\s*", "cast(_, ", line))
-        type_arg_follows = bool(re.search(r"\bcast\(\s*$", line))
-    return out
+    """Blank the TYPE argument of every ``cast()``.
+
+    typing.cast(T, x) is documented to return x unchanged at runtime, so a mutant
+    that only rewrites T is behaviorally identical. Matched across the joined body
+    rather than line by line: the formatter puts a long cast's type argument on
+    its own line, and a per-line regex then finds no ``cast(`` to anchor to and
+    reports a provably equivalent mutant as a survivor (observed on
+    create_agent._fallback_config, where ``cast(RunnableConfig,`` is split).
+
+    The substitution preserves the line COUNT so the caller's index arithmetic
+    still maps a differing line back to the real file.
+    """
+
+    def _blank(match: re.Match[str]) -> str:
+        return "cast(" + "\n" * match.group(1).count("\n") + "_,"
+
+    joined = re.sub(r"cast\((\s*[^,()]+),", _blank, "\n".join(lines))
+    return joined.split("\n")
 
 
 orig_raw = _body(orig_name)

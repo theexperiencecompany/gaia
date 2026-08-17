@@ -47,8 +47,7 @@ from shared.py.wide_events import log
 CONFIG: dict[str, Any] = {
     "configurable": {
         "thread_id": "conv-1",
-        "model_name": "gemini-3-pro",
-        "provider": "gemini",
+        "lane": {"provider": "gemini", "model": "gemini-3-pro"},
         "user_id": "user-1",
     }
 }
@@ -395,31 +394,13 @@ async def test_unknown_model_and_provider_when_the_config_is_bare() -> None:
     assert model["provider"] == "unknown"
 
 
-async def test_legacy_model_key_is_accepted_when_model_name_is_absent() -> None:
+async def test_a_run_with_no_lane_reports_an_unknown_model_rather_than_guessing() -> None:
+    """A bag written before lanes existed (in-flight queue item, stored HIL
+    resume_item) has no lane. Accounting must say so, not invent a model name."""
     mw = LLMAccountingMiddleware(agent_name="a")
-    model = await _call(mw, _ai(), config={"configurable": {"model": "gpt-legacy"}})
-    assert model["name"] == "gpt-legacy"
-    # The legacy key names the model, so the mispricing alarm must stay quiet —
-    # an alarm on every healthy call is one nobody reads when it matters.
-    assert "errors" not in log.get()
-
-
-async def test_a_call_with_no_model_name_raises_the_mispricing_alarm() -> None:
-    """An unnamed model is priced at DEFAULT_PRICING — ~11x our default model's rate.
-
-    The error is the only signal this happened, and the keys that WERE present
-    are what identify the caller that dropped the name.
-    """
-    mw = LLMAccountingMiddleware(agent_name="a")
-    await _call(mw, _ai(), config={"configurable": {"provider": "gemini", "user_id": "user-1"}})
-
-    errors = log.get()["errors"]
-    assert len(errors) == 1
-    assert errors[0]["msg"] == (
-        f"{LogTag.AGENT} model name missing from configurable — call will be mispriced"
-    )
-    assert errors[0]["agent_name"] == "a"
-    assert errors[0]["configurable_keys"] == ["provider", "user_id"]
+    model = await _call(mw, _ai(), config={"configurable": {"user_id": "u1"}})
+    assert model["name"] == "unknown"
+    assert model["provider"] == "unknown"
 
 
 # --- handoff latency ---------------------------------------------------------- #
@@ -857,3 +838,57 @@ async def test_the_llm_call_event_carries_the_per_step_attribution() -> None:
     second = emitted[1][1]
     assert second["input_tokens"] == 7  # per step, not a running total
     assert second["step_index"] == 2
+
+
+# --- the lane the call is priced against -------------------------------------- #
+
+
+async def test_the_price_is_looked_up_for_the_lanes_model_and_provider() -> None:
+    mw = LLMAccountingMiddleware(agent_name="a")
+    model = await _call(mw, _ai())
+
+    assert model["name"] == "gemini-3-pro"
+    assert model["provider"] == "gemini"
+
+
+async def test_a_bag_with_no_lane_says_so_instead_of_undercharging_silently() -> None:
+    """Priced as "unknown", which matches no pricing entry, so the call
+    undercharges the budget. Any bag written before lanes existed — an in-flight
+    queue item, a stored HIL resume_item — lands here for a deploy window, and the
+    warning is the only thing that makes the under-billing visible."""
+    warned: list[tuple[str, dict[str, Any]]] = []
+    config = {"configurable": {"thread_id": "conv-1", "user_id": "user-1"}}
+    config_patch, cost_patch, usage_patch = _accounting_env(config)
+    mw = LLMAccountingMiddleware(agent_name="executor_agent")
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(log, "warning", lambda message, **kw: warned.append((message, kw))),
+    ):
+        await mw.aafter_model(_state(_ai()), None)
+
+    assert len(warned) == 1
+    assert warned[0][0] == (
+        f"{LogTag.AGENT} No lane on the configurable — the call is priced as "
+        "'unknown' and undercharges the budget (pre-lane queue item or HIL resume?)"
+    )
+    assert warned[0][1] == {"agent_name": "executor_agent", "thread_id": "conv-1"}
+    priced = dict(log.get().get("model") or {})
+    assert priced["name"] == "unknown"
+    assert priced["provider"] == "unknown"
+
+
+async def test_a_bag_that_does_carry_a_lane_warns_about_nothing() -> None:
+    warned: list[str] = []
+    config_patch, cost_patch, usage_patch = _accounting_env()
+    mw = LLMAccountingMiddleware(agent_name="a")
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(log, "warning", lambda message, **kw: warned.append(message)),
+    ):
+        await mw.aafter_model(_state(_ai()), None)
+
+    assert warned == []

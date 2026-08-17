@@ -521,7 +521,6 @@ class TestExecuteViaAgent:
         *,
         agent,
         canvas="## Current State\nall good",
-        model_side_effect=None,
         canvas_side_effect=None,
     ):
         self.timeline = AsyncMock(return_value=True)
@@ -530,15 +529,9 @@ class TestExecuteViaAgent:
             if canvas_side_effect
             else AsyncMock(return_value=canvas)
         )
-        model = (
-            AsyncMock(side_effect=model_side_effect)
-            if model_side_effect
-            else AsyncMock(return_value={"model": "test-model"})
-        )
         return (
             patch(f"{MODULE}.call_agent_silent", agent),
             patch(f"{MODULE}.read_canvas", read),
-            patch(f"{MODULE}.get_default_model", model),
             patch(f"{MODULE}.tracked_todo_service.append_canvas_timeline", self.timeline),
             patch(f"{MODULE}._collect_reference_context", AsyncMock(return_value="")),
         )
@@ -548,8 +541,8 @@ class TestExecuteViaAgent:
 
     async def test_writes_start_and_success_markers_around_the_agent_call(self):
         agent = AsyncMock(return_value=("Deploy verified.\nAll green.", {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4 = self._patches(agent=agent)
+        with p1, p2, p3, p4:
             result = await _execute_via_agent(_doc(), "user-1", user_data={"user_id": "user-1"})
 
         assert result == "Deploy verified.\nAll green."
@@ -567,7 +560,6 @@ class TestExecuteViaAgent:
         with (
             patch(f"{MODULE}.call_agent_silent", agent),
             patch(f"{MODULE}.read_canvas", AsyncMock(return_value="")),
-            patch(f"{MODULE}.get_default_model", AsyncMock(return_value=None)),
             patch(f"{MODULE}.tracked_todo_service.append_canvas_timeline", timeline),
         ):
             await _execute_via_agent(_doc(), "user-1", user_data={})
@@ -576,8 +568,8 @@ class TestExecuteViaAgent:
 
     async def test_prompt_and_trigger_context_carry_the_todo_identity(self):
         agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent, canvas="## Current State\nblocked")
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4 = self._patches(agent=agent, canvas="## Current State\nblocked")
+        with p1, p2, p3, p4:
             await _execute_via_agent(
                 _doc(description="verify staging"), "user-1", user_data={"user_id": "user-1"}
             )
@@ -591,7 +583,6 @@ class TestExecuteViaAgent:
             "execution_mode": "background",
         }
         assert kwargs["user"] == {"user_id": "user-1"}
-        assert kwargs["user_model_config"] == {"model": "test-model"}
         prompt = kwargs["request"].message
         assert "Execute the following scheduled task: Check the deploy" in prompt
         assert "Details: verify staging" in prompt
@@ -599,31 +590,18 @@ class TestExecuteViaAgent:
 
     async def test_each_run_gets_a_fresh_conversation_id(self):
         agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4 = self._patches(agent=agent)
+        with p1, p2, p3, p4:
             await _execute_via_agent(_doc(), "user-1", user_data={})
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
         first, second = (c.kwargs["conversation_id"] for c in agent.call_args_list)
         assert first != second
 
-    async def test_a_model_config_lookup_failure_does_not_abort_the_run(self):
-        agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4, p5 = self._patches(
-            agent=agent, model_side_effect=RuntimeError("model registry down")
-        )
-        with p1, p2, p3, p4, p5:
-            result = await _execute_via_agent(_doc(), "user-1", user_data={})
-
-        assert result == "ok"
-        assert agent.await_args.kwargs["user_model_config"] is None
-
     async def test_a_canvas_read_failure_does_not_abort_the_run(self):
         agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4, p5 = self._patches(
-            agent=agent, canvas_side_effect=RuntimeError("mongo down")
-        )
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4 = self._patches(agent=agent, canvas_side_effect=RuntimeError("mongo down"))
+        with p1, p2, p3, p4:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
         assert result == "ok"
@@ -631,8 +609,8 @@ class TestExecuteViaAgent:
 
     async def test_an_agent_exception_writes_a_failure_marker_and_propagates(self):
         agent = AsyncMock(side_effect=TimeoutError("llm timeout"))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5, pytest.raises(TimeoutError):
+        p1, p2, p3, p4 = self._patches(agent=agent)
+        with p1, p2, p3, p4, pytest.raises(TimeoutError):
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
         _start, end = self._entries()
@@ -640,8 +618,8 @@ class TestExecuteViaAgent:
 
     async def test_an_empty_agent_response_is_not_an_error(self):
         agent = AsyncMock(return_value=("", {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4 = self._patches(agent=agent)
+        with p1, p2, p3, p4:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
         assert result == ""
@@ -649,8 +627,8 @@ class TestExecuteViaAgent:
 
     async def test_a_long_response_is_truncated_for_the_return_value_and_the_marker(self):
         agent = AsyncMock(return_value=("x" * 500, {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4 = self._patches(agent=agent)
+        with p1, p2, p3, p4:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
         assert result == "x" * 200

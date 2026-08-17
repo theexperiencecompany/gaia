@@ -1,5 +1,7 @@
 """Shared test utilities for GAIA API tests."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 import math
 import os
 import re
@@ -15,6 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.config.rate_limits import RateLimitConfig
+from shared.py.wide_events import log, log_context
 
 
 def effective_limit(config: RateLimitConfig, period: str) -> float:
@@ -265,3 +268,22 @@ def assert_num_db_calls(expected: int, engine: Any, *, warmup: int = 0) -> Asser
     statements against ``engine``. Attach to a real engine at the repository
     layer — N+1 and accidental-query regressions die here."""
     return AssertNumDbCalls(expected, engine, warmup=warmup)
+
+
+@asynccontextmanager
+async def captured_wide_event(operation: str = "test") -> AsyncIterator[dict[str, Any]]:
+    """Run a block inside a real wide-event boundary, exposing its live fields.
+
+    ``log.warning``/``log.error`` append to the event's ``warnings``/``errors``
+    ONLY inside a boundary — outside one every write is discarded — so this is
+    what a test needs to prove a swallowed failure is actually observable
+    rather than silent. That claim is the entire justification for swallowing,
+    and without a boundary it cannot be asserted at all.
+
+        async with captured_wide_event() as event:
+            await build_core_memory_block(ctx)
+        (warning,) = event["warnings"]
+        assert warning["error_type"] == "RuntimeError"
+    """
+    async with log_context(operation):
+        yield log.get()

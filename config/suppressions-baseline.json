@@ -10,7 +10,7 @@
       "path": "apps/api/app/agents/core/subagents/base_subagent.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "bfe247335873bde464c83ca483e6d415ae07d90380d2d4d0b3795ba5ca8560e0"
+      "hash": "b42f17c2cd967b3bd56072dd32bbc0dc2452f40d05dc8fa50aaab7dd06cd4a36"
     },
     {
       "path": "apps/api/app/agents/core/subagents/provider_subagents.py",
@@ -22,13 +22,13 @@
       "path": "apps/api/app/agents/core/subagents/spawn_agent.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "2ae36b154a8d9cd841371af1614ff8e638ae5964cb549e00af37a1984d844d00"
+      "hash": "c8408943fc13d0ca12965a4b2c54c6e8572c239fb46aa25ac682b1e7e0db334f"
     },
     {
       "path": "apps/api/app/agents/llm/client.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "7643048a849d8b6c745b3fa1bce79937b802624469832656cab567cb2b8bcd20"
+      "hash": "763e88aba0dfb0145d364b49798caec1bbe5457710825ac6565a72befb9f2119"
     },
     {
       "path": "apps/api/app/agents/middleware/runtime_adapter.py",
@@ -70,7 +70,7 @@
       "path": "apps/api/app/config/settings.py",
       "kind": "type-ignore",
       "count": 8,
-      "hash": "bd139c266b7e7012337bd2128edb892ec645e090acfc2014aab69560c0ac228a"
+      "hash": "f454fc05942d83e118a544aa3e000460ac231aac9d33cb47110730cdcd4f441c"
     },
     {
       "path": "apps/api/app/core/app_factory.py",
@@ -88,7 +88,7 @@
       "path": "apps/api/app/db/chroma/chromadb.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "66710549c96d2a251fd8b4d0d9b9fc21c064989bf39bb4dfbd308fd19960fa09"
+      "hash": "4498d3e542e16323e84956c56d81f5792f0fea7685426d59445983ec7560100f"
     },
     {
       "path": "apps/api/app/main.py",
@@ -99,8 +99,8 @@
     {
       "path": "apps/api/app/override/langgraph_bigtool/create_agent.py",
       "kind": "type-ignore",
-      "count": 17,
-      "hash": "b79da4f8d4048ffad0e0f7390f8daddf1fcd38b4c11211ac191dd323acce4317"
+      "count": 16,
+      "hash": "32c0fd54fcdee858ed37d68a2d86291d8f33b23f6c285556d9bd89c68bd95a6a"
     },
     {
       "path": "apps/api/app/override/langgraph_bigtool/hooks.py",
@@ -160,7 +160,7 @@
       "path": "apps/api/app/worker.py",
       "kind": "noqa",
       "count": 1,
-      "hash": "db1087da8e8a63d319948dd2139b234389ca3633d2723627ce5f2a6528f0957f"
+      "hash": "cd653d88b6b31a3486a8bdf8b9ca443de3a9fb2a5aab3ef38a88ec2a22a0e3c4"
     },
     {
       "path": "apps/api/scripts/memory_benchmark/__main__.py",
@@ -196,7 +196,7 @@
       "path": "apps/api/tests/helpers.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "c1ba31a59bf212ea6496380ed506a3dec65c64816b13170fe4a71ac75aefa4fd"
+      "hash": "37d0eb534a9c3a6cbba970b2684db5e60716ce1cea552fb3d1b4b64a377e88f1"
     },
     {
       "path": "apps/api/tests/integration/agents/test_real_comms_agent.py",
@@ -232,7 +232,7 @@
       "path": "apps/api/tests/unit/agents/test_agent_core.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "e4be82368759692daef22f4a04c89b8858eabc6451e7fec8b389bce16c4a4073"
+      "hash": "80e8b8e13a52c7323b8f489072f151d6fcfbf4a2e01ea6865f0cf306a0bcacc1"
     },
     {
       "path": "apps/api/tests/unit/agents/test_handoff_tools.py",
@@ -244,7 +244,7 @@
       "path": "apps/api/tests/unit/agents/test_llm_client.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "6ad4d735b0032ae83c4d05f5e7a7912cf19494a59d50e2d8d6c2ec2ec357b998"
+      "hash": "b1efb3acd0f6b3c4492c803dc20104f766413bf894f2c4b113a5277819dcd2c7"
     },
     {
       "path": "apps/api/tests/unit/agents/test_middleware_executor.py",
@@ -274,7 +274,7 @@
       "path": "apps/api/tests/unit/agents/test_subagent_runner.py",
       "kind": "type-ignore",
       "count": 2,
-      "hash": "a6a28e1f73f7004dca8f664bd4357638a5e03619d84a6afb7eebf1e636e959d7"
+      "hash": "c7300efb108c75ca455b580aa3fa7c6d438ea5ee9657f7bc6fee288c5a4947c9"
     },
     {
       "path": "apps/api/tests/unit/api/test_integrations_config_endpoint.py",
@@ -298,7 +298,7 @@
       "path": "apps/api/tests/unit/config/test_rate_limits.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "a434b96ea3165d2c907df1453cff59a44a559dc9dbe9c5783a7d77760808008e"
+      "hash": "ea09a94d89fce4d0fdeb0ba01d393b5124eb40095b99489a99dcc38925156fbc"
     },
     {
       "path": "apps/api/tests/unit/core/test_bot_auth_middleware.py",
@@ -328,7 +328,7 @@
       "path": "apps/api/tests/unit/helpers/test_message_helpers.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "aa76e7a30d0ec59b37105af01793c786b25c4ba01bbbc962206095d02f3ed7ef"
+      "hash": "c85a40bafb3a84a0557a1a59bbce250fd0d7068e473e1643d1b72aa222366b6d"
     },
     {
       "path": "apps/api/tests/unit/middleware/test_compaction_offload_bind.py",
@@ -352,7 +352,7 @@
       "path": "apps/api/tests/unit/override/test_langgraph_bigtool.py",
       "kind": "type-ignore",
       "count": 21,
-      "hash": "52259d72fb104e09ac9f4a688a3c2102c6ad747a318676dc6d203945746b72ce"
+      "hash": "35285ce90d9d6453b0908ffdb3cd9b8a24fcb87b870e94219f3384a1427aa718"
     },
     {
       "path": "apps/api/tests/unit/patches/test_composio_langchain_patch.py",
@@ -412,7 +412,7 @@
       "path": "apps/api/tests/unit/tools/test_skill_tools.py",
       "kind": "type-ignore",
       "count": 29,
-      "hash": "95796671dc14ccc6df16bb710ce288611bf40ddf541e6563ba5c6ce70cc695ad"
+      "hash": "877844eecee456a17c200ee7c645d0c5dfd19192bcc12a361b2ef3452d49bffa"
     },
     {
       "path": "apps/api/tests/unit/tools/test_workflow_tool.py",
@@ -466,7 +466,7 @@
       "path": "apps/api/tests/unit/utils/test_file_utils.py",
       "kind": "type-ignore",
       "count": 8,
-      "hash": "ba869b9409f150920f90ab27cf9227d76cd30f0887b56f5214d8d58af598aeaf"
+      "hash": "7cdc05855ba1e530e8fb16a0cfb90b122b4dc5a4068fb338a10f9683d058d68b"
     },
     {
       "path": "apps/api/tests/unit/utils/test_internet_utils.py",
@@ -490,7 +490,7 @@
       "path": "apps/api/tests/unit/utils/test_notification_storage.py",
       "kind": "type-ignore",
       "count": 1,
-      "hash": "113a7aff646fb0f05e1a8fa9b17a863cd782de8af081842b23978040182a4c38"
+      "hash": "ee1c5ac1fdf3f265dbec264713acf1b50670d8f5310fdaab7c5ed7048636559d"
     },
     {
       "path": "apps/api/tests/unit/utils/test_notion_md.py",
