@@ -4,7 +4,8 @@ Tests cover:
 - Async email functions: send_welcome_email, add_marketing_contact, send_inactive_user_email
 """
 
-from unittest.mock import patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,6 +13,10 @@ from app.services.email import (
     add_marketing_contact,
     send_inactive_user_email,
     send_welcome_email,
+)
+from app.services.email.senders import (
+    send_limit_reached_email,
+    send_workflows_paused_email,
 )
 
 SENDERS = "app.services.email.senders"
@@ -167,3 +172,55 @@ class TestSendInactiveUserEmail:
     ):
         with pytest.raises(Exception, match="send failed"):
             await send_inactive_user_email("user@example.com", "user-123")
+
+
+# ===========================================================================
+# Async: send_workflows_paused_email (shares weekly dedupe with the upsell)
+# ===========================================================================
+
+
+def _limit_email_user(last_sent=None):
+    user = MagicMock()
+    user.email = "user@example.com"
+    user.name = "Alice"
+    user.last_limit_email_sent = last_sent
+    return user
+
+
+class TestSendWorkflowsPausedEmail:
+    @patch(f"{SENDERS}.send_email")
+    @patch(f"{SENDERS}.render_email_template", return_value="<h1>Paused</h1>")
+    async def test_sends_and_records(self, mock_render, mock_send):
+        with (
+            patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(
+                f"{SENDERS}.user_repository.record_limit_email_sent", new_callable=AsyncMock
+            ) as record,
+        ):
+            get.return_value = _limit_email_user()
+            sent = await send_workflows_paused_email("user-1")
+
+        assert sent is True
+        assert mock_render.call_args[0][0] == "workflows_paused.html"
+        message = mock_send.call_args[0][0]
+        assert message.to == ["user@example.com"]
+        record.assert_awaited_once_with("user-1")
+
+    @patch(f"{SENDERS}.send_email")
+    async def test_weekly_dedupe_blocks_send(self, mock_send):
+        with patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get:
+            get.return_value = _limit_email_user(datetime.now(UTC) - timedelta(days=2))
+            sent = await send_workflows_paused_email("user-1")
+
+        assert sent is False
+        mock_send.assert_not_called()
+
+    @patch(f"{SENDERS}.send_email")
+    async def test_dedupe_is_shared_with_upsell_email(self, mock_send):
+        """One limit email of either kind per week: a recent send blocks both."""
+        with patch(f"{SENDERS}.user_repository.get", new_callable=AsyncMock) as get:
+            get.return_value = _limit_email_user(datetime.now(UTC) - timedelta(days=2))
+            sent = await send_limit_reached_email("user-1", "chat_messages")
+
+        assert sent is False
+        mock_send.assert_not_called()

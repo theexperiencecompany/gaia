@@ -19,6 +19,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.config.rate_limits import get_limits_for_plan
 from app.models.payment_models import PlanType
+from app.services.limit_upsell import LimitHitOrigin
 
 
 def _noop_create_task(coro: object, **kwargs: object) -> MagicMock:
@@ -339,6 +340,7 @@ class TestEnforceTieredLimit:
             user_id="user-1",
             feature_key="fake_feature",
             user_plan=PlanType.PRO,
+            origin=LimitHitOrigin.INTERACTIVE,
         )
 
     @pytest.mark.asyncio

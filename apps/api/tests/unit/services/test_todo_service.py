@@ -71,6 +71,7 @@ def _no_analytics():
 
 
 def _make_todo_doc(
+    *,
     todo_id: str | None = None,
     user_id: str = FAKE_USER_ID,
     title: str = "Test Todo",

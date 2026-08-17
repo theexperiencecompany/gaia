@@ -94,6 +94,9 @@ async def get_todo_labels(
 # Main Todo CRUD Endpoints
 @router.get("/todos", response_model=TodoListResponse)
 async def list_todos(
+    # Keyword-only: FastAPI binds query parameters by NAME, so the star costs
+    # nothing at the wire and keeps the signature honest about how it is called.
+    *,
     # Search parameters
     q: str | None = Query(None, description="Search query"),
     mode: SearchMode = Query(

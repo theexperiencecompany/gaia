@@ -170,6 +170,9 @@ async def get_email_by_id(
 
 @router.get("/gmail/search", summary="Advanced search for Gmail messages")
 async def search_emails(
+    # Keyword-only: FastAPI binds query parameters by NAME, so the star costs
+    # nothing at the wire and keeps the signature honest about how it is called.
+    *,
     query: str | None = None,
     sender: str | None = None,
     recipient: str | None = None,

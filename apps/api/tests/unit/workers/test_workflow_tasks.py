@@ -33,6 +33,20 @@ def _no_real_analytics():
         yield mock_capture
 
 
+@pytest.fixture(autouse=True)
+def _onboarded_user():
+    """Default every test's user to a finished-onboarding one, so the
+    system-initiated-run gate stays out of the way. The gate's own tests
+    (test_workflow_tasks_onboarding_gate.py) override this."""
+    user = MagicMock()
+    user.onboarding = {"completed": True}
+    with patch(
+        "app.workers.tasks.workflow_tasks.user_repository.get",
+        AsyncMock(return_value=user),
+    ):
+        yield
+
+
 def _make_workflow(
     workflow_id: str | None = None,
     user_id: str = "user_abc",
