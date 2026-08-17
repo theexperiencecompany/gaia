@@ -97,6 +97,52 @@ class TestIntelligenceTaskAnalytics:
         mock_capture.assert_called_once()
         assert mock_capture.call_args.args[2] == {"pipeline_mode": "full"}
 
+    async def test_a_retry_of_the_task_re_emits_the_same_deduped_event(self) -> None:
+        """ARQ re-runs the whole task body on retry, and the phase stays
+        PERSONALIZATION_COMPLETE — so without a dedupe key the once-per-user
+        milestone is counted again on every retry. capture_event is left real
+        here: the point is the uuid PostHog actually receives.
+        """
+        posthog = MagicMock()
+        with (
+            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
+            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(
+                "app.services.analytics_service._get_posthog_client",
+                return_value=posthog,
+            ),
+            patch(f"{MODULE}.log"),
+        ):
+            get.return_value = _doc(OnboardingPhase.PERSONALIZATION_COMPLETE, "full")
+            await process_onboarding_intelligence_task({}, "user-1")
+            await process_onboarding_intelligence_task({}, "user-1")
+
+        assert posthog.capture.call_count == 2
+        first, second = posthog.capture.call_args_list
+        assert first.kwargs["distinct_id"] == "user-1"
+        assert first.kwargs["event"] == AnalyticsEvents.ONBOARDING_COMPLETED
+        assert first.kwargs["uuid"] == second.kwargs["uuid"]
+
+    async def test_the_dedupe_key_is_the_user_so_it_differs_per_user(self) -> None:
+        """A constant key would collapse every user's completion into one
+        event — the milestone would be recorded once, globally."""
+        posthog = MagicMock()
+        with (
+            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
+            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
+            patch(
+                "app.services.analytics_service._get_posthog_client",
+                return_value=posthog,
+            ),
+            patch(f"{MODULE}.log"),
+        ):
+            get.return_value = _doc(OnboardingPhase.PERSONALIZATION_COMPLETE, "full")
+            await process_onboarding_intelligence_task({}, "user-1")
+            await process_onboarding_intelligence_task({}, "user-2")
+
+        uuids = {call.kwargs["uuid"] for call in posthog.capture.call_args_list}
+        assert len(uuids) == 2
+
     async def test_missing_doc_skips_event_silently(self) -> None:
         """A None document (user not found) skips the event with no noise —
         the phase read must not crash into a spurious warning."""

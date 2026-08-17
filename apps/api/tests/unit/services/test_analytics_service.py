@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 import pytest
 
@@ -126,6 +127,65 @@ class TestCaptureEvent:
 
         # Should not raise
         capture_event("user1", "test:event")
+
+
+class TestCaptureEventDedupe:
+    """``dedupe_key`` is the only thing standing between a retryable worker
+    task and a double-counted milestone: it becomes a stable event uuid, and
+    PostHog stores the same uuid once. Nothing exercised it, so every way of
+    getting that uuid wrong was invisible.
+    """
+
+    def test_no_dedupe_key_sends_no_uuid(self, mock_posthog):
+        """An ordinary capture must stay un-deduped — a uuid derived from
+        nothing would collapse genuinely repeated user actions into one."""
+        capture_event("user1", "test:event", {"key": "value"})
+
+        assert "uuid" not in mock_posthog.capture.call_args.kwargs
+
+    def test_dedupe_key_attaches_a_uuid_alongside_the_normal_payload(self, mock_posthog):
+        capture_event("user1", "test:event", {"key": "value"}, dedupe_key="run-1")
+
+        mock_posthog.capture.assert_called_once()
+        kwargs = mock_posthog.capture.call_args.kwargs
+        assert kwargs["event"] == "test:event"
+        assert kwargs["distinct_id"] == "user1"
+        assert kwargs["properties"]["key"] == "value"
+        assert UUID(kwargs["uuid"]).version == 5
+
+    def test_the_same_capture_twice_carries_the_same_uuid(self, mock_posthog):
+        """The retry case: an ARQ task re-runs its whole body, so the second
+        pass must produce a uuid PostHog recognises as already stored."""
+        capture_event("user1", "test:event", {"key": "value"}, dedupe_key="run-1")
+        capture_event("user1", "test:event", {"key": "other"}, dedupe_key="run-1")
+
+        first, second = (call.kwargs["uuid"] for call in mock_posthog.capture.call_args_list)
+        assert first == second
+
+    def test_the_uuid_changes_with_event_user_and_key(self, mock_posthog):
+        """A uuid that ignores any of its three inputs deduplicates events
+        that are not repeats — silently deleting real data."""
+        capture_event("user1", "test:event", dedupe_key="run-1")
+        capture_event("user1", "other:event", dedupe_key="run-1")
+        capture_event("user2", "test:event", dedupe_key="run-1")
+        capture_event("user1", "test:event", dedupe_key="run-2")
+
+        uuids = [call.kwargs["uuid"] for call in mock_posthog.capture.call_args_list]
+        assert len(set(uuids)) == 4
+
+    def test_a_deduped_capture_failure_is_reported_loudly(self, mock_posthog):
+        """Analytics never raises into the caller, so a broken deduped capture
+        can only be seen through the wide event's errors[]."""
+        mock_posthog.capture.side_effect = RuntimeError("PostHog error")
+
+        with patch("app.services.analytics_service.log") as mock_log:
+            capture_event("user1", "test:event", dedupe_key="run-1")
+
+        mock_log.error.assert_called_once()
+        kwargs = mock_log.error.call_args.kwargs
+        assert kwargs["event"] == "test:event"
+        assert kwargs["user_id"] == "user1"
+        assert kwargs["error_type"] == "RuntimeError"
 
 
 # ---------------------------------------------------------------------------

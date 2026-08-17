@@ -610,12 +610,16 @@ class TestUninstallSkill:
                 _UNINSTALL_SKILL,
                 new_callable=AsyncMock,
                 return_value=_make_skill_mock(target="gmail_agent"),
-            ),
+            ) as mock_uninstall,
             patch(_CAPTURE) as mock_capture,
         ):
             response = await client.delete(f"{BASE_URL}/sk_abc123")
 
         assert response.status_code == 204
+        # Whose skill and which skill is the whole payload of a destructive
+        # call: a dropped or None argument deletes nothing, or another user's
+        # skill, while the endpoint still answers 204.
+        mock_uninstall.assert_awaited_once_with("507f1f77bcf86cd799439011", "sk_abc123")
         mock_capture.assert_called_once_with(
             AnalyticsEvents.SKILL_UNINSTALLED,
             {"skill_id": "sk_abc123", "target": "gmail_agent"},
