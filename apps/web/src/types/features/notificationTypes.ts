@@ -378,7 +378,6 @@ export interface ActionResult {
 export enum BulkActions {
   MARK_READ = "mark_read",
   ARCHIVE = "archive",
-  DELETE = "delete",
 }
 
 // Streamed by the send_notification agent tool — rendered as a chat tool card
