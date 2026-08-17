@@ -508,11 +508,6 @@ class ProductionSettings(CommonSettings):  # type: ignore[explicit-any]
     TELEGRAM_BOT_TOKEN: str | None = None
     KAPSO_API_KEY: str | None = None
     KAPSO_PHONE_NUMBER_ID: str | None = None
-    WHATSAPP_PHONE_NUMBER: str | None = (
-        None  # E.164 without +, e.g. "15551234567" — used for wa.me links
-    )
-    SPECTRUM_PROJECT_ID: str | None = None
-    SPECTRUM_PROJECT_SECRET: str | None = None
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
@@ -666,11 +661,6 @@ class DevelopmentSettings(CommonSettings):  # type: ignore[explicit-any]
     TELEGRAM_BOT_TOKEN: str | None = None
     KAPSO_API_KEY: str | None = None
     KAPSO_PHONE_NUMBER_ID: str | None = None
-    WHATSAPP_PHONE_NUMBER: str | None = (
-        None  # E.164 without +, e.g. "15551234567" — used for wa.me links
-    )
-    SPECTRUM_PROJECT_ID: str | None = None
-    SPECTRUM_PROJECT_SECRET: str | None = None
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
