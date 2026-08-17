@@ -1005,15 +1005,21 @@ jobs:
           # channel nothing on the runner can destroy (same pattern as the
           # repo's pr-assets orphan branches). Delete once the hang is read.
           if [ "$MODULE" = "app/decorators/rate_limiting.py" ]; then
-            pip install -q py-spy 2>/dev/null || pipx install py-spy 2>/dev/null || true
             _push_diag() {
               # One file, one orphan commit, force-pushed. Cheap and unkillable
               # from the runner's side once it lands.
               BLOB=$(git hash-object -w "$1")
               TREE=$(printf '100644 blob %s\t%s\n' "$BLOB" "$2" | git mktree)
               C=$(git commit-tree "$TREE" -m "mutation diag $2")
-              git push -f origin "$C:refs/heads/mutation-debug" || true
+              git push -f origin "$C:refs/heads/mutation-debug" || echo "PUSH FAILED for $2"
             }
+            # Synchronous marker at +0s, BEFORE anything can hang: if this
+            # lands, the channel works and any later silence is the loop's
+            # fault; if it does not, the token/rules are the problem. One
+            # run, binary answer.
+            { echo "step start $(date -u)"; env | grep -E '^GITHUB_(JOB|RUN_ID)' ; } > diag-start.txt 2>&1
+            _push_diag diag-start.txt "start-marker.txt"
+            pip install -q py-spy 2>/dev/null || pipx install py-spy 2>/dev/null || true
             (
               i=0
               while sleep 240; do
