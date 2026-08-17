@@ -339,8 +339,8 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # identical model for A/B-ing routes.
         "provider": LLMProviderName.OPENROUTER,
         "model": "deepseek/deepseek-v4-flash-0731",
-        # Provider-routing pin: without it the upstream rotates per request and
-        # the per-upstream prompt cache never chains (measured).
+        # Deliberately unpinned — the pin measured worse on the real graph
+        # (see the paid-lane rationale above).
         "model_kwargs": None,
         "reasoning": False,
     },
