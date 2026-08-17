@@ -1,5 +1,4 @@
 import asyncio
-from collections.abc import Callable
 from functools import cache
 from typing import Any, TypeVar, cast
 
@@ -22,6 +21,7 @@ from app.agents.llm.exceptions import (
     LLMNotConfiguredError,
 )
 from app.agents.llm.types import (
+    LLMFallback,
     LLMProvider,
     LLMProviderKey,
     LLMProviderName,
@@ -31,7 +31,6 @@ from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
-    DEFAULT_LLM_PROVIDER,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -40,31 +39,28 @@ from app.constants.llm import (
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
     MEMORY_MODEL_NAME,
+    MODEL_FIELD_ID,
+    MODEL_KWARGS_FIELD_ID,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
+    REASONING_FIELD_ID,
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
     STICKY_FLIP_RETRY_MIN_HIT,
     STICKY_FLIP_RETRY_MIN_INPUT,
-    UNKNOWN_MODEL_NAME,
     VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.models.agent_models import agent_configurable, lane_model_name
 from app.services.llm_metering import record_graph_model_call, record_llm_call
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
 _ResultT = TypeVar("_ResultT")
-
-# A fallback may be passed as a ready runnable or as a zero-arg factory, so
-# expensive preparation (e.g. re-binding the full tool list) only happens in
-# the rare case the primary actually fails.
-LLMFallback = Runnable | Callable[[], Runnable | None] | None
 
 
 def without_sdk_retry(llm: ChatOpenRouter) -> ChatOpenRouter:
@@ -93,15 +89,6 @@ def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTE
         retry_if_exception_type=LLM_RETRYABLE_EXCEPTIONS,
         stop_after_attempt=max_attempts,
         wait_exponential_jitter=True,
-    )
-
-
-def is_default_model_config(configurable: AgentConfigurable) -> bool:
-    """True when the run config already selects the default model — callers use
-    this to skip preparing a fallback to the very same model."""
-    return bool(
-        configurable.get("provider") == DEFAULT_LLM_PROVIDER
-        and configurable.get("model_name") == DEFAULT_MODEL_NAME
     )
 
 
@@ -141,7 +128,12 @@ def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     return llm
 
 
-_MODEL_FIELD = ConfigurableField(id="model_name", name="Model", description="Which model to use")
+# Gemini's own attribute is ``model``; OpenRouter's is ``model_name`` (see
+# _openrouter_wire_configurables). The two used to be exposed under SWAPPED
+# configurable ids in one flat namespace (prefix_keys=False), so a bag naming
+# only one of them silently resolved a different model on the other lane — which
+# is why every writer had to set both keys. One id, one meaning.
+_MODEL_FIELD = ConfigurableField(id=MODEL_FIELD_ID, name="Model", description="Which model to use")
 
 
 def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
@@ -150,14 +142,14 @@ def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
     ids form one namespace across provider alternatives (``prefix_keys=False``),
     so every compatible client must expose identical ids."""
     return llm.configurable_fields(
-        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
+        model_name=_MODEL_FIELD,
         reasoning=ConfigurableField(
-            id="reasoning",
+            id=REASONING_FIELD_ID,
             name="Reasoning",
             description="Reasoning effort (per-agent thinking budget)",
         ),
         model_kwargs=ConfigurableField(
-            id="model_kwargs",
+            id=MODEL_KWARGS_FIELD_ID,
             name="Model kwargs",
             description="Extra request params (e.g. provider routing pin)",
         ),
@@ -329,6 +321,27 @@ def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
     return available
 
 
+def next_fallback_provider(current: str | None) -> tuple[LLMProviderName, str] | None:
+    """The highest-priority configured provider other than ``current``, and the
+    model to run on it. ``None`` when nothing else is usable.
+
+    The agent graph selects its lane by ``configurable["provider"]`` and never
+    fails over on its own, so this is what a caller that caught a provider
+    failure retries onto. A provider with no model configured is skipped rather
+    than returned with an empty model: the custom dev endpoint's
+    ``PROVIDER_MODELS`` entry is ``settings.DEV_LLM_MODEL or ""``, and pinning
+    ``""`` would trade one dead provider for a guaranteed bad request.
+    """
+    available = _get_available_providers()
+    for priority in sorted(PROVIDER_PRIORITY):
+        name = PROVIDER_PRIORITY[priority]
+        if name == current or name not in available:
+            continue
+        if model := PROVIDER_MODELS.get(name):
+            return name, model
+    return None
+
+
 def _get_ordered_providers(
     available_providers: dict[LLMProviderName, ProviderLLM],
     preferred_provider: LLMProviderName | None,
@@ -401,8 +414,8 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
     generation, context summarization, onboarding, one-shot helpers. The memory
     pipeline is the one exception: it prefers direct Gemini for cache isolation
     and only lands here when that lane is unavailable (see
-    :func:`ainvoke_structured_gemini`). The pro model is
-    reserved for the main chat agent (see ``plan_model``); auxiliary tasks never use it.
+    :func:`ainvoke_structured_gemini`). The paid model is reserved for the main
+    chat agent (see ``lane``); auxiliary tasks never use it.
     ``temperature`` lets creative tasks opt into more variation. Instances are
     cached per temperature so hot paths reuse one HTTP client instead of
     rebuilding it per call. Raises ``LLMNotConfiguredError`` if OpenRouter is not
@@ -585,7 +598,7 @@ async def _meter_discarded_replay(
         llm_event="llm_call",
         sticky_flip_discarded=True,
         agent_name=label,
-        model=configurable.get("model_name") or configurable.get("model") or UNKNOWN_MODEL_NAME,
+        model=lane_model_name(configurable),
         user_id=configurable.get("user_id"),
         input_tokens=usage["input_tokens"],
         cached_tokens=usage["cached_tokens"],
@@ -605,6 +618,7 @@ async def ainvoke_llm(
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
     meter_auxiliary: bool = True,
+    fallback_config: RunnableConfig | None = None,
 ) -> Any:
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
@@ -673,13 +687,20 @@ async def ainvoke_llm(
                     await _meter_discarded_replay(discarded, config, label, usage_handler)
                 return result
             except LLM_FALLBACK_EXCEPTIONS as primary_error:
+                # The fallback runs under ``fallback_config`` when given. Reusing
+                # ``config`` here is what made provider failover a no-op: LangChain
+                # merges a passed config OVER a ``with_config`` one, so the run's
+                # own configurable put the just-failed provider straight back.
                 return _stamp_fallback(
                     await _resolve_fallback(
                         fallback,
                         label,
                         primary_error,
                         session_id=agent_configurable(config).get("session_id"),
-                    ).ainvoke(messages, config=_with_usage_handler(config, usage_handler))
+                    ).ainvoke(
+                        messages,
+                        config=_with_usage_handler(fallback_config or config, usage_handler),
+                    )
                 )
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
@@ -696,13 +717,16 @@ def invoke_llm(
     config: RunnableConfig | None = None,
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+    fallback_config: RunnableConfig | None = None,
 ) -> Any:
     """Sync counterpart of :func:`ainvoke_llm`."""
     try:
         return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
         return _stamp_fallback(
-            _resolve_fallback(fallback, label, primary_error).invoke(messages, config=config)
+            _resolve_fallback(fallback, label, primary_error).invoke(
+                messages, config=fallback_config or config
+            )
         )
 
 

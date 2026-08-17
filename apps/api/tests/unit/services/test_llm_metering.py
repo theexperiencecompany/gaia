@@ -164,7 +164,10 @@ async def test_graph_spend_charges_the_budget_and_the_request_tree(
     mock_record.return_value = 0.004
     configurable: AgentConfigurable = {
         "user_id": "u1",
-        "model_name": "some/model",
+        # The RUN'S LANE is what the call is priced against — the same object
+        # the request was bound from, so metering can never disagree with what
+        # actually ran.
+        "lane": {"provider": "openrouter", "model": "some/model"},
         "root_request_id": "req-1",
     }
 
@@ -192,12 +195,18 @@ async def test_graph_spend_charges_the_budget_and_the_request_tree(
 
 
 @patch("app.services.llm_metering.record_llm_call", new_callable=AsyncMock)
-async def test_model_field_is_read_when_model_name_is_absent(mock_record: AsyncMock) -> None:
+async def test_a_bag_with_no_lane_prices_as_unknown_rather_than_guessing(
+    mock_record: AsyncMock,
+) -> None:
+    """LangChain's own binding keys are the lane's EXPANSION, not the decision,
+    and a bag written before lanes existed (an in-flight queue item, a stored HIL
+    resume) carries them without one. Reading them here would meter a call against
+    a key nothing keeps in sync with the lane; ``unknown`` is loud instead."""
     mock_record.return_value = 0.0
 
     await record_graph_model_call(_ai(), {"model": "legacy/id"}, agent_name="executor")
 
-    assert mock_record.await_args.kwargs["model_name"] == "legacy/id"
+    assert mock_record.await_args.kwargs["model_name"] == UNKNOWN_MODEL_NAME
 
 
 @patch("app.services.llm_metering.record_llm_call", new_callable=AsyncMock)

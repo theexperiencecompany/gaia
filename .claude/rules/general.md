@@ -65,6 +65,32 @@ Organize code by domain/feature, not by technical type.
 - When a file exceeds ~200–300 lines, it is a signal to split by responsibility
 - No monolithic files that accumulate unrelated logic over time
 
+## No Pass-Through Wrappers
+
+Never write a function whose whole body is a call to another function. A one- or
+two-line wrapper that only unpacks arguments, renames a call, or guards a
+precondition before delegating is not an abstraction — it is a second name for
+something that already has one, and every reader now has to open two files to
+learn what one of them does.
+
+- **The test is whether the body does anything of its own.** Reshaping arguments,
+  a `None` guard, and `return other_thing(...)` are not "anything" — that is a
+  redirect. Real branching, real transformation of the result, or real assembly
+  of several calls is.
+- **The precondition belongs with the callee, not in a wrapper around it.** If a
+  read is meaningless without a `user_id`, the read itself should say so and
+  return empty — then no caller can forget the guard and no wrapper is needed.
+- **Signature mismatch is not a reason to add a layer — it is a reason to fix the
+  signature.** When callee and call site disagree on shape, change the callee to
+  take the shape the call site already has. Where that would cause an import
+  cycle, extract the shared type into a lower-level module (see Type Safety
+  Ratchet and `apps/api/CLAUDE.md` §10); do not paper over it with an adapter.
+- **A registry/table of callables is where these breed.** Uniform-signature
+  tables tempt you to write one tiny adapter per row. Make the real functions
+  match the table's signature and register them directly.
+- **Exception:** a wrapper that exists to give a genuinely non-obvious call a
+  domain name (and is used in more than one place) is documentation, and stays.
+
 ## Self-Documenting Code
 
 - Write code that explains itself through naming and structure — not through comments

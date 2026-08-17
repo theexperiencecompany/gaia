@@ -49,10 +49,9 @@ class TestCallAgentReal:
                 )
 
                 with (
-                    patch(
-                        "app.agents.core.agent.apply_plan_model",
-                        new=AsyncMock(),
-                    ),
+                    # Model selection now happens inside build_agent_config, which
+                    # resolves the lane; there is no separate plan-routing mutation
+                    # left to stub out.
                     # GraphManager.get_graph uses providers.aget which is patched
                     # globally by _common_patches[0] to return store_mock. Override
                     # specifically for call_agent so it gets the real graph.

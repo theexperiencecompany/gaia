@@ -6,6 +6,8 @@ from typing import Any, Literal, TypedDict, cast
 from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.runnables import RunnableConfig
 
+from app.constants.llm import LANE_FIELD_ID, UNKNOWN_MODEL_NAME
+
 #: One entry of an agent's middleware stack.
 #:
 #: ``AgentMiddleware``'s ``StateT`` is erased here because a stack is genuinely
@@ -96,6 +98,14 @@ class AgentConfigurable(TypedDict, total=False):
     #: its result onto this SAME message instead of minting a rival one — see
     #: ``ExecutorRun.bot_message_id`` and ``executor_runner._record_pause``.
     bot_message_id: str
+    #: Onboarding preferences / writing style, established once at the root of
+    #: a run tree (wherever a full user document is already in hand — comms,
+    #: background narration, the dev direct-invoke entrypoint) and inherited
+    #: unchanged by every child agent, same as ``user_messages``. Absent when
+    #: the root itself had none; the context sections that read them degrade
+    #: to no section rather than guessing.
+    user_preferences: dict[str, Any] | None
+    writing_style: dict[str, Any] | None
     #: One id for the WHOLE user turn: minted at the top-level
     #: ``build_agent_config`` call and inherited by every child agent (executor,
     #: handoff subagents, spawn loops). The accounting middleware keys the
@@ -104,17 +114,22 @@ class AgentConfigurable(TypedDict, total=False):
     root_request_id: str
 
     # --- model selection ----------------------------------------------------
+    #: THE model selection: a serialized :class:`~app.agents.llm.lane.ModelLane`,
+    #: resolved once per turn and inherited verbatim by every child agent, queue
+    #: hop and HIL resume. **This is the only model key GAIA code reads.**
+    #:
+    #: Absent on a bag written before lanes existed (an in-flight queue item, a
+    #: stored HIL ``resume_item``); ``ModelLane.from_configurable`` returns
+    #: ``None`` for those and the caller resolves a fresh lane.
+    lane: dict[str, Any]
+    #: LangChain's own binding keys, written from the lane by
+    #: ``build_agent_config`` and read ONLY by LangChain's field resolution:
+    #: ``provider`` selects the configurable_alternative, the rest are
+    #: ConfigurableFields. Never read these in GAIA code — they are the
+    #: expansion, not the decision. Read ``lane``.
     provider: str
-    #: ``model`` and ``model_name`` are written together and always agree;
-    #: both exist because different consumers grew up reading different names.
     model: str
-    model_name: str
-    max_tokens: int
-    #: OpenRouter provider-routing pin, inherited by subagents so they stay on
-    #: the first-party lane instead of load-balancing onto throttled resellers.
     model_kwargs: dict[str, Any]
-    #: Reasoning-effort config; comms sets its own lower effort, the executor
-    #: and provider subagents keep the client default.
     reasoning: dict[str, Any]
 
     # --- run scope ----------------------------------------------------------
@@ -136,7 +151,7 @@ class AgentConfigurable(TypedDict, total=False):
     conversation_source: str | None
     source_category: str
     #: The user's resolved plan tier (``PlanType`` value), stamped by
-    #: ``apply_plan_model`` on the top-level configurable and inherited by
+    #: ``resolve_lane`` on the top-level configurable and inherited by
     #: children. The accounting middleware's budget wall reads it to avoid a
     #: Redis plan lookup on the hot path; absent, the wall derives the tier
     #: from the cached plan itself.
@@ -157,9 +172,10 @@ class AgentConfigurable(TypedDict, total=False):
     #: Set only on a HIL resume re-dispatch; the handoff tool probes it to tell
     #: a replayed call from a fresh one. Keyed by ``HIL_RESUME_CONFIG_KEY``.
     hil_resume_replay: bool
-    #: DEV-ONLY: the executor model picked in the dev model switcher. The
-    #: executor builds its own configurable, so the choice rides down here.
-    __dev_executor_model__: str
+    #: DEV-ONLY: the DEV_MODEL_OPTIONS key picked for the executor in the dev
+    #: model switcher. The executor builds its own configurable rather than
+    #: inheriting comms's lane wholesale, so the choice rides down here.
+    dev_executor_model: str
 
 
 def agent_configurable(config: RunnableConfig | None) -> AgentConfigurable:
@@ -180,6 +196,21 @@ def agent_configurable(config: RunnableConfig | None) -> AgentConfigurable:
     keep today's ``KeyError`` when it is absent.
     """
     return cast(AgentConfigurable, (config or {}).get("configurable") or {})
+
+
+def lane_model_name(configurable: AgentConfigurable) -> str:
+    """The model the run's lane resolved to, or ``UNKNOWN_MODEL_NAME``.
+
+    The metering seams need this one field and cannot reach
+    :meth:`~app.agents.llm.lane.ModelLane.from_configurable` for it: ``lane``
+    imports the LLM client, which imports the metering module, so the import
+    closes a cycle (verified — it raises at import time, in every order). Reading
+    the key here, beside the ``lane`` declaration itself, keeps the serialized
+    shape known in one place rather than spelled out at each metering site.
+    """
+    lane = configurable.get(LANE_FIELD_ID)
+    model = lane.get("model") if isinstance(lane, dict) else None
+    return str(model) if model else UNKNOWN_MODEL_NAME
 
 
 def runtime_configurable(request: ToolCallRequest) -> AgentConfigurable:

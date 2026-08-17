@@ -5,6 +5,11 @@ import {
   type BotPlatform,
 } from "@/config/botPlatforms";
 
+// The shared notification store holds one unfiltered page for every consumer,
+// so the fetch must be canonical. 100 is the API's own ceiling (`le=100` on the
+// limit query param) — asking for more is a 422, not a bigger page.
+export const NOTIFICATION_PAGE_SIZE = 100;
+
 export const NOTIFICATION_PLATFORMS = BOT_PLATFORMS;
 
 export type NotificationPlatform = BotPlatform;

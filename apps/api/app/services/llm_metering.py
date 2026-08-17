@@ -28,7 +28,7 @@ from langchain_core.messages import AIMessage
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.constants.log_tags import LogTag
-from app.models.agent_models import AgentConfigurable
+from app.models.agent_models import AgentConfigurable, lane_model_name
 from app.services.cost_budget import record_model_call_usage
 from shared.py.wide_events import log
 
@@ -176,7 +176,7 @@ async def record_graph_model_call(
     (the provider billed that one too, so nothing else would ever see it).
     """
     usage = extract_message_usage(message)
-    model_name = configurable.get("model_name") or configurable.get("model") or UNKNOWN_MODEL_NAME
+    model_name = lane_model_name(configurable)
     user_id = configurable.get("user_id")
     root_request_id = configurable.get("root_request_id")
 

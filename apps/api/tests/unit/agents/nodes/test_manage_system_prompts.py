@@ -7,23 +7,18 @@ shatter the implicit-cache prefix, so older ones are dropped. The legacy
 for back-compat with older persisted state.
 """
 
-from typing import Any, ClassVar, cast
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import (
     AIMessage,
-    AnyMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
 
-from app.agents.core.nodes.manage_system_prompts import (
-    _is_dynamic_context,
-    manage_system_prompts_node,
-)
-from app.helpers.message_helpers import MEMORY_VOLATILE_MARKER
+from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.override.langgraph_bigtool.utils import State
 
 
@@ -44,26 +39,6 @@ def _config(provider: str | None = None) -> RunnableConfig:
 
 def _store() -> MagicMock:
     return MagicMock()
-
-
-class TestIsDynamicContext:
-    def test_dynamic_context_marker(self) -> None:
-        msg = SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True})
-        assert _is_dynamic_context(msg) is True
-
-    def test_legacy_memory_message_marker_treated_as_dynamic(self) -> None:
-        msg = SystemMessage(content="ctx", additional_kwargs={"memory_message": True})
-        assert _is_dynamic_context(msg) is True
-
-    def test_marker_in_model_extra(self) -> None:
-        class FakeMsg:
-            additional_kwargs: ClassVar[dict[str, Any]] = {}
-            model_extra: ClassVar[dict[str, Any]] = {"dynamic_context": True}
-
-        assert _is_dynamic_context(cast(AnyMessage, FakeMsg())) is True
-
-    def test_plain_system_message(self) -> None:
-        assert _is_dynamic_context(SystemMessage(content="plain")) is False
 
 
 class TestManageSystemPrompts:
@@ -147,19 +122,16 @@ class TestManageSystemPrompts:
 
     def test_volatile_slots_move_to_tail_for_openai_wire(self) -> None:
         """OpenAI-wire providers (OpenRouter / custom — the production default
-        route) accept system messages anywhere, so the volatile slots move
-        AFTER the conversation: ``[static, dynamic, ...conversation, todo,
-        memory_recall, time, memory_volatile]``. The conversation then joins the
-        provider's implicit-cache prefix instead of re-sending uncached every
-        turn, and the per-turn volatile tail sits behind even the clock — it
-        churns hardest, so nothing cacheable may sit behind it.
+        route) accept system messages anywhere, so the per-turn slots move AFTER
+        the conversation: ``[static, dynamic, ...conversation, todo,
+        memory_recall, time]``. The conversation then joins the provider's
+        implicit-cache prefix instead of re-sending uncached every turn.
         """
         msgs = [
             _static("prompt"),
             _dynamic("ctx"),
             SystemMessage(content="todo", additional_kwargs={"todo_context": True}),
             SystemMessage(content="mem", additional_kwargs={"memory_recall": True}),
-            SystemMessage(content="volatile", additional_kwargs={MEMORY_VOLATILE_MARKER: True}),
             HumanMessage(content="hello"),
             AIMessage(content="reply"),
             HumanMessage(content="time", additional_kwargs={"time_context": True}),
@@ -176,21 +148,18 @@ class TestManageSystemPrompts:
             ("system", "todo"),
             ("system", "mem"),
             ("human", "time"),
-            ("system", "volatile"),
         ]
 
     def test_leading_layout_preserved_for_gemini(self) -> None:
         """Gemini only promotes a leading contiguous run of SystemMessages to
-        ``system_instruction`` — the volatile slots must stay in the leading
-        block or they are silently dropped. That includes the per-turn volatile
-        tail, which the OpenAI-wire route puts last: on Gemini it rejoins the
-        leading run rather than being placed where the API would discard it."""
+        ``system_instruction`` and silently drops the rest — so on that lane the
+        volatile slots must stay in the leading block even though it costs the
+        conversation its place in the cached prefix."""
         msgs = [
             _static("prompt"),
             _dynamic("ctx"),
             SystemMessage(content="todo", additional_kwargs={"todo_context": True}),
             SystemMessage(content="mem", additional_kwargs={"memory_recall": True}),
-            SystemMessage(content="volatile", additional_kwargs={MEMORY_VOLATILE_MARKER: True}),
             HumanMessage(content="hello"),
             HumanMessage(content="time", additional_kwargs={"time_context": True}),
         ]
@@ -203,7 +172,6 @@ class TestManageSystemPrompts:
             ("system", "ctx"),
             ("system", "todo"),
             ("system", "mem"),
-            ("system", "volatile"),
             ("human", "hello"),
             ("human", "time"),
         ]
@@ -229,7 +197,7 @@ class TestManageSystemPrompts:
         state = cast(State, {"messages": msgs})
         with (
             patch(
-                "app.agents.core.nodes.manage_system_prompts._is_dynamic_context",
+                "app.agents.core.nodes.manage_system_prompts.slot_of",
                 side_effect=RuntimeError("unexpected failure"),
             ),
             patch("app.agents.core.nodes.manage_system_prompts.log") as mock_log,
