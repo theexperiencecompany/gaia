@@ -176,10 +176,6 @@ async def _skills(ctx: SectionContext) -> str:
         # same way the loader builds those keys, or this silently finds nothing.
         if integration_block := integration_skills_block(target_to_subagent(ctx.subagent_id)):
             block = f"{block}\n\n{integration_block}" if block else integration_block
-    # Deliberately uncapped, unlike its neighbours in this slot: the block is
-    # instructions (the path to read before invoking a skill) followed by the
-    # list itself, so clipping it to a few hundred characters leaves a fragment
-    # the agent cannot act on — it loses either the header or every skill.
     return block
 
 

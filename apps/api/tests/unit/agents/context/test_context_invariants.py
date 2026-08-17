@@ -546,14 +546,10 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
         assert text_of(assembled.stable) == "User Name: Ada\nUser Timezone: Asia/Kolkata"
 
     async def test_the_volatile_block_is_bounded_however_big_its_sections_get(self) -> None:
-        """The per-section caps bound each section; this bounds their SUM. The
-        block is rebuilt every turn, so its size is paid on every request even
-        though its position keeps it out of the cached prefix — an unbounded sum
-        is how a heavy user's turn quietly costs twice what it should.
-
-        Driven through the skills section, the one volatile section with no cap
-        of its own (it is instructions, and a clipped fragment of those is worse
-        than none), which is exactly what this ceiling exists to bound.
+        """Sections are emitted whole; this is the backstop on their SUM, so one
+        runaway section cannot blow the context window and the bill. Driven
+        through the skills section because it is the one that can grow without
+        bound — a user's whole installed skill list.
         """
         skills = "## Available skills\n" + "- inbox-triage\n" * 2000
         with fake_context_sources(replace(RICH_SOURCES, skills=skills)):

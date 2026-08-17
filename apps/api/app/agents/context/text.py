@@ -47,13 +47,7 @@ CORE_MEMORY_HEADER = "What you remember about this user (memory core):"
 
 GAIA_KNOWLEDGE_HEADER = "About Gaia (your identity and capabilities):"
 
-#: Byte-stable truncation notices. Identical every turn, so an overflowing
-#: section always emits the notice plus exactly its cap in characters, no matter
-#: how long the source content grows — a churning "…(1,234 chars omitted)" line
-#: would itself move the bytes it is meant to bound.
-RECENT_ACTIVITY_TRUNC_MARKER = "...[recent activity truncated, newest entries kept]..."
-MEMORIES_TRUNC_MARKER = "...[memory recall truncated, most relevant kept]..."
-GAIA_KNOWLEDGE_TRUNC_MARKER = "...[GAIA knowledge truncated]..."
-TRACKED_TODOS_TRUNC_MARKER = "...[tracked todos truncated]..."
-AGENDA_TRUNC_MARKER = "...[agenda truncated, newest commitments kept]..."
-VOLATILE_BLOCK_TRUNC_MARKER = "\n…[recall truncated to keep the prompt cache warm]…\n"
+#: Tells the model its view is partial when the volatile block overruns the
+#: ceiling in ``assemble``. Fixed text, so the notice does not itself grow with
+#: the content it stands in for.
+VOLATILE_BLOCK_TRUNC_MARKER = "\n…[context truncated to bound prompt size]…\n"

@@ -15,11 +15,7 @@ from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
 
 from app.agents.context.fetchers import (
-    AGENDA_CAP_CHARS,
-    GAIA_KNOWLEDGE_CAP_CHARS,
-    MEMORIES_CAP_CHARS,
-    RECENT_ACTIVITY_CAP_CHARS,
-    TRACKED_TODOS_CAP_CHARS,
+    _split_core_context,
     _split_off_section,
     build_active_todo_banner,
     build_agenda_and_activity_block,
@@ -30,19 +26,13 @@ from app.agents.context.fetchers import (
     build_memory_recall_block,
     build_tracked_todos_block,
     build_workspace_session_banner,
-    cap_section,
     format_active_todo_banner,
 )
 from app.agents.context.section_context import ExecutionMode, SectionContext
 from app.agents.context.text import (
-    AGENDA_TRUNC_MARKER,
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
-    GAIA_KNOWLEDGE_TRUNC_MARKER,
-    MEMORIES_TRUNC_MARKER,
     MEMORY_RECALL_HEADER,
-    RECENT_ACTIVITY_TRUNC_MARKER,
-    TRACKED_TODOS_TRUNC_MARKER,
 )
 from app.agents.context.tiers import AgentTier
 from app.agents.workspace.paths import session_dir
@@ -474,30 +464,6 @@ class TestASectionDeclinesWhenItsContextIsAbsent:
 
 
 @pytest.mark.unit
-class TestCapSection:
-    """The size guard every volatile section shares."""
-
-    def test_a_section_at_exactly_its_budget_is_untouched(self) -> None:
-        text = "x" * 10
-
-        assert cap_section(text, 10, "…marker…") == text
-
-    def test_an_oversized_section_keeps_its_newest_tail_behind_the_marker(self) -> None:
-        """The newest / most relevant content is at the END of every section this
-        guards, so the tail is what survives."""
-        assert cap_section("stale. " * 20 + "NEWEST", 6, "…marker…") == "…marker…\nNEWEST"
-
-    def test_the_emitted_size_does_not_grow_with_the_source(self) -> None:
-        """The whole point of a static marker: two sources of very different
-        lengths must produce the same number of bytes, or the "cap" still moves
-        the request size (and the cache boundary) turn to turn."""
-        short = cap_section("a" * 500, 100, "…marker…")
-        long = cap_section("a" * 50_000, 100, "…marker…")
-
-        assert len(short) == len(long)
-
-
-@pytest.mark.unit
 class TestSplitOffSection:
     """How the memory core is divided into its stable and churning halves."""
 
@@ -568,26 +534,22 @@ class TestTheMemoryCoreSplit:
             assert await build_core_memory_block(ctx()) == ""
             assert "- reviewed a PR" in await build_agenda_and_activity_block(ctx())
 
-    async def test_the_agenda_cap_does_not_swallow_the_journal(self) -> None:
-        """The agenda's cap must bound the agenda ALONE. ``get_core_context``
-        emits the agenda before the journal, so splitting on the agenda first
-        hands back the journal with it; capping that blob discarded the agenda's
-        commitments and relabelled the journal's tail as the agenda — invisible
-        until the journal is long enough to blow the cap.
-        """
-        journal = "\n".join(f"- did thing {i}" for i in range(200))
+    def test_the_agenda_does_not_swallow_the_journal(self) -> None:
+        """Split from the back. ``get_core_context`` emits the agenda before the
+        journal, so splitting on the agenda first hands back the journal as part
+        of "the agenda" and leaves the journal's own split with nothing to
+        match — the two sections stop being two sections."""
         core = (
             "Loves espresso."
             f"\n\n{AGENDA_HEADING}\n- ship the cache work"
-            f"\n\n{RECENT_ACTIVITY_HEADING}\n{journal}"
+            f"\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
         )
-        with self._core(core):
-            block = await build_agenda_and_activity_block(ctx())
 
-        agenda_block = block.split(RECENT_ACTIVITY_HEADING)[0]
-        assert "- ship the cache work" in agenda_block
-        assert block.count(RECENT_ACTIVITY_HEADING) == 1
-        assert "- did thing 199" in block
+        documents, agenda, activity = _split_core_context(core)
+
+        assert documents == "Loves espresso."
+        assert agenda == "\n- ship the cache work"
+        assert activity == "\n- reviewed a PR"
 
     async def test_the_stable_documents_are_never_capped(self) -> None:
         """Truncating them would churn the cached prefix every time the core grew
@@ -614,34 +576,30 @@ class TestTheMemoryCoreSplit:
             assert await build_core_memory_block(ctx()) == ""
             assert await build_agenda_and_activity_block(ctx()) == ""
 
-    async def test_each_oversized_section_is_labelled_by_its_own_marker(self) -> None:
-        """An overflowing agenda and an overflowing journal each keep their own
-        truncation marker. The markers are what tell the model its view of that
-        section is partial, and they are byte-stable so an overflowing section
-        emits the same prefix every turn."""
-        agenda = "stale commitment. " * 40 + "A" * AGENDA_CAP_CHARS
-        journal = "stale entry. " * 40 + "J" * RECENT_ACTIVITY_CAP_CHARS
+    async def test_a_long_agenda_and_journal_both_survive_whole(self) -> None:
+        """No section is clipped. Capping these to a few hundred characters hid
+        commitments and journal entries the model was then asked about, and
+        bought nothing: what a provider caches is decided by where the volatile
+        block SITS, not by how long it is."""
+        agenda = "\n".join(f"- commitment {i}" for i in range(200))
+        journal = "\n".join(f"- did thing {i}" for i in range(200))
         core = (
             f"Loves espresso.\n\n{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{journal}"
         )
         with self._core(core):
             block = await build_agenda_and_activity_block(ctx())
 
-        assert block == (
-            f"{AGENDA_HEADING}{AGENDA_TRUNC_MARKER}\n{'A' * AGENDA_CAP_CHARS}"
-            f"\n\n{RECENT_ACTIVITY_HEADING}{RECENT_ACTIVITY_TRUNC_MARKER}"
-            f"\n{'J' * RECENT_ACTIVITY_CAP_CHARS}"
-        )
+        assert block == (f"{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{journal}")
 
 
 @pytest.mark.unit
-class TestVolatileSectionCaps:
-    """Every fetched volatile section is emitted verbatim until it outgrows its
-    OWN budget, then keeps its newest bytes behind its own marker. Together these
-    bound the per-turn block, which is what caps the achievable cache hit rate.
+class TestNoVolatileSectionIsClipped:
+    """Every fetched section reaches the model whole. The prompt cache is won by
+    slot ordering, not by shortening what the agent is allowed to see, so a cap
+    here only costs answers.
     """
 
-    async def test_an_oversized_recall_keeps_its_newest_memories(self) -> None:
+    async def test_a_long_recall_keeps_every_memory(self) -> None:
         memories = [memory("m" * 200, mentioned="2026-02-01") for _ in range(10)]
         with patch(
             "app.memory.engine.memory_engine.recall",
@@ -649,26 +607,23 @@ class TestVolatileSectionCaps:
         ):
             block = await build_memory_recall_block(ctx())
 
-        body = block.removeprefix(f"{MEMORY_RECALL_HEADER}\n")
-        assert body.startswith(MEMORIES_TRUNC_MARKER)
-        assert len(body) == len(MEMORIES_TRUNC_MARKER) + 1 + MEMORIES_CAP_CHARS
+        notes = "\n".join("- " + "m" * 200 + " [mentioned 2026-02-01]" for _ in range(10))
+        assert block == f"{MEMORY_RECALL_HEADER}\n{notes}"
 
-    async def test_an_oversized_knowledge_block_keeps_its_own_budget(self) -> None:
+    async def test_a_long_knowledge_result_is_rendered_whole(self) -> None:
         with patch(
             "app.services.gaia_knowledge_service.gaia_knowledge_service.search_knowledge",
             AsyncMock(return_value=[knowledge("k" * 400)]),
         ):
             block = await build_gaia_knowledge_block(ctx())
 
-        body = block.removeprefix(f"{GAIA_KNOWLEDGE_HEADER}\n")
-        assert body.startswith(GAIA_KNOWLEDGE_TRUNC_MARKER)
-        assert len(body) == len(GAIA_KNOWLEDGE_TRUNC_MARKER) + 1 + GAIA_KNOWLEDGE_CAP_CHARS
+        assert block == f"{GAIA_KNOWLEDGE_HEADER}\n- {'k' * 400}"
 
-    async def test_an_oversized_todo_summary_keeps_its_own_budget(self) -> None:
+    async def test_a_long_todo_summary_is_rendered_whole(self) -> None:
         with patch(
             "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
             AsyncMock(return_value="t" * 400),
         ):
             block = await build_tracked_todos_block(ctx(active_todo_id="todo-1"))
 
-        assert block == f"{TRACKED_TODOS_TRUNC_MARKER}\n{'t' * TRACKED_TODOS_CAP_CHARS}"
+        assert block == "t" * 400

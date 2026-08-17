@@ -14,15 +14,10 @@ a body of its own next to the table.
 
 from app.agents.context.section_context import SectionContext
 from app.agents.context.text import (
-    AGENDA_TRUNC_MARKER,
     BACKGROUND_EXECUTION_BANNER,
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
-    GAIA_KNOWLEDGE_TRUNC_MARKER,
-    MEMORIES_TRUNC_MARKER,
     MEMORY_RECALL_HEADER,
-    RECENT_ACTIVITY_TRUNC_MARKER,
-    TRACKED_TODOS_TRUNC_MARKER,
 )
 from app.agents.workspace.paths import session_dir
 from app.constants.cache import TRACKED_TODOS_SUMMARY_CACHE_KEY, TRACKED_TODOS_SUMMARY_CACHE_TTL
@@ -37,32 +32,6 @@ from app.services.integrations.user_integrations import get_connected_integratio
 from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.artifact_utils import artifact_url_base
 from shared.py.wide_events import log
-
-#: Per-section caps for the volatile block. Every byte of it churns turn to turn
-#: and is therefore NEVER cached, so its size directly caps the achievable
-#: prompt-cache hit rate — measured at roughly 3.5 points per 1k volatile
-#: characters on a ~28k-token request. Together these bound the block to ~2300
-#: characters, which is what lets the hit rate reach ~95%. Stable sections are
-#: deliberately uncapped: they sit inside the cached prefix and cost nothing per
-#: turn.
-RECENT_ACTIVITY_CAP_CHARS = 300
-MEMORIES_CAP_CHARS = 300
-GAIA_KNOWLEDGE_CAP_CHARS = 100
-TRACKED_TODOS_CAP_CHARS = 150
-AGENDA_CAP_CHARS = 300
-
-
-def cap_section(text: str, limit: int, marker: str) -> str:
-    """Cap a volatile section without churning the truncation boundary.
-
-    Returns ``text`` unchanged when it fits. Otherwise keeps the LAST ``limit``
-    characters — for the activity journal and recall results the newest and most
-    relevant content is at the end — behind the static ``marker``, so what is
-    emitted is marker + exactly ``limit`` characters however long the source grows.
-    """
-    if len(text) <= limit:
-        return text
-    return f"{marker}\n{text[-limit:]}"
 
 
 def _split_off_section(context: str, heading: str) -> tuple[str, str]:
@@ -109,9 +78,8 @@ def _split_core_context(core_context: str) -> tuple[str, str, str]:
 
     Split from the BACK. ``get_core_context`` emits the agenda BEFORE the
     journal, so splitting on the agenda first hands back everything to its right
-    — the journal included — as "the agenda", and the agenda's cap then crushes
-    both into one 300-character block while the journal's own split finds nothing
-    left to match.
+    — the journal included — as "the agenda", and the journal's own split then
+    finds nothing left to match.
     """
     core_context, activity = _split_off_section(core_context, RECENT_ACTIVITY_HEADING)
     core_context, agenda = _split_off_section(core_context, AGENDA_HEADING)
@@ -135,22 +103,15 @@ async def build_agenda_and_activity_block(ctx: SectionContext) -> str:
     """The CHURNING half of the memory core: the current agenda and the recent
     activity journal.
 
-    Each is capped against its own budget rather than the joined text: capping
-    the join drops whichever section sorts first — the agenda, whose commitments
-    and deadlines are the part a user actually gets asked about. The headings
-    stay outside the caps so a truncated body is still labelled.
+    They sit in the volatile slot together, each under its own heading, so the
+    agenda a user gets asked about is never read as part of the journal.
     """
     _documents, agenda, activity = _split_core_context(await _core_context(ctx.user_id))
     parts: list[str] = []
     if agenda:
-        parts.append(
-            f"{AGENDA_HEADING}{cap_section(agenda, AGENDA_CAP_CHARS, AGENDA_TRUNC_MARKER)}"
-        )
+        parts.append(f"{AGENDA_HEADING}{agenda}")
     if activity:
-        parts.append(
-            f"{RECENT_ACTIVITY_HEADING}"
-            f"{cap_section(activity, RECENT_ACTIVITY_CAP_CHARS, RECENT_ACTIVITY_TRUNC_MARKER)}"
-        )
+        parts.append(f"{RECENT_ACTIVITY_HEADING}{activity}")
     return "\n\n".join(parts)
 
 
@@ -177,9 +138,7 @@ async def build_memory_recall_block(ctx: SectionContext) -> str:
         return ""
     log.info("Added memories to context", memories_count=len(results.memories))
     notes = "\n".join(f"- {entry_to_note(mem)}" for mem in results.memories)
-    return (
-        f"{MEMORY_RECALL_HEADER}\n{cap_section(notes, MEMORIES_CAP_CHARS, MEMORIES_TRUNC_MARKER)}"
-    )
+    return f"{MEMORY_RECALL_HEADER}\n{notes}"
 
 
 async def build_gaia_knowledge_block(ctx: SectionContext) -> str:
@@ -194,10 +153,7 @@ async def build_gaia_knowledge_block(ctx: SectionContext) -> str:
         return ""
     log.info("Added knowledge items to context", results_count=len(results))
     lines = "\n".join(f"- {result.content}" for result in results)
-    return (
-        f"{GAIA_KNOWLEDGE_HEADER}\n"
-        f"{cap_section(lines, GAIA_KNOWLEDGE_CAP_CHARS, GAIA_KNOWLEDGE_TRUNC_MARKER)}"
-    )
+    return f"{GAIA_KNOWLEDGE_HEADER}\n{lines}"
 
 
 @Cacheable(key_pattern=TRACKED_TODOS_SUMMARY_CACHE_KEY, ttl=TRACKED_TODOS_SUMMARY_CACHE_TTL)
@@ -215,14 +171,13 @@ async def build_tracked_todos_block(ctx: SectionContext) -> str:
     if not ctx.user_id:
         return ""
     try:
-        summary = (
+        return (
             await tracked_todo_service.get_active_tracked_summary(
                 ctx.user_id, active_todo_id=ctx.active_todo_id
             )
             if ctx.active_todo_id
             else await _cached_tracked_todos_summary(ctx.user_id)
         )
-        return cap_section(summary, TRACKED_TODOS_CAP_CHARS, TRACKED_TODOS_TRUNC_MARKER)
     except Exception as e:
         log.warning(
             "Error retrieving tracked todos",

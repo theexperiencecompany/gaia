@@ -47,12 +47,12 @@ class AssembledContext:
         return [self.stable] if self.volatile is None else [self.stable, self.volatile]
 
 
-#: Ceiling on the whole volatile block, on top of the per-section caps. The
-#: block is rebuilt every turn and every changed byte writes NEW blocks into the
-#: provider's bounded prompt cache, so its size costs tokens on every request
-#: even though its position (behind the conversation) keeps it out of the prefix.
-#: Head and tail are kept — the head is the agenda and journal, the tail the
-#: todo and run-binding directives that carry recency value — and the middle goes.
+#: Backstop against a pathological volatile block blowing the context window and
+#: the bill — a runaway section, not a caching mechanism: nothing here affects
+#: the prompt cache, which is decided by slot ORDER (see ``slots``), not size.
+#: Sections are otherwise emitted in full. Head and tail are kept — the head is
+#: the agenda and journal, the tail the todo and run-binding directives that
+#: carry recency value — and the middle goes.
 VOLATILE_BLOCK_MAX_CHARS = 8_000
 VOLATILE_BLOCK_HEAD_CHARS = 4_000
 VOLATILE_BLOCK_TAIL_CHARS = 4_000
