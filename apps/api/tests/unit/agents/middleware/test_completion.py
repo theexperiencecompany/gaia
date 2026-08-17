@@ -348,9 +348,7 @@ class TestWorkLooksUnfinished:
         assert work_looks_unfinished(state) is True
 
     def test_missing_todos_channel_is_treated_as_no_todos(self) -> None:
-        state = make_state(
-            messages=[_task(), *_worked(2), AIMessage(content="done")]
-        )
+        state = make_state(messages=[_task(), *_worked(2), AIMessage(content="done")])
         state.pop("todos", None)
 
         assert work_looks_unfinished(state) is False
