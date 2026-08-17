@@ -21,50 +21,24 @@ the code cannot reach.
 
 ## Publishing
 
-The repo is public, so SHA-pinned raw URLs render in PR bodies. Screenshots
-travel on a dedicated branch so they never touch the PR diff:
-
-1. Create branch `screenshots/<feature-branch-name>` from `master` (GitHub
-   MCP `create_branch`). Nothing triggers CI on `screenshots/*`.
-2. Upload each PNG with `create_or_update_file` (base64 content) under
-   `<feature-branch-name>/`.
-3. Embed via the **commit SHA** from the upload response — immutable, and
-   unambiguous even with slashes in the branch name:
-   `https://raw.githubusercontent.com/theexperiencecompany/gaia/<sha>/<path>.png`
-4. Leave the branch in place after merge — the SHA-pinned URLs stay valid
-   only while the commit is reachable.
+Upload to the shared `pr-assets` branch and embed by raw URL — the mechanics,
+including the render-failure diagnosis, live in the **`pr-image-embedding`
+skill**. Do not invent a per-PR assets branch.
 
 ## The PR
 
-Title: `<type>(<optional scope>): <description>` — a CI check validates the
-type against the allowed list in `pr-naming-conventions.yml` (read the list
-there; it drifts). Base: `master`. If a repo PR template exists, fill it in
-— but the `## Before / After`, `## Verification`, and `## Not verified`
-sections below are mandatory evidence and always appear, template or not.
-With no template, use this body structure:
+Title, body, and section-by-section guidance are owned by the
+**`writing-pull-requests` skill** and the repo template it fills,
+`.github/pull_request_template.md`. Follow it — base `master`, Conventional
+Commit title, never merge.
 
-```markdown
-## What & why
-<the feature, the user problem, key decisions and any scope choices made>
+Two of that template's sections are non-negotiable for a ship-feature run,
+because this pipeline exists to produce the evidence behind them:
 
-## How it works
-<data flow end to end, files/layers touched>
-
-## Before / After
-| Surface | Before | After |
-|---|---|---|
-| <name> | <img src="...before.png" width="420"> | <img src="...after.png" width="420"> |
-
-## Verification
-- <each acceptance criterion, with how it was verified against the running app>
-- Journey driven end to end via agent-browser as the dev user: <summary>
-- Console and network clean on all driven pages: <yes / details>
-- Local gates green: lint / type-check / build / tests / code-quality lanes
-- <run mode used: --sim or --agent, and why>
-
-## Not verified
-<anything you could not exercise, stated plainly; "nothing" if nothing>
-```
+- **Screenshots** — the before/after table from the capture protocol above.
+- **How to verify** + **Not verified** — each acceptance criterion with how it
+  was exercised against the running app, the run mode used (`--sim` or
+  `--agent`) and why, and an honest list of what you could not drive.
 
 After opening the PR, subscribe to its activity and enter the drive-to-green
 loop (ci-and-review.md).

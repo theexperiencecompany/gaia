@@ -31,6 +31,7 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import Command
 import pytest
 
+from app.agents.context.assemble import AssembledContext
 from app.agents.core.subagents import spawn_agent
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.middleware.factory import create_subagent_middleware
@@ -182,8 +183,15 @@ async def test_finished_spawn_is_recovered_not_rerun_when_a_sibling_pauses(
     # ChromaDB in production).
     with (
         patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            AsyncMock(return_value=SystemMessage(content="ctx")),
+            "app.agents.core.subagents.subagent_runner.assemble_context",
+            AsyncMock(
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                )
+            ),
         ),
         patch(
             "app.agents.core.subagents.spawn_agent.get_tools_store", AsyncMock(return_value=None)

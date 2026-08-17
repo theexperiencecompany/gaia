@@ -1,7 +1,6 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import cast
 
 from langchain_core.language_models import LanguageModelLike
 from langgraph.checkpoint.memory import InMemorySaver
@@ -12,12 +11,12 @@ from app.agents.core.graph_builder.checkpointer_manager import (
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.nodes import (
     follow_up_actions_node,
-    manage_system_prompts_node,
     memory_node,
 )
-from app.agents.core.nodes.adapt_media import adapt_media_node
-from app.agents.core.nodes.executor_status import executor_status_hook
-from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.nodes.pre_model_hooks import (
+    comms_pre_model_hooks,
+    worker_pre_model_hooks,
+)
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
@@ -38,7 +37,6 @@ from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
-from app.override.langgraph_bigtool.hooks import HookType
 from shared.py.wide_events import log
 
 
@@ -88,12 +86,7 @@ async def build_executor_graph(
         subagent_mw.set_store(store)
         subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
-    pre_model_hooks: list[HookType] = [
-        cast(HookType, filter_messages_node),
-        cast(HookType, adapt_media_node),
-        manage_system_prompts_node,
-        todo_hook,
-    ]
+    pre_model_hooks = worker_pre_model_hooks(todo_hook)
 
     builder = create_agent(
         llm=chat_llm,
@@ -181,14 +174,7 @@ async def build_comms_graph(
 
     middleware = create_comms_middleware()
 
-    pre_model_hooks: list[HookType] = [
-        cast(HookType, filter_messages_node),
-        # Before manage_system_prompts_node so the live-executor status frame
-        # is slotted into the system block (Gemini drops trailing system
-        # messages).
-        executor_status_hook,
-        manage_system_prompts_node,
-    ]
+    pre_model_hooks = comms_pre_model_hooks()
 
     builder = create_agent(
         llm=chat_llm,

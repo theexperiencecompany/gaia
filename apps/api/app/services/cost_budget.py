@@ -15,7 +15,7 @@ readers:
 - The chat endpoint checks the daily window BEFORE running the agent (429 wall).
 - ``LLMAccountingMiddleware.awrap_model_call`` checks the daily window and the
   per-request token ceiling as the unbypassable backstop; the monthly window
-  drives the pro model degrade in ``apply_plan_model``.
+  drives the pro model degrade in ``resolve_lane``.
 
 Follows the RedisCache degradation philosophy: when Redis is unavailable these
 helpers warn and no-op (enforcement fails open; startup ``verify_connection``
@@ -208,7 +208,7 @@ async def get_budget_stop_reason(
     seam every execution path (chat, workflows, bots, voice, subagents) passes
     through. The wall is self-sufficient: when ``plan_type`` was never stamped
     onto the configurable (a background/subagent path that skipped
-    ``apply_plan_model``), it is derived here from the Redis-cached tier so no
+    ``resolve_lane``), it is derived here from the Redis-cached tier so no
     entry point can be born unenforced. Two walls:
 
     1. Daily cost budget — catches entry points that skip the endpoint gate.
@@ -226,7 +226,7 @@ async def get_budget_stop_reason(
         return None
 
     if plan_type is None:
-        # The stamp is missing (a path that skipped apply_plan_model). Derive the
+        # The stamp is missing (a path that skipped resolve_lane). Derive the
         # tier ourselves so the wall still binds; a lookup failure is the only
         # thing that fails open here, and it warns loudly.
         try:

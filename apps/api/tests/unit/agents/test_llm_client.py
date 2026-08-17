@@ -10,14 +10,19 @@ Covers:
 - chatbot: default-model one-shot path, error handling
 """
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig, RunnableLambda
+from langchain_openrouter import ChatOpenRouter
+from pydantic import SecretStr
 import pytest
 
+from app.agents.llm import client as client_module
 from app.agents.llm.chatbot import chatbot
 from app.agents.llm.client import (
+    _MODEL_FIELD,
     LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
@@ -25,13 +30,15 @@ from app.agents.llm.client import (
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
+    _openrouter_wire_configurables,
     ainvoke_llm,
     get_default_llm,
     init_llm,
     register_llm_providers,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
-from app.constants.llm import DEFAULT_MODEL_NAME
+from app.agents.llm.types import LLMProviderName
+from app.constants.llm import DEFAULT_GEMINI_MODEL_NAME, DEFAULT_MODEL_NAME
 from app.core.lazy_loader import ProviderRegistry
 
 # ---------------------------------------------------------------------------
@@ -116,6 +123,70 @@ class TestGetAvailableProviders:
             result = _get_available_providers()
 
         assert result == {"gemini": gemini_inst, "openrouter": openrouter_inst}
+
+
+# ---------------------------------------------------------------------------
+# next_fallback_provider
+# ---------------------------------------------------------------------------
+
+
+class TestNextFallbackProvider:
+    """What a caller that caught a provider failure retries onto. The graph
+    selects its lane by ``configurable["provider"]`` and never fails over itself,
+    so a wrong answer here is a turn that dies on the provider that just 402'd."""
+
+    def _available(self, *names: LLMProviderName) -> Any:
+        return patch(
+            "app.agents.llm.client._get_available_providers",
+            return_value={name: _make_fake_provider(name) for name in names},
+        )
+
+    def test_the_failed_provider_is_never_returned_to(self) -> None:
+        with self._available(LLMProviderName.OPENROUTER, LLMProviderName.GEMINI):
+            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) == (
+                LLMProviderName.GEMINI,
+                DEFAULT_GEMINI_MODEL_NAME,
+            )
+
+    def test_the_highest_priority_other_provider_wins(self) -> None:
+        with self._available(
+            LLMProviderName.OPENROUTER, LLMProviderName.GEMINI, LLMProviderName.CUSTOM
+        ):
+            assert client_module.next_fallback_provider(LLMProviderName.GEMINI) == (
+                LLMProviderName.OPENROUTER,
+                DEFAULT_MODEL_NAME,
+            )
+
+    def test_a_run_with_no_lane_yet_gets_the_highest_priority_provider(self) -> None:
+        with self._available(LLMProviderName.OPENROUTER, LLMProviderName.GEMINI):
+            assert client_module.next_fallback_provider(None) == (
+                LLMProviderName.OPENROUTER,
+                DEFAULT_MODEL_NAME,
+            )
+
+    def test_nothing_else_configured_yields_no_fallback(self) -> None:
+        with self._available(LLMProviderName.OPENROUTER):
+            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
+
+    def test_an_unconfigured_provider_is_skipped_not_returned_modelless(self) -> None:
+        """The custom dev endpoint's PROVIDER_MODELS entry is ``DEV_LLM_MODEL or
+        ""``; pinning ``""`` trades one dead provider for a guaranteed bad
+        request."""
+        with (
+            self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
+            patch.dict(PROVIDER_MODELS, {LLMProviderName.CUSTOM: ""}),
+        ):
+            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
+
+    def test_a_configured_custom_endpoint_is_a_real_fallback_target(self) -> None:
+        with (
+            self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
+            patch.dict(PROVIDER_MODELS, {LLMProviderName.CUSTOM: "local/dev-model"}),
+        ):
+            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) == (
+                LLMProviderName.CUSTOM,
+                "local/dev-model",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -648,3 +719,91 @@ class TestChatbot:
 
         with pytest.raises(RuntimeError, match="event loop is closed"):
             await chatbot([HumanMessage(content="hello")])
+
+
+class TestProviderModelFieldId:
+    """Both provider lanes must read the model from the SAME configurable key.
+
+    They historically did not. Gemini's ``model`` attribute was bound to the
+    field id ``"model_name"`` while OpenRouter's ``model_name`` attribute was
+    bound to the field id ``"model"`` — two swapped ids sharing one flat
+    namespace (``prefix_keys=False``). That collision is the entire reason every
+    writer had to set both keys, and why a configurable carrying only one of them
+    silently resolved a *different* model than the one it named.
+
+    Scope: the OpenRouter case is exercised end-to-end through the real registry.
+    The Gemini case is asserted on the field id directly, because the hermetic
+    env blanks ``GOOGLE_API_KEY`` and the provider therefore resolves to ``None``
+    — there is no Gemini client to drive here. The id is the whole contract.
+    """
+
+    @staticmethod
+    def _resolved_model(llm: Any, configurable: dict[str, str]) -> str | None:
+        runnable, _ = llm._prepare({"configurable": configurable})
+        return getattr(runnable, "model", None)
+
+    def test_openrouter_exposes_its_model_under_the_same_id(self) -> None:
+        """Driven through the real wire helper rather than the provider registry:
+        the hermetic fence blanks OPENROUTER_API_KEY, so the registered provider
+        is ``None`` in CI and there is no client to resolve. The client is
+        constructed here with a dummy key — no network, construction only."""
+        llm = _openrouter_wire_configurables(
+            ChatOpenRouter(model="vendor/default", api_key=SecretStr("test-key"))
+        )
+
+        assert self._resolved_model(llm, {"model": "vendor/probe-model"}) == "vendor/probe-model"
+        assert self._resolved_model(llm, {"model_name": "legacy"}) != "legacy"
+
+    def test_gemini_declares_its_model_under_the_same_id_as_openrouter(self) -> None:
+        assert _MODEL_FIELD.id == "model"
+
+
+class TestFallbackRunsOnTheOtherProvider:
+    """The fallback must actually leave the failed lane.
+
+    Regression: the fallback runnable carried its lane via ``with_config``, but the
+    invoke re-passed the run's own config — and LangChain merges a passed config
+    OVER a bound one, so the just-failed provider, model and pin were all restored
+    and the "failover" retried the same dead lane. Nothing caught it because no
+    test drove the fallback path with a real config attached.
+    """
+
+    @pytest.mark.regression
+    async def test_the_fallback_attempt_does_not_inherit_the_failed_lane(self) -> None:
+        seen: dict[str, Any] = {}
+
+        def _record(_input: Any, config: RunnableConfig | None = None) -> AIMessage:
+            seen.update((config or {}).get("configurable", {}))
+            return AIMessage(content="from-fallback")
+
+        def _boom(_input: Any, config: RunnableConfig | None = None) -> AIMessage:
+            raise ConnectionError("primary down")
+
+        primary = RunnableLambda(_boom)
+        failed_lane_config: RunnableConfig = cast(
+            RunnableConfig,
+            {
+                "configurable": {
+                    "provider": "openrouter",
+                    "model": "dead-model",
+                    "model_kwargs": {"provider": {"only": ["dead-vendor"]}},
+                }
+            },
+        )
+        fallback_config: RunnableConfig = cast(
+            RunnableConfig, {"configurable": {"provider": "gemini", "model": "gemini-x"}}
+        )
+
+        result = await ainvoke_llm(
+            primary,
+            "hi",
+            fallback=RunnableLambda(_record),
+            config=failed_lane_config,
+            fallback_config=fallback_config,
+        )
+
+        assert result.content == "from-fallback"
+        assert seen["provider"] == "gemini"
+        assert seen["model"] == "gemini-x"
+        # the dead lane's routing pin must not ride along to the new provider
+        assert "model_kwargs" not in seen

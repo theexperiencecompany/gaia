@@ -38,6 +38,9 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command, interrupt
 import pytest
 
+from app.agents.context.assemble import AssembledContext
+from app.agents.context.slots import PromptSlot, slot_of
+from app.agents.context.tiers import AgentTier
 from app.agents.core.subagents.base_subagent import SubAgentFactory
 from app.agents.core.subagents.handoff_tools import (
     _resolve_subagent,
@@ -408,8 +411,15 @@ async def real_subagent_seams():
         # no active LangGraph runnable context for get_stream_writer() to hook.
         patch(f"{HANDOFF_MODULE}.get_stream_writer", return_value=MagicMock()),
         patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            AsyncMock(return_value=SystemMessage(content="ctx")),
+            "app.agents.core.subagents.subagent_runner.assemble_context",
+            AsyncMock(
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                )
+            ),
         ),
         patch(
             "app.utils.agent_utils.get_tool_registry",
@@ -742,105 +752,81 @@ class TestSubagentRunnerHelpers:
 # ---------------------------------------------------------------------------
 
 
+def _assembled_context():
+    """Stub the assembly step; these tests are about the seeder, not the sections."""
+    return patch(
+        "app.agents.core.subagents.subagent_runner.assemble_context",
+        new_callable=AsyncMock,
+        return_value=AssembledContext(
+            stable=SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True}),
+            volatile=None,
+        ),
+    )
+
+
 @pytest.mark.integration
 class TestBuildInitialMessages:
-    """Verify build_initial_messages produces the expected [system, context, human] list."""
+    """The seed a worker tier hands LangGraph, assembled through the real
+    section registry rather than a stub — the unit tier already pins the shape,
+    so what this adds is that the registry and the seeder agree in situ."""
 
-    async def test_build_initial_messages_returns_four_messages(self) -> None:
-        """build_initial_messages must return exactly 4 messages:
-        system, context, current-time, and human."""
+    async def test_seed_is_in_canonical_slot_order(self) -> None:
         system_msg = SystemMessage(content="You are a Gmail agent.")
-        configurable = {
-            "thread_id": str(uuid4()),
-            "user_id": str(uuid4()),
-            "user_timezone": "Asia/Kolkata",
-        }
 
-        with patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new=AsyncMock(return_value=SystemMessage(content="Context: time is now.")),
-        ):
+        with _assembled_context():
             messages = await build_initial_messages(
                 system_message=system_msg,
+                tier=AgentTier.PROVIDER_SUBAGENT,
                 agent_name="gmail_agent",
-                configurable=configurable,
+                configurable={
+                    "thread_id": str(uuid4()),
+                    "user_id": str(uuid4()),
+                    "user_timezone": "Asia/Kolkata",
+                },
                 task="Send an email to John",
                 user_id="user-1",
                 subagent_id="gmail_agent",
             )
 
-        assert len(messages) == 4
-
-    async def test_build_initial_messages_first_is_system(self):
-        """First message must be the supplied system message."""
-        system_msg = SystemMessage(content="You are a Gmail agent.")
-
-        with patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new=AsyncMock(return_value=SystemMessage(content="ctx")),
-        ):
-            messages = await build_initial_messages(
-                system_message=system_msg,
-                agent_name="gmail_agent",
-                configurable={},
-                task="Do something",
-            )
-
         assert messages[0] is system_msg
+        slots = [slot_of(m) for m in messages]
+        assert slots == sorted(slots)
+        assert slots[-1] is PromptSlot.TIME
 
-    async def test_build_initial_messages_last_is_human_with_task(self):
-        """Last message must be a HumanMessage whose content equals the task."""
+    async def test_the_task_reaches_the_agent_as_a_human_turn(self) -> None:
         task = "Schedule a meeting for tomorrow at 10am"
 
-        with patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new=AsyncMock(return_value=SystemMessage(content="ctx")),
-        ):
+        with _assembled_context():
             messages = await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
+                tier=AgentTier.PROVIDER_SUBAGENT,
                 agent_name="calendar_agent",
                 configurable={},
                 task=task,
             )
 
-        last = messages[-1]
-        assert isinstance(last, HumanMessage)
-        assert last.content == task
+        task_msgs = [
+            m for m in messages if m.type == "human" and not m.additional_kwargs.get("time_context")
+        ]
+        assert [m.content for m in task_msgs] == [task]
 
-    async def test_build_initial_messages_uses_retrieval_query_for_context(self):
-        """When retrieval_query is provided it must be passed to
-        create_agent_context_message instead of the raw task."""
+    async def test_retrieval_query_is_what_the_sections_search_on(self) -> None:
+        """The executor injects routing hints into the task text. Retrieving
+        against those searches memory for our own words, not the user's."""
         retrieval_query = "original query without hints"
         enhanced_task = f"{retrieval_query}\n\nDIRECT EXECUTION HINT: ..."
 
-        captured_queries: list[str] = []
-
-        async def capture_context(
-            configurable: dict[str, object],
-            user_id: str | None,
-            query: str,
-            subagent_id: str | None = None,
-            **kwargs: object,
-        ) -> SystemMessage:
-            captured_queries.append(query)
-            return SystemMessage(content="ctx")
-
-        with patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new=capture_context,
-        ):
+        with _assembled_context() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
+                tier=AgentTier.EXECUTOR,
                 agent_name="executor_agent",
                 configurable={},
                 task=enhanced_task,
                 retrieval_query=retrieval_query,
             )
 
-        assert len(captured_queries) == 1
-        assert captured_queries[0] == retrieval_query, (
-            "retrieval_query must be passed to context creation, not enhanced_task"
-        )
+        assert mock_assemble.call_args.args[0].query == retrieval_query
 
 
 # ---------------------------------------------------------------------------
@@ -1666,8 +1652,15 @@ def handoff_seams(gated_subagent):
             AsyncMock(return_value=[]),
         ),
         patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            AsyncMock(return_value=SystemMessage(content="ctx")),
+            "app.agents.core.subagents.subagent_runner.assemble_context",
+            AsyncMock(
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                )
+            ),
         ),
         patch(
             "app.utils.agent_utils.get_tool_registry",
@@ -1878,8 +1871,15 @@ async def background_dispatch_seams():
             AsyncMock(return_value=[]),
         ),
         patch(
-            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            AsyncMock(return_value=SystemMessage(content="ctx")),
+            "app.agents.core.subagents.subagent_runner.assemble_context",
+            AsyncMock(
+                return_value=AssembledContext(
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
+                    volatile=None,
+                )
+            ),
         ),
         patch(
             "app.utils.agent_utils.get_tool_registry",

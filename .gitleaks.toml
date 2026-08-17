@@ -13,6 +13,14 @@
 # literal via `must_not_communicate`. Synthetic fixtures, never real keys, and
 # they cannot do their job without them.
 #
+# .mutation-<pid>/ is a mutation-run workdir (scripts/test/mutation.sh): a
+# throwaway copy of app/ + tests/ + scripts/ plus mutmut's mutants/ tree. It is
+# gitignored and removed on exit, but one kept run was committed once, and every
+# finding in it was a COPY of a file already in the repo — including the eval
+# fixtures allowlisted above, which the copy's path no longer matched. Nothing
+# original can ever live here, so the pattern is excluded rather than the 44
+# duplicate findings being ignored one fingerprint at a time.
+#
 # The allowlist is scoped to these paths, so a real secret anywhere else still
 # fails the scan.
 
@@ -24,4 +32,5 @@ description = "deliberate fake values: local-dev sandbox env + agent eval fixtur
 paths = [
   "scripts/dev/sandbox-env.sh",
   '''^apps/api/scripts/evals/data/''',
+  '''(^|/)\.mutation-[0-9]+/''',
 ]
