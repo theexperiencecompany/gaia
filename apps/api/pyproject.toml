@@ -163,7 +163,7 @@ backend = [
   "tavily-python>=0.7.12",
   "crawl4ai>=0.7.7",
   "ftfy>=6.3.0",
-  "google-api-python-client>=2.162.0",
+  "google-api-python-client>=2.198.0",
   "googleapis-common-protos==1.66.0",
   "cloudinary==1.41.0",
   "resend>=2.10.0",
