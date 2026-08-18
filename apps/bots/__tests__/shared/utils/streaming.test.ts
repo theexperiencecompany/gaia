@@ -7,6 +7,7 @@
  * stand in for the platform SDK exactly as each adapter wires them.
  */
 import {
+  type GaiaClient,
   handleStreamingChat,
   PLATFORM_LIMITS,
   type PlatformName,
@@ -25,8 +26,14 @@ function body(word: string, sentences: number): string {
   ).join("");
 }
 
-/** A GaiaClient stub that streams `chunks` in order, then completes. */
-function streamingGaia(chunks: string[]) {
+/**
+ * A GaiaClient stub that streams `chunks` in order, then completes.
+ *
+ * Cast through `unknown` rather than `any`: the streamer only ever touches
+ * `chatStream` and `createLinkToken`, so implementing the whole client would be
+ * noise, but the cast stays explicit instead of disabling the lint rule.
+ */
+function streamingGaia(chunks: string[]): GaiaClient {
   const full = chunks.join("");
   return {
     chatStream: async (
@@ -42,7 +49,7 @@ function streamingGaia(chunks: string[]) {
       return full;
     },
     createLinkToken: async () => ({ authUrl: "https://gaia.test/link" }),
-  };
+  } as unknown as GaiaClient;
 }
 
 interface Delivered {
@@ -92,8 +99,7 @@ async function deliver(
   };
 
   await handleStreamingChat(
-    // biome-ignore lint/suspicious/noExplicitAny: stream-source stub
-    streamingGaia(chunks) as any,
+    streamingGaia(chunks),
     {
       message: "drive the streamer",
       platform,

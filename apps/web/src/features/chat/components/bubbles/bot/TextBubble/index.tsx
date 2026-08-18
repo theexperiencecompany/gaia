@@ -5,10 +5,7 @@ import {
   APPROVAL_REQUEST_TOOL_NAME,
   type ApprovalRequestData,
 } from "@shared/chat";
-import {
-  parseOpenUISegments,
-  splitByBreaksPreservingFences,
-} from "@shared/utils";
+import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
@@ -18,7 +15,6 @@ import {
   MESSAGE_BREAK_DURATION_SECONDS,
   MESSAGE_BREAK_EASE_OUT_QUART,
   MESSAGE_BREAK_STAGGER_SECONDS,
-  splitMessageByBreaks,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
@@ -487,9 +483,7 @@ export default function TextBubble({
           // Use cleaned text without thinking tags
           const displayText = parsedContent.cleanText || "";
           // Preserve :::openui fences when splitting so they aren't mangled.
-          const textParts = displayText.includes(":::openui")
-            ? splitByBreaksPreservingFences(displayText)
-            : splitMessageByBreaks(displayText);
+          const textParts = splitMessageByBreaks(displayText);
 
           // Filter empty/whitespace-only parts up front so first/last/single
           // reflect the *visible* list, not the array index. Without this, a
