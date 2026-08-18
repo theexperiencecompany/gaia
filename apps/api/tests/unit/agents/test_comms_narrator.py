@@ -1,7 +1,7 @@
 """Behavior tests for app.agents.core.background.comms_narrator.
 
 Locks: the executor result is re-voiced through the comms graph as a
-HumanMessage with the right internal marker (never a SystemMessage — the
+HumanMessage framed in the right internal tag (never a SystemMessage — the
 regression the comment block warns about), the platform-delivery note is
 prepended for workflow delivery, and every degradation path returns an empty
 string instead of crashing the caller. Also the cancellation record appended
@@ -22,11 +22,7 @@ from app.agents.prompts.comms_prompts import (
     INTERACTIVE_DELIVERY_NOTE,
     PLATFORM_DELIVERY_NOTE,
 )
-from app.constants.agents import (
-    EXECUTOR_CANCELLED_MARKER,
-    EXECUTOR_ERROR_MARKER,
-    EXECUTOR_RESULT_MARKER,
-)
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 MODULE = "app.agents.core.background.comms_narrator"
@@ -34,6 +30,7 @@ MODULE = "app.agents.core.background.comms_narrator"
 USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
 CONVERSATION_ID = "conv-1"
 RESULT_TEXT = f"Downloaded the report.{NEW_MESSAGE_BREAKER}It has 3 pages."
+CARD_NOTE = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "a card is on screen")
 
 
 def _fake_comms_graph() -> MagicMock:
@@ -64,7 +61,8 @@ class TestNarrateExecutorResult:
         assert isinstance(message, HumanMessage)
         assert message.name == "background_executor"
         assert message.content == (
-            f"{INTERACTIVE_DELIVERY_NOTE}{EXECUTOR_RESULT_MARKER}\n{RESULT_TEXT}"
+            INTERACTIVE_DELIVERY_NOTE
+            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, RESULT_TEXT)
         )
         config = silent.await_args.args[2]
         assert config["configurable"]["conversation_id"] == CONVERSATION_ID
@@ -95,7 +93,7 @@ class TestNarrateExecutorResult:
         assert config["configurable"]["user_preferences"] == {"profession": "engineer"}
         assert config["configurable"]["writing_style"] == {"summary": "terse"}
 
-    async def test_error_type_uses_the_error_marker(self) -> None:
+    async def test_error_type_uses_the_error_tag(self) -> None:
         with (
             _patch_graph(_fake_comms_graph()),
             patch(
@@ -106,7 +104,7 @@ class TestNarrateExecutorResult:
 
         initial = silent.await_args.args[1]
         assert initial["messages"][0].content == (
-            f"{INTERACTIVE_DELIVERY_NOTE}{EXECUTOR_ERROR_MARKER}\nboom"
+            INTERACTIVE_DELIVERY_NOTE + wrap_agent_payload(AgentTag.EXECUTOR_ERROR, "boom")
         )
 
     async def test_workflow_delivery_prepends_the_platform_delivery_note(self) -> None:
@@ -121,13 +119,13 @@ class TestNarrateExecutorResult:
                 "result",
                 CONVERSATION_ID,
                 USER,
-                returned_note="[CARD_NOTE]",
+                returned_note=CARD_NOTE,
                 workflow_id="wf-1",
             )
 
         content = silent.await_args.args[1]["messages"][0].content
         assert content.startswith(PLATFORM_DELIVERY_NOTE)
-        assert EXECUTOR_RESULT_MARKER in content
+        assert f"<{AgentTag.EXECUTOR_RESULT}>" in content
 
     async def test_interactive_chat_prepends_the_returned_note(self) -> None:
         with (
@@ -137,22 +135,27 @@ class TestNarrateExecutorResult:
             ) as silent,
         ):
             await narrate_executor_result(
-                RESULT_TEXT, "result", CONVERSATION_ID, USER, returned_note="[CARD_NOTE]"
+                RESULT_TEXT, "result", CONVERSATION_ID, USER, returned_note=CARD_NOTE
             )
 
         content = silent.await_args.args[1]["messages"][0].content
         # The card note comes first, then the bubble-split instruction, then the
         # result — comms reads "already shown" before it decides how to split.
         assert content == (
-            f"[CARD_NOTE]{INTERACTIVE_DELIVERY_NOTE}{EXECUTOR_RESULT_MARKER}\n{RESULT_TEXT}"
+            CARD_NOTE
+            + INTERACTIVE_DELIVERY_NOTE
+            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, RESULT_TEXT)
         )
 
-    async def test_parroted_internal_markers_are_stripped(self) -> None:
+    async def test_parroted_internal_tags_are_stripped(self) -> None:
+        """A weak model that echoes the whole framed block back keeps its words
+        and loses the plumbing — both the open and the close tag."""
+        parroted = wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "done")
         with (
             _patch_graph(_fake_comms_graph()),
             patch(
                 f"{MODULE}.execute_graph_silent",
-                AsyncMock(return_value=(f"{EXECUTOR_RESULT_MARKER} done", {})),
+                AsyncMock(return_value=(parroted, {})),
             ),
         ):
             text = await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER)
@@ -175,7 +178,7 @@ class TestNarrateExecutorResult:
 
 
 class TestRecordExecutorCancellation:
-    async def test_cancellation_marker_is_appended_to_the_checkpoint(self) -> None:
+    async def test_cancellation_record_is_appended_to_the_checkpoint(self) -> None:
         graph = _fake_comms_graph()
         with _patch_graph(graph):
             await record_executor_cancellation(CONVERSATION_ID, "task-42", "send the email")
@@ -187,7 +190,8 @@ class TestRecordExecutorCancellation:
         messages = call.args[1]["messages"]
         assert len(messages) == 1
         content = messages[0].content
-        assert content.startswith(EXECUTOR_CANCELLED_MARKER)
+        assert content.startswith(f"<{AgentTag.EXECUTOR_CANCELLED}>")
+        assert content.rstrip().endswith(f"</{AgentTag.EXECUTOR_CANCELLED}>")
         assert "task-42" in content
         assert "did NOT finish" in content
 

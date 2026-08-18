@@ -25,6 +25,7 @@ from app.models.message_models import MessageRequestWithHistory
 from app.models.stream_events import ConversationInitializedFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
+from app.utils.agent_utils import strip_internal_agent_tags
 from app.utils.artifact_utils import artifact_url_base
 from app.utils.chat_utils import create_conversation
 
@@ -143,7 +144,14 @@ async def save_conversation_async(
     )
     user_message.message_id = user_message_id
 
-    rendered_message = absolutize_artifact_urls(complete_message, conversation_id)
+    # Same backstop the background narration applies to its own text: comms carries
+    # framed internal payloads (<executor_result> and friends) in its checkpoint, and
+    # a weak model occasionally opens a reply with one. This cleans the SAVED turn —
+    # the live SSE tokens are published unfiltered, so a leak can still flash in an
+    # open tab until it is reloaded.
+    rendered_message = absolutize_artifact_urls(
+        strip_internal_agent_tags(complete_message), conversation_id
+    )
 
     bot_message = MessageModel(
         type="bot",

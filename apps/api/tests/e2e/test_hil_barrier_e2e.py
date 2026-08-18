@@ -309,7 +309,10 @@ class TestCoalescedApprovalBarrier:
                     # structurally; each subagent's real content is read from its
                     # checkpointed thread below.
                     final_text = final_state["messages"][-1].content
-                    assert "[gmail result]" in final_text and "[slack result]" in final_text, (
+                    assert (
+                        f'<subagent_result agent="{GMAIL}">' in final_text
+                        and f'<subagent_result agent="{SLACK}">' in final_text
+                    ), (
                         f"the join returns both sections in one output, got: {final_text[:160]}"
                     )
 

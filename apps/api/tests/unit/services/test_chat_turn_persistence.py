@@ -178,3 +178,37 @@ class TestPersistedTurnMatchesTheLiveStream:
         merge_tool_outputs(state.tool_data, state.tool_outputs)
 
         assert "output" not in state.tool_data["tool_data"][0]["data"]
+
+
+class TestInternalTagsNeverReachTheSavedTurn:
+    """Comms carries framed internal payloads (``<executor_result>`` and friends)
+    in its checkpoint, and a weak model occasionally opens a reply with one. The
+    background narration has always stripped its own text; the interactive turn
+    persisted whatever comms produced, so a leak stayed in the history forever.
+    """
+
+    async def test_a_leaked_tag_is_stripped_from_the_saved_reply(self):
+        state = _StreamState()
+        state.complete_message = "<executor_result>\nadded milk to your list\n</executor_result>"
+
+        bot = await persist(state)
+
+        assert bot.response == "added milk to your list"
+
+    async def test_the_reply_around_a_leaked_tag_is_kept_whole(self):
+        """Stripping removes the frame, never the answer — a backstop that ate
+        the message would trade a cosmetic leak for a lost reply."""
+        state = _StreamState()
+        state.complete_message = "added milk</executor_result> — anything else?"
+
+        bot = await persist(state)
+
+        assert bot.response == "added milk — anything else?"
+
+    async def test_ordinary_markup_in_a_reply_is_untouched(self):
+        state = _StreamState()
+        state.complete_message = "wrap it in `<div>` and check 3 < 5"
+
+        bot = await persist(state)
+
+        assert bot.response == "wrap it in `<div>` and check 3 < 5"

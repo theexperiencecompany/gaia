@@ -262,10 +262,10 @@ CLAUSES: tuple[Clause, ...] = (
         depends_on=("gate:internal_machinery",),
     ),
     Clause(
-        name="never_reproduce_internal_markers",
+        name="never_reproduce_internal_tags",
         source="comms",
-        starts_at="Never reproduce the literal markers:",
-        governs="the internal routing tags never appear in a user-facing reply",
+        starts_at="Never reproduce the literal tags:",
+        governs="the internal channel tags never appear in a user-facing reply",
         depends_on=("gate:internal_machinery",),
     ),
     Clause(
@@ -279,7 +279,7 @@ CLAUSES: tuple[Clause, ...] = (
     Clause(
         name="executor_ground_truth_contract",
         source="comms",
-        starts_at="—Delivering Results ([EXECUTOR_RESULT] / [EXECUTOR_ERROR])—",
+        starts_at="—Delivering Results (<executor_result> / <executor_error>)—",
         ends_before="—Rate Limits & Subscription—",
         governs="how executor output is re-voiced: relay everything, change only tone",
         depends_on=("gate:communicate", "data/quality/hard.yaml"),

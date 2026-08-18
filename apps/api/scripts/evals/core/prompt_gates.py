@@ -39,10 +39,10 @@ _AMBIGUOUS_IN_ENGLISH = frozenset({"agent", "tool"})
 
 _QUOTED = re.compile(r'"([^"]+)"')
 _PARENTHESISED_CHAR = re.compile(r"\((.)\)")
-# Backticks optional: the rule used to write the tags as `[MARKER]` and now
-# writes them bare. The bracketed SCREAMING_CASE shape is what identifies a
-# routing tag, so matching on that survives either style.
-_MARKER = re.compile(r"`?(\[[A-Z_]+\])`?")
+# Backticks optional: the rule has written the tags bare and in backticks over
+# time. The angle-bracketed lowercase shape is what identifies a channel tag, so
+# matching on that survives either style.
+_TAG = re.compile(r"`?(<[a-z_]+>)`?")
 
 
 def _collapse(text: str) -> str:
@@ -118,10 +118,10 @@ def internal_terms() -> tuple[str, ...]:
 
 
 @lru_cache(maxsize=1)
-def routing_markers() -> tuple[str, ...]:
-    """The internal routing tags the prompt says must never reach a reply."""
-    ref = "comms.never_reproduce_internal_markers"
-    found = _require(_MARKER.findall(resolve(ref)), ref, "bracketed [MARKER] tags")
+def channel_tags() -> tuple[str, ...]:
+    """The internal channel tags the prompt says must never reach a reply."""
+    ref = "comms.never_reproduce_internal_tags"
+    found = _require(_TAG.findall(resolve(ref)), ref, "angle-bracketed <tag> names")
     return tuple(found)
 
 
@@ -165,13 +165,17 @@ def internal_machinery(run: CaseRun) -> tuple[float, str]:
     return 1.0, f"none of {list(internal_terms())} named"
 
 
-def internal_markers(run: CaseRun) -> tuple[float, str]:
-    """The internal routing tags never appear in a user-facing reply."""
+def internal_tags(run: CaseRun) -> tuple[float, str]:
+    """The internal channel tags never appear in a user-facing reply.
+
+    Matched open OR closed: a model that echoes only ``</executor_result>`` at
+    the end of an otherwise clean reply has still leaked the plumbing.
+    """
     said = _assistant_text(run)
-    hits = [marker for marker in routing_markers() if marker in said]
+    hits = [tag for tag in channel_tags() if tag in said or f"</{tag.strip('<>')}>" in said]
     if hits:
-        return 0.0, f"reproduced internal routing tag(s): {hits}"
-    return 1.0, f"none of {list(routing_markers())} reproduced"
+        return 0.0, f"reproduced internal channel tag(s): {hits}"
+    return 1.0, f"none of {list(channel_tags())} reproduced"
 
 
 #: Gate name -> check. Suites wire these in the same way ``emoji_discipline`` is
@@ -180,5 +184,5 @@ PROMPT_GATES: dict[str, Callable[[CaseRun], tuple[float, str]]] = {
     "dash_discipline": dash_discipline,
     "banned_bot_phrases": banned_bot_phrases,
     "internal_machinery": internal_machinery,
-    "internal_markers": internal_markers,
+    "internal_tags": internal_tags,
 }
