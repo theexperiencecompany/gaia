@@ -935,9 +935,13 @@ jobs:
     needs: [changes, test-mutation-plan]
     if: needs.changes.outputs.has_python == 'true' && needs.test-mutation-plan.outputs.count != '0'
     runs-on: ubuntu-latest
-    # Per MODULE, not per lane. The slowest shard measured end to end (setup
-    # included) is ~3 minutes; the margin covers a genuinely large module.
-    timeout-minutes: 25
+    # Sized for a PACKED shard, not a single module: a wide diff packs up to
+    # ~31 modules per shard, and one heavily-rewritten module alone can carry
+    # 1,600+ mutants (measured: linear_tool on the strictness PR — generation
+    # 164s, the old 20-minute step died mid-stats). The per-module KILL 1500s
+    # inside mutation-shard.sh is what bounds a hang; these caps only bound a
+    # whole wedged shard.
+    timeout-minutes: 60
     strategy:
       # Every module reports. Stopping at the first failure would hide the
       # rest, and this gate's whole value is the complete list.
@@ -962,7 +966,7 @@ jobs:
         # STEP-level timeout so a stuck shard fails as a step (job continues,
         # the shard-log artifact uploads, logs survive) instead of the job
         # being cancelled at its cap — a cancelled job retains nothing.
-        timeout-minutes: 20
+        timeout-minutes: 55
         # Through env, not inline expansion: the value is generated, but an
         # inline ${{ }} in a run block is a shell-injection seam regardless.
         env:
