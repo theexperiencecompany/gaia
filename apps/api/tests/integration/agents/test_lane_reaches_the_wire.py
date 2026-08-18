@@ -2,10 +2,12 @@
 
 Every other lane test asserts on the configurable — a dict GAIA controls. This one
 asserts on the HTTP request body the real ``ChatOpenRouter`` builds from it, which
-is the only place the first-party provider pin either exists or does not.
+is the only place a provider-routing pin either exists or does not.
 
-The gap this closes: the pin is the whole reason a paid run stays off throttled
-reseller pools, and nothing proved it survived the trip from ``ModelLane`` through
+The gap this closes: a pinned lane must route to the provider it names and an
+unpinned one must carry no routing at all — the default and paid lanes rely on
+OpenRouter's own sticky routing being left alone, which a stray pin would
+override. Nothing proved either survived the trip from ``ModelLane`` through
 LangChain's ConfigurableField layer onto the wire. It is also where the
 provider-failover bug lived — two individually-correct pieces composing wrong —
 so a test one layer above the request could not have caught it.
@@ -29,13 +31,12 @@ import pytest
 from app.agents.llm.client import _openrouter_wire_configurables, without_sdk_retry
 from app.agents.llm.lane import ModelLane
 from app.agents.llm.types import LLMProviderName
-from app.constants.llm import (
-    DEFAULT_MAX_TOKENS,
-    DEFAULT_MODEL_NAME,
-    PAID_MODEL_MODEL_KWARGS,
-    PAID_MODEL_NAME,
-    PAID_MODEL_PROVIDER_SLUG,
-)
+from app.constants.llm import DEFAULT_MAX_TOKENS, DEFAULT_MODEL_NAME, PAID_MODEL_NAME
+
+#: A provider-routing pin, in the shape a DEV_MODEL_OPTIONS entry carries one. The
+#: paid lane no longer pins — session_id sticky routing replaced it — but a dev
+#: lane still can, and whether a pin reaches the wire is what this file asserts.
+_A_ROUTING_PIN: dict[str, Any] = {"provider": {"only": ["minimax"]}}
 
 _CAPTURED: list[dict[str, Any]] = []
 
@@ -96,15 +97,13 @@ async def _request_body_for(lane: ModelLane, sink_url: str) -> dict[str, Any]:
 
 @pytest.mark.integration
 class TestLaneReachesTheWire:
-    async def test_a_paid_lane_pins_the_first_party_provider_on_the_request(
+    async def test_a_pinned_lane_puts_its_provider_routing_on_the_request(
         self, sink_url: str
     ) -> None:
-        body = await _request_body_for(
-            _lane(pin=PAID_MODEL_MODEL_KWARGS, model=PAID_MODEL_NAME), sink_url
-        )
+        body = await _request_body_for(_lane(pin=_A_ROUTING_PIN, model=PAID_MODEL_NAME), sink_url)
 
         assert body["model"] == PAID_MODEL_NAME
-        assert body["provider"] == {"only": [PAID_MODEL_PROVIDER_SLUG]}
+        assert body["provider"] == _A_ROUTING_PIN["provider"]
 
     async def test_a_free_lane_sends_no_provider_pin_at_all(self, sink_url: str) -> None:
         """Absent, not empty: OpenRouter is then free to route it anywhere, which is
@@ -124,7 +123,7 @@ class TestLaneReachesTheWire:
     ) -> None:
         """Both are OpenRouter-wire concepts. Carrying either onto the provider we
         just failed away from is how a fallback turns one failure into two."""
-        paid = _lane(pin=PAID_MODEL_MODEL_KWARGS, model=PAID_MODEL_NAME)
+        paid = _lane(pin=_A_ROUTING_PIN, model=PAID_MODEL_NAME)
         crossed = ModelLane(
             provider=LLMProviderName.OPENROUTER,  # kept on the wire lane so it is observable
             model="vendor/fallback-model",

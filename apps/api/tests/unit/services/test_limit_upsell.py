@@ -6,71 +6,96 @@ workflow run the user never initiated) sends the workflows-paused note. Both
 carry the origin on the analytics event, and paid plans get no side effects.
 """
 
-from unittest.mock import AsyncMock, patch
+from collections.abc import AsyncIterator, Coroutine
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.payment_models import PlanType
-from app.services.limit_upsell import LimitHitOrigin, _run, schedule_limit_upsell
+from app.services.limit_upsell import LimitHitOrigin, schedule_limit_upsell
 
 MODULE = "app.services.limit_upsell"
 
 
+@dataclass
+class _Seams:
+    """The mocked side-effect seams plus the coroutine the scheduler spawned."""
+
+    capture: MagicMock
+    upsell: AsyncMock
+    paused: AsyncMock
+    spawn: MagicMock
+
+    @property
+    def scheduled(self) -> Coroutine[Any, Any, None]:
+        return self.spawn.call_args.args[0]
+
+
+@asynccontextmanager
+async def _patched_seams() -> AsyncIterator[_Seams]:
+    with (
+        patch(f"{MODULE}.capture_event") as capture,
+        patch(f"{MODULE}.send_limit_reached_email", new_callable=AsyncMock) as upsell,
+        patch(f"{MODULE}.send_workflows_paused_email", new_callable=AsyncMock) as paused,
+        patch(f"{MODULE}.spawn_background_task") as spawn,
+    ):
+        yield _Seams(capture=capture, upsell=upsell, paused=paused, spawn=spawn)
+
+
 class TestOriginRouting:
     async def test_interactive_sends_upsell_email(self) -> None:
-        with (
-            patch(f"{MODULE}.capture_event") as capture,
-            patch(f"{MODULE}.send_limit_reached_email", new_callable=AsyncMock) as upsell,
-            patch(f"{MODULE}.send_workflows_paused_email", new_callable=AsyncMock) as paused,
-        ):
-            await _run("user-1", "chat_messages", LimitHitOrigin.INTERACTIVE)
+        async with _patched_seams() as seams:
+            schedule_limit_upsell(
+                "user-1", "chat_messages", PlanType.FREE, LimitHitOrigin.INTERACTIVE
+            )
+            await seams.scheduled
 
-        upsell.assert_awaited_once_with("user-1", "chat_messages")
-        paused.assert_not_awaited()
-        capture.assert_called_once_with(
+        seams.upsell.assert_awaited_once_with("user-1", "chat_messages")
+        seams.paused.assert_not_awaited()
+        seams.capture.assert_called_once_with(
             "user-1", "rate_limit_hit", {"feature": "chat_messages", "origin": "interactive"}
         )
 
     async def test_background_sends_workflows_paused_email(self) -> None:
-        with (
-            patch(f"{MODULE}.capture_event") as capture,
-            patch(f"{MODULE}.send_limit_reached_email", new_callable=AsyncMock) as upsell,
-            patch(f"{MODULE}.send_workflows_paused_email", new_callable=AsyncMock) as paused,
-        ):
-            await _run("user-1", "trigger_workflow_executions", LimitHitOrigin.BACKGROUND)
+        async with _patched_seams() as seams:
+            schedule_limit_upsell(
+                "user-2", "trigger_workflow_executions", PlanType.FREE, LimitHitOrigin.BACKGROUND
+            )
+            await seams.scheduled
 
-        paused.assert_awaited_once_with("user-1")
-        upsell.assert_not_awaited()
-        capture.assert_called_once_with(
-            "user-1",
+        seams.paused.assert_awaited_once_with("user-2")
+        seams.upsell.assert_not_awaited()
+        seams.capture.assert_called_once_with(
+            "user-2",
             "rate_limit_hit",
             {"feature": "trigger_workflow_executions", "origin": "background"},
         )
 
     async def test_email_failure_is_swallowed(self) -> None:
-        with (
-            patch(f"{MODULE}.capture_event"),
-            patch(
-                f"{MODULE}.send_workflows_paused_email",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("smtp down"),
-            ),
-        ):
+        async with _patched_seams() as seams:
+            seams.paused.side_effect = RuntimeError("smtp down")
+            schedule_limit_upsell(
+                "user-3", "trigger_workflow_executions", PlanType.FREE, LimitHitOrigin.BACKGROUND
+            )
             # Must not raise: losing a marketing email can't affect the 429.
-            await _run("user-1", "trigger_workflow_executions", LimitHitOrigin.BACKGROUND)
+            await seams.scheduled
 
 
 class TestScheduleGate:
+    def test_free_plan_schedules(self) -> None:
+        """The gate's other side: a FREE hit is the case that must reach the seam."""
+        with patch(f"{MODULE}.spawn_background_task") as spawn:
+            schedule_limit_upsell(
+                "user-1", "chat_messages", PlanType.FREE, LimitHitOrigin.BACKGROUND
+            )
+        spawn.assert_called_once()
+        # Close the spawned coroutine so it is not reported as never awaited.
+        spawn.call_args.args[0].close()
+
     def test_paid_plan_schedules_nothing(self) -> None:
         with patch(f"{MODULE}.spawn_background_task") as spawn:
             schedule_limit_upsell(
                 "user-1", "chat_messages", PlanType.PRO, LimitHitOrigin.INTERACTIVE
             )
         spawn.assert_not_called()
-
-    def test_free_plan_schedules(self) -> None:
-        with patch(f"{MODULE}.spawn_background_task") as spawn:
-            schedule_limit_upsell(
-                "user-1", "chat_messages", PlanType.FREE, LimitHitOrigin.BACKGROUND
-            )
-        spawn.assert_called_once()
-        # The spawned coroutine must be closed to avoid an un-awaited warning.
-        spawn.call_args.args[0].close()

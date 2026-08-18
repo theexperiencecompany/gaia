@@ -132,6 +132,9 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     # Observability
     # ----------------------------------------------
+    POSTHOG_PROJECT_TOKEN: str | None = None
+    POSTHOG_HOST: str | None = None
+
     # Secret token Prometheus sends as "Authorization: Bearer <token>" when
     # scraping /metrics. Generate with: openssl rand -hex 32
     METRICS_TOKEN: str | None = None
@@ -399,7 +402,6 @@ class ProductionSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str
-    POSTHOG_API_KEY: str
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -601,7 +603,6 @@ class DevelopmentSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str | None = None
-    POSTHOG_API_KEY: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials

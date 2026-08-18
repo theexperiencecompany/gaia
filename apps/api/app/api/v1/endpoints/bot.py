@@ -34,6 +34,7 @@ from app.models.bot_models import (
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.audio_transcription_service import (
     MAX_AUDIO_BYTES,
     AudioTooLargeError,
@@ -72,6 +73,27 @@ def _refusal_stream(error_code: str) -> StreamingResponse:
         yield f"data: {json.dumps({'error': error_code})}\n\n"
 
     return StreamingResponse(frame(), media_type="text/event-stream")
+
+
+def _capture_bot_turn_refused(user_id: str, platform: str, reason: str) -> None:
+    """A bot turn stopped at a gate, with why — the counterpart to submitted."""
+    capture_event(
+        user_id,
+        AnalyticsEvents.CHAT_MESSAGE_REFUSED,
+        {"platform": platform, "reason": reason},
+    )
+
+
+def _resolve_user_id(user: dict[str, Any]) -> str:
+    """The stable GAIA user id from a user document, or "" if it carries neither key.
+
+    Both keys must be tried: ``PlatformLinkService`` returns a transitional
+    shape (``_id``, no ``user_id``) while the auth middleware's
+    ``build_user_context()`` returns the opposite. This is the id every bot
+    capture and audit line attributes to, so a wrong answer here silently moves
+    the record onto another profile.
+    """
+    return str(user.get("user_id") or user.get("_id") or "")
 
 
 async def require_bot_api_key(request: Request) -> None:
@@ -264,14 +286,14 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     if not user:
         return _refusal_stream(BOT_STREAM_ERROR_NOT_AUTHENTICATED)
 
-    user_id = user.get("user_id") or str(user.get("_id", ""))
+    user_id = _resolve_user_id(user)
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
-    log.set(user={"id": user_id}, platform=body.platform, outcome="success")
-
+    log.set(user={"id": user_id}, outcome="success")
     # Linking is Pro-gated for premium platforms; re-check on every turn so a
     # user who downgrades after linking is refused here, not silently served.
     if await platform_requires_upgrade(user_id, body.platform):
         log.set(outcome="plan_required")  # pragma: no mutate
+        _capture_bot_turn_refused(user_id, body.platform, "plan_required")
         return _refusal_stream(BOT_STREAM_ERROR_PLAN_REQUIRED)
 
     # Same quota the web chat endpoint charges via @tiered_rate_limit. It cannot
@@ -288,6 +310,21 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     # without this a bot user over budget got a stream that opened and then died
     # partway instead of a clean refusal before any work.
     await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
+
+    # Captured HERE, past every gate, for the same reason the web endpoint
+    # captures after its own: chat:message_submitted is the ground-truth volume
+    # metric, and a turn refused for plan or quota never reached the agent.
+    # Counting refusals as submissions inflates bot volume by exactly the
+    # traffic of the users who hit walls most, and makes the two surfaces
+    # incomparable. A refusal is its own event, with a reason.
+    capture_event(
+        user_id,
+        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
+        {
+            "platform": body.platform,
+            "has_files": bool(body.file_ids or body.file_data),
+        },
+    )
 
     conversation_id = await BotService.get_or_create_session(
         body.platform, body.platform_user_id, body.channel_id, user
@@ -494,12 +531,19 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     if not user:
         raise HTTPException(status_code=401, detail="User not authenticated")
 
-    user_id = user.get("user_id") or str(user.get("_id", ""))
+    user_id = _resolve_user_id(user)
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, platform=body.platform)
 
     new_conversation_id = await BotService.reset_session(
         body.platform, body.platform_user_id, body.channel_id, user
+    )
+    # Explicit id: bot routes are auth-excluded, so the request context has
+    # nobody to attribute to (see apps/api/CLAUDE.md, Analytics).
+    capture_event(
+        user_id,
+        AnalyticsEvents.BOT_SESSION_RESET,
+        {"platform": body.platform},
     )
     log.set(outcome="success")
     return ResetSessionResponse(success=True, conversation_id=new_conversation_id)
@@ -524,11 +568,16 @@ async def check_auth_status(
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
     user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
+    # The linked id is returned, not just the boolean: it is what the bot uses as
+    # its PostHog distinct_id, so bot events land on the same profile as this
+    # user's web and API events instead of a parallel `<platform>:<id>` ghost.
+    user_id = _resolve_user_id(user) if user else None
     log.set(outcome="success")
     return BotAuthStatusResponse(
         authenticated=user is not None,
         platform=platform,
         platform_user_id=platform_user_id,
+        user_id=user_id or None,
     )
 
 
@@ -577,7 +626,7 @@ async def get_settings(
             connected_integrations=[],
         )
 
-    user_id = user.get("user_id") or str(user.get("_id", ""))
+    user_id = _resolve_user_id(user)
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
 
     connected_integrations_list = []
@@ -668,6 +717,13 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
     cache_key = f"bot_user:{platform}:{platform_user_id}"
     await redis_cache.client.delete(cache_key)
 
+    # Same event the web-side platform unlink emits — one user action, one name,
+    # regardless of which surface triggered it.
+    capture_event(
+        user_id,
+        AnalyticsEvents.INTEGRATION_DISCONNECTED,
+        {"integration_id": platform},
+    )
     log.set(platform=platform, outcome="success")
     return UnlinkAccountResponse(success=True)
 
@@ -739,4 +795,11 @@ async def transcribe_bot_audio(
         )
         raise HTTPException(status_code=502, detail="Transcription failed") from e
 
+    # After the transcription succeeds: an event on entry would count failures
+    # as successes. Length, not content — the transcript is user speech.
+    capture_event(
+        str(user.get("user_id")),
+        AnalyticsEvents.BOT_AUDIO_TRANSCRIBED,
+        {"audio_bytes": len(audio_bytes), "transcript_length": len(text)},
+    )
     return TranscribeAudioResponse(text=text)

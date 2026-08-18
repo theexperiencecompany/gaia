@@ -58,7 +58,7 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
 from app.models.hil_models import HILApprovalRecord
-from tests.helpers import create_fake_llm
+from tests.helpers import PassthroughFakeLLM, create_fake_llm
 
 HANDOFF_MODULE = "app.agents.core.subagents.handoff_tools"
 BASE_SUBAGENT_MODULE = "app.agents.core.subagents.base_subagent"
@@ -1534,7 +1534,7 @@ GATED_TASK = "post the release note to #eng"
 GATED_ANSWER = "release note posted to #eng"
 
 
-class _GatedSubagentLLM:
+class _GatedSubagentLLM(PassthroughFakeLLM):
     """Posts the note, then finishes with the result. Message-driven, never counted.
 
     A HIL resume replays the executor's tool node and shows the model the same
@@ -1544,15 +1544,6 @@ class _GatedSubagentLLM:
 
     def __init__(self) -> None:
         self.invocations = 0
-
-    def with_config(self, **_kwargs: Any) -> _GatedSubagentLLM:
-        return self
-
-    def bind_tools(self, _tools: Any, **_kwargs: Any) -> _GatedSubagentLLM:
-        return self
-
-    def with_retry(self, **_kwargs: Any) -> _GatedSubagentLLM:
-        return self
 
     async def ainvoke(self, messages: Any, **_kwargs: Any) -> AIMessage:
         self.invocations += 1

@@ -10,6 +10,7 @@ from app.models.integration_models import (
     IntegrationWithCreator,
     UserIntegrationDocument,
 )
+from app.services.analytics_service import AnalyticsEvents
 
 # Base URL for integration public endpoints
 # routes.py: prefix="/integrations", public.py router has no extra prefix
@@ -334,6 +335,7 @@ class TestAddPublicIntegration:
                 new_callable=AsyncMock,
                 return_value=connect_result,
             ),
+            patch("app.api.v1.endpoints.integrations.public.capture_context_event") as mock_capture,
         ):
             mock_repo.get_public = AsyncMock(
                 return_value=Integration.model_validate(
@@ -358,6 +360,10 @@ class TestAddPublicIntegration:
         body = resp.json()
         assert body["status"] == "connected"
         assert body["toolsCount"] == 5
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": "integ3", "source": "marketplace"},
+        )
 
     @pytest.mark.asyncio
     async def test_re_attempt_connection(self, client: AsyncClient) -> None:

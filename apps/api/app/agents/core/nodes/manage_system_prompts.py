@@ -26,8 +26,14 @@ from langchain_core.messages import AnyMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
-from app.agents.context.slots import SINGLETON_SLOTS, PromptSlot, slot_of
+from app.agents.context.slots import (
+    SINGLETON_SLOTS,
+    PromptSlot,
+    request_slot_order,
+    slot_of,
+)
 from app.constants.log_tags import LogTag
+from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import PRUNED_MESSAGE_IDS_KEY, State
 from shared.py.wide_events import log
 
@@ -47,7 +53,12 @@ _KEPT_FIELDS = {
 
 
 def manage_system_prompts_node(state: State, config: RunnableConfig, store: BaseStore) -> State:
-    """Keep the latest message per slot and emit them in canonical slot order."""
+    """Keep the latest message per slot and emit them in canonical slot order.
+
+    The order depends on the provider the request is bound for — see
+    ``request_slot_order``. The lane's provider is read off the configurable,
+    which ``build_agent_config`` derives from the resolved ``ModelLane``.
+    """
     try:
         messages = state.get("messages", [])
         if not messages:
@@ -61,7 +72,8 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         pruned_ids: list[str] = []
         dropped_system = 0
         dropped_time = 0
-        for slot in PromptSlot:
+        slot_order = request_slot_order(agent_configurable(config).get("provider"))
+        for slot in slot_order:
             group = by_slot.get(slot)
             if not group:
                 continue
@@ -84,6 +96,10 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
                 "dropped_system_prompts": dropped_system,
                 "dropped_time_context": dropped_time,
                 **{field: bool(by_slot.get(slot)) for slot, field in _KEPT_FIELDS.items()},
+                # Which of the two layouts the request got. The tail layout is
+                # what lets the conversation join the cached prefix, so a
+                # sudden drop in cache hit rate is answered by this field.
+                "tail_layout": slot_order != tuple(PromptSlot),
             }
         )
 

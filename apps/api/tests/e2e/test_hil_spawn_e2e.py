@@ -41,6 +41,7 @@ from app.constants.general import FINISH_TASK_NAME
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
 from app.models.hil_models import HILApprovalStatus, HILPreferences
 from app.services.hil.approvals_store import list_pending_for_conversation, mark_decided
+from tests.helpers import PassthroughFakeLLM
 
 pytestmark = pytest.mark.e2e
 
@@ -52,7 +53,7 @@ NOTE_TASK = "ALPHA: record the meeting note"
 SLACK_TASK_2 = "BETA: post the incident note to #eng"
 
 
-class TaskDrivenStubLLM:
+class TaskDrivenStubLLM(PassthroughFakeLLM):
     """Picks its tool from the Task line it is shown, never from a call counter.
 
     Message-driven on purpose: a node replay shows the model the same messages, so
@@ -64,15 +65,6 @@ class TaskDrivenStubLLM:
     def __init__(self) -> None:
         self.seen: list[Any] = []
         self.alpha_invocations = 0
-
-    def with_config(self, **_kwargs: Any) -> TaskDrivenStubLLM:
-        return self
-
-    def bind_tools(self, _tools: Any, **_kwargs: Any) -> TaskDrivenStubLLM:
-        return self
-
-    def with_retry(self, **_kwargs: Any) -> TaskDrivenStubLLM:
-        return self
 
     async def ainvoke(self, messages: Any, **_kwargs: Any) -> AIMessage:
         self.seen = list(messages)

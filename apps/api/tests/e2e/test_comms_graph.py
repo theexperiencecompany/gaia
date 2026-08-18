@@ -14,7 +14,6 @@ end-of-turn hooks, and how a turn carries into the next.
 
 from __future__ import annotations
 
-from typing import Any
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -26,16 +25,13 @@ from tests.e2e._harness.graph_run import (
     REJECT_NODE,
     SELECT_NODE,
     TOOLS_NODE,
+    call,
     comms_graph,
     memory_engine_of,
     run_graph,
 )
 
 pytestmark = pytest.mark.e2e
-
-
-def call(name: str, args: dict[str, Any] | None = None, id: str = "c1") -> dict[str, Any]:
-    return {"name": name, "args": args or {}, "id": id}
 
 
 class TestCommsToolSurface:

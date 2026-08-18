@@ -25,6 +25,7 @@ from app.models.support_models import (
     SupportRequestType,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.support_service import (
     create_support_request,
     create_support_request_with_attachments,
@@ -81,6 +82,15 @@ async def submit_support_request(
         )
         log.set(ticket_id=result.ticket_id)
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.SUPPORT_TICKET_SUBMITTED,
+            {
+                "request_type": request_data.type.value,
+                "title_length": len(request_data.title),
+                "description_length": len(request_data.description),
+                "attachment_count": 0,
+            },
+        )
         return result
 
     except HTTPException:
@@ -161,6 +171,15 @@ async def submit_support_request_with_attachments(
         )
         log.set(ticket_id=result.ticket_id)
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.SUPPORT_TICKET_SUBMITTED,
+            {
+                "request_type": request_data.type.value,
+                "title_length": len(request_data.title),
+                "description_length": len(request_data.description),
+                "attachment_count": len(attachments),
+            },
+        )
         return result
 
     except HTTPException:

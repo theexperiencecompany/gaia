@@ -100,7 +100,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Download packaging payload
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: desktop-payload
       - name: Unpack payload (restores apps/desktop/out + .next-server-prepared)

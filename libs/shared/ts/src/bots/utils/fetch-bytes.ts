@@ -40,7 +40,17 @@ export async function fetchBytesCapped(
       ? undefined
       : setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { signal: controller?.signal });
+    let response: Response;
+    try {
+      response = await fetch(url, { signal: controller?.signal });
+    } catch (err) {
+      // The controller is armed solely for our own timeout (no caller-supplied
+      // signal feeds it), so any abort it produces IS the timeout.
+      if (controller?.signal.aborted) {
+        throw new MediaReadTimeoutError(`${source} download timed out`);
+      }
+      throw err;
+    }
     return await readResponseBytesCapped(response, maxBytes, source, timeoutMs);
   } finally {
     if (timer !== undefined) clearTimeout(timer);

@@ -2,27 +2,26 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { BOT_PLATFORM_ICONS, BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
+import {
+  BOT_AUTH_COMMAND,
+  BOT_PLATFORM_ICONS,
+  BOT_PLATFORM_LABELS,
+} from "@/config/botPlatforms";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import {
+  PhoneLinkModal,
+  type PhoneLinkTarget,
+} from "@/features/settings/components/PhoneLinkModal";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import type { PlatformLink } from "@/types/platform";
-
-const E164_PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
 
 interface PlatformConfig {
   id: string;
@@ -91,8 +90,13 @@ export default function LinkedAccountsSettings() {
   const [phoneModalPlatform, setPhoneModalPlatform] = useState<string | null>(
     null,
   );
-  const [phone, setPhone] = useState("");
+  const [phoneLinkTarget, setPhoneLinkTarget] =
+    useState<PhoneLinkTarget | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Registering a number takes a round trip to Photon. Closing the modal (or
+  // starting over) invalidates that request, so a late reply cannot drop the
+  // previous attempt's number into the session the user is now in.
+  const connectAttemptRef = useRef(0);
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const openPricingModal = usePricingModalStore((s) => s.openModal);
 
@@ -104,21 +108,26 @@ export default function LinkedAccountsSettings() {
   };
 
   useEffect(() => {
-    fetchPlatformLinks();
+    void fetchPlatformLinks();
     return () => {
       clearPollTimer();
     };
   }, []);
 
-  const fetchPlatformLinks = async () => {
+  const fetchPlatformLinks = async (): Promise<Record<
+    string,
+    PlatformLink | null
+  > | null> => {
     try {
       setIsLoading(true);
       const data = await apiService.get<{
         platform_links: Record<string, PlatformLink | null>;
       }>("/platform-links", { silent: true });
       setPlatformLinks(data.platform_links || {});
+      return data.platform_links || {};
     } catch {
       toast.error("Failed to load connected accounts");
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -130,7 +139,7 @@ export default function LinkedAccountsSettings() {
       return;
     }
     if (platform.requiresPhone) {
-      setPhone("");
+      setPhoneLinkTarget(null);
       setPhoneModalPlatform(platform.id);
       return;
     }
@@ -138,19 +147,25 @@ export default function LinkedAccountsSettings() {
   };
 
   const handleConnect = async (platformId: string, phoneNumber?: string) => {
+    const attempt = ++connectAttemptRef.current;
     try {
       setConnectingPlatform(platformId);
+
+      const wasConnected = platformLinks[platformId]?.platformUserId != null;
 
       const data = await apiService.post<{
         auth_url?: string;
         instructions?: string;
         action_link?: string;
+        contact_number?: string;
         auth_type: string;
       }>(
         `/platform-links/${platformId}/connect`,
         phoneNumber ? { phone: phoneNumber } : {},
         { silent: true },
       );
+
+      if (attempt !== connectAttemptRef.current) return;
 
       if (data.auth_url) {
         const width = 600;
@@ -168,10 +183,28 @@ export default function LinkedAccountsSettings() {
         pollTimerRef.current = setInterval(() => {
           if (popup?.closed) {
             clearPollTimer();
-            fetchPlatformLinks();
-            setConnectingPlatform(null);
+            void fetchPlatformLinks().then((links) => {
+              if (
+                !wasConnected &&
+                links?.[platformId]?.platformUserId != null
+              ) {
+                trackEvent(ANALYTICS_EVENTS.BOT_CONNECTED, {
+                  bot_id: platformId,
+                });
+              }
+              setConnectingPlatform(null);
+            });
           }
         }, 500);
+      } else if (data.contact_number) {
+        // An sms: deep link resolves on Apple devices only, so the number and
+        // the command have to be readable (and copyable) on any device.
+        setPhoneLinkTarget({
+          contactNumber: data.contact_number,
+          command: BOT_AUTH_COMMAND,
+          actionLink: data.action_link,
+        });
+        setConnectingPlatform(null);
       } else if (data.auth_type === "manual" && data.instructions) {
         const platformConfig = PLATFORMS.find((p) => p.id === platformId);
         toast.info(`Connect ${platformConfig?.name ?? platformId}`, {
@@ -198,6 +231,7 @@ export default function LinkedAccountsSettings() {
         setConnectingPlatform(null);
       }
     } catch {
+      if (attempt !== connectAttemptRef.current) return;
       toast.error(`Failed to connect ${platformId}`);
       setConnectingPlatform(null);
     }
@@ -208,6 +242,7 @@ export default function LinkedAccountsSettings() {
       await apiService.delete(`/platform-links/${platformId}`, {
         silent: true,
       });
+      trackEvent(ANALYTICS_EVENTS.BOT_DISCONNECTED, { bot_id: platformId });
       toast.success(`Disconnected from ${platformId}`);
       await fetchPlatformLinks();
     } catch {
@@ -312,51 +347,24 @@ export default function LinkedAccountsSettings() {
         </div>
       </SettingsSection>
 
-      <Modal
+      <PhoneLinkModal
         isOpen={phoneModalPlatform != null}
-        onClose={() => setPhoneModalPlatform(null)}
-        size="sm"
-      >
-        <ModalContent>
-          <ModalHeader>Your phone number</ModalHeader>
-          <ModalBody>
-            <p className="text-sm text-zinc-400">
-              iMessage delivers to registered numbers only, so GAIA needs the
-              number you text from.
-            </p>
-            <Input
-              autoFocus
-              type="tel"
-              placeholder="+15551234567"
-              value={phone}
-              onValueChange={setPhone}
-              isInvalid={phone.length > 0 && !E164_PHONE_PATTERN.test(phone)}
-              errorMessage="Use E.164 format, e.g. +15551234567"
-            />
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              variant="flat"
-              size="sm"
-              onPress={() => setPhoneModalPlatform(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              color="primary"
-              size="sm"
-              isDisabled={!E164_PHONE_PATTERN.test(phone)}
-              onPress={() => {
-                const platformId = phoneModalPlatform;
-                setPhoneModalPlatform(null);
-                if (platformId) handleConnect(platformId, phone);
-              }}
-            >
-              Continue
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+        platformName={
+          PLATFORMS.find((p) => p.id === phoneModalPlatform)?.name ?? "iMessage"
+        }
+        isSubmitting={connectingPlatform === phoneModalPlatform}
+        target={phoneLinkTarget}
+        onSubmit={(phone) => {
+          if (phoneModalPlatform) handleConnect(phoneModalPlatform, phone);
+        }}
+        onClose={() => {
+          connectAttemptRef.current += 1;
+          setConnectingPlatform(null);
+          setPhoneModalPlatform(null);
+          setPhoneLinkTarget(null);
+          fetchPlatformLinks();
+        }}
+      />
     </SettingsPage>
   );
 }

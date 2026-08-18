@@ -404,7 +404,7 @@ export class ImessageAdapter extends BaseBotAdapter {
           await this.sendImessageText(space, errMsg);
         },
         STREAMING_DEFAULTS.imessage,
-        this.analytics,
+        await this.analyticsFor(handle),
       );
     } catch (err) {
       this.adapterLogger.error("streaming_failed", {

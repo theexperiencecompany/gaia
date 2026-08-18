@@ -7,9 +7,11 @@ import pytest
 
 from app.agents.context.slots import (
     SINGLETON_SLOTS,
+    TAIL_VOLATILE_SLOTS,
     PromptSlot,
     has_marker,
     mark,
+    request_slot_order,
     slot_of,
 )
 
@@ -97,3 +99,59 @@ class TestSlotOrder:
 
     def test_conversation_is_the_only_accumulating_slot(self) -> None:
         assert set(PromptSlot) - SINGLETON_SLOTS == {PromptSlot.CONVERSATION}
+
+
+@pytest.mark.unit
+class TestRequestSlotOrder:
+    """Which layout a request gets, and why it may differ per provider."""
+
+    @pytest.mark.parametrize("provider", ["openrouter", "custom"])
+    def test_the_openai_wire_puts_every_per_turn_slot_behind_the_conversation(
+        self, provider: str
+    ) -> None:
+        """The point of the whole layout: with the volatile slots behind it, the
+        conversation sits inside the byte-stable prefix and the provider's
+        implicit cache covers the history (97% vs 83% measured)."""
+        assert request_slot_order(provider) == (
+            PromptSlot.STATIC,
+            PromptSlot.DYNAMIC_STABLE,
+            PromptSlot.ONBOARDING,
+            PromptSlot.CONVERSATION,
+            PromptSlot.TODO_CONTEXT,
+            PromptSlot.BACKGROUND_EXECUTOR,
+            PromptSlot.EXECUTOR_STATUS,
+            PromptSlot.MEMORY_RECALL,
+            PromptSlot.TIME,
+        )
+
+    def test_gemini_keeps_the_leading_block_layout(self) -> None:
+        """``langchain-google-genai`` drops every system message after the first
+        non-system one, so a tail slot there is not a colder cache — it is content
+        the model never sees."""
+        assert request_slot_order("gemini") == tuple(PromptSlot)
+
+    def test_an_unknown_or_missing_provider_gets_the_safe_layout(self) -> None:
+        """The leading block is correct everywhere and merely colder; the tail
+        layout is correct only where it has been verified. A configurable with no
+        provider must therefore land on the safe one."""
+        assert request_slot_order(None) == tuple(PromptSlot)
+        assert request_slot_order("some-new-provider") == tuple(PromptSlot)
+
+    def test_no_slot_is_lost_or_duplicated_by_the_reorder(self) -> None:
+        """A layout that silently dropped a slot would delete that content from
+        the request — the same failure mode as Gemini's contiguity rule."""
+        for provider in ("openrouter", "gemini", None):
+            order = request_slot_order(provider)
+            assert sorted(order) == sorted(PromptSlot)
+
+    def test_every_tail_volatile_slot_is_actually_moved(self) -> None:
+        """Pins the set itself: adding a per-turn slot to the enum without adding
+        it here leaves per-turn bytes inside the cached prefix, which is invisible
+        except as a slow decay in the hit rate."""
+        order = request_slot_order("openrouter")
+        conversation_at = order.index(PromptSlot.CONVERSATION)
+        assert {slot for slot in TAIL_VOLATILE_SLOTS} == {
+            slot
+            for slot in order[conversation_at + 1 :]
+            if slot in SINGLETON_SLOTS and slot is not PromptSlot.TIME
+        }

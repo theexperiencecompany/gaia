@@ -18,6 +18,7 @@ fails loudly instead of quietly reaching a real store.
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, cast
+from unittest.mock import patch
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
@@ -38,6 +39,7 @@ from app.agents.core.subagents.subagent_runner import build_initial_messages
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
 from app.agents.tools.todo_tools import create_todo_pre_model_hook
+from app.config.settings import settings
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.message_helpers import build_current_time_message
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
@@ -52,6 +54,13 @@ from tests._harness.context_sources import ContextSources, fake_context_sources
 #: every run. Deliberately mid-month and mid-afternoon UTC so no timezone offset
 #: rolls the local date and turns a stable assertion into a flaky one.
 FIXED_NOW = datetime(2026, 3, 17, 14, 30, tzinfo=UTC)
+
+#: The public backend host the artifact-URL banner renders. Pinned for the same
+#: reason as the clock: ``settings.HOST`` is read straight into the seeded text,
+#: so an unpinned one bakes whatever ``apps/api/.env`` sets on the machine that
+#: recorded a snapshot into the file — green in CI (no .env, so the default) and
+#: red on every developer machine, or the reverse once re-recorded there.
+FIXED_HOST = "https://api.heygaia.io"
 
 #: The spawned-subagent tier builds its static prompt from the spawning caller's
 #: text rather than a template, so the harness supplies a stable stand-in.
@@ -315,7 +324,11 @@ async def effective_context(
     resolved_user = user or HarnessUser()
     resolved_sources = _with_onboarding(sources or ContextSources(), onboarding_prompt)
 
-    with time_machine.travel(now, tick=False), fake_context_sources(resolved_sources):
+    with (
+        time_machine.travel(now, tick=False),
+        patch.object(settings, "HOST", FIXED_HOST),
+        fake_context_sources(resolved_sources),
+    ):
         config, configurable = await build_configurable(tier, resolved_user, configurable_overrides)
         seed = await seed_context(tier, user=resolved_user, query=query, configurable=configurable)
         state = cast(State, {"messages": [*(prior_messages or []), *seed], "todos": []})
@@ -334,6 +347,10 @@ async def seed_only(
 ) -> list[AnyMessage]:
     """The pre-hook seed, for the invariants that are about what a tier *emits*."""
     resolved_user = user or HarnessUser()
-    with time_machine.travel(now, tick=False), fake_context_sources(sources or ContextSources()):
+    with (
+        time_machine.travel(now, tick=False),
+        patch.object(settings, "HOST", FIXED_HOST),
+        fake_context_sources(sources or ContextSources()),
+    ):
         _, configurable = await build_configurable(tier, resolved_user, configurable_overrides)
         return await seed_context(tier, user=resolved_user, query=query, configurable=configurable)

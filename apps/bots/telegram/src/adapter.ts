@@ -690,7 +690,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           );
         },
         STREAMING_DEFAULTS.telegram,
-        this.analytics,
+        await this.analyticsFor(userId),
       );
     } finally {
       clearTyping();

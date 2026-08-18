@@ -130,3 +130,6 @@ class InitiatePlatformConnectResponse(BaseModel):
     action_link: str | None = Field(
         default=None, description="Optional deep-link for manual auth (e.g. Telegram bot URL)"
     )
+    contact_number: str | None = Field(
+        default=None, description="Number the user sends the linking command to (manual auth)"
+    )

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 
 from app.models.user_models import UserDocument
+from app.services.analytics_service import AnalyticsEvents
 
 API = "/api/v1/integrations"
 
@@ -120,13 +121,19 @@ class TestDisconnectIntegration:
             message="Disconnected",
             integration_id="github",  # type: ignore[call-arg]
         )
-        with patch(
-            "app.api.v1.endpoints.integrations.config.disconnect_integration",
-            new_callable=AsyncMock,
-            return_value=mock_result,
+        with (
+            patch(
+                "app.api.v1.endpoints.integrations.config.disconnect_integration",
+                new_callable=AsyncMock,
+                return_value=mock_result,
+            ),
+            patch("app.api.v1.endpoints.integrations.config.capture_context_event") as mock_capture,
         ):
             resp = await client.delete(f"{API}/github")
         assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_DISCONNECTED, {"integration_id": "github"}
+        )
 
     async def test_disconnect_not_found(self, client: AsyncClient) -> None:
         with patch(
@@ -187,6 +194,7 @@ class TestConnectIntegration:
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
+            patch("app.api.v1.endpoints.integrations.config.capture_context_event") as mock_capture,
         ):
             resp = await client.post(
                 f"{API}/connect/test-mcp",
@@ -194,6 +202,10 @@ class TestConnectIntegration:
             )
         assert resp.status_code == 200
         assert resp.json()["status"] == "connected"
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {"integration_id": "test-mcp", "managed_by": "mcp"},
+        )
 
     async def test_connect_composio_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import ConnectIntegrationResponse
@@ -216,6 +228,7 @@ class TestConnectIntegration:
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
+            patch("app.api.v1.endpoints.integrations.config.capture_context_event") as mock_capture,
         ):
             resp = await client.post(
                 f"{API}/connect/github",
@@ -223,6 +236,8 @@ class TestConnectIntegration:
             )
         assert resp.status_code == 200
         assert resp.json()["status"] == "redirect"
+        # OAuth-managed connects complete at their callback, not here.
+        mock_capture.assert_not_called()
 
     async def test_connect_self_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import ConnectIntegrationResponse

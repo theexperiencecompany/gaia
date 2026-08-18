@@ -20,7 +20,6 @@ import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   Priority,
   type Todo,
@@ -122,26 +121,10 @@ export default function TodoModal({
           const updates = getChangedFields(todo, data);
 
           if (Object.keys(updates).length > 0) {
-            trackEvent(ANALYTICS_EVENTS.TODOS_UPDATED, {
-              todo_id: todo.id,
-              fields_changed: Object.keys(updates),
-              has_due_date: !!data.due_date,
-              priority: data.priority,
-              has_subtasks: (data.subtasks?.length || 0) > 0,
-            });
             await updateTodo(todo.id, updates);
           }
           return;
         }
-
-        trackEvent(ANALYTICS_EVENTS.TODOS_CREATED, {
-          has_description: !!data.description,
-          has_due_date: !!data.due_date,
-          priority: data.priority,
-          labels_count: data.labels?.length || 0,
-          has_project: !!data.project_id,
-          subtasks_count: data.subtasks?.length || 0,
-        });
 
         await createTodo(data);
       },

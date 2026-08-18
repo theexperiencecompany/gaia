@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { getBrowserTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import {
@@ -496,14 +495,6 @@ export const useEventSidebar = ({
 
       const createdEvent = await calendarApi.createEventDefault(payload);
 
-      // Track calendar event creation
-      trackEvent(ANALYTICS_EVENTS.CALENDAR_EVENT_CREATED, {
-        is_all_day: isAllDay,
-        has_description: !!description,
-        has_recurrence: !!recurrence,
-        recurrence_type: recurrenceType,
-        calendar_id: selectedCalendarId,
-      });
       // Add the created event to the store so it appears immediately
       addEventToStore(createdEvent);
 
@@ -539,12 +530,6 @@ export const useEventSidebar = ({
         calendar_id:
           selectedEvent.calendarId || selectedCalendarId || "primary",
         summary: selectedEvent.summary,
-      });
-
-      // Track calendar event deletion
-      trackEvent(ANALYTICS_EVENTS.CALENDAR_EVENT_DELETED, {
-        event_id: selectedEvent.id,
-        calendar_id: selectedEvent.calendarId || selectedCalendarId,
       });
 
       // Remove event from store immediately

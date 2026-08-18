@@ -52,6 +52,15 @@ belongs in `test:real`, not in the default run.
   to. Mark only the tests that go red without the fix, not the whole file; the
   gap-fill tests alongside them legitimately pass on base. Once merged, a marked
   test stays marked and is not re-proven by later PRs that touch the file.
+- **The mark needs a module that exists on base.** The lane counts an ERROR as
+  "did not prove anything", not as proof — a test that never reached its
+  assertions shows the harness broke, not that the bug is caught. So the mark
+  works when only a *symbol* is new (the `AttributeError` fires inside the test
+  body and registers as a FAILURE), and breaks when the whole *module* is new
+  (the file cannot be imported on base, so it fails at collection and the lane
+  rejects it). Tests for a brand-new module are gap-fill: leave them unmarked.
+  The two cases look identical until CI fails, so check with
+  `git cat-file -e origin/master:<path>` before reaching for the mark.
 - **Hermetic paths**: never hardcode `~` or absolute paths — the `_hermetic_environment` fence owns env (it blanks real credentials at session start); any env a test needs is provisioned by fixtures, not read from the developer's machine.
 - **Fixtures catalog** — search before you build:
   - `tests/conftest.py` — env fence, `client` / `unauthed_client` (ASGITransport), `fake_user` / `fake_user_2`

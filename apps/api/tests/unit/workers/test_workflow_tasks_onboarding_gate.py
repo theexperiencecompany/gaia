@@ -40,6 +40,7 @@ async def _run_task(
         patch(f"{MODULE}.execute_workflow_as_chat", new_callable=AsyncMock, return_value="conv-1"),
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
+        patch(f"{MODULE}.capture_event"),
     ):
         scheduler.get_task = AsyncMock(return_value=workflow)
         scheduler.claim_scheduled_for_execution = AsyncMock(return_value=True)

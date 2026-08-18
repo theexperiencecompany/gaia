@@ -1,5 +1,6 @@
 from typing import Any
 
+from app.agents.llm.types import LLMProviderName
 from app.models.models_models import DevModelOption
 
 # The ``configurable`` keys LangChain's own field resolution reads. Written at
@@ -52,6 +53,62 @@ RECURSION_HWM_FRACTION = 0.80
 # dying mid-exploration on GraphRecursionError.
 RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 
+# Harness-owned completion: when the executor tries to end with a plain-text
+# message while work is demonstrably unfinished, the loop injects up to this many
+# "verify or continue" nudges instead of ending. "Unfinished" means a tracked todo
+# is still pending, or no real tool ran on the delegated task (discovery calls
+# like retrieve_tools and errored calls don't count). A raw count floor sat here
+# once and told one-call tasks ("send the email") the work may not have
+# happened, goading a duplicate send. Both counts are scoped to the CURRENT delegation
+# (middleware.completion.current_delegation), not the executor thread, which
+# outlives it: counting the thread let each delegation inherit the previous one's
+# tools and nudges, so the guard fired once per conversation and never again.
+# Bounded so a genuinely quick task costs at most this many extra steps per
+# delegation. Only the executor opts in (require_finish_to_end); comms may always
+# end in plain text.
+MAX_COMPLETION_NUDGES = 1
+# Tool results that prove no work happened: discovery-only or failed calls.
+COMPLETION_NON_WORK_TOOLS = frozenset({"retrieve_tools"})
+COMPLETION_NUDGE_MESSAGE = (
+    "[System: before you finish — every part of the task must actually be done "
+    "and confirmed with tools, not assumed. If anything is still pending, not yet "
+    "verified, or an action you described but did not take, do it now. Nothing "
+    "runs after your reply ends, so never tell the user you are still working or "
+    "that more results are coming ('hang tight', 'still digging'): either do the "
+    "work now with tools, or state plainly what you got and what failed. If you "
+    "are genuinely finished, reply with your complete final result.]"
+)
+# A plain-text stop that PROMISES future work is never a valid ending: the run
+# is over the moment the reply ends, so "hang tight" is a lie to the user.
+# Lowercase substrings, matched against the final reply. Kept deliberately
+# specific — a false positive only costs one bounded nudge, but each entry
+# should still be an unambiguous forward commitment.
+COMPLETION_PROMISE_MARKERS: tuple[str, ...] = (
+    "hang tight",
+    "still digging",
+    "still working on",
+    "still fetching",
+    "still searching",
+    "still looking",
+    "keep digging",
+    "keep looking",
+    "give me a moment",
+    "give me a sec",
+    "one moment while",
+    "bear with me",
+    "stay tuned",
+    "i'll get back to you",
+    "will get back to you",
+    "i'll keep you posted",
+    "keep you posted",
+    "i'll follow up",
+    "will follow up shortly",
+    "check back soon",
+    "coming right up",
+    "working on it now",
+    "in the background",
+)
+
 # Per-tool-call execution timeout. A hung integration call previously hung the
 # entire run forever (no timeout existed at any dispatch layer). Orchestration
 # tools that legitimately run for minutes are exempt — they have their own
@@ -72,6 +129,27 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
+# Sticky-flip retry: when a large call's cache read is below this fraction of
+# its prompt (the request landed on a cold provider after the ~5-minute sticky
+# expiry — a known OpenRouter behavior), re-send it once — the first attempt
+# wrote the chain there and the re-send hits it (~99%, verified by byte-exact
+# shadow replays of captured requests: 99.2-99.7%). 0.92 catches the full
+# flips (0-5%), the partial static-only dips (65-75%) AND the small-
+# conversation steady state (83-90% — the provider under-reads the fresh
+# chain for a few turns after a big turn; measured live at 83.8% flat while
+# the exact bytes replay at 99.7%). The retry's second call reads ~99% cached,
+# so the turn's aggregate hit rises toward (cached + 0.99*input)/2*input while
+# the extra input bills at the cached-read rate.
+STICKY_FLIP_RETRY_MIN_HIT = 0.92
+STICKY_FLIP_RETRY_MIN_INPUT = 8_000
+# The replay's premise — sticky routing that re-reads the chain the first
+# attempt wrote — is OpenRouter-wire behaviour. Gemini has no sticky routing,
+# so a replay there is a second full-price call with no possible upside.
+STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM})
+# Auxiliary one-shots route on their own sticky session: sharing the
+# conversation's key re-pinned its provider from a background call (measured).
+AUX_SESSION_SUFFIX = "-aux"
+
 # Total wall-clock ceiling for one ainvoke_llm call — retries, backoff sleeps and the
 # fallback attempt included. A backstop against a provider that accepts the connection
 # and then never answers, which no retry can rescue because nothing ever raises.
@@ -80,7 +158,7 @@ LLM_RETRY_MAX_ATTEMPTS = 3
 # document analysis), NOT as a per-caller latency budget: a call on a user-blocking path
 # should pass its own tighter value, the way the HIL gate passes
 # HIL_LLM_TIMEOUT_SECONDS. Pass timeout=None to opt out entirely.
-LLM_INVOKE_TIMEOUT_SECONDS = 120
+LLM_INVOKE_TIMEOUT_SECONDS = 300
 
 # Near-deterministic default for every LLM call; creative tasks opt into more
 # variation via get_default_llm(temperature=...).
@@ -106,9 +184,48 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # Text-only: tool results carrying images are captioned for it rather than shown
 # (see agents/llm/vision/capability.py).
 DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+# Stand-in when a call reports no model id. Priced at DEFAULT_PRICING rather
+# than its real rate, so its appearance is an alertable bug, not a benign
+# default — both metering routes log it loudly.
+UNKNOWN_MODEL_NAME = "unknown"
+# No explicit provider routing for the default DeepSeek lane: OpenRouter's
+# default (price- and availability-weighted) routing + the session_id sticky
+# key on every request measured BEST on the real full graph (82.2% total,
+# 83-88% steady-state). The first-party `only` pin was measured WORSE on the
+# real graph (64-66%: the pinned upstream's cache state is colder and the
+# conversation's segments still intermittently fail to join), even though it
+# is rock-stable in isolation — the isolation is not the graph.
+# A separate id for the auxiliary one-shot calls (memory pipeline, follow-ups,
+# vision, …). This is NOT the same model as the default: OpenRouter serves the
+# bare id as the ORIGINAL V4 Flash release ("0423", created Apr 2026), while
+# DEFAULT_MODEL_NAME is the re-post-trained "0731" revision (Aug 2026) — same
+# architecture family (284B/13B-active MoE, 1M context), different model
+# version — and NOT the same rate card. Aux one-shots (follow-up suggestions, conversation
+# naming) are therefore served by the older revision — a deliberate tradeoff:
+# the separate model id is what gives these calls their own provider-side
+# cache namespace. They must NOT share the conversation's namespace — their
+# ~30k tokens/turn of new blocks were evicting the conversation chain between
+# turns (measured: real-graph hit rate capped at ~63% while the intra-turn
+# steady state is 87–91%). A separate id lets the aux calls chain with each
+# other and stops the eviction. This id is priced SEPARATELY from the default
+# — see AUX_MODEL_PRICING, which is what meters it, and which is hand-written
+# here rather than seeded because the id is an internal routing choice, not a
+# model users can select. Nothing reconciles it against OpenRouter's live
+# listing, so it has to be re-checked by hand whenever either id is re-pointed.
+AUX_MODEL_NAME = "deepseek/deepseek-v4-flash"
 # Retained for the direct-Gemini lane, which is still selectable as a provider
 # alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
+
+# The model behind every memory-pipeline call (extraction / categorization /
+# reconciliation / consolidation). Deliberately a DIFFERENT provider than the
+# graph's lane: the memory extraction is a background task that overlaps the
+# next turn's requests, and concurrent requests on the same provider's cache
+# store wipe each other's cached chains mid-read (measured: the comms chain
+# collapses to ~0 under a concurrent same-provider extraction and holds
+# ~99.5% under a concurrent Gemini extraction). A different provider has no
+# shared cache store, so the overlap is harmless.
+MEMORY_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
 DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
 # The model behind every image -> text call: the vision fallback for a lane that
@@ -156,17 +273,20 @@ OPENROUTER_MODEL_CATALOG_RETRY_SECONDS = 300
 # window), so 64k of output leaves ample headroom for the prompt.
 OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
 
+# Output cap for one-shot helper calls (conversation naming, memory extraction,
+# structured JSON blobs, onboarding copy, moderation, category inference) — every
+# get_default_llm() consumer EXCEPT the agent-graph fallback and the
+# summarization/compaction middleware, which legitimately produce long output and
+# keep OPENROUTER_MAX_OUTPUT_TOKENS. OpenRouter reserves credit against `max_tokens`
+# per call, so a helper emitting a 200-token title was demanding the full 64k
+# reservation and 402ing on a low balance even though it had credit for its real
+# (tiny) output. 8k is ~10x the largest observed helper output while cutting the
+# reservation 8x.
+HELPER_MAX_OUTPUT_TOKENS = 8_000
+
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
 OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
-# Pin the paid model to the first-party "z-ai" provider on OpenRouter. Without
-# this, OpenRouter may load-balance z-ai/glm-5.2 across resellers (DeepInfra,
-# Together, Parasail, etc.) whose shared pools get rate-limited upstream (429). `only`
-# forces the first-party lane. Passed via ChatOpenRouter's `model_kwargs` (the
-# OpenRouter `provider` routing param) and inherited by child agents via
-# agent_helpers._inherit_from_parent_configurable so subagents stay on the same lane.
-PAID_MODEL_PROVIDER_SLUG = "deepseek"
-PAID_MODEL_MODEL_KWARGS = {"provider": {"only": [PAID_MODEL_PROVIDER_SLUG]}}
 # Comms-specific reasoning: "low" instead of the executor's "medium". Comms is
 # mostly routing/ack work, so the reasoning budget is most useful for the executor's
 # tool selection. GLM 5.2 also documents "high"/"xhigh" efforts — revisit these
@@ -195,25 +315,25 @@ OPENROUTER_APP_CATEGORIES = ["personal-agent", "general-chat"]
 # ignore OpenRouter `model_kwargs`/`reasoning`. This menu is NEVER used in production.
 DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
     "minimax-m3": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "minimax/minimax-m3",
         "model_kwargs": {"provider": {"only": ["minimax"]}},
         "reasoning": True,
     },
     "glm-5.2": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "z-ai/glm-5.2",
         "model_kwargs": {"provider": {"only": ["z-ai"]}},
         "reasoning": True,
     },
     "gemini-3.5-flash": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "google/gemini-3.5-flash",
         "model_kwargs": None,
         "reasoning": False,
     },
     "deepseek-v4": {
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "deepseek/deepseek-v4-pro",
         "model_kwargs": None,
         "reasoning": False,
@@ -222,21 +342,23 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         # Pinned snapshot — same id also served by the cheap OpenRouter-compatible
         # lanes (e.g. Nous Research), so the custom endpoint below can run the
         # identical model for A/B-ing routes.
-        "provider": "openrouter",
+        "provider": LLMProviderName.OPENROUTER,
         "model": "deepseek/deepseek-v4-flash-0731",
+        # Deliberately unpinned — the pin measured worse on the real graph
+        # (see the paid-lane rationale above).
         "model_kwargs": None,
         "reasoning": False,
     },
     "custom": {
         # The env-defined endpoint (DEV_LLM_* settings). `model` None = don't pin
         # one here; the client's own default (DEV_LLM_MODEL) serves the request.
-        "provider": "custom",
+        "provider": LLMProviderName.CUSTOM,
         "model": None,
         "model_kwargs": None,
         "reasoning": False,
     },
     "gemini-3.1-flash-lite": {
-        "provider": "gemini",
+        "provider": LLMProviderName.GEMINI,
         "model": "gemini-3.1-flash-lite",
         "model_kwargs": None,
         "reasoning": False,
@@ -265,6 +387,12 @@ PRO_PER_REQUEST_TOKEN_CEILING = 5_000_000  # TUNE
 FREE_DAILY_COST_BUDGET_USD = 0.05  # TUNE
 PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
 
+# When remaining daily budget headroom drops to this fraction of the full budget
+# (0.2 = 20% left, i.e. 80% spent), the accounting middleware injects a one-time
+# wrap-up notice telling the agent to stop gathering and answer with what it has —
+# before is_daily_budget_exhausted binds and kills the run mid-flight with no answer.
+BUDGET_WRAPUP_REMAINING_FRACTION = 0.2
+
 # Rolling monthly USD cost budget for pro: the ECONOMIC guard. Set ~1x the
 # subscription price so the worst-case whale is break-even. On exhaustion pro
 # is NOT blocked — model routing degrades to the free-tier model for the rest
@@ -289,6 +417,14 @@ LOOP_GUARD_WARN_IDENTICAL = 2
 LOOP_GUARD_WARN_SAME_TOOL = 3
 LOOP_GUARD_STOP_IDENTICAL = 5
 LOOP_GUARD_STOP_SAME_TOOL = 8
+# "Repeat" counts CONSECUTIVE identical calls (same tool + same args) regardless
+# of success or failure — the signature of a redundant duplicate handoff or a
+# wasteful re-run of the exact same search. A successful call whose result won't
+# change is as much a loop as a failing one; the failure counters above only see
+# status="error". Warn appends an in-band note; stop (hard_stop runs only) blocks
+# the redundant call before it executes.
+LOOP_GUARD_WARN_REPEAT = 3
+LOOP_GUARD_STOP_REPEAT = 6
 # The middleware is a per-process singleton, so failure counters are keyed by the
 # run's thread_id and bounded to the most recent N runs (LRU) to keep memory flat.
 LOOP_GUARD_MAX_TRACKED_RUNS = 512

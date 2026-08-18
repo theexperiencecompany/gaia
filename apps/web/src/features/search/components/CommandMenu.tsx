@@ -70,13 +70,6 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     try {
       const response = await searchApi.search(query);
       setSearchResults(response);
-      trackEvent(ANALYTICS_EVENTS.SEARCH_PERFORMED, {
-        query_length: query.length,
-        result_count:
-          response.conversations.length +
-          response.messages.length +
-          response.notes.length,
-      });
     } catch (error) {
       console.error("Error fetching search results:", error);
       setSearchResults({ conversations: [], messages: [], notes: [] });

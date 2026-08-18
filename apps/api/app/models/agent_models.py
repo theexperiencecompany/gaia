@@ -91,6 +91,11 @@ class AgentConfigurable(TypedDict, total=False):
     #: paraphrase of the request.
     user_messages: list[str] | None
     user_message_id: str
+    #: The live comms turn's own bot message id (chat stream's ``state.bot_message_id``).
+    #: Threaded into ``call_executor`` so a HIL pause that later resumes can reconcile
+    #: its result onto this SAME message instead of minting a rival one — see
+    #: ``ExecutorRun.bot_message_id`` and ``executor_runner._record_pause``.
+    bot_message_id: str
     #: Onboarding preferences / writing style, established once at the root of
     #: a run tree (wherever a full user document is already in hand — comms,
     #: background narration, the dev direct-invoke entrypoint) and inherited
@@ -132,6 +137,10 @@ class AgentConfigurable(TypedDict, total=False):
     #: Shared VFS session, held constant across the executor and the handoff
     #: subagents it spawns so all resolve paths against one workspace.
     vfs_session_id: str | None
+    #: OpenRouter sticky-routing key — the conversation id, pinned on every
+    #: request so OpenRouter routes the whole conversation tree to the
+    #: provider holding the warm prompt cache (see build_agent_config).
+    session_id: str | None
     stream_id: str | None
     active_todo_id: str | None
     execution_mode: ExecutionMode

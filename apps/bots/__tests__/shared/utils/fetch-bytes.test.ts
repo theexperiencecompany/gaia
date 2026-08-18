@@ -165,4 +165,24 @@ describe("fetchBytesCapped", () => {
       fetchBytesCapped("https://cdn.test/denied.bin", 16, "Test attachment"),
     ).rejects.toMatchObject({ status: 403 });
   });
+
+  it("raises MediaReadTimeoutError when the connection itself times out", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) => {
+        const signal = init?.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+        });
+      }),
+    );
+
+    await expect(
+      fetchBytesCapped("https://cdn.test/slow.bin", 16, "Test media", 5),
+    ).rejects.toBeInstanceOf(MediaReadTimeoutError);
+  });
 });

@@ -196,6 +196,9 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:$api_port/api/v1/
 # Every backend client resolves the API from this, so \`gaia-sim\` and the bots
 # target THIS worktree's API instead of whatever owns port 8000.
 GAIA_API_URL=http://localhost:$api_port
+# The API mints absolute links from this (OAuth callbacks, connect links). Without
+# the override it hands out the main worktree's 8000 and the link 404s.
+HOST=http://localhost:$api_port
 # Scripted LLM stub (\`mise dev --sim\`). --sim derives OPENROUTER_BASE_URL from it.
 LLM_STUB_PORT=$(( 9797 + offset ))
 BOT_DISCORD_PORT=$(( 3200 + offset ))

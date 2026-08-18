@@ -125,6 +125,35 @@ def create_fake_llm_with_tool_calls(
     return BindableToolsFakeModel(responses=messages)
 
 
+class PassthroughFakeLLM:
+    """Base for hand-rolled fake LLMs that ``create_agent`` drives directly.
+
+    ``create_agent`` reshapes the model before every call — ``with_config``,
+    ``bind_tools``, ``bind`` (the OpenRouter sticky-routing key), and
+    ``with_retry`` via ``with_llm_retry`` — and each returns a new runnable in
+    production. A fake only needs them to hand itself back, so they live here
+    once: subclasses write ``ainvoke`` and nothing else.
+
+    Duck-typed rather than a ``BaseChatModel`` subclass on purpose — these
+    fakes answer from the messages they are shown, which is what makes them
+    replay-safe, and ``FakeMessagesListChatModel`` answers from a fixed list
+    instead. The shared base is what stops the next reshaping call production
+    adds from breaking every one of them separately.
+    """
+
+    def with_config(self, **_kwargs: Any) -> "PassthroughFakeLLM":
+        return self
+
+    def bind_tools(self, _tools: Any, **_kwargs: Any) -> "PassthroughFakeLLM":
+        return self
+
+    def bind(self, **_kwargs: Any) -> "PassthroughFakeLLM":
+        return self
+
+    def with_retry(self, **_kwargs: Any) -> "PassthroughFakeLLM":
+        return self
+
+
 def assert_tool_called(messages: list[BaseMessage], tool_name: str) -> None:
     tool_calls = extract_tool_calls(messages)
     names = [tc["name"] for tc in tool_calls]

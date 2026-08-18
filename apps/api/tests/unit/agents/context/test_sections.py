@@ -101,9 +101,13 @@ class TestTheTableIsWellFormed:
             "user_identity",
             "user_prefs",
             "integrations_manifest",
+            # The memory core's DOCUMENTS only. They are rewritten by the
+            # consolidation pass, not per turn, so they belong in the cached
+            # prefix; the agenda and journal below are the half that churns.
+            "core_memory",
         ]
         assert [s.id for s in sections_for(AgentTier.COMMS, PromptSlot.MEMORY_RECALL)] == [
-            "core_memory",
+            "agenda_activity",
             "memory_recall",
             "gaia_knowledge",
             "tracked_todos",
@@ -117,9 +121,10 @@ class TestTheTableIsWellFormed:
             "user_prefs",
             "workspace_session",
             "integrations_manifest",
+            "core_memory",
         ]
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.MEMORY_RECALL)] == [
-            "core_memory",
+            "agenda_activity",
             "memory_recall",
             "gaia_knowledge",
             "skills",

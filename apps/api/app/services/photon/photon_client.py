@@ -25,6 +25,7 @@ _RETRY_FIX = "verify the Photon project credentials and plan user limit, then re
 class PhotonUser(BaseModel):
     id: str
     phoneNumber: str
+    assignedPhoneNumber: str
 
 
 class _ListedPhotonUser(PhotonUser):

@@ -39,12 +39,13 @@ from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
+from tests.helpers import PassthroughFakeLLM
 
 TASK_A = "ALPHA: record the meeting note"
 TASK_B = "BETA: publish the status update"
 
 
-class TaskDrivenFakeLLM:
+class TaskDrivenFakeLLM(PassthroughFakeLLM):
     """Chooses its tool from the Task line it is shown, never from a call counter.
 
     Message-driven on purpose: a node replay shows the model the same messages,
@@ -53,15 +54,6 @@ class TaskDrivenFakeLLM:
 
     def __init__(self) -> None:
         self.invocations: list[str] = []
-
-    def with_config(self, **_kwargs: Any) -> "TaskDrivenFakeLLM":
-        return self
-
-    def bind_tools(self, _tools: Any, **_kwargs: Any) -> "TaskDrivenFakeLLM":
-        return self
-
-    def with_retry(self, **_kwargs: Any) -> "TaskDrivenFakeLLM":
-        return self
 
     async def ainvoke(self, messages: Any, **_kwargs: Any) -> AIMessage:
         text = " ".join(str(getattr(m, "content", "")) for m in messages)

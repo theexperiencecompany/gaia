@@ -155,6 +155,23 @@ async def create_todo(
 - Decorator serializer options still apply, e.g. `response_model_exclude_none=True` when the payload must omit unset optional fields instead of sending nulls.
 - A handler that genuinely cannot return a model — streaming, file download, redirect, a deliberately non-JSON body — returns the `Response` subclass and declares **no** `response_model`; a wrong schema is worse than no schema. To return a different body under a non-200 status, annotate the union and set the status on an injected `Response` (see `endpoints/health.py`) rather than reaching for `JSONResponse`.
 
+## Analytics (PostHog)
+
+Conventions, naming and the no-PII rule are in the root `CLAUDE.md`. The one API-specific decision:
+
+**`capture_context_event(event, props)` vs `capture_event(user_id, event, props)`** — both live in `app/services/analytics_service.py`.
+
+`capture_context_event` sends **no `distinct_id`**. It relies entirely on the contextvar identity that `PostHogRequestContextMiddleware` (`app/api/v1/middleware/auth.py`) sets, and that middleware only identifies a request that `WorkOSAuthMiddleware` already authenticated. Use it in ordinary authenticated route handlers, where it keeps the user id out of every call site.
+
+Use `capture_event(user_id, ...)` — explicitly — whenever the handler resolves its user from something other than a session:
+
+- OAuth / platform-link callbacks (the third party redirects the browser back with no session cookie)
+- Bot routes (`require_bot_api_key`, user resolved via `PlatformLinkService`)
+- Payment and provider webhooks
+- ARQ worker tasks and any background/fire-and-forget path — there is no request at all
+
+Getting this wrong is silent: the event is still captured, just attributed to a fresh anonymous person, so it never appears in that user's funnel. Nothing fails, no test goes red unless it asserts the id. **Assert the `distinct_id` in the test** — the mutation gate kills call-count-only assertions anyway.
+
 ## Service Layer
 
 Services are async module-level functions, not classes.
@@ -450,9 +467,11 @@ reveal_type(_get_available_providers())                        # expect: the rea
 
 `reveal_type` is the fastest way to confirm you closed the hole rather than moved it: if it still reveals `Any`, the annotation is cosmetic.
 
-### 18. A literal repeated at a definition site and a lookup site is an enum (see item 5)
+### 18. A literal repeated at a definition site and a lookup site is an enum, when we own the value set (see item 5)
 
 Item 5 covers a fixed set of *values*. This is the sharper case: the same literal written in two places that must agree. Registry keys, event names, queue names, config keys, cache-key prefixes. Nothing enforces the match, so drift is silent and reaches production.
+
+The enum is the answer only for a **closed, repository-owned** domain — one where we define every member and adding one is our change. When the values are external, open-ended, or owned by someone else's schema (provider model ids, third-party API fields, an upstream event vocabulary), an enum claims a closed world we don't control and goes stale the moment the other side adds a value. Those want a named constant in `app/constants/` referenced from both sites instead — same single source of truth, no false closed-world claim.
 
 That is exactly how the `comms_agent` outage happened — `"gemini_llm"` lived in both `@lazy_provider(name="gemini_llm")` and the lookup mapping, and only one side was environment-gated. One enum, referenced from both sides, makes the drift impossible:
 
