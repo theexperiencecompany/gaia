@@ -418,6 +418,7 @@ SURVIVED="$(printf '%s\n' "$SURVIVORS" | grep -c . || true)"
 NO_TESTS_LIST="$(printf '%s\n' "$RESULTS" | grep ": no tests$" || true)"
 NO_TESTS="$(printf '%s\n' "$NO_TESTS_LIST" | grep -c . || true)"
 NOT_CHECKED="$(printf '%s\n' "$RESULTS" | grep -c ": not checked$" || true)"
+TIMEOUT="$(printf '%s\n' "$RESULTS" | grep -c ": timeout$" || true)"
 if [ "${NOT_CHECKED:-0}" -gt 0 ]; then
   echo "MUTATION RUN INCOMPLETE — $NOT_CHECKED mutant(s) were never checked;" >&2
   echo "the run was interrupted. See mutmut's output above." >&2
@@ -454,13 +455,21 @@ fi
 # signature — every mutant suspicious AND the child's -5 exit in the log — so a
 # genuinely weak suite still fails loudly. Same treatment as the two other
 # documented mutmut limitations handled earlier in this script.
-if [ "${TOTAL:-0}" -gt 0 ] && [ "${SUSPICIOUS:-0}" -eq "${TOTAL:-0}" ] &&
-   grep -q "worker exit code -5" "$WORKDIR/mutmut.log" 2>/dev/null; then
+# Deliberately keyed on "no mutant reached a verdict" + the fork-crash exit
+# codes, NOT on mutmut's bucket name: the same fork failure lands in different
+# buckets per platform (suspicious on macOS, timeout on Linux), and keying on
+# the name is what made the first version of this miss CI entirely.
+if [ "${TOTAL:-0}" -gt 0 ] && [ "${KILLED:-0}" -eq 0 ] && [ "${SURVIVED:-0}" -eq 0 ] &&
+   grep -qE "worker exit code (-5|-24)" "$WORKDIR/mutmut.log" 2>/dev/null; then
   echo "MUTATION SKIPPED — $MODULE was NOT graded." >&2
   echo "  All $TOTAL mutant(s) died in the fork, not in a test: the test set for" >&2
   echo "  this module builds a chromadb client, whose Rust core cannot survive" >&2
   echo "  fork(), and mutmut re-runs the file inside one. This is a tool limit," >&2
   echo "  not a test weakness — the module's own tests pass normally." >&2
+  echo "  Two manifestations of the one cause, both matched here:" >&2
+  echo "    macOS — child crashes on SIGTRAP, worker exit -5, bucket 'suspicious'" >&2
+  echo "    Linux — child deadlocks, killed on CPU limit, exit -24, bucket 'timeout'" >&2
+  echo "  Buckets seen: $SUSPICIOUS suspicious, $TIMEOUT timeout, of $TOTAL." >&2
   exit 0
 fi
 if [ "${KILLED:-0}" -eq 0 ] && [ "${SURVIVED:-0}" -eq 0 ] && [ "${TOTAL:-0}" -gt 0 ]; then
