@@ -224,3 +224,23 @@ async def test_timeout_marks_failed(patch_browser, monkeypatch):
     result = await _make_runner(emit=emit, task_timeout=0.01).run("x")
     assert result.status == BrowserSessionStatus.FAILED
     assert "timed out" in result.summary
+
+
+async def test_unexpected_agent_error_finishes_failed(patch_browser, monkeypatch):
+    """An unexpected runtime failure must not leave the card stuck in RUNNING.
+
+    A terminal FAILED result is emitted so the UI resolves and the user gets an
+    honest summary instead of a forever-spinning progress card.
+    """
+
+    async def _boom(self, max_steps: int):
+        raise RuntimeError("LLM provider exploded")
+
+    monkeypatch.setattr(FakeAgent, "run", _boom)
+    events, emit = _collector()
+    result = await _make_runner(emit=emit).run("do a thing")
+    assert result.status == BrowserSessionStatus.FAILED
+    assert "failed" in result.summary.lower()
+    # The result snapshot ends the run — the card never stays in RUNNING.
+    assert events[-1].kind == BrowserEventKind.RESULT
+    assert events[-1].status == BrowserSessionStatus.FAILED

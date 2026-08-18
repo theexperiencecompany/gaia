@@ -268,6 +268,10 @@ class SettingsValidator:
                 keys=["BROWSER_HOST_URL"],
                 description="gaia-browser-host (self-hosted Chromium) + Browser-Use agent",
                 affected_features="Autonomous browser automation (the browser_task tool)",
+                # Opt-in capability: absent until a deployment explicitly enables
+                # BROWSER_USE_ENABLED and points it at a host. A loud CRITICAL for
+                # every box that simply doesn't run the browser is noise.
+                required_in_prod=False,
             )
         )
 

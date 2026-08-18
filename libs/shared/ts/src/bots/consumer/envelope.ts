@@ -37,8 +37,9 @@ export const outboundAttachmentSchema = z
     /** CDN source; fetched directly, no GAIA auth involved. */
     url: z
       .string()
-      .refine((u) => u.startsWith("http://") || u.startsWith("https://"), {
-        message: "url must be an http(s) URL",
+      .refine((u) => u.startsWith("https://"), {
+        message:
+          "url must be an https URL (cleartext would leak the signed asset)",
       })
       .nullish(),
     filename: z.string().min(1),

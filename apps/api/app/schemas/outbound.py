@@ -38,8 +38,10 @@ class OutboundAttachment(BaseModel):
             raise ValueError(
                 "attachment requires exactly one of `url` or (`conversation_id` + `path`)"
             )
-        if has_url and not (self.url and self.url.startswith(("http://", "https://"))):
-            raise ValueError("attachment `url` must be an http(s) URL")
+        if has_url and not self.url.startswith("https://"):
+            # The URL is the bearer authorization for the attachment bytes, so it
+            # must never ride a cleartext hop a network observer could read.
+            raise ValueError("attachment `url` must be an https URL")
         return self
 
 

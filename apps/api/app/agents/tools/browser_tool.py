@@ -140,14 +140,26 @@ async def browser_task(
                 step_shots[snapshot.index] = snapshot.screenshot
         if bot_delivery is None:
             return
-        if isinstance(snapshot, BrowserStepSnapshot):
-            await bot_delivery.step(snapshot)
-        elif isinstance(snapshot, BrowserResultSnapshot):
-            await bot_delivery.result(snapshot)
-        elif isinstance(snapshot, BrowserHandoffSnapshot):
-            await bot_delivery.handoff(snapshot)
-        elif isinstance(snapshot, BrowserSessionSnapshot):
-            await bot_delivery.session(snapshot)
+        try:
+            # The platform mirror is best-effort: the card has already been
+            # written above, so a messaging/queue outage must never abort the
+            # in-flight browser run — the user keeps seeing progress regardless.
+            if isinstance(snapshot, BrowserStepSnapshot):
+                await bot_delivery.step(snapshot)
+            elif isinstance(snapshot, BrowserResultSnapshot):
+                await bot_delivery.result(snapshot)
+            elif isinstance(snapshot, BrowserHandoffSnapshot):
+                await bot_delivery.handoff(snapshot)
+            elif isinstance(snapshot, BrowserSessionSnapshot):
+                await bot_delivery.session(snapshot)
+        except Exception as exc:
+            # Swallowed by design (see the emit() docstring): a failed mirror is
+            # a logged warning, never a reason to kill the task.
+            log.error(
+                f"{LogTag.BROWSER} Bot delivery failed; continuing browser task",
+                error_type=type(exc).__name__,
+                browser={"snapshot_type": type(snapshot).__name__},
+            )
 
     async def is_cancelled() -> bool:
         """Check whether the user cancelled this task mid-run (via the card or

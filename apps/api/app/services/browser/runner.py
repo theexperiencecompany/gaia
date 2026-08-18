@@ -200,6 +200,22 @@ class BrowserTaskRunner:
                 f"Could not attach to the browser over CDP at {self._session.cdp_url}: {exc}. "
                 "Check that the browser host is reachable from the API at BROWSER_HOST_URL."
             ) from exc
+        except Exception as exc:
+            # Any other unexpected agent/runtime failure (an LLM-provider error, a
+            # browser_use internal crash, a malformed tool output, a failed handoff
+            # persistence write) must not leave the card stuck in RUNNING — emit a
+            # terminal FAILED result so the UI resolves and the user gets an honest
+            # reason. CancelledError is BaseException, so it is never caught here.
+            log.error(
+                f"{LogTag.BROWSER} Browser agent failed unexpectedly",
+                error_type=type(exc).__name__,
+                browser={"session_id": self._session.session_id},
+            )
+            return await self._finish(
+                BrowserSessionStatus.FAILED,
+                False,
+                f"Browser task failed: {exc}",
+            )
 
         if self._stopped:
             status = (

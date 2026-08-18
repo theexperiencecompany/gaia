@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from app.constants.log_tags import LogTag
 from app.services.browser import host_client
+from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.live_view import live_view_url
 from app.services.browser.registry import register_session, unregister_session
 from app.services.browser.storage_persistence import (
@@ -64,7 +65,14 @@ async def browser_session(
     log.info(f"{LogTag.BROWSER} Browser session created")
 
     try:
-        await register_session(session.session_id, user_id, live_ws=host.live_ws)
+        registered = await register_session(session.session_id, user_id, live_ws=host.live_ws)
+        if not registered:
+            # Without the ownership entry the live-view link we hand the user can
+            # never authorize; fail the session (release runs in the finally below)
+            # instead of stranding them in a handoff they can't open.
+            raise BrowserUnavailableError(
+                "Could not register the browser session (storage unavailable)."
+            )
         yield session
     finally:
         try:

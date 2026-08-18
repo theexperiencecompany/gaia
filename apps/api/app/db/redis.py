@@ -168,16 +168,6 @@ class AsyncRedisCommands(Protocol):
 
     async def rpush(self, name: str, *values: str) -> int: ...
 
-    async def zrem(self, name: str, *values: str) -> int:
-        """Remove members from a sorted set; returns count removed."""
-
-        ...
-
-    async def time(self) -> tuple[int, int]:
-        """Return the Redis server clock as monotonic seconds + microseconds."""
-
-        ...
-
     async def hset(self, name: str, *, mapping: Mapping[str, str]) -> int: ...
 
     async def hgetall(self, name: str) -> dict[str, str]: ...

@@ -41,7 +41,7 @@ from shared.py.wide_events import log
 router = APIRouter(prefix="/browser", tags=["Browser"])
 
 
-@router.get("/handoffs/{handoff_id}", response_model=HandoffDecisionResponse)
+@router.get("/handoffs/{handoff_id}")
 async def get_browser_handoff(
     handoff_id: str,
     user: Annotated[dict, Depends(get_current_user)],
@@ -58,7 +58,7 @@ async def get_browser_handoff(
     return HandoffDecisionResponse(handoff_id=handoff_id, status=record.status)
 
 
-@router.post("/handoffs/{handoff_id}/decision", response_model=HandoffDecisionResponse)
+@router.post("/handoffs/{handoff_id}/decision")
 async def decide_browser_handoff(
     handoff_id: str,
     payload: HandoffDecisionRequest,

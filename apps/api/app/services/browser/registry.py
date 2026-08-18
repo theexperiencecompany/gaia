@@ -31,8 +31,13 @@ def _key(session_id: str) -> str:
     return f"{_KEY_PREFIX}{session_id}"
 
 
-async def register_session(session_id: str, user_id: str, live_ws: str | None = None) -> None:
-    """Record that ``user_id`` owns ``session_id`` and where its live view lives."""
+async def register_session(session_id: str, user_id: str, live_ws: str | None = None) -> bool:
+    """Record that ``user_id`` owns ``session_id`` and where its live view lives.
+
+    Returns ``True`` only when the ownership write succeeded. Callers must not
+    proceed to hand the session's live-view link to a user on ``False`` — without
+    the registry entry that link can never authorize.
+    """
     log.set(browser={"session_id": session_id, "operation": "registry_register"})
     entry = SessionRegistryEntry(owner=user_id, live_ws=live_ws)
     stored = await redis_cache.set(
@@ -42,6 +47,7 @@ async def register_session(session_id: str, user_id: str, live_ws: str | None = 
         log.warning(
             f"{LogTag.BROWSER} browser session registry write failed", session_id=session_id
         )
+    return bool(stored)
 
 
 async def get_session_entry(session_id: str) -> SessionRegistryEntry | None:

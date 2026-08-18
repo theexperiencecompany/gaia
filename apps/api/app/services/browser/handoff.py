@@ -22,7 +22,7 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.schemas.browser import HandoffOutcome, HandoffRecord
-from app.services.browser.exceptions import BrowserHandoffNotOwned
+from app.services.browser.exceptions import BrowserHandoffNotOwned, BrowserUnavailableError
 from shared.py.wide_events import log
 
 
@@ -50,9 +50,17 @@ async def create_pending_handoff(
 
 
 async def _store(handoff_id: str, record: HandoffRecord) -> None:
-    await redis_cache.set(
+    stored = await redis_cache.set(
         _key(handoff_id), record, ttl=HANDOFF_KEY_TTL_SECONDS, model=HandoffRecord
     )
+    if not stored:
+        # A handoff that was never persisted can never be resolved by the other
+        # process: the awaiting run would stall for the full timeout and a user
+        # decision could be silently dropped. Fail loudly instead of stranding
+        # both sides (the runner's unexpected-failure path resolves the card).
+        raise BrowserUnavailableError(
+            f"Could not persist handoff {handoff_id} (storage unavailable)."
+        )
 
 
 async def get_handoff(handoff_id: str) -> HandoffRecord | None:

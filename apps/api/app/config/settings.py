@@ -173,10 +173,11 @@ class CommonSettings(BaseAppSettings):
 
     # ----------------------------------------------
     # Browser-Use (autonomous browser automation)
-    # ----------------------------------------------
-    # Master switch. When false the tool is registered but reports unavailable
-    # instead of spinning up a browser.
-    BROWSER_USE_ENABLED: bool = True
+    # Master switch. Opt-in: new deployments are browser-disabled by default so
+    # the capability only turns on where BROWSER_HOST_URL is configured. When
+    # false the tool is registered but reports unavailable instead of spinning
+    # up a browser.
+    BROWSER_USE_ENABLED: bool = False
 
     # LLM that drives the browser agent — decoupled from the chat harness so
     # browser work uses a deliberately-chosen, vision-capable model. Provider:

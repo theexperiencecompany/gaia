@@ -18,7 +18,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Response, WebSocket
-from fastapi.responses import JSONResponse
 from playwright.sync_api import StorageState
 from pydantic import BaseModel
 
@@ -94,15 +93,15 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(lifespan=_lifespan)
 
 
-@app.post("/sessions", response_model=None)
-async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse | JSONResponse:
+@app.post("/sessions")
+async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse:
     """Create a context on the host for one session; 429 when at capacity."""
     log.set(browser={"operation": "create"})
     try:
         session = await _host.create_context(payload.storage_state)
-    except AtCapacityError:
+    except AtCapacityError as exc:
         log.warning(f"{LogTag.BROWSER} browser host at capacity")
-        return JSONResponse(status_code=429, content={"error": "at_capacity"})
+        raise HTTPException(status_code=429, detail="at_capacity") from exc
     return CreateSessionResponse(
         session_id=session.session_id,
         cdp_ws=_ws_url(f"/cdp/{session.session_id}"),

@@ -574,8 +574,13 @@ class ChromiumHost:
             if self._proc is not None and self._proc.returncode is not None:
                 raise RuntimeError("Chromium exited before publishing its DevTools port")
             if port_file.exists():
-                first_line = port_file.read_text().splitlines()[0].strip()
-                if first_line:
+                # Chromium creates the file, then writes the port asynchronously:
+                # between the exists() check and the flush the file can be empty,
+                # so read defensively and keep polling instead of crashing the
+                # whole launch with an IndexError/ValueError on a partial write.
+                port_lines = port_file.read_text().splitlines()
+                first_line = port_lines[0].strip() if port_lines else ""
+                if first_line.isdigit():
                     return int(first_line)
             await asyncio.sleep(_CDP_READY_POLL_SECONDS)
         raise RuntimeError("Chromium did not write DevToolsActivePort in time")
