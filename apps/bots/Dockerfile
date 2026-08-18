@@ -28,6 +28,20 @@ RUN --mount=type=cache,id=gaia-pnpm-bots,target=/root/.local/share/pnpm/store \
 # single self-contained output — no node_modules needed at runtime.
 RUN pnpm --filter @gaia/bot-${BOT_NAME} build
 
+# Some SDKs (Photon's iMessage gRPC transport) call import.meta.resolve() on
+# their peer deps at runtime, so those packages must exist on disk even though
+# tsup already bundled their code. Stage any that are present; the directory is
+# always created so the COPY below works for every bot.
+RUN mkdir -p /peers/node_modules && \
+    for p in nice-grpc nice-grpc-common @grpc/grpc-js; do \
+      for base in "apps/bots/${BOT_NAME}/node_modules" "node_modules"; do \
+        if [ -e "$base/$p" ]; then \
+          mkdir -p "/peers/node_modules/$(dirname "$p")" && \
+          cp -RL "$base/$p" "/peers/node_modules/$p" && break; \
+        fi; \
+      done; \
+    done
+
 # ---- Production image ----
 FROM node:20-alpine AS runner
 ARG BOT_NAME
@@ -36,6 +50,7 @@ WORKDIR /app
 # Only the bundled dist is needed — no node_modules required
 COPY --from=builder /app/apps/bots/${BOT_NAME}/dist ./dist
 COPY --from=builder /app/apps/bots/${BOT_NAME}/package.json ./
+COPY --from=builder /peers/ ./
 
 # Entrypoint: reads Docker Swarm secrets into env vars before exec-ing the process
 COPY scripts/docker-entrypoint.sh /entrypoint.sh

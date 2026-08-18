@@ -208,6 +208,15 @@ importers:
       '@gaia/shared':
         specifier: workspace:*
         version: link:../../../libs/shared/ts
+      '@grpc/grpc-js':
+        specifier: ^1.14.4
+        version: 1.14.4
+      nice-grpc:
+        specifier: ^2.1.17
+        version: 2.1.17
+      nice-grpc-common:
+        specifier: ^2.0.4
+        version: 2.0.4
       spectrum-ts:
         specifier: ^12.7.0
         version: 12.7.0(typescript@7.0.2)
