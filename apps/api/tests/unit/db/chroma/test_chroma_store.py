@@ -6,6 +6,7 @@ the same store against a real (or ephemeral) ChromaDB: these exercise the pure
 translation steps with a stub collection, no server and no pickle round-trip.
 """
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 from langgraph.store.base import GetOp, PutOp, SearchOp
@@ -170,4 +171,7 @@ class TestPrepareOps:
 
     async def test_an_unknown_op_type_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="Unknown operation type"):
-            await _store()._prepare_ops([object()], _collection())  # type: ignore[list-item]
+            # cast: deliberately wrong-typed to drive the runtime rejection.
+            await _store()._prepare_ops(
+                cast("list[GetOp | PutOp | SearchOp]", [object()]), _collection()
+            )
