@@ -119,6 +119,7 @@ export default function Footer() {
                 alt="The Experience Company"
                 width={44}
                 height={44}
+                unoptimized
               />
             </Link>
 

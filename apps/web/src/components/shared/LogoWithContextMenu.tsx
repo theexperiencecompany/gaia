@@ -66,6 +66,7 @@ const menuItemsConfig = [
         alt="The Experience Company"
         width={16}
         height={16}
+        unoptimized
         className="size-5 shrink-0 object-contain"
       />
     ),

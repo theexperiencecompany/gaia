@@ -130,6 +130,7 @@ function DesktopDownloadButton({
         src={meta.icon}
         alt={meta.name}
         fill
+        unoptimized
         className={
           invertIcon ? "object-contain filter invert" : "object-contain"
         }
@@ -332,6 +333,7 @@ function MobileSection() {
                     src="/images/icons/apple.svg"
                     alt="iOS"
                     fill
+                    unoptimized
                     className="object-contain"
                   />
                 </div>
@@ -348,6 +350,7 @@ function MobileSection() {
                     src="/images/icons/google_play.svg"
                     alt="Android"
                     fill
+                    unoptimized
                     className="object-contain"
                   />
                 </div>

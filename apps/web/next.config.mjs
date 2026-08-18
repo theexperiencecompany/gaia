@@ -230,11 +230,12 @@ const nextConfig = {
     ...(useCloudflareImageLoader
       ? { loader: "custom", loaderFile: "./image-loader.ts" }
       : {}),
-    // Kept on: remote SVGs are relied upon (cdn.simpleicons.org logos, the
-    // ProductHunt featured.svg badge, integration icon URLs). Next serves
-    // remote SVGs with a restrictive CSP for images, so this is scoped to the
-    // image pipeline only.
-    dangerouslyAllowSVG: true,
+    // SVG is never routed through the image optimizer. Remote SVG URLs
+    // (simpleicons.org logos, ProductHunt badge, integration icon URLs) load
+    // via <img>/Image unoptimized, and every local .svg <Image> sets
+    // unoptimized, so the optimizer never re-serves executable SVG from this
+    // origin (dangerouslyAllowSVG intentionally left off). Raster sources
+    // still get optimized.
     minimumCacheTTL: 2_592_000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
     // Image sources are open-ended (user avatars from arbitrary OAuth
     // providers, LLM/backend-driven integration icon URLs, Unsplash, map tiles,

@@ -27,6 +27,7 @@ const SlackIcon = () => (
     width={14}
     height={14}
     alt="Slack"
+    unoptimized
     className="opacity-70"
   />
 );

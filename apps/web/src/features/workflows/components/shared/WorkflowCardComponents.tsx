@@ -206,7 +206,13 @@ export function SystemWorkflowChip({ size = "sm" }: SystemWorkflowChipProps) {
         size={size}
         className="text-primary"
         startContent={
-          <Image src="/brand/gaia_logo.svg" alt="GAIA" width={14} height={14} />
+          <Image
+            src="/brand/gaia_logo.svg"
+            alt="GAIA"
+            width={14}
+            height={14}
+            unoptimized
+          />
         }
       >
         <span className="pl-0.5">System</span>
