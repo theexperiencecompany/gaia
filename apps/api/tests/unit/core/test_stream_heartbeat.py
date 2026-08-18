@@ -84,6 +84,35 @@ async def test_producer_errors_propagate() -> None:
 
 
 @pytest.mark.asyncio
+async def test_closing_mid_heartbeat_closes_the_wrapped_producer() -> None:
+    """A disconnect while a read is in flight must still tear the read down.
+
+    This is the ordinary disconnect for the case the heartbeat exists to serve:
+    the turn is quiet (busy with tool work), so a pull from the event log is
+    always in flight when the client drops. Cancelling that pull without
+    awaiting it leaves the wrapped generator running, and `aclose()` then
+    raises "asynchronous generator is already running" — the subscription is
+    left to GC instead of being closed here.
+    """
+    closed = asyncio.Event()
+
+    async def never_speaks() -> AsyncGenerator[str, None]:
+        try:
+            await asyncio.sleep(10)
+            yield "data: unreachable\n\n"
+        finally:
+            closed.set()
+
+    stream = with_heartbeat(never_speaks(), interval=INTERVAL)
+    # Padding around a pull that has not returned — the racy state.
+    assert await stream.__anext__() == SSE_KEEPALIVE_FRAME
+
+    await stream.aclose()
+
+    await asyncio.wait_for(closed.wait(), timeout=1)
+
+
+@pytest.mark.asyncio
 async def test_closing_early_closes_the_wrapped_producer() -> None:
     """A client disconnect must tear the event-log read down, not leak it."""
     closed = asyncio.Event()

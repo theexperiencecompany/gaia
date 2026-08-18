@@ -40,6 +40,7 @@ Usage:
 
 import asyncio
 from collections.abc import AsyncGenerator
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 import json
@@ -540,7 +541,15 @@ async def with_heartbeat(
             yield frame
     finally:
         if pending is not None:
+            # Await the cancellation before closing: the task is suspended
+            # INSIDE frames.__anext__(), so the generator is still running and
+            # aclose() would raise "asynchronous generator is already running"
+            # — leaving the event-log subscription to be closed by GC instead
+            # of here. This is the ordinary disconnect: a client that drops
+            # while the turn is quiet always has a pull in flight.
             pending.cancel()
+            with suppress(asyncio.CancelledError, StopAsyncIteration):
+                await pending
         await frames.aclose()
 
 
