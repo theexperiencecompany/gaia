@@ -42,11 +42,13 @@ orig_match = re.search(
 if not orig_match:
     sys.exit(1)
 orig_name = orig_match.group(1).rsplit(".", 1)[-1]
-# Leading indentation allowed: a mutated METHOD is emitted inside its class, so a
-# module-level-only split found no body for it, and two empty bodies compare
-# equal — silently reporting every method survivor as a provably equivalent
-# mutant. That is the false green this script exists to prevent.
-blocks = re.split(r"^[ \t]*(?:async )?def ", src, flags=re.MULTILINE)
+# Split ONLY at mutmut's own generated names (x_..__mutmut_N / xǁClassǁ..), at
+# any indentation: methods are emitted inside their class (a module-level-only
+# split found no body for them), and a plain any-def split truncated every
+# CONTAINER function at its first nested def — the header alone then compared
+# equal to every mutant and 788 real survivors on one module were stamped
+# provably equivalent. Both are the false green this script exists to prevent.
+blocks = re.split(r"^[ \t]*(?:async )?def (?=x[\w.ǁ]*__mutmut_)", src, flags=re.MULTILINE)
 
 
 def _def_lines(path: str) -> dict[str, int]:

@@ -267,3 +267,24 @@ class TestPopThroughCastWithEarlyExit:
         result = _classify(workdir)
 
         assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+
+
+class TestContainerFunctionWithNestedDefs:
+    """A mutated CONTAINER function (tool registrars) holds nested defs; the
+    block split must not truncate its body at the first one — the header alone
+    compares equal to every mutant, and 788 real survivors on one module were
+    once stamped provably equivalent that way."""
+
+    _ORIG = '    x = d.get("k")\n    def inner():\n        return 1\n    return (x, inner())'
+
+    def test_a_change_beyond_the_nested_def_is_reported(self, workdir: Path) -> None:
+        _write_mutants(
+            workdir,
+            self._ORIG,
+            self._ORIG.replace('d.get("k")', 'd.get("XXkXX")'),
+        )
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
+        assert result.returncode == 1
