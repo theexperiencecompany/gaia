@@ -105,6 +105,9 @@ services:
       SEARXNG_BASE_URL: http://searxng:8080
       # gaia-browser-host — internal Chromium host for the browser-automation tool.
       BROWSER_HOST_URL: http://browser-host:8930
+      # Browser automation is opt-in (defaults off in settings); this deployment
+      # runs the host, so enable the tool explicitly.
+      BROWSER_USE_ENABLED: "true"
       # Public base fronting the authenticated live view, served by THIS api at
       # /live/{id}. DEPLOY REQUIREMENT: the host Nginx vhost for browser.heygaia.io
       # MUST reverse-proxy to this gaia-backend service (the same authed API, at
@@ -199,6 +202,9 @@ services:
       SEARXNG_BASE_URL: http://searxng:8080
       # gaia-browser-host — internal Chromium host for the browser-automation tool.
       BROWSER_HOST_URL: http://browser-host:8930
+      # Browser automation is opt-in (defaults off in settings); the worker drives
+      # browser tasks, so enable the tool explicitly.
+      BROWSER_USE_ENABLED: "true"
       # The worker builds tokened live-view links for bot delivery, so it needs the
       # same public base as gaia-backend (the vhost proxies to gaia-backend, never here).
       BROWSER_LIVE_VIEW_BASE_URL: ${BROWSER_LIVE_VIEW_BASE_URL:-https://browser.heygaia.io}
@@ -1233,7 +1239,16 @@ services:
       - gaia_infisical_machine_identity_client_id
       - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
-    shm_size: "2gb"
+    # Chromium writes its shared memory to /tmp (--disable-dev-shm-usage), so the
+    # /dev/shm tmpfs only covers the rare force-shared buffers. Docker Swarm
+    # IGNORES shm_size, so this is a real tmpfs mount rather than a size hint —
+    # without it the container would get the 64MB /dev/shm default and heavy pages
+    # could crash. 2G of shm is well inside the 6G memory limit below.
+    volumes:
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+          size: 2147483648
     networks:
       # Deliberately NOT on gaia-prod-shared — see the gaia-browser-net comment
       # at the bottom of this file. The datastores must not be resolvable here.

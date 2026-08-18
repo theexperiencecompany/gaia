@@ -749,6 +749,9 @@ services:
   # ---------------------------------------------------------------------------
   browser-host:
     container_name: browser-host
+    # Starts alongside either of its consumers: the API (backend) and the worker
+    # (worker) both drive browser tasks, so the host must exist under both.
+    profiles: ["backend", "worker", "all"]
     image: gaia
     working_dir: /app/apps/api
     command: ["python", "-m", "app.browser_host"]
@@ -765,15 +768,19 @@ services:
     # the datastores must not be resolvable from the browser (see SECURITY above).
     networks:
       - gaia_browser_net
-    # Chromium needs shared memory well beyond the 64MB docker default.
-    shm_size: "2gb"
+    # Chromium writes its shared memory to /tmp (--disable-dev-shm-usage), so the
+    # /dev/shm tmpfs only needs to cover any rare force-shared buffers. Keep it
+    # well below mem_limit: the shm tmpfs is charged to the container's memory
+    # cgroup, so shm == mem_limit invites an OOM kill (Chromium + Python heaps +
+    # shm pages together exceed either budget long before one is individually full).
+    shm_size: "1gb"
     restart: on-failure
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8930/healthz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-    mem_limit: 2g
+    mem_limit: 3g
     cpus: "1.5"
 
 volumes:
