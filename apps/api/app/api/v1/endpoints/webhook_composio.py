@@ -9,7 +9,8 @@ Each trigger handler implements its own `process_event()` method which handles:
 - Queuing workflow execution via WorkflowQueueService
 
 Connection-lifecycle events take a separate path: they carry none of the trigger
-identifiers, and their only effect is the shared integration expiry transition.
+identifiers, and their only effect is pausing the workflows that needed the dead
+integration and running the shared integration expiry transition.
 """
 
 import asyncio
@@ -33,6 +34,7 @@ from app.models.webhook_models import (
 from app.services.integrations.integration_expiry import expire_user_integration
 from app.services.triggers import get_handler_by_event
 from app.services.triggers.base import TriggerHandler
+from app.services.workflow.integration_pause import pause_workflows_for_expired_integration
 from app.utils.webhook_utils import verify_composio_webhook_signature
 from shared.py.wide_events import log, spawn_logged_task
 
@@ -95,19 +97,24 @@ async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWe
 async def _expire_connection(
     user_id: str, integration_id: str, reason: str | None, connected_account_id: str
 ) -> None:
-    """Background task: run the expiry transition under the shared webhook timeout."""
+    """Background task: pause the dependent workflows, then run the expiry transition.
+
+    Pausing is the caller's job because ``integration_expiry`` cannot import the
+    workflow layer without closing an import cycle (see its module docstring).
+    Both steps share one timeout budget.
+    """
     try:
-        await asyncio.wait_for(
-            expire_user_integration(
+        async with asyncio.timeout(_WEBHOOK_TASK_TIMEOUT):
+            paused = await pause_workflows_for_expired_integration(user_id, integration_id)
+            await expire_user_integration(
                 user_id,
                 integration_id,
                 reason=reason,
                 trigger="webhook",
                 notify=True,
                 connected_account_id=connected_account_id,
-            ),
-            timeout=_WEBHOOK_TASK_TIMEOUT,
-        )
+                paused_workflows=paused,
+            )
     except TimeoutError:
         log.error(
             f"{LogTag.COMPOSIO} Connection expiry processing timed out",

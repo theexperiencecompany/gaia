@@ -33,7 +33,7 @@ from app.services.provider_metadata_service import (
 )
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
-from app.services.workflow.integration_resume import (
+from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
 from app.services.workflow.trigger_service import TriggerService

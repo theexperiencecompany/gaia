@@ -13,7 +13,7 @@ Tests exercise the real service logic from:
 - app.services.integrations.integration_resolver (resolve from platform/custom)
 - app.config.oauth_config (integration definitions, scopes)
 - app.services.oauth.oauth_service (status checks, connection handling)
-- app.services.workflow.integration_resume (workflow resume on reconnect)
+- app.services.workflow.integration_pause (workflow resume on reconnect)
 
 Mocking boundaries:
 - Redis (oauth state storage)
@@ -62,7 +62,7 @@ from app.services.oauth.oauth_state_service import (
     is_safe_redirect_path,
     validate_and_consume_oauth_state,
 )
-from app.services.workflow.integration_resume import (
+from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
 
@@ -906,11 +906,11 @@ class TestWorkflowResumeOnReconnect:
         gmail_workflow = MagicMock(id="wf-gmail")
 
         with (
-            patch("app.services.workflow.integration_resume.workflow_repository") as repo,
+            patch("app.services.workflow.integration_pause.workflow_repository") as repo,
             patch(
-                "app.services.workflow.integration_resume.compute_required_integrations"
+                "app.services.workflow.integration_pause.compute_required_integrations"
             ) as required,
-            patch("app.services.workflow.integration_resume.WorkflowService") as service,
+            patch("app.services.workflow.integration_pause.WorkflowService") as service,
         ):
             # Notion first: a resume that stopped at the first non-match would
             # never reach the Gmail workflow behind it.

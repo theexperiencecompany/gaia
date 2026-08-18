@@ -4,6 +4,9 @@ Two callers run it: the Composio connection webhook (notify=True) and the
 tool-execution reconciliation path (notify=False). Both need it to be a strict
 no-op when there is nothing to expire, because a fabricated record or a repeat
 notification is worse than doing nothing.
+
+Pausing is the caller's job — the transition only receives the resulting titles
+as ``paused_workflows``, so that is what these tests hand it.
 """
 
 from datetime import UTC, datetime
@@ -46,11 +49,6 @@ class _Seams:
             "vfs": patch(f"{MODULE}.schedule_user_integrations_sync"),
             "ws": patch(f"{MODULE}.websocket_manager"),
             "notify": patch(f"{MODULE}.notification_service"),
-            "pause": patch(
-                f"{MODULE}.pause_workflows_for_expired_integration",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
         }
         self.mocks = {name: p.start() for name, p in self._patches.items()}
         self.mocks["repo"].get_for_user = AsyncMock(return_value=self._record)
@@ -117,8 +115,6 @@ class TestSideEffects:
         s.mocks["proxy"].assert_called_once_with(USER_ID, "NOTION")
         # The workspace VFS must stop advertising the toolkit to the agent.
         s.mocks["vfs"].assert_called_once_with(USER_ID)
-        # An armed workflow needing a dead integration must stop firing.
-        s.mocks["pause"].assert_awaited_once_with(USER_ID, INTEGRATION_ID)
 
     async def test_an_integration_outside_the_oauth_catalog_still_transitions(self) -> None:
         # A custom MCP server has no catalog entry, so there is no Composio
@@ -204,7 +200,6 @@ class TestUserFacingAnnouncement:
         s.mocks["status"].assert_awaited_once()
         s.mocks["proxy"].assert_called_once_with(USER_ID, "NOTION")
         s.mocks["vfs"].assert_called_once_with(USER_ID)
-        s.mocks["pause"].assert_awaited_once_with(USER_ID, INTEGRATION_ID)
         s.mocks["ws"].broadcast_to_user.assert_awaited_once()
 
 
@@ -215,9 +210,13 @@ class TestPausedWorkflowsChangeTheAnnouncement:
         # covers the reconnect ask — but it says nothing about workflows being
         # disabled, so silently stopping them would be the worse surprise.
         with _Seams(record=_record("connected")) as s:
-            s.mocks["pause"].return_value = ["Morning digest", "Invoice filing"]
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="tool_execution", notify=False
+                USER_ID,
+                INTEGRATION_ID,
+                reason="revoked",
+                trigger="tool_execution",
+                notify=False,
+                paused_workflows=["Morning digest", "Invoice filing"],
             )
 
         s.mocks["notify"].create_notification.assert_awaited_once()
@@ -227,9 +226,13 @@ class TestPausedWorkflowsChangeTheAnnouncement:
 
     async def test_a_single_paused_workflow_is_named(self) -> None:
         with _Seams(record=_record("connected")) as s:
-            s.mocks["pause"].return_value = ["Morning digest"]
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                reason="revoked",
+                trigger="webhook",
+                notify=True,
+                paused_workflows=["Morning digest"],
             )
 
         body = s.mocks["notify"].create_notification.await_args.args[0].content.body

@@ -352,6 +352,21 @@ class TestComposioConnectionEvents:
     does not carry — so Composio retried the same delivery forever.
     """
 
+    @pytest.fixture(autouse=True)
+    def pause(self):
+        """The workflow layer is mocked at its own seam — it is not this file's subject.
+
+        Left real it would query Mongo from the background task, and a failure
+        there would abort the expiry these tests assert on.
+        """
+        with patch.object(
+            _endpoint(),
+            "pause_workflows_for_expired_integration",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as pause:
+            yield pause
+
     async def _post(self, real_redis, payload: dict, *, webhook_id: str):
         body = json.dumps(payload).encode()
         timestamp = "2025-01-01T00:00:00Z"
@@ -401,7 +416,36 @@ class TestComposioConnectionEvents:
             trigger="webhook",
             notify=True,
             connected_account_id="ca_xxxxxxxxxxxx",
+            paused_workflows=[],
         )
+
+    @pytest.mark.regression
+    async def test_it_pauses_the_dependent_workflows_and_hands_the_titles_to_the_expiry(
+        self, real_redis, pause
+    ):
+        # The endpoint owns the pause because `integration_expiry` cannot import
+        # the workflow layer, and the titles are what turn the reconnect
+        # notification into "2 workflows are paused" instead of bare "reconnect".
+        integration = MagicMock()
+        integration.id = "notion"
+        pause.return_value = ["Morning digest", "Invoice filing"]
+
+        with (
+            patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
+            patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire,
+        ):
+            await self._post(real_redis, _make_connection_payload(), webhook_id="conn-paused-001")
+
+            for _ in range(100):
+                if expire.await_count:
+                    break
+                await asyncio.sleep(0)
+
+        pause.assert_awaited_once_with("507f1f77bcf86cd799439011", "notion")
+        assert expire.await_args.kwargs["paused_workflows"] == [
+            "Morning digest",
+            "Invoice filing",
+        ]
 
     async def test_the_toolkit_slug_resolves_the_integration_when_the_auth_config_does_not(
         self, real_redis

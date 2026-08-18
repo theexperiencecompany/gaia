@@ -6,8 +6,16 @@ is not looking at GAIA, so the notification and the live page update are the
 whole point), and the tool-execution reconciliation path runs it with
 ``notify=False`` (the user is mid-conversation and is handed a connect card in
 the same turn — a notification seconds later is noise).
+
+Pausing the workflows that needed the dead integration is the *caller's* job:
+it hands the paused titles in as ``paused_workflows`` and this module only
+folds them into the announcement. The transition is reachable from the Composio
+tool wrapper, so importing the workflow layer here would close an import cycle
+(``workflow.service`` -> ``trigger_service``/``generation_service`` ->
+``composio_service`` -> back to this module).
 """
 
+from collections.abc import Sequence
 from typing import Literal
 
 from app.config.oauth_config import get_integration_by_id
@@ -32,7 +40,6 @@ from app.services.composio.proxy_client import invalidate_connected_account_cach
 from app.services.integrations.user_integration_status import update_user_integration_status
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.notification_service import notification_service
-from app.services.workflow.integration_pause import pause_workflows_for_expired_integration
 from shared.py.wide_events import log
 
 # Which detection path drove this transition — carried into the wide event so a
@@ -50,6 +57,7 @@ async def expire_user_integration(
     trigger: ExpiryTrigger,
     notify: bool,
     connected_account_id: str | None = None,
+    paused_workflows: Sequence[str] = (),
 ) -> bool:
     """Mark a user's integration connection dead and stop the rest of GAIA treating it as usable.
 
@@ -97,8 +105,6 @@ async def expire_user_integration(
     invalidate_connected_account_cache(user_id, toolkit)
     schedule_user_integrations_sync(user_id)
 
-    paused_workflows = await pause_workflows_for_expired_integration(user_id, integration_id)
-
     log.set_ns("integration_expiry", outcome="expired", paused_workflows=len(paused_workflows))
     log.warning(
         f"{LogTag.INTEGRATION} Integration connection expired",
@@ -122,7 +128,7 @@ async def expire_user_integration(
     return True
 
 
-def _expiry_body(integration_name: str, paused_workflows: list[str]) -> str:
+def _expiry_body(integration_name: str, paused_workflows: Sequence[str]) -> str:
     """Say what actually stopped working, not just that something broke."""
     lost = f"GAIA lost access to your {integration_name} account and can no longer use it."
     if not paused_workflows:
@@ -138,7 +144,7 @@ async def _announce_expiry(
     user_id: str,
     integration_id: str,
     integration_name: str,
-    paused_workflows: list[str],
+    paused_workflows: Sequence[str],
 ) -> None:
     """Flip an open integrations page live, then leave a persistent Reconnect nudge."""
     await websocket_manager.broadcast_to_user(

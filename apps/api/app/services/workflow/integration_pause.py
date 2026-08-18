@@ -1,29 +1,21 @@
-"""Pause a user's workflows when an integration they need dies.
+"""Pause a user's workflows when an integration they need dies, and resume on reconnect.
 
 An activated workflow whose integration is dead is worse than a paused one: it
 keeps firing on schedule, burns LLM spend, and delivers a failed or empty run
 that reads to the user as "GAIA is broken" rather than "Gmail needs
 reconnecting". Pausing turns an invisible failure into a visible, fixable state.
 
-Deactivation goes through the repository rather than
-``WorkflowService.deactivate_workflow`` (the path ``dormancy`` uses), because
-this module runs inside the Composio tool wrapper's reach: importing
-``workflow.service`` from here closes an import cycle back through
-``composio_service``. The difference is that the workflow's Composio trigger is
-not unregistered upstream. That is safe *here specifically* — the trigger is
-bound to the connected account that just died, so it cannot deliver, and the
-repository write clears ``composio_trigger_ids`` so a stray delivery matches no
-workflow. Reconnecting strands those upstream triggers exactly as any reconnect
-already does (see ``handle_oauth_connection``), and re-registers fresh ones.
-
-The resume half lives in ``integration_resume`` — it needs ``WorkflowService``
-and is only reached from the OAuth reconnect path, which is outside that cycle.
+Both halves go through ``WorkflowService`` rather than the repository, so the
+workflow's Composio trigger is unregistered upstream on pause and re-registered
+on resume — a trigger left enabled on a dead account is upstream state GAIA no
+longer tracks.
 """
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.models.workflow_models import DeactivationReason
 from app.services.workflow.integration_requirements import compute_required_integrations
+from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
 
@@ -41,7 +33,7 @@ async def pause_workflows_for_expired_integration(user_id: str, integration_id: 
         if integration_id not in required:
             continue
         try:
-            await workflow_repository.deactivate(
+            await WorkflowService.deactivate_workflow(
                 workflow.id, user_id, reason=DeactivationReason.INTEGRATION_EXPIRED
             )
             paused.append(workflow.title)
@@ -63,3 +55,42 @@ async def pause_workflows_for_expired_integration(user_id: str, integration_id: 
             paused=len(paused),
         )
     return paused
+
+
+async def resume_workflows_for_reconnected_integration(user_id: str, integration_id: str) -> int:
+    """Re-activate the workflows paused for ``integration_id``, now that it is back.
+
+    Only touches workflows carrying ``DeactivationReason.INTEGRATION_EXPIRED``, so
+    a workflow the user switched off themselves is never silently re-enabled. One
+    still missing another integration cannot be re-activated —
+    ``activate_workflow`` raises and it is left paused for a later reconnect.
+    """
+    resumed = 0
+
+    for workflow in await workflow_repository.find_paused_for_reason(
+        user_id, DeactivationReason.INTEGRATION_EXPIRED
+    ):
+        required = compute_required_integrations(workflow.steps, workflow.trigger_config)
+        if integration_id not in required:
+            continue
+        try:
+            await WorkflowService.activate_workflow(workflow.id, user_id)
+            resumed += 1
+        except Exception as e:
+            log.info(
+                f"{LogTag.WORKFLOW} Workflow left paused — still missing an integration",
+                workflow_id=workflow.id,
+                user_id=user_id,
+                integration_id=integration_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
+    if resumed:
+        log.info(
+            f"{LogTag.WORKFLOW} Resumed workflows after integration reconnect",
+            user_id=user_id,
+            integration_id=integration_id,
+            resumed=resumed,
+        )
+    return resumed
