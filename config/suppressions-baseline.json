@@ -667,12 +667,6 @@
       "hash": "db9b69b9df082cfeb461a6b6f29f520c5a5bbf984df0d55ad07a10515febfcfa"
     },
     {
-      "path": "apps/web/src/components/ui/marquee.tsx",
-      "kind": "biome-ignore",
-      "count": 1,
-      "hash": "e6a0cdb8a14c7d2170ea3347a944a1e4c91b7683c121e0686bd0c02026fa3d5e"
-    },
-    {
       "path": "apps/web/src/components/ui/sidebar.tsx",
       "kind": "biome-ignore",
       "count": 1,
@@ -718,7 +712,7 @@
       "path": "apps/web/src/features/integrations/components/PublicIntegrationCard.tsx",
       "kind": "biome-ignore",
       "count": 2,
-      "hash": "2361fd2ee0763d44766522d970c5a883989d34c5f78dfdfab5248dc8b1882858"
+      "hash": "d9dfa47404ae71aba0cda6200f0a1c2ad8a676c41c38e3d76886d58ee6047afb"
     },
     {
       "path": "apps/web/src/features/landing/components/demo/MiniWaveSpinner.tsx",
