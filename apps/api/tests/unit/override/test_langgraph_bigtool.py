@@ -723,7 +723,9 @@ class TestBindSessionId:
         from app.override.langgraph_bigtool.create_agent import _bind_session_id
 
         llm = MagicMock()
-        bound = _bind_session_id(llm, {"session_id": "conv-1"})
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.OPENROUTER, "session_id": "conv-1"}
+        )
 
         llm.bind.assert_called_once_with(session_id="conv-1")
         assert bound is llm.bind.return_value
@@ -732,7 +734,7 @@ class TestBindSessionId:
         from app.override.langgraph_bigtool.create_agent import _bind_session_id
 
         llm = MagicMock()
-        bound = _bind_session_id(llm, {})
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.OPENROUTER})
 
         llm.bind.assert_not_called()
         assert bound is llm
@@ -742,7 +744,27 @@ class TestBindSessionId:
         from app.override.langgraph_bigtool.create_agent import _bind_session_id
 
         llm = MagicMock()
-        bound = _bind_session_id(llm, {"session_id": ""})
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.OPENROUTER, "session_id": ""})
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
+    @pytest.mark.parametrize("provider", [LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM])
+    def test_a_sticky_provider_gets_the_key(self, provider: LLMProviderName) -> None:
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        _bind_session_id(llm, {"provider": provider, "session_id": "conv-1"})
+
+        llm.bind.assert_called_once_with(session_id="conv-1")
+
+    def test_gemini_is_left_alone(self) -> None:
+        """session_id is an OpenRouter routing hint. Gemini has no stickiness to
+        pin, so sending it there is an unsupported argument on every graph call."""
+        from app.override.langgraph_bigtool.create_agent import _bind_session_id
+
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.GEMINI, "session_id": "conv-1"})
 
         llm.bind.assert_not_called()
         assert bound is llm

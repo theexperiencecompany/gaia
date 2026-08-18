@@ -146,6 +146,9 @@ STICKY_FLIP_RETRY_MIN_INPUT = 8_000
 # attempt wrote — is OpenRouter-wire behaviour. Gemini has no sticky routing,
 # so a replay there is a second full-price call with no possible upside.
 STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM})
+# Auxiliary one-shots route on their own sticky session: sharing the
+# conversation's key re-pinned its provider from a background call (measured).
+AUX_SESSION_SUFFIX = "-aux"
 
 # Total wall-clock ceiling for one ainvoke_llm call — retries, backoff sleeps and the
 # fallback attempt included. A backstop against a provider that accepts the connection

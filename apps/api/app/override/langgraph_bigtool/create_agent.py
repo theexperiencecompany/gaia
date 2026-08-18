@@ -67,6 +67,7 @@ from app.constants.llm import (
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
     RECURSION_WRAPUP_THRESHOLD_STEPS,
+    STICKY_ROUTING_PROVIDERS,
 )
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.dynamic_tool_node import (
@@ -129,9 +130,14 @@ def _prepare_fallback(
 
 
 def _bind_session_id(llm_with_tools: Runnable, model_configurations: AgentConfigurable) -> Runnable:
-    """Bind the OpenRouter sticky-routing session id onto ``llm_with_tools``, if configured."""
+    """Bind the sticky-routing session id onto ``llm_with_tools``, if applicable."""
     # Must run AFTER bind_tools (which rebuilds the runnable and drops outer bindings), so the
     # call pins to the conversation's provider and its prompt cache chains across turns.
+    # Gated on the provider the same way ainvoke_llm gates it: session_id is an
+    # OpenRouter routing hint, and Gemini has no stickiness to pin, so sending
+    # it there is an unsupported argument on every graph call.
+    if model_configurations.get("provider") not in STICKY_ROUTING_PROVIDERS:
+        return llm_with_tools
     session_id = model_configurations.get("session_id")
     if session_id:
         return llm_with_tools.bind(session_id=session_id)

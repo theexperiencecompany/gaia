@@ -340,6 +340,10 @@ class PlatformLinkService:
                     user={"id": user_id},
                     provider=Platform.IMESSAGE.value,
                     stranded=len(unreleased) - 1,
+                    # Named, not just counted: the pending record holds only the
+                    # first, so nothing else records these and "release them by
+                    # hand" is not actionable without knowing which.
+                    untracked=unreleased[1:],
                     fix="release these numbers on Photon by hand; the sweep cannot see them",
                 )
 

@@ -11,6 +11,7 @@ Covers:
 - chatbot: default-model one-shot path, error handling
 """
 
+import asyncio
 from collections.abc import Iterator
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
@@ -640,7 +641,10 @@ class TestFallbackHandover:
         result = await ainvoke_llm(primary, messages, fallback=fallback, config=config)
 
         assert result.content == "fallback-ok"
-        assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}
+        # Suffixed: this call is auxiliary (meter_auxiliary defaults True), and an
+        # aux request must keep its own sticky session on the fallback too — the
+        # conversation's key would re-pin its provider from a background call.
+        assert fallback.bind.call_args.kwargs == {"session_id": "conv-1-aux"}
         assert fallback.ainvoke.call_args.args[0] is messages
         forwarded = fallback.ainvoke.call_args.kwargs["config"]
         assert forwarded["configurable"]["session_id"] == "conv-1"
@@ -728,7 +732,10 @@ class TestStickyFlipReplayThresholds:
             meter_auxiliary=False,
         )
 
-        assert result.content == "warm"
+        # "cold" — the answer the user already watched stream. The replay is a
+        # cache-warming write, so its answer is discarded rather than returned;
+        # returning it would persist text that differs from what was on screen.
+        assert result.content == "cold"
         assert primary.ainvoke.await_count == 2
 
     async def test_a_prompt_just_under_the_input_floor_is_not_replayed(self) -> None:
@@ -1695,3 +1702,115 @@ class TestFallbackRunsOnTheOtherProvider:
         assert seen["model"] == "gemini-x"
         # the dead lane's routing pin must not ride along to the new provider
         assert "model_kwargs" not in seen
+
+
+class TestStickyFlipReplayNeverChangesTheAnswer:
+    """The replay warms the provider's chain for the next turn; it must not
+    change this turn's answer. The first invocation streams to the user, the
+    replay is silenced — so returning the replay's text would persist an answer
+    the user never saw and show different content on reload."""
+
+    async def test_the_streamed_answer_is_the_one_returned(self, booked_replay: AsyncMock) -> None:
+        primary = _replaying_primary(
+            _replay_result("what the user watched", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=0),
+            _replay_result("a different answer", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=7_900),
+        )
+
+        result = await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=_STICKY_LANE,
+            meter_auxiliary=False,
+        )
+
+        assert result.content == "what the user watched"
+        assert primary.ainvoke.await_count == 2
+
+    async def test_the_discarded_replay_is_still_booked(self, booked_replay: AsyncMock) -> None:
+        """Both requests were billed by the provider, so both must reach COGS —
+        the graph meters the returned answer, this books the thrown-away one."""
+        primary = _replaying_primary(
+            _replay_result("kept", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=0),
+            _replay_result("thrown away", prompt=STICKY_FLIP_RETRY_MIN_INPUT, cached=7_900),
+        )
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=_STICKY_LANE,
+            meter_auxiliary=False,
+        )
+
+        assert booked_replay.await_count == 1
+        assert booked_replay.await_args.kwargs["cached_tokens"] == 7_900
+
+
+class TestFallbackKeepsItsLanesStickySession:
+    """Which sticky key the fallback binds depends on the lane it is serving.
+
+    The graph lane must land back on the conversation's provider; an auxiliary
+    one-shot must not, or a background call re-pins the conversation. Both
+    resolve through one helper, so a fallback cannot silently drop the suffix.
+    """
+
+    def _bindable(self, answer: AIMessage) -> NonCallableMagicMock:
+        return TestFallbackHandover._bindable_runnable(answer)
+
+    async def test_the_graph_lane_falls_back_onto_the_conversation_session(self) -> None:
+        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
+        fallback = self._bindable(AIMessage(content="ok"))
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            fallback=fallback,
+            config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
+            meter_auxiliary=False,
+        )
+
+        assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}
+
+    async def test_a_run_without_a_session_binds_nothing(self) -> None:
+        """No key to be sticky on — binding a placeholder would pin at random."""
+        primary = TestAinvokeLlm._runnable(side_effect=ConnectionError("provider down"))
+        fallback = self._bindable(AIMessage(content="ok"))
+
+        await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            fallback=fallback,
+            config=RunnableConfig(configurable={"user_id": "u1"}),
+            meter_auxiliary=False,
+        )
+
+        fallback.bind.assert_not_called()
+
+
+class TestTheInvokeTimeoutIsEnforced:
+    """The caller's timeout is the ceiling on a whole attempt, retries included.
+
+    Nothing else asserts it is applied: with the ceiling dropped, a provider
+    that stops responding holds the turn open until the request dies somewhere
+    upstream, and the user watches a chat that never finishes.
+    """
+
+    @staticmethod
+    def _hanging_primary() -> NonCallableMagicMock:
+        async def _never_answers(*_args: object, **_kwargs: object) -> AIMessage:
+            await asyncio.sleep(30)
+            return AIMessage(content="too late")
+
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(side_effect=_never_answers)
+        return runnable
+
+    async def test_a_provider_that_stops_answering_hits_the_ceiling(self) -> None:
+        with pytest.raises(TimeoutError):
+            await ainvoke_llm(
+                self._hanging_primary(),
+                [HumanMessage(content="hi")],
+                label="comms_agent",
+                timeout=0.05,
+                meter_auxiliary=False,
+            )

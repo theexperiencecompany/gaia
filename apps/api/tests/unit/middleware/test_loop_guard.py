@@ -90,11 +90,11 @@ async def _run(mw: LoopGuardMiddleware, times: int, **kwargs: Any) -> list[ToolM
 def _captured_warnings() -> Iterator[list[tuple[str, dict[str, Any]]]]:
     """Capture the guard's wide-event warnings as (message, kwargs) pairs."""
     warnings: list[tuple[str, dict[str, Any]]] = []
-    with patch.object(
-        log,
-        "warning",
-        lambda message, **kwargs: warnings.append((message, kwargs)),
-    ):
+
+    def _record(message: str, **kwargs: Any) -> None:
+        warnings.append((message, kwargs))
+
+    with patch.object(log, "warning", _record):
         yield warnings
 
 

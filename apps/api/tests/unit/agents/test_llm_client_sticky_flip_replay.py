@@ -1,7 +1,8 @@
-"""The sticky-flip replay's discarded first invocation, and who pays for it.
+"""The sticky-flip replay's discarded invocation, and who pays for it.
 
-``ainvoke_llm`` re-sends a graph call whose prompt cache came back cold and
-RETURNS the replay. The first invocation never lands in graph state, so
+``ainvoke_llm`` re-sends a graph call whose prompt cache came back cold, keeps
+the FIRST answer (the one that streamed to the user) and throws the replay's
+away. The discarded invocation never lands in graph state, so
 ``LLMAccountingMiddleware`` — which meters from the state message — can never
 see it, while the provider billed it all the same. These pin who accounts for
 that invocation on each lane.
@@ -35,10 +36,12 @@ def _usage_message(content: str, *, prompt: int, cached: int) -> AIMessage:
 
 
 class TestStickyFlipReplayAccounting:
-    """When a graph call's prompt cache misses, ``ainvoke_llm`` re-sends and
-    RETURNS the replay — the first invocation never lands in graph state, so
-    ``LLMAccountingMiddleware`` (which meters from the state message) can never
-    see it. The provider billed it, so ``ainvoke_llm`` meters it itself."""
+    """When a graph call's prompt cache misses, ``ainvoke_llm`` re-sends to warm
+    the provider's chain and DISCARDS the replay's answer — the first answer is
+    the one the user watched stream, so it is the one returned. The discarded
+    invocation never lands in graph state, so ``LLMAccountingMiddleware`` (which
+    meters from the state message) can never see it. The provider billed it, so
+    ``ainvoke_llm`` meters it itself."""
 
     @staticmethod
     def _flipping_primary() -> NonCallableMagicMock:
@@ -72,12 +75,14 @@ class TestStickyFlipReplayAccounting:
             meter_auxiliary=False,
         )
 
-        assert result.content == "warm"
+        # The first answer is what streamed to the user, so it is what the turn
+        # returns and persists; the replay only warms the provider's chain.
+        assert result.content == "cold"
         mock_record.assert_awaited_once()
         charged = mock_record.await_args.kwargs
-        # The DISCARDED invocation is the one being paid for: it is the cold
-        # call, so none of its input was cached.
-        assert charged["cached_tokens"] == 0
+        # The DISCARDED invocation is the one being paid for: it is the replay,
+        # which is the call that came back warm.
+        assert charged["cached_tokens"] == 9_900
         assert charged["input_tokens"] == 10_000
         assert charged["root_request_id"] == "r1"
         assert charged["user_id"] == "u1"

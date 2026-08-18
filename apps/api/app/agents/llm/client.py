@@ -30,6 +30,7 @@ from app.agents.llm.types import (
 from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
+    AUX_SESSION_SUFFIX,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
@@ -582,17 +583,31 @@ def _resolve_fallback(
     return with_llm_retry(resolved)
 
 
+def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool) -> str | None:
+    """The provider's sticky-routing key for this call, or None when unset.
+
+    Auxiliary one-shots get their own suffixed session: sharing the
+    conversation's key re-pins its provider from a background call. Both the
+    primary bind and the fallback resolve through here, so a fallback can no
+    longer quietly drop the suffix and re-pin the conversation.
+    """
+    session_id = agent_configurable(config).get("session_id")
+    if not session_id:
+        return None
+    return f"{session_id}{AUX_SESSION_SUFFIX}" if auxiliary else str(session_id)
+
+
 async def _meter_discarded_replay(
     discarded: Any,
     config: RunnableConfig | None,
     label: str,
 ) -> None:
-    """Meter the first invocation the sticky-flip replay threw away — otherwise
-    its tokens miss the daily budget, the per-request ceiling and COGS entirely.
+    """Meter the sticky-flip replay whose answer was thrown away — otherwise its
+    tokens miss the daily budget, the per-request ceiling and COGS entirely.
 
     Graph-lane only by construction: the replay itself is gated on
     ``not meter_auxiliary``, and the graph lane meters from the AIMessage that
-    lands in state — which is the replay's, never this discard's."""
+    lands in state — which is the FIRST answer's, never this discard's."""
     if not isinstance(discarded, AIMessage):
         return
     configurable = agent_configurable(config)
@@ -711,12 +726,11 @@ async def ainvoke_llm(
                     and prompt >= STICKY_FLIP_RETRY_MIN_INPUT
                     and cached < prompt * STICKY_FLIP_RETRY_MIN_HIT
                 ):
-                    discarded = result
                     try:
                         # silent: graph providers stream, and without it both
                         # invocations' tokens land in the same SSE stream —
                         # the user watches a second answer append to the first.
-                        result = await with_llm_retry(primary, max_attempts=1).ainvoke(
+                        discarded = await with_llm_retry(primary, max_attempts=1).ainvoke(
                             messages,
                             # No usage handler to attach: this branch is gated
                             # on the graph lane, where usage_handler is None.
@@ -730,7 +744,11 @@ async def ainvoke_llm(
                             agent_name=label,
                             error=str(replay_error),
                         )
-                        return discarded
+                        return result
+                    # The replay exists to write the chain onto the provider for
+                    # the NEXT turn, so its answer is thrown away: the first one
+                    # already streamed to the user, and returning the replay's
+                    # would persist text that differs from what they watched.
                     await _meter_discarded_replay(discarded, config, label)
                 return result
             except LLM_FALLBACK_EXCEPTIONS as primary_error:
@@ -743,7 +761,7 @@ async def ainvoke_llm(
                         fallback,
                         label,
                         primary_error,
-                        session_id=agent_configurable(config).get("session_id"),
+                        session_id=_sticky_session_id(config, auxiliary=meter_auxiliary),
                     ).ainvoke(
                         messages,
                         config=_with_usage_handler(fallback_config or config, usage_handler),
@@ -930,9 +948,9 @@ def _aux_structured_runnable(
     # routing is per session, and sharing the conversation's session_id made
     # the aux requests re-pin the conversation's provider (measured: the
     # comms' rotation dips).
-    session_id = agent_configurable(config).get("session_id")
+    session_id = _sticky_session_id(config, auxiliary=True)
     if session_id:
-        structured = structured.bind(session_id=f"{session_id}-aux")
+        structured = structured.bind(session_id=session_id)
     return structured
 
 

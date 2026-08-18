@@ -445,6 +445,9 @@ class TestUnlinkAccount:
             "user": {"id": sample_user_id},
             "provider": "imessage",
             "stranded": 1,
+            # The number itself, not just how many: the pending record holds
+            # only the first, so this line is the sole trace of the second.
+            "untracked": ["+15551234567"],
             "fix": "release these numbers on Photon by hand; the sweep cannot see them",
         }
 
