@@ -16,6 +16,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 import pytest
 
+from app.constants.cache import ACTIVE_PLANS_CACHE_KEY
 from app.models.payment_models import (
     PlanDocument,
     PlanResponse,
@@ -404,6 +405,40 @@ class TestGetPlans:
         assert plans[0].name == "Cached Plan"
         mock_plan_repository.list_plans.assert_not_awaited()
 
+    async def test_the_active_and_all_catalogs_read_their_own_cache_slot(
+        self,
+        payment_service,
+        mock_plan_repository,
+        mock_redis_cache,
+    ):
+        """Two catalogs, two slots. Reading the wrong one serves the inactive plans
+        to the pricing page (or hides them from the admin list)."""
+        active_only_plan = PlanResponse(
+            id="abc",
+            dodo_product_id="prod_abc123",
+            name="Only Active",
+            description=None,
+            amount=999,
+            currency="USD",
+            duration="monthly",
+            max_users=None,
+            features=[],
+            is_active=True,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+        cache_slots = {ACTIVE_PLANS_CACHE_KEY: [active_only_plan.model_dump()]}
+        mock_redis_cache.get = AsyncMock(side_effect=cache_slots.get)
+        mock_plan_repository.list_plans = AsyncMock(return_value=[SAMPLE_PLAN])
+
+        assert [p.name for p in await payment_service.get_plans(active_only=True)] == [
+            "Only Active"
+        ]
+        # The all-plans slot is empty, so that catalog must fall through to the DB.
+        assert [p.name for p in await payment_service.get_plans(active_only=False)] == [
+            "Pro Monthly"
+        ]
+
     async def test_clears_cache_on_incompatible_data(
         self,
         payment_service,
@@ -579,6 +614,37 @@ class TestCreateSubscription:
 
         assert exc_info.value.status_code == 502
         assert "Payment service error" in str(exc_info.value.detail)
+
+    async def test_checkout_session_carries_the_users_email_and_name(
+        self,
+        payment_service,
+        mock_users_collection,
+        mock_subscription_repository,
+        mock_plan_repository,
+        mock_redis_cache,
+        mock_dodo_client,
+    ):
+        """Dodo bills and receipts whoever the ``customer`` block names. A missing
+        or misspelled field sends the hosted page an anonymous customer, so the
+        receipt never reaches the user who paid."""
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
+        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
+        mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
+
+        checkout_response = MagicMock()
+        checkout_response.session_id = "sess_003"
+        checkout_response.checkout_url = "https://checkout.dodo.dev/sess_003"
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
+
+        mock_plan_repository.list_plans = AsyncMock(return_value=[])
+
+        await payment_service.create_subscription(
+            user_id=FAKE_USER_ID,
+            product_id="prod_abc123",
+        )
+
+        call_kwargs = mock_dodo_client.checkout_sessions.create.call_args[1]
+        assert call_kwargs["customer"] == {"email": FAKE_EMAIL, "name": "Alice"}
 
     async def test_discount_code_passed_to_checkout(
         self,

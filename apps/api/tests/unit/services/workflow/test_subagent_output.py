@@ -47,6 +47,9 @@ def test_clarifying_without_message_falls_back_to_the_raw_reply() -> None:
 
     assert result.mode == "clarifying"
     assert result.message == response
+    # The reply the subagent actually sent is kept alongside the fallback message,
+    # the same as on the no-JSON path — a result that drops it cannot be replayed.
+    assert result.raw_response == response
 
 
 def test_clarifying_fallback_reads_only_the_lowercase_message_key() -> None:

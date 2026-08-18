@@ -27,16 +27,6 @@ def _model_config() -> ModelConfig:
 
 
 @pytest.fixture
-def mock_redis_cache():
-    """Bypass the @Cacheable layer so the wrapped function body runs."""
-    with (
-        patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
-        patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
-    ):
-        yield
-
-
-@pytest.fixture
 def mock_repo():
     with patch(f"{_MOD}.ai_model_repository") as m:
         m.get_by_model_id = AsyncMock()

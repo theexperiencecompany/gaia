@@ -48,9 +48,8 @@ def _event(data: dict[str, object]) -> DodoWebhookEvent:
 
 
 class TestGetUserEmailFromMetadata:
-    async def test_numeric_user_id_is_coerced_not_skipped(self) -> None:
-        """We set metadata.user_id as str(user_id) at checkout; a provider-side
-        JSON number echo is recovered by str(), not silently dropped."""
+    async def test_present_user_id_is_looked_up_verbatim(self) -> None:
+        """The checkout-set metadata id is the lookup key."""
         service = PaymentWebhookService()
 
         class _User:
@@ -62,10 +61,36 @@ class TestGetUserEmailFromMetadata:
             new_callable=AsyncMock,
             return_value=user,
         ) as mock_get:
-            email = await service._get_user_email_from_metadata({"user_id": 12345})
+            email = await service._get_user_email_from_metadata({"user_id": USER_ID})
 
         assert email == "alice@example.com"
+        mock_get.assert_awaited_once_with(USER_ID)
+
+    async def test_a_numeric_round_tripped_id_is_coerced_before_lookup(self) -> None:
+        """Checkout writes str(user_id), but Dodo echoes provider-side JSON —
+        a numeric echo must still hit the string-keyed repository."""
+        service = PaymentWebhookService()
+        with patch(
+            "app.services.payments.payment_webhook_service.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_get:
+            await service._get_user_email_from_metadata({"user_id": 12345})
+
         mock_get.assert_awaited_once_with("12345")
+
+    async def test_an_unknown_user_id_yields_no_email(self) -> None:
+        """A lookup miss returns None rather than raising or inventing an address."""
+        service = PaymentWebhookService()
+        with patch(
+            "app.services.payments.payment_webhook_service.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_get:
+            email = await service._get_user_email_from_metadata({"user_id": USER_ID})
+
+        assert email is None
+        mock_get.assert_awaited_once_with(USER_ID)
 
     async def test_missing_user_id_skips_lookup(self) -> None:
         service = PaymentWebhookService()
@@ -80,12 +105,11 @@ class TestGetUserEmailFromMetadata:
 
 
 class TestHandleSubscriptionActive:
-    async def test_numeric_metadata_user_id_binds_by_coercion_not_email(self) -> None:
-        """A truthy non-str metadata id must stay the identity source — the
-        subscription binds to str(metadata.user_id), never to whoever owns the
-        customer email."""
+    async def test_metadata_user_id_binds_without_an_email_lookup(self) -> None:
+        """Metadata is the identity source — the subscription binds to it and
+        never to whoever happens to own the customer email."""
         service = PaymentWebhookService()
-        sub = _sub_data(metadata={"user_id": 12345})
+        sub = _sub_data()
         event = _event(sub.model_dump())
 
         with (
@@ -110,7 +134,7 @@ class TestHandleSubscriptionActive:
         assert result.status == "processed"
         mock_by_email.assert_not_awaited()
         created = mock_create.await_args.args[0]
-        assert created.user_id == "12345"
+        assert created.user_id == USER_ID
 
     async def test_missing_metadata_user_id_falls_back_to_email(self) -> None:
         service = PaymentWebhookService()
@@ -149,7 +173,7 @@ class TestProcessWebhook:
 
     ``process_webhook`` had no test at all, so every read the strictness pass
     rewrote here — the ``type`` echo on both early-return paths and the nested
-    ``data`` unwrap with its non-mapping fallback — ran unasserted.
+    ``data`` unwrap — ran unasserted.
     """
 
     @staticmethod
@@ -237,23 +261,55 @@ class TestProcessWebhook:
 
         assert captured["payment"]["customer_id"] == "cus_flat"
 
-    async def test_a_non_mapping_data_envelope_falls_back_to_the_top_level(self) -> None:
-        """``data`` present but not an object must not be indexed as one."""
-        service = self._service()
-        payload: dict[str, object] = {
-            "type": "subscription.active",
-            "data": "not-an-object",
-            "customer_id": "cus_fallback",
-        }
-        captured: dict[str, object] = {}
+
+class TestProcessWebhookUnknownType:
+    """A payload with no "type" reports event_type "unknown" — the caller's
+    only clue which webhook family misbehaved."""
+
+    async def test_a_replayed_typeless_webhook_reports_unknown(self) -> None:
+        service = PaymentWebhookService()
+        with patch.object(service, "_is_webhook_processed", new=AsyncMock(return_value=True)):
+            result = await service.process_webhook({"data": {}}, "wh-1")
+
+        assert result.event_type == "unknown"
+        assert result.status == "ignored"
+        assert result.message == "Webhook already processed"
+
+    async def test_a_failing_typeless_webhook_reports_unknown(self) -> None:
+        # No "type" key: DodoWebhookEvent validation raises, taking the
+        # failure path.
+        service = PaymentWebhookService()
+        with (
+            patch.object(service, "_is_webhook_processed", new=AsyncMock(return_value=False)),
+            patch("app.services.payments.payment_webhook_service.log") as mock_log,
+        ):
+            result = await service.process_webhook({"data": {}}, "wh-1")
+
+        assert result.event_type == "unknown"
+        assert result.status == "failed"
+        # The failure names its exception class — "NoneType" here would mean
+        # the error report lost the thing it reports.
+        assert mock_log.error.call_args.kwargs["error_type"] == "ValidationError"
+
+    async def test_an_unmatched_subscription_user_fails_with_a_named_reason(self) -> None:
+        service = PaymentWebhookService()
+        sub = _sub_data()
+        sub.metadata = {}
+        event = _event(sub.model_dump())
 
         with (
-            patch.object(service, "_is_webhook_processed", AsyncMock(return_value=True)),
             patch(
-                "app.services.payments.payment_webhook_service.log.set",
-                side_effect=lambda **kw: captured.update(kw),
+                "app.services.payments.payment_webhook_service.subscription_repository.get_by_dodo_id",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.services.payments.payment_webhook_service.user_repository.get_by_email",
+                new_callable=AsyncMock,
+                return_value=None,
             ),
         ):
-            await service.process_webhook(payload, "wh_7")
+            result = await service._handle_subscription_active(event)
 
-        assert captured["payment"]["customer_id"] == "cus_fallback"
+        assert result.status == "failed"
+        assert result.message == "User not found"

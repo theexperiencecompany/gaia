@@ -574,3 +574,18 @@ def route_enqueue_via_pool():
                 patch(f"{module}.enqueue_worker_job", side_effect=_forward, create=True)
             )
         yield
+
+
+@pytest.fixture
+def mock_redis_cache():
+    """Bypass the @Cacheable layer so the wrapped function body runs.
+
+    Lifted from four per-file copies; the seam is app.decorators.caching, so
+    it works for any service whose functions are @Cacheable-wrapped.
+    """
+    with (
+        patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
+        patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
+        patch("app.decorators.caching.delete_cache", new_callable=AsyncMock),
+    ):
+        yield

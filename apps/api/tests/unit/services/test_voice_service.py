@@ -314,7 +314,7 @@ class TestElevenLabsFetchers:
     """The HTTP fetchers trim the provider's raw voice dicts into our shape,
     keeping only the fields we model and the entries that pass each filter."""
 
-    async def test_account_fetcher_trims_raw_voices(self, mock_settings) -> None:
+    async def test_account_fetcher_trims_raw_voices(self, mock_settings, mock_redis_cache) -> None:
         from app.services.voice_service import _fetch_elevenlabs_voices
 
         with respx.mock(assert_all_called=False) as router:
@@ -327,6 +327,8 @@ class TestElevenLabsFetchers:
                                 "voice_id": "v1",
                                 "name": "Rachel",
                                 "preview_url": "https://p/1.mp3",
+                                "labels": {"accent": "american", "age": "young"},
+                                "verified_languages": [{"language": "de"}],
                                 "extra": "ignored",
                             },
                             {"voice_id": "", "name": "empty-id"},
@@ -340,8 +342,27 @@ class TestElevenLabsFetchers:
         assert [v.voice_id for v in voices] == ["v1", ""]
         assert voices[0].name == "Rachel"
         assert voices[0].preview_url == "https://p/1.mp3"
+        assert voices[0].labels == {"accent": "american", "age": "young"}
+        assert voices[0].language_codes == ["de"]
+        # The second entry carries none of those fields: absent reads are the
+        # per-field empty, never another field's value.
+        assert voices[1].name == "empty-id"
+        assert voices[1].preview_url is None
+        assert voices[1].labels == {}
 
-    async def test_shared_fetcher_trims_raw_voices(self, mock_settings) -> None:
+    async def test_account_fetcher_returns_empty_without_voices_key(
+        self, mock_settings, mock_redis_cache
+    ) -> None:
+        """A payload with no ``voices`` key yields no voices, not a crash."""
+        from app.services.voice_service import _fetch_elevenlabs_voices
+
+        with respx.mock(assert_all_called=False) as router:
+            router.get("https://api.elevenlabs.io/v1/voices").mock(
+                return_value=httpx.Response(200, json={"has_more": False})
+            )
+            assert await _fetch_elevenlabs_voices() == []
+
+    async def test_shared_fetcher_trims_raw_voices(self, mock_settings, mock_redis_cache) -> None:
         from app.services.voice_service import _fetch_shared_voices
 
         with respx.mock(assert_all_called=False) as router:
@@ -353,7 +374,15 @@ class TestElevenLabsFetchers:
                             {
                                 "voice_id": "s1",
                                 "name": "Shared One",
+                                "preview_url": "https://p/s1.mp3",
                                 "public_owner_id": "owner-1",
+                                "gender": "female",
+                                "accent": "british",
+                                "language": "en",
+                                "descriptive": "warm",
+                                "use_case": "narration",
+                                "verified_languages": [{"language": "fr"}],
+                                "extra": "ignored",
                             },
                             {"voice_id": "s2", "name": "No owner"},
                         ]
@@ -364,3 +393,26 @@ class TestElevenLabsFetchers:
 
         # Only voices with a public owner pass the filter.
         assert [v.voice_id for v in voices] == ["s1"]
+        # Every modelled field carries its OWN raw value — distinct strings, so
+        # a read of the wrong key cannot pass.
+        assert voices[0].name == "Shared One"
+        assert voices[0].preview_url == "https://p/s1.mp3"
+        assert voices[0].public_owner_id == "owner-1"
+        assert voices[0].gender == "female"
+        assert voices[0].accent == "british"
+        assert voices[0].language == "en"
+        assert voices[0].descriptive == "warm"
+        assert voices[0].use_case == "narration"
+        assert voices[0].language_codes == ["fr"]
+
+    async def test_shared_fetcher_returns_empty_without_voices_key(
+        self, mock_settings, mock_redis_cache
+    ) -> None:
+        """A payload with no ``voices`` key yields no voices, not a crash."""
+        from app.services.voice_service import _fetch_shared_voices
+
+        with respx.mock(assert_all_called=False) as router:
+            router.get("https://api.elevenlabs.io/v1/shared-voices").mock(
+                return_value=httpx.Response(200, json={"has_more": False})
+            )
+            assert await _fetch_shared_voices() == []

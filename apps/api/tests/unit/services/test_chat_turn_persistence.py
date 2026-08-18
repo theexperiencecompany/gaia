@@ -228,3 +228,84 @@ class TestPersistedTurnMatchesTheLiveStream:
         merge_tool_outputs(state.tool_data, state.tool_outputs)
 
         assert "output" not in state.tool_data["tool_data"][0]["data"]
+
+    async def test_only_the_tool_call_card_takes_the_output_not_every_card_sharing_its_id(self):
+        """One call can produce two cards: the generic ``tool_calls_data`` row and
+        a rich one (an ``mcp_app`` frame carries the same ``tool_call_id``). Only
+        the generic row renders an output — grafting the raw result onto the rich
+        card puts a duplicate blob under a card that already shows its result."""
+        _, state = await self._run_turn(
+            [
+                {
+                    "tool_data": {
+                        "tool_name": "tool_calls_data",
+                        "data": {"tool_name": "render_chart", "tool_call_id": "tc-1"},
+                    }
+                },
+                {
+                    "tool_data": {
+                        "tool_name": "mcp_app",
+                        "data": {"tool_call_id": "tc-1", "html_content": "<div/>"},
+                    }
+                },
+                {"tool_output": {"tool_call_id": "tc-1", "output": "rendered"}},
+            ]
+        )
+        merge_tool_outputs(state.tool_data, state.tool_outputs)
+
+        entries = state.tool_data["tool_data"]
+        assert [e["tool_name"] for e in entries] == ["tool_calls_data", "mcp_app"]
+        assert entries[0]["data"]["output"] == "rendered"
+        assert entries[1]["data"] == {"tool_call_id": "tc-1", "html_content": "<div/>"}
+
+    async def test_a_todo_frame_riding_along_with_tool_data_is_still_delivered(self):
+        """A chunk carrying tool data is consumed, not forwarded: only the
+        sub-frames the dispatcher extracts reach the client. Any ``todo_progress``
+        riding on that same chunk has to be re-emitted here or the live todo card
+        stops updating for the rest of the turn."""
+        published, _ = await self._run_turn(
+            [
+                {
+                    "tool_data": {
+                        "tool_name": "tool_calls_data",
+                        "data": {"tool_name": "update_tasks", "tool_call_id": "tc-1"},
+                    },
+                    "todo_progress": {
+                        "source": "executor",
+                        "todos": [{"id": "t1", "content": "Draft it", "status": "in_progress"}],
+                    },
+                }
+            ]
+        )
+
+        frames = [json.loads(c[6:-2]) for c in published if '"todo_progress"' in c]
+        assert frames == [
+            {
+                "todo_progress": {
+                    "source": "executor",
+                    "todos": [{"id": "t1", "content": "Draft it", "status": "in_progress"}],
+                }
+            }
+        ]
+
+    async def test_a_todo_progress_frame_is_accumulated_for_the_save(self):
+        """The todo card is rebuilt at save time from what the dispatcher
+        accumulated while streaming. A frame it fails to read is a card the user
+        watched fill up and then lost on reload."""
+        _, state = await self._run_turn(
+            [
+                {
+                    "todo_progress": {
+                        "source": "executor",
+                        "todos": [{"id": "t1", "content": "Draft it", "status": "completed"}],
+                    }
+                }
+            ]
+        )
+
+        assert state.todo_progress_accumulated == {
+            "executor": {
+                "source": "executor",
+                "todos": [{"id": "t1", "content": "Draft it", "status": "completed"}],
+            }
+        }

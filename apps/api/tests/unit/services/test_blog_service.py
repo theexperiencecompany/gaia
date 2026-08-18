@@ -42,17 +42,6 @@ def mock_blog_repo():
         yield repo
 
 
-@pytest.fixture
-def mock_redis_cache():
-    """Bypass the @Cacheable layer so the wrapped function body runs."""
-    with (
-        patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
-        patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
-        patch("app.decorators.caching.delete_cache", new_callable=AsyncMock),
-    ):
-        yield
-
-
 class TestGetAllBlogs:
     async def test_returns_blog_posts(self, mock_blog_repo, mock_redis_cache):
         mock_blog_repo.list_page = AsyncMock(return_value=[_blog_post()])

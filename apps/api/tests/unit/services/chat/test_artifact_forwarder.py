@@ -19,12 +19,15 @@ from app.utils.artifact_utils import build_artifact_ref_entry
 MODULE = "app.services.chat.artifact_forwarder"
 
 
-def _forwarder(*, bot_message_id: str | None = "bot-msg-1") -> ArtifactForwarder:
+def _forwarder(
+    *, bot_message_id: str | None = "bot-msg-1", source: str | None = None
+) -> ArtifactForwarder:
     return ArtifactForwarder(
         user_id="user-1",
         conversation_id="conv-1",
         stream_id="stream-1",
         bot_message_id=bot_message_id,
+        source=source,
     )
 
 
@@ -224,6 +227,34 @@ class TestDedupOfArtifactsWithNoMtime:
             await forwarder._handle_event(dict(payload))
 
         assert (forwarder.stats.upserts, forwarder.stats.unchanged) == (1, 1)
+
+
+class TestBotDelivery:
+    """A bot user never sees the SSE card, so the outbound queue is the only way
+    the file reaches them — and the envelope it carries is what the bot uploads."""
+
+    async def test_the_events_content_type_reaches_the_outbound_envelope(self) -> None:
+        # The bot uploads the artifact with the MIME type in the envelope; losing it
+        # turns an image into an unopenable octet-stream attachment.
+        forwarder = _forwarder(source="telegram")
+        payload: dict[str, object] = {
+            "path": "out/chart.png",
+            "event": "upsert",
+            "content_type": "image/png",
+        }
+        with (
+            patch(f"{MODULE}.stream_manager") as stream,
+            patch(f"{MODULE}.upsert_conversation_artifact", new=AsyncMock()),
+            patch(f"{MODULE}.conversation_repository") as repository,
+            patch(f"{MODULE}.spawn_background_task"),
+            patch(f"{MODULE}.publish_outbound_file") as publish,
+        ):
+            stream.publish_chunk = AsyncMock()
+            repository.append_message_tool_data = AsyncMock()
+            await forwarder._handle_event(payload)
+
+        assert publish.call_args.kwargs["content_type"] == "image/png"
+        assert publish.call_args.kwargs["filename"] == "chart.png"
 
 
 class TestRemoveEventRouting:

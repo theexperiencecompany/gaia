@@ -80,16 +80,6 @@ def _user_integration(**overrides: object) -> UserIntegrationResponse:
 
 
 @pytest.fixture
-def mock_redis_cache():
-    """Bypass the @Cacheable layer so the wrapped function body runs."""
-    with (
-        patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
-        patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
-    ):
-        yield
-
-
-@pytest.fixture
 def mock_deps():
     with (
         patch(f"{_MOD}.build_integrations_config") as m_config,

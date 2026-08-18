@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.models.common_models import GatherContextInput
-from app.models.composio_schemas.gmail import FetchMessagesInput
+from app.models.composio_schemas.gmail import FetchMessagesInput, FetchThreadInput
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
     GetContactListInput,
@@ -29,7 +29,8 @@ from app.utils.errors import AppError
 from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
-PROXY_PATH = "app.services.composio.custom_tools.gmail_tools.proxy_request_sync"
+MODULE = "app.services.composio.custom_tools.gmail_tools"
+PROXY_PATH = f"{MODULE}.proxy_request_sync"
 
 
 @pytest.fixture
@@ -831,3 +832,153 @@ class TestMessageFormatSelection:
         # attachments — the cheap path the tool is tuned for.
         self._fetch(mock_proxy, body_processing="none")
         assert self._message_format(mock_proxy) == "metadata"
+
+
+class TestEmailCardStream:
+    """An inline result streams the email-list card to the chat. The card is the
+    only thing the user sees for that turn, so each of its fields must carry the
+    message's own value — a read of the wrong key renders a blank row."""
+
+    @staticmethod
+    def _fetch_one(mock_proxy: MagicMock, writer: MagicMock) -> dict[str, Any]:
+        list_iter = iter([{"messages": [{"id": "m1"}]}])
+        msg = {
+            "id": "msg-1",
+            "threadId": "thread-1",
+            "labelIds": ["INBOX"],
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "sender@example.com"},
+                    {"name": "Subject", "value": "Quarterly report"},
+                    {"name": "Date", "value": "Thu, 18 Jun 2026 09:00:00 -0000"},
+                ],
+                "body": {"data": ""},
+            },
+        }
+
+        def side_effect(*_args, **kw):
+            if re.match(r".+/users/me/messages/?$", kw["endpoint"]):
+                return next(list_iter)
+            return msg
+
+        mock_proxy.side_effect = side_effect
+        tools = _register_and_get_tools()
+        with patch(f"{MODULE}.get_stream_writer", return_value=writer):
+            return tools["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="report", per_page=10, body_processing="none"),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+    def test_the_card_carries_each_field_of_the_fetched_message(self, mock_proxy) -> None:
+        writer = MagicMock()
+
+        result = self._fetch_one(mock_proxy, writer)
+
+        assert result["fetched_count"] == 1
+        writer.assert_called_once_with(
+            {
+                "email_fetch_data": [
+                    {
+                        "from": "sender@example.com",
+                        "subject": "Quarterly report",
+                        "time": "Thu, 18 Jun 2026 09:00:00 -0000",
+                        "thread_id": "thread-1",
+                        "id": "msg-1",
+                    }
+                ],
+                "resultSize": 1,
+            }
+        )
+
+
+class TestFetchThreadResult:
+    """FETCH_THREAD reconstructs whole conversations. The per-thread grouping is
+    what lets the agent tell one conversation from another, and the projection
+    inside it is the field contract — a message that lands under the wrong
+    thread, or carries fields nobody asked for, is a wrong answer either way."""
+
+    @staticmethod
+    def _thread(thread_id: str, subjects: dict[str, str]) -> dict[str, Any]:
+        """A raw Gmail thread response carrying one message per subject."""
+        return {
+            "id": thread_id,
+            "messages": [
+                {
+                    "id": message_id,
+                    "threadId": thread_id,
+                    "labelIds": ["INBOX"],
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": f"{message_id}@example.com"},
+                            {"name": "Subject", "value": subject},
+                        ],
+                        "body": {"data": ""},
+                    },
+                }
+                for message_id, subject in subjects.items()
+            ],
+        }
+
+    def test_each_thread_keeps_its_own_messages_projected_to_the_asked_fields(
+        self, mock_proxy
+    ) -> None:
+        tools = _register_and_get_tools()
+        threads = {
+            "t-1": self._thread("t-1", {"m1": "First", "m2": "Second"}),
+            "t-2": self._thread("t-2", {"m3": "Third"}),
+        }
+
+        def side_effect(*_args, **kw):
+            return threads[kw["endpoint"].rsplit("/", 1)[-1]]
+
+        mock_proxy.side_effect = side_effect
+
+        result = tools["FETCH_THREAD"](
+            request=FetchThreadInput(
+                thread_ids=["t-1", "t-2"], fields=["id", "subject"], body_processing="none"
+            ),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result == {
+            "fetched_threads": 2,
+            "total_messages": 3,
+            "truncated": False,
+            "threads": [
+                {
+                    "id": "t-1",
+                    "message_count": 2,
+                    "messages": [
+                        {"id": "m1", "subject": "First"},
+                        {"id": "m2", "subject": "Second"},
+                    ],
+                },
+                {
+                    "id": "t-2",
+                    "message_count": 1,
+                    "messages": [{"id": "m3", "subject": "Third"}],
+                },
+            ],
+        }
+
+
+class TestCountRequestShape:
+    """Query-mode counting is a `maxResults=1` list call — the params ARE the
+    count, so a dropped one silently counts something else."""
+
+    def test_the_count_calls_ask_gmail_for_the_query_and_its_unread_slice(self, mock_proxy) -> None:
+        tools = _register_and_get_tools()
+        mock_proxy.side_effect = [{"resultSizeEstimate": 50}, {"resultSizeEstimate": 12}]
+
+        tools["GET_UNREAD_COUNT"](
+            request=GetUnreadCountInput(query="from:boss"),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert [call.kwargs["query"] for call in mock_proxy.call_args_list] == [
+            {"maxResults": 1, "includeSpamTrash": "false", "q": "from:boss"},
+            {"maxResults": 1, "includeSpamTrash": "false", "q": "from:boss is:unread"},
+        ]

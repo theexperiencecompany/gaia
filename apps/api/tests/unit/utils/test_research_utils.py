@@ -86,6 +86,21 @@ def test_rank_orders_by_appearances_then_score() -> None:
     assert [r["url"] for r in ranked] == ["https://twice.com", "https://once.com"]
 
 
+def test_rank_lets_strong_relevance_outweigh_one_extra_appearance() -> None:
+    """Appearances are worth two points each, so accumulated relevance still wins
+    when the rival is only one appearance ahead but barely relevant."""
+    strong = [{"url": "https://strong.com", "score": 0.9}]
+    weak = [{"url": "https://weak.com", "score": 0.05}]
+    results = [
+        *({"results": strong} for _ in range(3)),  # 3*2 + 2.7 = 8.7
+        *({"results": weak} for _ in range(4)),  # 4*2 + 0.2 = 8.2
+    ]
+    ranked = rank_and_deduplicate_urls(results, max_urls=10)
+
+    assert [r["url"] for r in ranked] == ["https://strong.com", "https://weak.com"]
+    assert [r["appearances"] for r in ranked] == [3, 4]
+
+
 def test_rank_skips_malformed_results_and_keeps_the_rest() -> None:
     """An empty or malformed payload is skipped, not crashed on, and does not stop the scan."""
     results = [
