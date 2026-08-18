@@ -1,11 +1,10 @@
 /**
- * Utility functions for handling NEW_MESSAGE_BREAK tokens in chat messages
- * Enables WhatsApp-style multiple bubble responses from a single message
+ * Framer Motion timing for the staggered reveal of message-break bubbles.
+ *
+ * The splitter itself lives in `@shared/utils` and is imported from there
+ * directly — re-exporting it here only gave the same function two import paths.
  */
 
-export { splitMessageByBreaks } from "@shared/utils";
-
-/** Framer Motion timing for staggered message-break bubble reveals. */
 export const MESSAGE_BREAK_STAGGER_SECONDS = 0.08;
 export const MESSAGE_BREAK_DURATION_SECONDS = 0.25;
 export const MESSAGE_BREAK_EASE_OUT_QUART: [number, number, number, number] = [

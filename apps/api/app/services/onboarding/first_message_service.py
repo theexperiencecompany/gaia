@@ -10,6 +10,7 @@ from app.agents.prompts.onboarding_prompts import (
     FIRST_MESSAGE_GENERATION_PROMPT_GMAIL,
     FIRST_MESSAGE_GENERATION_PROMPT_NO_GMAIL,
 )
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.models.onboarding_models import (
     ClarifyAnswerRecord,
@@ -30,9 +31,9 @@ def default_first_message(name: str) -> str:
     the chat opens on whichever fires, and the two had drifted apart.
     """
     return (
-        f"Hey {name}, ok, you're all set up.<NEW_MESSAGE_BREAK>"
+        f"Hey {name}, ok, you're all set up.{NEW_MESSAGE_BREAKER}"
         "Lined up a few action items and set up some automations from what I found."
-        "<NEW_MESSAGE_BREAK>Oh, and I made you something."
+        f"{NEW_MESSAGE_BREAKER}Oh, and I made you something."
     )
 
 

@@ -565,7 +565,6 @@ export {
   parseRelativeDateLabel,
   parseThinkingFromText,
   shouldRefreshToken,
-  splitByBreaksPreservingFences,
   splitMessageByBreaks,
   truncateText,
 } from "./utils";
