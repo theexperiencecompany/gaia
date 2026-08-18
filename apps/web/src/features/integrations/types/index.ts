@@ -8,6 +8,7 @@
  */
 
 export type {
+  IntegrationConnectionData,
   IntegrationStatusRecord as IntegrationStatus,
   IntegrationToolsResponse,
   MyIntegrationsResponse,
@@ -93,15 +94,6 @@ export interface CreateCustomIntegrationResponse {
   integrationId: string;
   name: string;
   connection?: ConnectionTestResult;
-}
-
-/**
- * Integration connection types for chat messages
- * (Merged from types/features/integrationTypes.ts)
- */
-export interface IntegrationConnectionData {
-  integration_id: string;
-  message: string;
 }
 
 /**

@@ -43,6 +43,13 @@ class UserIntegrationsRepository(
         doc = await self.get_for_user(user_id, integration_id)
         return doc is not None and doc.status == "connected"
 
+    async def is_expired(self, user_id: str, integration_id: str) -> bool:
+        """Whether a *dead* connection is why this is unusable, rather than one
+        that was never set up. The stored record is the only thing that tells the
+        two apart — a live status check just says "not usable"."""
+        doc = await self.get_for_user(user_id, integration_id)
+        return doc is not None and doc.status == "expired"
+
     async def set_status(
         self,
         user_id: str,

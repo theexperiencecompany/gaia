@@ -299,10 +299,13 @@ async def connect_integration(
         for integration in connections_to_initiate:
             writer({"progress": f"Initiating {integration.name} connection..."})
 
-            emit_integration_connection_required(integration.id, integration.name)
+            expired = await user_integration_repository.is_expired(str(user_id), integration.id)
+            emit_integration_connection_required(integration.id, integration.name, expired=expired)
 
             connect_url = await build_connect_link_url(str(user_id), integration.id)
-            results.append(build_integration_connection_message(integration.name, connect_url))
+            results.append(
+                build_integration_connection_message(integration.name, connect_url, expired=expired)
+            )
 
         return "\n".join(results) if results else "No integrations to connect."
 

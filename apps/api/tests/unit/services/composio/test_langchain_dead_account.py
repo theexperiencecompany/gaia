@@ -136,9 +136,12 @@ class TestDeadAccountReconciles:
         dispatch.assert_called_once()
         dispatch.call_args.args[0].close()  # the coroutine _dispatch would have run
 
-        emit.assert_called_once_with("gmail", "Gmail")
+        # The transition runs in this very turn, so the card and the agent copy
+        # both say expired — not "you never connected this".
+        emit.assert_called_once_with("gmail", "Gmail", expired=True)
         assert result["successful"] is False
-        assert "connect" in result["error"].lower()
+        assert "EXPIRED" in result["error"]
+        assert "sign in again" in result["error"]
 
     async def test_the_dispatched_transition_does_not_notify_and_is_tagged_tool_execution(
         self,

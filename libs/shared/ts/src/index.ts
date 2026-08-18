@@ -431,6 +431,7 @@ export type {
   Integration,
   IntegrationAuthType,
   IntegrationCategory,
+  IntegrationConnectionData,
   IntegrationCreator,
   IntegrationManagedBy,
   IntegrationStatusRecord,
@@ -530,6 +531,7 @@ export type {
 } from "./utils";
 export {
   CONNECT_ACTION_LABEL,
+  connectionPromptState,
   DEFAULT_SIMILARITY_CONFIG,
   dispatchOpenUIAction,
   extractUrls,

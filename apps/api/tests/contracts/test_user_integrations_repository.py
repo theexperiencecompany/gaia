@@ -58,3 +58,22 @@ class TestUserIntegrationsRepository:
         await repo.create(_ui("u", "gmail", status="connected", connected_at=when))
         got = await repo.get_for_user("u", "gmail")
         assert got is not None and got.connected_at is not None
+
+    async def test_is_expired_separates_a_dead_connection_from_one_never_made(self, repo):
+        # The whole point of the pair: "not connected" is not one state. Only the
+        # stored record tells a grant that died from one that was never granted.
+        await repo.create(_ui("u", "gmail", status="expired"))
+        await repo.create(_ui("u", "slack", status="created"))
+        await repo.create(_ui("u", "notion", status="connected"))
+
+        assert await repo.is_expired("u", "gmail") is True
+        assert await repo.is_expired("u", "slack") is False
+        assert await repo.is_expired("u", "notion") is False
+        assert await repo.is_expired("u", "never_added") is False
+
+        assert await repo.is_connected("u", "gmail") is False
+        assert await repo.is_connected("u", "notion") is True
+
+    async def test_is_expired_is_scoped_to_the_user(self, repo):
+        await repo.create(_ui("owner", "gmail", status="expired"))
+        assert await repo.is_expired("intruder", "gmail") is False

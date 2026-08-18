@@ -35,6 +35,21 @@ export function integrationConnectionState(
   }
 }
 
+/**
+ * The state an `integration_connection_required` chat card renders.
+ *
+ * The payload's `expired` flag wins over the live integrations list: the
+ * dead-account path expires the connection in the same turn it streams the
+ * card, so the list is still reporting the pre-expiry status. Messages streamed
+ * before the flag existed carry none, and fall back to the list.
+ */
+export function connectionPromptState(
+  expired: boolean | undefined,
+  status: IntegrationStatusValue | string | undefined,
+): IntegrationConnectionState {
+  return expired ? "expired" : integrationConnectionState(status);
+}
+
 /** Label for the button that resolves each state. */
 export const CONNECT_ACTION_LABEL: Record<IntegrationConnectionState, string> =
   {

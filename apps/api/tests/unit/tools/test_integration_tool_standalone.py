@@ -43,6 +43,16 @@ def _emitter_writer(writer: MagicMock):
     return patch("app.utils.integration_checker.get_stream_writer", return_value=writer)
 
 
+def _stored_status(*, expired: bool):
+    """Stub the `user_integrations` record the tool reads to tell a dead
+    connection from one that was never made."""
+    return patch(
+        f"{MODULE}.user_integration_repository.is_expired",
+        new_callable=AsyncMock,
+        return_value=expired,
+    )
+
+
 def _make_integration(
     id: str = "gmail",
     name: str = "Gmail",
@@ -225,7 +235,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        with _emitter_writer(w):
+        with _emitter_writer(w), _stored_status(expired=False):
             result = await connect_integration.coroutine(  # type: ignore[attr-defined]
                 config=_cfg(), integration_ids=["gmail"]
             )
@@ -257,6 +267,7 @@ class TestConnectIntegration:
 
         with (
             _emitter_writer(w),
+            _stored_status(expired=False),
             patch(
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "bot"}},
@@ -294,6 +305,7 @@ class TestConnectIntegration:
 
         with (
             _emitter_writer(w),
+            _stored_status(expired=False),
             patch(
                 "app.utils.integration_checker.get_config",
                 return_value={"configurable": {"source_category": "ui"}},
@@ -305,6 +317,49 @@ class TestConnectIntegration:
 
         assert "http" not in result
         assert "card" in result.lower()
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(
+        f"{MODULE}.check_single_integration_status",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    @patch(
+        f"{MODULE}.OAUTH_INTEGRATIONS",
+        [_make_integration("gmail", "Gmail", short_name="gmail")],
+    )
+    async def test_a_dead_connection_asks_the_user_to_sign_in_again(
+        self, mock_check: AsyncMock, mock_gsw: MagicMock
+    ) -> None:
+        """The live status check only says "not usable"; the stored `expired`
+        record is what stops the tool telling the user to connect it afresh."""
+        w = _writer()
+        mock_gsw.return_value = w
+
+        from app.agents.tools.integration_tool import connect_integration
+
+        with (
+            _emitter_writer(w),
+            _stored_status(expired=True),
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "ui"}},
+            ),
+        ):
+            result = await connect_integration.coroutine(  # type: ignore[attr-defined]
+                config=_cfg(), integration_ids=["gmail"]
+            )
+
+        assert "EXPIRED" in result
+        assert "sign in again" in result
+        assert "needs to be connected" not in result
+
+        card = next(
+            c[0][0]["integration_connection_required"]
+            for c in w.call_args_list
+            if "integration_connection_required" in c[0][0]
+        )
+        assert card["expired"] is True
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(

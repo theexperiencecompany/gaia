@@ -1,5 +1,6 @@
 """Tests for app.agents.core.subagents.handoff_tools."""
 
+import contextlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -94,10 +95,12 @@ class TestCheckIntegrationConnection:
             result = await check_integration_connection("gmail", "user1")
         assert result is None
 
-    async def test_returns_error_when_not_connected(self):
+    @staticmethod
+    def _run_disconnected(mock_writer: MagicMock, *, expired: bool):
+        """Drive the guard for a subagent that is not usable, with the stored
+        record saying whether the connection died or was never made."""
         subagent = _make_subagent("gmail")
-        mock_writer = MagicMock()
-        with (
+        return (
             patch(
                 "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
                 return_value=subagent,
@@ -106,6 +109,11 @@ class TestCheckIntegrationConnection:
                 "app.agents.core.subagents.handoff_tools.check_integration_status",
                 new_callable=AsyncMock,
                 return_value=False,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.user_integration_repository.is_expired",
+                new_callable=AsyncMock,
+                return_value=expired,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.get_stream_writer",
@@ -117,7 +125,13 @@ class TestCheckIntegrationConnection:
                 "app.utils.integration_checker.get_stream_writer",
                 return_value=mock_writer,
             ),
-        ):
+        )
+
+    async def test_returns_error_when_not_connected(self):
+        mock_writer = MagicMock()
+        with contextlib.ExitStack() as stack:
+            for cm in self._run_disconnected(mock_writer, expired=False):
+                stack.enter_context(cm)
             result = await check_integration_connection("gmail", "user1")
 
         assert result is not None
@@ -125,6 +139,24 @@ class TestCheckIntegrationConnection:
         assert mock_writer.call_count == 2  # progress + connection_required
         card = mock_writer.call_args_list[1].args[0]["integration_connection_required"]
         assert card["integration_id"] == "gmail"
+        assert card["expired"] is False
+
+    async def test_a_dead_connection_asks_the_user_to_sign_in_again(self):
+        """`check_integration_status` only says "not usable" — the stored record
+        is what stops a died-on-us connection reading as a first-time connect."""
+        mock_writer = MagicMock()
+        with contextlib.ExitStack() as stack:
+            for cm in self._run_disconnected(mock_writer, expired=True):
+                stack.enter_context(cm)
+            result = await check_integration_connection("gmail", "user1")
+
+        assert result is not None
+        assert "EXPIRED" in result
+        assert "sign in again" in result
+        assert "needs to be connected" not in result
+        card = mock_writer.call_args_list[1].args[0]["integration_connection_required"]
+        assert card["expired"] is True
+        assert card["message"] == ("Your Gmail connection expired. Sign in again to keep using it.")
 
     async def test_returns_none_on_exception(self):
         with patch(

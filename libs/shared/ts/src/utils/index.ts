@@ -32,6 +32,7 @@ export {
 export type { IntegrationConnectionState } from "./integrationStatus";
 export {
   CONNECT_ACTION_LABEL,
+  connectionPromptState,
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
 } from "./integrationStatus";

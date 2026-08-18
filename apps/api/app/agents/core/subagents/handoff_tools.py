@@ -55,6 +55,7 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
@@ -139,10 +140,11 @@ async def check_integration_connection(
         writer = get_stream_writer()
         writer({"progress": f"Checking {subagent.name} connection..."})
 
-        emit_integration_connection_required(subagent.id, subagent.name)
+        expired = await user_integration_repository.is_expired(user_id, subagent.id)
+        emit_integration_connection_required(subagent.id, subagent.name, expired=expired)
 
         connect_url = await build_connect_link_url(user_id, subagent.id)
-        return build_integration_connection_message(subagent.name, connect_url)
+        return build_integration_connection_message(subagent.name, connect_url, expired=expired)
 
     except Exception as e:
         log.error(
@@ -362,7 +364,9 @@ async def _resolve_subagent(
             return (
                 None,
                 None,
-                build_integration_connection_message(subagent.name, connect_url),
+                # MCP grants live in the token store and have no expiry transition
+                # — the only way here is never having connected.
+                build_integration_connection_message(subagent.name, connect_url, expired=False),
                 False,
             )
 

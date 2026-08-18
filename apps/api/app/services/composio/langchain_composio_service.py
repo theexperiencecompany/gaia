@@ -225,12 +225,16 @@ class LangchainProvider(
         connect_url = self._run_on_loop(
             build_connect_link_url(user_id, integration.id), timeout=_CONNECT_LINK_TIMEOUT_S
         )
+        # The expiry transition is dispatched right here, so this connection is
+        # expired by definition — the user had it and the grant died.
         self._dispatch(_expire_with_log_boundary(user_id, integration.id, reason))
-        emit_integration_connection_required(integration.id, integration.name)
+        emit_integration_connection_required(integration.id, integration.name, expired=True)
 
         return {
             "successful": False,
-            "error": build_integration_connection_message(integration.name, connect_url),
+            "error": build_integration_connection_message(
+                integration.name, connect_url, expired=True
+            ),
             "data": None,
         }
 

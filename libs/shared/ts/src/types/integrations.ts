@@ -32,6 +32,21 @@ export type IntegrationStatusValue =
   | "created"
   | "expired";
 
+/**
+ * The `integration_connection_required` chat payload — the agent asking the user
+ * to get an integration working. `expired` separates a connection that died from
+ * one that was never set up, so the card can say "Reconnect" instead of hiding
+ * the breakage behind a first-time "Connect". Absent on messages streamed before
+ * the field existed.
+ *
+ * Emitted by `apps/api/app/utils/integration_checker.py`.
+ */
+export interface IntegrationConnectionData {
+  integration_id: string;
+  message: string;
+  expired?: boolean;
+}
+
 export type IntegrationAuthType = "oauth" | "bearer" | "none";
 
 export type IntegrationManagedBy = "composio" | "mcp" | "internal" | "self";
