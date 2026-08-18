@@ -38,6 +38,8 @@ class BrowserEventKind(str, Enum):
 
 
 class BrowserSessionStatus(str, Enum):
+    """Lifecycle state of a browser session: created to live/working to ended/failed."""
+
     STARTING = "starting"
     RUNNING = "running"
     PAUSED = "paused"
@@ -56,6 +58,8 @@ class SensitiveCategory(str, Enum):
 
 
 class HandoffStatus(str, Enum):
+    """State of a live-view handoff: pending, completed, cancelled, expired."""
+
     PENDING = "pending"
     COMPLETED = "completed"  # user finished the step in live-view → resume
     CANCELLED = "cancelled"  # user cancelled → abort
@@ -63,6 +67,8 @@ class HandoffStatus(str, Enum):
 
 
 class HandoffDecision(str, Enum):
+    """User decision on a pending handoff, or a note-only reply."""
+
     CONTINUE = "continue"
     CANCEL = "cancel"
 

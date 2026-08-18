@@ -22,6 +22,8 @@ from shared.py.wide_events import log
 
 
 class SettingsGroup:
+    """One feature group's required settings and its human-readable name."""
+
     def __init__(
         self,
         name: str,
@@ -57,6 +59,8 @@ class SettingsGroup:
 
 
 class SettingsValidator:
+    """Validates required settings are present for each enabled feature group."""
+
     def __init__(self) -> None:
         self.groups: list[SettingsGroup] = []
         self.missing_groups: list[tuple[SettingsGroup, list[str]]] = []

@@ -53,6 +53,7 @@ def build_browser_tools(
         )
     )
     async def request_human_takeover(reason: str, category: str = "irreversible") -> str:
+        """Return the takeover tool that hands control to the user via live view."""
         return await handle_takeover(reason, category)
 
     if solve_captcha:
@@ -68,6 +69,7 @@ def build_browser_tools(
             )
         )
         async def solve_captcha_with_help(challenge: str) -> str:
+            """Return the CAPTCHA tool that asks the user to solve it in live view."""
             return await handle_takeover(challenge, "none")
 
     return tools

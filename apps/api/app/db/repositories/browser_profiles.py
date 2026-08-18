@@ -11,6 +11,8 @@ from app.models.browser_models import BrowserProfileDocument, BrowserProfileUpda
 
 
 class BrowserProfilesRepository(UserScopedRepository[BrowserProfileDocument, BrowserProfileUpdate]):
+    """Persistence for per-domain browser login profiles."""
+
     collection_name = "browser_profiles"
     document_model = BrowserProfileDocument
     update_model = BrowserProfileUpdate
@@ -18,6 +20,7 @@ class BrowserProfilesRepository(UserScopedRepository[BrowserProfileDocument, Bro
     cache_policy = None
 
     async def get_for_domain(self, user_id: str, domain: str) -> BrowserProfileDocument | None:
+        """Return the saved profile for a domain, or None."""
         return await self._find_one({"user_id": user_id, "domain": domain})
 
     async def upsert_storage_state_blob(

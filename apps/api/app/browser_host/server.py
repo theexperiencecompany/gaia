@@ -34,10 +34,14 @@ _WS_SESSION_GONE = 4404
 
 
 class CreateSessionRequest(BaseModel):
+    """Create-session payload: optional storage state to seed the new context."""
+
     storage_state: StorageState | None = None
 
 
 class CreateSessionResponse(BaseModel):
+    """Handle for a created context: CDP + live websocket URLs and the context id."""
+
     session_id: str
     cdp_ws: str
     live_ws: str
@@ -45,10 +49,14 @@ class CreateSessionResponse(BaseModel):
 
 
 class DeleteSessionResponse(BaseModel):
+    """Result of disposing a context: the storage state to persist, or None."""
+
     storage_state: StorageState
 
 
 class SessionInfoResponse(BaseModel):
+    """Live status for a session: activity timestamp, url, title, viewer state."""
+
     session_id: str
     live: bool
     last_activity_at: float
@@ -57,6 +65,8 @@ class SessionInfoResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    """Host health probe: process liveness plus a real CDP round-trip result."""
+
     ok: bool
     sessions: int
     chromium_up: bool
@@ -86,6 +96,7 @@ app = FastAPI(lifespan=_lifespan)
 
 @app.post("/sessions", response_model=None)
 async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse | JSONResponse:
+    """Create a context on the host for one session; 429 when at capacity."""
     log.set(browser={"operation": "create"})
     try:
         session = await _host.create_context(payload.storage_state)
@@ -102,6 +113,7 @@ async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse
 
 @app.delete("/sessions/{session_id}")
 async def delete_session(session_id: str) -> DeleteSessionResponse:
+    """Dispose the context and return the storage state to persist."""
     log.set(browser={"session_id": session_id, "operation": "delete"})
     try:
         storage_state = await _host.dispose_context(session_id)
@@ -112,6 +124,7 @@ async def delete_session(session_id: str) -> DeleteSessionResponse:
 
 @app.get("/sessions/{session_id}")
 async def get_session(session_id: str) -> SessionInfoResponse:
+    """Fetch live session info; 404 when the session is gone."""
     log.set(browser={"session_id": session_id, "operation": "get"})
     try:
         info = await _host.session_info(session_id)
@@ -131,6 +144,7 @@ async def healthz(response: Response) -> HealthResponse:
 
 @app.websocket("/cdp/{session_id}")
 async def cdp_endpoint(websocket: WebSocket, session_id: str) -> None:
+    """CDP websocket endpoint for one context, proxied through the filter."""
     session = _host.get(session_id)
     if session is None or session.dead:
         await websocket.close(code=_WS_SESSION_GONE)
@@ -141,6 +155,7 @@ async def cdp_endpoint(websocket: WebSocket, session_id: str) -> None:
 
 @app.websocket("/live/{session_id}")
 async def live_endpoint(websocket: WebSocket, session_id: str) -> None:
+    """Screencast + input websocket for one session's live view."""
     session = _host.get(session_id)
     if session is None or session.dead:
         await websocket.close(code=_WS_SESSION_GONE)

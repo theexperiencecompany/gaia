@@ -10,10 +10,14 @@ from typing import TypedDict
 
 
 class LocalStorageEntry(TypedDict):
+    """A single localStorage row: the stored key with its string value."""
+
     name: str
     value: str
 
 
 class OriginState(TypedDict):
+    """Serialized storage state for one origin: its localStorage rows."""
+
     origin: str
     localStorage: list[LocalStorageEntry]

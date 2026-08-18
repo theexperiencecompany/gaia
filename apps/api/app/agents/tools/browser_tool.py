@@ -80,6 +80,10 @@ async def browser_task(
     task: Annotated[str, "Clear, self-contained description of what to do in the browser."],
     start_url: Annotated[str | None, "Optional URL to open first."] = None,
 ) -> str:
+    """Drive a browser task end to end: allocate a session, run the agent loop,
+    and stream progress/result cards. Returns the outcome guidance message the
+    executor surfaces to the user (never a fabricated success).
+    """
     configurable = config.get("configurable", {})
     user_id: str = configurable.get("user_id") or ""
     # The USER-facing conversation, never the executor's derived `thread_id`
@@ -122,6 +126,12 @@ async def browser_task(
     step_shots: dict[int, str] = {}
 
     async def emit(snapshot: BrowserCardSnapshot) -> None:
+        """Stream a card snapshot into the chat (progress/step/result).
+
+        Emits into the conversation so the user sees the live browser card;
+        failures here are logged and swallowed — a card hiccup must never kill
+        the browser run itself.
+        """
         writer({BROWSER_TASK_EVENT: snapshot.model_dump(mode="json")})
         if isinstance(snapshot, BrowserStepSnapshot):
             if snapshot.goal:
@@ -140,6 +150,9 @@ async def browser_task(
             await bot_delivery.session(snapshot)
 
     async def is_cancelled() -> bool:
+        """Check whether the user cancelled this task mid-run (via the card or
+        chat), so the agent loop can stop early instead of finishing unprompted.
+        """
         return bool(stream_id) and await stream_manager.is_cancelled(stream_id)
 
     try:
@@ -156,6 +169,10 @@ async def browser_task(
             log.set(browser={"session_id": session.session_id})
 
             async def request_handoff(req: HandoffRequest) -> HandoffOutcome:
+                """Pause the run and hand the user a live view to complete the
+                step themselves. Returns the outcome (completed with optional
+                note, cancelled, or timed out) so the loop resumes natively.
+                """
                 handoff_id = uuid.uuid4().hex
                 await create_pending_handoff(handoff_id, user_id, conversation_id, req.reason)
                 await emit(

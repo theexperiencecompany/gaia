@@ -25,6 +25,8 @@ from app.constants.browser import (
 
 
 class BrowserSessionSnapshot(BaseModel):
+    """Immutable snapshot of one browser session's state for the task record."""
+
     kind: Literal[BrowserEventKind.SESSION] = BrowserEventKind.SESSION
     task: str
     status: BrowserSessionStatus
@@ -34,6 +36,8 @@ class BrowserSessionSnapshot(BaseModel):
 
 
 class BrowserStepSnapshot(BaseModel):
+    """Immutable snapshot of one agent step for the task record."""
+
     kind: Literal[BrowserEventKind.STEP] = BrowserEventKind.STEP
     index: int
     goal: str
@@ -56,6 +60,8 @@ class BrowserHandoffSnapshot(BaseModel):
 
 
 class BrowserResultSnapshot(BaseModel):
+    """Immutable snapshot of the final result for the task record."""
+
     kind: Literal[BrowserEventKind.RESULT] = BrowserEventKind.RESULT
     status: BrowserSessionStatus
     success: bool
@@ -131,6 +137,8 @@ class HandoffDecisionRequest(BaseModel):
 
 
 class HandoffDecisionResponse(BaseModel):
+    """Outcome of a handoff decision: accepted with note, cancelled, or errored."""
+
     handoff_id: str
     status: HandoffStatus
 

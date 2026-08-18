@@ -44,6 +44,8 @@ class OutboundAttachment(BaseModel):
 
 
 class OutboundMessageEnvelope(BaseModel):
+    """Shape of a bot-facing message queued to the delivery bus."""
+
     id: str = Field(default_factory=lambda: str(uuid4()))
     platform: str = Field(min_length=1)
     destination_id: str = Field(min_length=1)

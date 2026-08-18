@@ -154,6 +154,7 @@ async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: Web
     ) as chromium_ws:
 
         async def client_to_chromium() -> None:
+            """Forward one upstream-cleaned frame from the client to Chromium."""
             while True:
                 raw = await client_ws.receive_text()
                 host.touch(session.session_id)
@@ -175,6 +176,7 @@ async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: Web
                 )
 
         async def chromium_to_client() -> None:
+            """Forward one frame from Chromium back to the client."""
             async for raw in chromium_ws:
                 host.touch(session.session_id)
                 text = raw if isinstance(raw, str) else raw.decode()

@@ -9,6 +9,8 @@ from app.models.browser_task_models import BrowserTaskDocument, BrowserTaskUpdat
 
 
 class BrowserTasksRepository(UserScopedRepository[BrowserTaskDocument, BrowserTaskUpdate]):
+    """Persistence for browser task records/history."""
+
     collection_name = "browser_tasks"
     document_model = BrowserTaskDocument
     update_model = BrowserTaskUpdate

@@ -43,6 +43,7 @@ class BotProgressDelivery:
         # Surface the live-view link up front so the user can watch the run as it
         # happens — and is already oriented if a handoff comes later. The link only
         # exists once the session is allocated, which is exactly now.
+        """Emit a session lifecycle event to the conversation."""
         if not snapshot.session_id:
             return
         link = await create_live_view_link(snapshot.session_id, self._user_id)
@@ -52,6 +53,7 @@ class BotProgressDelivery:
         # Skip the pre-navigation blank tab: its screenshot is an empty white page
         # and "Empty Tab" tells the user nothing. The real first step is the loaded
         # page.
+        """Emit a per-step progress event to the conversation."""
         if _is_blank_tab(snapshot.url):
             return
         # Caption with what the agent is DOING this step (its goal), not the page
@@ -80,6 +82,7 @@ class BotProgressDelivery:
         # Resolution is already acked in-chat ("Got it, continuing." / "Okay, I've
         # stopped."), and the final result line closes the task — a separate
         # "Browser task handoff completed." here is just noise.
+        """Emit a live-view handoff event to the conversation."""
         if snapshot.status != HandoffStatus.PENDING:
             return
 
@@ -96,6 +99,7 @@ class BotProgressDelivery:
         # Don't echo Browser-Use's raw final text — the assistant sends the
         # natural, user-facing summary right after. Just close out the progress,
         # plus a recap slideshow of every step (offered whether it succeeded or not).
+        """Emit the final task result to the conversation."""
         msg = "✅ Done." if snapshot.success else "⚠️ The browser task didn't fully complete."
         if snapshot.replay_url:
             msg += f"\n\n📽 Here's a recap you can watch: {snapshot.replay_url}"

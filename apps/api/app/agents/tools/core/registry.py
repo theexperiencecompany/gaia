@@ -203,6 +203,7 @@ class ToolRegistry:
         self._tools_by_name: dict[str, tuple[str, Tool]] = {}
 
     def setup(self) -> None:
+        """Initialize and (re)register every tool category on this registry."""
         self._initialize_categories()
 
     def _add_category(
@@ -508,6 +509,7 @@ class ToolRegistry:
         total = 0
 
         async def load_metadata(integration: OAuthIntegration) -> None:
+            """Load tool metadata (setups, inputs) for the provider catalog."""
             nonlocal total
             toolkit = integration.composio_config.toolkit
             space = integration.subagent_config.tool_space
@@ -785,6 +787,7 @@ async def get_tool_registry() -> ToolRegistry:
     auto_initialize=True,
 )
 async def init_tool_registry() -> ToolRegistry:
+    """Construct and return a fully populated ToolRegistry singleton."""
     tool_registry = ToolRegistry()
     tool_registry.setup()
     return tool_registry

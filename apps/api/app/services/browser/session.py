@@ -28,6 +28,8 @@ from shared.py.wide_events import log
 
 @dataclass(frozen=True, slots=True)
 class BrowserHostSession:
+    """Client-side handle to one browser-host context (CDP + live endpoints)."""
+
     session_id: str
     cdp_url: str
     live_view_url: str

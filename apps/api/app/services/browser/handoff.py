@@ -37,6 +37,7 @@ def _conv_key(conversation_id: str) -> str:
 async def create_pending_handoff(
     handoff_id: str, user_id: str, conversation_id: str, reason: str = ""
 ) -> None:
+    """Persist a new pending handoff and return its id, or None when it already exists."""
     record = HandoffRecord(
         status=HandoffStatus.PENDING,
         user_id=user_id,
@@ -55,6 +56,7 @@ async def _store(handoff_id: str, record: HandoffRecord) -> None:
 
 
 async def get_handoff(handoff_id: str) -> HandoffRecord | None:
+    """Load a pending handoff by id, or None when unknown/expired."""
     return await redis_cache.get(_key(handoff_id), model=HandoffRecord)
 
 

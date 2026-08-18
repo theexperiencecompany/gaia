@@ -71,6 +71,8 @@ def _summarize_actions(agent_output: AgentOutput) -> str:
 
 
 class BrowserTaskRunner:
+    """Orchestrates one browser task: session, agent loop, handoffs, delivery."""
+
     def __init__(
         self,
         *,
@@ -129,6 +131,7 @@ class BrowserTaskRunner:
         self._emit_tasks: set[asyncio.Task[Any]] = set()
 
     async def run(self, task: str) -> BrowserResultSnapshot:
+        """Run the task to completion and return the final result snapshot."""
         from browser_use import Agent, Browser  # noqa: PLC0415
 
         await self._emit(
