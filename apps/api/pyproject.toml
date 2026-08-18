@@ -167,7 +167,7 @@ backend = [
   "googleapis-common-protos==1.66.0",
   "cloudinary==1.41.0",
   "resend>=2.10.0",
-  "composio>=0.13.1",
+  "composio>=0.19.0",
   "composio-langchain>=0.13.1",
   "composio-client>=1.39.0",
   "dodopayments>=1.49.0",
