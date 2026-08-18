@@ -93,6 +93,10 @@ export default function LinkedAccountsSettings() {
   const [phoneLinkTarget, setPhoneLinkTarget] =
     useState<PhoneLinkTarget | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Registering a number takes a round trip to Photon. Closing the modal (or
+  // starting over) invalidates that request, so a late reply cannot drop the
+  // previous attempt's number into the session the user is now in.
+  const connectAttemptRef = useRef(0);
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const openPricingModal = usePricingModalStore((s) => s.openModal);
 
@@ -143,6 +147,7 @@ export default function LinkedAccountsSettings() {
   };
 
   const handleConnect = async (platformId: string, phoneNumber?: string) => {
+    const attempt = ++connectAttemptRef.current;
     try {
       setConnectingPlatform(platformId);
 
@@ -159,6 +164,8 @@ export default function LinkedAccountsSettings() {
         phoneNumber ? { phone: phoneNumber } : {},
         { silent: true },
       );
+
+      if (attempt !== connectAttemptRef.current) return;
 
       if (data.auth_url) {
         const width = 600;
@@ -224,6 +231,7 @@ export default function LinkedAccountsSettings() {
         setConnectingPlatform(null);
       }
     } catch {
+      if (attempt !== connectAttemptRef.current) return;
       toast.error(`Failed to connect ${platformId}`);
       setConnectingPlatform(null);
     }
@@ -350,6 +358,8 @@ export default function LinkedAccountsSettings() {
           if (phoneModalPlatform) handleConnect(phoneModalPlatform, phone);
         }}
         onClose={() => {
+          connectAttemptRef.current += 1;
+          setConnectingPlatform(null);
           setPhoneModalPlatform(null);
           setPhoneLinkTarget(null);
           fetchPlatformLinks();
