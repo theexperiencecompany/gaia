@@ -123,6 +123,7 @@ async function _handleStream(
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
+    deliverOutOfBand: (text: string) => Promise<void>,
   ) => Promise<string>,
   request: ChatRequest,
   gaia: GaiaClient,
@@ -269,6 +270,26 @@ async function _handleStream(
     }
   };
 
+  /**
+   * Posts a message that is not part of the streamed reply — currently the HIL
+   * approval prompt, which the user has to answer while the agent is paused.
+   *
+   * It has to interrupt cleanly. Everything streamed so far is finished the
+   * moment the agent pauses, so it is delivered first; the prompt then goes out
+   * as its own message and the bubble is sealed, so whatever streams next opens
+   * a fresh one. Without that seal the streamer keeps editing "the current
+   * message" — which the adapters point at the prompt when they send it — and
+   * the rest of the reply overwrites the question.
+   */
+  const deliverOutOfBand = async (text: string): Promise<void> => {
+    await enqueue(async () => {
+      await flushFinished();
+      await flushTail();
+      await wrappedSendNewMessage(text);
+      bubbleSealed = true;
+    });
+  };
+
   try {
     await streamFn(
       (chunk) => {
@@ -360,6 +381,7 @@ async function _handleStream(
           await emitGenericError(formatBotError(error));
         }
       },
+      deliverOutOfBand,
     );
   } catch (error) {
     await emitGenericError(formatBotError(error));
@@ -479,25 +501,11 @@ async function runStreamingChat(
     await onGenericError(formattedError);
   };
 
-  // HIL approval prompts are delivered out-of-band as their own message so a
-  // non-streaming platform (Discord/WhatsApp, which shows nothing until the
-  // stream ends) still surfaces the question while the agent is paused waiting.
-  const render = PLATFORM_MARKDOWN[options.platform];
-  const handleApprovalUpdate = async (data: ApprovalRequestData) => {
-    // Only the PENDING question needs an out-of-band message — a bot has no
-    // buttons, so the user answers in chat. Settled frames (an auto_approved
-    // receipt in auto mode, or a resumed decision) arrive MID-STREAM and are
-    // already narrated by the agent's streamed reply; posting them here fires
-    // sendNewMessage, which on editing platforms (Telegram/Slack) rebinds the
-    // live edit cursor and fragments/overwrites that reply.
-    if (data.status !== "pending") return;
-    await sendNewMessage(render(formatApprovalPrompt(data)));
-  };
-
   const streamFn = (
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
+    deliverOutOfBand: (text: string) => Promise<void>,
   ) =>
     gaia.chatStream(
       request,
@@ -514,7 +522,18 @@ async function runStreamingChat(
         await onDone(fullText, convId);
       },
       onError,
-      handleApprovalUpdate,
+      // HIL approval prompts go out as their own message so a non-streaming
+      // platform (Discord/WhatsApp, which shows nothing until the stream ends)
+      // still surfaces the question while the agent is paused waiting.
+      //
+      // Only the PENDING question needs one — a bot has no buttons, so the user
+      // answers in chat. Settled frames (an auto_approved receipt in auto mode,
+      // or a resumed decision) arrive MID-STREAM and are already narrated by the
+      // agent's streamed reply, so posting them would fragment it.
+      async (data: ApprovalRequestData) => {
+        if (data.status !== "pending") return;
+        await deliverOutOfBand(formatApprovalPrompt(data));
+      },
     );
 
   try {

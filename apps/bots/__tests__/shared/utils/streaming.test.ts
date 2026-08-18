@@ -6,6 +6,7 @@
  * is the `GaiaClient` stream source and the platform send/edit callbacks, which
  * stand in for the platform SDK exactly as each adapter wires them.
  */
+import type { ApprovalRequestData } from "@gaia/shared";
 import {
   type GaiaClient,
   handleStreamingChat,
@@ -33,7 +34,7 @@ function body(word: string, sentences: number): string {
  * `chatStream` and `createLinkToken`, so implementing the whole client would be
  * noise, but the cast stays explicit instead of disabling the lint rule.
  */
-function streamingGaia(chunks: string[]): GaiaClient {
+function streamingGaia(chunks: string[], approvalAfter?: number): GaiaClient {
   const full = chunks.join("");
   return {
     chatStream: async (
@@ -43,8 +44,25 @@ function streamingGaia(chunks: string[]): GaiaClient {
         fullText: string,
         conversationId: string,
       ) => void | Promise<void>,
+      _onError: unknown,
+      onApproval?: (data: ApprovalRequestData) => void | Promise<void>,
     ) => {
-      for (const chunk of chunks) await onChunk(chunk);
+      for (const [i, chunk] of chunks.entries()) {
+        await onChunk(chunk);
+        if (approvalAfter === i && onApproval) {
+          await onApproval({
+            approval_id: "a1",
+            tool_call_id: "t1",
+            gated_tool_name: "delete_everything",
+            integration_name: null,
+            summary: "Delete the production database",
+            args_preview: {},
+            status: "pending",
+            feedback: null,
+            timeout_seconds: 3600,
+          } as ApprovalRequestData);
+        }
+      }
       await onDone(full, "conv-test");
       return full;
     },
@@ -67,7 +85,10 @@ interface Delivered {
 async function deliver(
   platform: PlatformName,
   chunks: string[],
-  { editable = true }: { editable?: boolean } = {},
+  {
+    editable = true,
+    approvalAfter,
+  }: { editable?: boolean; approvalAfter?: number } = {},
 ): Promise<Delivered> {
   const bubbles: string[] = [];
   const writes: string[] = [];
@@ -99,7 +120,7 @@ async function deliver(
   };
 
   await handleStreamingChat(
-    streamingGaia(chunks),
+    streamingGaia(chunks, approvalAfter),
     {
       message: "drive the streamer",
       platform,
@@ -212,6 +233,26 @@ describe("handleStreamingChat delivery", () => {
       expect(delivered).not.toContain("(truncated)");
       expect(words(delivered)).toBe(words(first) + words(second));
     });
+  });
+
+  it("does not overwrite an out-of-band approval prompt", async () => {
+    // The approval prompt is posted through the adapter's `sendNewMessage`,
+    // which on editing platforms moves that adapter's live-edit cursor onto the
+    // prompt. If the streamer keeps editing "the current message" afterwards it
+    // writes the rest of the reply over the question the user still has to
+    // answer.
+    const { bubbles } = await deliver(
+      "telegram",
+      ["Checking that first. ", "Now the rest of the answer."],
+      { approvalAfter: 0 },
+    );
+
+    const prompt = bubbles.find((b) => b.includes("Approval needed"));
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain("Delete the production database");
+    // Whatever streamed after the prompt must land in its own message.
+    expect(bubbles.at(-1)).toContain("Now the rest of the answer");
+    expect(bubbles.at(-1)).not.toContain("Approval needed");
   });
 
   it("never shows a break token, whole or partially received", async () => {
