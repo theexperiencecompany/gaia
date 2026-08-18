@@ -8,8 +8,8 @@ ever exercise the pass-through path, so nothing else runs this code.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
