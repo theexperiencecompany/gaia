@@ -6,6 +6,7 @@ key reads and list membership could mutate unnoticed. One issue per state
 shape, per tool.
 """
 
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 from app.models.common_models import GatherContextInput
@@ -123,7 +124,7 @@ class TestSprintBuckets:
 
 
 class TestWorkspaceAndGatherStateFilter:
-    _GQL = [
+    _GQL: ClassVar[list[dict[str, object]]] = [
         {"viewer": {"id": "u1", "name": "U", "email": "u@x", "assignedIssues": {"nodes": []}}},
         {"teams": {"nodes": []}},
         {
