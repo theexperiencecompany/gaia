@@ -100,6 +100,12 @@ def _user_local_today() -> date:
         return datetime.now(UTC).date()
 
 
+# Sorts after every real Linear priority (0-4); issues without one go last.
+_NO_PRIORITY_SORT_KEY = 99.0
+# Bucket for issues whose state payload is missing entirely.
+_UNKNOWN_STATE_TYPE = "unstarted"
+
+
 def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # type: ignore[explicit-any]
     """Register Linear tools as Composio custom tools."""
 
@@ -193,13 +199,13 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
         filtered = []
         for issue in issues:
             due_str = text_opt_bag(issue, "dueDate")
-            due_date = None
+            due_date = None  # pragma: no mutate — falsy-equivalent, see commit
             if due_str:
                 with contextlib.suppress(ValueError):
                     due_date = datetime.fromisoformat(due_str).date()
 
             priority = issue.get("priority", 0)
-            state_type = text_bag(dict_bag(issue, "state"), "type", "")
+            state_type = text_bag(dict_bag(issue, "state"), "type")
 
             if not request.include_completed and state_type in [
                 "completed",
@@ -223,7 +229,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                 filtered.append(issue)
 
         def sort_key(issue: dict[str, object]) -> tuple[float, str]:
-            p = float_bag(issue, "priority", 99.0)
+            p = float_bag(issue, "priority", _NO_PRIORITY_SORT_KEY)
             due = text_bag(issue, "dueDate", "9999-12-31")
             return (p, due)
 
@@ -259,7 +265,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
                 if text_opt_bag(dict_bag(issue, "team"), "id") != request.team_id:
                     continue
             if request.state_filter:
-                state_type = text_bag(dict_bag(issue, "state"), "type", "").lower()
+                state_type = text_bag(dict_bag(issue, "state"), "type").lower()
                 if state_type != request.state_filter:
                     continue
             if request.assignee_id:
@@ -736,7 +742,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
             }
 
             for issue in issues:
-                state_type = text_bag(dict_bag(issue, "state"), "type", "unstarted").lower()
+                state_type = text_bag(dict_bag(issue, "state"), "type", _UNKNOWN_STATE_TYPE).lower()
                 if state_type in by_state:
                     by_state[state_type].append(
                         {
@@ -887,7 +893,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
         sla_at_risk = []
 
         for issue in my_issues:
-            state_type = text_bag(dict_bag(issue, "state"), "type", "")
+            state_type = text_bag(dict_bag(issue, "state"), "type")
             if state_type in ["completed", "canceled"]:
                 continue
 
@@ -965,7 +971,7 @@ def register_linear_custom_tools(composio: Composio[Any, Any]) -> list[str]:  # 
         high_priority = []
 
         for issue in my_issues:
-            state_type = text_bag(dict_bag(issue, "state"), "type", "")
+            state_type = text_bag(dict_bag(issue, "state"), "type")
             if state_type in ["completed", "canceled"]:
                 continue
             due_str = text_opt_bag(issue, "dueDate")

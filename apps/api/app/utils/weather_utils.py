@@ -281,14 +281,13 @@ def process_forecast_data(forecast_data: dict[str, object]) -> list[dict[str, ob
         most_common_condition = condition_counter.most_common(1)[0][0]
         most_common_description = description_counter.most_common(1)[0][0]
 
-        # Find a matching weather icon from one of the items with this condition
+        # Find the icon of an item with this condition. No default: the
+        # condition came from Counter over these same items' "main" fields, so
+        # some item always matches and the generator always yields.
         icon = next(
-            (
-                text_bag(_first_weather(item), "icon")
-                for item in items
-                if text_bag(_first_weather(item), "main") == most_common_condition
-            ),
-            text_bag(_first_weather(items[0]), "icon"),
+            text_bag(_first_weather(item), "icon")
+            for item in items
+            if text_bag(_first_weather(item), "main") == most_common_condition
         )
 
         # Extract timestamp from first item of the day for frontend date formatting
