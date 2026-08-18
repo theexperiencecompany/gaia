@@ -115,35 +115,46 @@ class _AsyncEphemeralWrapper:
 
     ChromaStore requires an AsyncClientAPI; this wrapper satisfies that contract
     without needing a real async HTTP server.
+
+    Every method yields to the loop first. A real async client suspends on its
+    network round-trip, so concurrent callers interleave between calls; without
+    the yield this wrapper runs each call to completion atomically and hides
+    every ordering bug the real client would expose.
     """
 
     def __init__(self):
         self._sync = chromadb.EphemeralClient()
 
     async def list_collections(self):
+        await asyncio.sleep(0)
         return self._sync.list_collections()
 
     async def create_collection(self, name, metadata=None, **kwargs):
+        await asyncio.sleep(0)
         kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.create_collection(name, metadata=metadata, **kwargs)
         return _AsyncCollectionWrapper(col)
 
     async def get_collection(self, name, **kwargs):
+        await asyncio.sleep(0)
         kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.get_collection(name, **kwargs)
         return _AsyncCollectionWrapper(col)
 
     async def get_or_create_collection(self, name, metadata=None, **kwargs):
+        await asyncio.sleep(0)
         kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.get_or_create_collection(name, metadata=metadata, **kwargs)
         return _AsyncCollectionWrapper(col)
 
     async def delete_collection(self, name):
+        await asyncio.sleep(0)
         return self._sync.delete_collection(name)
 
     async def reset(
         self,
     ):  # NOSONAR — async wrapper required for consistent async interface
+        await asyncio.sleep(0)
         return self._sync.reset()
 
 
