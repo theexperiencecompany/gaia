@@ -37,7 +37,10 @@ class PaymentWebhookService:
         self.webhook_secret = settings.DODO_WEBHOOK_PAYMENTS_SECRET
         # Initialize Standard Webhooks verifier; None when no secret is configured
         # or the verifier failed to build (verify_webhook_signature rejects those).
-        self.webhook_verifier: Webhook | None = None
+        # pragma: no mutate — any falsy stand-in is equivalent: the only read
+        # is `if not self.webhook_verifier:` and the setup branches rebind it,
+        # which the classifier cannot trace.
+        self.webhook_verifier: Webhook | None = None  # pragma: no mutate
         if self.webhook_secret:
             try:
                 # The secret should be base64 encoded for Standard Webhooks
@@ -220,8 +223,10 @@ class PaymentWebhookService:
         """Get user email from metadata or database lookup."""
         user_id = metadata.get("user_id")
         if user_id:
-            # Always a str: we set this field as str(user_id) at checkout.
-            user = await user_repository.get(cast(str, user_id))
+            # str() rather than cast: we DO set this as str(user_id) at
+            # checkout, but Dodo echoes provider-side JSON and nothing
+            # enforces the claim on the way back in.
+            user = await user_repository.get(str(user_id))
             if user:
                 return user.email
         return None
@@ -357,8 +362,9 @@ class PaymentWebhookService:
                 )
             user_id = str(user.id)
         else:
-            # Always a str: we set this metadata field as str(user_id) at checkout.
-            user_id = cast(str, user_id)
+            # str() rather than cast: checkout writes str(user_id), but the
+            # value has round-tripped through Dodo's JSON since.
+            user_id = str(user_id)
 
         # Create subscription record
         subscription_doc = {
