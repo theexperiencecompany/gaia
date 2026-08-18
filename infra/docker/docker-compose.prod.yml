@@ -1224,23 +1224,15 @@ volumes:
   #     -o backup-meta=1h -o cache-size=4096 \
   #     -o max-uploads=20 -o prefetch=8 -o buffer-size=600 \
   #     gaia_jfs_v2
-  # One `-o key=value` per flag: the released plugin has no `mountFlags` key and
-  # forwards it verbatim as `--mountFlags=...`, which `juicefs mount` rejects.
-  # No -o cache-dir (that path is absent from the plugin rootfs → mount EOF), and
-  # no -o all-squash: it squashes the plugin's own `touch /mnt/jfs/.juicefs`
-  # readiness probe down to uid 1000, which cannot write the root-owned .juicefs
-  # left by an earlier mount — the plugin then reports `exec: already started`
-  # and fails Mount on top of a daemon that did mount, leaking it. It buys
-  # nothing here: the volume root is 0777 and the API already runs as uid 1000.
-  # Confirm a fresh volume before pointing services at it — `stat -c %i /mnt/jfs`
-  # must be 1; anything else is node-local disk, not JuiceFS.
+  # One -o per flag: the released plugin has no `mountFlags` key. No -o cache-dir
+  # (absent from the plugin rootfs → mount EOF) and no -o all-squash (squashes
+  # the plugin's own root `touch .juicefs` readiness probe to uid 1000, which
+  # then can't write it → `exec: already started` and a failed Mount over a live
+  # daemon). Verify with `stat -c %i /mnt/jfs` == 1 before repointing the mounts.
   #
   # metaurl is baked in here, NOT read from JUICEFS_META_URL_TEMPLATE. Changing
-  # the metadata engine in Infisical moves the API and sandboxes but leaves this
-  # mount on the old engine — create a *new* volume, verify it, then point the
-  # two `source:` lines above at it and redeploy. Don't `docker volume rm` the
-  # live one to reuse its name: the plugin's Remove only os.Remove()s the
-  # mountpoint (EBUSY while mounted), and it's the rollback anchor.
+  # the metadata engine in Infisical leaves this mount on the old one — create a
+  # new volume, verify it, repoint. Don't rm the live one to reuse its name.
   #
   # --backup-meta belongs here, not in scripts/docker-entrypoint.sh: the plugin
   # mounts /mnt/jfs first, so the entrypoint's own mount short-circuits on
