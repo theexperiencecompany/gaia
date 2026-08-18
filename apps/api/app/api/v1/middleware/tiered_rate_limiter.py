@@ -33,7 +33,7 @@ from app.models.usage_models import (
     UsagePeriod,
     UserUsageSnapshot,
 )
-from app.services.limit_upsell import LimitHitOrigin, schedule_limit_upsell
+from app.services.limit_upsell import LimitHitOrigin, current_limit_origin, schedule_limit_upsell
 from app.services.usage_activity import counts_as_activity, record_activity
 from app.services.usage_service import UsageService
 from app.utils.background_tasks import spawn_background_task
@@ -124,7 +124,7 @@ class TieredRateLimiter:
         user_id: str,
         feature_key: str,
         user_plan: PlanType,
-        origin: LimitHitOrigin = LimitHitOrigin.INTERACTIVE,
+        origin: LimitHitOrigin | None = None,
     ) -> dict[str, UsageInfo]:
         """Enforce all limits for a feature, then atomically count this use.
 
@@ -136,6 +136,7 @@ class TieredRateLimiter:
         upsell, background runs (worker-executed workflows) get the
         workflows-paused note.
         """
+        origin = origin or current_limit_origin()
         # Checked here rather than inside `_check_and_increment` so the bypass
         # also skips the upsell side effects: a dev run must not fire analytics
         # or send a user an upgrade email.

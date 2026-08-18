@@ -1,6 +1,6 @@
 """Domain senders for every platform email GAIA delivers."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.config.rate_limits import derive_pro_benefits, get_feature_info
 from app.config.settings import settings
@@ -278,6 +278,10 @@ async def send_badge_earned_email(
     log.info(f"{LogTag.MAIL} Badge earned email sent", tier=tier)
 
 
+#: One limit email of any kind per user per week, shared by both senders.
+LIMIT_EMAIL_WINDOW = timedelta(days=7)
+
+
 async def _limit_email_recipient(user_id: str) -> UserDocument | None:
     """The user a limit email may go to, or None (missing/no email/weekly dedupe).
 
@@ -294,12 +298,15 @@ async def _limit_email_recipient(user_id: str) -> UserDocument | None:
         )
         return None
 
-    now = datetime.now(UTC)
-    last_sent = user.last_limit_email_sent
-    if last_sent and last_sent.tzinfo is None:
-        last_sent = last_sent.replace(tzinfo=UTC)
     # One nudge per week: a daily 429 toast is expected UX; a daily email is spam.
-    if last_sent and (now - last_sent).days < 7:
+    # The window is CLAIMED, not merely read: both senders share it, and reading
+    # eligibility here then stamping it after the send let two concurrent hits
+    # both pass and both send. The claim is a conditional update, so exactly one
+    # caller wins; the loser returns None and sends nothing.
+    claimed = await user_repository.claim_limit_email_slot(
+        user_id, stale_before=datetime.now(UTC) - LIMIT_EMAIL_WINDOW
+    )
+    if claimed is None:
         return None
     return user
 
@@ -329,16 +336,21 @@ async def send_limit_reached_email(
         contact_email=CONTACT_EMAIL,
     )
 
-    await send_email(
-        EmailMessage(
-            sender=FOUNDER_SENDER,
-            to=[user.email],
-            subject="You hit your GAIA limit today — here's what Pro unlocks",
-            html=html_content,
-            reply_to=CONTACT_EMAIL,
+    try:
+        await send_email(
+            EmailMessage(
+                sender=FOUNDER_SENDER,
+                to=[user.email],
+                subject="You hit your GAIA limit today — here's what Pro unlocks",
+                html=html_content,
+                reply_to=CONTACT_EMAIL,
+            )
         )
-    )
-    await user_repository.record_limit_email_sent(user_id)
+    except Exception:
+        # The slot was claimed before sending; hand it back so a failed
+        # send does not silence this user for the rest of the week.
+        await user_repository.release_limit_email_slot(user_id, user.last_limit_email_sent)
+        raise
     log.info(f"{LogTag.MAIL} Limit-reached upsell email sent", user={"id": user_id})
     return True
 
@@ -364,15 +376,20 @@ async def send_workflows_paused_email(user_id: str) -> bool:
         contact_email=CONTACT_EMAIL,
     )
 
-    await send_email(
-        EmailMessage(
-            sender=FOUNDER_SENDER,
-            to=[user.email],
-            subject="GAIA is taking a break until tomorrow",
-            html=html_content,
-            reply_to=CONTACT_EMAIL,
+    try:
+        await send_email(
+            EmailMessage(
+                sender=FOUNDER_SENDER,
+                to=[user.email],
+                subject="GAIA is taking a break until tomorrow",
+                html=html_content,
+                reply_to=CONTACT_EMAIL,
+            )
         )
-    )
-    await user_repository.record_limit_email_sent(user_id)
+    except Exception:
+        # The slot was claimed before sending; hand it back so a failed
+        # send does not silence this user for the rest of the week.
+        await user_repository.release_limit_email_slot(user_id, user.last_limit_email_sent)
+        raise
     log.info(f"{LogTag.MAIL} Workflows-paused email sent", user={"id": user_id})
     return True

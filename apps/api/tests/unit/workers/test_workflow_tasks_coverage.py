@@ -5,10 +5,13 @@ asserted on the arguments they receive: a call-count-only assertion cannot tell
 a correct call from one made for the wrong user, feature or workflow.
 """
 
+from collections.abc import Awaitable, Callable
 from typing import Any, NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.limit_upsell import LimitHitOrigin
+import pytest
+
+from app.services.limit_upsell import LimitHitOrigin, current_limit_origin
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
@@ -44,6 +47,7 @@ async def _run_task(
     user: MagicMock,
     context: dict[str, Any] | None,
     rearm_error: Exception | None = None,
+    budget_side_effect: Callable[..., Awaitable[None]] | None = None,
 ) -> _Run:
     scheduler = MagicMock()
     scheduler.get_task = AsyncMock(return_value=workflow)
@@ -53,7 +57,11 @@ async def _run_task(
     with (
         patch(f"{MODULE}.workflow_scheduler", scheduler),
         patch(f"{MODULE}.user_repository.get", user_get),
-        patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock) as budget,
+        patch(
+            f"{MODULE}.enforce_daily_cost_budget",
+            new_callable=AsyncMock,
+            side_effect=budget_side_effect,
+        ) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(f"{MODULE}.execute_workflow_as_chat", new_callable=AsyncMock, return_value="conv-1"),
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
@@ -81,8 +89,35 @@ class TestSystemRunGuards:
         run.budget.assert_awaited_once_with(
             "owner-7",
             feature_key="trigger_workflow_executions",
-            origin=LimitHitOrigin.BACKGROUND,
         )
+
+    @pytest.mark.parametrize(
+        ("trigger_type", "expected"),
+        [
+            ("schedule", LimitHitOrigin.BACKGROUND),
+            ("integration", LimitHitOrigin.BACKGROUND),
+            ("manual", LimitHitOrigin.INTERACTIVE),
+        ],
+    )
+    async def test_the_budget_wall_runs_under_the_origin_the_trigger_implies(
+        self, trigger_type: str, expected: LimitHitOrigin
+    ) -> None:
+        """Which email a limit hit sends. Asserted at the wall rather than on the
+        call's arguments: the origin now reaches the seam through the run's
+        context, so the argument list cannot show whether it is right."""
+        seen: list[LimitHitOrigin] = []
+
+        async def _record(*_args: object, **_kwargs: object) -> None:
+            seen.append(current_limit_origin())
+
+        await _run_task(
+            _workflow("owner-7"),
+            _user(completed=True),
+            {"trigger_type": trigger_type},
+            budget_side_effect=_record,
+        )
+
+        assert seen == [expected]
 
     async def test_skipped_recurring_workflow_still_arms_next_occurrence(self) -> None:
         workflow = _workflow(occurrence_count=2)
